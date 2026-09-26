@@ -9,7 +9,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let content = TabContentView()
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
-    private var terminals: [UUID: TerminalView] = [:]
+    private var views: [UUID: PaneContent] = [:]
+    private var clickMonitor: Any?
     /// Panes whose terminal just closed; they get a new one after a moment
     /// if they're still around (i.e. the server was restarted, not the shell
     /// ended).
@@ -72,6 +73,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             window.center()
         }
         setTrafficLights(visible: pinned, animated: false)
+        watchClicks()
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -97,19 +99,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
         let live = Set(ws.allPanes.map(\.id))
-        for (id, view) in terminals where !live.contains(id) {
+        for (id, view) in views where !live.contains(id) {
             view.removeFromSuperview()
             view.destroy()
-            terminals.removeValue(forKey: id)
+            views.removeValue(forKey: id)
         }
 
         if let tab = selectedTab {
-            let views = tab.panes.filter { !recentlyClosed.contains($0.id) }.map { terminal(for: $0.id) }
-            content.show(views, fractions: tab.fractions, focused: tab.focusedPane)
+            let shown: [TabContentView.ColumnContent] = tab.columns.compactMap { column in
+                guard let top = column.top, !recentlyClosed.contains(top.id) else { return nil }
+                return .init(id: column.id, view: view(for: top), beneath: column.panes.dropLast().reversed())
+            }
+            content.show(shown, fractions: tab.fractions, focused: tab.focusedPane)
             window.title = tab.title
-            if palette == nil, let focused = tab.focusedPane, let view = terminals[focused],
-               window.firstResponder !== view {
-                window.makeFirstResponder(view)
+            if palette == nil, let focused = tab.focusedPane, let view = views[focused],
+               !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false) {
+                window.makeFirstResponder(view.focusView)
             }
         } else {
             content.show([], fractions: [], focused: nil)
@@ -125,16 +130,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func terminal(for pane: UUID) -> TerminalView {
-        if let t = terminals[pane] {
-            // A surface can't be made while no display is awake; try again.
-            if t.surface != nil || Date().timeIntervalSince(t.created) < 2 { return t }
-            t.removeFromSuperview()
+    private func view(for pane: Pane) -> PaneContent {
+        if let v = views[pane.id] {
+            if let m = v as? MarkdownView, let path = pane.path { m.show(path: path) }
+            if !v.isDead { return v }
+            v.removeFromSuperview()
+            v.destroy()
         }
-        let t = TerminalView(pane: pane, command: ServerClient.attachCommand(pane: pane))
-        t.delegate = self
-        terminals[pane] = t
-        return t
+        let v: PaneContent
+        switch pane.kind {
+        case .terminal:
+            let t = TerminalView(pane: pane.id, command: ServerClient.attachCommand(pane: pane.id))
+            t.delegate = self
+            v = t
+        case .markdown:
+            let m = MarkdownView(pane: pane.id, path: pane.path ?? "")
+            m.delegate = self
+            v = m
+        }
+        views[pane.id] = v
+        return v
+    }
+
+    /// A click in a pane focuses it. Terminals say so themselves; the
+    /// others' views (a web view, say) don't, so clicks are watched here.
+    private func watchClicks() {
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, event.window === self.window, self.palette == nil else { return event }
+            // Not clicks on the sidebar, floating over the panes.
+            if self.sidebarShown && self.sidebar.frame.contains(self.root.convert(event.locationInWindow, from: nil)) {
+                return event
+            }
+            let p = self.content.convert(event.locationInWindow, from: nil)
+            if let v = self.content.panes.first(where: { $0.frame.contains(p) }), !(v is TerminalView),
+               self.ws.tabContaining(pane: v.pane)?.focusedPane != v.pane {
+                self.server.send(.focusPane(v.pane))
+            }
+            return event
+        }
     }
 
     private func layoutViews() {
@@ -261,7 +294,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    var debugFocusedTerminal: TerminalView? { focusedPane.flatMap { terminals[$0.id] } }
+    func debugPeek(_ column: Int) { content.debugPeek(column) }
+
+    var debugFocusedTerminal: TerminalView? { focusedPane.flatMap { views[$0.id] as? TerminalView } }
 
     func debugSidebar(show: Bool) {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
@@ -301,11 +336,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.renameTab(nil)
             })
         }
+        items.append(PaletteItem(symbol: "doc.richtext", title: "Open Markdown File…", subtitle: "Action") { [weak self] in
+            self?.openDocument(nil)
+        })
         for tab in ws.tabs {
-            let pane = tab.panes.first { $0.id == tab.focusedPane } ?? tab.panes.first
-            let place = pane?.cwd.map { "Terminal in \(Self.abbreviate($0))" } ?? "Terminal"
+            let pane = tab.focused
+            let place: String
+            switch pane?.kind {
+            case .markdown?:
+                place = pane?.path.map { "Markdown in \(Self.abbreviate(($0 as NSString).deletingLastPathComponent))" } ?? "Markdown"
+            default:
+                place = pane?.cwd.map { "Terminal in \(Self.abbreviate($0))" } ?? "Terminal"
+            }
             let id = tab.id
-            items.append(PaletteItem(symbol: tab.isSplit ? "rectangle.split.2x1" : "apple.terminal",
+            items.append(PaletteItem(symbol: tab.isSplit ? "rectangle.split.2x1" : Theme.symbolName(for: pane?.kind ?? .terminal),
                                      title: tab.title, subtitle: place) { [weak self] in
                 self?.server.send(.selectTab(id))
             })
@@ -324,7 +368,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var focusedPane: Pane? {
         guard let tab = selectedTab else { return nil }
-        return tab.panes.first { $0.id == tab.focusedPane } ?? tab.panes.first
+        return tab.focused
     }
 
     private func openTerminal() {
@@ -337,14 +381,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func splitRight(_ sender: Any?) {
         guard let tab = selectedTab else { return openTerminal() }
-        let i = tab.panes.firstIndex { $0.id == tab.focusedPane } ?? tab.panes.count - 1
+        let i = tab.focusedPane.flatMap { tab.columnIndex(of: $0) } ?? tab.columns.count - 1
         server.send(.newPane(pane: UUID(), tab: tab.id, at: i + 1, kind: .terminal, cwd: focusedPane?.cwd))
     }
 
     @objc func closePaneOrTab(_ sender: Any?) {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let tab = selectedTab else { return }
-        if tab.isSplit, let pane = tab.focusedPane {
+        // Pops the focused stack, or closes the tab when it's all there is.
+        if tab.panes.count > 1, let pane = tab.focusedPane {
             server.send(.closePane(pane))
         } else {
             server.send(.closeTab(tab.id))
@@ -364,7 +409,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func movePaneToNewTab(_ sender: Any?) {
-        if let tab = selectedTab, tab.isSplit, let pane = tab.focusedPane {
+        if let tab = selectedTab, tab.panes.count > 1, let pane = tab.focusedPane {
             server.send(.detachPane(pane, newTab: UUID()))
         }
     }
@@ -404,13 +449,73 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if i < ws.tabs.count { server.send(.selectTab(ws.tabs[i].id)) }
     }
 
+    /// Brings the bottom of the focused column's stack to the top, so that
+    /// pressing it again and again goes through the whole stack.
+    @objc func cycleStack(_ sender: Any?) {
+        guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused),
+              tab.columns[c].panes.count > 1, let bottom = tab.columns[c].panes.first else { return }
+        server.send(.focusPane(bottom.id))
+    }
+
     @objc func nextPane(_ sender: Any?) { stepPane(1) }
     @objc func previousPane(_ sender: Any?) { stepPane(-1) }
 
     private func stepPane(_ d: Int) {
         guard let tab = selectedTab, tab.isSplit else { return }
-        let i = tab.panes.firstIndex { $0.id == tab.focusedPane } ?? 0
-        server.send(.focusPane(tab.panes[(i + d + tab.panes.count) % tab.panes.count].id))
+        let visible = tab.visiblePanes
+        let i = visible.firstIndex { $0.id == tab.focusedPane } ?? 0
+        server.send(.focusPane(visible[(i + d + visible.count) % visible.count].id))
+    }
+
+    /// Opens a file for reading: beside the focused pane, like a
+    /// command-clicked one.
+    @objc func openDocument(_ sender: Any?) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!]
+        panel.allowsMultipleSelection = false
+        if let cwd = focusedPane?.cwd { panel.directoryURL = URL(fileURLWithPath: cwd) }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            let beside = self.focusedPane.flatMap { $0.kind == .terminal ? $0.id : nil }
+            self.server.send(.openFile(path: url.path, kind: .markdown, pane: UUID(), tab: UUID(), beside: beside))
+        }
+    }
+
+    /// Opens what a link in a pane points at: Markdown files in a preview
+    /// beside the pane, anything else with the system.
+    func open(_ target: String, from pane: UUID) {
+        if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        var path = target.hasPrefix("file://") ? (URL(string: target)?.path ?? target) : target
+        path = (path as NSString).expandingTildeInPath
+        if !path.hasPrefix("/"), let cwd = ws.pane(pane)?.cwd {
+            path = (cwd as NSString).appendingPathComponent(path)
+        }
+        path = URL(fileURLWithPath: path).standardizedFileURL.path
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
+            NSSound.beep()
+            return
+        }
+        let ext = (path as NSString).pathExtension.lowercased()
+        if !isDir.boolValue && ["md", "markdown", "mdown", "mkd", "mdx"].contains(ext) {
+            server.send(.openFile(path: path, kind: .markdown, pane: UUID(), tab: UUID(), beside: pane))
+        } else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
+    }
+
+    @objc func restartServer(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Restart Manifold's server?"
+        alert.informativeText = "Your tabs are kept. Each shell starts again in the same directory, under its recent output; programs running in them are ended."
+        alert.addButton(withTitle: "Restart Server")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        ServerClient.stopServer()
     }
 
     @objc func stopServer(_ sender: Any?) {
@@ -533,12 +638,16 @@ extension MainWindowController: SidebarDelegate {
 extension MainWindowController: TabContentDelegate {
     func contentCanDrop(_ tab: UUID) -> Bool { tab != ws.selectedTab }
 
-    func contentDrop(_ tab: UUID, at index: Int) {
-        if let target = ws.selectedTab {
-            server.send(.mergeTab(tab, into: target, at: index))
-        } else {
-            server.send(.selectTab(tab))
+    func contentDrop(_ tab: UUID, on target: TabContentView.DropTarget) {
+        guard let selected = ws.selectedTab else { return server.send(.selectTab(tab)) }
+        switch target {
+        case .column(let index): server.send(.mergeTab(tab, into: selected, at: index))
+        case .stack(let column): server.send(.stackTab(tab, onto: column))
         }
+    }
+
+    func contentRaise(_ pane: UUID) {
+        server.send(.focusPane(pane))
     }
 
     func contentResized(_ fractions: [Double]) {
@@ -546,15 +655,25 @@ extension MainWindowController: TabContentDelegate {
     }
 }
 
+extension MainWindowController: MarkdownViewDelegate {
+    func markdownView(_ view: MarkdownView, open path: String) {
+        server.send(.setPanePath(view.pane, path))
+    }
+}
+
 extension MainWindowController: TerminalViewDelegate {
+    func terminal(_ view: TerminalView, open target: String) {
+        open(target, from: view.pane)
+    }
+
     func terminalDidFocus(_ view: TerminalView) {
         guard let tab = ws.tabContaining(pane: view.pane), tab.focusedPane != view.pane else { return }
         server.send(.focusPane(view.pane))
     }
 
     func terminalDidClose(_ view: TerminalView) {
-        guard terminals[view.pane] === view else { return }
-        terminals.removeValue(forKey: view.pane)
+        guard views[view.pane] === view else { return }
+        views.removeValue(forKey: view.pane)
         view.removeFromSuperview()
         recentlyClosed.insert(view.pane)
         render()

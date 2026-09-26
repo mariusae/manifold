@@ -177,12 +177,21 @@ final class PaletteRowView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The width that shows the whole title (and subtitle, if any).
+    var fittingWidth: CGFloat {
+        let t = (title.stringValue as NSString).size(withAttributes: [.font: title.font!]).width
+        let s = subtitle.stringValue.isEmpty ? 0 : (subtitle.stringValue as NSString).size(withAttributes: [.font: subtitle.font!]).width + 10
+        return ceil(38 + t + 6 + s + 12)
+    }
+
     override func layout() {
         super.layout()
         let h = bounds.height
         icon.frame = NSRect(x: 12, y: (h - 16) / 2, width: 16, height: 16)
         let natural = (title.stringValue as NSString).size(withAttributes: [.font: title.font!]).width
-        let tw = min(ceil(natural) + 6, bounds.width * 0.6)
+        // With a subtitle, the title leaves it room.
+        let cap = subtitle.stringValue.isEmpty ? bounds.width - 50 : bounds.width * 0.6
+        let tw = min(ceil(natural) + 6, cap)
         title.frame = NSRect(x: 38, y: (h - 18) / 2, width: tw, height: 18)
         subtitle.frame = NSRect(x: 38 + tw + 10, y: (h - 16) / 2, width: max(0, bounds.width - tw - 60), height: 16)
     }

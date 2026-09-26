@@ -12,6 +12,9 @@ final class ServerClient {
     /// Called on the main queue with each new workspace.
     var onState: ((Workspace) -> Void)?
     var onDisconnect: (() -> Void)?
+    /// The server speaks another version of the protocol (it's from an older
+    /// or newer build, still running).
+    var onVersionMismatch: ((Int) -> Void)?
 
     /// The server executable: next to ours in the app bundle.
     static var serverExecutable: String {
@@ -89,6 +92,7 @@ final class ServerClient {
             case .welcome(let version, _)?:
                 if version != protocolVersion {
                     NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
+                    self?.onVersionMismatch?(version)
                 }
             case .state(let ws)?:
                 self?.workspace = ws

@@ -176,3 +176,120 @@ private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) 
     ws2.apply(.setAppearance(Appearance(contrastCorrection: .off)))
     #expect(ws2.appearance.contrastCorrection == .off)
 }
+
+@Test func openFileBesideAPaneMakesAColumnThenStacksOnIt() {
+    var (ws, tabs, panes) = workspace(tabs: 2)
+    let a = UUID(), b = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
+    #expect(ws.tabs.count == 2)
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a]])
+    #expect(ws.tab(tabs[0])?.focusedPane == panes[0], "focus stays in the terminal")
+    #expect(ws.selectedTab == tabs[0])
+    // Another file goes on the right-hand stack, not into a third column.
+    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a, b]])
+    #expect(ws.tab(tabs[0])?.visiblePanes.map(\.id) == [panes[0], b])
+    // A file already on the stack is raised, not pushed again.
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: UUID(), beside: panes[0]))
+    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b, a])
+}
+
+@Test func openFileStacksOnAnExistingRightColumn() {
+    // A terminal already on the right: the preview goes on its stack.
+    var (ws, tabs, panes) = workspace(tabs: 2)
+    ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 1))
+    let md = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: md, tab: UUID(), beside: panes[0]))
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [panes[1], md]])
+}
+
+@Test func closingTheTopPopsTheStack() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let a = UUID(), b = UUID()
+    ws.apply(.newPane(pane: a, tab: tabs[0], at: 1, kind: .terminal, cwd: nil))
+    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
+    // [p0] [a, b], focus on a's column top after focusing b
+    ws.apply(.focusPane(b))
+    #expect(ws.apply(.closePane(b)) == [b])
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a]])
+    #expect(ws.tab(tabs[0])?.focusedPane == a, "the pane beneath takes focus")
+    ws.apply(.closePane(a))
+    #expect(ws.tab(tabs[0])?.columns.count == 1)
+    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
+}
+
+@Test func focusingABuriedPaneRaisesIt() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let a = UUID(), b = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
+    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
+    ws.apply(.focusPane(a))
+    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b, a])
+    #expect(ws.tab(tabs[0])?.focusedPane == a)
+}
+
+@Test func closingABuriedPaneLeavesFocusAlone() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let a = UUID(), b = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
+    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
+    ws.apply(.closePane(a))
+    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b])
+    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
+}
+
+@Test func stackingATabPushesItsPanes() {
+    var (ws, tabs, panes) = workspace(tabs: 2)
+    let column = ws.tab(tabs[0])!.columns[0].id
+    ws.apply(.stackTab(tabs[1], onto: column))
+    #expect(ws.tabs.map(\.id) == [tabs[0]])
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0], panes[1]]])
+    #expect(ws.tab(tabs[0])?.focusedPane == panes[1])
+    #expect(!ws.tab(tabs[0])!.isSplit)
+}
+
+@Test func unsplitKeepsEachColumnsStack() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let a = UUID(), b = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
+    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
+    ws.apply(.unsplit(tabs[0]))
+    #expect(ws.tabs.count == 2)
+    #expect(ws.tabs[1].columns.map { $0.panes.map(\.id) } == [[a, b]])
+}
+
+@Test func stateSavedBeforeStacksLoads() throws {
+    let p0 = UUID(), p1 = UUID(), t = UUID()
+    let json = """
+        {"tabs":[{"id":"\(t)","panes":[{"id":"\(p0)","kind":"terminal"},{"id":"\(p1)","kind":"terminal"}],
+          "focusedPane":"\(p1)","fractions":[0.3,0.7]}],"selectedTab":"\(t)","window":{"sidebarPinned":false}}
+        """
+    let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[p0], [p1]])
+    #expect(ws.tabs[0].fractions == [0.3, 0.7])
+    #expect(ws.tabs[0].focusedPane == p1)
+    // And round-trips in the new form.
+    let again = try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(ws))
+    #expect(again == ws)
+}
+
+@Test func openFileWithoutAPaneMakesOrReusesATab() {
+    var (ws, tabs, _) = workspace(tabs: 1)
+    let t = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: t, beside: nil))
+    #expect(ws.tabs.map(\.id) == [tabs[0], t])
+    #expect(ws.selectedTab == t)
+    ws.apply(.selectTab(tabs[0]))
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: UUID(), beside: nil))
+    #expect(ws.tabs.count == 2)
+    #expect(ws.selectedTab == t)
+}
+
+@Test func setPanePathFollowsLinks() {
+    var ws = Workspace()
+    let p = UUID()
+    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: p, tab: UUID(), beside: nil))
+    ws.apply(.setPanePath(p, "/tmp/b.md"))
+    #expect(ws.pane(p)?.path == "/tmp/b.md")
+    #expect(ws.tabs[0].title == "b.md")
+}

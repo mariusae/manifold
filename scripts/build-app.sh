@@ -12,8 +12,11 @@ swift build -c "$config"
 bin=$(swift build -c "$config" --show-bin-path)
 app=build/Manifold.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/Manifold" "$bin/manifoldd" "$app/Contents/MacOS/"
+# The `manifold` command. It can't sit beside Manifold in MacOS/, as the
+# file system doesn't tell the two names apart.
+cp "$bin/ManifoldCLI" "$app/Contents/Helpers/manifold"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Ghostty looks for terminfo next to its resources directory.
 cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/Contents/Resources/"
@@ -34,6 +37,7 @@ fi
 cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 
 codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
+codesign --force --sign - "$app/Contents/Helpers/manifold" >/dev/null 2>&1
 codesign --force --sign - "$app" >/dev/null 2>&1
 echo "built $app"
 

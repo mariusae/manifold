@@ -58,43 +58,97 @@ public enum ContrastCorrection: String, Codable, CaseIterable, Sendable {
     case off, typical, deuteranopia
 }
 
-/// A tab is a row of one or more panes, side by side.
+/// A tab is a row of columns, side by side. Each column is a stack of panes,
+/// of which only the top one shows.
 public struct Tab: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var customTitle: String?
-    public var panes: [Pane]
+    public var columns: [Column]
+    /// The focused pane, always the top of its column.
     public var focusedPane: UUID?
-    /// Each pane's share of the width; sums to 1.
+    /// Each column's share of the width; sums to 1.
     public var fractions: [Double]
 
-    public init(id: UUID = UUID(), panes: [Pane], customTitle: String? = nil) {
+    public init(id: UUID = UUID(), columns: [Column], customTitle: String? = nil) {
         self.id = id
-        self.panes = panes
+        self.columns = columns
         self.customTitle = customTitle
-        self.focusedPane = panes.first?.id
-        self.fractions = Tab.equalFractions(panes.count)
+        self.focusedPane = columns.first?.top?.id
+        self.fractions = Tab.equalFractions(columns.count)
+    }
+
+    /// A tab with each pane in a column of its own.
+    public init(id: UUID = UUID(), panes: [Pane], customTitle: String? = nil) {
+        self.init(id: id, columns: panes.map { Column(panes: [$0]) }, customTitle: customTitle)
+    }
+
+    enum CodingKeys: String, CodingKey { case id, customTitle, columns, focusedPane, fractions }
+    enum LegacyKeys: String, CodingKey { case panes }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        customTitle = try c.decodeIfPresent(String.self, forKey: .customTitle)
+        focusedPane = try c.decodeIfPresent(UUID.self, forKey: .focusedPane)
+        if let columns = try c.decodeIfPresent([Column].self, forKey: .columns) {
+            self.columns = columns
+        } else {
+            // Saved before columns were stacks: each pane had a column.
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            columns = try legacy.decode([Pane].self, forKey: .panes).map { Column(panes: [$0]) }
+        }
+        let fractions = try c.decodeIfPresent([Double].self, forKey: .fractions) ?? []
+        self.fractions = fractions.count == columns.count ? fractions : Tab.equalFractions(columns.count)
     }
 
     public var title: String {
         if let customTitle, !customTitle.isEmpty { return customTitle }
-        let pane = panes.first { $0.id == focusedPane } ?? panes.first
-        if let title = pane?.title, !title.isEmpty { return title }
-        return pane?.kind.defaultTitle ?? "Tab"
+        return focused?.displayTitle ?? "Tab"
     }
 
-    public var isSplit: Bool { panes.count > 1 }
+    /// Every pane, column by column, bottom to top.
+    public var panes: [Pane] { columns.flatMap(\.panes) }
+
+    /// The panes that show: the top of each column.
+    public var visiblePanes: [Pane] { columns.compactMap(\.top) }
+
+    /// The focused pane, or the first showing when none is.
+    public var focused: Pane? { visiblePanes.first { $0.id == focusedPane } ?? visiblePanes.first }
+
+    public var isSplit: Bool { columns.count > 1 }
+
+    /// The column holding a pane.
+    public func columnIndex(of pane: UUID) -> Int? {
+        columns.firstIndex { $0.panes.contains { $0.id == pane } }
+    }
 
     static func equalFractions(_ n: Int) -> [Double] {
         n == 0 ? [] : Array(repeating: 1 / Double(n), count: n)
     }
 }
 
+/// A stack of panes: the last is on top, and the only one that shows.
+public struct Column: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var panes: [Pane]
+
+    public init(id: UUID = UUID(), panes: [Pane]) {
+        self.id = id
+        self.panes = panes
+    }
+
+    public var top: Pane? { panes.last }
+}
+
 public enum PaneKind: String, Codable, Sendable {
     case terminal
+    /// A live preview of a Markdown file.
+    case markdown
 
     public var defaultTitle: String {
         switch self {
         case .terminal: "Terminal"
+        case .markdown: "Markdown"
         }
     }
 }
@@ -108,12 +162,22 @@ public struct Pane: Codable, Equatable, Identifiable, Sendable {
     public var title: String?
     /// The working directory, so a new session can start where the old one was.
     public var cwd: String?
+    /// The file shown, for a view of one.
+    public var path: String?
 
-    public init(id: UUID = UUID(), kind: PaneKind = .terminal, title: String? = nil, cwd: String? = nil) {
+    public init(id: UUID = UUID(), kind: PaneKind = .terminal, title: String? = nil, cwd: String? = nil,
+                path: String? = nil) {
         self.id = id
         self.kind = kind
         self.title = title
         self.cwd = cwd
+        self.path = path
+    }
+
+    public var displayTitle: String {
+        if let title, !title.isEmpty { return title }
+        if let path { return (path as NSString).lastPathComponent }
+        return kind.defaultTitle
     }
 }
 
@@ -121,24 +185,36 @@ public struct Pane: Codable, Equatable, Identifiable, Sendable {
 /// and panes are chosen by the sender, so it can refer to them right away.
 public enum Command: Codable, Equatable, Sendable {
     case newTab(tab: UUID, pane: UUID, kind: PaneKind, cwd: String?, after: UUID?)
+    /// A new pane, in a new column at a column index.
     case newPane(pane: UUID, tab: UUID, at: Int, kind: PaneKind, cwd: String?)
     case selectTab(UUID)
+    /// Focuses a pane, raising it to the top of its stack.
     case focusPane(UUID)
     case closeTab(UUID)
+    /// Closes a pane; closing the top of a stack pops it.
     case closePane(UUID)
     case renameTab(UUID, title: String?)
     case moveTab(UUID, to: Int)
-    /// Moves all of one tab's panes into another, at a pane index.
+    /// Moves one tab's columns into another, at a column index.
     case mergeTab(UUID, into: UUID, at: Int)
+    /// Pushes one tab's panes onto a column's stack (the column's id).
+    case stackTab(UUID, onto: UUID)
     /// Moves a pane out of its tab into a new tab of its own, right after it.
     case detachPane(UUID, newTab: UUID)
-    /// Splits a tab back into one tab per pane.
+    /// Splits a tab into one tab per column.
     case unsplit(UUID)
     case setFractions(UUID, [Double])
     case setPaneTitle(UUID, String?)
     case setPaneCwd(UUID, String?)
     case setWindow(WindowState)
     case setAppearance(Appearance)
+    /// Shows a file in a new pane `pane`. Beside the pane `beside` if given:
+    /// pushed onto the stack of the column to its right (raising it if the
+    /// file is there already), or a new column there. Else in a new tab
+    /// `tab` (or a tab showing just that file).
+    case openFile(path: String, kind: PaneKind, pane: UUID, tab: UUID, beside: UUID?)
+    /// Points a file view at another file (following a link).
+    case setPanePath(UUID, String)
 }
 
 extension Workspace {
@@ -156,9 +232,9 @@ extension Workspace {
 
         case let .newPane(paneID, tabID, at, kind, cwd):
             guard let t = tabIndex(tabID), pane(paneID) == nil else { return [] }
-            let index = min(max(at, 0), tabs[t].panes.count)
-            tabs[t].panes.insert(Pane(id: paneID, kind: kind, cwd: cwd), at: index)
-            tabs[t].fractions = Tab.equalFractions(tabs[t].panes.count)
+            let index = min(max(at, 0), tabs[t].columns.count)
+            tabs[t].columns.insert(Column(panes: [Pane(id: paneID, kind: kind, cwd: cwd)]), at: index)
+            tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
             tabs[t].focusedPane = paneID
             selectedTab = tabID
 
@@ -166,7 +242,8 @@ extension Workspace {
             if tab(id) != nil { selectedTab = id }
 
         case let .focusPane(id):
-            guard let t = tabs.firstIndex(where: { $0.panes.contains { $0.id == id } }) else { return [] }
+            guard let (t, c) = locate(id) else { return [] }
+            raise(id, in: t, c)
             tabs[t].focusedPane = id
             selectedTab = tabs[t].id
 
@@ -177,16 +254,11 @@ extension Workspace {
             return removed
 
         case let .closePane(id):
-            guard let t = tabs.firstIndex(where: { $0.panes.contains { $0.id == id } }) else { return [] }
+            guard let (t, _) = locate(id) else { return [] }
             if tabs[t].panes.count == 1 {
                 removeTab(at: t)
             } else {
-                let p = tabs[t].panes.firstIndex { $0.id == id }!
-                tabs[t].panes.remove(at: p)
-                tabs[t].fractions = Tab.equalFractions(tabs[t].panes.count)
-                if tabs[t].focusedPane == id {
-                    tabs[t].focusedPane = tabs[t].panes[min(p, tabs[t].panes.count - 1)].id
-                }
+                _ = take(id, from: t)
             }
             return [id]
 
@@ -204,37 +276,44 @@ extension Workspace {
             guard sourceID != targetID, let s = tabIndex(sourceID), tabIndex(targetID) != nil else { return [] }
             let source = tabs.remove(at: s)
             let t = tabIndex(targetID)!
-            let index = min(max(at, 0), tabs[t].panes.count)
-            tabs[t].panes.insert(contentsOf: source.panes, at: index)
-            tabs[t].fractions = Tab.equalFractions(tabs[t].panes.count)
-            tabs[t].focusedPane = source.panes.first?.id ?? tabs[t].focusedPane
+            let index = min(max(at, 0), tabs[t].columns.count)
+            tabs[t].columns.insert(contentsOf: source.columns, at: index)
+            tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
+            tabs[t].focusedPane = source.focused?.id ?? tabs[t].focusedPane
             selectedTab = targetID
 
+        case let .stackTab(sourceID, columnID):
+            guard let s = tabIndex(sourceID),
+                  let t = tabs.firstIndex(where: { $0.columns.contains { $0.id == columnID } }),
+                  s != t else { return [] }
+            let source = tabs.remove(at: s)
+            let t2 = tabs.firstIndex { $0.columns.contains { $0.id == columnID } }!
+            let c = tabs[t2].columns.firstIndex { $0.id == columnID }!
+            // The source's focused pane goes on top.
+            let focused = source.focused
+            var pushed = source.panes.filter { $0.id != focused?.id }
+            if let focused { pushed.append(focused) }
+            tabs[t2].columns[c].panes.append(contentsOf: pushed)
+            tabs[t2].focusedPane = focused?.id ?? tabs[t2].focusedPane
+            selectedTab = tabs[t2].id
+
         case let .detachPane(paneID, newTabID):
-            guard tab(newTabID) == nil,
-                  let t = tabs.firstIndex(where: { $0.panes.contains { $0.id == paneID } }),
-                  tabs[t].panes.count > 1 else { return [] }
-            let p = tabs[t].panes.firstIndex { $0.id == paneID }!
-            let pane = tabs[t].panes.remove(at: p)
-            tabs[t].fractions = Tab.equalFractions(tabs[t].panes.count)
-            if tabs[t].focusedPane == paneID {
-                tabs[t].focusedPane = tabs[t].panes[min(p, tabs[t].panes.count - 1)].id
-            }
+            guard tab(newTabID) == nil, let (t, _) = locate(paneID), tabs[t].panes.count > 1 else { return [] }
+            let pane = take(paneID, from: t)!
             tabs.insert(Tab(id: newTabID, panes: [pane]), at: t + 1)
             selectedTab = newTabID
 
         case let .unsplit(id):
-            guard let t = tabIndex(id), tabs[t].panes.count > 1 else { return [] }
-            let focused = tabs[t].focusedPane
-            let keep = tabs[t].panes.first { $0.id == focused } ?? tabs[t].panes[0]
-            let others = tabs[t].panes.filter { $0.id != keep.id }
-            tabs[t].panes = [keep]
+            guard let t = tabIndex(id), tabs[t].columns.count > 1 else { return [] }
+            let keep = tabs[t].focusedPane.flatMap { tabs[t].columnIndex(of: $0) } ?? 0
+            let others = tabs[t].columns.enumerated().filter { $0.offset != keep }.map(\.element)
+            tabs[t].columns = [tabs[t].columns[keep]]
             tabs[t].fractions = [1]
-            tabs[t].focusedPane = keep.id
-            tabs.insert(contentsOf: others.map { Tab(panes: [$0]) }, at: t + 1)
+            tabs[t].focusedPane = tabs[t].columns[0].top?.id
+            tabs.insert(contentsOf: others.map { Tab(columns: [$0]) }, at: t + 1)
 
         case let .setFractions(id, fractions):
-            guard let t = tabIndex(id), fractions.count == tabs[t].panes.count,
+            guard let t = tabIndex(id), fractions.count == tabs[t].columns.count,
                   fractions.allSatisfy({ $0 > 0 }) else { return [] }
             let sum = fractions.reduce(0, +)
             tabs[t].fractions = fractions.map { $0 / sum }
@@ -250,17 +329,75 @@ extension Workspace {
 
         case let .setAppearance(appearance):
             self.appearance = appearance
+
+        case let .openFile(path, kind, paneID, tabID, beside):
+            if let beside, let (t, c) = locate(beside) {
+                selectedTab = tabs[t].id
+                let right = c + 1
+                if right < tabs[t].columns.count {
+                    if let existing = tabs[t].columns[right].panes.first(where: { $0.kind == kind && $0.path == path }) {
+                        raise(existing.id, in: t, right)
+                    } else if pane(paneID) == nil {
+                        tabs[t].columns[right].panes.append(Pane(id: paneID, kind: kind, path: path))
+                    }
+                } else if pane(paneID) == nil {
+                    tabs[t].columns.append(Column(panes: [Pane(id: paneID, kind: kind, path: path)]))
+                    tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
+                }
+                return []
+            }
+            if let existing = tabs.first(where: { $0.panes.count == 1 && $0.panes[0].kind == kind && $0.panes[0].path == path }) {
+                selectedTab = existing.id
+                return []
+            }
+            guard tab(tabID) == nil, pane(paneID) == nil else { return [] }
+            let index = selectedTab.flatMap(tabIndex).map { $0 + 1 } ?? tabs.count
+            tabs.insert(Tab(id: tabID, panes: [Pane(id: paneID, kind: kind, path: path)]), at: index)
+            selectedTab = tabID
+
+        case let .setPanePath(id, path):
+            updatePane(id) {
+                $0.path = path
+                $0.title = nil
+            }
         }
         return []
     }
 
-    private mutating func updatePane(_ id: UUID, _ f: (inout Pane) -> Void) {
+    /// The tab and column holding a pane.
+    private func locate(_ pane: UUID) -> (Int, Int)? {
         for t in tabs.indices {
-            if let p = tabs[t].panes.firstIndex(where: { $0.id == id }) {
-                f(&tabs[t].panes[p])
-                return
-            }
+            if let c = tabs[t].columnIndex(of: pane) { return (t, c) }
         }
+        return nil
+    }
+
+    /// Moves a pane to the top of its stack.
+    private mutating func raise(_ pane: UUID, in t: Int, _ c: Int) {
+        guard let p = tabs[t].columns[c].panes.firstIndex(where: { $0.id == pane }) else { return }
+        let moved = tabs[t].columns[c].panes.remove(at: p)
+        tabs[t].columns[c].panes.append(moved)
+    }
+
+    /// Takes a pane out of a tab that has others, dropping its column if it
+    /// was the column's last, and moving focus off it.
+    private mutating func take(_ pane: UUID, from t: Int) -> Pane? {
+        guard let c = tabs[t].columnIndex(of: pane) else { return nil }
+        let p = tabs[t].columns[c].panes.firstIndex { $0.id == pane }!
+        let removed = tabs[t].columns[c].panes.remove(at: p)
+        var nextFocus = tabs[t].columns[c].top?.id
+        if tabs[t].columns[c].panes.isEmpty {
+            tabs[t].columns.remove(at: c)
+            tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
+            nextFocus = tabs[t].columns[min(c, tabs[t].columns.count - 1)].top?.id
+        }
+        if tabs[t].focusedPane == pane { tabs[t].focusedPane = nextFocus }
+        return removed
+    }
+
+    private mutating func updatePane(_ id: UUID, _ f: (inout Pane) -> Void) {
+        guard let (t, c) = locate(id), let p = tabs[t].columns[c].panes.firstIndex(where: { $0.id == id }) else { return }
+        f(&tabs[t].columns[c].panes[p])
     }
 
     private mutating func removeTab(at t: Int) {

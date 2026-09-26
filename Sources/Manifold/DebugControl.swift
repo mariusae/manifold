@@ -14,6 +14,8 @@ import ManifoldCore
 ///   sidebar width <n>    resize the sidebar, as its handle would
 ///   contrast <mode>      set contrast correction (off, typical, deuteranopia)
 ///   focus                render as focused, without activating the app
+///   open <target>        as if command-clicked in the focused terminal
+///   peek <column>        list what's beneath a column's top, as hovering does
 ///   dump                 describe the window's views
 enum DebugControl {
     private static var listener: DispatchSourceRead?
@@ -135,6 +137,14 @@ enum DebugControl {
                 return "ok"
             }
             return "fields: \(fields.map(\.stringValue)) buttons: \(buttons.map(\.title))"
+        case "open":
+            // As if the target were command-clicked in the focused terminal.
+            guard let wc, let t = wc.debugFocusedTerminal else { return "no terminal focused" }
+            wc.open(arg, from: t.pane)
+            return "ok"
+        case "peek":
+            wc?.debugPeek(Int(arg) ?? 0)
+            return "ok"
         case "dump":
             guard let v = wc?.window?.contentView else { return "no window" }
             return describe(v, 0) + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"
@@ -151,6 +161,7 @@ enum DebugControl {
     private static func describe(_ v: NSView, _ depth: Int) -> String {
         var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")"
         if let t = v as? TerminalView { s += " pane=\(t.pane) surface=\(t.surface != nil)" }
+        if let keys = v.layer?.animationKeys(), !keys.isEmpty { s += " animating=\(keys)" }
         for sub in v.subviews where depth < 4 { s += "\n" + describe(sub, depth + 1) }
         return s
     }

@@ -1,4 +1,5 @@
 import AppKit
+import ManifoldCore
 
 enum Theme {
     static let windowBackground = GhosttyRuntime.background
@@ -13,6 +14,13 @@ enum Theme {
     static let divider = NSColor(white: 0, alpha: 0.1)
     static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
+
+    static func symbolName(for kind: PaneKind) -> String {
+        switch kind {
+        case .terminal: "apple.terminal"
+        case .markdown: "doc.richtext"
+        }
+    }
 
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: nil)?

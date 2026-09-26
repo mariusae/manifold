@@ -4,16 +4,23 @@ import GhosttyKit
 protocol TerminalViewDelegate: AnyObject {
     func terminalDidFocus(_ view: TerminalView)
     func terminalDidClose(_ view: TerminalView)
+    /// A link in the terminal was opened (command-clicked): a URL, or a path.
+    func terminal(_ view: TerminalView, open target: String)
 }
 
 /// A pane's terminal: a ghostty surface running `manifoldd attach <pane>`,
 /// which connects it to the pane's session in the server.
-final class TerminalView: NSView, NSTextInputClient, NSMenuItemValidation {
+final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemValidation {
     let pane: UUID
     private(set) var surface: ghostty_surface_t?
     weak var delegate: TerminalViewDelegate?
     var cellSize = NSSize(width: 8, height: 16)
     let created = Date()
+
+    var focusView: NSView { self }
+    /// A surface can't be made while no display is awake; one that failed
+    /// is made again after a moment.
+    var isDead: Bool { surface == nil && Date().timeIntervalSince(created) >= 2 }
 
     private var markedText = NSMutableAttributedString()
     private var keyTextAccumulator: [String]?

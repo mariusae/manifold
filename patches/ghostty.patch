@@ -95,6 +95,47 @@ index 278ffd7..a60fb3c 100644
  /// Color palette for the 256 color form that many terminal applications use.
  /// The syntax of this configuration is `N=COLOR` where `N` is 0 to 255 (for
  /// the 256 colors in the terminal color table) and `COLOR` is a typical RGB
+diff --git a/src/config/url.zig b/src/config/url.zig
+index e7cf860..108c3eb 100644
+--- a/src/config/url.zig
++++ b/src/config/url.zig
+@@ -113,12 +113,20 @@ const bare_relative_path_branch =
+     no_trailing_colon ++
+     trailing_spaces_at_eol;
+ 
++// Manifold: Branch 4: bare Markdown file names such as README.md, which
++// Manifold opens in a preview beside the terminal.
++const bare_markdown_branch =
++    \\(?<![\w\-.~\/$])[\w][\w\-.]*\.(?:md|markdown)(?![\w\-.\/])
++;
++
+ pub const regex =
+     scheme_url_branch ++
+     "|" ++
+     rooted_or_relative_path_branch ++
+     "|" ++
+-    bare_relative_path_branch;
++    bare_relative_path_branch ++
++    "|" ++
++    bare_markdown_branch;
+ 
+ test "url regex" {
+     const testing = std.testing;
+@@ -406,6 +414,14 @@ test "url regex" {
+             .input = "~/foo/bar.txt",
+             .expect = "~/foo/bar.txt",
+         },
++        .{
++            .input = "README.md",
++            .expect = "README.md",
++        },
++        .{
++            .input = "see CHANGES.markdown, then",
++            .expect = "CHANGES.markdown",
++        },
+         .{
+             .input = "open ~/Documents/notes.md please",
+             .expect = "~/Documents/notes.md",
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
 index ff632f6..5ebee40 100644
 --- a/src/renderer/generic.zig

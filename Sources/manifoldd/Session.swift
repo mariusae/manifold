@@ -27,7 +27,9 @@ final class Session {
 
     init?(id: UUID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           queue: DispatchQueue) {
-        let (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
+        var (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
+        // So `manifold` run in this shell knows where it is.
+        environment["MANIFOLD_PANE"] = id.uuidString
         let argv0 = "-" + (shell as NSString).lastPathComponent
         let dir = cwd.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -183,7 +185,7 @@ final class Session {
     private static func shellAndEnvironment(clientEnv: [String: String]) -> (String, [String: String]) {
         var env = ProcessInfo.processInfo.environment
         for key in ["__CFBundleIdentifier", "XPC_SERVICE_NAME", "XPC_FLAGS", "PWD", "OLDPWD", "SHLVL",
-                    "MANIFOLD_DIR", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {
+                    "MANIFOLD_PANE", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {
             env.removeValue(forKey: key)
         }
         for key in env.keys where key.hasPrefix("GHOSTTY_") || key.hasPrefix("OS_ACTIVITY_") {

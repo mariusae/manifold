@@ -114,7 +114,7 @@ final class Server {
     // MARK: Sessions
 
     private func attach(_ conn: Connection, _ req: AttachRequest) {
-        guard let pane = workspace.pane(req.pane) else {
+        guard let pane = workspace.pane(req.pane), pane.kind == .terminal else {
             conn.close()
             return
         }

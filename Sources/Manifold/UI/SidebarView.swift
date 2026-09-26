@@ -119,7 +119,8 @@ final class SidebarView: NSView {
                 rows[tab.id] = r
                 return r
             }()
-            row.configure(title: tab.title, paneCount: tab.panes.count, selected: tab.id == selected)
+            row.configure(title: tab.title, paneCount: tab.columns.count, selected: tab.id == selected,
+                          symbol: Theme.symbolName(for: tab.focused?.kind ?? .terminal))
         }
         order = ids
         layoutRows()
@@ -152,7 +153,7 @@ final class SidebarView: NSView {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Rename Tab…") { [weak self] in self?.delegate?.sidebarRename(id) })
         if split {
-            menu.addItem(ClosureMenuItem("Separate Panes") { [weak self] in self?.delegate?.sidebarUnsplit(id) })
+            menu.addItem(ClosureMenuItem("Separate Columns") { [weak self] in self?.delegate?.sidebarUnsplit(id) })
         }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Close Tab") { [weak self] in self?.delegate?.sidebarClose(id) })
@@ -314,6 +315,7 @@ final class TabRowView: NSView, NSDraggingSource {
                                                 target: self, action: #selector(unsplitClicked))
     private var selected = false
     private var paneCount = 1
+    private var symbol = "apple.terminal"
     private var hovering = false { didSet { updateAppearance() } }
     private var mouseDownPoint: NSPoint?
 
@@ -331,14 +333,18 @@ final class TabRowView: NSView, NSDraggingSource {
         title.lineBreakMode = .byTruncatingTail
         title.cell?.truncatesLastVisibleLine = true
         closeButton.toolTip = "Close Tab"
-        unsplitButton.toolTip = "Separate Panes"
+        unsplitButton.toolTip = "Separate Columns"
         for v in [icon, badge, title, unsplitButton, closeButton] { addSubview(v) }
         updateAppearance()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title text: String, paneCount: Int, selected: Bool) {
+    func configure(title text: String, paneCount: Int, selected: Bool, symbol: String) {
+        if symbol != self.symbol {
+            self.symbol = symbol
+            icon.image = Theme.symbol(symbol, size: 13)
+        }
         title.stringValue = text
         self.paneCount = paneCount
         self.selected = selected
