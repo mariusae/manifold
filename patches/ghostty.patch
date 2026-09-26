@@ -1,0 +1,603 @@
+diff --git a/merge-archives.sh b/merge-archives.sh
+new file mode 100755
+index 0000000..15b166b
+--- /dev/null
++++ b/merge-archives.sh
+@@ -0,0 +1,22 @@
++#!/bin/sh
++# Manifold: Apple's libtool silently drops archive members that Zig 0.15 wrote
++# unaligned, so unpack every archive and repack the objects instead.
++set -e
++out="$1"; shift
++case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
++tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
++i=0
++for a in "$@"; do
++  case "$a" in /*) ;; *) a="$PWD/$a" ;; esac
++  i=$((i+1)); d="$tmp/$i"; mkdir "$d"
++  case "$a" in
++    *.o) cp "$a" "$d/" ;;
++    *)
++      dups=$(ar t "$a" | grep -v '^__.SYMDEF' | sort | uniq -d)
++      [ -z "$dups" ] || { echo "duplicate members in $a: $dups" >&2; exit 1; }
++      (cd "$d" && ar x "$a" && chmod u+rw ./*)
++      rm -f "$d"/__.SYMDEF* ;;
++  esac
++done
++find "$tmp" -name '*.o' > "$tmp/list"
++libtool -static -o "$out" -filelist "$tmp/list" 2>&1 | grep -v 'has no symbols' >&2 || true
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index 0d5a4f8..4f8e280 100644
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -528,7 +528,13 @@ pub const Surface = struct {
+         // If we have a command from the options then we set it.
+         if (opts.command) |c_command| {
+             const cmd = std.mem.sliceTo(c_command, 0);
+-            if (cmd.len > 0) {
++            if (std.mem.startsWith(u8, cmd, "direct:")) {
++                // Manifold: a directly executed command (its attach helper),
++                // which closes the surface when it exits.
++                var command: configpkg.Command = undefined;
++                try command.parseCLI(config.arenaAlloc(), cmd);
++                config.command = command;
++            } else if (cmd.len > 0) {
+                 config.command = .{ .shell = cmd };
+                 config.@"wait-after-command" = true;
+             }
+diff --git a/src/build/LibtoolStep.zig b/src/build/LibtoolStep.zig
+index d2b5149..e80ef09 100644
+--- a/src/build/LibtoolStep.zig
++++ b/src/build/LibtoolStep.zig
+@@ -31,7 +31,8 @@ pub fn create(b: *std.Build, opts: Options) *LibtoolStep {
+     const self = b.allocator.create(LibtoolStep) catch @panic("OOM");
+ 
+     const run_step = RunStep.create(b, b.fmt("libtool {s}", .{opts.name}));
+-    run_step.addArgs(&.{ "libtool", "-static", "-o" });
++    run_step.addArgs(&.{"/bin/sh"});
++    run_step.addFileArg(b.path("merge-archives.sh"));
+     const output = run_step.addOutputFileArg(opts.out_name);
+     for (opts.sources) |source| run_step.addFileArg(source);
+ 
+diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
+index 9276c99..1e65199 100644
+--- a/src/build/SharedDeps.zig
++++ b/src/build/SharedDeps.zig
+@@ -380,10 +380,10 @@ pub fn add(
+     if (step.rootModuleTarget().os.tag.isDarwin()) {
+         try @import("apple_sdk").addPaths(b, step);
+ 
+-        const metallib = self.metallib.?;
+-        metallib.output.addStepDependencies(&step.step);
+-        step.root_module.addAnonymousImport("ghostty_metallib", .{
+-            .root_source_file = metallib.output,
++        // Manifold: shaders are compiled at runtime from source, so the
++        // build doesn't need Xcode's Metal toolchain.
++        step.root_module.addAnonymousImport("ghostty_metal_source", .{
++            .root_source_file = b.path("src/renderer/shaders/shaders.metal"),
+         });
+     }
+ 
+diff --git a/src/config/Config.zig b/src/config/Config.zig
+index 278ffd7..a60fb3c 100644
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -772,6 +772,12 @@ foreground: Color = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF },
+ /// This value does not apply to Emoji or images.
+ @"minimum-contrast": f64 = 1,
+ 
++/// Manifold: automatic contrast correction (src/renderer/manifold_contrast.zig).
++/// Text that doesn't reach WCAG AA (4.5:1) against its background is moved in
++/// lightness, keeping its hue, until it does: for a typical viewer, or for
++/// both a typical viewer and a deuteranope. Applies before minimum-contrast.
++@"contrast-correction": @import("../renderer/manifold_contrast.zig").Mode = .none,
++
+ /// Color palette for the 256 color form that many terminal applications use.
+ /// The syntax of this configuration is `N=COLOR` where `N` is 0 to 255 (for
+ /// the 256 colors in the terminal color table) and `COLOR` is a typical RGB
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index ff632f6..5ebee40 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -18,6 +18,7 @@ const constraintWidth = cellpkg.constraintWidth;
+ const isCovering = cellpkg.isCovering;
+ const rowNeverExtendBg = @import("row.zig").neverExtendBg;
+ const Overlay = @import("Overlay.zig");
++const manifold_contrast = @import("manifold_contrast.zig");
+ const imagepkg = @import("image.zig");
+ const ImageState = imagepkg.State;
+ const shadertoy = @import("shadertoy.zig");
+@@ -103,6 +104,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+         /// The configuration we need derived from the main config.
+         config: DerivedConfig,
+ 
++        /// Manifold: answers from automatic contrast correction.
++        contrast_cache: manifold_contrast.Cache = .{},
++
+         /// The mailbox for communicating with the window.
+         surface_mailbox: apprt.surface.Mailbox,
+ 
+@@ -557,6 +561,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             bold_color: ?configpkg.BoldColor,
+             faint_opacity: u8,
+             min_contrast: f32,
++            contrast_correction: manifold_contrast.Mode,
+             padding_color: configpkg.WindowPaddingColor,
+             custom_shaders: configpkg.RepeatablePath,
+             bg_image: ?configpkg.Path,
+@@ -623,6 +628,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                     .faint_opacity = @intFromFloat(@ceil(config.@"faint-opacity" * 255)),
+ 
+                     .min_contrast = @floatCast(config.@"minimum-contrast"),
++                    .contrast_correction = config.@"contrast-correction",
+                     .padding_color = config.@"window-padding-color",
+ 
+                     .selection_background = config.@"selection-background",
+@@ -2312,6 +2318,13 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+         ) Allocator.Error!void {
+             const state: *terminal.RenderState = &self.terminal_state;
+ 
++            // Manifold: contrast correction harmonises with the palette.
++            if (self.config.contrast_correction != .none) {
++                var ansi: [16]u32 = undefined;
++                for (&ansi, state.colors.palette[0..16]) |*a, c| a.* = rgbToU32(c);
++                self.contrast_cache.usePalette(&ansi);
++            }
++
+             // const start = try std.time.Instant.now();
+             // const start_micro = std.time.microTimestamp();
+             // defer {
+@@ -2839,7 +2852,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                         bg_style,
+                 };
+ 
+-                const fg = fg: {
++                const fg_uncorrected = fg: {
+                     // Our happy-path non-selection background color
+                     // is our style or our configured defaults.
+                     const final_bg = bg_style orelse state.colors.background;
+@@ -2874,6 +2887,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                     };
+                 };
+ 
++                // Manifold: text in a program's own colours is made to read
++                // on its background (manifold_contrast.zig). Selections and
++                // search matches use the configured colours as they are.
++                const fg = if (self.config.contrast_correction != .none and selected == .false)
++                    rgbFromU32(self.contrast_cache.lookup(
++                        self.config.contrast_correction,
++                        rgbToU32(fg_uncorrected),
++                        rgbToU32(bg orelse state.colors.background),
++                    ))
++                else
++                    fg_uncorrected;
++
+                 // Foreground alpha for this cell.
+                 const alpha: u8 = if (style.flags.faint) self.config.faint_opacity else 255;
+ 
+@@ -3372,3 +3397,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+         }
+     };
+ }
++
++fn rgbToU32(c: terminal.color.RGB) u32 {
++    return (@as(u32, c.r) << 16) | (@as(u32, c.g) << 8) | c.b;
++}
++
++fn rgbFromU32(v: u32) terminal.color.RGB {
++    return .{ .r = @truncate(v >> 16), .g = @truncate(v >> 8), .b = @truncate(v) };
++}
+diff --git a/src/renderer/manifold_contrast.zig b/src/renderer/manifold_contrast.zig
+new file mode 100644
+index 0000000..8a853dc
+--- /dev/null
++++ b/src/renderer/manifold_contrast.zig
+@@ -0,0 +1,344 @@
++//! Manifold: automatic contrast correction, after apex's contrast.rs.
++//!
++//! Programs choose their colours for a dark terminal and name them outright
++//! (a 256-colour index, a truecolor triple), so on light paper an `ls` or an
++//! `fd` comes out in pale greens nobody can read. Every cell's ink is checked
++//! against the paper it sits on as the cells are built, and where the two do
++//! not read, the ink -- and only the ink -- is moved in lightness, away from
++//! the paper, until they do. Its hue and chroma stay (a yellow stays a yellow,
++//! deeper), the hue turned partway toward the nearest of the theme's own
++//! sixteen so the corrected colours belong with the theme's. "Reads" is WCAG
++//! AA (4.5:1), in the eye of a typical viewer and, in `deuteranopia` mode, of a
++//! deuteranope too, since a red reads lighter to the latter and one that
++//! passes for the first may not for the second. An ink is not set on the edge
++//! of reading but mirrored about it: one that lay a little beyond the edge
++//! lands a little inside, one far beyond lands deep, so the shades a program
++//! tells its things apart by stay apart -- and to a deuteranope, who has
++//! lightness where others have hue, stay two colours. The moves are in Oklab,
++//! where a step in lightness looks the same size on any hue, and answers are
++//! cached, so a cell costs a lookup.
++//!
++//! Colours here are 0xRRGGBB, so this file stands alone (`zig test` it).
++
++const std = @import("std");
++
++pub const Mode = enum(u2) {
++    none = 0,
++    typical = 1,
++    deuteranopia = 2,
++};
++
++/// WCAG AA for text: 4.5 to 1.
++pub const target: f32 = 4.5;
++
++/// The nearest theme hue is turned toward this much of the way, and only
++/// when it is this close (radians).
++const harmony_reach: f32 = 0.7;
++const harmony_pull: f32 = 0.5;
++
++/// Under this Oklab chroma a colour is a grey, with no hue to keep.
++const grey: f32 = 0.04;
++
++/// How far inside the edge of reading an ink lands, of how far beyond it
++/// it lay.
++const mirror: f32 = 0.5;
++
++const Lin = [3]f32;
++
++fn toLinear(c: u32) f32 {
++    const x: f32 = @as(f32, @floatFromInt(c & 0xff)) / 255.0;
++    return if (x <= 0.04045) x / 12.92 else std.math.pow(f32, (x + 0.055) / 1.055, 2.4);
++}
++
++fn fromLinear(c: f32) u32 {
++    const x = std.math.clamp(c, 0.0, 1.0);
++    const s = if (x <= 0.0031308) x * 12.92 else 1.055 * std.math.pow(f32, x, 1.0 / 2.4) - 0.055;
++    return @intFromFloat(@round(s * 255.0));
++}
++
++fn linear(rgb: u32) Lin {
++    return .{ toLinear(rgb >> 16), toLinear(rgb >> 8), toLinear(rgb) };
++}
++
++fn pack(l: Lin) u32 {
++    return (fromLinear(l[0]) << 16) | (fromLinear(l[1]) << 8) | fromLinear(l[2]);
++}
++
++/// WCAG relative luminance.
++fn luminance(l: Lin) f32 {
++    return 0.2126 * std.math.clamp(l[0], 0.0, 1.0) +
++        0.7152 * std.math.clamp(l[1], 0.0, 1.0) +
++        0.0722 * std.math.clamp(l[2], 0.0, 1.0);
++}
++
++/// WCAG contrast ratio, 1 (none) to 21 (black on white).
++fn contrast(a: Lin, b: Lin) f32 {
++    const x = luminance(a);
++    const y = luminance(b);
++    return (@max(x, y) + 0.05) / (@min(x, y) + 0.05);
++}
++
++/// What a deuteranope sees of a colour (Machado, Oliveira and Fernandes
++/// 2009, deuteranopia at full severity, in linear RGB).
++const deuteranopia_matrix = [3][3]f32{
++    .{ 0.367322, 0.860646, -0.227968 },
++    .{ 0.280085, 0.672501, 0.047413 },
++    .{ -0.011820, 0.042940, 0.968881 },
++};
++
++fn deuteranope(l: Lin) Lin {
++    var out: Lin = undefined;
++    for (deuteranopia_matrix, 0..) |row, i| {
++        out[i] = row[0] * l[0] + row[1] * l[1] + row[2] * l[2];
++    }
++    return out;
++}
++
++/// The contrast as the worse of the viewers the mode serves sees it.
++fn contrastFor(mode: Mode, fg: Lin, bg: Lin) f32 {
++    const c = contrast(fg, bg);
++    if (mode != .deuteranopia) return c;
++    return @min(c, contrast(deuteranope(fg), deuteranope(bg)));
++}
++
++pub fn legible(mode: Mode, fg: u32, bg: u32) bool {
++    return contrastFor(mode, linear(fg), linear(bg)) >= target;
++}
++
++// Oklab, after Björn Ottosson (2020).
++
++fn oklab(c: Lin) [3]f32 {
++    const l = std.math.cbrt(0.4122214708 * c[0] + 0.5363325363 * c[1] + 0.0514459929 * c[2]);
++    const m = std.math.cbrt(0.2119034982 * c[0] + 0.6806995451 * c[1] + 0.1073969566 * c[2]);
++    const s = std.math.cbrt(0.0883024619 * c[0] + 0.2817188376 * c[1] + 0.6299787005 * c[2]);
++    return .{
++        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
++        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
++        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
++    };
++}
++
++fn fromOklab(lab: [3]f32) Lin {
++    const l0 = lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2];
++    const m0 = lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2];
++    const s0 = lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2];
++    const l = l0 * l0 * l0;
++    const m = m0 * m0 * m0;
++    const s = s0 * s0 * s0;
++    return .{
++        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
++        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
++        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
++    };
++}
++
++const Lch = struct { l: f32, c: f32, h: f32 };
++
++/// Lightness, chroma and hue (radians) of a colour.
++fn oklch(c: Lin) Lch {
++    const lab = oklab(c);
++    return .{ .l = lab[0], .c = std.math.hypot(lab[1], lab[2]), .h = std.math.atan2(lab[2], lab[1]) };
++}
++
++fn inGamut(c: Lin) bool {
++    for (c) |x| if (x < -0.0005 or x > 1.0005) return false;
++    return true;
++}
++
++fn at(l: f32, c: f32, h: f32) Lin {
++    return fromOklab(.{ l, c * @cos(h), c * @sin(h) });
++}
++
++/// The colour of this lightness and hue, at this chroma if sRGB has it and
++/// else at the most it has.
++fn fit(l: f32, c: f32, h: f32) Lin {
++    const want = at(l, c, h);
++    if (inGamut(want)) return want;
++    var lo: f32 = 0;
++    var hi: f32 = c;
++    for (0..16) |_| {
++        const mid = (lo + hi) / 2;
++        if (inGamut(at(l, mid, h))) lo = mid else hi = mid;
++    }
++    var out = at(l, lo, h);
++    for (&out) |*x| x.* = std.math.clamp(x.*, 0.0, 1.0);
++    return out;
++}
++
++fn hueDistance(a: f32, b: f32) f32 {
++    const tau = std.math.tau;
++    const d = @mod(b - a, tau);
++    return if (d > std.math.pi) d - tau else d;
++}
++
++/// The hue turned partway toward the nearest of the theme's own, when one
++/// is near: the chromatic twelve of the sixteen, the greys having no hue to
++/// offer.
++fn harmonise(h: f32, c: f32, palette: *const [16]u32) f32 {
++    if (c < grey) return h;
++    var nearest: ?f32 = null;
++    for (palette, 0..) |rgb, i| {
++        if (i == 0 or i == 7 or i == 8 or i == 15) continue;
++        const t = oklch(linear(rgb));
++        if (t.c < grey) continue;
++        const d = hueDistance(h, t.h);
++        if (nearest == null or @abs(d) < @abs(nearest.?)) nearest = d;
++    }
++    if (nearest) |d| if (@abs(d) <= harmony_reach) return h + d * harmony_pull;
++    return h;
++}
++
++/// The ink `fg` as it should be drawn on the paper `bg`: itself where it
++/// reads, else moved in lightness until it does and half as far again.
++pub fn correct(mode: Mode, fg: u32, bg: u32, palette: *const [16]u32) u32 {
++    if (mode == .none or legible(mode, fg, bg)) return fg;
++    const b = linear(bg);
++    const lch = oklch(linear(fg));
++    const h = harmonise(lch.h, lch.c, palette);
++    // Toward whichever of black and white the paper reads better against:
++    // down on light paper, up on dark.
++    const end: f32 = if (contrastFor(mode, .{ 0, 0, 0 }, b) >= contrastFor(mode, .{ 1, 1, 1 }, b)) 0 else 1;
++    const Probe = struct {
++        mode: Mode,
++        b: Lin,
++        c: f32,
++        h: f32,
++        // Judged as drawn, in eight bits: the edge found in floats can
++        // fall a hair short once packed.
++        fn color(self: @This(), l: f32) u32 {
++            return pack(fit(l, self.c, self.h));
++        }
++        fn reads(self: @This(), l: f32) bool {
++            return contrastFor(self.mode, linear(self.color(l)), self.b) >= target;
++        }
++    };
++    const p: Probe = .{ .mode = mode, .b = b, .c = lch.c, .h = h };
++    if (p.reads(lch.l)) return p.color(lch.l);
++    // No ink of this hue reads on this paper: as far as it goes.
++    if (!p.reads(end)) return p.color(end);
++    // The edge of reading, then the mirror.
++    var lo = lch.l;
++    var hi = end;
++    for (0..20) |_| {
++        const mid = (lo + hi) / 2;
++        if (p.reads(mid)) hi = mid else lo = mid;
++    }
++    const edge = hi;
++    const mirrored = std.math.clamp(edge + (edge - lch.l) * mirror, 0.0, 1.0);
++    return if (p.reads(mirrored)) p.color(mirrored) else p.color(edge);
++}
++
++/// Remembers answers, so a cell costs a lookup. Answers depend on the
++/// palette (for harmonising), so a new palette clears it.
++pub const Cache = struct {
++    const size = 4096;
++    const empty = std.math.maxInt(u64);
++
++    keys: [size]u64 = [_]u64{empty} ** size,
++    values: [size]u32 = [_]u32{0} ** size,
++    palette: [16]u32 = [_]u32{0} ** 16,
++
++    /// Call before a batch of lookups with the palette they're against.
++    pub fn usePalette(self: *Cache, palette: *const [16]u32) void {
++        if (std.mem.eql(u32, &self.palette, palette)) return;
++        self.palette = palette.*;
++        @memset(&self.keys, empty);
++    }
++
++    pub fn lookup(self: *Cache, mode: Mode, fg: u32, bg: u32) u32 {
++        if (mode == .none) return fg;
++        const key = (@as(u64, fg) << 26) | (@as(u64, bg) << 2) | @intFromEnum(mode);
++        const slot: usize = @intCast(std.hash.int(key) % size);
++        if (self.keys[slot] == key) return self.values[slot];
++        const v = correct(mode, fg, bg, &self.palette);
++        self.keys[slot] = key;
++        self.values[slot] = v;
++        return v;
++    }
++};
++
++// Tests, after apex's.
++
++const test_palette = [16]u32{
++    0x24292f, 0xcf222e, 0x116329, 0x4d2d00, 0x0969da, 0x8250df, 0x1b7c83, 0x6e7781,
++    0x57606a, 0xa40e26, 0x1a7f37, 0x633c01, 0x218bff, 0xa475f9, 0x3192aa, 0x8c959f,
++};
++const paper: u32 = 0xfcfcfb;
++
++fn hueOf(rgb: u32) f32 {
++    return oklch(linear(rgb)).h;
++}
++fn lightnessOf(rgb: u32) f32 {
++    return oklch(linear(rgb)).l;
++}
++
++test "ink that reads is left exactly as it is" {
++    try std.testing.expectEqual(@as(u32, 0x24292f), correct(.deuteranopia, 0x24292f, paper, &test_palette));
++    try std.testing.expectEqual(@as(u32, 0xf0f0f0), correct(.deuteranopia, 0xf0f0f0, 0x1a1a1a, &test_palette));
++}
++
++test "a dark terminal's yellow deepens on light paper and stays a yellow" {
++    const y: u32 = 0xd6c000;
++    const got = correct(.deuteranopia, y, paper, &test_palette);
++    try std.testing.expect(got != y);
++    try std.testing.expect(legible(.deuteranopia, got, paper));
++    try std.testing.expect(lightnessOf(got) < lightnessOf(y));
++    try std.testing.expect(@abs(hueDistance(hueOf(y), hueOf(got))) < 0.4);
++}
++
++test "fd's pale green on white becomes a readable green" {
++    const g: u32 = 0x87ff87; // xterm 120, roughly what the screenshot showed
++    const got = correct(.deuteranopia, g, paper, &test_palette);
++    try std.testing.expect(legible(.deuteranopia, got, paper));
++    try std.testing.expect(@abs(hueDistance(hueOf(g), hueOf(got))) < 0.6);
++}
++
++test "a red that reads to most eyes but not a deuteranope's is corrected for them" {
++    const red: u32 = 0xe00000;
++    try std.testing.expect(legible(.typical, red, paper));
++    try std.testing.expect(!legible(.deuteranopia, red, paper));
++    try std.testing.expectEqual(red, correct(.typical, red, paper, &test_palette));
++    const got = correct(.deuteranopia, red, paper, &test_palette);
++    try std.testing.expect(legible(.deuteranopia, got, paper));
++    try std.testing.expect(@abs(hueDistance(hueOf(red), hueOf(got))) < 0.4);
++}
++
++test "a dark terminal's bright is a light one's deep" {
++    const y = correct(.deuteranopia, 0xb08a00, paper, &test_palette);
++    const by = correct(.deuteranopia, 0xd6c000, paper, &test_palette);
++    try std.testing.expect(lightnessOf(by) < lightnessOf(y) - 0.03);
++}
++
++test "greys are not given a hue" {
++    const got = correct(.deuteranopia, 0x888888, paper, &test_palette);
++    try std.testing.expect(legible(.deuteranopia, got, paper));
++    try std.testing.expect(oklch(linear(got)).c < 0.02);
++}
++
++test "every answer reads, or is as far as the hue goes" {
++    const papers = [_]u32{ paper, 0x1a1a1a, 0x000000, 0xffffff, 0x333333, 0xcccccc, 0x1c4fd6, 0xffd700 };
++    var r: u32 = 0;
++    while (r <= 255) : (r += 51) {
++        var g: u32 = 0;
++        while (g <= 255) : (g += 51) {
++            var b: u32 = 0;
++            while (b <= 255) : (b += 51) {
++                const fg = (r << 16) | (g << 8) | b;
++                for (papers) |bg| {
++                    const got = correct(.deuteranopia, fg, bg, &test_palette);
++                    try std.testing.expect(legible(.deuteranopia, got, bg) or got == 0 or got == 0xffffff);
++                }
++            }
++        }
++    }
++}
++
++test "the cache answers as the function does" {
++    var cache: Cache = .{};
++    cache.usePalette(&test_palette);
++    for ([_]u32{ 0x87ff87, 0xd6c000, 0x24292f, 0xe00000 }) |fg| {
++        const want = correct(.deuteranopia, fg, paper, &test_palette);
++        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
++        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
++    }
++}
+diff --git a/src/renderer/metal/shaders.zig b/src/renderer/metal/shaders.zig
+index 0be0235..4b2bf98 100644
+--- a/src/renderer/metal/shaders.zig
++++ b/src/renderer/metal/shaders.zig
+@@ -334,21 +334,19 @@ pub const BgImage = extern struct {
+ fn initLibrary(device: objc.Object) !objc.Object {
+     const start = try std.time.Instant.now();
+ 
+-    const data = try macos.dispatch.Data.create(
+-        @embedFile("ghostty_metallib"),
+-        macos.dispatch.queue.getMain(),
+-        macos.dispatch.Data.DESTRUCTOR_DEFAULT,
++    // Manifold: compile from source rather than loading a prebuilt metallib.
++    const source = try macos.foundation.String.createWithBytes(
++        @embedFile("ghostty_metal_source"),
++        .utf8,
++        false,
+     );
+-    defer data.release();
++    defer source.release();
+ 
+     var err: ?*anyopaque = null;
+     const library = device.msgSend(
+         objc.Object,
+-        objc.sel("newLibraryWithData:error:"),
+-        .{
+-            data,
+-            &err,
+-        },
++        objc.sel("newLibraryWithSource:options:error:"),
++        .{ source, @as(?*anyopaque, null), &err },
+     );
+     try checkError(err);
+ 
+diff --git a/src/termio/Exec.zig b/src/termio/Exec.zig
+index af4df3f..5fe086a 100644
+--- a/src/termio/Exec.zig
++++ b/src/termio/Exec.zig
+@@ -1417,6 +1417,10 @@ fn execCommand(
+     // the proper environment variables set, a login shell, and proper
+     // hushlogin behavior.
+     if (comptime builtin.target.os.tag.isDarwin()) darwin: {
++        // Manifold: direct commands are its own attach helper, which must
++        // not be wrapped in login(1) (it would print "Last login").
++        if (command == .direct) break :darwin;
++
+         const passwd = passwdpkg.get(alloc) catch |err| {
+             log.warn("failed to read passwd, not using a login shell err={}", .{err});
+             break :darwin;
+diff --git a/src/termio/stream_handler.zig b/src/termio/stream_handler.zig
+index 8c1b5b8..ffa887b 100644
+--- a/src/termio/stream_handler.zig
++++ b/src/termio/stream_handler.zig
+@@ -951,6 +951,10 @@ pub const StreamHandler = struct {
+         self.terminal.fullReset();
+         try self.setMouseShape(.text);
+ 
++        // Manifold: the reset leaves the cursor a block; put back the
++        // configured style (and blinking), as DECSCUSR 0 would.
++        try self.setCursorStyle(.default);
++
+         // Reset resets our palette so we report it for mode 2031.
+         self.messageWriter(.{ .color_scheme_report = .{ .force = false } });
+ 
