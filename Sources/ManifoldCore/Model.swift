@@ -44,10 +44,24 @@ public struct WindowState: Codable, Equatable, Sendable {
 /// How terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
     public var contrastCorrection: ContrastCorrection = .deuteranopia
+    public var editorFont: EditorFont = .proportional
 
-    public init(contrastCorrection: ContrastCorrection = .deuteranopia) {
+    public init(contrastCorrection: ContrastCorrection = .deuteranopia, editorFont: EditorFont = .proportional) {
         self.contrastCorrection = contrastCorrection
+        self.editorFont = editorFont
     }
+
+    // Settings saved before a setting existed get its default.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        contrastCorrection = try c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection) ?? .deuteranopia
+        editorFont = try c.decodeIfPresent(EditorFont.self, forKey: .editorFont) ?? .proportional
+    }
+}
+
+/// The editor's text: Mona Sans, or Monaspace Xenon.
+public enum EditorFont: String, Codable, CaseIterable, Sendable {
+    case proportional, monospaced
 }
 
 /// Automatic contrast correction: text in a program's own colors that
@@ -144,11 +158,14 @@ public enum PaneKind: String, Codable, Sendable {
     case terminal
     /// A live preview of a Markdown file.
     case markdown
+    /// A text file, being edited.
+    case editor
 
     public var defaultTitle: String {
         switch self {
         case .terminal: "Terminal"
         case .markdown: "Markdown"
+        case .editor: "Untitled"
         }
     }
 }
@@ -187,6 +204,8 @@ public enum Command: Codable, Equatable, Sendable {
     case newTab(tab: UUID, pane: UUID, kind: PaneKind, cwd: String?, after: UUID?)
     /// A new pane, in a new column at a column index.
     case newPane(pane: UUID, tab: UUID, at: Int, kind: PaneKind, cwd: String?)
+    /// A new pane, pushed onto a column's stack (the column's id).
+    case newSheet(pane: UUID, column: UUID, kind: PaneKind, cwd: String?)
     case selectTab(UUID)
     /// Focuses a pane, raising it to the top of its stack.
     case focusPane(UUID)
@@ -199,8 +218,8 @@ public enum Command: Codable, Equatable, Sendable {
     case mergeTab(UUID, into: UUID, at: Int)
     /// Pushes one tab's panes onto a column's stack (the column's id).
     case stackTab(UUID, onto: UUID)
-    /// Moves a pane out of its tab into a new tab of its own, right after it.
-    case detachPane(UUID, newTab: UUID)
+    /// Moves a pane (a sheet) somewhere else, focusing it there.
+    case movePane(UUID, to: PaneDestination)
     /// Splits a tab into one tab per column.
     case unsplit(UUID)
     case setFractions(UUID, [Double])
@@ -215,6 +234,21 @@ public enum Command: Codable, Equatable, Sendable {
     case openFile(path: String, kind: PaneKind, pane: UUID, tab: UUID, beside: UUID?)
     /// Points a file view at another file (following a link).
     case setPanePath(UUID, String)
+    /// Shows a file in a new pane `pane` on top of a column's stack (the
+    /// column's id), or raises the pane there showing it already.
+    case openFileOnStack(path: String, kind: PaneKind, pane: UUID, column: UUID)
+}
+
+/// Where a moved pane goes.
+public enum PaneDestination: Codable, Equatable, Sendable {
+    /// A new column of its own, at a column index of a tab.
+    case column(tab: UUID, index: Int)
+    /// The top of a column's stack.
+    case stack(column: UUID)
+    /// A new tab of its own (with this id), at a tab index.
+    case newTab(tab: UUID, index: Int)
+    /// The top of a tab's focused stack.
+    case tabStack(tab: UUID)
 }
 
 extension Workspace {
@@ -237,6 +271,12 @@ extension Workspace {
             tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
             tabs[t].focusedPane = paneID
             selectedTab = tabID
+
+        case let .newSheet(paneID, columnID, kind, cwd):
+            guard pane(paneID) == nil, let (t, c) = locateColumn(columnID) else { return [] }
+            tabs[t].columns[c].panes.append(Pane(id: paneID, kind: kind, cwd: cwd))
+            tabs[t].focusedPane = paneID
+            selectedTab = tabs[t].id
 
         case let .selectTab(id):
             if tab(id) != nil { selectedTab = id }
@@ -297,11 +337,8 @@ extension Workspace {
             tabs[t2].focusedPane = focused?.id ?? tabs[t2].focusedPane
             selectedTab = tabs[t2].id
 
-        case let .detachPane(paneID, newTabID):
-            guard tab(newTabID) == nil, let (t, _) = locate(paneID), tabs[t].panes.count > 1 else { return [] }
-            let pane = take(paneID, from: t)!
-            tabs.insert(Tab(id: newTabID, panes: [pane]), at: t + 1)
-            selectedTab = newTabID
+        case let .movePane(paneID, destination):
+            move(paneID, to: destination)
 
         case let .unsplit(id):
             guard let t = tabIndex(id), tabs[t].columns.count > 1 else { return [] }
@@ -334,9 +371,11 @@ extension Workspace {
             if let beside, let (t, c) = locate(beside) {
                 selectedTab = tabs[t].id
                 let right = c + 1
+                var opened = paneID
                 if right < tabs[t].columns.count {
                     if let existing = tabs[t].columns[right].panes.first(where: { $0.kind == kind && $0.path == path }) {
                         raise(existing.id, in: t, right)
+                        opened = existing.id
                     } else if pane(paneID) == nil {
                         tabs[t].columns[right].panes.append(Pane(id: paneID, kind: kind, path: path))
                     }
@@ -344,6 +383,8 @@ extension Workspace {
                     tabs[t].columns.append(Column(panes: [Pane(id: paneID, kind: kind, path: path)]))
                     tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
                 }
+                // A file to edit takes the keyboard; a preview leaves it be.
+                if kind == .editor { tabs[t].focusedPane = opened }
                 return []
             }
             if let existing = tabs.first(where: { $0.panes.count == 1 && $0.panes[0].kind == kind && $0.panes[0].path == path }) {
@@ -360,8 +401,93 @@ extension Workspace {
                 $0.path = path
                 $0.title = nil
             }
+
+        case let .openFileOnStack(path, kind, paneID, columnID):
+            guard let (t, c) = locateColumn(columnID) else { return [] }
+            if let existing = tabs[t].columns[c].panes.first(where: { $0.kind == kind && $0.path == path }) {
+                raise(existing.id, in: t, c)
+                tabs[t].focusedPane = existing.id
+            } else {
+                guard pane(paneID) == nil else { return [] }
+                tabs[t].columns[c].panes.append(Pane(id: paneID, kind: kind, path: path))
+                tabs[t].focusedPane = paneID
+            }
+            selectedTab = tabs[t].id
         }
         return []
+    }
+
+    private mutating func move(_ paneID: UUID, to destination: PaneDestination) {
+        guard let (st, sc) = locate(paneID) else { return }
+        let sourceTab = tabs[st].id
+        let sourceColumn = tabs[st].columns[sc].id
+        let alone = tabs[st].panes.count == 1
+        let lastInColumn = tabs[st].columns[sc].panes.count == 1
+
+        // Work out where it goes before taking it out, as that can remove
+        // its column or tab.
+        enum Place { case column(UUID, before: UUID?), stack(UUID), tab(UUID, before: UUID?) }
+        let place: Place
+        switch destination {
+        case let .column(tabID, index):
+            guard let t = tabIndex(tabID) else { return }
+            // Already a column of its own, going beside itself: no change.
+            if tabID == sourceTab, lastInColumn, index == sc || index == sc + 1 { return }
+            let before = index < tabs[t].columns.count ? tabs[t].columns[index].id : nil
+            place = .column(tabID, before: before)
+        case let .stack(columnID):
+            guard locateColumn(columnID) != nil else { return }
+            if columnID == sourceColumn {
+                // Onto its own stack: to the top.
+                apply(.focusPane(paneID))
+                return
+            }
+            place = .stack(columnID)
+        case let .newTab(tabID, index):
+            guard tab(tabID) == nil else { return }
+            if alone { return } // It's a tab of its own already.
+            place = .tab(tabID, before: index < tabs.count ? tabs[index].id : nil)
+        case let .tabStack(tabID):
+            guard let t = tabIndex(tabID), tabID != sourceTab,
+                  let column = tabs[t].focusedPane.flatMap({ tabs[t].columnIndex(of: $0) }) ?? (tabs[t].columns.isEmpty ? nil : 0)
+            else { return }
+            place = .stack(tabs[t].columns[column].id)
+        }
+
+        let pane: Pane
+        if alone {
+            pane = tabs[st].panes[0]
+            removeTab(at: st)
+        } else {
+            pane = take(paneID, from: st)!
+        }
+
+        switch place {
+        case let .column(tabID, before):
+            let t = tabIndex(tabID)!
+            let index = before.flatMap { b in tabs[t].columns.firstIndex { $0.id == b } } ?? tabs[t].columns.count
+            tabs[t].columns.insert(Column(panes: [pane]), at: index)
+            tabs[t].fractions = Tab.equalFractions(tabs[t].columns.count)
+            tabs[t].focusedPane = pane.id
+            selectedTab = tabID
+        case let .stack(columnID):
+            let (t, c) = locateColumn(columnID)!
+            tabs[t].columns[c].panes.append(pane)
+            tabs[t].focusedPane = pane.id
+            selectedTab = tabs[t].id
+        case let .tab(tabID, before):
+            let index = before.flatMap(tabIndex) ?? tabs.count
+            tabs.insert(Tab(id: tabID, panes: [pane]), at: index)
+            selectedTab = tabID
+        }
+    }
+
+    /// The tab and column index of a column.
+    private func locateColumn(_ id: UUID) -> (Int, Int)? {
+        for t in tabs.indices {
+            if let c = tabs[t].columns.firstIndex(where: { $0.id == id }) { return (t, c) }
+        }
+        return nil
     }
 
     /// The tab and column holding a pane.

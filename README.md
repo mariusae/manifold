@@ -12,15 +12,21 @@ which is bundled with the app.
   away again when the mouse leaves. ⌃⌘S (or the button at its top right) shows
   or hides it for good; drag its right edge to resize it, and its top to move
   the window.
-- **New Tab** (⌘T) opens the palette: open a terminal, or type to find a tab.
-  ⌥⌘T opens a terminal directly.
+- A new terminal goes on the focused column's stack (⌘N), in a new column
+  beside it (⌘D), or in a new tab (⌥⌘T), starting in the focused pane's
+  directory. ⌘T opens the palette, which offers those three first (⏎ for
+  ⌘N's), or finds a tab by typing.
 - A tab is a row of columns, and each column is a **stack**: only its top
   pane shows, with the edges of the ones beneath peeking out above it like a
   stack of paper. Hover the edges to list them, click one to raise it (click
   the edges to raise the one just beneath); ⌘E cycles through the stack;
   ⌘W pops the top.
-- Drag a tab from the sidebar onto the window: near a column's side to make a
-  new column there, in its middle to push onto its stack. A tab with columns
+- Drag a sheet by its top edge (a lone pane's thin top band, or a stack's
+  edges for its top sheet; a buried one by its row in the list): onto a
+  column's middle to push it onto that stack, near a column's side for a new
+  column there, onto a tab in the sidebar for that tab's stack, or between
+  tabs for a tab of its own. Drag to the window's left edge to bring out the
+  sidebar. Tabs drag from the sidebar onto the window the same way. A tab with columns
   shows how many in the sidebar, and its branch button (or **Separate
   Columns**) splits it back into tabs. ⌘D opens a terminal in a new column to
   the right; ⌘[ and ⌘] move between columns; drag the line between them to
@@ -44,7 +50,28 @@ the same preview, others in their usual apps.
   when run in one of Manifold's, else in a tab of its own, bringing Manifold
   forward (starting it if need be). Manifold ▸ Install Command Line Tool…
   links it into `/usr/local/bin`.
-- **⌘O** (or Open Markdown File… in the palette) picks one.
+- **⌘O** finds one by name, as below.
+
+## Editing
+
+Files open to edit in an editor sheet: plain text, no highlighting, set in
+[Mona Sans](https://github.com/github/mona-sans) (bundled) or, by View ▸
+Editor Font, in Monaspace Xenon. It does what a Mac editor does: undo, find
+and replace (⌘F, ⌥⌘F, ⌘G), Save (⌘S) and Revert to Saved, Go to Line (⌘L),
+bigger and smaller text, new lines indented like the last. Files keep their
+encoding, line endings, and permissions. A file changed on disk reloads, or,
+with unsaved changes, offers to. Closing a file with unsaved changes asks, as
+Mac apps do; quitting doesn't need to, as unsaved changes (and the selection
+and scroll position) are kept and come back. A tab with unsaved changes has
+a dot in the sidebar.
+
+- **⌘-click** a file's name in a terminal to edit it beside the terminal, on
+  the stack to its right; `path:line` and `path:line:column` (as grep and
+  compilers print them) go to that place (Markdown files preview instead; the palette's Edit
+  This File edits one, and Preview This File previews one being edited).
+- **⌘O** finds a file by name under the focused pane's folder, listed
+  nearest first (from git, respecting `.gitignore`, in a repository), or
+  takes a path. It opens beside a terminal, or on a file's own stack.
 
 ## Contrast correction
 
@@ -86,7 +113,7 @@ commands, raw bytes for terminal I/O.
 
 ```
 scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds Frameworks/
-scripts/fetch-fonts.sh      # once: fetches Monaspace into Frameworks/monaspace
+scripts/fetch-fonts.sh      # once: fetches Monaspace and Mona Sans into Frameworks/
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```

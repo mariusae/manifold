@@ -10,6 +10,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     private var views: [UUID: PaneContent] = [:]
+    /// A place to go in a file being opened: done once its editor is shown.
+    private var pendingJump: (path: String, line: Int, column: Int?)?
     private var clickMonitor: Any?
     /// Panes whose terminal just closed; they get a new one after a moment
     /// if they're still around (i.e. the server was restarted, not the shell
@@ -60,6 +62,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebar.delegate = self
         content.delegate = self
+        content.paneInfo = { [weak self] id in self?.ws.pane(id) }
         sidebar.isHidden = true
 
         if let f = server.workspace.window.frame, f.count == 4 {
@@ -95,7 +98,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func render() {
         guard let window else { return }
         sidebar.pinned = pinned
-        sidebar.update(tabs: ws.tabs, selected: ws.selectedTab)
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
         let live = Set(ws.allPanes.map(\.id))
@@ -120,6 +122,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.show([], fractions: [], focused: nil)
             window.title = "Manifold"
         }
+        if let jump = pendingJump,
+           let editor = content.panes.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }) {
+            pendingJump = nil
+            editor.select(line: jump.line, column: jump.column)
+        }
+
+        // After the panes' views, which know whether they've unsaved changes.
+        sidebar.update(tabs: ws.tabs, selected: ws.selectedTab, edited: editedTabs)
         layoutViews()
 
         if ws.tabs.isEmpty && server.hasState {
@@ -133,6 +143,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func view(for pane: Pane) -> PaneContent {
         if let v = views[pane.id] {
             if let m = v as? MarkdownView, let path = pane.path { m.show(path: path) }
+            if let e = v as? EditorView { e.font = ws.appearance.editorFont }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
@@ -147,6 +158,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let m = MarkdownView(pane: pane.id, path: pane.path ?? "")
             m.delegate = self
             v = m
+        case .editor:
+            let e = EditorView(pane: pane.id, path: pane.path ?? "", font: ws.appearance.editorFont)
+            e.delegate = self
+            v = e
         }
         views[pane.id] = v
         return v
@@ -296,6 +311,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     func debugPeek(_ column: Int) { content.debugPeek(column) }
 
+    var debugFocusedPane: Pane? { focusedPane }
+
     var debugFocusedTerminal: TerminalView? { focusedPane.flatMap { views[$0.id] as? TerminalView } }
 
     func debugSidebar(show: Bool) {
@@ -325,26 +342,48 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func paletteItems() -> [PaletteItem] {
-        var items = [PaletteItem(symbol: "apple.terminal", title: "Open Terminal", subtitle: "Action") { [weak self] in
-            self?.openTerminal()
-        }]
+        // A new terminal on this stack, in a new column, or in a new tab: the
+        // same three as ⌘N, ⌘D and ⌥⌘T.
+        var items: [PaletteItem] = []
         if selectedTab != nil {
-            items.append(PaletteItem(symbol: "rectangle.split.2x1", title: "Open Terminal to the Right", subtitle: "Action") { [weak self] in
+            items.append(PaletteItem(symbol: "square.stack", title: "New Terminal on This Stack", subtitle: "⌘N") { [weak self] in
+                self?.newSheet(nil)
+            })
+            items.append(PaletteItem(symbol: "rectangle.split.2x1", title: "New Terminal in a New Column", subtitle: "⌘D") { [weak self] in
                 self?.splitRight(nil)
             })
+        }
+        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Tab", subtitle: "⌥⌘T") { [weak self] in
+            self?.openTerminal()
+        })
+        if selectedTab != nil {
             items.append(PaletteItem(symbol: "pencil", title: "Rename Tab", subtitle: "Action") { [weak self] in
                 self?.renameTab(nil)
             })
         }
-        items.append(PaletteItem(symbol: "doc.richtext", title: "Open Markdown File…", subtitle: "Action") { [weak self] in
+        items.append(PaletteItem(symbol: "doc.text.magnifyingglass", title: "Open File…", subtitle: "⌘O") { [weak self] in
             self?.openDocument(nil)
         })
+        // The file shown, the other way: edit a preview's, preview an editor's.
+        if let pane = focusedPane, let path = pane.path, let column = selectedTab?.columnIndex(of: pane.id).map({ selectedTab!.columns[$0].id }) {
+            if pane.kind == .markdown {
+                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File", subtitle: "Action") { [weak self] in
+                    self?.server.send(.openFileOnStack(path: path, kind: .editor, pane: UUID(), column: column))
+                })
+            } else if pane.kind == .editor, Self.isMarkdown(path) {
+                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File", subtitle: "Action") { [weak self] in
+                    self?.server.send(.openFileOnStack(path: path, kind: .markdown, pane: UUID(), column: column))
+                })
+            }
+        }
         for tab in ws.tabs {
             let pane = tab.focused
             let place: String
             switch pane?.kind {
             case .markdown?:
                 place = pane?.path.map { "Markdown in \(Self.abbreviate(($0 as NSString).deletingLastPathComponent))" } ?? "Markdown"
+            case .editor?:
+                place = pane?.path.map { "Editing in \(Self.abbreviate(($0 as NSString).deletingLastPathComponent))" } ?? "Editing"
             default:
                 place = pane?.cwd.map { "Terminal in \(Self.abbreviate($0))" } ?? "Terminal"
             }
@@ -379,6 +418,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func newTerminal(_ sender: Any?) { openTerminal() }
 
+    /// A new terminal on top of the focused column's stack.
+    @objc func newSheet(_ sender: Any?) {
+        guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused) else {
+            return openTerminal()
+        }
+        server.send(.newSheet(pane: UUID(), column: tab.columns[c].id, kind: .terminal, cwd: focusedPane?.cwd))
+    }
+
     @objc func splitRight(_ sender: Any?) {
         guard let tab = selectedTab else { return openTerminal() }
         let i = tab.focusedPane.flatMap { tab.columnIndex(of: $0) } ?? tab.columns.count - 1
@@ -390,14 +437,47 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = selectedTab else { return }
         // Pops the focused stack, or closes the tab when it's all there is.
         if tab.panes.count > 1, let pane = tab.focusedPane {
-            server.send(.closePane(pane))
+            confirmClosing([pane]) { [weak self] in self?.server.send(.closePane(pane)) }
         } else {
-            server.send(.closeTab(tab.id))
+            closeTab(id: tab.id)
         }
     }
 
     @objc func closeTab(_ sender: Any?) {
-        if let tab = selectedTab { server.send(.closeTab(tab.id)) }
+        if let tab = selectedTab { closeTab(id: tab.id) }
+    }
+
+    private func closeTab(id: UUID) {
+        guard let tab = ws.tab(id) else { return }
+        confirmClosing(tab.panes.map(\.id)) { [weak self] in self?.server.send(.closeTab(id)) }
+    }
+
+    /// Asks before closing editors with unsaved changes, as a Mac app does:
+    /// save them, don't, or don't close.
+    private func confirmClosing(_ panes: [UUID], then close: @escaping () -> Void) {
+        let edited = panes.compactMap { views[$0] as? EditorView }.filter(\.isEdited)
+        guard !edited.isEmpty, let window else { return close() }
+        let alert = NSAlert()
+        if edited.count == 1 {
+            alert.messageText = "Do you want to save the changes you made to \((edited[0].path as NSString).lastPathComponent)?"
+        } else {
+            alert.messageText = "Do you want to save the changes you made to \(edited.count) files?"
+        }
+        alert.informativeText = "Your changes will be lost if you don't save them."
+        alert.addButton(withTitle: edited.count == 1 ? "Save" : "Save All")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don't Save").hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { response in
+            switch response {
+            case .alertFirstButtonReturn:
+                edited.forEach { $0.saveDocument(nil) }
+                if edited.allSatisfy({ !$0.isEdited }) { close() }
+            case .alertThirdButtonReturn:
+                close()
+            default:
+                break
+            }
+        }
     }
 
     @objc func renameTab(_ sender: Any?) {
@@ -410,11 +490,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func movePaneToNewTab(_ sender: Any?) {
         if let tab = selectedTab, tab.panes.count > 1, let pane = tab.focusedPane {
-            server.send(.detachPane(pane, newTab: UUID()))
+            let index = ws.tabIndex(tab.id).map { $0 + 1 } ?? ws.tabs.count
+            server.send(.movePane(pane, to: .newTab(tab: UUID(), index: index)))
         }
     }
 
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
+
+    @objc func setEditorFont(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let font = EditorFont(rawValue: raw) else { return }
+        var appearance = ws.appearance
+        appearance.editorFont = font
+        server.send(.setAppearance(appearance))
+    }
 
     @objc func setContrastCorrection(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let mode = ContrastCorrection(rawValue: raw) else { return }
@@ -423,6 +511,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(setEditorFont(_:)):
+            item.state = (item.representedObject as? String) == ws.appearance.editorFont.rawValue ? .on : .off
         case #selector(setContrastCorrection(_:)):
             item.state = (item.representedObject as? String) == ws.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(togglePinnedSidebar(_:)):
@@ -467,19 +557,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         server.send(.focusPane(visible[(i + d + visible.count) % visible.count].id))
     }
 
-    /// Opens a file for reading: beside the focused pane, like a
-    /// command-clicked one.
+    func debugPicker(_ query: String) -> [String] { filePicker.debugQuery(query) }
+
+    private lazy var filePicker: FilePicker = {
+        let picker = FilePicker()
+        picker.onOpen = { [weak self] path in self?.edit(path) }
+        return picker
+    }()
+
+    /// ⌘O: the picker, over the files where the focused pane is.
     @objc func openDocument(_ sender: Any?) {
-        guard let window else { return }
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!]
-        panel.allowsMultipleSelection = false
-        if let cwd = focusedPane?.cwd { panel.directoryURL = URL(fileURLWithPath: cwd) }
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
-            let beside = self.focusedPane.flatMap { $0.kind == .terminal ? $0.id : nil }
-            self.server.send(.openFile(path: url.path, kind: .markdown, pane: UUID(), tab: UUID(), beside: beside))
+        let root: String
+        switch focusedPane?.kind {
+        case .terminal?: root = focusedPane?.cwd ?? NSHomeDirectory()
+        case .some: root = focusedPane?.path.map { ($0 as NSString).deletingLastPathComponent } ?? NSHomeDirectory()
+        case nil: root = NSHomeDirectory()
         }
+        filePicker.show(root: root, over: window)
+    }
+
+    /// Opens a file to edit: from a terminal, on the stack beside it; from
+    /// a file, on its own stack; with no tab, in a tab of its own.
+    func edit(_ path: String) {
+        guard Self.isEditable(path) else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return
+        }
+        guard let tab = selectedTab, let pane = focusedPane else {
+            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: nil))
+            return
+        }
+        if pane.kind == .terminal {
+            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: pane.id))
+        } else if let c = tab.columnIndex(of: pane.id) {
+            server.send(.openFileOnStack(path: path, kind: .editor, pane: UUID(), column: tab.columns[c].id))
+        }
+    }
+
+    static func isMarkdown(_ path: String) -> Bool {
+        ["md", "markdown", "mdown", "mkd", "mdx"].contains((path as NSString).pathExtension.lowercased())
+    }
+
+    /// Text, and not too big to edit.
+    static func isEditable(_ path: String) -> Bool {
+        let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
+        return size < 32 << 20 && EditorView.isText(path)
     }
 
     /// Opens what a link in a pane points at: Markdown files in a preview
@@ -489,20 +611,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             NSWorkspace.shared.open(url)
             return
         }
-        var path = target.hasPrefix("file://") ? (URL(string: target)?.path ?? target) : target
-        path = (path as NSString).expandingTildeInPath
-        if !path.hasPrefix("/"), let cwd = ws.pane(pane)?.cwd {
-            path = (cwd as NSString).appendingPathComponent(path)
+        func resolve(_ text: String) -> String {
+            var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
+            path = (path as NSString).expandingTildeInPath
+            if !path.hasPrefix("/"), let cwd = ws.pane(pane)?.cwd {
+                path = (cwd as NSString).appendingPathComponent(path)
+            }
+            return URL(fileURLWithPath: path).standardizedFileURL.path
         }
-        path = URL(fileURLWithPath: path).standardizedFileURL.path
+        var path = resolve(target)
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
-            NSSound.beep()
+        if !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) {
+            // grep's and compilers' path:line:column: the file, at that place.
+            guard let location = FileLocation.split(target), let line = location.line,
+                  case let base = resolve(location.path),
+                  FileManager.default.fileExists(atPath: base, isDirectory: &isDir), !isDir.boolValue,
+                  Self.isEditable(base) else {
+                NSSound.beep()
+                return
+            }
+            pendingJump = (base, line, location.column)
+            server.send(.openFile(path: base, kind: .editor, pane: UUID(), tab: UUID(), beside: pane))
             return
         }
-        let ext = (path as NSString).pathExtension.lowercased()
-        if !isDir.boolValue && ["md", "markdown", "mdown", "mkd", "mdx"].contains(ext) {
+        path = URL(fileURLWithPath: path).standardizedFileURL.path
+        if isDir.boolValue {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        } else if Self.isMarkdown(path) {
             server.send(.openFile(path: path, kind: .markdown, pane: UUID(), tab: UUID(), beside: pane))
+        } else if Self.isEditable(path) {
+            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: pane))
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -575,7 +713,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
 extension MainWindowController: SidebarDelegate {
     func sidebarSelect(_ tab: UUID) { server.send(.selectTab(tab)) }
-    func sidebarClose(_ tab: UUID) { server.send(.closeTab(tab)) }
+    func sidebarClose(_ tab: UUID) { closeTab(id: tab) }
     func sidebarUnsplit(_ tab: UUID) { server.send(.unsplit(tab)) }
     func sidebarRename(_ tab: UUID) { rename(tab) }
     func sidebarMove(_ tab: UUID, to index: Int) { server.send(.moveTab(tab, to: index)) }
@@ -629,6 +767,10 @@ extension MainWindowController: SidebarDelegate {
         }
     }
 
+    func sidebarMovePane(_ pane: UUID, to destination: PaneDestination) {
+        server.send(.movePane(pane, to: destination))
+    }
+
     func sidebarDragChanged(_ dragging: Bool) {
         draggingTab = dragging
         if !dragging { scheduleHide() }
@@ -650,8 +792,33 @@ extension MainWindowController: TabContentDelegate {
         server.send(.focusPane(pane))
     }
 
+    func contentMovePane(_ pane: UUID, to target: TabContentView.DropTarget) {
+        guard let tab = ws.selectedTab else { return }
+        switch target {
+        case .column(let index): server.send(.movePane(pane, to: .column(tab: tab, index: index)))
+        case .stack(let column): server.send(.movePane(pane, to: .stack(column: column)))
+        }
+    }
+
+    func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+
+    func contentDragAtLeftEdge() {
+        if !sidebarShown { showSidebar(animated: true) }
+    }
+
     func contentResized(_ fractions: [Double]) {
         if let tab = ws.selectedTab { server.send(.setFractions(tab, fractions)) }
+    }
+}
+
+extension MainWindowController: EditorViewDelegate {
+    func editorEditedChanged(_ view: EditorView) {
+        render()
+    }
+
+    /// Tabs with an editor whose changes aren't saved.
+    var editedTabs: Set<UUID> {
+        Set(ws.tabs.filter { tab in tab.panes.contains { (views[$0.id] as? EditorView)?.isEdited == true } }.map(\.id))
     }
 }
 
@@ -687,6 +854,18 @@ extension MainWindowController: TerminalViewDelegate {
 final class MainWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // The title bar is hidden, but AppKit still treats the strip above the
+    // content layout rect as one: a click there moves the window with any
+    // twitch of the mouse, and a double click zooms it. Claiming the whole
+    // window for content leaves no such strip; the sidebar's header moves
+    // the window instead. (Ghostty does the same for its hidden title bar.)
+    override var contentLayoutRect: CGRect {
+        var rect = super.contentLayoutRect
+        rect.origin.y = 0
+        rect.size.height = frame.height
+        return rect
+    }
 }
 
 /// The window's content view; watches the mouse for the sidebar.

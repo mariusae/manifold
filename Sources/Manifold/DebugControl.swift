@@ -16,6 +16,11 @@ import ManifoldCore
 ///   focus                render as focused, without activating the app
 ///   open <target>        as if command-clicked in the focused terminal
 ///   peek <column>        list what's beneath a column's top, as hovering does
+///   click x y [count]    click (count times, as a multi-click) in the window
+///   front                bring the window forward; print its screen rect
+///   dragimage <path>     write the drag image for the focused pane
+///   type <text>          type into the focused text view (\n for newlines)
+///   picker               open the ⌘O picker
 ///   dump                 describe the window's views
 enum DebugControl {
     private static var listener: DispatchSourceRead?
@@ -56,6 +61,10 @@ enum DebugControl {
         switch cmd {
         case "snapshot":
             guard let window = wc?.window else { return "no window" }
+            // Drawing hides views one by one, which would take the keyboard
+            // from the one that has it; give it back.
+            let responder = window.firstResponder
+            defer { window.makeFirstResponder(responder) }
             return snapshot(window, to: arg.isEmpty ? "/tmp/manifold.png" : arg)
         case "action":
             let sel = Selector(arg)
@@ -145,6 +154,93 @@ enum DebugControl {
         case "peek":
             wc?.debugPeek(Int(arg) ?? 0)
             return "ok"
+        case "click":
+            // "click x y [count]": a left click at window coordinates from the
+            // top-left, sent through the window as a real one would be.
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count >= 2, let window = wc?.window else { return "usage: click x y [count]" }
+            let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
+            let count = a.count > 2 ? Int(a[2]) : 1
+            for n in 1...count {
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: n, pressure: 1) {
+                        window.sendEvent(e)
+                    }
+                }
+            }
+            return "frame \(window.frame)"
+        case "front":
+            // Brings the window in front without activating the app, and says
+            // where it is on screen (from the top-left, as screencapture takes it).
+            guard let window = wc?.window, let screen = window.screen ?? NSScreen.main else { return "no window" }
+            window.orderFrontRegardless()
+            let f = window.frame
+            return "\(Int(f.minX)),\(Int(screen.frame.height - f.maxY)),\(Int(f.width)),\(Int(f.height))"
+        case "dragimage":
+            // Writes the image a dragged sheet shows, for the focused pane.
+            guard let pane = wc?.debugFocusedPane else { return "no pane" }
+            let image = SheetDragImage.make(for: pane)
+            let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
+            try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: arg))
+            return "wrote \(arg)"
+        case "type":
+            // Types into whatever text view has the keyboard (an editor, say).
+            guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
+            tv.insertText(arg.replacingOccurrences(of: "\\n", with: "\n"), replacementRange: tv.selectedRange())
+            return "ok"
+        case "editorfont":
+            guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
+            let item = NSMenuItem()
+            item.representedObject = font.rawValue
+            wc?.setEditorFont(item)
+            return "ok"
+        case "cmdclick":
+            // "cmdclick x y": ⌘ down, the mouse moved there, and a ⌘-click,
+            // all through the window (window coordinates from the top-left).
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let window = wc?.window else { return "usage: cmdclick x y" }
+            let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
+            let now = ProcessInfo.processInfo.systemUptime
+            let t = window.contentView?.hitTest(p) as? TerminalView
+            if let flags = NSEvent.keyEvent(with: .flagsChanged, location: p, modifierFlags: .command, timestamp: now,
+                                            windowNumber: window.windowNumber, context: nil, characters: "",
+                                            charactersIgnoringModifiers: "", isARepeat: false, keyCode: 0x37) {
+                t?.flagsChanged(with: flags)
+            }
+            if let moved = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: .command, timestamp: now,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+                t?.mouseMoved(with: moved)
+            }
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: .command, timestamp: now,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                    window.sendEvent(e)
+                }
+            }
+            return t == nil ? "no terminal there" : "ok"
+        case "caret":
+            // Where the focused text view's caret is: line and column, from 1.
+            guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
+            let s = tv.string as NSString
+            let loc = tv.selectedRange().location
+            let before = s.substring(to: loc)
+            let line = before.components(separatedBy: "\n").count
+            let column = loc - (before as NSString).range(of: "\n", options: .backwards).location
+            return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
+        case "chain":
+            // The responder chain from the first responder.
+            var r: NSResponder? = wc?.window?.firstResponder
+            var out: [String] = []
+            while let x = r { out.append("\(type(of: x))"); r = x.nextResponder }
+            return out.joined(separator: " → ")
+        case "picker":
+            // "picker" opens it; "picker <query>" says what it lists for one.
+            if arg.isEmpty {
+                wc?.openDocument(nil)
+                return "ok"
+            }
+            return (wc?.debugPicker(arg == "-" ? "" : arg) ?? []).prefix(8).joined(separator: " | ")
         case "dump":
             guard let v = wc?.window?.contentView else { return "no window" }
             return describe(v, 0) + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Bumped whenever the messages below change incompatibly.
-public let protocolVersion = 3
+public let protocolVersion = 5
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then

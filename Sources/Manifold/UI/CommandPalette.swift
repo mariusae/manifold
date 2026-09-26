@@ -154,6 +154,9 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
 final class PaletteRowView: NSView {
     var onHover: (() -> Void)?
     var onClick: (() -> Void)?
+    /// Set, a drag from the row starts one of these rather than clicking.
+    var onDragStart: ((NSEvent) -> Void)?
+    private var downAt: NSPoint?
     var highlighted = false { didSet { update() } }
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
@@ -211,6 +214,18 @@ final class PaletteRowView: NSView {
 
     override func mouseMoved(with event: NSEvent) { if !highlighted { onHover?() } }
     override func mouseEntered(with event: NSEvent) { onHover?() }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { onClick?() }
+    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downAt, let onDragStart else { return }
+        let p = event.locationInWindow
+        guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+        downAt = nil
+        onDragStart(event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if downAt != nil { onClick?() }
+        downAt = nil
+    }
 }

@@ -19,6 +19,7 @@ enum Theme {
         switch kind {
         case .terminal: "apple.terminal"
         case .markdown: "doc.richtext"
+        case .editor: "doc.text"
         }
     }
 
@@ -31,6 +32,8 @@ enum Theme {
 extension NSPasteboard.PasteboardType {
     /// A tab being dragged, by id.
     static let manifoldTab = NSPasteboard.PasteboardType("com.manifold.tab")
+    /// A pane (a sheet) being dragged, by id.
+    static let manifoldPane = NSPasteboard.PasteboardType("com.manifold.pane")
 }
 
 /// A small borderless button showing a symbol, with a hover background.

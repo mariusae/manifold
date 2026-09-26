@@ -114,10 +114,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Quit Manifold", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = submenu(main, "File")
-        item(file, "New Tab…", #selector(MainWindowController.newTab(_:)), "t")
-        item(file, "New Terminal", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
-        item(file, "Open Terminal to the Right", #selector(MainWindowController.splitRight(_:)), "d")
+        item(file, "New…", #selector(MainWindowController.newTab(_:)), "t")
+        file.addItem(.separator())
+        item(file, "New Terminal on This Stack", #selector(MainWindowController.newSheet(_:)), "n")
+        item(file, "New Terminal in a New Column", #selector(MainWindowController.splitRight(_:)), "d")
+        item(file, "New Terminal in a New Tab", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "Open…", #selector(MainWindowController.openDocument(_:)), "o")
+        file.addItem(.separator())
+        item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
+        item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
         item(file, "Rename Tab…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         file.addItem(.separator())
@@ -125,9 +130,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Close Tab", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
 
         let edit = submenu(main, "Edit")
+        item(edit, "Undo", Selector(("undo:")), "z")
+        item(edit, "Redo", Selector(("redo:")), "z", [.command, .shift])
+        edit.addItem(.separator())
+        item(edit, "Cut", #selector(NSText.cut(_:)), "x")
         item(edit, "Copy", #selector(TerminalView.copy(_:)), "c")
         item(edit, "Paste", #selector(TerminalView.paste(_:)), "v")
         item(edit, "Select All", #selector(NSResponder.selectAll(_:)), "a")
+        edit.addItem(.separator())
+        let find = NSMenu(title: "Find")
+        for (title, action, key, mods) in [
+            ("Find…", NSTextFinder.Action.showFindInterface, "f", NSEvent.ModifierFlags.command),
+            ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
+            ("Find Next", .nextMatch, "g", .command),
+            ("Find Previous", .previousMatch, "g", [.command, .shift]),
+        ] {
+            item(find, title, #selector(NSTextView.performTextFinderAction(_:)), key, mods).tag = action.rawValue
+        }
+        let findItem = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
+        findItem.submenu = find
+        edit.addItem(findItem)
+        item(edit, "Go to Line…", #selector(EditorView.goToLine(_:)), "l")
         edit.addItem(.separator())
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
@@ -144,6 +167,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let contrastItem = NSMenuItem(title: "Contrast Correction", action: nil, keyEquivalent: "")
         contrastItem.submenu = contrast
         view.addItem(contrastItem)
+        let fonts = NSMenu(title: "Editor Font")
+        for (font, title) in [(EditorFont.proportional, "Proportional (Mona Sans)"),
+                              (.monospaced, "Fixed Width (Monaspace Xenon)")] {
+            item(fonts, title, #selector(MainWindowController.setEditorFont(_:)), "", []).representedObject = font.rawValue
+        }
+        let fontsItem = NSMenuItem(title: "Editor Font", action: nil, keyEquivalent: "")
+        fontsItem.submenu = fonts
+        view.addItem(fontsItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")

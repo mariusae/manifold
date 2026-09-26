@@ -96,17 +96,18 @@ index 278ffd7..a60fb3c 100644
  /// The syntax of this configuration is `N=COLOR` where `N` is 0 to 255 (for
  /// the 256 colors in the terminal color table) and `COLOR` is a typical RGB
 diff --git a/src/config/url.zig b/src/config/url.zig
-index e7cf860..108c3eb 100644
+index e7cf860..5ee7919 100644
 --- a/src/config/url.zig
 +++ b/src/config/url.zig
-@@ -113,12 +113,20 @@ const bare_relative_path_branch =
+@@ -113,12 +113,21 @@ const bare_relative_path_branch =
      no_trailing_colon ++
      trailing_spaces_at_eol;
  
-+// Manifold: Branch 4: bare Markdown file names such as README.md, which
-+// Manifold opens in a preview beside the terminal.
-+const bare_markdown_branch =
-+    \\(?<![\w\-.~\/$])[\w][\w\-.]*\.(?:md|markdown)(?![\w\-.\/])
++// Manifold: Branch 4: bare file names such as Package.swift or README.md,
++// as `ls` prints them (without a slash, which Branch 3 needs), and dotfiles
++// such as .zshrc; Manifold opens them to edit or preview.
++const bare_file_branch =
++    \\(?<![\w\-.~\/$,])(?:\.[A-Za-z][\w\-]*(?:\.[\w\-]+)*|[\w][\w\-.]*\.[A-Za-z][A-Za-z0-9]*)(?![\w\-.\/]|:\/\/)
 +;
 +
  pub const regex =
@@ -117,11 +118,11 @@ index e7cf860..108c3eb 100644
 -    bare_relative_path_branch;
 +    bare_relative_path_branch ++
 +    "|" ++
-+    bare_markdown_branch;
++    bare_file_branch;
  
  test "url regex" {
      const testing = std.testing;
-@@ -406,6 +414,14 @@ test "url regex" {
+@@ -406,6 +415,26 @@ test "url regex" {
              .input = "~/foo/bar.txt",
              .expect = "~/foo/bar.txt",
          },
@@ -132,6 +133,18 @@ index e7cf860..108c3eb 100644
 +        .{
 +            .input = "see CHANGES.markdown, then",
 +            .expect = "CHANGES.markdown",
++        },
++        .{
++            .input = "build  Package.swift  Sources",
++            .expect = "Package.swift",
++        },
++        .{
++            .input = "  .zshrc  ",
++            .expect = ".zshrc",
++        },
++        .{
++            .input = "main.swift:12: error",
++            .expect = "main.swift",
 +        },
          .{
              .input = "open ~/Documents/notes.md please",

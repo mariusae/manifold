@@ -11,6 +11,8 @@ protocol SidebarDelegate: AnyObject {
     func sidebarTogglePinned()
     func sidebarMoreMenu() -> NSMenu
     func sidebarDragChanged(_ dragging: Bool)
+    /// A pane (a sheet) was dropped on the sidebar.
+    func sidebarMovePane(_ pane: UUID, to destination: PaneDestination)
     /// The resize handle was dragged to make the sidebar this wide.
     func sidebarResize(to width: CGFloat)
     func sidebarResizeEnded()
@@ -71,7 +73,7 @@ final class SidebarView: NSView {
         card.addSubview(scroll)
 
         list.sidebar = self
-        list.registerForDraggedTypes([.manifoldTab])
+        list.registerForDraggedTypes([.manifoldTab, .manifoldPane])
         newTabRow.onClick = { [weak self] in self?.delegate?.sidebarNewTab() }
         newTabRow.onMore = { [weak self] button in
             guard let self, let menu = self.delegate?.sidebarMoreMenu() else { return }
@@ -105,7 +107,7 @@ final class SidebarView: NSView {
         pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
     }
 
-    func update(tabs: [Tab], selected: UUID?) {
+    func update(tabs: [Tab], selected: UUID?, edited: Set<UUID> = []) {
         let ids = tabs.map(\.id)
         for (id, row) in rows where !ids.contains(id) {
             row.removeFromSuperview()
@@ -120,7 +122,7 @@ final class SidebarView: NSView {
                 return r
             }()
             row.configure(title: tab.title, paneCount: tab.columns.count, selected: tab.id == selected,
-                          symbol: Theme.symbolName(for: tab.focused?.kind ?? .terminal))
+                          symbol: Theme.symbolName(for: tab.focused?.kind ?? .terminal), edited: edited.contains(tab.id))
         }
         order = ids
         layoutRows()
@@ -174,6 +176,15 @@ final class SidebarView: NSView {
         if index < order.count, let row = rows[order[index]] { return row.frame.minY - 1 }
         if let last = order.last, let row = rows[last] { return row.frame.maxY + 1 }
         return 2
+    }
+
+    /// The row whose middle is at `y`, for dropping a sheet onto its tab.
+    func row(at y: CGFloat) -> TabRowView? {
+        rows.values.first { $0.frame.insetBy(dx: 0, dy: $0.frame.height * 0.2).contains(NSPoint(x: $0.frame.midX, y: y)) }
+    }
+
+    func movePane(_ pane: UUID, to destination: PaneDestination) {
+        delegate?.sidebarMovePane(pane, to: destination)
     }
 
     func moveTab(_ id: UUID, toInsertionIndex index: Int) {
@@ -258,11 +269,18 @@ final class WindowDragView: NSView {
     }
 }
 
-/// The scrolling list of rows, which takes tab drops to reorder.
+/// The scrolling list of rows, which takes tab drops to reorder, and sheet
+/// drops: between rows, as a new tab there; on a row, onto that tab's stack.
 final class TabListView: FlippedView {
     weak var sidebar: SidebarView?
     private let indicator = NSView()
     private var dropIndex: Int?
+    private var dropRow: TabRowView? {
+        didSet {
+            if oldValue !== dropRow { oldValue?.dropTarget = false }
+            dropRow?.dropTarget = true
+        }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -278,8 +296,16 @@ final class TabListView: FlippedView {
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let sidebar, sender.draggingPasteboard.string(forType: .manifoldTab) != nil else { return [] }
+        let pb = sender.draggingPasteboard
+        guard let sidebar, pb.string(forType: .manifoldTab) != nil || pb.string(forType: .manifoldPane) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
+        if pb.string(forType: .manifoldPane) != nil, let row = sidebar.row(at: p.y) {
+            dropRow = row
+            dropIndex = nil
+            indicator.isHidden = true
+            return .move
+        }
+        dropRow = nil
         let index = sidebar.insertionIndex(at: p.y)
         dropIndex = index
         indicator.frame = NSRect(x: 12, y: sidebar.insertionY(for: index) - 1, width: bounds.width - 24, height: 2)
@@ -291,13 +317,25 @@ final class TabListView: FlippedView {
     override func draggingExited(_ sender: NSDraggingInfo?) {
         indicator.isHidden = true
         dropIndex = nil
+        dropRow = nil
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         indicator.isHidden = true
-        guard let sidebar, let index = dropIndex,
-              let str = sender.draggingPasteboard.string(forType: .manifoldTab), let id = UUID(uuidString: str)
-        else { return false }
+        defer { dropRow = nil }
+        guard let sidebar else { return false }
+        let pb = sender.draggingPasteboard
+        if let pane = pb.string(forType: .manifoldPane).flatMap(UUID.init(uuidString:)) {
+            if let row = dropRow {
+                sidebar.movePane(pane, to: .tabStack(tab: row.tab))
+            } else if let index = dropIndex {
+                sidebar.movePane(pane, to: .newTab(tab: UUID(), index: index))
+            } else {
+                return false
+            }
+            return true
+        }
+        guard let index = dropIndex, let id = pb.string(forType: .manifoldTab).flatMap(UUID.init(uuidString:)) else { return false }
         sidebar.moveTab(id, toInsertionIndex: index)
         return true
     }
@@ -316,7 +354,13 @@ final class TabRowView: NSView, NSDraggingSource {
     private var selected = false
     private var paneCount = 1
     private var symbol = "apple.terminal"
+    /// Whether an editor in it has unsaved changes: a dot where the close
+    /// button goes, as a Mac window's is.
+    private var edited = false
+    private let editedDot = NSView()
     private var hovering = false { didSet { updateAppearance() } }
+    /// Whether a sheet dragged over it would go onto this tab's stack.
+    var dropTarget = false { didSet { updateAppearance() } }
     private var mouseDownPoint: NSPoint?
 
     init(tab: UUID) {
@@ -334,13 +378,17 @@ final class TabRowView: NSView, NSDraggingSource {
         title.cell?.truncatesLastVisibleLine = true
         closeButton.toolTip = "Close Tab"
         unsplitButton.toolTip = "Separate Columns"
-        for v in [icon, badge, title, unsplitButton, closeButton] { addSubview(v) }
+        editedDot.wantsLayer = true
+        editedDot.layer?.backgroundColor = Theme.secondaryText.cgColor
+        editedDot.layer?.cornerRadius = 3.5
+        for v in [icon, badge, title, unsplitButton, closeButton, editedDot] { addSubview(v) }
         updateAppearance()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title text: String, paneCount: Int, selected: Bool, symbol: String) {
+    func configure(title text: String, paneCount: Int, selected: Bool, symbol: String, edited: Bool = false) {
+        self.edited = edited
         if symbol != self.symbol {
             self.symbol = symbol
             icon.image = Theme.symbol(symbol, size: 13)
@@ -361,6 +409,8 @@ final class TabRowView: NSView, NSDraggingSource {
         badge.frame = icon.frame
         var right = bounds.width - 6
         closeButton.frame = NSRect(x: right - 20, y: (h - 20) / 2, width: 20, height: 20)
+        editedDot.frame = NSRect(x: right - 13.5, y: (h - 7) / 2, width: 7, height: 7)
+        if !editedDot.isHidden { right -= 22 }
         if !closeButton.isHidden { right -= 22 }
         unsplitButton.frame = NSRect(x: right - 20, y: (h - 20) / 2, width: 20, height: 20)
         if !unsplitButton.isHidden { right -= 22 }
@@ -372,6 +422,7 @@ final class TabRowView: NSView, NSDraggingSource {
         icon.isHidden = split
         badge.isHidden = !split
         closeButton.isHidden = !hovering
+        editedDot.isHidden = hovering || !edited
         unsplitButton.isHidden = !(hovering && split)
         title.font = .systemFont(ofSize: 13, weight: selected ? .medium : .regular)
         if selected {
@@ -384,6 +435,13 @@ final class TabRowView: NSView, NSDraggingSource {
         } else {
             layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
             layer?.shadowOpacity = 0
+        }
+        if dropTarget {
+            layer?.backgroundColor = Theme.dropHighlight.cgColor
+            layer?.borderColor = Theme.accent.withAlphaComponent(0.5).cgColor
+            layer?.borderWidth = 1
+        } else {
+            layer?.borderWidth = 0
         }
         needsLayout = true
     }

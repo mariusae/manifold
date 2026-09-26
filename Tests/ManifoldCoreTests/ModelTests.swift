@@ -72,15 +72,18 @@ private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) 
     #expect(ws.tabs.isEmpty)
 }
 
-@Test func detachPane() {
+@Test func movePaneToANewTab() {
     var (ws, tabs, panes) = workspace(tabs: 2)
     ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 1))
     let t = UUID()
-    ws.apply(.detachPane(panes[0], newTab: t))
+    ws.apply(.movePane(panes[0], to: .newTab(tab: t, index: 1)))
     #expect(ws.tabs.map(\.id) == [tabs[0], t])
     #expect(ws.tab(t)?.panes.map(\.id) == [panes[0]])
     #expect(ws.tab(tabs[0])?.focusedPane == panes[1])
     #expect(ws.selectedTab == t)
+    // A pane that's a tab of its own already stays put.
+    ws.apply(.movePane(panes[0], to: .newTab(tab: UUID(), index: 0)))
+    #expect(ws.tabs.map(\.id) == [tabs[0], t])
 }
 
 @Test func titles() {
@@ -292,4 +295,90 @@ private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) 
     ws.apply(.setPanePath(p, "/tmp/b.md"))
     #expect(ws.pane(p)?.path == "/tmp/b.md")
     #expect(ws.tabs[0].title == "b.md")
+}
+
+@Test func newSheetPushesOntoAStack() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let column = ws.tabs[0].columns[0].id
+    let p = UUID()
+    ws.apply(.newSheet(pane: p, column: column, kind: .terminal, cwd: "/tmp"))
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0], p]])
+    #expect(ws.tab(tabs[0])?.focusedPane == p)
+    #expect(ws.pane(p)?.cwd == "/tmp")
+}
+
+@Test func movePaneBetweenStacksAndColumns() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let left = ws.tabs[0].columns[0].id
+    let a = UUID(), b = UUID()
+    ws.apply(.newPane(pane: a, tab: tabs[0], at: 1, kind: .terminal, cwd: nil))
+    ws.apply(.newSheet(pane: b, column: left, kind: .terminal, cwd: nil))
+    // [p0, b] [a]: move b onto the right-hand stack.
+    let right = ws.tabs[0].columns[1].id
+    ws.apply(.movePane(b, to: .stack(column: right)))
+    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[panes[0]], [a, b]])
+    #expect(ws.tabs[0].focusedPane == b)
+    // Then into a new column at the far left.
+    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 0)))
+    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[b], [panes[0]], [a]])
+    // Moving a column's only pane beside itself changes nothing.
+    let before = ws
+    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 1)))
+    #expect(ws == before)
+    // Moving it past its neighbour does move it; its old column goes.
+    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 3)))
+    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[panes[0]], [a], [b]])
+}
+
+@Test func movePaneOntoAnotherTabsStack() {
+    var (ws, tabs, panes) = workspace(tabs: 2)
+    let b = UUID()
+    ws.apply(.newSheet(pane: b, column: ws.tabs[0].columns[0].id, kind: .terminal, cwd: nil))
+    ws.apply(.movePane(b, to: .tabStack(tab: tabs[1])))
+    #expect(ws.tab(tabs[0])?.panes.map(\.id) == [panes[0]])
+    #expect(ws.tab(tabs[1])?.columns.map { $0.panes.map(\.id) } == [[panes[1], b]])
+    #expect(ws.selectedTab == tabs[1])
+    #expect(ws.tab(tabs[1])?.focusedPane == b)
+    // A tab's last pane, moved away, takes the tab with it.
+    ws.apply(.movePane(panes[0], to: .tabStack(tab: tabs[1])))
+    #expect(ws.tabs.map(\.id) == [tabs[1]])
+    #expect(ws.tabs[0].columns[0].panes.map(\.id) == [panes[1], b, panes[0]])
+}
+
+@Test func movePaneOntoItsOwnStackRaisesIt() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let column = ws.tabs[0].columns[0].id
+    let b = UUID()
+    ws.apply(.newSheet(pane: b, column: column, kind: .terminal, cwd: nil))
+    ws.apply(.movePane(panes[0], to: .stack(column: column)))
+    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [b, panes[0]])
+    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
+}
+
+@Test func openingAnEditorFocusesIt() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let e = UUID()
+    ws.apply(.openFile(path: "/tmp/a.swift", kind: .editor, pane: e, tab: UUID(), beside: panes[0]))
+    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [e]])
+    #expect(ws.tab(tabs[0])?.focusedPane == e)
+    #expect(ws.pane(e)?.displayTitle == "a.swift")
+}
+
+@Test func openFileOnStackPushesOrRaises() {
+    var (ws, tabs, panes) = workspace(tabs: 1)
+    let column = ws.tabs[0].columns[0].id
+    let a = UUID(), b = UUID()
+    ws.apply(.openFileOnStack(path: "/tmp/a.txt", kind: .editor, pane: a, column: column))
+    ws.apply(.openFileOnStack(path: "/tmp/b.txt", kind: .editor, pane: b, column: column))
+    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [panes[0], a, b])
+    ws.apply(.openFileOnStack(path: "/tmp/a.txt", kind: .editor, pane: UUID(), column: column))
+    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [panes[0], b, a])
+    #expect(ws.tab(tabs[0])?.focusedPane == a)
+}
+
+@Test func appearanceSavedBeforeEditorFontLoads() throws {
+    let json = #"{"tabs":[],"appearance":{"contrastCorrection":"typical"}}"#
+    let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+    #expect(ws.appearance.contrastCorrection == .typical)
+    #expect(ws.appearance.editorFont == .proportional)
 }
