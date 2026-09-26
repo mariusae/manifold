@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldMarkdown
+import ManifoldCore
 import WebKit
 
 protocol MarkdownViewDelegate: AnyObject {
@@ -16,13 +17,17 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
     private let web: WKWebView
     private var watcher: FileWatcher?
     private var loaded = false
+    var theme: FontTheme {
+        didSet { if theme != oldValue, loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) } }
+    }
 
     var focusView: NSView { web }
     var isDead: Bool { false }
 
-    init(pane: UUID, path: String) {
+    init(pane: UUID, path: String, theme: FontTheme) {
         self.pane = pane
         self.path = path
+        self.theme = theme
         let config = WKWebViewConfiguration()
         // The document's own scripts don't run; ours (evaluateJavaScript) do.
         config.defaultWebpagePreferences.allowsContentJavaScript = false
@@ -31,7 +36,7 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         wantsLayer = true
-        layer?.backgroundColor = Theme.windowBackground.cgColor
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
         watch()
@@ -70,7 +75,7 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         }
         let base = URL(fileURLWithPath: path).deletingLastPathComponent().absoluteString
         let js = "manifoldRender(\(json(body)), \(json(base)), \(scrollToTop));"
-        web.evaluateJavaScript(MarkdownPage.script + js)
+        web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js)
     }
 
     private func json(_ s: String) -> String {

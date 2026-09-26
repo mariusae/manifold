@@ -6,7 +6,7 @@ protocol EditorViewDelegate: AnyObject {
     func editorEditedChanged(_ view: EditorView)
 }
 
-/// A text file, being edited: plain text, in Mona Sans or Monaspace Xenon,
+/// A text file, being edited: plain text, in the theme's proportional or fixed-width font,
 /// with the usual Mac editing (undo, find, and so on) and nothing clever.
 ///
 /// Unsaved changes, the selection, and the scroll position are kept on disk
@@ -31,15 +31,17 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     private var loadFailed = false
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
+    var theme: FontTheme { didSet { if theme != oldValue { applyFont() } } }
     private var sizeAdjust: CGFloat = 0
 
     var focusView: NSView { text }
     var isDead: Bool { false }
 
-    init(pane: UUID, path: String, font: EditorFont) {
+    init(pane: UUID, path: String, font: EditorFont, theme: FontTheme) {
         self.pane = pane
         self.path = path
         self.font = font
+        self.theme = theme
         scroll = NSScrollView()
         text = EditorTextView(usingTextLayoutManager: true)
         text.isVerticallyResizable = true
@@ -50,7 +52,7 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         scroll.documentView = text
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = Theme.windowBackground.cgColor
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
 
         scroll.drawsBackground = false
         // No room kept for the (hidden) title bar.
@@ -80,8 +82,11 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         text.smartInsertDeleteEnabled = false
         text.drawsBackground = false
         text.textContainerInset = NSSize(width: 26, height: 20)
-        text.insertionPointColor = NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 1)
-        text.selectedTextAttributes = [.backgroundColor: NSColor(srgbRed: 0.81, green: 0.886, blue: 0.984, alpha: 1)]
+        text.insertionPointColor = .dynamic(NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 1),
+                                            NSColor(srgbRed: 0.04, green: 0.518, blue: 1, alpha: 1))
+        text.selectedTextAttributes = [.backgroundColor: NSColor.dynamic(
+            NSColor(srgbRed: 0.81, green: 0.886, blue: 0.984, alpha: 1),
+            NSColor(srgbRed: 0.149, green: 0.31, blue: 0.47, alpha: 1))]
         applyFont()
 
         load(restoring: true)
@@ -108,22 +113,8 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
 
     // MARK: Fonts
 
-    private var baseSize: CGFloat { font == .proportional ? 15 : 13.5 }
-
     private var textFont: NSFont {
-        let size = max(8, baseSize + sizeAdjust)
-        switch font {
-        case .proportional:
-            return NSFont(name: "Mona Sans", size: size) ?? .systemFont(ofSize: size)
-        case .monospaced:
-            // Your terminal's stylistic sets: ss02, ss03, ss07, ss08.
-            let features = ["ss02", "ss03", "ss07", "ss08"].map {
-                [kCTFontOpenTypeFeatureTag: $0, kCTFontOpenTypeFeatureValue: 1] as [CFString: Any]
-            }
-            let descriptor = NSFontDescriptor(name: "Monaspace Xenon", size: size)
-                .addingAttributes([.featureSettings: features])
-            return NSFont(descriptor: descriptor, size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-        }
+        theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
     }
 
     private func applyFont() {
@@ -334,8 +325,15 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
 
     // MARK: Kept state
 
-    private var stateFile: URL {
+    private var stateFile: URL { Self.stateFile(pane) }
+
+    static func stateFile(_ pane: UUID) -> URL {
         Paths.directory.appendingPathComponent("editors").appendingPathComponent("\(pane.uuidString).json")
+    }
+
+    /// Whether an editor has unsaved changes kept, open or not.
+    static func hasUnsavedChanges(_ pane: UUID) -> Bool {
+        EditorState.load(from: stateFile(pane))?.draft != nil
     }
 
     private func scheduleStateSave() {
@@ -420,7 +418,8 @@ final class EditorTextView: NSTextView {
         didSet { if highlightedLine != oldValue { needsDisplay = true } }
     }
 
-    static let highlight = NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1)
+    static let highlight = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1),
+                                           NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1))
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
@@ -490,7 +489,10 @@ final class EditorBanner: NSView {
         keep = NSButton(title: "Keep Mine", target: nil, action: nil)
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(srgbRed: 1, green: 0.97, blue: 0.86, alpha: 1).cgColor
+        themed {
+            $0.layer?.backgroundColor = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.97, blue: 0.86, alpha: 1),
+                                                        NSColor(srgbRed: 0.27, green: 0.24, blue: 0.13, alpha: 1)).cgColor
+        }
         label.font = .systemFont(ofSize: 12.5)
         label.textColor = Theme.text
         for b in [reload, keep] {
@@ -517,7 +519,7 @@ final class EditorBanner: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0, alpha: 0.1).setFill()
+        Theme.divider.setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: 0.5).fill()
     }
 

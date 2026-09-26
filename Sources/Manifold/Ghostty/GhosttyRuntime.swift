@@ -10,24 +10,15 @@ final class GhosttyRuntime {
     private(set) var app: ghostty_app_t?
     private var config: ghostty_config_t?
 
-    static let background = NSColor(srgbRed: 0xfc / 255, green: 0xfc / 255, blue: 0xfb / 255, alpha: 1)
+    static let background = NSColor.dynamic(
+        NSColor(srgbRed: 0xfc / 255, green: 0xfc / 255, blue: 0xfb / 255, alpha: 1),
+        NSColor(srgbRed: 0x1c / 255, green: 0x1c / 255, blue: 0x1b / 255, alpha: 1))
 
-    private static let baseConfig = """
-        font-family = Monaspace Xenon
-        font-family-italic = Monaspace Radon
-        font-feature = calt
-        font-feature = ss02
-        font-feature = ss03
-        font-feature = ss07
-        font-feature = ss08
-        font-size = 13
-        font-thicken = false
+    /// Paper, and GitHub's light palette.
+    private static let lightColors = """
         background = #fcfcfb
         foreground = #24292f
         cursor-color = #007aff
-        cursor-style = bar
-        cursor-style-blink = true
-        adjust-cursor-thickness = 3
         selection-background = #cfe2fb
         selection-foreground = #1f2328
         palette = 0=#24292f
@@ -46,6 +37,39 @@ final class GhosttyRuntime {
         palette = 13=#a475f9
         palette = 14=#3192aa
         palette = 15=#8c959f
+        """
+
+    /// The same paper, unlit, and GitHub's dark palette.
+    private static let darkColors = """
+        background = #1c1c1b
+        foreground = #e3e3df
+        cursor-color = #0a84ff
+        selection-background = #264f78
+        selection-foreground = #f0f0ee
+        palette = 0=#484f58
+        palette = 1=#ff7b72
+        palette = 2=#3fb950
+        palette = 3=#d29922
+        palette = 4=#58a6ff
+        palette = 5=#bc8cff
+        palette = 6=#39c5cf
+        palette = 7=#b1bac4
+        palette = 8=#6e7681
+        palette = 9=#ffa198
+        palette = 10=#56d364
+        palette = 11=#e3b341
+        palette = 12=#79c0ff
+        palette = 13=#d2a8ff
+        palette = 14=#56d4dd
+        palette = 15=#f0f6fc
+        """
+
+    private static let baseConfig = """
+        font-size = 13
+        font-thicken = false
+        cursor-style = bar
+        cursor-style-blink = true
+        adjust-cursor-thickness = 3
         minimum-contrast = 1.1
         window-padding-x = 10
         window-padding-y = 6
@@ -62,19 +86,19 @@ final class GhosttyRuntime {
         app-notifications = false
         """
 
-    private static func configText(_ appearance: Appearance) -> String {
+    private static func configText(_ appearance: Appearance, dark: Bool) -> String {
         let mode = switch appearance.contrastCorrection {
         case .off: "none"
         case .typical: "typical"
         case .deuteranopia: "deuteranopia"
         }
-        return baseConfig + "\ncontrast-correction = \(mode)\n"
+        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + appearance.theme.terminalConfig + "\ncontrast-correction = \(mode)\n"
     }
 
-    private static func makeConfig(_ appearance: Appearance) -> ghostty_config_t? {
+    private static func makeConfig(_ appearance: Appearance, dark: Bool) -> ghostty_config_t? {
         let config = ghostty_config_new()
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-ghostty-\(getpid()).conf")
-        try? configText(appearance).write(to: url, atomically: true, encoding: .utf8)
+        try? configText(appearance, dark: dark).write(to: url, atomically: true, encoding: .utf8)
         ghostty_config_load_file(config, url.path)
         try? FileManager.default.removeItem(at: url)
         ghostty_config_finalize(config)
@@ -86,19 +110,24 @@ final class GhosttyRuntime {
     }
 
     private var appearance = Appearance()
+    private var dark = NSApp.effectiveAppearance.isDark
 
-    /// Recolors every terminal.
-    func apply(_ appearance: Appearance) {
-        guard appearance != self.appearance, let app else { return }
+    /// Recolors (and resets in the theme's fonts) every terminal.
+    func apply(_ appearance: Appearance, dark: Bool) {
+        guard appearance != self.appearance || dark != self.dark, let app else { return }
         self.appearance = appearance
-        guard let config = Self.makeConfig(appearance) else { return }
+        self.dark = dark
+        guard let config = Self.makeConfig(appearance, dark: dark) else { return }
         ghostty_app_update_config(app, config)
+        // Programs that ask (mode 2031) are told, too.
+        ghostty_app_set_color_scheme(app, dark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
         if let old = self.config { ghostty_config_free(old) }
         self.config = config
     }
 
     private init() {
         Self.registerBundledFonts()
+        FontTheme.registerSystemMono()
         // Ghostty finds terminfo and shell integration next to its resources.
         if let res = Bundle.main.resourceURL?.appendingPathComponent("ghostty"),
            FileManager.default.fileExists(atPath: res.path) {
@@ -108,7 +137,7 @@ final class GhosttyRuntime {
             fatalError("ghostty_init failed")
         }
 
-        let config = Self.makeConfig(appearance)
+        let config = Self.makeConfig(appearance, dark: dark)
         self.config = config
 
         var runtime = ghostty_runtime_config_s()
@@ -152,7 +181,7 @@ final class GhosttyRuntime {
         app = ghostty_app_new(&runtime, config)
         guard app != nil else { fatalError("ghostty_app_new failed") }
 
-        ghostty_app_set_color_scheme(app, GHOSTTY_COLOR_SCHEME_LIGHT)
+        ghostty_app_set_color_scheme(app, dark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
         let nc = NotificationCenter.default
         nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             if let app = self?.app { ghostty_app_set_focus(app, true) }
@@ -168,7 +197,8 @@ final class GhosttyRuntime {
         }
     }
 
-    /// Makes the fonts in Resources/Fonts (Monaspace) available to this
+    /// Makes the fonts in Resources/Fonts (Monaspace, Mona Sans, Recursive,
+    /// Go) available to this
     /// process only; nothing is installed.
     private static func registerBundledFonts() {
         guard let dir = Bundle.main.resourceURL?.appendingPathComponent("Fonts"),

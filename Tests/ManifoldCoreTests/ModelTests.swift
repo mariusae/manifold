@@ -180,6 +180,18 @@ private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) 
     #expect(ws2.appearance.contrastCorrection == .off)
 }
 
+@Test func themeDefaultsToMonaAndSurvivesUnknownThemes() throws {
+    let old = #"{"contrastCorrection":"typical"}"#
+    #expect(try JSONDecoder().decode(Appearance.self, from: Data(old.utf8)).theme == .mona)
+    #expect(try JSONDecoder().decode(Appearance.self, from: Data(old.utf8)).colorScheme == .system)
+    let future = #"{"theme":"comic","contrastCorrection":"off"}"#
+    let a = try JSONDecoder().decode(Appearance.self, from: Data(future.utf8))
+    #expect(a.theme == .mona)
+    #expect(a.contrastCorrection == .off)
+    let go = Appearance(theme: .go, colorScheme: .dark)
+    #expect(try JSONDecoder().decode(Appearance.self, from: JSONEncoder().encode(go)) == go)
+}
+
 @Test func openFileBesideAPaneMakesAColumnThenStacksOnIt() {
     var (ws, tabs, panes) = workspace(tabs: 2)
     let a = UUID(), b = UUID()
@@ -381,4 +393,5 @@ private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) 
     let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
     #expect(ws.appearance.contrastCorrection == .typical)
     #expect(ws.appearance.editorFont == .proportional)
+    #expect(ws.appearance.putAwayAfter == 60)
 }

@@ -10,6 +10,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     private var views: [UUID: PaneContent] = [:]
+    /// When each pane was last on screen, for putting away unused sheets.
+    private var lastSeen: [UUID: Date] = [:]
+    private var putAwayTimer: Timer?
+
     /// A place to go in a file being opened: done once its editor is shown.
     private var pendingJump: (path: String, line: Int, column: Int?)?
     private var clickMonitor: Any?
@@ -77,6 +81,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         setTrafficLights(visible: pinned, animated: false)
         watchClicks()
+        putAwayTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.putAwayUnusedSheets()
+        }
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -112,7 +119,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let top = column.top, !recentlyClosed.contains(top.id) else { return nil }
                 return .init(id: column.id, view: view(for: top), beneath: column.panes.dropLast().reversed())
             }
-            content.show(shown, fractions: tab.fractions, focused: tab.focusedPane)
+            // The switcher has the panes' views while it's up.
+            if switcher == nil {
+                content.show(shown, fractions: tab.fractions, focused: tab.focusedPane)
+            }
             window.title = tab.title
             if palette == nil, let focused = tab.focusedPane, let view = views[focused],
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false) {
@@ -122,6 +132,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.show([], fractions: [], focused: nil)
             window.title = "Manifold"
         }
+        noteSeen()
+
         if let jump = pendingJump,
            let editor = content.panes.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }) {
             pendingJump = nil
@@ -142,8 +154,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func view(for pane: Pane) -> PaneContent {
         if let v = views[pane.id] {
-            if let m = v as? MarkdownView, let path = pane.path { m.show(path: path) }
-            if let e = v as? EditorView { e.font = ws.appearance.editorFont }
+            if let m = v as? MarkdownView {
+                m.theme = ws.appearance.theme
+                if let path = pane.path { m.show(path: path) }
+            }
+            if let e = v as? EditorView {
+                e.font = ws.appearance.editorFont
+                e.theme = ws.appearance.theme
+            }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
@@ -155,11 +173,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             t.delegate = self
             v = t
         case .markdown:
-            let m = MarkdownView(pane: pane.id, path: pane.path ?? "")
+            let m = MarkdownView(pane: pane.id, path: pane.path ?? "", theme: ws.appearance.theme)
             m.delegate = self
             v = m
         case .editor:
-            let e = EditorView(pane: pane.id, path: pane.path ?? "", font: ws.appearance.editorFont)
+            let e = EditorView(pane: pane.id, path: pane.path ?? "", font: ws.appearance.editorFont,
+                               theme: ws.appearance.theme)
             e.delegate = self
             v = e
         }
@@ -193,6 +212,48 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let left = pinned ? w + 2 * inset : 0
         content.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
         palette?.frame = b
+    }
+
+    // MARK: Putting away unused sheets
+
+    /// Panes on screen are seen now; panes new to us, as of now.
+    private func noteSeen() {
+        let now = Date()
+        let live = Set(ws.allPanes.map(\.id))
+        lastSeen = lastSeen.filter { live.contains($0.key) }
+        for id in live where lastSeen[id] == nil { lastSeen[id] = now }
+        guard window?.isVisible == true, window?.isMiniaturized == false else { return }
+        for pane in selectedTab?.visiblePanes ?? [] { lastSeen[pane.id] = now }
+    }
+
+    /// Closes the sheets not seen for a while that it costs nothing to close:
+    /// not terminals, not the focused one, and nothing unsaved.
+    private func putAwayUnusedSheets() {
+        noteSeen()
+        let minutes = ws.appearance.putAwayAfter
+        guard minutes > 0 else { return }
+        let cutoff = Date().addingTimeInterval(-Double(minutes) * 60)
+        let focused = selectedTab?.focusedPane
+        for pane in ws.allPanes where pane.kind != .terminal && pane.id != focused {
+            guard let seen = lastSeen[pane.id], seen < cutoff else { continue }
+            if pane.kind == .editor {
+                if (views[pane.id] as? EditorView)?.isEdited == true || EditorView.hasUnsavedChanges(pane.id) { continue }
+            }
+            server.send(.closePane(pane.id))
+        }
+    }
+
+    /// Pretends every pane was last seen `minutes` ago (those showing are
+    /// seen again at once), then puts away.
+    func debugPutAway(agingBy minutes: Double) {
+        for id in lastSeen.keys { lastSeen[id] = Date().addingTimeInterval(-minutes * 60) }
+        putAwayUnusedSheets()
+    }
+
+    @objc func setPutAwayAfter(_ sender: NSMenuItem) {
+        var appearance = ws.appearance
+        appearance.putAwayAfter = sender.tag
+        server.send(.setAppearance(appearance))
     }
 
     // MARK: Sidebar
@@ -310,6 +371,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func debugPeek(_ column: Int) { content.debugPeek(column) }
+
+    /// Drives the switcher as ⌘E, E, and letting go of ⌘ would.
+    func debugSwitcher(_ step: String) -> String {
+        switch step {
+        case "show":
+            guard let tab = selectedTab, let f = tab.focusedPane, let c = tab.columnIndex(of: f) else { return "no stack" }
+            showSwitcher(column: tab.columns[c], back: false)
+        case "next": switcher?.move(-1)
+        case "prev": switcher?.move(1)
+        case "commit": closeSwitcher(commit: true)
+        case "cancel": closeSwitcher(commit: false)
+        default: return "show, next, prev, commit or cancel"
+        }
+        return switcher.map { "choosing \($0.cards[$0.selection].pane.displayTitle)" } ?? "closed"
+    }
 
     var debugFocusedPane: Pane? { focusedPane }
 
@@ -497,6 +573,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
 
+    @objc func setColorScheme(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let scheme = ColorScheme(rawValue: raw) else { return }
+        var appearance = ws.appearance
+        appearance.colorScheme = scheme
+        server.send(.setAppearance(appearance))
+    }
+
+    @objc func setTheme(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let theme = FontTheme(rawValue: raw) else { return }
+        var appearance = ws.appearance
+        appearance.theme = theme
+        server.send(.setAppearance(appearance))
+    }
+
     @objc func setEditorFont(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let font = EditorFont(rawValue: raw) else { return }
         var appearance = ws.appearance
@@ -511,6 +601,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(setPutAwayAfter(_:)):
+            item.state = item.tag == ws.appearance.putAwayAfter ? .on : .off
+        case #selector(setColorScheme(_:)):
+            item.state = (item.representedObject as? String) == ws.appearance.colorScheme.rawValue ? .on : .off
+        case #selector(setTheme(_:)):
+            item.state = (item.representedObject as? String) == ws.appearance.theme.rawValue ? .on : .off
         case #selector(setEditorFont(_:)):
             item.state = (item.representedObject as? String) == ws.appearance.editorFont.rawValue ? .on : .off
         case #selector(setContrastCorrection(_:)):
@@ -539,12 +635,74 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if i < ws.tabs.count { server.send(.selectTab(ws.tabs[i].id)) }
     }
 
-    /// Brings the bottom of the focused column's stack to the top, so that
-    /// pressing it again and again goes through the whole stack.
+    // MARK: The stack switcher
+
+    private var switcher: StackSwitcherView?
+    private var switcherMonitors: [Any] = []
+
+    /// ⌘E: with ⌘ held, the focused stack's sheets side by side, the one
+    /// beneath the top chosen; more E's choose further down (⇧E back up),
+    /// and letting go of ⌘ raises the one chosen. Without ⌘ held (from the
+    /// menu, say), the bottom sheet comes straight to the top.
     @objc func cycleStack(_ sender: Any?) {
+        let back = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
+        if let switcher {
+            switcher.move(back ? 1 : -1)
+            return
+        }
         guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused),
               tab.columns[c].panes.count > 1, let bottom = tab.columns[c].panes.first else { return }
-        server.send(.focusPane(bottom.id))
+        guard NSEvent.modifierFlags.contains(.command) else {
+            server.send(.focusPane(bottom.id))
+            return
+        }
+        showSwitcher(column: tab.columns[c], back: back)
+    }
+
+    private func showSwitcher(column: Column, back: Bool) {
+        guard palette == nil, column.panes.count > 1, let top = column.top.flatMap({ views[$0.id] }) else { return }
+        let size = top.frame.size
+        let panes = column.panes.map { ($0, view(for: $0)) }
+        let s = StackSwitcherView(panes: panes, contentSize: size,
+                                  selection: back ? 0 : panes.count - 2)
+        s.onPick = { [weak self] _ in self?.closeSwitcher(commit: true) }
+        // Over the column alone; the others carry on beside it.
+        s.frame = content.frame(ofColumn: column.id).map { content.convert($0, to: root) } ?? root.bounds
+        root.addSubview(s, positioned: .above, relativeTo: content)
+        switcher = s
+        s.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.14
+            s.animator().alphaValue = 1
+        }
+        // Letting go of ⌘ chooses; Escape doesn't; nothing else gets typed.
+        switcherMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            if !event.modifierFlags.contains(.command) { self?.closeSwitcher(commit: true) }
+            return event
+        } as Any)
+        switcherMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 {
+                self?.closeSwitcher(commit: false)
+                return nil
+            }
+            return event.modifierFlags.contains(.command) ? event : nil
+        } as Any)
+    }
+
+    private func closeSwitcher(commit: Bool) {
+        guard let s = switcher else { return }
+        switcherMonitors.forEach(NSEvent.removeMonitor)
+        switcherMonitors = []
+        let chosen = s.selectedPane
+        switcher = nil
+        s.tearDown()
+        s.removeFromSuperview()
+        let top = selectedTab.flatMap { tab in tab.columns.first { $0.panes.contains { $0.id == chosen } }?.top?.id }
+        if commit, chosen != top {
+            server.send(.focusPane(chosen))
+        } else {
+            render()
+        }
     }
 
     @objc func nextPane(_ sender: Any?) { stepPane(1) }

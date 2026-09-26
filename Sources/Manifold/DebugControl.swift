@@ -189,6 +189,18 @@ enum DebugControl {
             guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
             tv.insertText(arg.replacingOccurrences(of: "\\n", with: "\n"), replacementRange: tv.selectedRange())
             return "ok"
+        case "scheme":
+            guard let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
+            let item = NSMenuItem()
+            item.representedObject = scheme.rawValue
+            wc?.setColorScheme(item)
+            return "ok"
+        case "theme":
+            guard let theme = FontTheme(rawValue: arg) else { return "mona, recursive, go or system" }
+            let item = NSMenuItem()
+            item.representedObject = theme.rawValue
+            wc?.setTheme(item)
+            return "ok"
         case "editorfont":
             guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
             let item = NSMenuItem()
@@ -228,6 +240,12 @@ enum DebugControl {
             let line = before.components(separatedBy: "\n").count
             let column = loc - (before as NSString).range(of: "\n", options: .backwards).location
             return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
+        case "putaway":
+            // "putaway <minutes>": as if every hidden sheet were last seen that long ago.
+            wc?.debugPutAway(agingBy: Double(arg) ?? 120)
+            return "ok"
+        case "switcher":
+            return wc?.debugSwitcher(arg) ?? "no window"
         case "chain":
             // The responder chain from the first responder.
             var r: NSResponder? = wc?.window?.firstResponder

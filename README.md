@@ -1,7 +1,7 @@
 # Manifold
 
 A Mac app for hosting many kinds of views. For now: terminals, drawn by
-[libghostty](https://github.com/ghostty-org/ghostty), in light colors and
+[libghostty](https://github.com/ghostty-org/ghostty), light or dark, in
 [Monaspace](https://monaspace.githubnext.com) (Xenon, with Radon for italics),
 which is bundled with the app.
 
@@ -19,8 +19,14 @@ which is bundled with the app.
 - A tab is a row of columns, and each column is a **stack**: only its top
   pane shows, with the edges of the ones beneath peeking out above it like a
   stack of paper. Hover the edges to list them, click one to raise it (click
-  the edges to raise the one just beneath); ⌘E cycles through the stack;
-  ⌘W pops the top.
+  the edges to raise the one just beneath); ⌘W pops the top.
+- **⌘E** lays the focused stack's sheets out side by side in its column, live, as iOS's
+  app switcher does, the one beneath the top chosen; more E's choose further
+  down (⇧E back up), and letting go of ⌘ brings the chosen one to the top
+  (Escape leaves things be).
+- Sheets are meant to be many and cheap: one not seen for an hour, with
+  nothing unsaved, is put away (terminals never are). View ▸ Put Away Unused
+  Sheets changes how long, or turns it off.
 - Drag a sheet by its top edge (a lone pane's thin top band, or a stack's
   edges for its top sheet; a buried one by its row in the list): onto a
   column's middle to push it onto that stack, near a column's side for a new
@@ -73,6 +79,26 @@ a dot in the sidebar.
   nearest first (from git, respecting `.gitignore`, in a repository), or
   takes a path. It opens beside a terminal, or on a file's own stack.
 
+## Light and dark
+
+**View ▸ Appearance** follows the system (the default), or keeps to Light or
+Dark. Everything goes with it, as it switches: the window and sidebar, the
+editor, Markdown, and terminals, which take GitHub's dark palette on dark
+paper (and tell programs that ask, by mode 2031); contrast correction works
+against either.
+
+## Themes
+
+**View ▸ Theme** sets everything in a pair of fonts: terminals in its
+fixed-width font, the editor in either (View ▸ Editor Font), and Markdown in
+the proportional one with code in the fixed-width one. The themes are fixed:
+
+- **Mona** (the default): Mona Sans, and Monaspace Xenon with Radon italics
+  and stylistic sets 2, 3, 7 and 8.
+- **Recursive**: Recursive Sans and Recursive Mono (the Linear styles).
+- **Go**: Go and Go Mono.
+- **System**: SF and SF Mono (Terminal.app's copy, used in place).
+
 ## Contrast correction
 
 Programs pick their colors for dark terminals, so on light paper `fd`'s greens
@@ -113,7 +139,7 @@ commands, raw bytes for terminal I/O.
 
 ```
 scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds Frameworks/
-scripts/fetch-fonts.sh      # once: fetches Monaspace and Mona Sans into Frameworks/
+scripts/fetch-fonts.sh      # once: fetches Monaspace, Mona Sans, Recursive and Go into Frameworks/
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```

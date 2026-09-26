@@ -68,12 +68,12 @@ final class TabContentView: NSView, NSDraggingSource {
     /// The band at the top of a single pane that it's dragged by.
     static let grabBand: CGFloat = 6
     /// The hairline around sheets.
-    static func sheetEdge(hovered: Bool) -> NSColor { NSColor(white: 0, alpha: hovered ? 0.34 : 0.2) }
+    static func sheetEdge(hovered: Bool) -> NSColor { Theme.sheetEdge(hovered: hovered) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = Theme.windowBackground.cgColor
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         focusBar.wantsLayer = true
         focusBar.layer?.backgroundColor = Theme.accent.cgColor
         dropOverlay.isHidden = true
@@ -99,7 +99,6 @@ final class TabContentView: NSView, NSDraggingSource {
             for v in panes where !views.contains(where: { $0 === v }) && !leaving.contains(where: { $0.view === v }) {
                 v.removeFromSuperview()
             }
-            for v in views where v.superview !== self { addSubview(v) }
             dividers.forEach { $0.removeFromSuperview() }
             dividers = (0..<max(0, views.count - 1)).map { i in
                 let d = DividerView()
@@ -109,6 +108,8 @@ final class TabContentView: NSView, NSDraggingSource {
             }
             dividers.forEach { addSubview($0) }
         }
+        // Views lent out (to the stack switcher, say) come back.
+        for v in views where v.superview !== self { addSubview(v, positioned: .below, relativeTo: dividers.first) }
         self.columns = columns
         self.fractions = fractions.count == columns.count
             ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
@@ -200,6 +201,11 @@ final class TabContentView: NSView, NSDraggingSource {
         CATransaction.commit()
     }
 
+    /// Where a column is, in this view's coordinates.
+    func frame(ofColumn id: UUID) -> NSRect? {
+        columns.firstIndex { $0.id == id }.map { columnFrames()[$0] }
+    }
+
     /// Room above a column's top card for the sheets beneath.
     private func sheetInset(_ i: Int) -> CGFloat {
         let n = min(columns[i].beneath.count, Self.maxSheets)
@@ -279,7 +285,7 @@ final class TabContentView: NSView, NSDraggingSource {
                 let top = cardTop + CGFloat(level + 1) * Self.sheetHeight
                 let sheet = NSRect(x: f.minX + inset, y: cardTop - 6, width: f.width - 2 * inset, height: top - (cardTop - 6))
                 let path = NSBezierPath(roundedRect: sheet, xRadius: Self.sheetRadius, yRadius: Self.sheetRadius)
-                NSColor(white: 0.935 - CGFloat(level) * 0.015, alpha: 1).setFill()
+                Theme.sheet(level: level).setFill()
                 path.fill()
                 Self.sheetEdge(hovered: hovered).setStroke()
                 path.lineWidth = 0.5
@@ -579,11 +585,13 @@ final class StackListView: NSView {
         }
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.995, alpha: 1).cgColor
+        themed {
+            $0.layer?.backgroundColor = Theme.panel.cgColor
+            $0.layer?.borderColor = Theme.panelBorder.cgColor
+        }
         layer?.cornerRadius = 9
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor(white: 0, alpha: 0.12).cgColor
         shadow = {
             let s = NSShadow()
             s.shadowColor = NSColor(white: 0, alpha: 0.16)

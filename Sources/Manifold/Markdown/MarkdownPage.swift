@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldCore
 
 /// The page Markdown is shown in: a shell with the styles, into which each
 /// rendering is put by `script`, so the page (and its scroll position)
@@ -47,6 +48,30 @@ enum MarkdownPage {
             ("Monaspace Xenon", "MonaspaceXenon-Bold.otf", 700, "normal"),
             ("Monaspace Xenon", "MonaspaceRadon-Italic.otf", 400, "italic"),
             ("Monaspace Xenon", "MonaspaceXenon-BoldItalic.otf", 700, "italic"),
+            ("Mona Sans", "MonaSans-Regular.otf", 400, "normal"),
+            ("Mona Sans", "MonaSans-Italic.otf", 400, "italic"),
+            ("Mona Sans", "MonaSans-Medium.otf", 500, "normal"),
+            ("Mona Sans", "MonaSans-SemiBold.otf", 600, "normal"),
+            ("Mona Sans", "MonaSans-Bold.otf", 700, "normal"),
+            ("Mona Sans", "MonaSans-BoldItalic.otf", 700, "italic"),
+        ] + ["Sans", "Mono"].flatMap { kind -> [(String, String, Int, String)] in [
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Regular.otf", 400, "normal"),
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Italic.otf", 400, "italic"),
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Med.otf", 500, "normal"),
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-SemiBold.otf", 600, "normal"),
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Bold.otf", 700, "normal"),
+            ("Recursive \(kind)", "Recursive\(kind)LnrSt-BoldItalic.otf", 700, "italic"),
+        ] } + [
+            ("Go", "Go-Regular.ttf", 400, "normal"),
+            ("Go", "Go-Italic.ttf", 400, "italic"),
+            ("Go", "Go-Medium.ttf", 500, "normal"),
+            ("Go", "Go-Bold.ttf", 600, "normal"),
+            ("Go", "Go-Bold.ttf", 700, "normal"),
+            ("Go", "Go-Bold-Italic.ttf", 700, "italic"),
+            ("Go Mono", "Go-Mono.ttf", 400, "normal"),
+            ("Go Mono", "Go-Mono-Italic.ttf", 400, "italic"),
+            ("Go Mono", "Go-Mono-Bold.ttf", 700, "normal"),
+            ("Go Mono", "Go-Mono-Bold-Italic.ttf", 700, "italic"),
         ]
         return faces.map { family, file, weight, style in
             """
@@ -56,17 +81,30 @@ enum MarkdownPage {
         }.joined(separator: "\n")
     }
 
+    /// The theme's fonts, as the CSS variables the page is set in.
+    static func themeVariables(_ theme: FontTheme) -> String {
+        let css = theme.css
+        return "--sans: \(css.sans); --mono: \(css.mono); --mono-features: \(css.features);"
+    }
+
+    /// Script that sets the page in `theme`'s fonts.
+    static func themeScript(_ theme: FontTheme) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: [themeVariables(theme)])
+        let json = String(decoding: data, as: UTF8.self).dropFirst().dropLast()
+        return "document.documentElement.style.cssText = \(json);"
+    }
+
     private static var html: String {
         """
         <!doctype html>
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
         \(fontFaces)
-        :root { color-scheme: light; }
+        :root { color-scheme: light dark; \(themeVariables(.mona)) }
         html { background: #fcfcfb; }
         body {
           margin: 0; color: #24292f;
-          font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          font: 15px/1.6 var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
           -webkit-font-smoothing: antialiased; word-wrap: break-word;
         }
         main { max-width: 780px; margin: 0 auto; padding: 28px 40px 96px; }
@@ -81,8 +119,8 @@ enum MarkdownPage {
         ul:has(> li > input[type=checkbox]) { list-style: none; }
         a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
-          font-family: "Monaspace Xenon", Menlo, monospace; font-size: 0.86em;
-          font-feature-settings: "calt", "ss02", "ss03", "ss07", "ss08";
+          font-family: var(--mono), ui-monospace, Menlo, monospace; font-size: 0.86em;
+          font-feature-settings: var(--mono-features);
         }
         :not(pre) > code { background: #eff0ee; padding: 0.12em 0.35em; border-radius: 4px; }
         pre { background: #f3f3f1; padding: 12px 14px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
@@ -97,6 +135,22 @@ enum MarkdownPage {
         .footnotes { font-size: 0.9em; color: #57606a; }
         .missing { color: #a40e26; }
         ::selection { background: #cfe2fb; }
+        @media (prefers-color-scheme: dark) {
+          html { background: #1c1c1b; }
+          body { color: #e3e3df; }
+          h1 { border-bottom-color: #3a3a38; } h2 { border-bottom-color: #333331; }
+          h5, h6, blockquote, .footnotes { color: #9d9d98; }
+          a { color: #58a6ff; }
+          :not(pre) > code { background: #2c2c2a; }
+          pre { background: #252524; }
+          blockquote { border-left-color: #444441; }
+          th, td { border-color: #3a3a38; } th { background: #262625; }
+          tr:nth-child(2n) td { background: #212120; }
+          hr { border-top-color: #3a3a38; }
+          del { color: #8b8b86; }
+          .missing { color: #ff7b72; }
+          ::selection { background: #264f78; }
+        }
         </style></head>
         <body><main id="content"></main></body></html>
         """

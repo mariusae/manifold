@@ -1,8 +1,9 @@
 #!/bin/sh
-# Fetches the fonts the app bundles (both SIL Open Font License): Monaspace,
+# Fetches the fonts the app bundles (SIL Open Font License, bar Go): Monaspace,
 # into Frameworks/monaspace, only the four faces a terminal uses of each of
 # its five families; and Mona Sans, the editor's proportional font, into
-# Frameworks/monasans. Files already there are kept.
+# Frameworks/monasans; and Recursive and Go, for their themes. Files already
+# there are kept.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -36,3 +37,26 @@ for face in Regular Italic Medium SemiBold Bold BoldItalic; do
 done
 github_file github/mona-sans $mona OFL.txt "$out/OFL.txt"
 echo "fetched $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
+
+# Recursive (OFL), its Linear statics, for the Recursive theme.
+rec=v1.085
+dir=fonts/ArrowType-Recursive-1.085/Recursive_Desktop/separate_statics/OTF
+out=Frameworks/recursive
+mkdir -p "$out"
+for kind in Sans Mono; do
+  for face in Regular Italic Med SemiBold Bold BoldItalic; do
+    github_file arrowtype/recursive $rec "$dir/Recursive${kind}LnrSt-$face.otf" "$out/Recursive${kind}LnrSt-$face.otf"
+  done
+done
+github_file arrowtype/recursive $rec OFL.txt "$out/OFL.txt"
+echo "fetched $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
+
+# Go (BSD), for the Go theme.
+go=v0.46.0
+out=Frameworks/gofont
+mkdir -p "$out"
+for face in Regular Italic Medium Bold Bold-Italic Mono Mono-Italic Mono-Bold Mono-Bold-Italic; do
+  github_file golang/image $go "font/gofont/ttfs/Go-$face.ttf" "$out/Go-$face.ttf"
+done
+github_file golang/image $go LICENSE "$out/LICENSE"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"

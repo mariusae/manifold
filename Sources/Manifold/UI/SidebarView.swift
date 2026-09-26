@@ -55,7 +55,7 @@ final class SidebarView: NSView {
         card.layer?.cornerCurve = .continuous
         card.layer?.masksToBounds = true
         card.layer?.borderWidth = 0.5
-        card.layer?.borderColor = NSColor(white: 0, alpha: 0.08).cgColor
+        card.themed { $0.layer?.borderColor = Theme.cardBorder.cgColor }
         addSubview(card)
 
         card.addSubview(header)
@@ -205,7 +205,7 @@ final class ResizeHandleView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         pill.wantsLayer = true
-        pill.layer?.backgroundColor = NSColor(white: 0, alpha: 0.22).cgColor
+        pill.themed { $0.layer?.backgroundColor = Theme.handle.cgColor }
         pill.layer?.cornerRadius = 1.5
         pill.alphaValue = 0
         addSubview(pill)
@@ -379,10 +379,10 @@ final class TabRowView: NSView, NSDraggingSource {
         closeButton.toolTip = "Close Tab"
         unsplitButton.toolTip = "Separate Columns"
         editedDot.wantsLayer = true
-        editedDot.layer?.backgroundColor = Theme.secondaryText.cgColor
+        editedDot.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
         editedDot.layer?.cornerRadius = 3.5
         for v in [icon, badge, title, unsplitButton, closeButton, editedDot] { addSubview(v) }
-        updateAppearance()
+        themed { $0.updateAppearance() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -418,6 +418,10 @@ final class TabRowView: NSView, NSDraggingSource {
     }
 
     private func updateAppearance() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { updateColors() }
+    }
+
+    private func updateColors() {
         let split = paneCount > 1
         icon.isHidden = split
         badge.isHidden = !split
@@ -531,7 +535,16 @@ final class NewTabRowView: NSView {
     private let plus = NSImageView()
     private lazy var more = IconButton(symbol: "ellipsis", size: 12, weight: .medium, target: self, action: #selector(moreClicked))
     private var hovering = false {
-        didSet { layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor }
+        didSet {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
+            }
+        }
+    }
+    // Only ever hovered briefly; not hovered after a switch.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        hovering = false
     }
 
     override init(frame: NSRect) {

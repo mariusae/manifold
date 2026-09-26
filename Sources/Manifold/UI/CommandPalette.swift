@@ -29,14 +29,15 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.9, alpha: 0.35).cgColor
-
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = NSColor(white: 0.995, alpha: 1).cgColor
+        themed {
+            $0.layer?.backgroundColor = Theme.scrim.cgColor
+            $0.panel.layer?.backgroundColor = Theme.panel.cgColor
+            $0.panel.layer?.borderColor = Theme.panelBorder.cgColor
+        }
         panel.layer?.cornerRadius = 12
         panel.layer?.cornerCurve = .continuous
         panel.layer?.borderWidth = 0.5
-        panel.layer?.borderColor = NSColor(white: 0, alpha: 0.12).cgColor
         panel.shadow = {
             let s = NSShadow()
             s.shadowColor = NSColor(white: 0, alpha: 0.2)

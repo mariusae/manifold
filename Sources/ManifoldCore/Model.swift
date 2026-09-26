@@ -41,25 +41,50 @@ public struct WindowState: Codable, Equatable, Sendable {
     }
 }
 
-/// How terminals are colored.
+/// How things look: the theme's fonts, and how terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
+    public var theme: FontTheme = .mona
+    public var colorScheme: ColorScheme = .system
     public var contrastCorrection: ContrastCorrection = .deuteranopia
     public var editorFont: EditorFont = .proportional
+    /// Minutes after which a sheet unseen, and with nothing unsaved, is put
+    /// away (terminals aren't); 0 never does.
+    public var putAwayAfter: Int = 60
 
-    public init(contrastCorrection: ContrastCorrection = .deuteranopia, editorFont: EditorFont = .proportional) {
+    public init(theme: FontTheme = .mona, colorScheme: ColorScheme = .system,
+                contrastCorrection: ContrastCorrection = .deuteranopia,
+                editorFont: EditorFont = .proportional, putAwayAfter: Int = 60) {
+        self.theme = theme
+        self.colorScheme = colorScheme
         self.contrastCorrection = contrastCorrection
         self.editorFont = editorFont
+        self.putAwayAfter = putAwayAfter
     }
 
     // Settings saved before a setting existed get its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .mona
+        colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = try c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection) ?? .deuteranopia
         editorFont = try c.decodeIfPresent(EditorFont.self, forKey: .editorFont) ?? .proportional
+        putAwayAfter = try c.decodeIfPresent(Int.self, forKey: .putAwayAfter) ?? 60
     }
 }
 
-/// The editor's text: Mona Sans, or Monaspace Xenon.
+/// The fonts everything is set in, a proportional one and a fixed-width
+/// one, chosen together: Mona Sans and Monaspace, Recursive Sans and Mono,
+/// Go and Go Mono, or SF and SF Mono. Fixed, not configurable.
+public enum FontTheme: String, Codable, CaseIterable, Sendable {
+    case mona, recursive, go, system
+}
+
+/// Light or dark: as the system is, or always one.
+public enum ColorScheme: String, Codable, CaseIterable, Sendable {
+    case system, light, dark
+}
+
+/// The editor's text: the theme's proportional font, or its fixed-width one.
 public enum EditorFont: String, Codable, CaseIterable, Sendable {
     case proportional, monospaced
 }

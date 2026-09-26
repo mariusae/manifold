@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
-[ -d Frameworks/monaspace ] && [ -d Frameworks/monasans ] || scripts/fetch-fonts.sh
+for d in monaspace monasans recursive gofont; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -24,6 +24,9 @@ mkdir -p "$app/Contents/Resources/Fonts"
 cp Frameworks/monaspace/* "$app/Contents/Resources/Fonts/"
 cp Frameworks/monasans/*.otf "$app/Contents/Resources/Fonts/"
 cp Frameworks/monasans/OFL.txt "$app/Contents/Resources/Fonts/MonaSans-OFL.txt"
+cp Frameworks/recursive/*.otf Frameworks/gofont/*.ttf "$app/Contents/Resources/Fonts/"
+cp Frameworks/recursive/OFL.txt "$app/Contents/Resources/Fonts/Recursive-OFL.txt"
+cp Frameworks/gofont/LICENSE "$app/Contents/Resources/Fonts/Go-LICENSE"
 
 # The icon is drawn by a script, and only redrawn when the script changes.
 if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ]; then

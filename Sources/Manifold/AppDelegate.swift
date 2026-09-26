@@ -10,6 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGPIPE, SIG_IGN)
         _ = GhosttyRuntime.shared
         NSApp.mainMenu = makeMainMenu()
+        AppearanceWatcher.shared.start()
+        NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
+            [weak self] _ in
+            guard let self else { return }
+            GhosttyRuntime.shared.apply(self.server.workspace.appearance, dark: NSApp.effectiveAppearance.isDark)
+        }
 
         server.onState = { [weak self] ws in self?.stateChanged(ws) }
         server.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
@@ -18,7 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stateChanged(_ ws: Workspace) {
-        GhosttyRuntime.shared.apply(ws.appearance)
+        let scheme = ws.appearance.colorScheme.appearance
+        if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
+        GhosttyRuntime.shared.apply(ws.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
             let wc = MainWindowController(server: server)
             windowController = wc
@@ -157,6 +165,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let view = submenu(main, "View")
         item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
         view.addItem(.separator())
+        let schemes = NSMenu(title: "Appearance")
+        for scheme in ColorScheme.allCases {
+            item(schemes, scheme.title, #selector(MainWindowController.setColorScheme(_:)), "", [])
+                .representedObject = scheme.rawValue
+            if scheme == .system { schemes.addItem(.separator()) }
+        }
+        let schemesItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+        schemesItem.submenu = schemes
+        view.addItem(schemesItem)
+        let themes = NSMenu(title: "Theme")
+        for theme in FontTheme.allCases {
+            item(themes, "\(theme.title) (\(theme.proportionalName), \(theme.monospacedName))",
+                 #selector(MainWindowController.setTheme(_:)), "", []).representedObject = theme.rawValue
+        }
+        let themesItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        themesItem.submenu = themes
+        view.addItem(themesItem)
         let contrast = NSMenu(title: "Contrast Correction")
         for (mode, title) in [(ContrastCorrection.off, "Off"),
                               (.typical, "For Typical Vision"),
@@ -168,13 +193,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         contrastItem.submenu = contrast
         view.addItem(contrastItem)
         let fonts = NSMenu(title: "Editor Font")
-        for (font, title) in [(EditorFont.proportional, "Proportional (Mona Sans)"),
-                              (.monospaced, "Fixed Width (Monaspace Xenon)")] {
+        for (font, title) in [(EditorFont.proportional, "Proportional"), (.monospaced, "Fixed Width")] {
             item(fonts, title, #selector(MainWindowController.setEditorFont(_:)), "", []).representedObject = font.rawValue
         }
         let fontsItem = NSMenuItem(title: "Editor Font", action: nil, keyEquivalent: "")
         fontsItem.submenu = fonts
         view.addItem(fontsItem)
+        let putAway = NSMenu(title: "Put Away Unused Sheets")
+        for (minutes, title) in [(15, "After 15 Minutes"), (60, "After an Hour"), (240, "After 4 Hours"),
+                                 (1440, "After a Day"), (0, "Never")] {
+            item(putAway, title, #selector(MainWindowController.setPutAwayAfter(_:)), "", []).tag = minutes
+        }
+        let putAwayItem = NSMenuItem(title: "Put Away Unused Sheets", action: nil, keyEquivalent: "")
+        putAwayItem.submenu = putAway
+        view.addItem(putAwayItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")
