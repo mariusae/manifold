@@ -11,6 +11,9 @@ protocol SidebarDelegate: AnyObject {
     func sidebarTogglePinned()
     func sidebarMoreMenu() -> NSMenu
     func sidebarDragChanged(_ dragging: Bool)
+    /// The resize handle was dragged to make the sidebar this wide.
+    func sidebarResize(to width: CGFloat)
+    func sidebarResizeEnded()
 }
 
 class FlippedView: NSView {
@@ -23,6 +26,7 @@ final class SidebarView: NSView {
     private let card = NSVisualEffectView()
     private let pinButton: IconButton
     private let header = WindowDragView()
+    private let resizeHandle = ResizeHandleView()
     private let scroll = NSScrollView()
     private let list = TabListView()
     private let newTabRow = NewTabRowView()
@@ -55,7 +59,7 @@ final class SidebarView: NSView {
         card.addSubview(header)
         pinButton.target = self
         pinButton.action = #selector(togglePinned)
-        pinButton.toolTip = "Keep Sidebar Open (⌘S)"
+        pinButton.toolTip = "Show Sidebar (⌃⌘S)"
         card.addSubview(pinButton)
 
         scroll.drawsBackground = false
@@ -74,6 +78,13 @@ final class SidebarView: NSView {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         }
         list.addSubview(newTabRow)
+
+        resizeHandle.onDrag = { [weak self] x in
+            guard let self, let superview = self.superview else { return }
+            self.delegate?.sidebarResize(to: superview.convert(NSPoint(x: x, y: 0), from: nil).x - self.frame.minX)
+        }
+        resizeHandle.onEnd = { [weak self] in self?.delegate?.sidebarResizeEnded() }
+        addSubview(resizeHandle)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -84,12 +95,14 @@ final class SidebarView: NSView {
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight)
+        resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
         layoutRows()
     }
 
     private func updateChrome() {
         layer?.shadowOpacity = pinned ? 0 : 0.16
         pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
+        pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
     }
 
     func update(tabs: [Tab], selected: UUID?) {
@@ -166,6 +179,56 @@ final class SidebarView: NSView {
         guard let from = order.firstIndex(of: id) else { return }
         let to = from < index ? index - 1 : index
         if to != from { delegate?.sidebarMove(id, to: to) }
+    }
+}
+
+/// The sidebar's right edge, which resizes it: a pill shows on hover.
+final class ResizeHandleView: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+    private let pill = NSView()
+    private var hovering = false { didSet { updatePill() } }
+    private var dragging = false { didSet { updatePill() } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = NSColor(white: 0, alpha: 0.22).cgColor
+        pill.layer?.cornerRadius = 1.5
+        pill.alphaValue = 0
+        addSubview(pill)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        pill.frame = NSRect(x: bounds.width - 5, y: (bounds.height - 36) / 2, width: 3, height: 36)
+    }
+
+    private func updatePill() {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            pill.animator().alphaValue = hovering || dragging ? 1 : 0
+        }
+    }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) { dragging = true }
+    override func mouseDragged(with event: NSEvent) { onDrag?(event.locationInWindow.x) }
+
+    override func mouseUp(with event: NSEvent) {
+        dragging = false
+        onEnd?()
     }
 }
 

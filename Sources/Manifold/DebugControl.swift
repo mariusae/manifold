@@ -11,6 +11,7 @@ import ManifoldCore
 ///   action <selector>    send an action (e.g. "newTab:") to the responder chain
 ///   text <string>        type into the focused terminal
 ///   sidebar show|hide    reveal or hide the floating sidebar
+///   sidebar width <n>    resize the sidebar, as its handle would
 ///   contrast <mode>      set contrast correction (off, typical, deuteranopia)
 ///   focus                render as focused, without activating the app
 ///   dump                 describe the window's views
@@ -82,6 +83,12 @@ enum DebugControl {
             }
             return "ok"
         case "sidebar":
+            if arg.hasPrefix("width "), let w = Double(arg.dropFirst(6)) {
+                // As if the resize handle were dragged there and let go.
+                wc?.sidebarResize(to: CGFloat(w))
+                wc?.sidebarResizeEnded()
+                return "ok"
+            }
             wc?.debugSidebar(show: arg == "show")
             return "ok"
         case "hittest":

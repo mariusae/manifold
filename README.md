@@ -9,8 +9,9 @@ which is bundled with the app.
 
 - The window is all content. Move the mouse to its left edge and the sidebar
   slides out over it: the window buttons, your tabs, and **New Tab**. It slides
-  away again when the mouse leaves. ⌘S (or the button at its top right) keeps
-  it open; drag its top to move the window.
+  away again when the mouse leaves. ⌃⌘S (or the button at its top right) shows
+  or hides it for good; drag its right edge to resize it, and its top to move
+  the window.
 - **New Tab** (⌘T) opens the palette: open a terminal, or type to find a tab.
   ⌥⌘T opens a terminal directly.
 - Drag a tab from the sidebar onto the window to show it beside the current

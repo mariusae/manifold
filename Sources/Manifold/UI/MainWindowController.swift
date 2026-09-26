@@ -19,7 +19,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var hideWork: DispatchWorkItem?
     private var saveFrameWork: DispatchWorkItem?
 
+    /// The sidebar's width while its handle is being dragged.
+    private var resizingWidth: CGFloat?
+
     private var ws: Workspace { server.workspace }
+    private var sidebarWidth: CGFloat {
+        let w = resizingWidth ?? ws.window.sidebarWidth.map { CGFloat($0) } ?? Theme.sidebarWidth
+        return min(max(w, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
+    }
     private var selectedTab: Tab? { ws.tab(ws.selectedTab) }
     private var pinned: Bool { ws.window.sidebarPinned }
 
@@ -132,7 +139,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func layoutViews() {
         let b = root.bounds
-        let w = Theme.sidebarWidth, inset = Theme.sidebarInset
+        let w = sidebarWidth, inset = Theme.sidebarInset
         let sidebarFrame = NSRect(x: sidebarShown ? inset : -w - 20, y: inset, width: w, height: b.height - 2 * inset)
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + 2 * inset : 0
@@ -142,14 +149,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Sidebar
 
+    /// How far past its edge the mouse may stray before the floating sidebar
+    /// goes, and how long after that it goes.
+    private static let sidebarSlack: CGFloat = 8
+    private static let sidebarHideDelay: TimeInterval = 0.1
+
     private func mouseMoved(to p: NSPoint) {
         guard !pinned, palette == nil || palette?.dismissable == true else { return }
         if p.x <= 6 && p.y >= 0 && p.y <= root.bounds.height {
             hideWork?.cancel()
             showSidebar(animated: true)
-        } else if sidebarShown && p.x > sidebar.frame.maxX + 24 {
+        } else if sidebarShown && p.x > sidebar.frame.maxX + Self.sidebarSlack {
             scheduleHide()
-        } else if sidebarShown && sidebar.frame.insetBy(dx: -24, dy: -24).contains(p) {
+        } else if sidebarShown && sidebar.frame.insetBy(dx: -Self.sidebarSlack, dy: -Self.sidebarSlack).contains(p) {
             hideWork?.cancel()
         }
     }
@@ -160,7 +172,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         sidebar.isHidden = false
         root.addSubview(sidebar, positioned: .above, relativeTo: content)
         if let palette { root.addSubview(palette, positioned: .above, relativeTo: sidebar) }
-        let target = NSRect(x: Theme.sidebarInset, y: Theme.sidebarInset, width: Theme.sidebarWidth,
+        let target = NSRect(x: Theme.sidebarInset, y: Theme.sidebarInset, width: sidebarWidth,
                             height: root.bounds.height - 2 * Theme.sidebarInset)
         if animated {
             sidebar.frame = target.offsetBy(dx: -24, dy: 0)
@@ -179,19 +191,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func scheduleHide() {
-        guard sidebarShown, !pinned, !draggingTab else { return }
+        guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil else { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.hideSidebar() }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarHideDelay, execute: work)
     }
 
-    private func hideSidebar() {
-        guard sidebarShown, !pinned, !draggingTab, NSApp.modalWindow == nil, window?.attachedSheet == nil else { return }
+    /// Hides the floating sidebar, unless something's still using it; `force`
+    /// hides it even with the mouse over it (when asked to by ⌃⌘S).
+    private func hideSidebar(force: Bool = false) {
+        guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil,
+              NSApp.modalWindow == nil, window?.attachedSheet == nil else { return }
         // Not while a menu from it is open, or the mouse is back over it.
-        if let window {
+        if let window, !force {
             let p = root.convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            if sidebar.frame.insetBy(dx: -24, dy: -24).contains(p) && window.isKeyWindow
+            if sidebar.frame.insetBy(dx: -Self.sidebarSlack, dy: -Self.sidebarSlack).contains(p) && window.isKeyWindow
                 && NSEvent.pressedMouseButtons == 0 && root.bounds.contains(p) { return }
         }
         sidebarShown = false
@@ -366,7 +381,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case #selector(setContrastCorrection(_:)):
             item.state = (item.representedObject as? String) == ws.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(togglePinnedSidebar(_:)):
-            item.state = pinned ? .on : .off
+            item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
         default:
             break
         }
@@ -469,7 +484,8 @@ extension MainWindowController: SidebarDelegate {
             showSidebar(animated: false)
             setTrafficLights(visible: true, animated: true)
         } else {
-            scheduleHide()
+            hideWork?.cancel()
+            hideSidebar(force: true)
         }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
@@ -481,13 +497,31 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarMoreMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Keep Sidebar Open") { [weak self] in self?.sidebarTogglePinned() })
+        menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar") { [weak self] in self?.sidebarTogglePinned() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Show State File in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting([Paths.state])
         })
         menu.addItem(ClosureMenuItem("End All Sessions and Quit…") { [weak self] in self?.stopServer(nil) })
         return menu
+    }
+
+    func sidebarResize(to width: CGFloat) {
+        resizingWidth = min(max(width.rounded(), Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
+        hideWork?.cancel()
+        layoutViews()
+    }
+
+    func sidebarResizeEnded() {
+        guard let width = resizingWidth else { return }
+        var state = ws.window
+        state.sidebarWidth = Double(width)
+        resizingWidth = nil
+        if state != ws.window { server.send(.setWindow(state)) }
+        layoutViews()
+        if let window {
+            mouseMoved(to: root.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        }
     }
 
     func sidebarDragChanged(_ dragging: Bool) {

@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
         let view = submenu(main, "View")
-        item(view, "Keep Sidebar Open", #selector(MainWindowController.togglePinnedSidebar(_:)), "s")
+        item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
         view.addItem(.separator())
         let contrast = NSMenu(title: "Contrast Correction")
         for (mode, title) in [(ContrastCorrection.off, "Off"),

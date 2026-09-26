@@ -31,10 +31,13 @@ public struct WindowState: Codable, Equatable, Sendable {
     /// x, y, width, height in screen coordinates.
     public var frame: [Double]?
     public var sidebarPinned = false
+    /// The sidebar's width, once it's been resized.
+    public var sidebarWidth: Double?
 
-    public init(frame: [Double]? = nil, sidebarPinned: Bool = false) {
+    public init(frame: [Double]? = nil, sidebarPinned: Bool = false, sidebarWidth: Double? = nil) {
         self.frame = frame
         self.sidebarPinned = sidebarPinned
+        self.sidebarWidth = sidebarWidth
     }
 }
 

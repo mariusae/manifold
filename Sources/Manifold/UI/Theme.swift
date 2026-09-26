@@ -3,6 +3,7 @@ import AppKit
 enum Theme {
     static let windowBackground = GhosttyRuntime.background
     static let sidebarWidth: CGFloat = 232
+    static let sidebarWidthRange: ClosedRange<CGFloat> = 180...480
     static let sidebarInset: CGFloat = 6
     static let rowHeight: CGFloat = 30
     static let text = NSColor(white: 0.13, alpha: 1)
