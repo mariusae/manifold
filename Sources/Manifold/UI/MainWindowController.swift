@@ -384,7 +384,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case "cancel": closeSwitcher(commit: false)
         default: return "show, next, prev, commit or cancel"
         }
-        return switcher.map { "choosing \($0.cards[$0.selection].pane.displayTitle)" } ?? "closed"
+        return switcher.map { "choosing \($0.cards[$0.selection].pane.displayTitle)" + ($0.isClosing ? " (closing)" : "") } ?? "closed"
     }
 
     var debugFocusedPane: Pane? { focusedPane }
@@ -670,11 +670,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         s.frame = content.frame(ofColumn: column.id).map { content.convert($0, to: root) } ?? root.bounds
         root.addSubview(s, positioned: .above, relativeTo: content)
         switcher = s
-        s.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.14
-            s.animator().alphaValue = 1
-        }
+        s.layoutSubtreeIfNeeded()
+        s.present()
         // Letting go of ⌘ chooses; Escape doesn't; nothing else gets typed.
         switcherMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             if !event.modifierFlags.contains(.command) { self?.closeSwitcher(commit: true) }
@@ -690,18 +687,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func closeSwitcher(commit: Bool) {
-        guard let s = switcher else { return }
+        guard let s = switcher, !s.isClosing else { return }
         switcherMonitors.forEach(NSEvent.removeMonitor)
         switcherMonitors = []
-        let chosen = s.selectedPane
-        switcher = nil
-        s.tearDown()
-        s.removeFromSuperview()
-        let top = selectedTab.flatMap { tab in tab.columns.first { $0.panes.contains { $0.id == chosen } }?.top?.id }
-        if commit, chosen != top {
-            server.send(.focusPane(chosen))
-        } else {
-            render()
+        let top = selectedTab.flatMap { tab in
+            tab.columns.first { $0.panes.contains { $0.id == s.selectedPane } }?.top?.id
+        }
+        let chosen = commit ? s.selectedPane : top ?? s.selectedPane
+        // The chosen sheet comes forward to fill the column, then is left
+        // there, as the top, for the server's word to confirm.
+        s.dismiss(to: chosen) { [weak self, weak s] in
+            guard let self, let s else { return }
+            self.switcher = nil
+            if chosen != top {
+                s.tearDown(keeping: chosen, in: self.content)
+                if let view = self.views[chosen] { self.content.arriveQuietly(view) }
+                s.removeFromSuperview()
+                self.server.send(.focusPane(chosen))
+            } else {
+                s.tearDown()
+                s.removeFromSuperview()
+                self.render()
+            }
         }
     }
 

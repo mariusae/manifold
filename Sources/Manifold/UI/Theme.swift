@@ -19,8 +19,15 @@ enum Theme {
     static let panelBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.12), NSColor(white: 1, alpha: 0.14))
     /// Over the window, behind the palette.
     static let scrim = NSColor.dynamic(NSColor(white: 0.9, alpha: 0.35), NSColor(white: 0, alpha: 0.3))
-    /// Behind the ⌘E switcher's cards.
-    static let switcherBackground = NSColor.dynamic(NSColor(white: 0.93, alpha: 1), NSColor(white: 0.08, alpha: 1))
+    /// Behind the ⌘E switcher's cards, top to bottom.
+    static let switcherTop = NSColor.dynamic(NSColor(white: 0.87, alpha: 1), NSColor(white: 0.27, alpha: 1))
+    static let switcherBottom = NSColor.dynamic(NSColor(srgbRed: 0.76, green: 0.79, blue: 0.84, alpha: 1),
+                                                NSColor(srgbRed: 0.25, green: 0.29, blue: 0.35, alpha: 1))
+    /// What the cards at the back fade into.
+    static let switcherFog = NSColor.dynamic(NSColor(srgbRed: 0.84, green: 0.85, blue: 0.87, alpha: 1),
+                                             NSColor(srgbRed: 0.12, green: 0.13, blue: 0.15, alpha: 1))
+    /// A switcher card's title bar.
+    static let switcherHeader = NSColor.dynamic(NSColor(white: 0.955, alpha: 1), NSColor(white: 0.2, alpha: 1))
     /// The sidebar card's edge.
     static let cardBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.1))
     /// The sidebar's resize handle.

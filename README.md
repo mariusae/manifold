@@ -20,10 +20,14 @@ which is bundled with the app.
   pane shows, with the edges of the ones beneath peeking out above it like a
   stack of paper. Hover the edges to list them, click one to raise it (click
   the edges to raise the one just beneath); ⌘W pops the top.
-- **⌘E** lays the focused stack's sheets out side by side in its column, live, as iOS's
-  app switcher does, the one beneath the top chosen; more E's choose further
-  down (⇧E back up), and letting go of ⌘ brings the chosen one to the top
-  (Escape leaves things be).
+- **⌘E** turns the focused stack into a file of cards, within its column,
+  live: the top sheet drops flat to the bottom and the one beneath it
+  stands up in front, leaning back, with the title bars of the rest behind
+  it. More E's flip further down (⇧E back up; scrolling works too), and
+  letting go of ⌘ brings the chosen one forward to the top (Escape leaves
+  things be).
+- Stacked columns keep their top sheets level with each other, however
+  many sheets each has beneath.
 - Sheets are meant to be many and cheap: one not seen for an hour, with
   nothing unsaved, is put away (terminals never are). View ▸ Put Away Unused
   Sheets changes how long, or turns it off.

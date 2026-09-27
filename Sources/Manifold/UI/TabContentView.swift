@@ -90,6 +90,12 @@ final class TabContentView: NSView, NSDraggingSource {
         var leaving: [(view: PaneContent, below: PaneContent)] = []
         for column in columns {
             guard let before = self.columns.first(where: { $0.id == column.id }), before.view !== column.view else { continue }
+            // Already brought to the top (by the stack switcher): no more
+            // to show, and the old top is out of sight.
+            if quietArrivals.contains(ObjectIdentifier(column.view)) {
+                before.view.removeFromSuperview()
+                continue
+            }
             arriving.append(column.view)
             if column.beneath.contains(where: { $0.id == before.view.pane }) {
                 leaving.append((before.view, column.view))
@@ -110,6 +116,7 @@ final class TabContentView: NSView, NSDraggingSource {
         }
         // Views lent out (to the stack switcher, say) come back.
         for v in views where v.superview !== self { addSubview(v, positioned: .below, relativeTo: dividers.first) }
+        quietArrivals = []
         self.columns = columns
         self.fractions = fractions.count == columns.count
             ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
@@ -153,6 +160,14 @@ final class TabContentView: NSView, NSDraggingSource {
     }
 
     // MARK: Moving through a stack
+
+    private var quietArrivals: Set<ObjectIdentifier> = []
+
+    /// `view`, about to become its column's top, is already in place (the
+    /// stack switcher left it there): it comes without being animated in.
+    func arriveQuietly(_ view: NSView) {
+        quietArrivals.insert(ObjectIdentifier(view))
+    }
 
     private static let stackAnimation = "manifold.stack"
 
@@ -206,9 +221,11 @@ final class TabContentView: NSView, NSDraggingSource {
         columns.firstIndex { $0.id == id }.map { columnFrames()[$0] }
     }
 
-    /// Room above a column's top card for the sheets beneath.
+    /// Room above a column's top card for the sheets beneath: the same for
+    /// every column, as much as the deepest stack needs, so their top cards
+    /// line up however many sheets each has beneath.
     private func sheetInset(_ i: Int) -> CGFloat {
-        let n = min(columns[i].beneath.count, Self.maxSheets)
+        let n = columns.map { min($0.beneath.count, Self.maxSheets) }.max() ?? 0
         return n == 0 ? 0 : CGFloat(n) * Self.sheetHeight + 2
     }
 
@@ -250,7 +267,10 @@ final class TabContentView: NSView, NSDraggingSource {
                                      height: inset + Self.stripReach)
                 strip.cardTop = Self.stripReach
             } else {
-                strip.frame = NSRect(x: f.minX, y: f.maxY - Self.grabBand, width: f.width, height: Self.grabBand)
+                // Lowered to line up with stacks beside it, it's edged as they are.
+                let top = f.maxY - sheetInset(strip.column)
+                strip.frame = NSRect(x: f.minX, y: top - Self.grabBand, width: f.width, height: Self.grabBand)
+                strip.cardTop = top < f.maxY ? Self.grabBand : 0
             }
         }
         if columns.count > 1, let i = columns.firstIndex(where: { $0.view.pane == focused }) {
@@ -514,7 +534,7 @@ final class StackStripView: NSView {
     /// The top sheet's edge, drawn here, over it, as it's the pane's own
     /// view below: a hairline over its rounded top, like the sheets'.
     override func draw(_ dirtyRect: NSRect) {
-        guard stacked else { return }
+        guard stacked || cardTop > 0 else { return }
         let r = TabContentView.sheetRadius
         let w = bounds.width, top = cardTop - 0.25
         let edge = NSBezierPath()
