@@ -147,7 +147,11 @@ final class GhosttyRuntime {
             DispatchQueue.main.async { GhosttyRuntime.shared.tick() }
         }
         runtime.action_cb = { app, target, action in
-            GhosttyRuntime.shared.handle(action: action, target: target)
+            // Not `shared`: this can come while `shared` is still being
+            // made (setting the color scheme below asks for a redraw).
+            guard let app, let userdata = ghostty_app_userdata(app) else { return false }
+            return Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
+                .handle(action: action, target: target)
         }
         runtime.read_clipboard_cb = { userdata, _, state in
             guard let view = TerminalView.from(userdata), let surface = view.surface else { return false }
