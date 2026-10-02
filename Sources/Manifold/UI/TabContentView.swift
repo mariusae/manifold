@@ -102,7 +102,10 @@ final class TabContentView: NSView, NSDraggingSource {
             }
         }
         if views.map(ObjectIdentifier.init) != panes.map(ObjectIdentifier.init) {
-            for v in panes where !views.contains(where: { $0 === v }) && !leaving.contains(where: { $0.view === v }) {
+            // (Only those still here: one may have gone on to another tab
+            // shown beside this one, sliding in.)
+            for v in panes where !views.contains(where: { $0 === v }) && !leaving.contains(where: { $0.view === v })
+                && v.superview === self {
                 v.removeFromSuperview()
             }
             dividers.forEach { $0.removeFromSuperview() }

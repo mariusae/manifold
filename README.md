@@ -44,6 +44,12 @@ which is bundled with the app.
 - Double-click a tab (or right-click it, or ⇧⌘R) to rename it. Drag tabs to
   reorder them. ⌘W closes the focused pane, ⇧⌘W the whole tab; ⌘1–9 and
   ⇧⌘[ / ⇧⌘] switch tabs.
+- **⌃⇥** walks the tabs most recently settled on first, each sliding in from
+  the right as the one it replaces slides out, live (⌃⇧⇥ the other way, from
+  the left), for as long as control is held; letting go settles on the one
+  come to. So one ⌃⇥ goes back to the last tab, and another comes back. The
+  tabs passed on the way don't count as settled on, and Escape goes back to
+  where the walk began.
 
 ## Markdown
 

@@ -6,7 +6,20 @@ import ManifoldCore
 final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let server: ServerClient
     private let root = RootView()
-    private let content = TabContentView()
+    /// The tab shown; and the one it replaced, while it slides away.
+    private var content = TabContentView()
+    private var outgoing = TabContentView()
+    /// The tab `content` shows, and which way the next one to be shown
+    /// slides in (1 from the right, -1 from the left), if it does.
+    private var shownTab: UUID?
+    private var pendingSlide: CGFloat?
+    private var sliding = false
+    /// Tabs most recently settled on first, for ⌃⇥; and the walk ⌃⇥ is on
+    /// while control is held: the tabs in that order as they were when it
+    /// began, and how far along it is.
+    private var settled: [UUID] = []
+    private var tabWalk: (tabs: [UUID], index: Int)?
+    private var tabWalkMonitors: [Any] = []
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     private var views: [UUID: PaneContent] = [:]
@@ -65,8 +78,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.layoutTrafficLights()
         }
         sidebar.delegate = self
-        content.delegate = self
-        content.paneInfo = { [weak self] id in self?.ws.pane(id) }
+        for c in [content, outgoing] {
+            c.delegate = self
+            c.paneInfo = { [weak self] id in self?.ws.pane(id) }
+        }
         sidebar.isHidden = true
 
         if let f = server.workspace.window.frame, f.count == 4 {
@@ -113,6 +128,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             view.destroy()
             views.removeValue(forKey: id)
         }
+
+        if ws.selectedTab != shownTab {
+            if let dir = pendingSlide, shownTab != nil, ws.selectedTab != nil, switcher == nil { slide(from: dir) }
+            shownTab = ws.selectedTab
+        }
+        pendingSlide = nil
+        if tabWalk == nil, let id = ws.selectedTab { noteSettled(id) }
 
         if let tab = selectedTab {
             let shown: [TabContentView.ColumnContent] = tab.columns.compactMap { column in
@@ -211,6 +233,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + 2 * inset : 0
         content.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
+        if sliding { outgoing.frame = content.frame }
         palette?.frame = b
     }
 
@@ -625,7 +648,115 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func stepTab(_ d: Int) {
         guard !ws.tabs.isEmpty else { return }
         let i = ws.selectedTab.flatMap(ws.tabIndex) ?? 0
-        server.send(.selectTab(ws.tabs[(i + d + ws.tabs.count) % ws.tabs.count].id))
+        show(tab: ws.tabs[(i + d + ws.tabs.count) % ws.tabs.count].id, slidingFrom: CGFloat(d))
+    }
+
+    /// Selects `tab`, which slides in from `dir`'s side over the one shown.
+    private func show(tab: UUID, slidingFrom dir: CGFloat) {
+        guard tab != ws.selectedTab else { return }
+        pendingSlide = dir
+        server.send(.selectTab(tab))
+    }
+
+    // MARK: ⌃⇥
+
+    /// ⌃⇥ (⌃⇧⇥ back): with control held, a walk through the tabs, most
+    /// recently settled on first, each shown at once sliding in from the
+    /// right (from the left, going back); letting go of control settles on
+    /// the one come to, so the first ⌃⇥ goes back to the last one settled
+    /// on, and another returns. The tabs passed on the way aren't settled
+    /// on; Escape goes back to where the walk began.
+    @objc func walkTabs(_ sender: Any?) { walkTabs(back: false) }
+    @objc func walkTabsBack(_ sender: Any?) { walkTabs(back: true) }
+
+    private func walkTabs(back: Bool) {
+        let live = Set(ws.tabs.map(\.id))
+        if tabWalk == nil {
+            guard let current = ws.selectedTab, ws.tabs.count > 1 else { return }
+            var order = [current]
+            for id in settled + ws.tabs.map(\.id) where live.contains(id) && !order.contains(id) { order.append(id) }
+            tabWalk = (order, 0)
+            if NSEvent.modifierFlags.contains(.control) { watchTabWalk() }
+        }
+        guard var walk = tabWalk else { return }
+        walk.tabs = walk.tabs.filter { live.contains($0) }
+        guard walk.tabs.count > 1 else { return endTabWalk(settling: true) }
+        let n = walk.tabs.count
+        walk.index = ((back ? walk.index - 1 : walk.index + 1) % n + n) % n
+        tabWalk = walk
+        show(tab: walk.tabs[walk.index], slidingFrom: back ? -1 : 1)
+        // From the menu, without control held, it's one step and settled.
+        if tabWalkMonitors.isEmpty { endTabWalk(settling: true) }
+    }
+
+    private func watchTabWalk() {
+        tabWalkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            if !event.modifierFlags.contains(.control) { self?.endTabWalk(settling: true) }
+            return event
+        } as Any)
+        tabWalkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event }
+            self?.endTabWalk(settling: false)
+            return nil
+        } as Any)
+    }
+
+    private func endTabWalk(settling: Bool) {
+        tabWalkMonitors.forEach(NSEvent.removeMonitor)
+        tabWalkMonitors = []
+        guard let walk = tabWalk else { return }
+        tabWalk = nil
+        if settling {
+            // Where the walk came to, whether or not the server has said so yet.
+            noteSettled(walk.tabs[walk.index])
+        } else if let home = walk.tabs.first {
+            show(tab: home, slidingFrom: -1)
+        }
+    }
+
+    private func noteSettled(_ id: UUID) {
+        guard settled.first != id else { return }
+        let live = Set(ws.tabs.map(\.id))
+        settled = [id] + settled.filter { $0 != id && live.contains($0) }
+    }
+
+    /// The tab about to be shown slides in from `dir`'s side over the one
+    /// shown, which slides out the other way, both live. Only their layers
+    /// move, so nothing is laid out again on the way.
+    private func slide(from dir: CGFloat) {
+        finishSlide()
+        let frame = content.frame
+        swap(&content, &outgoing)
+        content.frame = frame
+        root.addSubview(content, positioned: .above, relativeTo: outgoing)
+        guard let incoming = content.layer, let leaving = outgoing.layer else { return finishSlide() }
+        sliding = true
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in self?.finishSlide() }
+        let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.25, 1)
+        let move = { (layer: CALayer, from: CGFloat, to: CGFloat) in
+            let a = CABasicAnimation(keyPath: "transform")
+            a.fromValue = CATransform3DMakeTranslation(from, 0, 0)
+            a.toValue = CATransform3DMakeTranslation(to, 0, 0)
+            a.duration = 0.22
+            a.timingFunction = ease
+            a.fillMode = .forwards
+            a.isRemovedOnCompletion = false
+            layer.add(a, forKey: "manifold.slide")
+        }
+        move(incoming, dir * frame.width, 0)
+        move(leaving, 0, -dir * frame.width)
+        CATransaction.commit()
+    }
+
+    /// The tab slid away lets go of its panes (any still its own) and goes.
+    private func finishSlide() {
+        guard sliding else { return }
+        sliding = false
+        content.layer?.removeAnimation(forKey: "manifold.slide")
+        outgoing.layer?.removeAnimation(forKey: "manifold.slide")
+        outgoing.show([], fractions: [], focused: nil)
+        outgoing.removeFromSuperview()
     }
 
     @objc func selectTabByNumber(_ sender: NSMenuItem) {

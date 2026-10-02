@@ -223,8 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.addItem(.separator())
         item(window, "Show Next Tab", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
         item(window, "Show Previous Tab", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        item(window, "Show Next Tab", #selector(MainWindowController.nextTab(_:)), "\t", [.control]).isAlternate = false
-        item(window, "Show Previous Tab", #selector(MainWindowController.previousTab(_:)), "\t", [.control, .shift])
+        item(window, "Switch to Recent Tab", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
+        item(window, "Switch to Recent Tab, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
             item(window, n == 9 ? "Select Last Tab" : "Select Tab \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
