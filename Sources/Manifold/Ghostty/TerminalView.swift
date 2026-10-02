@@ -110,12 +110,18 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         viewDidChangeBackingProperties()
         if let surface { ghostty_surface_set_occlusion(surface, window != nil) }
+        syncFocus()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        syncFocus()
     }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
         if ok {
-            if let surface { ghostty_surface_set_focus(surface, true) }
+            setFocus(true)
             delegate?.terminalDidFocus(self)
         }
         return ok
@@ -123,8 +129,26 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
-        if ok, let surface { ghostty_surface_set_focus(surface, false) }
+        if ok { setFocus(false) }
         return ok
+    }
+
+    /// Whether ghostty thinks this terminal has the keyboard: a new surface
+    /// starts out thinking it has.
+    private var hasFocus = true
+
+    private func setFocus(_ focused: Bool) {
+        hasFocus = focused
+        if let surface { ghostty_surface_set_focus(surface, focused) }
+    }
+
+    /// Tells ghostty whether this terminal really has the keyboard. A view
+    /// taken out of its window (another tab shown, or lent to the stack
+    /// switcher) while it has it loses it without being asked to resign,
+    /// and would otherwise go on drawing its cursor as the focused one.
+    func syncFocus() {
+        let focused = window != nil && window?.firstResponder === self
+        if focused != hasFocus { setFocus(focused) }
     }
 
     // MARK: Mouse

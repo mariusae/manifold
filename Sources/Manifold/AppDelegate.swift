@@ -230,6 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         window.addItem(.separator())
         item(window, "Cycle Stack", #selector(MainWindowController.cycleStack(_:)), "e")
+        item(window, "Cycle Stack Backward", #selector(MainWindowController.cycleStackBack(_:)), "e", [.command, .shift])
         item(window, "Focus Next Pane", #selector(MainWindowController.nextPane(_:)), "]")
         item(window, "Focus Previous Pane", #selector(MainWindowController.previousPane(_:)), "[")
         item(window, "Move Pane to New Tab", #selector(MainWindowController.movePaneToNewTab(_:)), "")

@@ -150,6 +150,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false) {
                 window.makeFirstResponder(view.focusView)
             }
+            // Only the one with the keyboard draws its cursor as focused.
+            for case let t as TerminalView in views.values { t.syncFocus() }
         } else {
             content.show([], fractions: [], focused: nil)
             window.title = "Manifold"
@@ -771,12 +773,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var switcher: StackSwitcherView?
     private var switcherMonitors: [Any] = []
 
-    /// ⌘E: with ⌘ held, the focused stack's sheets side by side, the one
-    /// beneath the top chosen; more E's choose further down (⇧E back up),
-    /// and letting go of ⌘ raises the one chosen. Without ⌘ held (from the
-    /// menu, say), the bottom sheet comes straight to the top.
+    /// ⌘E: with ⌘ held, the focused stack's sheets as a file of cards, the
+    /// one beneath the top chosen; more E's choose further down (⇧E back
+    /// up), and letting go of ⌘ raises the one chosen. Without ⌘ held (from
+    /// the menu, say), the bottom sheet comes straight to the top (going
+    /// back, the one beneath the top).
     @objc func cycleStack(_ sender: Any?) {
-        let back = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
+        cycleStack(back: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+    }
+
+    /// ⇧⌘E: the same, the other way: up the stack, from the bottom.
+    @objc func cycleStackBack(_ sender: Any?) { cycleStack(back: true) }
+
+    private func cycleStack(back: Bool) {
         if let switcher {
             switcher.move(back ? 1 : -1)
             return
@@ -784,7 +793,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused),
               tab.columns[c].panes.count > 1, let bottom = tab.columns[c].panes.first else { return }
         guard NSEvent.modifierFlags.contains(.command) else {
-            server.send(.focusPane(bottom.id))
+            let panes = tab.columns[c].panes
+            server.send(.focusPane(back ? panes[panes.count - 2].id : bottom.id))
             return
         }
         showSwitcher(column: tab.columns[c], back: back)

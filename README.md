@@ -23,7 +23,8 @@ which is bundled with the app.
 - **⌘E** turns the focused stack into a file of cards, within its column,
   live: the top sheet drops flat to the bottom and the one beneath it
   stands up in front, leaning back, with the title bars of the rest behind
-  it. More E's flip further down (⇧E back up; scrolling works too), and
+  it. More E's flip further down (⇧E back up; scrolling works too; ⇧⌘E starts
+  from the bottom, going up), and
   letting go of ⌘ brings the chosen one forward to the top (Escape leaves
   things be).
 - Stacked columns keep their top sheets level with each other, however
