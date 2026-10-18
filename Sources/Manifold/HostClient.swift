@@ -167,6 +167,13 @@ final class HostClient {
         return id
     }
 
+    /// A search block on this host, looking already.
+    func newSearch(_ query: SearchQuery) -> BlockID {
+        let id = BlockID(host: host)
+        propose(.search(block: id, query: query))
+        return id
+    }
+
     /// A note: text with no file.
     func newNote() -> BlockID {
         let id = BlockID(host: host)

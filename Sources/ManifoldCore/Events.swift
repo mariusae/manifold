@@ -167,6 +167,13 @@ public enum Event: Codable, Equatable, Sendable {
     // Web.
     case url(String?, viaHost: Bool)
 
+    // Search.
+    /// A query asked: the hits so far go, and the host is looking.
+    case search(SearchQuery, at: Stamp)
+    /// Hits found, in order; `done` when the host has looked everywhere
+    /// (or stopped: `truncated`, or an `error`).
+    case hits([SearchHit], done: Bool, truncated: Bool, error: String?)
+
     // Arrangement.
     /// At column `column` (one past the last makes a new column), index
     /// `at` in it (past the end: on top).
@@ -234,7 +241,30 @@ extension Block {
         if terminal != nil { terminal!.apply(event, at: at) }
         if directory != nil { directory!.apply(event) }
         if web != nil { web!.apply(event) }
+        if search != nil { search!.apply(event) }
         if arrangement != nil { arrangement!.apply(event) }
+    }
+}
+
+extension SearchState {
+    public mutating func apply(_ event: Event) {
+        switch event {
+        case let .search(q, at):
+            query = q
+            hits = []
+            running = true
+            truncated = false
+            error = nil
+            ranAt = at
+        case let .hits(h, done, truncated, error):
+            hits.append(contentsOf: h)
+            if done {
+                running = false
+                self.truncated = truncated
+                self.error = error
+            }
+        default: break
+        }
     }
 }
 

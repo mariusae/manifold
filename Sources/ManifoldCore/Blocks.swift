@@ -154,6 +154,53 @@ public struct DirectoryState: Codable, Equatable, Sendable {
     public init() {}
 }
 
+// MARK: Search
+
+/// What to look for, where: text or a regular expression, in the files
+/// under a root on the block's host, those matching a glob if given.
+public struct SearchQuery: Codable, Equatable, Sendable {
+    public var text: String
+    public var regex: Bool
+    public var caseSensitive: Bool
+    public var root: String
+    public var glob: String?
+
+    public init(text: String, regex: Bool = false, caseSensitive: Bool = false, root: String, glob: String? = nil) {
+        self.text = text
+        self.regex = regex
+        self.caseSensitive = caseSensitive
+        self.root = root
+        self.glob = glob
+    }
+}
+
+/// A place the text was found: line and column from 1, the line's text.
+public struct SearchHit: Codable, Equatable, Sendable {
+    public var path: String
+    public var line: Int
+    public var column: Int
+    public var text: String
+
+    public init(path: String, line: Int, column: Int, text: String) {
+        self.path = path
+        self.line = line
+        self.column = column
+        self.text = text
+    }
+}
+
+/// A search block: the last query asked, and what the host found, as it
+/// found it. Asking again clears the hits.
+public struct SearchState: Codable, Equatable, Sendable {
+    public var query: SearchQuery?
+    public var hits: [SearchHit] = []
+    public var running = false
+    public var truncated = false
+    public var error: String?
+    public var ranAt: Stamp?
+    public init() {}
+}
+
 // MARK: Web
 
 public struct WebState: Codable, Equatable, Sendable {
@@ -261,6 +308,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var terminal: TerminalState?
     public var directory: DirectoryState?
     public var web: WebState?
+    public var search: SearchState?
     public var arrangement: ArrangementState?
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
@@ -274,6 +322,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .terminal: terminal = TerminalState()
         case .directory: directory = DirectoryState()
         case .web: web = WebState()
+        case .search: search = SearchState()
         case .arrangement: arrangement = ArrangementState()
         default: break
         }
@@ -285,6 +334,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let title, !title.isEmpty { return title }
         if let t = terminal?.title, !t.isEmpty { return t }
         if let t = web?.title, !t.isEmpty { return t }
+        if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
         if let path { return path.lastPathComponent }
         if kind == .arrangement, let a = arrangement, !a.isEmpty {
             return "Untitled"

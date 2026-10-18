@@ -160,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ] {
             item(find, title, #selector(NSTextView.performTextFinderAction(_:)), key, mods).tag = action.rawValue
         }
+        find.addItem(.separator())
+        item(find, "Find in Files…", #selector(MainWindowController.findInFiles(_:)), "f", [.command, .shift])
         let findItem = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
         findItem.submenu = find
         edit.addItem(findItem)

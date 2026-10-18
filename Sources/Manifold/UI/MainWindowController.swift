@@ -186,6 +186,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let e as EditorView in views.values { e.documentChanged() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
+            for case let s as SearchView in views.values { s.documentChanged() }
         } else {
             content.clear()
             window.title = "Manifold"
@@ -259,6 +260,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             d.delegate = self
             d.source = { [weak self] in self?.hosts.block(p.block) }
             v = d
+        case .search:
+            let s = SearchView(placement: p.id, block: p.block)
+            s.delegate = self
+            s.source = { [weak self] in self?.hosts.block(p.block) }
+            v = s
         case .web:
             let w = WebView(placement: p.id, block: p.block)
             w.delegate = self
@@ -614,6 +620,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         items.append(PaletteItem(symbol: "server.rack", title: "Attach to Host…", subtitle: "ssh user@host, or provider:name") { [weak self] in
             self?.attachToHost(nil)
+        })
+        items.append(PaletteItem(symbol: "magnifyingglass", title: "Find in Files…", subtitle: "⇧⌘F") { [weak self] in
+            self?.findInFiles(nil)
         })
         items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
             guard let self else { return }
@@ -1131,6 +1140,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .directory:
                 hay = block.path ?? title
                 detail = "Folder"
+            case .search:
+                hay = title + " " + (block.search?.query?.root ?? "")
+                detail = "Search in \(block.search?.query?.root.abbreviatingHome ?? "")"
             default:
                 hay = title
                 detail = block.kind.defaultTitle
@@ -1206,6 +1218,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } else {
             place(block, lens: .editor, beside: focusedShown?.id)
         }
+    }
+
+    /// Find in Files…: a search block on the focused block's host, under
+    /// its project (the nearest folder up with `.git`, else where it is),
+    /// starting from the editor's selection; placed beside what's focused.
+    @objc func findInFiles(_ sender: Any?) {
+        let on = focusedHost
+        var root = focusedCwd ?? NSHomeDirectory()
+        if on == host.host {
+            var dir = root
+            while dir.count > 1 {
+                if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git")) { root = dir; break }
+                dir = dir.deletingLastPathComponent
+            }
+        }
+        var text = ""
+        if let tv = window?.firstResponder as? TextView {
+            let selected = tv.selectedText
+            if !selected.isEmpty, !selected.contains("\n") { text = selected }
+        }
+        guard let client = hosts.client(on) else { return }
+        let block = client.newSearch(SearchQuery(text: text, root: root))
+        place(block, lens: .search, beside: focusedShown?.id)
+    }
+
+    /// Opens a file at a place (line and column from 1) beside a placement,
+    /// on the host the placement's block is on.
+    func open(path: String, line: Int, column: Int?, on: HostID, beside: PlacementID?) {
+        pendingJump = (path, line, column)
+        let block = hosts.textBlock(for: path, on: on)
+        if let beside, let from = shown(beside)?.placement.block { hosts.link(from: from, to: block, kind: .opened) }
+        place(block, lens: .editor, beside: beside)
     }
 
     func openDirectory(_ path: String, beside: PlacementID?) {
@@ -1789,6 +1833,20 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewRefresh(_ view: DirectoryView) {
         hosts.propose(.listDirectory(view.block))
+    }
+}
+
+extension MainWindowController: SearchViewDelegate {
+    func searchView(_ view: SearchView, run query: SearchQuery) {
+        hosts.propose(.search(block: view.block, query: query))
+    }
+
+    func searchView(_ view: SearchView, open hit: SearchHit) {
+        open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, beside: view.placement)
+    }
+
+    func searchViewCancel(_ view: SearchView) {
+        hosts.propose(.cancelSearch(block: view.block))
     }
 }
 

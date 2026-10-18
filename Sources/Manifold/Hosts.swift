@@ -112,7 +112,7 @@ final class Hosts {
     func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
         switch proposal {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
-             let .directory(block, _), let .listDirectory(block):
+             let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block):
             (client(of: block) ?? local).propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {

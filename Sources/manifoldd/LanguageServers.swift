@@ -44,7 +44,7 @@ final class LanguageServers {
     /// The server for a block's file, started if need be.
     private func server(for block: BlockID) -> LanguageServer? {
         guard let (_, path) = textOf(block), let path, let lang = LanguageServerConfig.language(for: path, in: configs) else { return nil }
-        let root = lang.root(of: path)
+        let root = Self.canonical(lang.root(of: path))
         let key = lang.id + "|" + root
         if let s = servers[key] { return s.failed ? nil : s }
         let s = LanguageServer(language: lang.id, command: lang.command, root: root, queue: queue)

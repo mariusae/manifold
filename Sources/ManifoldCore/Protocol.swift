@@ -120,6 +120,11 @@ public enum Proposal: Codable, Sendable {
     /// The text blocks placed in the client's arrangements: open with
     /// their language servers while they are.
     case editing([BlockID])
+    /// Look for something in files on the host, in a search block (made
+    /// if it's new); the hits come as entries.
+    case search(block: BlockID, query: SearchQuery)
+    /// Stop looking.
+    case cancelSearch(block: BlockID)
 }
 
 /// What a host asks the leader of a shard to append.

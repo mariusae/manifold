@@ -114,6 +114,13 @@ when you find it again.
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open in a listing (name, date, size); double-click an entry
   to open it, ⌘↑ for the folder above.
+- **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
+  selection if there is one) makes one on the focused block's host under
+  its project (the nearest folder up with `.git`), placed beside it; the
+  host runs `rg` (or `grep`) and the hits arrive grouped by file as they're
+  found, matches marked. ⏎ in the field asks again (Aa for case, .* for a
+  regular expression); ↓ then ⏎, or a double-click, opens the file at the
+  hit beside the results. A search is found again by its query in ⌘O.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: an address
   bar, back and forward, and its pages in its log.

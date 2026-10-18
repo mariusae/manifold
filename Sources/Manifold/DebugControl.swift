@@ -360,7 +360,7 @@ enum DebugControl {
                 }
                 return
             }
-            let img = v.bitmapImageRepForCachingDisplay(in: v.bounds)!
+            guard v.bounds.width >= 1, v.bounds.height >= 1, let img = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
             // Draw this view alone, then its subviews in order.
             let hidden = v.subviews.map(\.isHidden)
             v.subviews.forEach { $0.isHidden = true }
@@ -377,8 +377,8 @@ enum DebugControl {
         draw(root)
         // Child windows (popups) over it, where they are on screen.
         for child in window.childWindows ?? [] {
-            guard child.isVisible, let cv = child.contentView else { continue }
-            let img = cv.bitmapImageRepForCachingDisplay(in: cv.bounds)!
+            guard child.isVisible, let cv = child.contentView, cv.bounds.width >= 1, cv.bounds.height >= 1,
+                  let img = cv.bitmapImageRepForCachingDisplay(in: cv.bounds) else { continue }
             cv.cacheDisplay(in: cv.bounds, to: img)
             let origin = window.convertPoint(fromScreen: child.frame.origin)
             let r = NSRect(x: origin.x, y: origin.y, width: child.frame.width, height: child.frame.height)

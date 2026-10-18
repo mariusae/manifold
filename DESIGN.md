@@ -470,10 +470,12 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 - Language servers (§7.1): `LanguageServers` in `manifoldd`, JSON-RPC over
   the server's stdio; the editor's diagnostics, completion popup and Code
   menu; the Language Servers… table.
+- Search blocks (§7.5): the query and hits as entries, host-led; `rg` or
+  `grep` on the host, read in batches; the search lens.
 
 Not yet: scrubbing blocks other than arrangements, and "everything as it
-was"; the image, PDF, diff, git, search, process and agent lenses;
-retention and compaction of logs.
+was"; the image, PDF, diff, git, process and agent lenses; retention and
+compaction of logs.
 
 ## 9. From here to there
 

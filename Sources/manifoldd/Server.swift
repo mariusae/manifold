@@ -49,13 +49,19 @@ final class Server {
     /// Shards changed since their last snapshot.
     private var dirtyShards: Set<ShardID> = []
     private let languageServers: LanguageServers
+    private let searches: Searches
 
     init() {
         store = LogStore(directory: Paths.logs)
+        searches = Searches(queue: queue)
         languageServers = LanguageServers(queue: queue)
         languageServers.textOf = { [weak self] block in
             guard let b = self?.node.block(block), let t = b.text else { return nil }
             return (t.text, b.path)
+        }
+        searches.onHits = { [weak self] block, hits, done, truncated, error in
+            guard let self, self.node.block(block)?.kind == .search else { return }
+            self.append(.hits(hits, done: done, truncated: truncated, error: error), to: .block(block))
         }
         languageServers.onDiagnostics = { [weak self] block, items in
             let frame = Frame.message(ServerMessage.diagnostics(block, items))
@@ -303,6 +309,21 @@ final class Server {
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
             done()
+        case let .search(block, query):
+            var q = query
+            q.root = URL(fileURLWithPath: q.root.expandingTildeInPath).standardizedFileURL.path
+            if node.block(block) == nil {
+                append(.create(kind: .search, title: nil, path: nil), to: .block(block))
+            }
+            append(.search(q, at: clock.now()), to: .block(block))
+            searches.run(block, q)
+            done()
+        case let .cancelSearch(block):
+            searches.cancel(block)
+            if node.block(block)?.search?.running == true {
+                append(.hits([], done: true, truncated: true, error: nil), to: .block(block))
+            }
+            done()
         case let .lsp(request):
             languageServers.request(request) { result in
                 conn.send(.message(ServerMessage.lspResult(id: id, result)))
@@ -491,6 +512,7 @@ final class Server {
     /// terminals hang up when we go; `endSessions` hangs up on them first.
     private func exit(endSessions: Bool) {
         languageServers.stopAll()
+        searches.stopAll()
         if endSessions {
             for s in sessions.values { s.terminate() }
         }
