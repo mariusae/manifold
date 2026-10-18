@@ -187,9 +187,25 @@ enum DebugControl {
             return "wrote \(arg)"
         case "type":
             // Types into whatever text view has the keyboard (an editor, say).
+            let typed = arg.replacingOccurrences(of: "\\n", with: "\n")
+            if let tv = wc?.window?.firstResponder as? TextView {
+                for ch in typed {
+                    if ch == "\n" { tv.doCommand(by: #selector(NSResponder.insertNewline(_:))) } else { tv.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                }
+                return "ok"
+            }
             guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
-            tv.insertText(arg.replacingOccurrences(of: "\\n", with: "\n"), replacementRange: tv.selectedRange())
+            tv.insertText(typed, replacementRange: tv.selectedRange())
             return "ok"
+        case "key":
+            // "key <selector>": a standard key command to the focused text view.
+            guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
+            tv.doCommand(by: Selector(arg))
+            return "ok"
+        case "editor":
+            // The focused editor's text, selections, and undo depth.
+            guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
+            return "selections \(tv.selections.map { "\($0.min)-\($0.max)" }) undo \(tv.undoDepth) line \(tv.caretLine + 1) col \(tv.caretColumn)\n" + tv.text.string
         case "scheme":
             guard let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
             let item = NSMenuItem()
@@ -234,6 +250,7 @@ enum DebugControl {
             return t == nil ? "no terminal there" : "ok"
         case "caret":
             // Where the focused text view's caret is: line and column, from 1.
+            if let tv = wc?.window?.firstResponder as? TextView { return "line \(tv.caretLine + 1) column \(tv.caretColumn)" }
             guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
             let s = tv.string as NSString
             let loc = tv.selectedRange().location

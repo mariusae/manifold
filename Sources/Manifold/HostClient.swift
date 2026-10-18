@@ -132,6 +132,13 @@ final class HostClient {
         return id
     }
 
+    /// A web block, at a URL.
+    func newWeb(url: String) -> BlockID {
+        let id = BlockID(host: host)
+        append([.create(kind: .web, title: nil, path: nil), .url(url, viaHost: false)], to: .block(id))
+        return id
+    }
+
     func link(from: BlockID, to: BlockID, kind: LinkKind) {
         guard from != to else { return }
         propose(.link(Link(from: from, to: to, kind: kind, at: clock.now())))

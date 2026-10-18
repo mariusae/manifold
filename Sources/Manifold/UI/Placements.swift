@@ -56,3 +56,6 @@ extension String {
         return self
     }
 }
+
+/// AppKit has a `TextRange` of its own; ours is the core's.
+typealias TextRange = ManifoldCore.TextRange

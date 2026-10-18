@@ -110,6 +110,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 self?.layoutTrafficLights()
                 DispatchQueue.main.async { self?.layoutTrafficLights() }
+                // The keyboard goes back to the focused placement.
+                if name == NSWindow.didBecomeKeyNotification { DispatchQueue.main.async { self?.render() } }
             }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -171,6 +173,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged() }
+            for case let d as DirectoryView in views.values { d.documentChanged() }
+            for case let w as WebView in views.values { w.documentChanged() }
         } else {
             content.clear()
             window.title = "Manifold"
@@ -242,6 +246,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             d.delegate = self
             d.source = { [weak self] in self?.host.block(p.block) }
             v = d
+        case .web:
+            let w = WebView(placement: p.id, block: p.block)
+            w.delegate = self
+            w.source = { [weak self] in self?.host.block(p.block) }
+            v = w
         default:
             let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "", font: desk.appearance.editorFont,
                                theme: desk.appearance.theme)
@@ -559,6 +568,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         items.append(PaletteItem(symbol: "magnifyingglass", title: "Find Anything…", subtitle: "⌘O") { [weak self] in
             self?.openDocument(nil)
+        })
+        items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
+            guard let self else { return }
+            self.place(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, beside: self.focusedShown?.lens == .terminal ? self.focusedShown?.id : nil)
         })
         // The file shown, the other way: edit a preview's, preview an editor's.
         if let f = focusedShown, let path = f.path, let a = arrangement, let column = a.columnIndex(of: f.id) {
@@ -1094,7 +1107,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if a.score != b.score { return a.score > b.score }
             return a.recency > b.recency
         }
-        return Array(scored.prefix(60).map(\.item))
+        var items = Array(scored.prefix(60).map(\.item))
+        if query.hasPrefix("http://") || query.hasPrefix("https://") || (query.contains(".") && !query.contains(" ") && !query.contains("/") && query.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true) {
+            let url = query.contains("://") ? query : "https://" + query
+            items.insert(FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web",
+                                    run: { [weak self] in self?.open(url, from: self?.focusedShown?.id) }), at: 0)
+        }
+        return items
     }
 
     /// Brings a block back: an arrangement onto the desk and selected; any
@@ -1155,7 +1174,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// with the system.
     func open(_ target: String, from placement: PlacementID?) {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
-            NSWorkspace.shared.open(url)
+            if scheme == "http" || scheme == "https" {
+                place(host.newWeb(url: url.absoluteString), lens: .web, beside: placement)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
             return
         }
         let base = placement.flatMap { shown($0)?.block }.flatMap { $0.terminal?.cwd ?? $0.place }
@@ -1511,6 +1534,12 @@ extension MainWindowController: MarkdownViewDelegate {
         let block = host.textBlock(for: path)
         host.link(from: p.block, to: block, kind: .opened)
         appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .preview), column: c, at: i)])
+    }
+}
+
+extension MainWindowController: WebViewDelegate {
+    func webView(_ view: WebView, append events: [Event]) {
+        host.append(events, to: .block(view.block))
     }
 }
 

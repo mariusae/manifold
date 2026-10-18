@@ -12,31 +12,32 @@ protocol EditorViewDelegate: AnyObject {
     func editorEditedChanged(_ view: EditorView)
 }
 
-/// The editor lens on a text block: plain text, in the theme's proportional
-/// or fixed-width font, with the usual Mac editing (undo, find, and so on).
-/// Every edit is an entry in the block's log, so unsaved changes, the
-/// selection and the scroll position are all there again after a quit.
-final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValidation {
+/// The editor lens on a text block: Manifold's own text view over the
+/// block's rope (§7.1), in the theme's proportional or fixed-width font,
+/// with a find bar, and a banner when the file changed on disk. Every edit
+/// is an entry in the block's log, so unsaved changes, the selection and
+/// the scroll position are all there again after a quit, and undo is more
+/// entries.
+final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate, NSMenuItemValidation {
     let placement: PlacementID
     let block: BlockID
     private(set) var path: String
     weak var delegate: EditorViewDelegate?
 
-    private let scroll: NSScrollView
-    private let text: EditorTextView
+    private let scroll = NSScrollView()
+    private let textView = TextView()
     private var banner: EditorBanner?
-    /// The block's version the view's text matches.
-    private var appliedVersion = -1
-    private var applying = false
+    private var findBar: FindBar?
     private var isEdited = false
     private var stateWork: DispatchWorkItem?
     private var restored = false
+    private var lastVersion = -1
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
     var theme: FontTheme { didSet { if theme != oldValue { applyFont() } } }
     private var sizeAdjust: CGFloat = 0
 
-    var focusView: NSView { text }
+    var focusView: NSView { textView }
     var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID, path: String, font: EditorFont, theme: FontTheme) {
@@ -45,14 +46,6 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         self.path = path
         self.font = font
         self.theme = theme
-        scroll = NSScrollView()
-        text = EditorTextView(usingTextLayoutManager: true)
-        text.isVerticallyResizable = true
-        text.isHorizontallyResizable = false
-        text.autoresizingMask = [.width]
-        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        text.textContainer?.widthTracksTextView = true
-        scroll.documentView = text
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
@@ -64,32 +57,12 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
+        scroll.documentView = textView
         addSubview(scroll)
-
-        text.delegate = self
-        text.isRichText = false
-        text.importsGraphics = false
-        text.allowsUndo = true
-        text.usesFindBar = true
-        text.isIncrementalSearchingEnabled = true
-        text.usesFontPanel = false
-        text.isAutomaticQuoteSubstitutionEnabled = false
-        text.isAutomaticDashSubstitutionEnabled = false
-        text.isAutomaticTextReplacementEnabled = false
-        text.isAutomaticSpellingCorrectionEnabled = false
-        text.isAutomaticLinkDetectionEnabled = false
-        text.isAutomaticDataDetectionEnabled = false
-        text.isAutomaticTextCompletionEnabled = false
-        text.isContinuousSpellCheckingEnabled = false
-        text.isGrammarCheckingEnabled = false
-        text.smartInsertDeleteEnabled = false
-        text.drawsBackground = false
-        text.textContainerInset = NSSize(width: 26, height: 20)
-        text.insertionPointColor = .dynamic(NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 1),
-                                            NSColor(srgbRed: 0.04, green: 0.518, blue: 1, alpha: 1))
-        text.selectedTextAttributes = [.backgroundColor: NSColor.dynamic(
-            NSColor(srgbRed: 0.81, green: 0.886, blue: 0.984, alpha: 1),
-            NSColor(srgbRed: 0.149, green: 0.31, blue: 0.47, alpha: 1))]
+        textView.document = self
+        textView.delegate = self
+        textView.autoresizingMask = [.width]
+        textView.commentLeader = Self.commentLeader(for: path)
         applyFont()
     }
 
@@ -102,80 +75,79 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
 
     override func layout() {
         super.layout()
-        let bannerHeight: CGFloat = banner == nil ? 0 : 34
-        banner?.frame = NSRect(x: 0, y: bounds.height - bannerHeight, width: bounds.width, height: bannerHeight)
-        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - bannerHeight)
+        var top = bounds.height
+        if let banner {
+            banner.frame = NSRect(x: 0, y: top - 34, width: bounds.width, height: 34)
+            top -= 34
+        }
+        if let findBar {
+            findBar.frame = NSRect(x: 0, y: top - findBar.height, width: bounds.width, height: findBar.height)
+            top -= findBar.height
+        }
+        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: top)
+        textView.frame.size.width = scroll.contentSize.width
     }
 
     func destroy() {
         stateWork?.cancel()
     }
 
-    // MARK: The block
+    // MARK: TextViewDocument
 
     private var document: TextState? { delegate?.editorText(self) }
 
-    /// The block's log moved: if not by us, the text is set to it again.
+    var rope: Rope { document?.text ?? Rope() }
+    var version: Int { document?.version ?? 0 }
+
+    func apply(_ edits: [TextEdit]) {
+        delegate?.editor(self, append: [.edit(edits)])
+    }
+
+    /// The block's log moved: the view catches up, and the first time, the
+    /// selection and scroll position come back.
     func documentChanged() {
         guard let doc = document else { return }
-        if doc.version != appliedVersion {
-            let selection = text.selectedRange()
-            let y = scroll.contentView.bounds.origin.y
-            applying = true
-            setText(doc.text.string)
-            applying = false
-            appliedVersion = doc.version
-            let length = (text.string as NSString).length
-            if !restored {
-                restored = true
-                if let ranges = doc.selections[placement], let first = ranges.first {
-                    let loc = doc.text.utf16Offset(ofByte: first.start)
-                    let end = doc.text.utf16Offset(ofByte: first.end)
-                    text.setSelectedRange(NSRange(location: min(loc, length), length: max(0, min(end, length) - min(loc, length))))
+        let external = doc.version != lastVersion && doc.version != textView.undoKnownVersion
+        lastVersion = doc.version
+        textView.documentChanged()
+        if !restored, doc.version > 0 || doc.unreadable {
+            restored = true
+            if let ranges = doc.selections[placement], !ranges.isEmpty {
+                textView.setSelections(ranges.map { Selection($0.start, $0.end) }, scroll: false)
+            }
+            if let y = doc.scroll[placement] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, y)))
+                    self.scroll.reflectScrolledClipView(self.scroll.contentView)
                 }
-                if let sy = doc.scroll[placement] {
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self else { return }
-                        self.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, sy)))
-                        self.scroll.reflectScrolledClipView(self.scroll.contentView)
-                    }
-                }
-            } else {
-                text.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
-                scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
-                scroll.reflectScrolledClipView(scroll.contentView)
             }
         }
-        if doc.unreadable {
-            text.isEditable = false
-        }
+        if external { textView.savedUndoDepth = textView.undoDepth }
+        textView.isEditable = !doc.unreadable
         if doc.stale, banner == nil { showBanner() }
         if !doc.stale, banner != nil { hideBanner() }
         if doc.isDirty != isEdited {
             isEdited = doc.isDirty
             delegate?.editorEditedChanged(self)
         }
-        if let p = document?.text, path.isEmpty, p.count == 0 {}
+        findBar?.refresh()
     }
 
     var isDirty: Bool { document?.isDirty == true }
 
-    private func setText(_ s: String) {
-        let attributes = text.typingAttributes
-        text.textStorage?.setAttributedString(NSAttributedString(string: s, attributes: attributes))
-    }
+    // MARK: TextViewDelegate
 
-    /// An edit about to be made in the view becomes an entry; the view then
-    /// makes it too (NSTextView's own undo passes through here as well, so
-    /// undo and redo are entries like any other).
-    func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
-        guard !applying, let doc = document, let replacement = replacementString else { return true }
-        let rope = doc.text
-        let start = rope.byteOffset(ofUTF16: range.location)
-        let end = rope.byteOffset(ofUTF16: range.location + range.length)
-        delegate?.editor(self, append: [.edit([TextEdit(start: start, end: end, text: replacement)])])
-        appliedVersion = (document?.version) ?? appliedVersion
-        return true
+    func textViewDidChangeSelection(_ view: TextView) { scheduleStateSave() }
+    func textViewDidScroll(_ view: TextView) { scheduleStateSave() }
+
+    func textViewDidEdit(_ view: TextView) {
+        // Undone back to what was saved: clean again, as the log sees it.
+        if let doc = document, doc.isDirty, textView.undoDepth == textView.savedUndoDepth, !path.isEmpty, doc.cleanVersion > 0 {
+            delegate?.editor(self, append: [.clean(version: doc.version, fingerprint: nil)])
+        }
+        scheduleStateSave()
+        findBar?.refresh()
     }
 
     // MARK: Fonts
@@ -185,33 +157,31 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     }
 
     private func applyFont() {
-        let f = textFont
-        let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = font == .proportional ? 1.2 : 1.15
-        let space = (" " as NSString).size(withAttributes: [.font: f]).width
-        style.defaultTabInterval = space * 4
-        style.tabStops = []
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: f, .foregroundColor: Theme.text, .paragraphStyle: style,
-        ]
-        text.typingAttributes = attributes
-        text.defaultParagraphStyle = style
-        if let storage = text.textStorage, storage.length > 0 {
-            storage.beginEditing()
-            storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
-            storage.endEditing()
-        }
+        textView.font = textFont
+        textView.lineHeightMultiple = font == .proportional ? 1.25 : 1.2
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }
     @objc func decreaseFontSize(_ sender: Any?) { sizeAdjust -= 1; applyFont() }
     @objc func resetFontSize(_ sender: Any?) { sizeAdjust = 0; applyFont() }
 
+    static func commentLeader(for path: String) -> String {
+        switch (path as NSString).pathExtension.lowercased() {
+        case "py", "sh", "zsh", "bash", "rb", "yaml", "yml", "toml", "pl", "r", "conf", "cfg", "ini", "zig", "nix", "make", "mk", "dockerfile", "gitignore": "#"
+        case "lua", "sql", "hs", "elm": "--"
+        case "lisp", "el", "clj", "scm": ";"
+        case "tex": "%"
+        case "vim": "\""
+        default: "//"
+        }
+    }
+
     // MARK: Saving
 
     @objc func saveDocument(_ sender: Any?) {
         guard let doc = document, !doc.unreadable else { return }
         if path.isEmpty { return saveAs() }
+        textView.savedUndoDepth = textView.undoDepth
         delegate?.editor(self, propose: .writeFile(block, version: doc.version, text: doc.text.string))
     }
 
@@ -223,6 +193,7 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url, let doc = self.document else { return }
             self.path = url.path
+            self.textView.commentLeader = Self.commentLeader(for: url.path)
             self.delegate?.editor(self, append: [.path(url.path)])
             self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
         }
@@ -253,22 +224,6 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         needsLayout = true
     }
 
-    // MARK: Edited
-
-    func textDidChange(_ notification: Notification) {
-        text.highlightedLine = nil
-        scheduleStateSave()
-    }
-
-    func textViewDidChangeSelection(_ notification: Notification) {
-        // A line gone to stays marked until the caret leaves it.
-        if let line = text.highlightedLine {
-            let caret = text.selectedRange()
-            if caret.location < line.location || NSMaxRange(caret) > NSMaxRange(line) { text.highlightedLine = nil }
-        }
-        scheduleStateSave()
-    }
-
     // MARK: Kept state
 
     private func scheduleStateSave() {
@@ -282,13 +237,48 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     private func saveState() {
         stateWork?.cancel()
         guard let doc = document else { return }
-        let sel = text.selectedRange()
-        let range = TextRange(doc.text.byteOffset(ofUTF16: sel.location), doc.text.byteOffset(ofUTF16: sel.location + sel.length))
+        let ranges = textView.selections.map { $0.range }
         var events: [Event] = []
-        if doc.selections[placement] != [range] { events.append(.selection(placement: placement, ranges: [range])) }
+        if doc.selections[placement] != ranges { events.append(.selection(placement: placement, ranges: ranges)) }
         let y = Double(scroll.contentView.bounds.origin.y)
         if abs((doc.scroll[placement] ?? -1) - y) > 0.5 { events.append(.scroll(placement: placement, y: y)) }
         if !events.isEmpty { delegate?.editor(self, append: events) }
+    }
+
+    // MARK: Find
+
+    @objc override func performTextFinderAction(_ sender: Any?) {
+        let tag = (sender as? NSMenuItem)?.tag ?? NSTextFinder.Action.showFindInterface.rawValue
+        switch NSTextFinder.Action(rawValue: tag) {
+        case .showFindInterface?: showFind(replace: false)
+        case .showReplaceInterface?: showFind(replace: true)
+        case .nextMatch?: findBar == nil ? showFind(replace: false) : findBar?.find(forward: true)
+        case .previousMatch?: findBar == nil ? showFind(replace: false) : findBar?.find(forward: false)
+        case .hideFindInterface?: hideFind()
+        default: showFind(replace: false)
+        }
+    }
+
+    private func showFind(replace: Bool) {
+        if findBar == nil {
+            let bar = FindBar(text: textView)
+            bar.onClose = { [weak self] in self?.hideFind() }
+            addSubview(bar)
+            findBar = bar
+        }
+        findBar?.showsReplace = replace
+        if !textView.selectedText.isEmpty, !textView.selectedText.contains("\n") { findBar?.query = textView.selectedText }
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        findBar?.focus()
+    }
+
+    private func hideFind() {
+        findBar?.removeFromSuperview()
+        findBar = nil
+        textView.highlights = []
+        needsLayout = true
+        window?.makeFirstResponder(textView)
     }
 
     // MARK: Go to line
@@ -313,24 +303,10 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     /// Goes to a line (from 1): selects it, or, given a column (from 1),
     /// puts the caret there.
     func select(line: Int, column: Int? = nil) {
-        let s = text.string as NSString
-        var start = 0, n = 1
-        while n < line, start < s.length {
-            let r = s.range(of: "\n", range: NSRange(location: start, length: s.length - start))
-            guard r.location != NSNotFound else { break }
-            start = r.location + 1
-            n += 1
-        }
-        let range = s.lineRange(for: NSRange(location: min(start, s.length), length: 0))
-        if let column {
-            let end = range.length > 0 && s.character(at: NSMaxRange(range) - 1) == 10 ? NSMaxRange(range) - 1 : NSMaxRange(range)
-            text.setSelectedRange(NSRange(location: min(range.location + column - 1, end), length: 0))
-        } else {
-            text.setSelectedRange(range)
-        }
-        text.scrollRangeToVisible(range)
-        text.highlightedLine = range
-        window?.makeFirstResponder(text)
+        let r = textView.offset(line: line, column: column)
+        textView.setSelections([Selection(r.start, r.end)])
+        textView.highlightedLine = line - 1
+        window?.makeFirstResponder(textView)
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -345,48 +321,168 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     }
 }
 
-/// The editor's text view: indents a new line as the one before it, and
-/// marks a line gone to with a band across the page.
-final class EditorTextView: NSTextView {
-    var highlightedLine: NSRange? {
-        didSet { if highlightedLine != oldValue { needsDisplay = true } }
-    }
-
-    static let highlight = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1),
-                                           NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1))
-
-    override func drawBackground(in rect: NSRect) {
-        super.drawBackground(in: rect)
-        guard let band = highlightBand() else { return }
-        Self.highlight.setFill()
-        band.fill()
-    }
-
-    /// The highlighted line's full-width band, in view coordinates.
-    private func highlightBand() -> NSRect? {
-        guard let line = highlightedLine, let layout = textLayoutManager, let content = layout.textContentManager,
-              NSMaxRange(line) <= (string as NSString).length,
-              let start = content.location(content.documentRange.location, offsetBy: line.location),
-              let end = content.location(start, offsetBy: line.length),
-              let range = NSTextRange(location: start, end: end) else { return nil }
-        var union = NSRect.null
-        layout.enumerateTextSegments(in: range, type: .standard, options: []) { _, frame, _, _ in
-            union = union.union(frame)
-            return true
+extension TextView: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(undo(_:)): return canUndo
+        case #selector(redo(_:)): return canRedo
+        case #selector(cut(_:)), #selector(copy(_:)): return !selectedText.isEmpty
+        case #selector(paste(_:)): return isEditable && NSPasteboard.general.string(forType: .string) != nil
+        default: return true
         }
-        guard !union.isNull else { return nil }
-        let origin = textContainerOrigin
-        return NSRect(x: 0, y: union.minY + origin.y, width: bounds.width, height: union.height)
+    }
+}
+
+/// The find bar: a field, the next and previous matches, and, shown with
+/// ⌥⌘F, a field to replace them with.
+final class FindBar: NSView, NSTextFieldDelegate {
+    var onClose: (() -> Void)?
+    private weak var textView: TextView?
+    private let field = NSTextField()
+    private let replaceField = NSTextField()
+    private let count = NSTextField(labelWithString: "")
+    private let previous = NSButton(title: "‹", target: nil, action: nil)
+    private let next = NSButton(title: "›", target: nil, action: nil)
+    private let caseButton = NSButton(title: "Aa", target: nil, action: nil)
+    private let replaceButton = NSButton(title: "Replace", target: nil, action: nil)
+    private let replaceAllButton = NSButton(title: "All", target: nil, action: nil)
+    private let done = NSButton(title: "Done", target: nil, action: nil)
+    private var matches: [TextRange] = []
+    var showsReplace = false { didSet { needsLayout = true; superview?.needsLayout = true } }
+    var height: CGFloat { showsReplace ? 66 : 36 }
+
+    var query: String {
+        get { field.stringValue }
+        set { field.stringValue = newValue; refresh() }
     }
 
-    override func insertNewline(_ sender: Any?) {
-        let s = string as NSString
-        let caret = selectedRange().location
-        let line = s.lineRange(for: NSRange(location: caret, length: 0))
-        let head = s.substring(with: NSRange(location: line.location, length: caret - line.location))
-        let indent = String(head.prefix { $0 == " " || $0 == "\t" })
-        super.insertNewline(sender)
-        if !indent.isEmpty { insertText(indent, replacementRange: selectedRange()) }
+    init(text: TextView) {
+        self.textView = text
+        super.init(frame: .zero)
+        wantsLayer = true
+        themed { $0.layer?.backgroundColor = Theme.sheet(level: 0).cgColor }
+        field.placeholderString = "Find"
+        field.delegate = self
+        field.font = .systemFont(ofSize: 12.5)
+        field.controlSize = .small
+        field.bezelStyle = .roundedBezel
+        replaceField.placeholderString = "Replace"
+        replaceField.delegate = self
+        replaceField.font = .systemFont(ofSize: 12.5)
+        replaceField.controlSize = .small
+        replaceField.bezelStyle = .roundedBezel
+        count.font = .systemFont(ofSize: 11)
+        count.textColor = Theme.secondaryText
+        count.alignment = .right
+        for b in [previous, next, caseButton, replaceButton, replaceAllButton, done] {
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            b.font = .systemFont(ofSize: 11.5)
+            b.target = self
+        }
+        caseButton.setButtonType(.pushOnPushOff)
+        caseButton.toolTip = "Match Case"
+        previous.action = #selector(previousClicked)
+        next.action = #selector(nextClicked)
+        caseButton.action = #selector(optionChanged)
+        replaceButton.action = #selector(replaceClicked)
+        replaceAllButton.action = #selector(replaceAllClicked)
+        done.action = #selector(doneClicked)
+        done.keyEquivalent = "\u{1b}"
+        for v in [field, previous, next, caseButton, count, done, replaceField, replaceButton, replaceAllButton] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func focus() {
+        window?.makeFirstResponder(field)
+        field.selectText(nil)
+    }
+
+    override func layout() {
+        super.layout()
+        let y = height - 30
+        field.frame = NSRect(x: 12, y: y, width: max(120, bounds.width - 330), height: 22)
+        previous.frame = NSRect(x: field.frame.maxX + 6, y: y - 1, width: 28, height: 24)
+        next.frame = NSRect(x: previous.frame.maxX + 2, y: y - 1, width: 28, height: 24)
+        caseButton.frame = NSRect(x: next.frame.maxX + 8, y: y - 1, width: 36, height: 24)
+        count.frame = NSRect(x: caseButton.frame.maxX + 6, y: y + 2, width: 70, height: 16)
+        done.frame = NSRect(x: bounds.width - 70, y: y - 1, width: 58, height: 24)
+        let shown = showsReplace
+        replaceField.isHidden = !shown
+        replaceButton.isHidden = !shown
+        replaceAllButton.isHidden = !shown
+        if shown {
+            replaceField.frame = NSRect(x: 12, y: 6, width: field.frame.width, height: 22)
+            replaceButton.frame = NSRect(x: replaceField.frame.maxX + 6, y: 5, width: 74, height: 24)
+            replaceAllButton.frame = NSRect(x: replaceButton.frame.maxX + 2, y: 5, width: 44, height: 24)
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.divider.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: 0.5).fill()
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if (obj.object as? NSTextField) === field { refresh(); find(forward: true, fromSelection: false) }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            if control === replaceField { replaceClicked() } else { find(forward: !NSEvent.modifierFlags.contains(.shift)) }
+        case #selector(NSResponder.cancelOperation(_:)):
+            onClose?()
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// The matches, highlighted, and counted.
+    func refresh() {
+        guard let textView else { return }
+        let q = field.stringValue
+        matches = q.isEmpty ? [] : textView.text.findAll(q, caseInsensitive: caseButton.state != .on, limit: 20_000)
+        textView.highlights = matches
+        count.stringValue = q.isEmpty ? "" : (matches.isEmpty ? "No matches" : "\(matches.count)")
+    }
+
+    /// Selects the next (or previous) match from the selection.
+    func find(forward: Bool, fromSelection: Bool = true) {
+        guard let textView, !matches.isEmpty else { return }
+        let sel = textView.primarySelection
+        let match: TextRange?
+        if forward {
+            let from = fromSelection ? sel.max : sel.min
+            match = matches.first { $0.start >= from && !(fromSelection && $0.start == sel.min && $0.end == sel.max) } ?? matches.first
+        } else {
+            match = matches.last { $0.start < sel.min } ?? matches.last
+        }
+        if let match { textView.setSelections([Selection(match.start, match.end)]) }
+    }
+
+    @objc private func nextClicked() { find(forward: true) }
+    @objc private func previousClicked() { find(forward: false) }
+    @objc private func optionChanged() { refresh() }
+    @objc private func doneClicked() { onClose?() }
+
+    @objc private func replaceClicked() {
+        guard let textView else { return }
+        let sel = textView.primarySelection
+        if matches.contains(where: { $0.start == sel.min && $0.end == sel.max }) {
+            textView.replace([(sel.range, replaceField.stringValue)])
+            refresh()
+        }
+        find(forward: true)
+    }
+
+    @objc private func replaceAllClicked() {
+        guard let textView, !matches.isEmpty else { return }
+        let r = replaceField.stringValue
+        textView.replace(matches.map { ($0, r) })
+        refresh()
     }
 }
 
