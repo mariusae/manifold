@@ -257,6 +257,15 @@ final class HostClient {
     }
 
     /// A web block, at a URL.
+    /// The web block showing a page kept as a file, made if there isn't one.
+    func webBlock(forFile path: String) -> BlockID {
+        let url = URL(fileURLWithPath: path).standardizedFileURL.absoluteString
+        if let b = node.blocks.first(where: { $0.kind == .web && $0.web?.url == url }) { return b.id }
+        let id = BlockID(host: host)
+        append([.create(kind: .web, title: nil, path: path), .url(url, viaHost: false)], to: .block(id))
+        return id
+    }
+
     func newWeb(url: String) -> BlockID {
         let id = BlockID(host: host)
         append([.create(kind: .web, title: nil, path: nil), .url(url, viaHost: false)], to: .block(id))

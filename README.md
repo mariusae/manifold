@@ -102,7 +102,14 @@ when you find it again.
   another program. Edit ▸ Edit or Preview (⌥⌘P) turns the focused
   preview into an editor in place, or a Markdown editor back into a
   preview; ⌥⇧⌘P puts the other beside it, so you can type on the left
-  and read on the right. View ▸ Editor Font chooses proportional or fixed
+  and read on the right. A link followed in a preview opens another
+  Markdown file as a preview on top of the same stack (the one it came
+  from stays beneath, to go back to), a web address as a web block
+  beside, any other file as what it is, beside; `#anchors` scroll.
+- **HTML files** open as web blocks, read from the file with their
+  folder (so their images and stylesheets work), from a terminal, the
+  finder, a folder listing, a link in a preview, or the `manifold`
+  command. View ▸ Editor Font chooses proportional or fixed
   width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
   width, the system font for the UI), Mona (Mona Sans, Monaspace),

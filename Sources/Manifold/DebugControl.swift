@@ -163,6 +163,11 @@ enum DebugControl {
             for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
             lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
             return lines.joined(separator: "\n")
+        case "mdlink":
+            // "mdlink <n>": clicks the nth link in the focused preview, as a reader would.
+            guard let wc, let m = wc.debugFocusedMarkdown else { return "no preview focused" }
+            m.debugClickLink(Int(arg) ?? 0)
+            return "ok"
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"

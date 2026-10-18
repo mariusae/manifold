@@ -5,7 +5,7 @@ import WebKit
 
 protocol MarkdownViewDelegate: AnyObject {
     /// A link to another Markdown file was followed.
-    func markdownView(_ view: MarkdownView, open path: String)
+    func markdownView(_ view: MarkdownView, follow url: URL)
 }
 
 /// The preview lens on a text block: its Markdown rendered by cmark-gfm into
@@ -126,6 +126,11 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         render(scrollToTop: true)
     }
 
+    /// Clicks the nth link on the page (for DebugControl).
+    func debugClickLink(_ n: Int) {
+        web.evaluateJavaScript("document.querySelectorAll('a')[\(n)]?.click();")
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard action.navigationType == .linkActivated, let url = action.request.url else {
@@ -135,18 +140,11 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         }
         decisionHandler(.cancel)
         let docDir = URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL.path
-        if url.isFileURL {
-            let target = url.standardizedFileURL.path
-            if let fragment = url.fragment, target == docDir || target == path {
-                // A link within this document.
-                web.evaluateJavaScript("manifoldScrollTo(\(json(fragment)));")
-            } else if ["md", "markdown", "mdown", "mkd", "mdx"].contains(url.pathExtension.lowercased()) {
-                delegate?.markdownView(self, open: target)
-            } else {
-                NSWorkspace.shared.open(url)
-            }
-        } else {
-            NSWorkspace.shared.open(url)
+        if url.isFileURL, let fragment = url.fragment, url.standardizedFileURL.path == docDir || url.standardizedFileURL.path == path {
+            // A link within this document.
+            web.evaluateJavaScript("manifoldScrollTo(\(json(fragment)));")
+            return
         }
+        delegate?.markdownView(self, follow: url)
     }
 }

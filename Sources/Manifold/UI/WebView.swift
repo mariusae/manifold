@@ -80,7 +80,17 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
         guard let b = source(), let url = b.web?.url, url != shownURL else { return }
         shownURL = url
         address.stringValue = url
-        if let u = URL(string: url) { web.load(URLRequest(url: u)) }
+        load(url)
+    }
+
+    /// A page kept as a file is read from there, with its folder.
+    private func load(_ url: String) {
+        guard let u = URL(string: url) else { return }
+        if u.isFileURL {
+            web.loadFileURL(u, allowingReadAccessTo: u.deletingLastPathComponent())
+        } else {
+            web.load(URLRequest(url: u))
+        }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
@@ -90,7 +100,7 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
         if !s.contains("://") {
             s = s.contains(" ") || !s.contains(".") ? "https://duckduckgo.com/?q=" + (s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s) : "https://" + s
         }
-        if let u = URL(string: s) { web.load(URLRequest(url: u)) }
+        load(s)
         window?.makeFirstResponder(web)
     }
 

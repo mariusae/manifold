@@ -560,6 +560,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     func debugFoot(_ column: Int, bunch: Int?) -> String { content.stacks.debugFoot(column, bunch: bunch) }
     var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
+    var debugFocusedMarkdown: MarkdownView? { focusedShown.flatMap { views[$0.id] as? MarkdownView } }
 
     func debugPeek(_ column: Int) { content.stacks.debugPeek(column) }
 
@@ -1579,6 +1580,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         place(block, lens: .directory, beside: beside, context: context)
     }
 
+    /// A web page kept as a file, by its name.
+    static func isHTML(_ path: String) -> Bool {
+        ["html", "htm", "xhtml"].contains(path.pathExtension.lowercased())
+    }
+
     /// An image or a PDF, by its name.
     static func mediaKind(_ path: String) -> BlockKind? {
         switch path.pathExtension.lowercased() {
@@ -1667,6 +1673,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             openDirectory(path, beside: placement, context: target)
         } else if Lens.isMarkdown(path) {
             place(hosts.textBlock(for: path, on: on), lens: .preview, beside: placement, context: target)
+        } else if Self.isHTML(path), on == host.host {
+            place(host.webBlock(forFile: path), lens: .web, beside: placement, context: target)
         } else if Self.isEditable(path) {
             place(hosts.textBlock(for: path, on: on), lens: .editor, beside: placement, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
@@ -1779,10 +1787,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for path in paths {
             let isDir = on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
             let media = Self.mediaKind(path)
+            let html = Self.isHTML(path) && on == host.host
             let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on)
+                : html ? host.webBlock(forFile: path)
                 : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
-                : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
+                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
             place(block, lens: lens, beside: besidePlacement?.id)
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
@@ -2282,12 +2292,24 @@ extension MainWindowController: EditorViewDelegate {
 }
 
 extension MainWindowController: MarkdownViewDelegate {
-    func markdownView(_ view: MarkdownView, open path: String) {
-        // The link's file takes the preview's place.
-        guard let a = arrangement, let p = a.placement(view.placement), let (c, i) = a.locate(view.placement) else { return }
-        let block = host.textBlock(for: path)
-        hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
-        appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .preview), column: c, at: i)])
+    /// A link followed in a preview: another Markdown file opens as a
+    /// preview on top of the same stack (the one it was followed from
+    /// stays beneath, to go back to); a web address as a web block beside;
+    /// any other file as what it is, beside; other schemes with the system.
+    func markdownView(_ view: MarkdownView, follow url: URL) {
+        guard let a = arrangement, let p = a.placement(view.placement), let (c, _) = a.locate(view.placement) else { return }
+        if url.isFileURL {
+            let path = url.standardizedFileURL.path
+            if Lens.isMarkdown(path) {
+                let block = hosts.textBlock(for: path, on: p.block.host)
+                hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
+                appendToSelected([.place(Placement(block: block, lens: .preview), column: c, at: a.columns[c].count)])
+            } else {
+                open(path, from: view.placement)
+            }
+        } else {
+            open(url.absoluteString, from: view.placement)
+        }
     }
 }
 
