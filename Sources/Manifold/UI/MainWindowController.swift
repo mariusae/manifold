@@ -595,6 +595,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.openDirectory(cwd, beside: f.id)
             })
         }
+        // What's linked to the focused block, both ways (§6.2).
+        if let f = focusedShown {
+            let links = host.links
+            var related: [(BlockID, String)] = []
+            for l in links.to(f.placement.block) where related.count < 6 { related.append((l.from, "opened this")) }
+            for l in links.from(f.placement.block) where related.count < 12 { related.append((l.to, "opened from this")) }
+            for (id, how) in related {
+                guard let b = host.block(id) else { continue }
+                items.append(PaletteItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
+                                         subtitle: "Related · \(how)") { [weak self] in self?.recall(id) })
+            }
+        }
         for id in desk.order {
             guard let a = host.arrangement(id) else { continue }
             let focused = a.focusedPlacement.flatMap { host.block($0.block) }

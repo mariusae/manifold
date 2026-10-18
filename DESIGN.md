@@ -315,6 +315,13 @@ Ghostty, as now. Its grid rows are the terminal block's entries (apex
 to the client; input is sent to the pinned host. A terminal recalled from
 dormancy marks the seam between its old shell and the new one (§4).
 
+*As built.* The grid isn't logged yet: the host keeps each terminal's raw
+output in a replay buffer (and on disk in `history/`), and a terminal
+attaches to its shell through `manifoldd attach`, as before blocks. The
+block's log holds its working directory, title, and shell starts, ends
+and dormancy. Rows as entries wait on a server-side emulator, which
+remote hosts (§8) will need.
+
 ### 7.4 Directory
 
 Finder's, in the content area: list (sortable columns: name, date, size,
@@ -364,6 +371,13 @@ reached with `ssh host manifoldd attach --stdio`, the same frames over the
 pipe (apex §6); nothing listens on the network.
 
 ### 8.2 Leadership
+
+*As built.* One host (the local one) and one attachment: the app leads
+text, web, arrangement and desk shards, the host the rest; the host
+checks that an append continues its log and, if not, sends the shard back
+whole. Epochs, fencing and resuming an attachment are not implemented;
+`manifoldd attach --stdio` and several hosts in one window are the next
+milestone.
 
 Apex §4 as is: attachments are explicit and survive reconnects; leases are
 per shard and granted to attachments; fencing by epoch; a new attachment
@@ -417,6 +431,28 @@ is not the file's truth, the disk is. Notes are stored only in the log;
 they can be exported, or given a path, which makes them files.
 
 ---
+
+## 8.5 As built, in short
+
+Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
+
+- `ManifoldCore`: `Rope`, `Block` and the per-kind states, `Event` and
+  `Entry`, `ArrangementState` with its intents, `Node` (a replica of
+  shards), `LogStore` (one file per shard, snapshots with log offsets),
+  `Migration` from `state.json`, the protocol (binary plist frames).
+- `manifoldd`: `Server` on a `Node` and a `LogStore`; the registry and
+  links kept in step; proposals for terminals, files, folders, `seen`,
+  links and history; file watching; terminal dormancy with the seam.
+- The app: `HostClient` (the replica, leading and proposing),
+  `MainWindowController` over arrangements and placements, the three
+  lenses (`TabContentView`, `TilingView`, `ListLensView` in an
+  `ArrangementView`), the desk in the sidebar, the finder, collection,
+  the history view, and the lenses: terminal, editor (`TextView`),
+  preview, directory, web.
+
+Not yet: remote hosts; scrubbing blocks other than arrangements, and
+"everything as it was"; the image, PDF, diff, git, search, process and
+agent lenses; language servers; retention and compaction of logs.
 
 ## 9. From here to there
 
