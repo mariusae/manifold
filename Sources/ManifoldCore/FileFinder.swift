@@ -22,7 +22,7 @@ public enum FileFinder {
         let keyed: [(path: String, depth: Int)] = paths.map { ($0, $0.split(separator: "/").count) }
         let ordered = keyed.sorted { a, b in
             if a.depth != b.depth { return a.depth < b.depth }
-            return a.path.localizedStandardCompare(b.path) == .orderedAscending
+            return a.path.standardCompare(b.path)
         }
         return ordered.map(\.path)
     }
@@ -41,7 +41,7 @@ public enum FileFinder {
         let files = data.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
         // Deleted-but-tracked files are listed too; only what's there.
         let fm = FileManager.default
-        return files.filter { fm.fileExists(atPath: (root as NSString).appendingPathComponent($0)) }
+        return files.filter { fm.fileExists(atPath: root.appendingPathComponent($0)) }
     }
 
     static func walk(root: String, limit: Int) -> [String] {
@@ -51,14 +51,14 @@ public enum FileFinder {
         var queue: [String] = [""]
         while !queue.isEmpty, found.count < limit {
             let rel = queue.removeFirst()
-            let dir = rel.isEmpty ? root : (root as NSString).appendingPathComponent(rel)
+            let dir = rel.isEmpty ? root : root.appendingPathComponent(rel)
             guard let names = try? fm.contentsOfDirectory(atPath: dir) else { continue }
             for name in names.sorted() where !name.hasPrefix(".") {
                 let path = rel.isEmpty ? name : rel + "/" + name
                 var isDir: ObjCBool = false
-                guard fm.fileExists(atPath: (dir as NSString).appendingPathComponent(name), isDirectory: &isDir) else { continue }
+                guard fm.fileExists(atPath: dir.appendingPathComponent(name), isDirectory: &isDir) else { continue }
                 if isDir.boolValue {
-                    let packaged = ["app", "bundle", "framework", "xcodeproj", "xcworkspace"].contains((name as NSString).pathExtension)
+                    let packaged = ["app", "bundle", "framework", "xcodeproj", "xcworkspace"].contains(name.pathExtension)
                     let homeLibrary = rel.isEmpty && name == "Library" && URL(fileURLWithPath: root).standardizedFileURL.path == home
                     if !skipped.contains(name) && !packaged && !homeLibrary { queue.append(path) }
                 } else {

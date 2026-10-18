@@ -1,3 +1,4 @@
+import CPTY
 import Foundation
 import ManifoldCore
 
@@ -10,9 +11,25 @@ enum Attach {
 
     static func run(block: BlockID) -> Never {
         signal(SIGPIPE, SIG_IGN)
-        guard let fd = connect() else {
-            FileHandle.standardError.write(Data("manifold: can't reach the server\r\n".utf8))
-            exit(1)
+        let local = (try? Data(contentsOf: Paths.hostName)).map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "local"
+        let conn: Connection
+        if block.host.raw != local, block.host != .local {
+            // Another host's: through its provider, to a bridge there.
+            guard let dest = HostsFile.load().destination(of: block.host) else {
+                FileHandle.standardError.write(Data("manifold: no way to reach \(block.host)\r\n".utf8))
+                exit(1)
+            }
+            guard let child = try? Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: block.host.raw)), stderrToNull: true) else {
+                FileHandle.standardError.write(Data("manifold: can't reach \(block.host)\r\n".utf8))
+                exit(1)
+            }
+            conn = Connection(fd: child.output, writeFD: child.input, queue: .main)
+        } else {
+            guard let fd = connect() else {
+                FileHandle.standardError.write(Data("manifold: can't reach the server\r\n".utf8))
+                exit(1)
+            }
+            conn = Connection(fd: fd, queue: .main)
         }
 
         tcgetattr(0, &original)
@@ -21,7 +38,6 @@ enum Attach {
         tcsetattr(0, TCSANOW, &raw)
         atexit { tcsetattr(0, TCSANOW, &Attach.original) }
 
-        let conn = Connection(fd: fd, queue: .main)
         conn.onFrame = { frame in
             switch frame.kind {
             case .data:
@@ -90,9 +106,9 @@ enum Attach {
     }
 
     private static func terminalSize() -> (UInt16, UInt16) {
-        var ws = winsize()
-        guard ioctl(0, TIOCGWINSZ, &ws) == 0, ws.ws_col > 0, ws.ws_row > 0 else { return (80, 24) }
-        return (ws.ws_col, ws.ws_row)
+        var cols: UInt16 = 0, rows: UInt16 = 0
+        guard mf_terminal_size(0, &cols, &rows) == 0, cols > 0, rows > 0 else { return (80, 24) }
+        return (cols, rows)
     }
 
     private static func writeAll(_ fd: Int32, _ data: Data) {

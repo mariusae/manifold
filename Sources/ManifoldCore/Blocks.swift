@@ -74,7 +74,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     }
 
     public static func isMarkdown(_ path: String) -> Bool {
-        ["md", "markdown", "mdown", "mkd", "mdx"].contains((path as NSString).pathExtension.lowercased())
+        ["md", "markdown", "mdown", "mkd", "mdx"].contains(path.pathExtension.lowercased())
     }
 }
 
@@ -285,7 +285,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let title, !title.isEmpty { return title }
         if let t = terminal?.title, !t.isEmpty { return t }
         if let t = web?.title, !t.isEmpty { return t }
-        if let path { return (path as NSString).lastPathComponent }
+        if let path { return path.lastPathComponent }
         if kind == .arrangement, let a = arrangement, !a.isEmpty {
             return "Untitled"
         }
@@ -301,7 +301,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
 
     /// Where it is, for finding it: a folder, or a working directory.
     public var place: String? {
-        if let path { return (path as NSString).deletingLastPathComponent }
+        if let path { return path.deletingLastPathComponent }
         return terminal?.cwd
     }
 }

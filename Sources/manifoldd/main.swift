@@ -3,12 +3,45 @@ import ManifoldCore
 
 // manifoldd serve           run the server (the app starts it as needed)
 // manifoldd attach <block>  connect this terminal to a terminal block's shell
+// manifoldd bridge [--name NAME]
+//                           stdio to the server's socket, starting it if need
+//                           be (what a client runs on a remote host over ssh)
+// manifoldd open [--wait] FILE...
+//                           have the app open files (a remote shell's $EDITOR)
 // manifoldd stop            end the server and every session
 // manifoldd state           print what the host has
 
 let args = CommandLine.arguments.dropFirst()
 
 switch args.first ?? "serve" {
+case "bridge":
+    var name: String?
+    var it = args.dropFirst().makeIterator()
+    while let a = it.next() {
+        if a == "--name" { name = it.next() }
+    }
+    Bridge.run(name: name)
+
+case "open":
+    var wait = false
+    var files: [String] = []
+    for a in args.dropFirst() {
+        if a == "--wait" || a == "-w" { wait = true } else { files.append(a) }
+    }
+    let paths: [String]
+    switch OpenCommand.resolve(files) {
+    case .success(let p): paths = p
+    case .failure(let error):
+        FileHandle.standardError.write(Data("manifold: \(error.message)\n".utf8))
+        exit(1)
+    }
+    guard let fd = try? UnixSocket.connect(path: Paths.socket) else {
+        FileHandle.standardError.write(Data("manifold: the server isn't running here\n".utf8))
+        exit(1)
+    }
+    let beside = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:))
+    exit(OpenCommand.run(fd: fd, paths: paths, beside: beside, wait: wait, name: "manifoldd open"))
+
 case "serve":
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)

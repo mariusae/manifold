@@ -7,11 +7,22 @@ import ManifoldCore
 /// followed for the rest. It starts the local server when there isn't one,
 /// and starts it again if it goes away.
 final class HostClient {
+    enum Transport {
+        /// This machine's server, over its socket; started if need be.
+        case local
+        /// Another machine's, over a provider's pipe to a bridge there.
+        case remote(Destination, name: String)
+    }
+
     let node = Node()
-    let clock = Clock(host: .local)
+    let transport: Transport
+    private(set) var clock = Clock(host: .local)
     private(set) var host = HostID.local
     private var conn: Connection?
+    private var child: Child?
     private(set) var hasState = false
+    private(set) var isConnected = false
+    private var disconnected = false
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var changeScheduled = false
@@ -23,8 +34,26 @@ final class HostClient {
     /// or newer build, still running).
     var onVersionMismatch: ((Int) -> Void)?
 
-    init() {
+    /// The first welcome arrived: the host's name is known.
+    var onWelcome: (() -> Void)?
+
+    init(transport: Transport) {
+        self.transport = transport
+        if case let .remote(_, name) = transport {
+            host = HostID(name)
+            clock = Clock(host: host)
+        }
         node.onChange = { [weak self] _ in self?.scheduleChange() }
+    }
+
+    var isRemote: Bool {
+        if case .remote = transport { return true }
+        return false
+    }
+
+    var destination: Destination? {
+        if case let .remote(d, _) = transport { return d }
+        return nil
     }
 
     /// The server executable: next to ours in the app bundle.
@@ -159,9 +188,10 @@ final class HostClient {
     // MARK: Connection
 
     func connect() {
+        guard case .local = transport else { return reconnectRemote() }
         Paths.ensureDirectory()
         if let fd = try? UnixSocket.connect(path: Paths.socket) {
-            attach(fd)
+            attach(Connection(fd: fd, queue: .main))
             return
         }
         launchServer()
@@ -169,7 +199,7 @@ final class HostClient {
         func retry() {
             attempts += 1
             if let fd = try? UnixSocket.connect(path: Paths.socket) {
-                attach(fd)
+                attach(Connection(fd: fd, queue: .main))
             } else if attempts < 100 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: retry)
             } else {
@@ -201,22 +231,87 @@ final class HostClient {
         if pid < 0 { NSLog("could not start %@: %s", exe, strerror(errno)) }
     }
 
-    private func attach(_ fd: Int32) {
-        let conn = Connection(fd: fd, queue: .main)
+    /// Readies a remote host: asks what it is, installs our server if the
+    /// one there isn't ours, and starts the bridge. Slow; not on the main
+    /// thread.
+    static func bootstrap(_ dest: Destination, name: String) throws -> Child {
+        let probe = try Bootstrap.probe(dest)
+        let binaryName = Bootstrap.binaryName(os: probe.os, arch: probe.arch)
+        let helpers = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers")
+        var binary = helpers.appendingPathComponent(binaryName)
+        if !FileManager.default.fileExists(atPath: binary.path), probe.os == "darwin", probe.arch == "arm64" {
+            binary = URL(fileURLWithPath: serverExecutable)
+        }
+        guard let data = FileManager.default.contents(atPath: binary.path) else {
+            throw RemoteError.noBinary("\(probe.os) \(probe.arch)")
+        }
+        if probe.hash != Bootstrap.sha256(data) {
+            NSLog("installing manifoldd on %@ (%@)", dest.description, binaryName)
+            try Bootstrap.upload(dest, binary: data)
+        }
+        return try Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
+    }
+
+    /// Takes a bridge just spawned as the connection.
+    func adopt(_ child: Child) {
+        self.child = child
+        attach(Connection(fd: child.output, writeFD: child.input, queue: .main))
+    }
+
+    private func reconnectRemote() {
+        guard case let .remote(dest, name) = transport, !disconnected else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let child = try? Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
+            DispatchQueue.main.async {
+                guard let self, !self.disconnected else { return }
+                if let child {
+                    self.adopt(child)
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.reconnectRemote() }
+                }
+            }
+        }
+    }
+
+    func disconnect() {
+        disconnected = true
+        conn?.close()
+        if let child { kill(child.pid, SIGTERM) }
+    }
+
+    private func attach(_ conn: Connection) {
         conn.onFrame = { [weak self] frame in
-            guard let self, let message = frame.decode(ServerMessage.self) else { return }
+            guard let self else { return }
+            guard let message = frame.decode(ServerMessage.self) else {
+                NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", self.host.raw, frame.kind.rawValue, frame.payload.count)
+                return
+            }
+            if self.isRemote, ProcessInfo.processInfo.environment["MANIFOLD_DEBUG"] != nil {
+                NSLog("host %@: %@", self.host.raw, String(describing: message).prefix(80).description)
+            }
             self.handle(message)
         }
         conn.onClose = { [weak self] in
             guard let self else { return }
+            NSLog("host %@: connection closed", self.host.raw)
             self.conn = nil
+            self.isConnected = false
+            if let child = self.child {
+                var status: Int32 = 0
+                waitpid(child.pid, &status, WNOHANG)
+                self.child = nil
+            }
             self.onDisconnect?()
+            self.scheduleChange()
+            guard !self.disconnected else { return }
             // Bring the server back; terminals re-attach once it's up.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.connect() }
+            let delay: TimeInterval = self.isRemote ? 5 : 0.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.connect() }
         }
         conn.start()
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
         self.conn = conn
+        isConnected = true
     }
 
     private func handle(_ message: ServerMessage) {
@@ -226,12 +321,15 @@ final class HostClient {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 onVersionMismatch?(version)
             }
+            let first = !hasState
             self.host = host
+            clock = Clock(host: host)
             for s in snapshots { node.load(s) }
             // Shards we had that the host no longer has (a fresh host).
             let known = Set(snapshots.map(\.shard))
             for shard in node.shards.keys where !known.contains(shard) { node.remove(shard) }
             hasState = true
+            if first { onWelcome?() }
             scheduleChange()
         case let .entries(shard, entries):
             for e in entries { clock.observe(e.at) }
@@ -256,12 +354,16 @@ final class HostClient {
             onHistory?(shard, entries)
         case let .removed(shard):
             node.remove(shard)
+        case let .open(id, client, paths, beside, wait):
+            onOpen?(id, client, paths, beside, wait)
         }
     }
 
     var onHistory: ((ShardID, [Entry]) -> Void)?
     /// A terminal's shell ended (not for dormancy), while we were attached.
     var onTerminalEnded: ((BlockID) -> Void)?
+    /// A `manifold` command on this host asked for paths to be opened.
+    var onOpen: ((Int, Int, [String], BlockID?, Bool) -> Void)?
 
     /// The host asked us, as the leader, to append something.
     private func lower(_ proposal: HostProposal, into shard: ShardID) {

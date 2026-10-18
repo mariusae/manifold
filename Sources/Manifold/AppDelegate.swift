@@ -2,7 +2,8 @@ import AppKit
 import ManifoldCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let host = HostClient()
+    private let hosts = Hosts()
+    private var host: HostClient { hosts.local }
     private var windowController: MainWindowController?
     private var createdFirst = false
 
@@ -17,9 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             GhosttyRuntime.shared.apply(self.host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
         }
 
-        host.onChange = { [weak self] in self?.stateChanged() }
+        hosts.onChange = { [weak self] in self?.stateChanged() }
         host.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
         host.connect()
+        hosts.reattachRemembered()
         DebugControl.start { [weak self] in self?.windowController }
     }
 
@@ -29,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
         GhosttyRuntime.shared.apply(host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
-            let wc = MainWindowController(host: host)
+            let wc = MainWindowController(hosts: hosts)
             windowController = wc
             // The very first time, start with a terminal rather than an empty
             // window.
@@ -117,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         app.addItem(.separator())
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
+        item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
         app.addItem(.separator())
         item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
         item(app, "End All Sessions and Quit…", #selector(MainWindowController.stopServer(_:)), "")

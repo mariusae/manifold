@@ -1,6 +1,13 @@
 import CPTY
 import Foundation
 import ManifoldCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// A shell running on a pseudo-terminal the server owns, so it outlives the
 /// app. Terminals in the app attach to it through `manifoldd attach`.
@@ -10,7 +17,7 @@ final class Session {
     private let master: Int32
     private let queue: DispatchQueue
     private let readSource: DispatchSourceRead
-    private let exitSource: DispatchSourceProcess
+    private let exitWatch: ProcessWatch
     private var replay: ReplayBuffer
     /// Whether there's output not yet saved to disk.
     private(set) var unsaved = false
@@ -32,9 +39,14 @@ final class Session {
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           queue: DispatchQueue) {
         var (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
-        // So `manifold` run in this shell knows where it is.
+        // So `manifold` run in this shell knows where it is, and `$EDITOR`
+        // edits in Manifold, beside it.
         environment["MANIFOLD_BLOCK"] = id.description
-        let argv0 = "-" + (shell as NSString).lastPathComponent
+        environment["MANIFOLD_HOST"] = id.host.raw
+        let editor = Session.editorCommand
+        environment["EDITOR"] = editor
+        environment["VISUAL"] = editor
+        let argv0 = "-" + shell.lastPathComponent
         let dir = cwd.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? FileManager.default.homeDirectoryForCurrentUser.path
 
@@ -57,12 +69,12 @@ final class Session {
         self.queue = queue
         self.size = (cols, rows)
         readSource = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
-        exitSource = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+        exitWatch = ProcessWatch(pid: pid, queue: queue)
         readSource.setEventHandler { [weak self] in self?.readOutput() }
         readSource.setCancelHandler { close(master) }
-        exitSource.setEventHandler { [weak self] in self?.processExited() }
+        exitWatch.onExit = { [weak self] in self?.processExited() }
         readSource.resume()
-        exitSource.resume()
+        exitWatch.start()
     }
 
     /// What's written across the transcript where a dormant terminal's old
@@ -125,7 +137,7 @@ final class Session {
     }
 
     var cwd: String? {
-        var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        var buf = [CChar](repeating: 0, count: 4096)
         guard mf_proc_cwd(pid, &buf, Int32(buf.count)) == 0 else { return nil }
         return String(cString: buf)
     }
@@ -193,7 +205,7 @@ final class Session {
         var status: Int32 = 0
         guard waitpid(pid, &status, WNOHANG) == pid else { return }
         exited = true
-        exitSource.cancel()
+        exitWatch.cancel()
         // Pass on whatever the shell wrote on its way out.
         while !readSource.isCancelled {
             var buf = [UInt8](repeating: 0, count: 65536)
@@ -246,7 +258,7 @@ final class Session {
 
         // Ghostty's zsh integration reports the working directory and sets
         // titles; it's loaded by pointing ZDOTDIR at it.
-        if (shell as NSString).lastPathComponent == "zsh", let res = env["GHOSTTY_RESOURCES_DIR"] {
+        if shell.lastPathComponent == "zsh", let res = env["GHOSTTY_RESOURCES_DIR"] {
             let dir = res + "/shell-integration/zsh"
             if FileManager.default.fileExists(atPath: dir) {
                 if let old = env["ZDOTDIR"] { env["GHOSTTY_ZSH_ZDOTDIR"] = old }
@@ -255,6 +267,19 @@ final class Session {
             }
         }
         return (shell, env)
+    }
+
+    /// The `manifold` command, as a shell runs it with `--wait`: beside
+    /// this server in the app bundle, else the server itself on a remote
+    /// host (`manifoldd open`).
+    static var editorCommand: String {
+        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let helper = exe.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Helpers/manifold")
+        // Quoted only when it must be: a shell expands `$EDITOR` without
+        // parsing quotes, and most paths have no spaces.
+        func quote(_ s: String) -> String { s.contains(" ") ? "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" : s }
+        if FileManager.default.isExecutableFile(atPath: helper.path) { return quote(helper.path) + " --wait" }
+        return quote(exe.path) + " open --wait"
     }
 
     private static let allowedClientEnv: Set<String> = [
@@ -272,4 +297,60 @@ func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePo
 func log(_ message: String) {
     let stamp = ISO8601DateFormatter().string(from: Date())
     FileHandle.standardError.write(Data("\(stamp) \(message)\n".utf8))
+}
+
+/// Tells when a child process exits: a process source where there is one
+/// (Darwin), else SIGCHLD, shared, with the pids looked up.
+final class ProcessWatch {
+    let pid: pid_t
+    var onExit: (() -> Void)?
+    #if canImport(Darwin)
+    private var source: DispatchSourceProcess?
+    #else
+    private static var watches: [pid_t: ProcessWatch] = [:]
+    private static var signalSource: DispatchSourceSignal?
+    #endif
+    private let queue: DispatchQueue
+
+    init(pid: pid_t, queue: DispatchQueue) {
+        self.pid = pid
+        self.queue = queue
+    }
+
+    func start() {
+        #if canImport(Darwin)
+        let s = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+        s.setEventHandler { [weak self] in self?.onExit?() }
+        s.resume()
+        source = s
+        #else
+        Self.watches[pid] = self
+        if Self.signalSource == nil {
+            signal(SIGCHLD, SIG_IGN)
+            let s = DispatchSource.makeSignalSource(signal: SIGCHLD, queue: queue)
+            s.setEventHandler {
+                // Any child may have gone; each watched one is asked.
+                for (pid, w) in Self.watches {
+                    var status: Int32 = 0
+                    let r = waitpid(pid, &status, WNOHANG | WNOWAIT)
+                    if r == pid || (r < 0 && errno == ECHILD) {
+                        Self.watches.removeValue(forKey: pid)
+                        w.onExit?()
+                    }
+                }
+            }
+            s.resume()
+            Self.signalSource = s
+        }
+        #endif
+    }
+
+    func cancel() {
+        #if canImport(Darwin)
+        source?.cancel()
+        source = nil
+        #else
+        Self.watches.removeValue(forKey: pid)
+        #endif
+    }
 }

@@ -263,6 +263,14 @@ enum DebugControl {
             return "ok"
         case "state":
             return wc?.debugDescribe() ?? "no window"
+        case "attach":
+            guard let dest = Destination(arg) else { return "usage: attach user@host | provider:name" }
+            wc?.attach(dest)
+            return "ok"
+        case "hosts":
+            guard let wc else { return "no window" }
+            return wc.hosts.all.map { "\($0.host) \($0.isRemote ? ($0.destination?.description ?? "") : "local") \($0.isConnected ? "connected" : "offline") \($0.node.blocks.count) blocks" }.joined(separator: "\n")
+                + (wc.hosts.errors.isEmpty ? "" : "\nerrors: \(wc.hosts.errors)")
         case "recall":
             guard let id = BlockID(string: arg) else { return "usage: recall host/ulid" }
             wc?.recall(id)

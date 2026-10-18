@@ -2,12 +2,18 @@ import Foundation
 
 /// Watches a file, calling back when it changes. Editors often save by
 /// writing a new file and renaming it over the old one, so on a rename or
-/// delete the path is watched afresh.
+/// delete the path is watched afresh. Where there are no file system
+/// event sources (Linux), the file is looked at once a second.
 public final class FileWatcher {
     private let path: String
     private let queue: DispatchQueue
     private let onChange: () -> Void
+    #if canImport(Darwin)
     private var source: DispatchSourceFileSystemObject?
+    #else
+    private var timer: DispatchSourceTimer?
+    private var last: (Int64, Double)?
+    #endif
     private var pending: DispatchWorkItem?
 
     public init(path: String, queue: DispatchQueue = .main, onChange: @escaping () -> Void) {
@@ -17,8 +23,15 @@ public final class FileWatcher {
         start(retries: 0)
     }
 
-    deinit { source?.cancel() }
+    deinit {
+        #if canImport(Darwin)
+        source?.cancel()
+        #else
+        timer?.cancel()
+        #endif
+    }
 
+    #if canImport(Darwin)
     private func start(retries: Int) {
         source?.cancel()
         source = nil
@@ -46,6 +59,30 @@ public final class FileWatcher {
         self.source = source
         if retries > 0 { changed() }
     }
+    #else
+    private func stamp() -> (Int64, Double)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
+        let size = (attrs[.size] as? Int64) ?? 0
+        let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return (size, modified)
+    }
+
+    private func start(retries: Int) {
+        last = stamp()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let now = self.stamp()
+            if now?.0 != self.last?.0 || now?.1 != self.last?.1 {
+                self.last = now
+                self.changed()
+            }
+        }
+        timer.resume()
+        self.timer = timer
+    }
+    #endif
 
     private func changed() {
         pending?.cancel()
@@ -115,7 +152,7 @@ public enum TextFile {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return nil }
         var out: [DirectoryEntry] = []
         for name in names {
-            let full = (path as NSString).appendingPathComponent(name)
+            let full = path.appendingPathComponent(name)
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: full) else { continue }
             let isDir = (attrs[.type] as? FileAttributeType) == .typeDirectory
             let size = (attrs[.size] as? Int64) ?? 0
@@ -124,7 +161,7 @@ public enum TextFile {
         }
         return out.sorted { a, b in
             if a.isDirectory != b.isDirectory { return a.isDirectory }
-            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            return a.name.standardCompare(b.name)
         }
     }
 }

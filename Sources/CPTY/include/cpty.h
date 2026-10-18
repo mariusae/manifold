@@ -27,4 +27,7 @@ int mf_pty_foreground_name(int master, char *buf, int len);
 // The terminal's foreground process group, or -1.
 pid_t mf_pty_foreground(int master);
 
+// The size of the terminal on fd, or -1.
+int mf_terminal_size(int fd, unsigned short *cols, unsigned short *rows);
+
 #endif

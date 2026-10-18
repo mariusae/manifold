@@ -1,0 +1,7 @@
+#!/bin/sh
+# A provider for testing: "another host" that is this machine with another
+# home. manifold-remote-fake DESTINATION COMMAND runs COMMAND with HOME set to
+# $MANIFOLD_FAKE_HOME/DESTINATION, and the server's data beside it.
+home="${MANIFOLD_FAKE_HOME:-/tmp/manifold-fake}/$1"
+mkdir -p "$home"
+exec env HOME="$home" MANIFOLD_DIR="$home/data" sh -c "$2"

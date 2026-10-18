@@ -1,22 +1,42 @@
 import CPTY
 import Foundation
 import ManifoldCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 enum ServerError: Error {
     case alreadyRunning
 }
+
+private func sysAccept(_ fd: Int32) -> Int32 { accept(fd, nil, nil) }
+private func sysExit(_ code: Int32) -> Never { exit(code) }
 
 /// A host: every shard's log, the registry and links, the shells, the files.
 /// The app attaches and mirrors; it leads the shards it edits (arrangements,
 /// text, the desk) and asks for the rest by proposal. Everything runs on one
 /// serial queue.
 final class Server {
-    let host = HostID.local
+    /// The host's name: as its first client named it (a remote host), or
+    /// `local`.
+    let host: HostID = {
+        if let data = try? Data(contentsOf: Paths.hostName), case let name = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return HostID(name)
+        }
+        return .local
+    }()
     private let queue = DispatchQueue(label: "manifoldd")
     private let node = Node()
     private let store: LogStore
     private let clock = Clock(host: .local)
     private var clients: [Connection] = []
+    /// Each client's attachment number, and the app among them (named so).
+    private var clientIDs: [ObjectIdentifier: Int] = [:]
+    private var appClients: Set<ObjectIdentifier> = []
     /// Connections that haven't said what they are yet.
     private var pending: [Connection] = []
     private var attachments = 0
@@ -79,7 +99,7 @@ final class Server {
 
     private func accept(_ listenFD: Int32) {
         while true {
-            let fd = Darwin.accept(listenFD, nil, nil)
+            let fd = sysAccept(listenFD)
             guard fd >= 0 else { return }
             let conn = Connection(fd: fd, queue: queue)
             conn.onFrame = { [weak self, unowned conn] frame in self?.firstFrame(frame, on: conn) }
@@ -93,11 +113,17 @@ final class Server {
         pending.removeAll { $0 === conn }
         conn.onClose = nil
         switch frame.decode(ClientMessage.self) {
-        case .hello?:
+        case let .hello(_, name)?:
             clients.append(conn)
             attachments += 1
+            clientIDs[ObjectIdentifier(conn)] = attachments
+            if name == "Manifold" { appClients.insert(ObjectIdentifier(conn)) }
             conn.onFrame = { [weak self, unowned conn] frame in self?.clientFrame(frame, from: conn) }
-            conn.onClose = { [weak self, unowned conn] in self?.clients.removeAll { $0 === conn } }
+            conn.onClose = { [weak self, unowned conn] in
+                self?.clients.removeAll { $0 === conn }
+                self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
+                self?.appClients.remove(ObjectIdentifier(conn))
+            }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host,
                                                      attachment: attachments, snapshots: snapshots)))
@@ -116,6 +142,13 @@ final class Server {
             clientAppended(shard, entries, from: conn)
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
+        case let .open(id, paths, beside, wait)?:
+            // The command asks; the app, if attached, opens.
+            guard let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) }) else {
+                conn.send(.message(ServerMessage.done(id: id, error: "Manifold isn't attached to this host")))
+                return
+            }
+            app.send(.message(ServerMessage.open(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, paths: paths, beside: beside, wait: wait)))
         case .shutdown?:
             exit(endSessions: true)
         default:
@@ -238,6 +271,11 @@ final class Server {
             done()
         case let .history(shard):
             conn.send(.message(ServerMessage.history(shard: shard, entries: store.entries(shard))))
+            done()
+        case let .openDone(openID, client):
+            if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
+                c.send(.message(ServerMessage.done(id: openID, error: nil)))
+            }
             done()
         }
     }
@@ -424,7 +462,7 @@ final class Server {
         }
         unlink(Paths.socket)
         log("manifoldd exiting")
-        Darwin.exit(0)
+        sysExit(0)
     }
 
     // MARK: For `manifoldd state`

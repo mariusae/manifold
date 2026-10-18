@@ -107,6 +107,8 @@ public enum Proposal: Codable, Sendable {
     case unlink(String)
     /// The whole history of a shard, for scrubbing.
     case history(ShardID)
+    /// The command's `open --wait` is done: what it opened was put away.
+    case openDone(id: Int, client: Int)
 }
 
 /// What a host asks the leader of a shard to append.
@@ -125,6 +127,9 @@ public enum ClientMessage: Codable, Sendable {
     case attach(AttachRequest)
     /// Asks the server to exit, ending every session.
     case shutdown
+    /// The `manifold` command: open these, beside a block if run in one
+    /// of Manifold's terminals; with `wait`, answered when they're put away.
+    case open(id: Int, paths: [String], beside: BlockID?, wait: Bool)
 }
 
 public struct AttachRequest: Codable, Sendable {
@@ -154,4 +159,6 @@ public enum ServerMessage: Codable, Sendable {
     case history(shard: ShardID, entries: [Entry])
     /// A shard is gone (a block forgotten).
     case removed(shard: ShardID)
+    /// The command asked for these to be opened (the app places them).
+    case open(id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool)
 }
