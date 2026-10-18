@@ -56,6 +56,10 @@ public struct Settings: Codable, Equatable, Sendable {
     public var terminalHistoryDays: Int = 30
     /// Undo depth kept per text block; 0 unlimited.
     public var undoDepth: Int = 0
+    /// Language servers, by language (§7.1): the defaults, as changed.
+    public var languageServers: [LanguageServerConfig] = LanguageServerConfig.defaults
+    /// The command an agent block runs.
+    public var agentCommand: String = "claude"
 
     public init() {}
 
@@ -66,6 +70,8 @@ public struct Settings: Codable, Equatable, Sendable {
         textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
         terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30
         undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0
+        languageServers = (try? c.decodeIfPresent([LanguageServerConfig].self, forKey: .languageServers)) ?? LanguageServerConfig.defaults
+        agentCommand = (try? c.decodeIfPresent(String.self, forKey: .agentCommand)) ?? "claude"
     }
 }
 

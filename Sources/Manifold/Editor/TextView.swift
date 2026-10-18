@@ -14,6 +14,12 @@ protocol TextViewDelegate: AnyObject {
     func textViewDidChangeSelection(_ view: TextView)
     func textViewDidEdit(_ view: TextView)
     func textViewDidScroll(_ view: TextView)
+    /// A key, before the view sees it: true if it was taken (a popup's).
+    func textView(_ view: TextView, handle event: NSEvent) -> Bool
+    /// ⌘-click on a place in the text.
+    func textView(_ view: TextView, commandClickAt offset: Int)
+    /// ⌃Space.
+    func textViewRequestsCompletion(_ view: TextView)
 }
 
 /// A selection: from its anchor to its head (the end that moves), in bytes.
@@ -63,6 +69,8 @@ final class TextView: NSView, NSTextInputClient {
     var highlightedLine: Int? { didSet { if highlightedLine != oldValue { needsDisplay = true } } }
     /// Ranges marked (the find bar's matches).
     var highlights: [TextRange] = [] { didSet { needsDisplay = true } }
+    /// What the language server says, underlined.
+    var diagnostics: [Diagnostic] = [] { didSet { needsDisplay = true } }
     /// The document version the view last made or saw.
     var undoKnownVersion: Int { knownVersion }
 
@@ -379,6 +387,21 @@ final class TextView: NSView, NSTextInputClient {
         }
         ctx.restoreGState()
 
+        // Diagnostics: underlined, and a mark in the gutter.
+        if !diagnostics.isEmpty {
+            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
+            for d in diagnostics where d.range.end >= firstOffset && d.range.start <= lastOffset {
+                let color = Self.diagnosticColor(d.severity)
+                let range = d.range.isEmpty ? TextRange(d.range.start, text.next(d.range.start)) : d.range
+                color.setFill()
+                underline(range, from: first, to: last)
+                if showsLineNumbers {
+                    let n = text.line(at: d.range.start)
+                    NSBezierPath(ovalIn: NSRect(x: textLeft - 10, y: top(ofLine: n) + lineHeight / 2 - 2.5, width: 5, height: 5)).fill()
+                }
+            }
+        }
+
         // Marked text (being composed) is underlined.
         if let m = marked, !m.isEmpty {
             NSColor.secondaryLabelColor.setFill()
@@ -392,6 +415,58 @@ final class TextView: NSView, NSTextInputClient {
                 let r = caretRect(s.head)
                 (focused ? Self.caretColor : Self.caretColor.withAlphaComponent(0.35)).setFill()
                 r.fill()
+            }
+        }
+    }
+
+    static func diagnosticColor(_ severity: Int) -> NSColor {
+        switch severity {
+        case 1: return NSColor.systemRed
+        case 2: return NSColor.systemOrange
+        default: return NSColor.systemBlue.withAlphaComponent(0.6)
+        }
+    }
+
+    /// A 2-pixel line under each row of a range.
+    private func underline(_ range: TextRange, from first: Int, to last: Int) {
+        rows(of: range, from: first, to: last) { r in
+            NSRect(x: r.minX, y: r.maxY - 2, width: max(r.width, 4), height: 2).fill()
+        }
+    }
+
+    /// The row rectangles a range covers, in the view.
+    func rects(of range: TextRange) -> [NSRect] {
+        var out: [NSRect] = []
+        rows(of: range, from: text.line(at: range.start), to: text.line(at: range.end)) { out.append($0) }
+        return out
+    }
+
+    /// Where a caret at an offset is, in the window.
+    func caretRectInWindow(_ offset: Int) -> NSRect {
+        convert(caretRect(offset), to: nil)
+    }
+
+    private func rows(of range: TextRange, from first: Int, to last: Int, _ each: (NSRect) -> Void) {
+        let text = self.text
+        let startLine = max(text.line(at: range.start), first)
+        let endLine = min(text.line(at: range.end), last)
+        guard startLine <= endLine else { return }
+        for n in startLine...endLine {
+            let l = layout(line: n)
+            let lineStart = text.offset(ofLine: n)
+            let lineEnd = lineStart + l.text.utf8.count
+            let s = max(range.start, lineStart), e = min(range.end, lineEnd)
+            let su = utf16Index(in: l.text, byteOffset: s - lineStart)
+            let eu = utf16Index(in: l.text, byteOffset: e - lineStart)
+            let lineTop = top(ofLine: n)
+            for (r, row) in l.rows.enumerated() {
+                let rs = l.rowStarts[r]
+                let re = r + 1 < l.rowStarts.count ? l.rowStarts[r + 1] : (l.text as NSString).length
+                let a = max(su, rs), b = min(eu, re)
+                guard a <= b, su <= re, eu >= rs else { continue }
+                let x1 = CTLineGetOffsetForStringIndex(row, a, nil)
+                let x2 = CTLineGetOffsetForStringIndex(row, b, nil)
+                each(NSRect(x: textLeft + x1, y: lineTop + CGFloat(r) * lineHeight, width: max(x2 - x1, 0), height: lineHeight))
             }
         }
     }
@@ -634,6 +709,7 @@ final class TextView: NSView, NSTextInputClient {
     // MARK: Keys
 
     override func keyDown(with event: NSEvent) {
+        if delegate?.textView(self, handle: event) == true { return }
         if handleShortcut(event) { return }
         inputContext?.handleEvent(event)
     }
@@ -648,6 +724,7 @@ final class TextView: NSView, NSTextInputClient {
         case ([.control, .shift], "k"): deleteLines(); return true
         case ([.command], "/"): toggleComment(); return true
         case ([.control], "j"): joinLines(); return true
+        case ([.control], " "): delegate?.textViewRequestsCompletion(self); return true
         case ([.command, .control], String(UnicodeScalar(NSUpArrowFunctionKey)!)): moveLines(up: true); return true
         case ([.command, .control], String(UnicodeScalar(NSDownArrowFunctionKey)!)): moveLines(up: false); return true
         case ([.control, .shift], String(UnicodeScalar(NSUpArrowFunctionKey)!)): addCaret(up: true); return true
@@ -785,6 +862,14 @@ final class TextView: NSView, NSTextInputClient {
     private func lineEnd(_ offset: Int) -> Int { text.lineRange(text.line(at: offset)).end }
 
     private func isWord(_ b: UInt8) -> Bool { b == 0x5F || (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b >= 0x80 }
+
+    /// The word around an offset, for the symbol under the caret.
+    func wordRange(at offset: Int) -> TextRange {
+        var a = offset, b = offset
+        while a > 0, let c = text.byte(at: a - 1), isWord(c) { a -= 1 }
+        while b < text.count, let c = text.byte(at: b), isWord(c) { b += 1 }
+        return TextRange(a, b)
+    }
 
     private func wordStart(_ offset: Int) -> Int {
         var o = offset
@@ -1097,6 +1182,12 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
+        if flags.contains(.command), event.clickCount == 1 {
+            setSelections([Selection(at: offset)])
+            dragAnchor = nil
+            delegate?.textView(self, commandClickAt: offset)
+            return
+        }
         if flags.contains(.shift), let last = selections.last {
             setSelections(selections.dropLast() + [Selection(last.anchor, offset)])
             dragAnchor = Selection(last.anchor, offset)

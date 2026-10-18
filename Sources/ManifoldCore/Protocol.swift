@@ -109,6 +109,17 @@ public enum Proposal: Codable, Sendable {
     case history(ShardID)
     /// The command's `open --wait` is done: what it opened was put away.
     case openDone(id: Int, client: Int)
+    /// Which language servers to run for which files (the app's settings,
+    /// given to every host).
+    case languageServers([LanguageServerConfig])
+    /// A question for the language server of a block's file.
+    case lsp(LSPRequest)
+    /// Edits applied to a file on the host that isn't open as a block (a
+    /// rename across files).
+    case editFile(path: String, edits: [TextEdit])
+    /// The text blocks placed in the client's arrangements: open with
+    /// their language servers while they are.
+    case editing([BlockID])
 }
 
 /// What a host asks the leader of a shard to append.
@@ -161,4 +172,10 @@ public enum ServerMessage: Codable, Sendable {
     case removed(shard: ShardID)
     /// The command asked for these to be opened (the app places them).
     case open(id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool)
+    /// A language server's diagnostics for a block, as they stand.
+    case diagnostics(BlockID, [Diagnostic])
+    /// The answer to a `lsp` proposal.
+    case lspResult(id: Int, LSPResult)
+    /// A language server's state: starting, ready, or gone, with a word.
+    case languageServer(language: String, root: String, state: String)
 }

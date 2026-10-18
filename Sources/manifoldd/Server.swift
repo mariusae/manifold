@@ -48,9 +48,24 @@ final class Server {
     private var signalSources: [DispatchSourceSignal] = []
     /// Shards changed since their last snapshot.
     private var dirtyShards: Set<ShardID> = []
+    private let languageServers: LanguageServers
 
     init() {
         store = LogStore(directory: Paths.logs)
+        languageServers = LanguageServers(queue: queue)
+        languageServers.textOf = { [weak self] block in
+            guard let b = self?.node.block(block), let t = b.text else { return nil }
+            return (t.text, b.path)
+        }
+        languageServers.onDiagnostics = { [weak self] block, items in
+            let frame = Frame.message(ServerMessage.diagnostics(block, items))
+            for c in self?.clients ?? [] { c.send(frame) }
+        }
+        languageServers.onState = { [weak self] language, root, state in
+            log("language server \(language) at \(root): \(state)")
+            let frame = Frame.message(ServerMessage.languageServer(language: language, root: root, state: state))
+            for c in self?.clients ?? [] { c.send(frame) }
+        }
     }
 
     func run() throws {
@@ -173,7 +188,7 @@ final class Server {
         dirtyShards.insert(shard)
         let frame = Frame.message(ServerMessage.entries(shard: shard, entries: entries))
         for c in clients where c !== conn { c.send(frame) }
-        shardChanged(shard)
+        shardChanged(shard, entries: entries)
     }
 
     /// The host appends to a shard it leads, and tells every client.
@@ -189,8 +204,12 @@ final class Server {
     }
 
     /// Keeps the registry in step with a block's log, whoever appended.
-    private func shardChanged(_ shard: ShardID) {
+    private func shardChanged(_ shard: ShardID, entries: [Entry] = []) {
         guard let id = shard.block, let block = node.block(id) else { return }
+        if block.kind == .text, block.path != nil,
+           entries.contains(where: { if case .edit = $0.event { return true }; if case .content = $0.event { return true }; return false }) {
+            languageServers.textChanged(id)
+        }
         let registry = node.registry(host)
         let current = registry.blocks[id]
         if current == nil || current!.kind != block.kind || current!.title != block.displayTitle || current!.path != block.path {
@@ -245,6 +264,7 @@ final class Server {
                 expectedFingerprints[block] = fingerprint
                 conn.send(.message(ServerMessage.propose(shard: .block(block), .clean(version: version, fingerprint: fingerprint))))
                 watch(b, force: true)
+                languageServers.textChanged(block, saved: true)
                 done()
             } catch {
                 done(error.localizedDescription)
@@ -277,6 +297,26 @@ final class Server {
                 c.send(.message(ServerMessage.done(id: openID, error: nil)))
             }
             done()
+        case let .languageServers(configs):
+            languageServers.configure(configs)
+            done()
+        case let .editing(ids):
+            languageServers.setOpen(Set(ids))
+            done()
+        case let .lsp(request):
+            languageServers.request(request) { result in
+                conn.send(.message(ServerMessage.lspResult(id: id, result)))
+            }
+        case let .editFile(path, edits):
+            guard let contents = TextFile.read(path) else { return done("can't read \(path)") }
+            var rope = Rope(contents.text)
+            for e in edits.sorted(by: { $0.start > $1.start }) { rope.apply(e) }
+            do {
+                _ = try TextFile.write(rope.string, to: path, encoding: contents.encoding, lineEnding: contents.lineEnding)
+                done()
+            } catch {
+                done(error.localizedDescription)
+            }
         }
     }
 
@@ -450,6 +490,7 @@ final class Server {
     /// Exits, saving state first. Sessions die with us either way, as their
     /// terminals hang up when we go; `endSessions` hangs up on them first.
     private func exit(endSessions: Bool) {
+        languageServers.stopAll()
         if endSessions {
             for s in sessions.values { s.terminate() }
         }

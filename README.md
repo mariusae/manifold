@@ -96,6 +96,17 @@ when you find it again.
   the text as it's edited in an editor on the same block, or saved by
   another program. View ▸ Editor Font chooses proportional (Mona Sans) or
   fixed width; View ▸ Theme the fonts.
+- **Language servers** run on the file's host, one per language and
+  workspace root, started when a file of theirs is placed: what they say
+  is underlined, marked in the gutter and spelled out along the bottom
+  when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
+  Definition (⌃⌘J, or ⌘-click), Find References (⌃⌘R), Show Documentation
+  (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
+  on disk when they aren't open), Format Document (⌃⌘F). Manifold ▸
+  Language Servers… is the table: the languages by extension, the command
+  (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
+  clangd and zls by default), the files that mark a workspace root, on or
+  off; it's a setting on the desk, so every host runs the same.
 - **⌘-click** a file's name in a terminal to open it beside the terminal,
   on the stack to its right: Markdown in a preview, folders in a listing,
   text to edit; `path:line:column` (as grep and compilers print it) goes to
@@ -138,6 +149,20 @@ is migrated into logs on first run.
   stops the server; everything is kept, and terminals start fresh shells
   next time. Manifold ▸ Restart Server… restarts it (offered when the app
   finds a server from another version).
+- **Remote hosts** (Manifold ▸ Attach to Host…, ⇧⌘K) work as apex's do: a
+  destination ssh understands, or `provider:name` for a
+  `manifold-remote-<provider>` command on the PATH that takes a destination
+  and a command to run there. Manifold asks the host what it is, installs
+  the bundled `manifoldd` for it in `~/.manifold/bin` if the one there
+  differs, and runs `manifoldd bridge`, which pumps the same frames between
+  the pipe and the host's own server (started if need be). Blocks are
+  `host/ulid`, so a remote terminal, file or folder is placed, linked and
+  found like a local one; its terminals attach through the same provider.
+  Hosts are remembered in `hosts.json` and attached again at start. Linux
+  servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
+- **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
+  host, `manifoldd open --wait`): `git commit` and friends edit in a sheet
+  beside the terminal and return when it's taken off (⌘W).
 - `manifoldd state` prints what the host has; `manifoldd stop` ends it.
 - Protocol: length-prefixed binary frames over a Unix socket
   ([Protocol.swift](Sources/ManifoldCore/Protocol.swift)); the same

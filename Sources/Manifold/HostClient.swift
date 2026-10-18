@@ -25,6 +25,11 @@ final class HostClient {
     private var disconnected = false
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
+    private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
+    /// What the host's language servers say about its text blocks.
+    private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
+    /// Each language server's state, by "language|root".
+    private(set) var languageServerStates: [String: String] = [:]
     private var changeScheduled = false
 
     /// Called on the main queue once per turn in which something changed.
@@ -113,6 +118,15 @@ final class HostClient {
         nextProposal += 1
         if let done { pendingProposals[id] = done }
         conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+    }
+
+    /// Asks the block's host's language server something.
+    func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
+        guard conn != nil else { return done(.error("not attached")) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingLSP[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
     }
 
     // MARK: Conveniences
@@ -330,6 +344,7 @@ final class HostClient {
             for shard in node.shards.keys where !known.contains(shard) { node.remove(shard) }
             hasState = true
             if first { onWelcome?() }
+            onConnected?()
             scheduleChange()
         case let .entries(shard, entries):
             for e in entries { clock.observe(e.at) }
@@ -356,8 +371,21 @@ final class HostClient {
             node.remove(shard)
         case let .open(id, client, paths, beside, wait):
             onOpen?(id, client, paths, beside, wait)
+        case let .diagnostics(block, items):
+            diagnostics[block] = items
+            onDiagnostics?(block)
+        case let .lspResult(id, result):
+            pendingLSP.removeValue(forKey: id)?(result)
+        case let .languageServer(language, root, state):
+            languageServerStates[language + "|" + root] = state
+            onLanguageServer?(language, root, state)
         }
     }
+
+    /// The host welcomed us (each time: a reconnection too).
+    var onConnected: (() -> Void)?
+    var onDiagnostics: ((BlockID) -> Void)?
+    var onLanguageServer: ((String, String, String) -> Void)?
 
     var onHistory: ((ShardID, [Entry]) -> Void)?
     /// A terminal's shell ended (not for dormancy), while we were attached.

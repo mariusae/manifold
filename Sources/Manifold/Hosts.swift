@@ -17,6 +17,10 @@ final class Hosts {
     var onHistory: ((ShardID, [Entry]) -> Void)?
     /// A `manifold` command on `host` asks for paths to be opened.
     var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
+    var onDiagnostics: ((BlockID) -> Void)?
+    var onLanguageServer: ((HostID, String, String, String) -> Void)?
+    private var pushedLanguageServers: [HostID: [LanguageServerConfig]] = [:]
+    private var editing: Set<BlockID> = []
 
     init() {
         local = HostClient(transport: .local)
@@ -31,6 +35,50 @@ final class Hosts {
             guard let self, let client else { return }
             self.onOpen?(client.host, id, who, paths, beside, wait)
         }
+        client.onConnected = { [weak self, weak client] in
+            guard let self, let client else { return }
+            self.pushedLanguageServers.removeValue(forKey: client.host)
+            self.pushLanguageServers()
+            client.propose(.editing(self.editing.filter { $0.host == client.host }))
+        }
+        client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
+        client.onLanguageServer = { [weak self, weak client] language, root, state in
+            guard let self, let client else { return }
+            self.onLanguageServer?(client.host, language, root, state)
+        }
+    }
+
+    /// Every host runs the language servers the settings say, as they
+    /// change (the settings are the local host's).
+    func pushLanguageServers() {
+        let configs = local.desk.settings.languageServers
+        for c in all where c.isConnected && pushedLanguageServers[c.host] != configs {
+            pushedLanguageServers[c.host] = configs
+            c.propose(.languageServers(configs))
+        }
+    }
+
+    /// The text blocks placed anywhere, told to each one's host as they
+    /// change (and again when a host comes back).
+    func setEditing(_ ids: Set<BlockID>) {
+        guard ids != editing else { return }
+        let changed = Set(ids.symmetricDifference(editing).map(\.host))
+        editing = ids
+        for c in all where changed.contains(c.host) && c.isConnected {
+            c.propose(.editing(ids.filter { $0.host == c.host }))
+        }
+    }
+
+    func diagnostics(_ block: BlockID) -> [Diagnostic] { client(of: block)?.diagnostics[block] ?? [] }
+
+    func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
+        let block: BlockID
+        switch request {
+        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _):
+            block = b
+        }
+        guard let c = client(of: block) else { return done(.error("the block's host isn't attached")) }
+        c.lsp(request, done: done)
     }
 
     var all: [HostClient] { [local] + remotes.values.sorted { $0.host < $1.host } }
@@ -78,8 +126,16 @@ final class Hosts {
             done?(nil)
         case let .history(shard):
             (client(shard.host) ?? local).propose(proposal, done: done)
-        case .openDone:
+        case .openDone, .editFile:
             local.propose(proposal, done: done)
+        case let .editing(ids):
+            for c in all { c.propose(.editing(ids.filter { $0.host == c.host })) }
+            done?(nil)
+        case .languageServers:
+            for c in all { c.propose(proposal) }
+            done?(nil)
+        case let .lsp(request):
+            lsp(request) { _ in done?(nil) }
         }
     }
 

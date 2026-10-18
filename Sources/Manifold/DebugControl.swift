@@ -197,6 +197,30 @@ enum DebugControl {
             guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
             tv.insertText(typed, replacementRange: tv.selectedRange())
             return "ok"
+        case "rename":
+            // "rename <name>": the symbol at the focused editor's caret, through its language server.
+            guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
+            var v: NSView? = tv
+            while let n = v, !(n is EditorView) { v = n.superview }
+            guard let editor = v as? EditorView else { return "no editor" }
+            editor.rename(at: tv.primarySelection.head, to: arg)
+            return "ok"
+        case "press":
+            // "press return|tab|escape|up|down|<char>": a key event through
+            // the window, as typed (so popups see it).
+            guard let window = wc?.window else { return "no window" }
+            let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53),
+                                                     "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
+                                                     "down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125)]
+            let (chars, code) = codes[arg] ?? (arg, 0)
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil, characters: chars,
+                                            charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                    window.sendEvent(e)
+                }
+            }
+            return "ok"
         case "key":
             // "key <selector>": a standard key command to the focused text view.
             guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
@@ -351,6 +375,16 @@ enum DebugControl {
             for sub in v.subviews { draw(sub) }
         }
         draw(root)
+        // Child windows (popups) over it, where they are on screen.
+        for child in window.childWindows ?? [] {
+            guard child.isVisible, let cv = child.contentView else { continue }
+            let img = cv.bitmapImageRepForCachingDisplay(in: cv.bounds)!
+            cv.cacheDisplay(in: cv.bounds, to: img)
+            let origin = window.convertPoint(fromScreen: child.frame.origin)
+            let r = NSRect(x: origin.x, y: origin.y, width: child.frame.width, height: child.frame.height)
+            let inRoot = root.convert(r, from: nil)
+            if let cg = img.cgImage { ctx.draw(cg, in: inRoot) }
+        }
         NSGraphicsContext.restoreGraphicsState()
         do {
             try rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))

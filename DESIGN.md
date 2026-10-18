@@ -301,8 +301,15 @@ What it is to use, modelled on Panic's Nova, without syntax highlighting:
 - The whole Mac text system: `NSTextInputClient` (marked text, IME),
   services, dictation, spelling on request, accessibility.
 
-Language servers can come later as tools (apex §8); nothing here needs
-them.
+Language servers run on the file's host (§8), one process per language and
+workspace root, configured in the settings (language, extensions, command,
+root markers, on or off): the host feeds each the text of the blocks
+placed in editors as it changes (whole, a moment after the last edit), and
+answers the editor's questions — definition, references, hover, rename,
+formatting, completion — in byte offsets of the block's text, mapping the
+server's paths back to the blocks open on them. Diagnostics go to every
+client. The app sends every host the same table, and the set of blocks
+placed, so a server knows what's open after either side restarts.
 
 ### 7.2 Preview
 
@@ -367,8 +374,15 @@ block's history is its log; scrubbing it walks the pages it showed.
   of the same protocol (open, find, place, link, read a block).
 
 The local host's server starts with the app, as now. A remote one is
-reached with `ssh host manifoldd attach --stdio`, the same frames over the
-pipe (apex §6); nothing listens on the network.
+reached through a provider, as apex does it: `ssh` built in, or a
+`manifold-remote-<provider>` command given a destination and a command to
+run there. The app probes the host (`uname -sm`, the sha256 of
+`~/.manifold/bin/manifoldd`), uploads the bundled server for that platform
+if it differs, and runs `manifoldd bridge --name NAME` there, which starts
+the host's server if need be and pumps the same frames between its stdio
+and the host's socket; nothing listens on the network. Shells on any host
+get `$EDITOR` set to open files in the app, beside the terminal, waiting
+until they're taken off.
 
 ### 8.2 Leadership
 
@@ -450,9 +464,16 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   the history view, and the lenses: terminal, editor (`TextView`),
   preview, directory, web.
 
-Not yet: remote hosts; scrubbing blocks other than arrangements, and
-"everything as it was"; the image, PDF, diff, git, search, process and
-agent lenses; language servers; retention and compaction of logs.
+- Remote hosts (§8.1): providers, the bootstrap, the bridge, `Hosts` in
+  the app over any number of `HostClient`s; Linux servers from the static
+  SDK; `$EDITOR` through `manifold --wait` and `manifoldd open --wait`.
+- Language servers (§7.1): `LanguageServers` in `manifoldd`, JSON-RPC over
+  the server's stdio; the editor's diagnostics, completion popup and Code
+  menu; the Language Servers… table.
+
+Not yet: scrubbing blocks other than arrangements, and "everything as it
+was"; the image, PDF, diff, git, search, process and agent lenses;
+retention and compaction of logs.
 
 ## 9. From here to there
 

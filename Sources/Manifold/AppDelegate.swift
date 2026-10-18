@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stateChanged() {
         guard host.hasState else { return }
+        hosts.pushLanguageServers()
         let scheme = host.desk.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
         GhosttyRuntime.shared.apply(host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
@@ -120,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(.separator())
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
         item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
+        item(app, "Language Servers…", #selector(MainWindowController.showLanguageServers(_:)), "")
         app.addItem(.separator())
         item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
         item(app, "End All Sessions and Quit…", #selector(MainWindowController.stopServer(_:)), "")
@@ -162,6 +164,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         findItem.submenu = find
         edit.addItem(findItem)
         item(edit, "Go to Line…", #selector(EditorView.goToLine(_:)), "l")
+        edit.addItem(.separator())
+        let code = NSMenu(title: "Code")
+        item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
+        item(code, "Go to Definition", #selector(EditorView.goToDefinition(_:)), "j", [.command, .control])
+        item(code, "Find References", #selector(EditorView.findReferences(_:)), "r", [.command, .control])
+        item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
+        code.addItem(.separator())
+        item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "n", [.command, .control])
+        item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .control])
+        let codeItem = NSMenuItem(title: "Code", action: nil, keyEquivalent: "")
+        codeItem.submenu = code
+        edit.addItem(codeItem)
         edit.addItem(.separator())
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 

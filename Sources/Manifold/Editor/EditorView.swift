@@ -10,6 +10,14 @@ protocol EditorViewDelegate: AnyObject {
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
     func editorEditedChanged(_ view: EditorView)
+    /// What the block's language server says about it.
+    func editorDiagnostics(_ view: EditorView) -> [Diagnostic]
+    /// The editor asks the block's language server something.
+    func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
+    /// Opens another file at a line and column (from 1), beside this one.
+    func editor(_ view: EditorView, open path: String, line: Int, column: Int)
+    /// Applies a server's edits to files other than this one.
+    func editor(_ view: EditorView, apply edits: [LSPFileEdit])
 }
 
 /// The editor lens on a text block: Manifold's own text view over the
@@ -24,14 +32,21 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private(set) var path: String
     weak var delegate: EditorViewDelegate?
 
-    private let scroll = NSScrollView()
-    private let textView = TextView()
+    let scroll = NSScrollView()
+    let textView = TextView()
     private var banner: EditorBanner?
     private var findBar: FindBar?
     private var isEdited = false
     private var stateWork: DispatchWorkItem?
     private var restored = false
     private var lastVersion = -1
+    var completion: CompletionPopup?
+    var hover: NSPopover?
+    let status = NSTextField(labelWithString: "")
+    let statusBox = NSView()
+    var statusMessage: String? { didSet { if statusMessage != oldValue { layoutStatus() } } }
+    /// Something the server is doing for us, shown while it lasts.
+    var busyMessage: String? { didSet { if busyMessage != oldValue { layoutStatus() } } }
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
     var theme: FontTheme { didSet { if theme != oldValue { applyFont() } } }
@@ -63,6 +78,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.delegate = self
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
+        status.font = .systemFont(ofSize: 11.5)
+        status.textColor = Theme.text
+        status.lineBreakMode = .byTruncatingTail
+        status.maximumNumberOfLines = 1
+        statusBox.wantsLayer = true
+        statusBox.isHidden = true
+        statusBox.addSubview(status)
+        addSubview(statusBox)
         applyFont()
     }
 
@@ -84,12 +107,22 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             findBar.frame = NSRect(x: 0, y: top - findBar.height, width: bounds.width, height: findBar.height)
             top -= findBar.height
         }
-        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: top)
+        var bottom: CGFloat = 0
+        if !statusBox.isHidden {
+            statusBox.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Self.statusHeight)
+            status.frame = NSRect(x: 10, y: 3, width: bounds.width - 20, height: Self.statusHeight - 6)
+            bottom = Self.statusHeight
+        }
+        scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: top - bottom)
         textView.frame.size.width = scroll.contentSize.width
     }
 
+    static let statusHeight: CGFloat = 24
+
     func destroy() {
         stateWork?.cancel()
+        completion?.close()
+        hover?.close()
     }
 
     // MARK: TextViewDocument
@@ -132,14 +165,33 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             delegate?.editorEditedChanged(self)
         }
         findBar?.refresh()
+        diagnosticsChanged()
+    }
+
+    /// The language server said something new about the block.
+    func diagnosticsChanged() {
+        let items = delegate?.editorDiagnostics(self) ?? []
+        if items != textView.diagnostics { textView.diagnostics = items }
+        updateStatus()
     }
 
     var isDirty: Bool { document?.isDirty == true }
+    /// The file's text has arrived (or it couldn't be read).
+    var isLoaded: Bool { (document?.version ?? 0) > 0 || document?.unreadable == true }
 
     // MARK: TextViewDelegate
 
-    func textViewDidChangeSelection(_ view: TextView) { scheduleStateSave() }
-    func textViewDidScroll(_ view: TextView) { scheduleStateSave() }
+    func textViewDidChangeSelection(_ view: TextView) {
+        scheduleStateSave()
+        updateStatus()
+        hover?.close()
+    }
+
+    func textViewDidScroll(_ view: TextView) {
+        scheduleStateSave()
+        completion?.close()
+        hover?.close()
+    }
 
     func textViewDidEdit(_ view: TextView) {
         // Undone back to what was saved: clean again, as the log sees it.
@@ -148,6 +200,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         scheduleStateSave()
         findBar?.refresh()
+        completionTextChanged()
     }
 
     // MARK: Fonts
@@ -315,6 +368,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             return isDirty || path.isEmpty
         case #selector(revertDocumentToSaved(_:)):
             return (isDirty || banner != nil) && !path.isEmpty
+        case #selector(goToDefinition(_:)), #selector(findReferences(_:)), #selector(showDocumentation(_:)),
+             #selector(renameSymbol(_:)), #selector(formatDocument(_:)), #selector(completeSymbol(_:)):
+            return !path.isEmpty
         default:
             return true
         }

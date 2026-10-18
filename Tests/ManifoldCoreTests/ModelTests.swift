@@ -224,3 +224,39 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.desk(.local).selected == arrangements[0].id)
     #expect(node.registry(.local).blocks.count == 3)
 }
+
+// MARK: Language servers
+
+@Test func ropeLSPPositions() {
+    let r = Rope("ab\nwörld 😀x\nend")
+    // Line and UTF-16 character, from 0, both ways.
+    #expect(r.lspPosition(ofByte: 0) == (0, 0))
+    #expect(r.lspPosition(ofByte: 3) == (1, 0))
+    let x = "ab\nwörld 😀".utf8.count
+    #expect(r.lspPosition(ofByte: x) == (1, 8))
+    #expect(r.byteOffset(line: 1, character: 8) == x)
+    #expect(r.byteOffset(line: 1, character: 2) == 3 + "wö".utf8.count)
+    #expect(r.byteOffset(line: 2, character: 99) == r.count)
+    #expect(r.byteOffset(line: 99, character: 0) == r.count)
+}
+
+@Test func languageByExtensionAndRoot() throws {
+    let configs = LanguageServerConfig.defaults
+    #expect(LanguageServerConfig.language(for: "/x/y/Foo.SWIFT", in: configs)?.id == "swift")
+    #expect(LanguageServerConfig.language(for: "/x/y/foo.rs", in: configs)?.id == "rust")
+    #expect(LanguageServerConfig.language(for: "/x/y/foo", in: configs) == nil)
+    var off = configs
+    off[0].enabled = false
+    #expect(LanguageServerConfig.language(for: "/x/y/Foo.swift", in: off) == nil)
+
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-root-\(UUID().uuidString)").path
+    try FileManager.default.createDirectory(atPath: dir + "/pkg/Sources/M", withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: dir + "/pkg/Package.swift", contents: Data())
+    FileManager.default.createFile(atPath: dir + "/pkg/Sources/M/a.swift", contents: Data())
+    let swift = configs.first { $0.id == "swift" }!
+    #expect(swift.root(of: dir + "/pkg/Sources/M/a.swift") == dir + "/pkg")
+    // Nothing marks a root: the file's own directory.
+    FileManager.default.createFile(atPath: dir + "/lone.swift", contents: Data())
+    #expect(swift.root(of: dir + "/lone.swift") == dir)
+    try? FileManager.default.removeItem(atPath: dir)
+}

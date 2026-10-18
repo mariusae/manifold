@@ -31,6 +31,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A place to go in a file being opened: done once its editor is shown.
     private var pendingJump: (path: String, line: Int, column: Int?)?
+    private var languageServersWindow: LanguageServersWindow?
     private var clickMonitor: Any?
     /// Blocks whose terminal just closed; they get a new one after a moment
     /// if their shell is still there (the server was restarted, not the
@@ -110,6 +111,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onOpen = { [weak self] host, id, client, paths, beside, wait in
             self?.openRequest(on: host, id: id, client: client, paths: paths, beside: beside, wait: wait)
         }
+        hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.languageServersWindow?.refresh() }
+        hosts.onDiagnostics = { [weak self] block in
+            guard let self else { return }
+            for case let e as EditorView in self.views.values where e.block == block { e.diagnosticsChanged() }
+        }
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -185,10 +191,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             window.title = "Manifold"
         }
         noteSeen(force: false)
+        noteEditing()
         checkOpenWaits()
 
         if let jump = pendingJump,
-           let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }) {
+           let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }), editor.isLoaded {
             pendingJump = nil
             editor.select(line: jump.line, column: jump.column)
         }
@@ -300,6 +307,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Seen, and collection
 
     /// Tells the host what's on screen, so it knows what's unseen.
+    /// Every file placed in an arrangement on the desk is open with its
+    /// host's language server.
+    private func noteEditing() {
+        var ids: Set<BlockID> = []
+        for id in desk.order {
+            guard let a = hosts.arrangement(id) else { continue }
+            for p in a.placements where p.lens == .editor || p.lens == .preview {
+                if let b = hosts.block(p.block), b.kind == .text, b.path != nil { ids.insert(p.block) }
+            }
+        }
+        hosts.setEditing(ids)
+    }
+
     private func noteSeen(force: Bool) {
         guard window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
         var seen = Set(a.visible.map(\.block))
@@ -1275,6 +1295,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Language Servers…: the table of what runs for which files.
+    @objc func showLanguageServers(_ sender: Any?) {
+        if languageServersWindow == nil {
+            let wc = LanguageServersWindow()
+            wc.source = { [weak self] in self?.desk.settings.languageServers ?? LanguageServerConfig.defaults }
+            wc.states = { [weak self] in
+                guard let self else { return [:] }
+                var out: [String: String] = [:]
+                for c in self.hosts.all {
+                    for (key, state) in c.languageServerStates { out[c.host.raw + ": " + key] = state }
+                }
+                return out
+            }
+            wc.onChange = { [weak self] configs in
+                guard let self else { return }
+                var s = self.desk.settings
+                s.languageServers = configs
+                self.host.setSettings(s)
+            }
+            languageServersWindow = wc
+        }
+        languageServersWindow?.showWindow(nil)
+        languageServersWindow?.refresh()
+    }
+
     /// Attach to Host…: a destination, as ssh takes them, or
     /// `provider:name` for a `manifold-remote-<provider>` on the PATH.
     @objc func attachToHost(_ sender: Any?) {
@@ -1673,6 +1718,42 @@ extension MainWindowController: EditorViewDelegate {
 
     func editorEditedChanged(_ view: EditorView) {
         render()
+    }
+
+    func editorDiagnostics(_ view: EditorView) -> [Diagnostic] {
+        hosts.diagnostics(view.block)
+    }
+
+    func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void) {
+        hosts.lsp(request, done: done)
+    }
+
+    func editor(_ view: EditorView, open path: String, line: Int, column: Int) {
+        let on = view.block.host
+        pendingJump = (path, line, column)
+        let block = hosts.textBlock(for: path, on: on)
+        hosts.link(from: view.block, to: block, kind: .opened)
+        if let a = arrangement, let c = a.columnIndex(of: view.placement) {
+            place(block, lens: .editor, onColumn: c)
+        } else {
+            place(block, lens: .editor, beside: view.placement)
+        }
+    }
+
+    /// A server's edits to other files on the block's host: files that are
+    /// blocks through their logs (the server saw the block's text), the
+    /// rest written on the host.
+    func editor(_ view: EditorView, apply edits: [LSPFileEdit]) {
+        let on = view.block.host
+        guard let client = hosts.client(on) else { return }
+        for f in edits {
+            let ordered = f.edits.sorted { $0.start > $1.start }
+            if let b = client.node.blocks.first(where: { $0.kind == .text && $0.path == f.path }), b.text != nil {
+                client.append(.edit(ordered), to: .block(b.id))
+            } else {
+                client.propose(.editFile(path: f.path, edits: ordered))
+            }
+        }
     }
 }
 
