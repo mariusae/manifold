@@ -580,7 +580,9 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   and kept entries after a snapshot.
 - The foot of a block (§3.5): `FootView` under each sheet in the stacks
   lens, shown as the pointer nears the bottom, bunches per edge kind
-  dealt out on hover; Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail.
+  dealt out on hover; Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail;
+  the finder ranked by graph distance; `NeighborhoodView` (⌥⌘N), the
+  neighborhood to distance 2 in graph form, walked by re-centering.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own

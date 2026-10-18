@@ -163,6 +163,9 @@ enum DebugControl {
             for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
             lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
             return lines.joined(separator: "\n")
+        case "hood":
+            // "hood": the focused block's neighborhood view, settled, and its model.
+            return wc?.debugNeighborhood(settle: true) ?? "no window"
         case "foot":
             // "foot <column> [bunch]": the column's foot, a bunch dealt out.
             let a = arg.split(separator: " ").compactMap { Int($0) }
@@ -225,7 +228,9 @@ enum DebugControl {
             // "press return|tab|escape|up|down|<char>": a key event through
             // the window, as typed (so popups see it).
             guard let window = wc?.window else { return "no window" }
-            let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53),
+            let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53), "space": (" ", 49),
+                                                     "left": (String(UnicodeScalar(NSLeftArrowFunctionKey)!), 123),
+                                                     "right": (String(UnicodeScalar(NSRightArrowFunctionKey)!), 124),
                                                      "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
                                                      "down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125)]
             let (chars, code) = codes[arg] ?? (arg, 0)

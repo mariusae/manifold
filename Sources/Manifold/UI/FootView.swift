@@ -45,7 +45,7 @@ final class FootView: NSView {
     private var hoveredCard: Int? { didSet { if hoveredCard != oldValue { needsDisplay = true } } }
     private var dealt: CGFloat = 0
     private var target: CGFloat = 0
-    private var link: CADisplayLink?
+    private var timer: Timer?
     private var lastTick: CFTimeInterval = 0
 
     override var isFlipped: Bool { false }
@@ -101,30 +101,30 @@ final class FootView: NSView {
     }
 
     private func run() {
-        guard link == nil, window != nil else { return }
-        let link = displayLink(target: self, selector: #selector(tick(_:)))
-        link.add(to: .main, forMode: .common)
-        self.link = link
+        guard timer == nil, window != nil else { return }
         lastTick = 0
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
-    @objc private func tick(_ link: CADisplayLink) {
-        let now = link.timestamp
+    private func tick() {
+        let now = CACurrentMediaTime()
         let dt = lastTick == 0 ? 1.0 / 60 : min(now - lastTick, 1.0 / 20)
         lastTick = now
         dealt += (target - dealt) * CGFloat(1 - exp(-dt * (target > dealt ? 14 : 18)))
         if abs(dealt - target) < 0.003 {
             dealt = target
-            link.invalidate()
-            self.link = nil
+            timer?.invalidate()
+            timer = nil
             if target == 0 { onSpread?() }
         }
         needsDisplay = true
     }
 
     override func removeFromSuperview() {
-        link?.invalidate()
-        link = nil
+        timer?.invalidate()
+        timer = nil
         super.removeFromSuperview()
     }
 
@@ -218,8 +218,8 @@ final class FootView: NSView {
     func debugSpread(_ bunch: Int) {
         guard bunch < bunches.count else { return }
         hovered = bunch
-        link?.invalidate()
-        link = nil
+        timer?.invalidate()
+        timer = nil
         dealt = 1
         target = 1
         onSpread?()

@@ -294,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Focus Next Block", #selector(MainWindowController.nextPane(_:)), "]")
         item(window, "Focus Previous Block", #selector(MainWindowController.previousPane(_:)), "[")
         window.addItem(.separator())
+        item(window, "Show the Neighborhood", #selector(MainWindowController.showNeighborhood(_:)), "n", [.command, .option])
         item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[", [.command, .control])
         item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]", [.command, .control])
         NSApp.windowsMenu = window

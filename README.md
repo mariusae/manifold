@@ -148,7 +148,13 @@ when you find it again.
   card to recall its block beside this one, ⌘-click for a column of its
   own, or go to an arrangement. Window ▸ Go Back and Go Forward (⌃⌘[,
   ⌃⌘]) walk the same trail: back to the block you were at before, in
-  whatever arrangement it was, and forward again.
+  whatever arrangement it was, and forward again. Window ▸ Show the
+  Neighborhood (⌥⌘N) draws the focused block's surroundings in graph
+  form, two steps out — what it's joined to on a ring around it, what
+  those are joined to beyond, edges by kind, with what made each shown
+  when a block is pointed at. Click a block to look around *it* instead
+  (Back returns), double-click or ⏎ to go there, arrow keys move, Space
+  re-centers, ⎋ closes.
 - **History** (Arrangement ▸ History…, ⌘Y) scrubs the arrangement through
   its log: the layout then, the blocks as they are now; with **Everything
   as it was** checked, each placed file is read as of that moment too, and
