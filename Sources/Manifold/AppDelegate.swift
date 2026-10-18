@@ -192,6 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(arrangement, "Show as a List", #selector(MainWindowController.setLayoutList(_:)), "3", [.command, .control])
         arrangement.addItem(.separator())
         item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
+        item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
         arrangement.addItem(.separator())
         item(arrangement, "Move Block to New Arrangement", #selector(MainWindowController.movePaneToNewTab(_:)), "")
         item(arrangement, "Separate Columns", #selector(MainWindowController.unsplitTab(_:)), "")

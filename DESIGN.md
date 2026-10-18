@@ -475,10 +475,14 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 - Git and diff blocks (§7.5): `Git` on the host (status, log, `show`),
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
+- Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
+  log at a moment; the history view scrubs text blocks as well as
+  arrangements, "everything as it was" rewinds each placed file by its own
+  log to the arrangement's moment, and a diff block can compare a text
+  block at two moments (`DiffSubject.versions`).
 
-Not yet: scrubbing blocks other than arrangements, and "everything as it
-was"; the image, PDF, process and agent lenses; retention and compaction
-of logs.
+Not yet: the image, PDF, process and agent lenses; retention and
+compaction of logs.
 
 ## 9. From here to there
 

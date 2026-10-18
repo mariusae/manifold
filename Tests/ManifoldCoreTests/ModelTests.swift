@@ -326,3 +326,21 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(p.contains { $0.kind == .context && $0.oldLine == 3 && $0.newLine == 3 && $0.text == "c" })
     #expect(p.first?.text == "commit abc")
 }
+
+// MARK: Scrubbing
+
+@Test func replayingALogUpToAMoment() {
+    let id = BlockID(host: .local)
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: .local) }
+    let entries = [
+        Entry(seq: 1, at: stamp(100), event: .create(kind: .text, title: nil, path: "/x/a.txt")),
+        Entry(seq: 2, at: stamp(200), event: .content("one\n", encoding: "utf-8", lineEnding: "\n", fingerprint: "f1")),
+        Entry(seq: 3, at: stamp(300), event: .edit([TextEdit(TextRange(4, 4), "two\n")])),
+        Entry(seq: 4, at: stamp(400), event: .edit([TextEdit(TextRange(0, 4), "")])),
+    ]
+    #expect(Block.replaying(entries, id: id)?.text?.text.string == "two\n")
+    #expect(Block.replaying(entries, id: id, upTo: stamp(300))?.text?.text.string == "one\ntwo\n")
+    #expect(Block.replaying(entries, id: id, upTo: stamp(250))?.text?.text.string == "one\n")
+    #expect(Block.replaying(entries, id: id, upTo: stamp(50)) == nil)
+    #expect(Block.replaying([], id: id) == nil)
+}

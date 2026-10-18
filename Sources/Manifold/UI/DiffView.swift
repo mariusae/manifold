@@ -54,6 +54,8 @@ final class DiffView: NSView, PaneContent {
             case let .sides(_, new): self.delegate?.diffView(self, open: new.path, line: row.newLine ?? row.oldLine ?? 1)
             case let .commit(repo, _):
                 if let file = self.rowsView.file(of: row) { self.delegate?.diffView(self, open: repo.appendingPathComponent(file), line: row.newLine ?? 1) }
+            case .versions:
+                if let path = b.path { self.delegate?.diffView(self, open: path, line: row.newLine ?? row.oldLine ?? 1) }
             }
         }
         scroll.documentView = rowsView

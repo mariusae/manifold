@@ -231,6 +231,23 @@ public struct Entry: Codable, Equatable, Sendable {
 // MARK: Applying
 
 extension Block {
+    /// The block a log describes, replayed up to a moment (every entry when
+    /// `upTo` is nil): how it was then (§3.4).
+    public static func replaying(_ entries: [Entry], id: BlockID, upTo: Stamp? = nil) -> Block? {
+        var block: Block?
+        for e in entries {
+            if let upTo, e.at > upTo { break }
+            if case let .create(kind, title, path) = e.event {
+                block = Block(id: id, kind: kind, created: e.at, title: title, path: path)
+            } else {
+                block?.apply(e.event, at: e.at)
+            }
+        }
+        return block
+    }
+}
+
+extension Block {
     /// Applies an event; pure (no clock, no I/O).
     public mutating func apply(_ event: Event, at: Stamp) {
         switch event {

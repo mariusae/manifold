@@ -132,6 +132,13 @@ when you find it again.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
+- **History** (Arrangement ▸ History…, ⌘Y) scrubs the arrangement through
+  its log: the layout then, the blocks as they are now; with **Everything
+  as it was** checked, each placed file is read as of that moment too, and
+  Restore brings both back — as new entries, never a revert. History of
+  This File… (⌥⌘Y) scrubs the focused file through every change it's had
+  in Manifold: Restore This Text puts a version back (one undoable edit);
+  Compare with Now opens a diff block of then against now.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: an address
   bar, back and forward, and its pages in its log.

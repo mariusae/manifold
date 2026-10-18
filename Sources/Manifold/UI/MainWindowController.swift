@@ -641,6 +641,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "magnifyingglass", title: "Find in Files…", subtitle: "⇧⌘F") { [weak self] in
             self?.findInFiles(nil)
         })
+        if let f = focusedShown, f.kind == .text {
+            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This File…", subtitle: "⌥⌘Y") { [weak self] in
+                self?.showFileHistory(nil)
+            })
+        }
         items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Git for This Project", subtitle: "⌥⌘G") { [weak self] in
             self?.showGit(nil)
         })
@@ -1544,32 +1549,68 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var history: HistoryView?
 
+    /// The block whose history is up: the arrangement, or a text block.
+    private var historyOf: BlockID?
+
     /// ⌘Y: the selected arrangement's history, to scrub through and restore.
     @objc func showHistory(_ sender: Any?) {
         guard let id = selected, history == nil else { return hideHistory() }
+        let h = makeHistory()
+        h.onRestore = { [weak self] state, moment in self?.restore(id, to: state, rewindingTo: moment) }
+        h.onNeedBlock = { [weak self] block in self?.hosts.propose(.history(.block(block))) }
+        historyOf = id
+        hosts.propose(.history(.block(id)))
+    }
+
+    /// ⌥⌘Y: the focused file's history: its text at every change.
+    @objc func showFileHistory(_ sender: Any?) {
+        guard history == nil else { return hideHistory() }
+        guard let f = focusedShown, f.kind == .text else { return }
+        let block = f.placement.block
+        let placement = f.id
+        let h = makeHistory()
+        h.font = desk.appearance.theme.font(desk.appearance.editorFont, size: desk.appearance.theme.editorSize(desk.appearance.editorFont))
+        h.onRestoreText = { [weak self] text in self?.restore(block, toText: text) }
+        h.onCompare = { [weak self] moment in
+            guard let self, let client = self.hosts.client(block.host) else { return }
+            self.hideHistory()
+            let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
+            self.hosts.link(from: block, to: diff, kind: .opened)
+            self.place(diff, lens: .diff, beside: placement)
+        }
+        historyOf = block
+        hosts.propose(.history(.block(block)))
+    }
+
+    private func makeHistory() -> HistoryView {
         let h = HistoryView(frame: root.bounds)
         h.onClose = { [weak self] in self?.hideHistory() }
-        h.onRestore = { [weak self] state in self?.restore(id, to: state) }
         h.titleOf = { [weak self] block in self?.hosts.block(block)?.displayTitle ?? "?" }
         h.symbolOf = { lens in Theme.symbolName(for: lens) }
         root.addSubview(h, positioned: .above, relativeTo: nil)
         history = h
-        hosts.propose(.history(.block(id)))
+        return h
     }
 
     private func hideHistory() {
         history?.removeFromSuperview()
         history = nil
+        historyOf = nil
     }
 
     private func historyArrived(_ shard: ShardID, _ entries: [Entry]) {
-        guard let history, shard.block == selected else { return }
-        history.show(entries: entries)
+        guard let history, let block = shard.block else { return }
+        if block == historyOf {
+            if hosts.block(block)?.kind == .text { history.showText(entries: entries, block: block) } else { history.show(entries: entries) }
+        } else {
+            history.blockHistory(block, entries)
+        }
     }
 
     /// Appends what makes the arrangement so again: a new version, never a
-    /// revert.
-    private func restore(_ id: BlockID, to state: ArrangementState) {
+    /// revert; with a moment, each placed file's text is made what it was
+    /// then, the same way.
+    private func restore(_ id: BlockID, to state: ArrangementState, rewindingTo moment: Stamp?) {
         guard let current = hosts.arrangement(id) else { return }
         var events: [Event] = []
         for p in current.placements { events.append(.remove(p.id)) }
@@ -1581,6 +1622,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         events.append(.layout(state.layout))
         if state.fractions.count == state.columns.count { events.append(.fractions(state.fractions)) }
         hosts.append(events, to: .block(id))
+        if let moment, let history {
+            for p in state.placements where p.lens == .editor || p.lens == .preview {
+                if let then = history.text(of: p.block, at: moment) { restore(p.block, toText: then) }
+            }
+        }
+        hideHistory()
+    }
+
+    /// A text block's text made what it was: one edit, in the log like
+    /// any other (so it undoes, and is itself in the history).
+    private func restore(_ block: BlockID, toText text: String) {
+        guard let t = hosts.block(block)?.text, t.text.string != text else { return hideHistory() }
+        hosts.append(.edit([TextEdit(TextRange(0, t.text.count), text)]), to: .block(block))
         hideHistory()
     }
 

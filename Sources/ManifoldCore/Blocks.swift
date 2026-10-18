@@ -267,6 +267,8 @@ public struct DiffSide: Codable, Equatable, Sendable {
 public enum DiffSubject: Codable, Equatable, Sendable {
     case sides(old: DiffSide, new: DiffSide)
     case commit(repo: String, sha: String)
+    /// A text block at two moments of its log (`to` nil: as it is now).
+    case versions(block: BlockID, from: Stamp, to: Stamp?)
 }
 
 /// A diff block: the subject, and the texts (or the patch) the host read
@@ -429,6 +431,12 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
             case let .commit(_, sha):
                 let first = diff?.patch?.split(separator: "\n").first(where: { $0.hasPrefix("    ") })?.trimmingCharacters(in: .whitespaces)
                 return first.map { "\(sha.prefix(7)) \($0)" } ?? String(sha.prefix(7))
+            case let .versions(_, from, to):
+                let f = DateFormatter()
+                f.dateStyle = .short
+                f.timeStyle = .short
+                let name = path?.lastPathComponent ?? "Note"
+                return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
             }
         }
         if let path { return path.lastPathComponent }

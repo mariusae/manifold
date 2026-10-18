@@ -331,10 +331,11 @@ final class Server {
             done()
         case let .diff(block, subject):
             if node.block(block) == nil {
-                let path: String
+                let path: String?
                 switch subject {
                 case let .sides(_, new): path = new.path
                 case let .commit(repo, _): path = repo
+                case let .versions(id, _, _): path = node.block(id)?.path
                 }
                 append(.create(kind: .diff, title: nil, path: path), to: .block(block))
             }
@@ -447,6 +448,11 @@ final class Server {
                     self.append(.diffLoaded(oldText: oldText ?? "", newText: newText ?? "", patch: nil, error: nil, at: self.clock.now()), to: .block(block))
                 }
             }
+        case let .versions(id, from, to):
+            let entries = store.entries(.block(id))
+            let old = Block.replaying(entries, id: id, upTo: from)?.text?.text.string ?? ""
+            let new = to.map { Block.replaying(entries, id: id, upTo: $0)?.text?.text.string ?? "" } ?? (node.block(id)?.text?.text.string ?? "")
+            append(.diffLoaded(oldText: old, newText: new, patch: nil, error: nil, at: clock.now()), to: .block(block))
         case let .commit(repo, sha):
             git.run(["show", "--no-color", "--format=medium", sha], in: repo) { [weak self] result in
                 guard let self, self.node.block(block) != nil else { return }
