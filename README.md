@@ -99,7 +99,10 @@ when you find it again.
   changed on disk reloads if clean, or shows a banner over unsaved
   changes. The **preview** lens renders Markdown (cmark-gfm) and follows
   the text as it's edited in an editor on the same block, or saved by
-  another program. View ▸ Editor Font chooses proportional or fixed
+  another program. Edit ▸ Edit or Preview (⌥⌘P) turns the focused
+  preview into an editor in place, or a Markdown editor back into a
+  preview; ⌥⇧⌘P puts the other beside it, so you can type on the left
+  and read on the right. View ▸ Editor Font chooses proportional or fixed
   width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
   width, the system font for the UI), Mona (Mona Sans, Monaspace),

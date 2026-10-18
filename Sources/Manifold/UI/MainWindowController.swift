@@ -707,14 +707,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // The file shown, the other way: edit a preview's, preview an editor's.
         if let f = focusedShown, let path = f.path, let a = arrangement, let column = a.columnIndex(of: f.id) {
             if f.lens == .preview {
-                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File", subtitle: "Action") { [weak self] in
-                    self?.place(f.placement.block, lens: .editor, onColumn: column)
+                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File", subtitle: "⌥⌘P") { [weak self] in
+                    self?.toggleEditPreview(nil)
+                })
+                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File Beside", subtitle: "⌥⇧⌘P") { [weak self] in
+                    self?.editPreviewBeside(nil)
                 })
             } else if f.lens == .editor, Lens.isMarkdown(path) {
-                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File", subtitle: "Action") { [weak self] in
-                    self?.place(f.placement.block, lens: .preview, onColumn: column)
+                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File", subtitle: "⌥⌘P") { [weak self] in
+                    self?.toggleEditPreview(nil)
+                })
+                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File Beside", subtitle: "⌥⇧⌘P") { [weak self] in
+                    self?.editPreviewBeside(nil)
                 })
             }
+            _ = column
             if let dir = f.block?.place {
                 items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
                     self?.openDirectory(dir, beside: f.id)
@@ -928,6 +935,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = item.tag == desk.settings.collectAfterMinutes ? .on : .off
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
+        case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
+            guard let f = focusedShown, let path = f.path else { return false }
+            return f.lens == .preview || (f.lens == .editor && Lens.isMarkdown(path))
         case #selector(setTextHistory(_:)):
             item.state = item.tag == desk.settings.textHistoryDays ? .on : .off
         case #selector(setTranscriptHistory(_:)):
@@ -1582,6 +1592,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     static func isEditable(_ path: String) -> Bool {
         let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
         return size < 32 << 20 && TextFile.isText(path)
+    }
+
+    /// ⌥⌘P: the focused text block the other way round, in place — its
+    /// preview as an editor, its editor as a preview (Markdown only).
+    /// Editor and preview share the block, so an edit shows live.
+    @objc func toggleEditPreview(_ sender: Any?) {
+        guard let f = focusedShown, let path = f.path, let a = arrangement, let (c, i) = a.locate(f.id) else { return }
+        let other: Lens
+        switch f.lens {
+        case .preview: other = .editor
+        case .editor where Lens.isMarkdown(path): other = .preview
+        default: return
+        }
+        appendToSelected([.remove(f.id), .place(Placement(block: f.placement.block, lens: other), column: c, at: i)])
+    }
+
+    /// ⌥⇧⌘P: the other lens beside this one, both in view.
+    @objc func editPreviewBeside(_ sender: Any?) {
+        guard let f = focusedShown, let path = f.path else { return }
+        let other: Lens
+        switch f.lens {
+        case .preview: other = .editor
+        case .editor where Lens.isMarkdown(path): other = .preview
+        default: return
+        }
+        place(f.placement.block, lens: other, beside: f.id, kind: .source, context: other == .editor ? "edited beside" : "previewed beside")
     }
 
     /// Opens what a link in a placement points at: Markdown files in a
