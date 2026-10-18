@@ -5,8 +5,9 @@ A Mac app that is a desk rather than a set of windows. Terminals (drawn by
 folders and web pages are **blocks**; you arrange blocks to work, and an
 arrangement is itself a block you can name and come back to. Nothing is
 closed: what isn't in use is tidied out of the way, and anything can be
-found and recalled, with its history. Light or dark, in
-[Monaspace](https://monaspace.githubnext.com) and Mona Sans (bundled).
+found and recalled, with its history. Light or dark, in SF Pro and Menlo
+as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
+and Mona Sans (bundled).
 [DESIGN.md](DESIGN.md) says where it's going.
 
 ## Using it
