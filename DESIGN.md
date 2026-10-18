@@ -174,82 +174,97 @@ Either is read-only. *Restore* appends a new version that makes the
 arrangement so; nothing is reverted destructively. A single block can be
 scrubbed the same way, and two points of it compared in a `diff` block.
 
-### 3.5 Cards, and what shows on hover
+### 3.5 Navigation is contextual: the graph
 
-What Prism (reflect-mac) does with a column of notes is worth taking
-whole, because its nouns are already ours. A Prism *sheet* is what a
-column showed, where it was scrolled, a picture of it when it was left,
-whether it is pinned, and when it was last seen; a column's stack of
-sheets is its history, and it is *visible*: bunched in the title bar,
-dealt out across the top when hovered, each shown as it was while the
-pointer passes over it, live while ⌥ is held, gone back to when clicked,
-yellowing as it ages. A note's backlinks are bunched at its foot the same
-way and dealt out upward, each with the words around the link. A note
-shown among others is a *card* — full, a summary (cover, headline, a
-snippet), or collapsed to its name — and sits in as many views as it is
-placed in. Rows shown away from their note (tasks, the rows links are in)
-are editors, and what is typed goes back where it came from. And resting
-the pointer on a link shows the target as it reads, in a floating card
-with its actions.
+What Prism (reflect-mac) gets right about a column of notes is that
+navigation is *contextual*: where you can go next is shown where you are.
+Backlinks are bunched at a note's foot and dealt out on hover, each with
+the words around the link; a column's history is its stack of sheets,
+bunched in the title bar, dealt out across the top, each shown as it was
+while the pointer passes and live while ⌥ is held. Those are two edge
+kinds — spatial and temporal — of one graph, surfaced at the point of use
+rather than drawn as a map. Manifold's version is that graph, in whole.
 
-A Manifold placement is nearly a sheet already: the text block's log
-keeps each placement's selection and scroll, the registry keeps when a
-block was last seen, and named and held stand in for pinned. The links
-shard records what opened what. What is missing is a **picture of each
-placement, taken when it is covered or put away**, kept outside the logs
-(a cache by placement id, as Prism keeps snapshots in app state, never in
-the notes), and a **card** that can show any block small. With those,
-every "as it was, on hover" falls out — and, since every block has a log,
-a card can show a block *as it was when the link was made* beside *as it
-is now*, which Prism cannot.
+**Nodes** are blocks. Arrangements are blocks already (§2.3), so they are
+nodes with nothing special about them; that is what makes the graph
+worth having. A node *at a time* is a block and a stamp, and every
+block's log is what makes that real.
 
-What that gives, in the order they build on each other:
+**Edges** carry a stamp and the block that made them. Nearly all of them
+are in the data now and only want indexing:
 
-1. **A card for any block reference.** One floating panel (Prism's
-   `LinkCard`: non-activating, kept while the pointer is on the reference
-   or on the card), shown wherever a block is named — finder rows, sidebar
-   rows, the strips under a stack, related items, search hits, git
-   changes, diff file headers, the links at a block's foot. Text blocks
-   as a read-only `TextView`; terminals as their last screen, from the
-   transcript the host keeps; folders as a short listing; web as icon,
-   title and address; a search as its count line; a git block as its
-   branch and changes. Actions: Open, Open Beside, Recall Here; and, where
-   the reference carries a stamp, *as it was then*.
-2. **Stack strips that deal out.** Hovering the strips under a stack fans
-   the sheets beneath out as cards — name, snapshot, age tint from
-   `lastSeen` — the column previews the one under the pointer, ⌥ peeks it
-   live, a click brings it up. The ⌘E cards drawn the same way, so the two
-   are one thing seen from two sides.
-3. **Links at a block's foot.** "Opened from · 3" and "opened here · 5",
-   bunched where Prism puts backlinks, dealt out on hover with context
-   (the terminal line a path was ⌘-clicked on; the editor line that named
-   it; the search hit), recorded on the link entry when it is made.
-   Clicked, the block is recalled beside. The links shard, made visible
-   where it matters.
-4. **The card lens for every block.** Collapsed, summary, full, as
-   `NoteCardBlock` has them, remembered per block. A text block's summary
-   is its first heading and lines (its cover, for a note with a picture);
-   a terminal's, its cwd and last command; a search's, its count; a git
-   block's, its branch and change count. An arrangement in the list lens
-   is then a page of cards, and a note placed in several arrangements is a
-   note in several views.
-5. **Slices edited where they are.** A search hit's line, a diff's new
-   side, the context line of a link: each a byte range of a text block,
-   each an editor whose typing is an `.edit` entry on the block, as
-   Prism's `TaskEditor` writes a task back to its note. The log makes
-   this nearly free, and it is the same undo and the same history.
-6. **A scrubber down the editor**, Prism's `ScrubMark`s fed by the
-   language server's document symbols (functions and types; headings for
-   Markdown): ticks down the left edge, a tip on hover, a click to go.
-7. **The desk's own history.** The desk shard scrubbed as an arrangement
-   is: which arrangements were on the desk, and which was selected, at a
-   moment — everything-as-it-was one level up; and a timeline lens that
-   lists blocks by the day they were made or last seen, the empty days
-   folded to "⋯ Sep 21–25 · 5 days" as Prism's `GapView` folds them.
+| edge | from → to | where it comes from |
+|---|---|---|
+| **placed in** (spatial, present) | arrangement → block | the arrangement's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
+| **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
+| **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
+| **before / after** (temporal, across blocks) | block → block | the registry's `seen` entries, kept as a bounded *trail* per host; the desk's `settled` order, for arrangements |
+| **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log; for an arrangement, "everything as it was" (§3.4) |
+| **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
-Two smaller touches to take as they are: **aging** — strips and cards
-yellow as a block goes unseen, which is the collection ladder (§4) made
-visible — and **⌥ to peek live** against hover to peek the picture.
+Prism's backlinks are `opened` in-edges; its sheet stack is `before /
+after` within one column; a `[[link]]` is an `opened` out-edge; a note in
+many views is `placed in` in-edges. Arrangements as nodes give the two-hop
+questions that matter most — *the other times I had this file open, and
+what was beside it then* — as `placed in` in-edges, their neighbors, cut
+at the stamp.
+
+**Affordances.** The graph shows itself in the margins, never as a
+destination:
+
+1. **The foot of every block** carries its neighborhood, bunched by edge
+   kind: *opened from · 3*, *opened here · 5*, *placed in · 2*, *before ·
+   after*, *versions*. Hovered, a bunch deals out as cards with context
+   and age; clicked, the block is recalled beside; ⌘-clicked, into a
+   column of its own. One view, given an edge kind; an arrangement's
+   foot shows the same for its node — its blocks, the arrangements that
+   share blocks with it, the ones before and after it on the desk.
+2. **Back and forward in a column** (⌘[ ⌘]) walk `before / after` from
+   the placement, each step previewed as it was on hover, live with ⌥ —
+   Prism's stack, but derived from the trail, so it survives restarts and
+   crosses hosts.
+3. **The finder (⌘O) is ranked by the graph.** With nothing typed, the
+   focused block's neighborhood, nearest first; typed, matches weighted
+   by distance from where you are. Context is the ranking.
+4. **Cards** are how a node renders small, at any stamp: a hover panel
+   (Prism's `LinkCard`, non-activating, kept while the pointer is on the
+   reference or the card), a dealt-out bunch, a row of the list lens, a
+   finder row. Text as a read-only `TextView`; a terminal as its last
+   screen, from the transcript the host keeps; a folder as a short
+   listing; web as icon, title and address; a search as its count; a git
+   block as its branch and changes; an arrangement as its diagram. Modes
+   as Prism's note cards have them — collapsed, summary, full —
+   remembered per block. With a stamp, the card shows the node *as it was
+   then*, which Prism cannot.
+5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
+   takes a stamp; the slider that scrubs an arrangement (§3.4) scrubs a
+   block's foot the same way — who opened it *then*. A map lens of nodes
+   and edges is possible and comes last.
+6. **Slices edited where they are.** A search hit's line, a link's
+   context line, the new side of a diff: each a byte range of a text
+   block, each an editor whose typing is an `.edit` entry on the block
+   (Prism's `TaskEditor` writing a task back to its note). Same undo,
+   same history.
+7. **Pictures.** A snapshot of each placement when it is covered or put
+   away, cached by placement id outside the logs (as Prism keeps them in
+   app state, never in the notes): what the previews, the dealt-out
+   stacks and the ⌘E cards show.
+
+Two touches to take as they are: **aging** — strips and cards yellow as
+a block goes unseen, the collection ladder (§4) made visible — and **⌥
+to peek live** against hover to peek the picture.
+
+**What changes in the data** is small: a `context` on `Link`; a bounded
+`trail` in the registry state (the run of `seen` events, deduped), so
+temporal edges need no replay; `derived` links written by the host when
+it makes a diff, search or git block; and a `Graph` query layer in
+`ManifoldCore` over the replica — the app mirrors every host's registry,
+links and arrangement shards already, so neighborhoods are computed
+locally, and asked of the host only for a stamp its logs must be
+replayed for. A scrubber down the editor (Prism's `ScrubMark`s, from the
+language server's document symbols) and the desk's own history (the desk
+shard scrubbed as an arrangement is; a timeline lens with empty days
+folded to "⋯ Sep 21–25 · 5 days") sit beside this rather than in it.
 
 ---
 
@@ -601,20 +616,30 @@ Milestones, each usable on its own:
 All six are in (§8.5). What comes next is §3.5, in steps that each stand
 on their own:
 
-7. **Pictures and the card panel.** A snapshot of each placement when it
-   is covered or put away, cached by placement id outside the logs; the
-   `BlockCard` panel with its renderings and actions; shown first from
-   the finder and the sidebar, where a reference is already a row.
-8. **Stacks and links that deal out.** The strips under a stack fanned
-   on hover with previews and ⌥-peek; "opened from" and "opened here"
-   bunched at a block's foot, with the context recorded on the link entry
-   from now on (a `context` field on `Link`; old links show without one).
-9. **The card lens** for blocks, with its three modes kept per block in
-   the registry entry; the list lens as a page of cards.
-10. **Slices**: search hits and link context lines editable in place,
-    then the new side of a diff.
-11. **The editor's scrubber** from document symbols; **the desk's
-    history** and the timeline lens; aging on strips and cards.
+7. **The graph index.** `Graph` in `ManifoldCore` over the replica:
+   `placed in` from arrangement logs, `opened` and `derived` from links,
+   `before / after` from a new bounded `trail` in the registry state,
+   `same as` from paths; `neighbors(of:kinds:at:)`. `context` on `Link`,
+   recorded from now on by terminals, editors and search hits; `derived`
+   links written by the host for diff, search and git blocks. Tests over
+   a made-up replica.
+8. **The foot of a block.** The `Neighborhood` view bunched per edge
+   kind, dealt out on hover with context and age, click to recall beside;
+   first on text blocks and terminals, then on arrangements (their foot
+   in the sidebar row and the ⌘E card).
+9. **Pictures and the card panel.** Placement snapshots cached by id; the
+   `BlockCard` panel and its renderings, with *as it was then*; shown
+   from the neighborhoods, the finder and the sidebar; the finder ranked
+   by graph distance.
+10. **Back and forward in a column** from the trail, with previews and
+    ⌥-peek; the strips under a stack dealt out the same way.
+11. **The card lens** for blocks, three modes kept per block; the list
+    lens as a page of cards.
+12. **Slices** edited in place: search hits and link context lines, then
+    the new side of a diff.
+13. **The editor's scrubber** from document symbols; the desk's history
+    and the timeline lens; aging on strips and cards; a map lens, if it
+    earns its place.
 
 ---
 
