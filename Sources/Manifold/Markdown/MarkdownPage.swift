@@ -84,7 +84,7 @@ enum MarkdownPage {
     /// The theme's fonts, as the CSS variables the page is set in.
     static func themeVariables(_ theme: FontTheme) -> String {
         let css = theme.css
-        return "--sans: \(css.sans); --mono: \(css.mono); --mono-features: \(css.features);"
+        return "--sans: \(css.sans); --mono: \(css.mono); --mono-features: \(css.features); --sans-features: \(css.sansFeatures);"
     }
 
     /// Script that sets the page in `theme`'s fonts.
@@ -100,11 +100,12 @@ enum MarkdownPage {
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
         \(fontFaces)
-        :root { color-scheme: light dark; \(themeVariables(.mona)) }
+        :root { color-scheme: light dark; \(themeVariables(.notes)) }
         html { background: #fcfcfb; }
         body {
           margin: 0; color: #24292f;
           font: 15px/1.6 var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          font-feature-settings: var(--sans-features);
           -webkit-font-smoothing: antialiased; word-wrap: break-word;
         }
         main { max-width: 780px; margin: 0 auto; padding: 28px 40px 96px; }

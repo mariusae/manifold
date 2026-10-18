@@ -17,12 +17,12 @@ public struct WindowState: Codable, Equatable, Sendable {
 
 /// How things look: the theme's fonts, and how terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
-    public var theme: FontTheme = .mona
+    public var theme: FontTheme = .notes
     public var colorScheme: ColorScheme = .system
     public var contrastCorrection: ContrastCorrection = .deuteranopia
     public var editorFont: EditorFont = .proportional
 
-    public init(theme: FontTheme = .mona, colorScheme: ColorScheme = .system,
+    public init(theme: FontTheme = .notes, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
                 editorFont: EditorFont = .proportional) {
         self.theme = theme
@@ -34,7 +34,7 @@ public struct Appearance: Codable, Equatable, Sendable {
     // Settings saved before a setting existed get its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .mona
+        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .notes
         colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
@@ -76,10 +76,11 @@ public struct Settings: Codable, Equatable, Sendable {
 }
 
 /// The fonts everything is set in, a proportional one and a fixed-width
-/// one, chosen together: Mona Sans and Monaspace, Recursive Sans and Mono,
-/// Go and Go Mono, or SF and SF Mono. Fixed, not configurable.
+/// one, chosen together: SF Pro (with its single-story a, as Notes sets
+/// it) and Menlo; Mona Sans and Monaspace; Recursive Sans and Mono; Go
+/// and Go Mono; or SF and SF Mono. Fixed, not configurable.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
-    case mona, recursive, go, system
+    case notes, mona, recursive, go, system
 }
 
 /// Light or dark: as the system is, or always one.

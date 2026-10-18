@@ -98,8 +98,11 @@ when you find it again.
   changed on disk reloads if clean, or shows a banner over unsaved
   changes. The **preview** lens renders Markdown (cmark-gfm) and follows
   the text as it's edited in an editor on the same block, or saved by
-  another program. View ▸ Editor Font chooses proportional (Mona Sans) or
-  fixed width; View ▸ Theme the fonts.
+  another program. View ▸ Editor Font chooses proportional or fixed
+  width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
+  single-story "a", as Apple's Notes sets its text, Menlo for fixed
+  width, the system font for the UI), Mona (Mona Sans, Monaspace),
+  Recursive, Go, or System (SF, SF Mono).
 - **Language servers** run on the file's host, one per language and
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom

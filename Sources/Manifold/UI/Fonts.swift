@@ -7,6 +7,7 @@ import ManifoldCore
 extension FontTheme {
     var title: String {
         switch self {
+        case .notes: "Notes"
         case .mona: "Mona"
         case .recursive: "Recursive"
         case .go: "Go"
@@ -16,6 +17,7 @@ extension FontTheme {
 
     var proportionalName: String {
         switch self {
+        case .notes: "SF Pro"
         case .mona: "Mona Sans"
         case .recursive: "Recursive Sans"
         case .go: "Go"
@@ -25,6 +27,7 @@ extension FontTheme {
 
     var monospacedName: String {
         switch self {
+        case .notes: "Menlo"
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
         case .go: "Go Mono"
@@ -45,6 +48,7 @@ extension FontTheme {
             font-feature = ss07
             font-feature = ss08
             """
+        case .notes: "font-family = Menlo"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
         // Terminal.app's copy, registered for this process at launch.
@@ -58,14 +62,20 @@ extension FontTheme {
         self == .mona ? ["ss02", "ss03", "ss07", "ss08"] : []
     }
 
+    /// SF Pro's single-story a (ss07), as Notes sets its text: a little
+    /// more like handwriting, as legible as ever.
+    private var proportionalFeatures: [String] {
+        self == .notes ? ["ss07"] : []
+    }
+
     /// The editor's size for each kind: the fonts differ in how big they
     /// look at a size.
     func editorSize(_ kind: EditorFont) -> CGFloat {
         switch (self, kind) {
         case (.mona, .proportional): 15
         case (.recursive, .proportional): 14.5
-        case (.go, .proportional), (.system, .proportional): 14
-        case (.go, .monospaced): 13
+        case (.go, .proportional), (.system, .proportional), (.notes, .proportional): 14
+        case (.go, .monospaced), (.notes, .monospaced): 13
         case (_, .monospaced): 13.5
         }
     }
@@ -77,11 +87,17 @@ extension FontTheme {
             case .mona: "Mona Sans"
             case .recursive: "Recursive Sans Linear Static"
             case .go: "Go"
-            case .system: nil
+            case .system, .notes: nil
             }
-            return name.flatMap { NSFont(name: $0, size: size) } ?? .systemFont(ofSize: size)
+            let base = name.flatMap { NSFont(name: $0, size: size) } ?? .systemFont(ofSize: size)
+            guard !proportionalFeatures.isEmpty else { return base }
+            let features = proportionalFeatures.map {
+                [kCTFontOpenTypeFeatureTag: $0, kCTFontOpenTypeFeatureValue: 1] as [CFString: Any]
+            }
+            return NSFont(descriptor: base.fontDescriptor.addingAttributes([.featureSettings: features]), size: size) ?? base
         case .monospaced:
             let name: String? = switch self {
+            case .notes: "Menlo"
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
             case .go: "Go Mono"
@@ -98,13 +114,15 @@ extension FontTheme {
     }
 
     /// CSS for the Markdown preview, set on its root element.
-    var css: (sans: String, mono: String, features: String) {
+    var css: (sans: String, mono: String, features: String, sansFeatures: String) {
         let features = (["calt"] + monospacedFeatures).map { "\"\($0)\"" }.joined(separator: ", ")
+        let sansFeatures = proportionalFeatures.isEmpty ? "normal" : proportionalFeatures.map { "\"\($0)\"" }.joined(separator: ", ")
         return switch self {
-        case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features)
-        case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features)
-        case .go: (#""Go""#, #""Go Mono""#, features)
-        case .system: ("-apple-system", "ui-monospace", features)
+        case .notes: ("-apple-system", "Menlo", features, sansFeatures)
+        case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
+        case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
+        case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)
+        case .system: ("-apple-system", "ui-monospace", features, sansFeatures)
         }
     }
 
