@@ -1254,6 +1254,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func finderItems(_ query: String, files: [String]) -> [FinderItem] {
         var scored: [(score: Int, recency: Int64, item: FinderItem)] = []
         let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
+        // Context is the ranking (§3.5): what's near the focused block in
+        // the graph comes first, nearest first; a match near it outranks
+        // one far from it.
+        let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 3) } ?? [:]
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(block.id.host)" : ""
@@ -1301,8 +1305,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 hay = title
                 detail = block.kind.defaultTitle
             }
-            let score = query.isEmpty ? 1 : (Finder.score(query, hay + " " + block.id.host.raw))
+            var score = query.isEmpty ? 1 : (Finder.score(query, hay + " " + block.id.host.raw))
             guard score > 0 else { continue }
+            if let d = near[block.id], d > 0 {
+                score = query.isEmpty ? 1 + (4 - d) : score * (5 - d) / 2
+                if note.isEmpty { note = d == 1 ? "linked" : "near" }
+            }
             let id = block.id
             let kind = block.kind
             let path = block.path
