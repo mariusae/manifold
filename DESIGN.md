@@ -174,6 +174,83 @@ Either is read-only. *Restore* appends a new version that makes the
 arrangement so; nothing is reverted destructively. A single block can be
 scrubbed the same way, and two points of it compared in a `diff` block.
 
+### 3.5 Cards, and what shows on hover
+
+What Prism (reflect-mac) does with a column of notes is worth taking
+whole, because its nouns are already ours. A Prism *sheet* is what a
+column showed, where it was scrolled, a picture of it when it was left,
+whether it is pinned, and when it was last seen; a column's stack of
+sheets is its history, and it is *visible*: bunched in the title bar,
+dealt out across the top when hovered, each shown as it was while the
+pointer passes over it, live while ⌥ is held, gone back to when clicked,
+yellowing as it ages. A note's backlinks are bunched at its foot the same
+way and dealt out upward, each with the words around the link. A note
+shown among others is a *card* — full, a summary (cover, headline, a
+snippet), or collapsed to its name — and sits in as many views as it is
+placed in. Rows shown away from their note (tasks, the rows links are in)
+are editors, and what is typed goes back where it came from. And resting
+the pointer on a link shows the target as it reads, in a floating card
+with its actions.
+
+A Manifold placement is nearly a sheet already: the text block's log
+keeps each placement's selection and scroll, the registry keeps when a
+block was last seen, and named and held stand in for pinned. The links
+shard records what opened what. What is missing is a **picture of each
+placement, taken when it is covered or put away**, kept outside the logs
+(a cache by placement id, as Prism keeps snapshots in app state, never in
+the notes), and a **card** that can show any block small. With those,
+every "as it was, on hover" falls out — and, since every block has a log,
+a card can show a block *as it was when the link was made* beside *as it
+is now*, which Prism cannot.
+
+What that gives, in the order they build on each other:
+
+1. **A card for any block reference.** One floating panel (Prism's
+   `LinkCard`: non-activating, kept while the pointer is on the reference
+   or on the card), shown wherever a block is named — finder rows, sidebar
+   rows, the strips under a stack, related items, search hits, git
+   changes, diff file headers, the links at a block's foot. Text blocks
+   as a read-only `TextView`; terminals as their last screen, from the
+   transcript the host keeps; folders as a short listing; web as icon,
+   title and address; a search as its count line; a git block as its
+   branch and changes. Actions: Open, Open Beside, Recall Here; and, where
+   the reference carries a stamp, *as it was then*.
+2. **Stack strips that deal out.** Hovering the strips under a stack fans
+   the sheets beneath out as cards — name, snapshot, age tint from
+   `lastSeen` — the column previews the one under the pointer, ⌥ peeks it
+   live, a click brings it up. The ⌘E cards drawn the same way, so the two
+   are one thing seen from two sides.
+3. **Links at a block's foot.** "Opened from · 3" and "opened here · 5",
+   bunched where Prism puts backlinks, dealt out on hover with context
+   (the terminal line a path was ⌘-clicked on; the editor line that named
+   it; the search hit), recorded on the link entry when it is made.
+   Clicked, the block is recalled beside. The links shard, made visible
+   where it matters.
+4. **The card lens for every block.** Collapsed, summary, full, as
+   `NoteCardBlock` has them, remembered per block. A text block's summary
+   is its first heading and lines (its cover, for a note with a picture);
+   a terminal's, its cwd and last command; a search's, its count; a git
+   block's, its branch and change count. An arrangement in the list lens
+   is then a page of cards, and a note placed in several arrangements is a
+   note in several views.
+5. **Slices edited where they are.** A search hit's line, a diff's new
+   side, the context line of a link: each a byte range of a text block,
+   each an editor whose typing is an `.edit` entry on the block, as
+   Prism's `TaskEditor` writes a task back to its note. The log makes
+   this nearly free, and it is the same undo and the same history.
+6. **A scrubber down the editor**, Prism's `ScrubMark`s fed by the
+   language server's document symbols (functions and types; headings for
+   Markdown): ticks down the left edge, a tip on hover, a click to go.
+7. **The desk's own history.** The desk shard scrubbed as an arrangement
+   is: which arrangements were on the desk, and which was selected, at a
+   moment — everything-as-it-was one level up; and a timeline lens that
+   lists blocks by the day they were made or last seen, the empty days
+   folded to "⋯ Sep 21–25 · 5 days" as Prism's `GapView` folds them.
+
+Two smaller touches to take as they are: **aging** — strips and cards
+yellow as a block goes unseen, which is the collection ladder (§4) made
+visible — and **⌥ to peek live** against hover to peek the picture.
+
 ---
 
 ## 4. Lifecycle and collection
@@ -520,6 +597,24 @@ Milestones, each usable on its own:
 5. **Tiling and list lenses; scrubbing** and restore; the timeline.
 6. **The other lenses:** directory, web, image and PDF, diff, git, search,
    process, agent.
+
+All six are in (§8.5). What comes next is §3.5, in steps that each stand
+on their own:
+
+7. **Pictures and the card panel.** A snapshot of each placement when it
+   is covered or put away, cached by placement id outside the logs; the
+   `BlockCard` panel with its renderings and actions; shown first from
+   the finder and the sidebar, where a reference is already a row.
+8. **Stacks and links that deal out.** The strips under a stack fanned
+   on hover with previews and ⌥-peek; "opened from" and "opened here"
+   bunched at a block's foot, with the context recorded on the link entry
+   from now on (a `context` field on `Link`; old links show without one).
+9. **The card lens** for blocks, with its three modes kept per block in
+   the registry entry; the list lens as a page of cards.
+10. **Slices**: search hits and link context lines editable in place,
+    then the new side of a diff.
+11. **The editor's scrubber** from document symbols; **the desk's
+    history** and the timeline lens; aging on strips and cards.
 
 ---
 
