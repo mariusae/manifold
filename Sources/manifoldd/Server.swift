@@ -108,6 +108,7 @@ final class Server {
         snapshots.setEventHandler { [weak self] in
             self?.writeSnapshots()
             self?.collectTerminals()
+            self?.retain()
         }
         snapshots.resume()
         snapshotTimer = snapshots
@@ -324,7 +325,8 @@ final class Server {
             append(.unlink(linkID), to: .links(host))
             done()
         case let .history(shard):
-            conn.send(.message(ServerMessage.history(shard: shard, entries: store.entries(shard))))
+            let h = store.history(shard)
+            conn.send(.message(ServerMessage.history(shard: shard, base: h.base, entries: h.entries)))
             done()
         case let .openDone(openID, client):
             if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
@@ -663,6 +665,31 @@ final class Server {
     private func writeSnapshots() {
         for shard in dirtyShards { store.snapshot(node, shard) }
         dirtyShards = []
+    }
+
+    private var lastRetention = Date.distantPast
+
+    /// Retention, by the settings (§4), once an hour: text history older
+    /// than `textHistoryDays` is folded into each block's base; transcripts
+    /// of terminals dormant longer than `terminalHistoryDays` go.
+    private func retain() {
+        guard Date().timeIntervalSince(lastRetention) > 3600 else { return }
+        lastRetention = Date()
+        let settings = node.desk(host).settings
+        if settings.textHistoryDays > 0 {
+            let cutoff = Stamp(wall: Int64(Date().addingTimeInterval(-Double(settings.textHistoryDays) * 86400).timeIntervalSince1970 * 1000), logical: 0, host: host)
+            for b in node.blocks(of: .text) {
+                writeSnapshots()
+                store.compact(.block(b.id), before: cutoff, node: node)
+            }
+        }
+        if settings.terminalHistoryDays > 0 {
+            let cutoff = Int64(Date().addingTimeInterval(-Double(settings.terminalHistoryDays) * 86400).timeIntervalSince1970 * 1000)
+            for b in node.blocks(of: .terminal) + node.blocks(of: .agent) {
+                guard let t = b.terminal, t.pid == nil, let since = t.dormantSince, since.wall < cutoff, sessions[b.id] == nil else { continue }
+                try? FileManager.default.removeItem(at: historyFile(b.id))
+            }
+        }
     }
 
     /// Exits, saving state first. Sessions die with us either way, as their

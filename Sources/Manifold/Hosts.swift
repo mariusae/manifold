@@ -14,7 +14,7 @@ final class Hosts {
 
     var onChange: (() -> Void)?
     var onTerminalEnded: ((BlockID) -> Void)?
-    var onHistory: ((ShardID, [Entry]) -> Void)?
+    var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
     /// A `manifold` command on `host` asks for paths to be opened.
     var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
@@ -31,7 +31,7 @@ final class Hosts {
     private func wire(_ client: HostClient) {
         client.onChange = { [weak self] in self?.onChange?() }
         client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
-        client.onHistory = { [weak self] shard, entries in self?.onHistory?(shard, entries) }
+        client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
         client.onOpen = { [weak self, weak client] id, who, paths, beside, wait in
             guard let self, let client else { return }
             self.onOpen?(client.host, id, who, paths, beside, wait)

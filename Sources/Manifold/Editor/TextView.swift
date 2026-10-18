@@ -107,6 +107,8 @@ final class TextView: NSView, NSTextInputClient {
     private var redoStack: [UndoGroup] = []
     /// The undo depth when the text was last saved: back there, it's clean.
     var savedUndoDepth = 0
+    /// How many undo steps are kept; 0 for as many as there are.
+    var undoLimit = 0
     private var applyingOurs = false
 
     // Caret.
@@ -661,7 +663,11 @@ final class TextView: NSView, NSTextInputClient {
         } else {
             undoStack.append(UndoGroup(inverse: inverse, redo: edits, selectionsBefore: selectionsBefore,
                                        selectionsAfter: selectionsAfter, at: now, typing: typing))
-            if undoStack.count > 2000 { undoStack.removeFirst() }
+            let limit = undoLimit > 0 ? undoLimit : 2000
+            if undoStack.count > limit {
+                undoStack.removeFirst(undoStack.count - limit)
+                savedUndoDepth = max(-1, savedUndoDepth - (undoStack.count - limit + 1))
+            }
         }
         redoStack = []
         marked = nil

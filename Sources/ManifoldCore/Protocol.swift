@@ -187,7 +187,9 @@ public enum ServerMessage: Codable, Sendable {
     case rejected(shard: ShardID)
     case propose(shard: ShardID, HostProposal)
     case done(id: Int, error: String?)
-    case history(shard: ShardID, entries: [Entry])
+    /// A shard's history: the state its (compacted) log starts from, if
+    /// any, and the entries since.
+    case history(shard: ShardID, base: ShardSnapshot?, entries: [Entry])
     /// A shard is gone (a block forgotten).
     case removed(shard: ShardID)
     /// The command asked for these to be opened (the app places them).

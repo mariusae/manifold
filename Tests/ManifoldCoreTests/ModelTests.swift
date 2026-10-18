@@ -344,3 +344,49 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(Block.replaying(entries, id: id, upTo: stamp(50)) == nil)
     #expect(Block.replaying([], id: id) == nil)
 }
+
+// MARK: Retention
+
+@Test func compactingALogKeepsABaseForHistory() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-store-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = LogStore(directory: dir)
+    let node = Node()
+    let id = BlockID(host: .local)
+    let shard = ShardID.block(id)
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: .local) }
+    var entries: [Entry] = []
+    for (i, (ms, event)) in [(100, Event.create(kind: .text, title: nil, path: "/x/a.txt")),
+                             (200, .content("one\n", encoding: "utf-8", lineEnding: "\n", fingerprint: "f")),
+                             (300, .edit([TextEdit(TextRange(4, 4), "two\n")])),
+                             (400, .edit([TextEdit(TextRange(8, 8), "three\n")]))].enumerated() {
+        let e = Entry(seq: i + 1, at: stamp(Int64(ms)), event: event)
+        _ = node.apply(e, to: shard)
+        entries.append(e)
+    }
+    store.append(entries, to: shard)
+    store.snapshot(node, shard)
+
+    // Fold everything before 300 into the base.
+    store.compact(shard, before: stamp(300), node: node)
+    let h = store.history(shard)
+    #expect(h.entries.map(\.seq) == [3, 4])
+    #expect(h.base?.state.block?.text?.text.string == "one\n")
+    #expect(Block.replaying(h.entries, id: id, base: h.base?.state.block)?.text?.text.string == "one\ntwo\nthree\n")
+    #expect(Block.replaying(h.entries, id: id, upTo: stamp(300), base: h.base?.state.block)?.text?.text.string == "one\ntwo\n")
+
+    // Loading afresh gives the same state, and appends carry on.
+    let fresh = Node()
+    #expect(store.load(shard, into: fresh))
+    #expect(fresh.block(id)?.text?.text.string == "one\ntwo\nthree\n")
+    #expect(fresh.seq(shard) == 4)
+    let more = fresh.append(.edit([TextEdit(TextRange(0, 0), "zero\n")]), to: shard, at: stamp(500))!
+    store.append([more], to: shard)
+    #expect(store.history(shard).entries.map(\.seq) == [3, 4, 5])
+    // Compacting again builds on the base.
+    store.compact(shard, before: stamp(450), node: fresh)
+    let again = store.history(shard)
+    #expect(again.entries.map(\.seq) == [5])
+    #expect(again.base?.state.block?.text?.text.string == "one\ntwo\nthree\n")
+    store.closeAll()
+}

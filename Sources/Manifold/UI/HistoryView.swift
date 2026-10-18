@@ -37,8 +37,10 @@ final class HistoryView: NSView {
     private var states: [ArrangementState] = []
     private var texts: [String] = []
     private var isText = false
-    /// Logs of the blocks an arrangement placed, as they arrive.
+    /// Logs of the blocks an arrangement placed, as they arrive, with the
+    /// state each (compacted) log begins from.
     private var blockEntries: [BlockID: [Entry]] = [:]
+    private var blockBases: [BlockID: Block] = [:]
     private var blockID: BlockID?
 
     override init(frame: NSRect) {
@@ -93,10 +95,10 @@ final class HistoryView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(entries: [Entry]) {
+    func show(entries: [Entry], base: ArrangementState? = nil) {
         self.entries = entries
         isText = false
-        var s = ArrangementState()
+        var s = base ?? ArrangementState()
         states = entries.map { e in
             if case let .create(_, title, _) = e.event { s = ArrangementState(); s.title = title } else { s.apply(e.event) }
             return s
@@ -117,7 +119,7 @@ final class HistoryView: NSView {
     }
 
     /// A text block's history: the text as it was, read-only.
-    func showText(entries: [Entry], block: BlockID) {
+    func showText(entries: [Entry], block: BlockID, base: Block? = nil) {
         self.entries = entries
         blockID = block
         isText = true
@@ -126,7 +128,7 @@ final class HistoryView: NSView {
         scroll.isHidden = false
         compare.isHidden = false
         textView.font = font
-        var b: Block?
+        var b: Block? = base
         texts = entries.map { e in
             if case let .create(kind, title, path) = e.event {
                 b = Block(id: block, kind: kind, created: e.at, title: title, path: path)
@@ -142,8 +144,9 @@ final class HistoryView: NSView {
     }
 
     /// A placed block's log arrived.
-    func blockHistory(_ block: BlockID, _ entries: [Entry]) {
+    func blockHistory(_ block: BlockID, _ entries: [Entry], base: Block? = nil) {
         blockEntries[block] = entries
+        blockBases[block] = base
         scrubbed()
     }
 
@@ -170,9 +173,9 @@ final class HistoryView: NSView {
                 // How many of the placed files read differently then.
                 var differ = 0
                 for p in states[i].placements where p.lens == .editor || p.lens == .preview {
-                    guard let log = blockEntries[p.block], !log.isEmpty else { continue }
-                    let then = Block.replaying(log, id: p.block, upTo: moment)?.text?.text.string ?? ""
-                    let now = Block.replaying(log, id: p.block)?.text?.text.string ?? ""
+                    guard let log = blockEntries[p.block], !log.isEmpty || blockBases[p.block] != nil else { continue }
+                    let then = Block.replaying(log, id: p.block, upTo: moment, base: blockBases[p.block])?.text?.text.string ?? ""
+                    let now = Block.replaying(log, id: p.block, base: blockBases[p.block])?.text?.text.string ?? ""
                     if then != now { differ += 1 }
                 }
                 if differ > 0 { note += " · \(differ) file\(differ == 1 ? "" : "s") read differently" }
@@ -203,8 +206,8 @@ final class HistoryView: NSView {
 
     /// The text a placed block had at a moment, from its log.
     func text(of block: BlockID, at moment: Stamp) -> String? {
-        guard let log = blockEntries[block], !log.isEmpty else { return nil }
-        return Block.replaying(log, id: block, upTo: moment)?.text?.text.string
+        guard let log = blockEntries[block], !log.isEmpty || blockBases[block] != nil else { return nil }
+        return Block.replaying(log, id: block, upTo: moment, base: blockBases[block])?.text?.text.string
     }
 
     @objc private func closeClicked() { onClose?() }

@@ -238,8 +238,8 @@ public struct Entry: Codable, Equatable, Sendable {
 extension Block {
     /// The block a log describes, replayed up to a moment (every entry when
     /// `upTo` is nil): how it was then (§3.4).
-    public static func replaying(_ entries: [Entry], id: BlockID, upTo: Stamp? = nil) -> Block? {
-        var block: Block?
+    public static func replaying(_ entries: [Entry], id: BlockID, upTo: Stamp? = nil, base: Block? = nil) -> Block? {
+        var block = base
         for e in entries {
             if let upTo, e.at > upTo { break }
             if case let .create(kind, title, path) = e.event {

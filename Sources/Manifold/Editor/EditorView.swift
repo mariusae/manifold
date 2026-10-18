@@ -51,6 +51,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     var busyMessage: String? { didSet { if busyMessage != oldValue { layoutStatus() } } }
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
+    var undoLimit = 0 { didSet { textView.undoLimit = undoLimit } }
     var theme: FontTheme { didSet { if theme != oldValue { applyFont() } } }
     private var sizeAdjust: CGFloat = 0
 

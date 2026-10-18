@@ -252,6 +252,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dormancyItem = NSMenuItem(title: "End Idle Shells", action: nil, keyEquivalent: "")
         dormancyItem.submenu = dormancy
         view.addItem(dormancyItem)
+        let keep = NSMenu(title: "Keep History")
+        for (days, title) in [(0, "Text Changes: Forever"), (30, "Text Changes: 30 Days"), (90, "Text Changes: 90 Days"), (365, "Text Changes: a Year")] {
+            item(keep, title, #selector(MainWindowController.setTextHistory(_:)), "", []).tag = days
+        }
+        keep.addItem(.separator())
+        for (days, title) in [(30, "Transcripts: 30 Days"), (90, "Transcripts: 90 Days"), (365, "Transcripts: a Year"), (0, "Transcripts: Forever")] {
+            item(keep, title, #selector(MainWindowController.setTranscriptHistory(_:)), "", []).tag = days
+        }
+        keep.addItem(.separator())
+        for (depth, title) in [(0, "Undo: Everything"), (100, "Undo: 100 Steps"), (1000, "Undo: 1,000 Steps")] {
+            item(keep, title, #selector(MainWindowController.setUndoDepth(_:)), "", []).tag = depth
+        }
+        let keepItem = NSMenuItem(title: "Keep History", action: nil, keyEquivalent: "")
+        keepItem.submenu = keep
+        view.addItem(keepItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")

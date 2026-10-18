@@ -28,6 +28,8 @@ public final class LogStore {
 
     private func logURL(_ shard: ShardID) -> URL { directory.appendingPathComponent(shard.fileName + ".log") }
     private func snapURL(_ shard: ShardID) -> URL { directory.appendingPathComponent(shard.fileName + ".snap") }
+    /// The state at the start of a compacted log (§4): history begins here.
+    private func baseURL(_ shard: ShardID) -> URL { directory.appendingPathComponent(shard.fileName + ".base") }
 
     /// Every shard with a log here.
     public func shards() -> [ShardID] {
@@ -64,6 +66,49 @@ public final class LogStore {
             i += 4 + n
         }
         return node.has(shard)
+    }
+
+    /// A shard's history: the state its log begins from, if the log was
+    /// compacted, and every entry since.
+    public func history(_ shard: ShardID) -> (base: ShardSnapshot?, entries: [Entry]) {
+        (base(shard), entries(shard))
+    }
+
+    public func base(_ shard: ShardID) -> ShardSnapshot? {
+        guard let data = try? Data(contentsOf: baseURL(shard)) else { return nil }
+        return try? Codec.decode(ShardSnapshot.self, from: data)
+    }
+
+    /// Folds entries older than `cutoff` into a base state, keeping the
+    /// rest, so a log holds only as much history as the settings say. The
+    /// node's current state is what the snapshot keeps; the base is what
+    /// history (and scrubbing) start from.
+    public func compact(_ shard: ShardID, before cutoff: Stamp, node: Node) {
+        let all = entries(shard)
+        let k = all.firstIndex { $0.at >= cutoff } ?? all.count
+        guard k > 0 else { return }
+        let replay = Node()
+        if let base = base(shard) { replay.load(base) }
+        for e in all[..<k] where !replay.apply(e, to: shard) {
+            // A gap the base doesn't cover: leave the log alone.
+            return
+        }
+        guard let newBase = replay.snapshot(shard) else { return }
+        try? handles.removeValue(forKey: shard)?.close()
+        var out = Data()
+        for e in all[k...] {
+            guard let bytes = try? Codec.encode(e) else { continue }
+            var n = UInt32(bytes.count).littleEndian
+            withUnsafeBytes(of: &n) { out.append(contentsOf: $0) }
+            out.append(bytes)
+        }
+        guard let baseData = try? Codec.encode(newBase) else { return }
+        try? baseData.write(to: baseURL(shard), options: .atomic)
+        try? out.write(to: logURL(shard), options: .atomic)
+        // The snapshot is the state now, past the whole (shorter) log.
+        if let snap = node.snapshot(shard), let data = try? Codec.encode(SnapshotFile(snapshot: snap, logOffset: UInt64(out.count))) {
+            try? data.write(to: snapURL(shard), options: .atomic)
+        }
     }
 
     /// Every entry in a shard's log, from the beginning (for history).
@@ -117,6 +162,7 @@ public final class LogStore {
 
     public func delete(_ shard: ShardID) {
         try? handles.removeValue(forKey: shard)?.close()
+        try? FileManager.default.removeItem(at: baseURL(shard))
         try? FileManager.default.removeItem(at: logURL(shard))
         try? FileManager.default.removeItem(at: snapURL(shard))
     }

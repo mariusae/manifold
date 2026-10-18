@@ -435,8 +435,8 @@ final class HostClient {
         case let .done(id, error):
             if let error { NSLog("proposal %d: %@", id, error) }
             pendingProposals.removeValue(forKey: id)?(error)
-        case let .history(shard, entries):
-            onHistory?(shard, entries)
+        case let .history(shard, base, entries):
+            onHistory?(shard, base, entries)
         case let .removed(shard):
             node.remove(shard)
         case let .open(id, client, paths, beside, wait):
@@ -463,7 +463,7 @@ final class HostClient {
     var onGutter: ((BlockID) -> Void)?
     var onLanguageServer: ((String, String, String) -> Void)?
 
-    var onHistory: ((ShardID, [Entry]) -> Void)?
+    var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
     /// A terminal's shell ended (not for dormancy), while we were attached.
     var onTerminalEnded: ((BlockID) -> Void)?
     /// A `manifold` command on this host asked for paths to be opened.

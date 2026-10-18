@@ -107,7 +107,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.collect()
         }
         hosts.onTerminalEnded = { [weak self] block in self?.terminalEnded(block) }
-        hosts.onHistory = { [weak self] shard, entries in self?.historyArrived(shard, entries) }
+        hosts.onHistory = { [weak self] shard, base, entries in self?.historyArrived(shard, base?.state.block, entries) }
         hosts.onOpen = { [weak self] host, id, client, paths, beside, wait in
             self?.openRequest(on: host, id: id, client: client, paths: paths, beside: beside, wait: wait)
         }
@@ -244,6 +244,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let e = v as? EditorView {
                 e.font = desk.appearance.editorFont
                 e.theme = desk.appearance.theme
+                e.undoLimit = desk.settings.undoDepth
             }
             if let d = v as? DiffView { d.theme = desk.appearance.theme }
             if !v.isDead { return v }
@@ -398,6 +399,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func setCollectAfter(_ sender: NSMenuItem) {
         var s = desk.settings
         s.collectAfterMinutes = sender.tag
+        host.setSettings(s)
+    }
+
+    @objc func setTextHistory(_ sender: NSMenuItem) {
+        var s = desk.settings
+        s.textHistoryDays = sender.tag
+        host.setSettings(s)
+    }
+
+    @objc func setTranscriptHistory(_ sender: NSMenuItem) {
+        var s = desk.settings
+        s.terminalHistoryDays = sender.tag
+        host.setSettings(s)
+    }
+
+    @objc func setUndoDepth(_ sender: NSMenuItem) {
+        var s = desk.settings
+        s.undoDepth = sender.tag
         host.setSettings(s)
     }
 
@@ -900,6 +919,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = item.tag == desk.settings.collectAfterMinutes ? .on : .off
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
+        case #selector(setTextHistory(_:)):
+            item.state = item.tag == desk.settings.textHistoryDays ? .on : .off
+        case #selector(setTranscriptHistory(_:)):
+            item.state = item.tag == desk.settings.terminalHistoryDays ? .on : .off
+        case #selector(setUndoDepth(_:)):
+            item.state = item.tag == desk.settings.undoDepth ? .on : .off
         case #selector(setColorScheme(_:)):
             item.state = (item.representedObject as? String) == desk.appearance.colorScheme.rawValue ? .on : .off
         case #selector(setTheme(_:)):
@@ -1657,12 +1682,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         historyOf = nil
     }
 
-    private func historyArrived(_ shard: ShardID, _ entries: [Entry]) {
+    private func historyArrived(_ shard: ShardID, _ base: Block?, _ entries: [Entry]) {
         guard let history, let block = shard.block else { return }
         if block == historyOf {
-            if hosts.block(block)?.kind == .text { history.showText(entries: entries, block: block) } else { history.show(entries: entries) }
+            if hosts.block(block)?.kind == .text {
+                history.showText(entries: entries, block: block, base: base)
+            } else {
+                history.show(entries: entries, base: base?.arrangement)
+            }
         } else {
-            history.blockHistory(block, entries)
+            history.blockHistory(block, entries, base: base)
         }
     }
 
