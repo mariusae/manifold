@@ -132,6 +132,14 @@ public enum Proposal: Codable, Sendable {
     /// A diff block (made if new), its texts read.
     case diff(block: BlockID, subject: DiffSubject)
     case reloadDiff(block: BlockID)
+    /// An agent: a terminal block that runs `command` instead of a shell.
+    case newAgent(block: BlockID, cwd: String?, command: String)
+    /// A file's bytes (an image, a PDF), answered with `bytes`.
+    case readBytes(block: BlockID)
+    /// A process block (made if new), listed; listed again.
+    case processes(block: BlockID)
+    /// Send a signal to a process on the host.
+    case signal(pid: Int32, signal: Int32)
 }
 
 /// What a host asks the leader of a shard to append.
@@ -192,4 +200,6 @@ public enum ServerMessage: Codable, Sendable {
     case languageServer(language: String, root: String, state: String)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
+    /// A file's bytes, for `readBytes`; nil if it couldn't be read.
+    case bytes(id: Int, Data?)
 }

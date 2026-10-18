@@ -192,6 +192,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
             for case let g as GitView in views.values { g.documentChanged() }
+            for case let m as MediaView in views.values { m.documentChanged() }
+            for case let pv as ProcessView in views.values { pv.documentChanged() }
             for case let d as DiffView in views.values { d.documentChanged() }
         } else {
             content.clear()
@@ -250,10 +252,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         let v: PaneContent
         switch p.lens {
-        case .terminal:
+        case .terminal, .agent:
             let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
             v = t
+        case .image, .pdf:
+            let m = MediaView(placement: p.id, block: p.block, kind: p.lens)
+            m.delegate = self
+            m.source = { [weak self] in self?.hosts.block(p.block) }
+            v = m
+        case .process:
+            let pv = ProcessView(placement: p.id, block: p.block)
+            pv.delegate = self
+            pv.source = { [weak self] in self?.hosts.block(p.block) }
+            v = pv
         case .preview:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: desk.appearance.theme)
             m.delegate = self
@@ -646,6 +658,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.showFileHistory(nil)
             })
         }
+        items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
+            self?.newAgent(nil)
+        })
+        items.append(PaletteItem(symbol: "cpu", title: "Processes on \(focusedHost == host.host ? "This Mac" : focusedHost.raw)", subtitle: "Action") { [weak self] in
+            self?.showProcesses(nil)
+        })
         items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Git for This Project", subtitle: "⌥⌘G") { [weak self] in
             self?.showGit(nil)
         })
@@ -1173,6 +1191,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .search:
                 hay = title + " " + (block.search?.query?.root ?? "")
                 detail = "Search in \(block.search?.query?.root.abbreviatingHome ?? "")"
+            case .image, .pdf:
+                hay = block.path ?? title
+                detail = block.kind == .pdf ? "PDF" : "Image"
+            case .process:
+                hay = "processes " + title
+                detail = "Processes"
+            case .agent:
+                hay = "agent " + title + " " + (block.terminal?.cwd ?? "")
+                detail = "Agent in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
+                note = block.terminal?.pid == nil ? "ended" : ""
             case .git:
                 hay = "git " + (block.path ?? title)
                 detail = "Git, \(block.path?.abbreviatingHome ?? "")"
@@ -1279,6 +1307,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         place(block, lens: .search, beside: focusedShown?.id)
     }
 
+    /// New Agent: a terminal running the agent command (the settings'),
+    /// where the focused block is, beside it.
+    @objc func newAgent(_ sender: Any?) {
+        let on = focusedHost
+        guard let client = hosts.client(on) else { return }
+        let block = client.newAgent(cwd: focusedCwd, command: desk.settings.agentCommand)
+        place(block, lens: .agent, beside: focusedShown?.id)
+    }
+
+    /// Processes: the focused block's host's process list, beside it.
+    @objc func showProcesses(_ sender: Any?) {
+        guard let client = hosts.client(focusedHost) else { return }
+        place(client.processBlock(), lens: .process, beside: focusedShown?.id)
+    }
+
     /// Git for This Project: the git block for the repository the focused
     /// block is in, placed beside it.
     @objc func showGit(_ sender: Any?) {
@@ -1311,6 +1354,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = beside.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
         place(block, lens: .directory, beside: beside)
+    }
+
+    /// An image or a PDF, by its name.
+    static func mediaKind(_ path: String) -> BlockKind? {
+        switch path.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "bmp", "webp", "svg", "icns": return .image
+        case "pdf": return .pdf
+        default: return nil
+        }
     }
 
     /// Text, and not too big to edit.
@@ -1368,6 +1420,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             place(hosts.textBlock(for: path, on: on), lens: .preview, beside: placement)
         } else if Self.isEditable(path) {
             place(hosts.textBlock(for: path, on: on), lens: .editor, beside: placement)
+        } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
+            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: placement)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -1388,6 +1442,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
             place(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, beside: beside)
+        } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
+            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: beside)
         } else {
             if let line { pendingJump = (path, line, column) }
             place(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, beside: beside)
@@ -1473,8 +1529,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         for path in paths {
             let isDir = on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
-            let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on) : hosts.textBlock(for: path, on: on)
-            let lens: Lens = isDir || path.hasSuffix("/") ? .directory : (Lens.isMarkdown(path) ? .preview : .editor)
+            let media = Self.mediaKind(path)
+            let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on)
+                : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
+            let lens: Lens = isDir || path.hasSuffix("/") ? .directory
+                : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
             place(block, lens: lens, beside: besidePlacement?.id)
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
@@ -1941,6 +2000,25 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewRefresh(_ view: DirectoryView) {
         hosts.propose(.listDirectory(view.block))
+    }
+}
+
+extension MainWindowController: MediaViewDelegate {
+    func mediaView(_ view: MediaView, needsBytes done: @escaping (Data?) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        client.readBytes(view.block, done: done)
+    }
+}
+
+extension MainWindowController: ProcessViewDelegate {
+    func processViewRefresh(_ view: ProcessView) {
+        hosts.propose(.processes(block: view.block))
+    }
+
+    func processView(_ view: ProcessView, signal pid: Int32, _ signal: Int32) {
+        hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
+            if let error { self?.window?.title = error }
+        }
     }
 }
 

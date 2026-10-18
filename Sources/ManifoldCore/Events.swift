@@ -160,6 +160,11 @@ public enum Event: Codable, Equatable, Sendable {
     // Terminal.
     case cwd(String?)
     case shell(ShellEvent)
+    /// An agent's command, run in place of the login shell.
+    case command(String?)
+
+    // Processes.
+    case processes([ProcessEntry], at: Stamp)
 
     // Directory.
     case entries([DirectoryEntry], at: Stamp)
@@ -268,7 +273,17 @@ extension Block {
         if search != nil { search!.apply(event) }
         if git != nil { git!.apply(event) }
         if diff != nil { diff!.apply(event) }
+        if processes != nil { processes!.apply(event) }
         if arrangement != nil { arrangement!.apply(event) }
+    }
+}
+
+extension ProcessState {
+    public mutating func apply(_ event: Event) {
+        if case let .processes(e, at) = event {
+            entries = e
+            listedAt = at
+        }
     }
 }
 
@@ -372,6 +387,7 @@ extension TerminalState {
     mutating func apply(_ event: Event, at: Stamp) {
         switch event {
         case let .cwd(c): cwd = c
+        case let .command(c): command = c
         case let .title(t): title = t
         case let .shell(s):
             switch s {

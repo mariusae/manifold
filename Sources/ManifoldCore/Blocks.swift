@@ -123,6 +123,8 @@ public struct TerminalState: Codable, Equatable, Sendable {
     /// is dormant, and the next shell starts under the old transcript, with
     /// a seam between.
     public var dormantSince: Stamp?
+    /// For an agent: the command run in place of the login shell.
+    public var command: String?
     /// How long the last shell had been idle when it was ended, in seconds.
     public var dormantAfter: Int?
 
@@ -198,6 +200,35 @@ public struct SearchState: Codable, Equatable, Sendable {
     public var truncated = false
     public var error: String?
     public var ranAt: Stamp?
+    public init() {}
+}
+
+// MARK: Processes
+
+/// A process on the host, as `ps` lists it.
+public struct ProcessEntry: Codable, Equatable, Sendable {
+    public var pid: Int32
+    public var parent: Int32
+    public var user: String
+    public var cpu: Double
+    /// Resident memory, in kilobytes.
+    public var memory: Int64
+    public var command: String
+
+    public init(pid: Int32, parent: Int32, user: String, cpu: Double, memory: Int64, command: String) {
+        self.pid = pid
+        self.parent = parent
+        self.user = user
+        self.cpu = cpu
+        self.memory = memory
+        self.command = command
+    }
+}
+
+/// A process block: the host's processes, as last listed.
+public struct ProcessState: Codable, Equatable, Sendable {
+    public var entries: [ProcessEntry] = []
+    public var listedAt: Stamp?
     public init() {}
 }
 
@@ -393,6 +424,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var search: SearchState?
     public var git: GitState?
     public var diff: DiffState?
+    public var processes: ProcessState?
     public var arrangement: ArrangementState?
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
@@ -403,7 +435,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         self.path = path
         switch kind {
         case .text: text = TextState()
-        case .terminal: terminal = TerminalState()
+        case .terminal, .agent: terminal = TerminalState()
+        case .process: processes = ProcessState()
         case .directory: directory = DirectoryState()
         case .web: web = WebState()
         case .search: search = SearchState()
@@ -418,7 +451,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// its kind.
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        if let t = terminal?.title, !t.isEmpty { return t }
+        if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
         if kind == .git, let path { return path.lastPathComponent + (git?.branch.map { " (\($0))" } ?? "") }

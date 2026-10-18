@@ -255,6 +255,26 @@ final class Server {
         case let .endTerminal(block):
             sessions[block]?.terminate()
             done()
+        case let .newAgent(block, cwd, command):
+            if node.block(block) == nil {
+                append(.create(kind: .agent, title: nil, path: nil), to: .block(block))
+                if let cwd { append(.cwd(cwd), to: .block(block)) }
+                append(.command(command), to: .block(block))
+            }
+            done()
+        case let .readBytes(block):
+            guard let b = node.block(block), let path = b.path else { return done("not a file") }
+            let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+            conn.send(.message(ServerMessage.bytes(id: id, data)))
+        case let .processes(block):
+            if node.block(block) == nil {
+                append(.create(kind: .process, title: nil, path: nil), to: .block(block))
+            }
+            listProcesses(block)
+            done()
+        case let .signal(pid, sig):
+            if kill(pid, sig) != 0 { return done(String(cString: strerror(errno))) }
+            done()
         case let .readFile(block):
             guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
             if let contents = TextFile.read(path) {
@@ -384,6 +404,25 @@ final class Server {
         }
     }
 
+    // MARK: Processes
+
+    /// `ps`, parsed: pid, parent, user, cpu, resident kilobytes, command.
+    private func listProcesses(_ block: BlockID) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
+            let entries: [ProcessEntry] = String(decoding: out, as: UTF8.self).split(separator: "\n").compactMap { line in
+                let f = line.split(separator: " ", maxSplits: 5, omittingEmptySubsequences: true)
+                guard f.count >= 6, let pid = Int32(f[0]), let ppid = Int32(f[1]) else { return nil }
+                return ProcessEntry(pid: pid, parent: ppid, user: String(f[2]), cpu: Double(f[3]) ?? 0,
+                                    memory: Int64(f[4]) ?? 0, command: String(f[5]))
+            }
+            self?.queue.async {
+                guard let self, self.node.block(block)?.kind == .process else { return }
+                self.append(.processes(entries, at: self.clock.now()), to: .block(block))
+            }
+        }
+    }
+
     // MARK: Git
 
     /// The gutter for a text block in a repository: its lines against
@@ -501,7 +540,7 @@ final class Server {
         if node.block(id) == nil {
             append(.create(kind: .terminal, title: nil, path: nil), to: .block(id))
         }
-        guard let block = node.block(id), block.kind == .terminal, let state = block.terminal else {
+        guard let block = node.block(id), block.kind == .terminal || block.kind == .agent, let state = block.terminal else {
             conn.close()
             return
         }
@@ -514,7 +553,7 @@ final class Server {
                 history.append(Session.seam(idle: state.dormantAfter ?? 0, since: since.date))
             }
             guard let s = Session(id: id, cwd: state.cwd, cols: req.cols, rows: req.rows,
-                                  env: req.env, history: history, queue: queue) else {
+                                  env: req.env, history: history, command: state.command, queue: queue) else {
                 conn.close()
                 return
             }
@@ -586,7 +625,7 @@ final class Server {
     }
 
     private func pruneHistory() {
-        let live = Set(node.blocks(of: .terminal).map(\.id.ulid))
+        let live = Set((node.blocks(of: .terminal) + node.blocks(of: .agent)).map(\.id.ulid))
         let files = (try? FileManager.default.contentsOfDirectory(atPath: historyDirectory.path)) ?? []
         for f in files where !live.contains(f) {
             try? FileManager.default.removeItem(at: historyDirectory.appendingPathComponent(f))

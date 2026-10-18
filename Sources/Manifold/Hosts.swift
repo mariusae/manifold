@@ -116,7 +116,8 @@ final class Hosts {
         switch proposal {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
-             let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block):
+             let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block),
+             let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
             (client(of: block) ?? local).propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {
@@ -130,7 +131,7 @@ final class Hosts {
             done?(nil)
         case let .history(shard):
             (client(shard.host) ?? local).propose(proposal, done: done)
-        case .openDone, .editFile:
+        case .openDone, .editFile, .signal:
             local.propose(proposal, done: done)
         case let .editing(ids):
             for c in all { c.propose(.editing(ids.filter { $0.host == c.host })) }

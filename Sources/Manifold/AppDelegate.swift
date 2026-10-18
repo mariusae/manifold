@@ -134,6 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Terminal in a New Column", #selector(MainWindowController.splitRight(_:)), "d")
         item(file, "New Terminal in a New Arrangement", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
+        item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
+        item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
         file.addItem(.separator())
         item(file, "Git for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])

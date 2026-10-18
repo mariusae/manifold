@@ -26,6 +26,7 @@ final class HostClient {
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
+    private var pendingBytes: [Int: (Data?) -> Void] = [:]
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
     /// How each text block stands against what's committed.
@@ -131,6 +132,15 @@ final class HostClient {
         conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
     }
 
+    /// A file's bytes from this host.
+    func readBytes(_ block: BlockID, done: @escaping (Data?) -> Void) {
+        guard conn != nil else { return done(nil) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingBytes[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .readBytes(block: block))))
+    }
+
     // MARK: Conveniences
 
     /// A new, empty arrangement on the desk, selected.
@@ -150,6 +160,32 @@ final class HostClient {
     func newTerminal(cwd: String?) -> BlockID {
         let id = BlockID(host: host)
         propose(.newTerminal(block: id, cwd: cwd))
+        return id
+    }
+
+    /// An agent: a terminal block running the agent command.
+    func newAgent(cwd: String?, command: String) -> BlockID {
+        let id = BlockID(host: host)
+        propose(.newAgent(block: id, cwd: cwd, command: command))
+        return id
+    }
+
+    /// The block for an image or PDF at a path, made if there isn't one.
+    func mediaBlock(for path: String, kind: BlockKind) -> BlockID {
+        if let b = node.blocks.first(where: { $0.kind == kind && $0.path == path }) { return b.id }
+        let id = BlockID(host: host)
+        append(.create(kind: kind, title: nil, path: path), to: .block(id))
+        return id
+    }
+
+    /// The host's process block: one per host, listed again.
+    func processBlock() -> BlockID {
+        if let b = node.blocks.first(where: { $0.kind == .process }) {
+            propose(.processes(block: b.id))
+            return b.id
+        }
+        let id = BlockID(host: host)
+        propose(.processes(block: id))
         return id
     }
 
@@ -413,6 +449,8 @@ final class HostClient {
             onGutter?(block)
         case let .lspResult(id, result):
             pendingLSP.removeValue(forKey: id)?(result)
+        case let .bytes(id, data):
+            pendingBytes.removeValue(forKey: id)?(data)
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
             onLanguageServer?(language, root, state)

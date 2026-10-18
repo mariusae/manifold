@@ -37,7 +37,7 @@ final class Session {
     var onTitle: ((String) -> Void)?
 
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
-          queue: DispatchQueue) {
+          command: String? = nil, queue: DispatchQueue) {
         var (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
         // So `manifold` run in this shell knows where it is, and `$EDITOR`
         // edits in Manifold, beside it.
@@ -51,7 +51,10 @@ final class Session {
             ?? FileManager.default.homeDirectoryForCurrentUser.path
 
         var master: Int32 = -1
-        let pid = withCStrings([argv0]) { argv in
+        // An agent runs its command in a login shell, so the PATH is the
+        // user's.
+        let args = command.map { [argv0, "-c", $0] } ?? [argv0]
+        let pid = withCStrings(args) { argv in
             withCStrings(environment.map { "\($0.key)=\($0.value)" }) { envp in
                 mf_pty_spawn(shell, argv, envp, dir, cols, rows, &master)
             }
