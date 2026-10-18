@@ -202,6 +202,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteSeen(force: false)
         noteEditing()
         checkOpenWaits()
+        content.stacks.refreshFeet()
+        noteTrailFocus()
 
         if let jump = pendingJump,
            let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }), editor.isLoaded {
@@ -554,6 +556,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: Debugging aids
+
+    func debugFoot(_ column: Int, bunch: Int?) -> String { content.stacks.debugFoot(column, bunch: bunch) }
+    var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
 
     func debugPeek(_ column: Int) { content.stacks.debugPeek(column) }
 
@@ -1167,6 +1172,66 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement, a.placement(placement) != nil else { return }
         if a.focused == placement, a.layout != .stacks || a.columns.contains(where: { $0.last?.id == placement }) { return }
         appendToSelected([.focus(placement)])
+    }
+
+    // MARK: Back and forward along the trail
+
+    /// Where along the trail ⌃⌘[ has gone back to, and where it started.
+    private var trailPosition: Int?
+    private var trailAnchor: Int?
+    private var navigatingTrail = false
+    private var lastTrailFocus: PlacementID?
+
+    /// Any other move resets the walk: the next ⌃⌘[ starts from now.
+    private func noteTrailFocus() {
+        let f = arrangement?.focused
+        if f != lastTrailFocus {
+            lastTrailFocus = f
+            if !navigatingTrail { trailPosition = nil; trailAnchor = nil }
+        }
+    }
+
+    /// ⌃⌘[: the block gone to before this one, by the trail (§3.5).
+    @objc func goBack(_ sender: Any?) { walkTrail(-1) }
+    /// ⌃⌘]: forward again, as far as where going back began.
+    @objc func goForward(_ sender: Any?) { walkTrail(1) }
+
+    private func walkTrail(_ direction: Int) {
+        let g = host.node.graph
+        guard g.stepCount > 0 else { return }
+        let current = focusedShown?.placement.block
+        if trailPosition == nil {
+            trailPosition = g.stepCount - 1
+            trailAnchor = trailPosition
+        }
+        var i = trailPosition! + direction
+        let limit = direction < 0 ? 0 : (trailAnchor ?? g.stepCount - 1)
+        while direction < 0 ? i >= limit : i <= limit {
+            guard let step = g.step(at: i) else { return }
+            if step.block != current, step.block != g.step(at: trailPosition!)?.block, hosts.block(step.block) != nil {
+                trailPosition = i
+                go(to: step)
+                return
+            }
+            i += direction
+        }
+    }
+
+    /// Goes to a step: its arrangement; the block's placement here, if it
+    /// has one; else the block recalled beside what's focused.
+    private func go(to step: Step) {
+        guard let b = hosts.block(step.block) else { return }
+        navigatingTrail = true
+        defer { navigatingTrail = false }
+        if b.kind == .arrangement {
+            host.select(step.block)
+        } else if let a = arrangement, let p = (step.placement.flatMap { a.placement($0) } ?? a.placements(of: step.block).first) {
+            focus(p.id)
+        } else {
+            place(step.block, lens: Lens.default(for: b.kind, path: b.path), beside: focusedShown?.id, context: "back along the trail")
+        }
+        render()
+        lastTrailFocus = arrangement?.focused
     }
 
     // MARK: Finding and opening
@@ -1865,6 +1930,66 @@ extension MainWindowController: TabContentDelegate {
     }
 
     func contentRaise(_ placement: PlacementID) { focus(placement) }
+
+    /// The neighborhood at a placement's foot (§3.5): each edge kind and
+    /// direction that has anything, as a bunch of cards.
+    func contentFoot(for placement: PlacementID) -> [FootBunch] {
+        guard let p = shown(placement)?.placement else { return [] }
+        return footBunches(of: p.block)
+    }
+
+    func footBunches(of block: BlockID) -> [FootBunch] {
+        let n = hosts.neighborhood(of: block)
+        var bunches: [FootBunch] = []
+        func card(_ id: BlockID, detail: String, at: Stamp?) -> FootCard? {
+            guard let b = hosts.block(id) else { return nil }
+            return FootCard(block: id, title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), detail: detail, at: at)
+        }
+        func bunch(_ role: FootBunch.Role, _ title: String, _ symbol: String, _ edges: [Edge], toward: KeyPath<Edge, BlockID>, fallback: String) {
+            var seen: Set<BlockID> = []
+            let cards = edges.compactMap { e -> FootCard? in
+                let other = e[keyPath: toward]
+                guard seen.insert(other).inserted else { return nil }
+                return card(other, detail: e.context ?? fallback, at: e.at)
+            }
+            if !cards.isEmpty { bunches.append(FootBunch(role: role, title: title, symbol: symbol, cards: cards)) }
+        }
+        bunch(.openedFrom, "opened from", "arrow.turn.up.left", n.inbound[.link(.opened)] ?? [], toward: \.from, fallback: "opened here")
+        bunch(.openedHere, "opened here", "arrow.turn.down.right", n.outbound[.link(.opened)] ?? [], toward: \.to, fallback: "opened from here")
+        bunch(.found, "found by", "magnifyingglass", n.inbound[.link(.found)] ?? [], toward: \.from, fallback: "a hit")
+        bunch(.found, "found", "magnifyingglass", n.outbound[.link(.found)] ?? [], toward: \.to, fallback: "a hit")
+        bunch(.derived, "compared", "arrow.left.arrow.right", n.inbound[.link(.source)] ?? [], toward: \.from, fallback: "a diff of this")
+        bunch(.sources, "sources", "doc.text", n.outbound[.link(.source)] ?? [], toward: \.to, fallback: "compared here")
+        bunch(.mentions, "mentioned in", "link", n.inbound[.link(.mention)] ?? [], toward: \.from, fallback: "a link")
+        bunch(.mentions, "mentions", "link", n.outbound[.link(.mention)] ?? [], toward: \.to, fallback: "a link")
+        // Other arrangements holding the block: not the one it's shown in.
+        let elsewhere = (n.inbound[.placed] ?? []).filter { $0.from != selected }
+        bunch(.placedIn, "also in", "rectangle.3.group", elsewhere, toward: \.from, fallback: "placed there")
+        if hosts.block(block)?.kind == .arrangement {
+            bunch(.placedIn, "holds", "square.stack", n.outbound[.placed] ?? [], toward: \.to, fallback: "placed here")
+        }
+        func trail(_ role: FootBunch.Role, _ title: String, _ symbol: String, _ neighbors: [TrailNeighbor]) {
+            let cards = neighbors.compactMap { t in card(t.block, detail: t.count == 1 ? "once" : "\(t.count) times", at: t.last) }
+            if !cards.isEmpty { bunches.append(FootBunch(role: role, title: title, symbol: symbol, cards: Array(cards.prefix(8)))) }
+        }
+        trail(.before, "before", "arrow.left", n.before.filter { $0.block != block })
+        trail(.after, "after", "arrow.right", n.after.filter { $0.block != block })
+        return bunches
+    }
+
+    /// A card at a foot: its block recalled beside the placement, or in a
+    /// column of its own; an arrangement is gone to.
+    func contentFootOpen(_ block: BlockID, beside placement: PlacementID, newColumn: Bool) {
+        guard let b = hosts.block(block) else { return }
+        if b.kind == .arrangement { return host.select(block) }
+        let lens = Lens.default(for: b.kind, path: b.path)
+        if newColumn, let a = arrangement, let c = a.columnIndex(of: placement) {
+            placeInNewColumn(block, lens: lens, at: c + 1)
+            if let from = shown(placement)?.placement.block { hosts.link(from: from, to: block, kind: .opened, context: "recalled") }
+        } else {
+            place(block, lens: lens, beside: placement, context: "recalled")
+        }
+    }
 
     func contentMovePane(_ placement: PlacementID, to target: TabContentView.DropTarget) {
         guard let a = arrangement else { return }

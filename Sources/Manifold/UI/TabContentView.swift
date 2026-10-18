@@ -12,6 +12,10 @@ protocol TabContentDelegate: AnyObject {
     func contentMovePane(_ placement: PlacementID, to target: TabContentView.DropTarget)
     /// A placement is being dragged, or has stopped being.
     func contentPaneDragChanged(_ dragging: Bool)
+    /// The neighborhood at a block's foot: what to show, if anything.
+    func contentFoot(for placement: PlacementID) -> [FootBunch]
+    /// A card at a foot was clicked: recall its block beside the placement.
+    func contentFootOpen(_ block: BlockID, beside placement: PlacementID, newColumn: Bool)
     /// Something is being dragged along the window's left edge.
     func contentDragAtLeftEdge()
 }
@@ -73,6 +77,12 @@ final class TabContentView: NSView, NSDraggingSource {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Each column's foot, shown while the pointer is near the bottom of
+    /// its sheet or on the foot itself.
+    private var feet: [Int: FootView] = [:]
+    private var footNear: Int?
+    private var hideFootWork: DispatchWorkItem?
 
     func show(_ columns: [ColumnContent], fractions: [Double], focused: PlacementID?) {
         let views = columns.map(\.view)
@@ -144,6 +154,11 @@ final class TabContentView: NSView, NSDraggingSource {
         addSubview(focusBar)
         addSubview(dropOverlay)
         if let stackList { addSubview(stackList) }
+        for (i, foot) in feet {
+            if i < columns.count { addSubview(foot) } else { foot.removeFromSuperview() }
+        }
+        feet = feet.filter { $0.key < columns.count }
+        refreshFeet()
         needsLayout = true
         needsDisplay = true
 
@@ -254,6 +269,11 @@ final class TabContentView: NSView, NSDraggingSource {
         for (i, d) in dividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX - 3, y: 0, width: Self.dividerWidth + 6, height: bounds.height)
         }
+        for (i, foot) in feet where i < frames.count {
+            let f = frames[i]
+            let size = foot.size
+            foot.frame = NSRect(x: f.minX, y: 0, width: min(max(size.width, f.width), f.width), height: min(size.height, f.height - sheetInset(i)))
+        }
         for strip in strips where strip.column < frames.count {
             let f = frames[strip.column]
             if strip.stacked {
@@ -312,10 +332,108 @@ final class TabContentView: NSView, NSDraggingSource {
         }
     }
 
+    // MARK: The foot of a sheet
+
+    /// Each shown foot's bunches again: the graph may have changed.
+    func refreshFeet() {
+        for (i, foot) in feet where i < columns.count {
+            foot.bunches = delegate?.contentFoot(for: columns[i].view.placement) ?? []
+        }
+        needsLayout = true
+    }
+
+    private func showFoot(_ i: Int) {
+        guard i < columns.count else { return }
+        hideFootWork?.cancel()
+        if let foot = feet[i] {
+            foot.isHidden = false
+            return
+        }
+        let bunches = delegate?.contentFoot(for: columns[i].view.placement) ?? []
+        guard !bunches.isEmpty else { return }
+        let foot = FootView()
+        foot.bunches = bunches
+        foot.onOpen = { [weak self] block, newColumn in
+            guard let self, i < self.columns.count else { return }
+            self.delegate?.contentFootOpen(block, beside: self.columns[i].view.placement, newColumn: newColumn)
+        }
+        foot.onSpread = { [weak self] in self?.needsLayout = true }
+        foot.onHoverChanged = { [weak self] inside in
+            if inside { self?.hideFootWork?.cancel() } else { self?.scheduleHideFoot(i) }
+        }
+        feet[i] = foot
+        addSubview(foot)
+        foot.alphaValue = 0
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            foot.animator().alphaValue = 1
+        }
+    }
+
+    private func scheduleHideFoot(_ i: Int) {
+        hideFootWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.footNear != i else { return }
+            self.hideFoot(i)
+        }
+        hideFootWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private func hideFoot(_ i: Int) {
+        guard let foot = feet[i] else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.12
+            foot.animator().alphaValue = 0
+        }, completionHandler: { [weak self, weak foot] in
+            guard let foot, foot.alphaValue == 0 else { return }
+            foot.removeFromSuperview()
+            if self?.feet[i] === foot { self?.feet.removeValue(forKey: i) }
+        })
+    }
+
+    /// The pointer within reach of a column's bottom edge brings its foot
+    /// up; gone from there and from the foot, it goes.
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let frames = columnFrames()
+        let near = frames.firstIndex { $0.contains(p) && p.y < 36 }
+        if near != footNear {
+            if let old = footNear, feet[old] != nil { scheduleHideFoot(old) }
+            footNear = near
+            if let near { showFoot(near) }
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if let old = footNear { scheduleHideFoot(old) }
+        footNear = nil
+        super.mouseExited(with: event)
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
     // MARK: The list of what's beneath
 
     /// Shows a column's list as hovering its sheets would (for DebugControl).
     func debugPeek(_ column: Int) { showStackList(column) }
+
+    /// Shows a column's foot, a bunch dealt out, as the pointer would (for DebugControl).
+    func debugFoot(_ column: Int, bunch: Int?) -> String {
+        showFoot(column)
+        guard let foot = feet[column] else { return "nothing at the foot" }
+        foot.alphaValue = 1
+        if let bunch { foot.debugSpread(bunch) }
+        layoutSubtreeIfNeeded()
+        return foot.bunches.map { "\($0.title) · \($0.count): " + $0.cards.map { "\($0.title) [\($0.detail)]" }.joined(separator: ", ") }.joined(separator: "\n")
+    }
 
     private var hideListWork: DispatchWorkItem?
 

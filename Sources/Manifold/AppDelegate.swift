@@ -293,6 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Cycle Stack Backward", #selector(MainWindowController.cycleStackBack(_:)), "e", [.command, .shift])
         item(window, "Focus Next Block", #selector(MainWindowController.nextPane(_:)), "]")
         item(window, "Focus Previous Block", #selector(MainWindowController.previousPane(_:)), "[")
+        window.addItem(.separator())
+        item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[", [.command, .control])
+        item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]", [.command, .control])
         NSApp.windowsMenu = window
 
         return main

@@ -202,6 +202,7 @@ final class Server {
         let frame = Frame.message(ServerMessage.entries(shard: shard, entries: entries))
         for c in clients where c !== conn { c.send(frame) }
         shardChanged(shard, entries: entries)
+        trail(shard, entries)
     }
 
     /// The host appends to a shard it leads, and tells every client.
@@ -422,6 +423,28 @@ final class Server {
             self?.queue.async {
                 guard let self, self.node.block(block)?.kind == .process else { return }
                 self.append(.processes(entries, at: self.clock.now()), to: .block(block))
+            }
+        }
+    }
+
+    // MARK: The trail
+
+    /// Focus and selection, as clients append them, become the registry's
+    /// trail: a block gone to, when, by which placement.
+    private func trail(_ shard: ShardID, _ entries: [Entry]) {
+        for e in entries {
+            switch (shard, e.event) {
+            case let (.block(arrangement), .focus(pid?)):
+                guard let block = node.block(arrangement)?.arrangement?.placement(pid)?.block else { continue }
+                if node.registry(host).trail.last?.block != block {
+                    append(.step(Step(block: block, at: e.at, placement: pid)), to: .registry(host))
+                }
+            case let (.desk, .select(id?)):
+                if node.registry(host).trail.last?.block != id {
+                    append(.step(Step(block: id, at: e.at)), to: .registry(host))
+                }
+            default:
+                break
             }
         }
     }

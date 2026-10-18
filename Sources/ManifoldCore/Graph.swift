@@ -49,12 +49,18 @@ public struct Edge: Hashable, Sendable {
     }
 }
 
-/// One step of the trail: a block gone to, when, and from where.
-public struct Step: Equatable, Sendable {
+/// One step of the trail: a block gone to, when, and by which placement
+/// (none for an arrangement selected on the desk).
+public struct Step: Codable, Equatable, Sendable {
     public var block: BlockID
     public var at: Stamp
     public var placement: PlacementID?
-    public var shard: ShardID
+
+    public init(block: BlockID, at: Stamp, placement: PlacementID? = nil) {
+        self.block = block
+        self.at = at
+        self.placement = placement
+    }
 }
 
 /// A block's neighbors, each kind and direction counted and listed
@@ -87,6 +93,8 @@ public final class Graph {
     private var liveIn: [BlockID: [EdgeKind: Int]] = [:]
 
     private var steps: [Step] = []
+    /// Which registry shard each step came from, by position.
+    private var stepShards: [ShardID] = []
     private var stepIndex: [BlockID: [Int]] = [:]
     private var stepIndexValid = true
     /// The most steps kept; older ones fall off the front.
@@ -172,6 +180,9 @@ public final class Graph {
         for (i, s) in steps.enumerated() { stepIndex[s.block, default: []].append(i) }
         stepIndexValid = true
     }
+
+    public var stepCount: Int { steps.count }
+    public func step(at i: Int) -> Step? { i >= 0 && i < steps.count ? steps[i] : nil }
 
     /// The trail's last steps, newest first, each block once.
     public func recent(limit: Int = 50) -> [Step] {
@@ -263,24 +274,29 @@ public final class Graph {
         add(ended)
     }
 
-    private func addStep(_ step: Step) {
+    private func addStep(_ step: Step, from shard: ShardID) {
         if let last = steps.last, last.at > step.at {
-            // Out of order (another shard's entry arriving late): kept sorted.
+            // Out of order (another host's trail arriving late): kept sorted.
             var lo = 0, hi = steps.count
             while lo < hi {
                 let mid = (lo + hi) / 2
                 if steps[mid].at <= step.at { lo = mid + 1 } else { hi = mid }
             }
+            if lo > 0, steps[lo - 1] == step { return }
             steps.insert(step, at: lo)
+            stepShards.insert(shard, at: lo)
             stepIndexValid = false
         } else {
             // The same block again, right away, is one visit.
             if let last = steps.last, last.block == step.block { return }
             steps.append(step)
+            stepShards.append(shard)
             if stepIndexValid { stepIndex[step.block, default: []].append(steps.count - 1) }
         }
         if steps.count > trailLimit {
-            steps.removeFirst(steps.count - trailLimit)
+            let n = steps.count - trailLimit
+            steps.removeFirst(n)
+            stepShards.removeFirst(n)
             stepIndexValid = false
         }
     }
@@ -296,12 +312,8 @@ public final class Graph {
             }
         case let (.block, .remove(pid)):
             end(pid, at: entry.at)
-        case let (.block, .focus(pid?)):
-            if let block = state.block?.arrangement?.placement(pid)?.block ?? byID[pid]?.to {
-                addStep(Step(block: block, at: entry.at, placement: pid, shard: shard))
-            }
-        case let (.desk, .select(id?)):
-            addStep(Step(block: id, at: entry.at, placement: nil, shard: shard))
+        case let (.registry, .step(s)):
+            addStep(s, from: shard)
         case let (.links, .link(l)):
             // One link of a kind between two blocks, as the links shard keeps them.
             for old in edges(from: l.from, kind: .link(l.kind)) where old.to == l.to { removeEdge(old) }
@@ -319,8 +331,14 @@ public final class Graph {
             if let e = byID[id] { removeEdge(e) }
         }
         byShard.removeValue(forKey: shard)
-        if steps.contains(where: { $0.shard == shard }) {
-            steps.removeAll { $0.shard == shard }
+        if stepShards.contains(shard) {
+            var kept: [Step] = [], keptShards: [ShardID] = []
+            for (s, sh) in zip(steps, stepShards) where sh != shard {
+                kept.append(s)
+                keptShards.append(sh)
+            }
+            steps = kept
+            stepShards = keptShards
             stepIndexValid = false
         }
     }
@@ -330,13 +348,12 @@ public final class Graph {
     /// state holds that the entries didn't say (placed before they begin).
     public func load(_ shard: ShardID, state: ShardState, entries: [Entry]) {
         remove(shard)
-        var running: ShardState? = nil
-        for e in entries {
-            // The state as of each entry, for a focus's placement, is near
-            // enough the final one; placements removed since are in byID.
-            running = running ?? state
-            apply(e, to: shard, state: running!)
+        // The trail is in the registry's state whole: not again from its entries.
+        if case .registry(let r) = state {
+            for s in r.trail { addStep(s, from: shard) }
+            return
         }
+        for e in entries { apply(e, to: shard, state: state) }
         switch state {
         case .block(let b):
             if let a = b.arrangement {
@@ -360,9 +377,7 @@ public final class Graph {
     /// Everything again, from a node.
     public func rebuild(from node: Node) {
         out = [:]; inbound = [:]; byID = [:]; byShard = [:]; liveOut = [:]; liveIn = [:]
-        steps = []; stepIndex = [:]; stepIndexValid = true
+        steps = []; stepShards = []; stepIndex = [:]; stepIndexValid = true
         for (shard, r) in node.shards { load(shard, state: r.state, entries: r.entries) }
-        steps.sort { $0.at < $1.at }
-        stepIndexValid = false
     }
 }

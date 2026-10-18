@@ -439,12 +439,12 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     put(.create(kind: .arrangement, title: nil, path: nil), to: .block(a), at: 10)
     let pt = Placement(block: t, lens: .terminal), pf = Placement(block: f, lens: .editor)
     put(.place(pt, column: 0, at: 0), to: .block(a), at: 11)
-    put(.focus(pt.id), to: .block(a), at: 12)
+    put(.step(Step(block: t, at: stamp(12), placement: pt.id)), to: .registry(host), at: 12)
     put(.place(pf, column: 1, at: 0), to: .block(a), at: 20)
-    put(.focus(pf.id), to: .block(a), at: 21)
+    put(.step(Step(block: f, at: stamp(21), placement: pf.id)), to: .registry(host), at: 21)
     put(.link(Link(from: t, to: f, kind: .opened, at: stamp(20), context: "vim f.swift")), to: .links(host), at: 20)
-    put(.focus(pt.id), to: .block(a), at: 30)
-    put(.focus(pf.id), to: .block(a), at: 40)
+    put(.step(Step(block: t, at: stamp(30), placement: pt.id)), to: .registry(host), at: 30)
+    put(.step(Step(block: f, at: stamp(40), placement: pf.id)), to: .registry(host), at: 40)
     put(.remove(pf.id), to: .block(a), at: 50)
     let graph = node.graph
 
@@ -483,12 +483,13 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(dt[f] == 1 && dt[a] == 1)
 
     // A snapshot load rebuilds from state: live placements and links come
-    // back, the trail does not.
+    // back, and the trail, from the registry.
     let fresh = Node()
-    for shard in [ShardID.block(a), .block(t), .block(f), .links(host)] { fresh.load(node.snapshot(shard)!) }
+    for shard in [ShardID.block(a), .block(t), .block(f), .links(host), .registry(host)] { fresh.load(node.snapshot(shard)!) }
     #expect(fresh.graph.count(to: t, kind: .placed) == 1)
     #expect(fresh.graph.count(from: t, kind: .link(.opened)) == 1)
-    #expect(fresh.graph.visits(f).isEmpty)
+    #expect(fresh.graph.visits(f).count == 2)
+    #expect(fresh.graph.step(from: f, offset: -1)?.block == t)
     fresh.remove(.links(host))
     #expect(fresh.graph.count(from: t, kind: .link(.opened)) == 0)
 }

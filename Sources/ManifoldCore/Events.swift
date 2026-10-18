@@ -105,7 +105,20 @@ public struct RegistryEntry: Codable, Equatable, Sendable, Identifiable {
 
 public struct Registry: Codable, Equatable, Sendable {
     public var blocks: [BlockID: RegistryEntry] = [:]
+    /// The trail (§3.5): blocks gone to on this host's desk, in order, as
+    /// the host saw them focused and selected; so many, the oldest dropped.
+    public var trail: [Step] = []
+    public static let trailLimit = 20_000
+
     public init() {}
+
+    enum CodingKeys: String, CodingKey { case blocks, trail }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        blocks = try c.decode([BlockID: RegistryEntry].self, forKey: .blocks)
+        trail = (try? c.decodeIfPresent([Step].self, forKey: .trail)) ?? []
+    }
 }
 
 public struct Links: Codable, Equatable, Sendable {
@@ -216,6 +229,8 @@ public enum Event: Codable, Equatable, Sendable {
     case settings(Settings)
 
     // Registry.
+    /// A block gone to: the trail's next step.
+    case step(Step)
     case register(RegistryEntry)
     case seen([BlockID], at: Stamp)
     case life(BlockID, LifeState, held: Bool)
@@ -558,6 +573,9 @@ extension Registry {
             blocks[id]?.held = held
         case let .unregister(id):
             blocks.removeValue(forKey: id)
+        case let .step(s):
+            if trail.last?.block != s.block { trail.append(s) }
+            if trail.count > Self.trailLimit { trail.removeFirst(trail.count - Self.trailLimit) }
         default: break
         }
     }

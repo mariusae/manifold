@@ -572,10 +572,15 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 - The graph (§3.5): `Graph` in the core, kept in step by `Node` with every
   entry — `placed` intervals from arrangement logs, the link kinds from
   the links shards (with `context`), the trail from `focus` and `select` —
-  indexed by block and kind both ways with live counts, a sorted trail
-  with an index by block; `neighborhood(of:at:)`, `distances(from:)`,
+  indexed by block and kind both ways with live counts; the trail kept
+  in the registry (the host turns clients' `focus` and `select` into
+  `step` entries, so it survives snapshots and restarts) and indexed by
+  block; `neighborhood(of:at:)`, `distances(from:)`,
   `step(from:offset:)`; `Hosts` merges every host's. Rebuilt from states
   and kept entries after a snapshot.
+- The foot of a block (§3.5): `FootView` under each sheet in the stacks
+  lens, shown as the pointer nears the bottom, bunches per edge kind
+  dealt out on hover; Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own

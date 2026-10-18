@@ -152,6 +152,22 @@ enum DebugControl {
             guard let wc, let t = wc.debugFocusedTerminal else { return "no terminal focused" }
             wc.open(arg, from: t.placement)
             return "ok"
+        case "graph":
+            // "graph": the focused block's neighborhood, raw.
+            guard let wc, let block = wc.debugFocusedBlock else { return "nothing focused" }
+            let n = wc.hosts.neighborhood(of: block)
+            var lines = ["block \(block)"]
+            for (k, es) in n.outbound { for e in es { lines.append("out \(k) → \(e.to) [\(e.context ?? "")] from \(e.shard) id \(e.id)") } }
+            for (k, es) in n.inbound { for e in es { lines.append("in \(k) ← \(e.from) [\(e.context ?? "")] from \(e.shard) id \(e.id)") } }
+            for t in n.before { lines.append("before \(t.block) ×\(t.count)") }
+            for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
+            lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
+            return lines.joined(separator: "\n")
+        case "foot":
+            // "foot <column> [bunch]": the column's foot, a bunch dealt out.
+            let a = arg.split(separator: " ").compactMap { Int($0) }
+            guard let wc, let column = a.first else { return "usage: foot <column> [bunch]" }
+            return wc.debugFoot(column, bunch: a.count > 1 ? a[1] : nil)
         case "peek":
             wc?.debugPeek(Int(arg) ?? 0)
             return "ok"
@@ -328,7 +344,7 @@ enum DebugControl {
     }
 
     private static func describe(_ v: NSView, _ depth: Int) -> String {
-        var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")"
+        var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")\(v.alphaValue < 1 ? " alpha \(v.alphaValue)" : "")"
         if let t = v as? TerminalView { s += " block=\(t.block) surface=\(t.surface != nil)" }
         if let keys = v.layer?.animationKeys(), !keys.isEmpty { s += " animating=\(keys)" }
         for sub in v.subviews where depth < 4 { s += "\n" + describe(sub, depth + 1) }
