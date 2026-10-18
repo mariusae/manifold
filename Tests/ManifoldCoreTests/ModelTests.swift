@@ -260,3 +260,69 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(swift.root(of: dir + "/lone.swift") == dir)
     try? FileManager.default.removeItem(atPath: dir)
 }
+
+// MARK: Diffs
+
+@Test func lineDiffHunks() {
+    #expect(LineDiff.hunks(old: "a\nb\nc\n", new: "a\nb\nc\n").isEmpty)
+    // One line changed in the middle.
+    #expect(LineDiff.hunks(old: "a\nb\nc\n", new: "a\nB\nc\n") == [DiffHunk(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1)])
+    // Inserted at the end, deleted at the start.
+    #expect(LineDiff.hunks(old: "a\nb\n", new: "a\nb\nc\nd\n") == [DiffHunk(oldStart: 2, oldCount: 0, newStart: 2, newCount: 2)])
+    #expect(LineDiff.hunks(old: "a\nb\nc\n", new: "b\nc\n") == [DiffHunk(oldStart: 0, oldCount: 1, newStart: 0, newCount: 0)])
+    // Two separate changes.
+    let h = LineDiff.hunks(old: "a\nb\nc\nd\ne\nf\n", new: "a\nX\nc\nd\ne\nY\nf\n")
+    #expect(h == [DiffHunk(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1),
+                  DiffHunk(oldStart: 5, oldCount: 0, newStart: 5, newCount: 1)])
+    // Every hunk, applied, turns old into new.
+    let old = (0..<60).map { "line \($0)" }
+    var new = old
+    new.remove(at: 3); new.insert("new 1", at: 10); new[20] = "changed"; new.append("tail")
+    let hunks = LineDiff.hunks(old: old.map { $0[...] }, new: new.map { $0[...] })
+    var rebuilt = old
+    for hk in hunks.reversed() {
+        rebuilt.replaceSubrange(hk.oldStart..<(hk.oldStart + hk.oldCount), with: new[hk.newStart..<(hk.newStart + hk.newCount)])
+    }
+    #expect(rebuilt == new)
+    let marks = GutterMark.marks(hunks)
+    #expect(marks.contains(GutterMark(line: 3, count: 0, kind: .deleted)))
+    #expect(marks.contains(GutterMark(line: 10, count: 1, kind: .added)))
+    #expect(marks.contains(GutterMark(line: 20, count: 1, kind: .modified)))
+}
+
+@Test func diffRowsFoldContextAndReadPatches() {
+    let old = (1...20).map(String.init).joined(separator: "\n") + "\n"
+    let new = (1...20).map { $0 == 10 ? "ten" : String($0) }.joined(separator: "\n") + "\n"
+    let rows = DiffRows.sides(old: old, new: new)
+    // Three lines of context each side of the change, the rest folded.
+    #expect(rows.first?.kind == .fold(6))
+    #expect(rows.filter { $0.kind == .context }.count == 6)
+    #expect(rows.contains { $0.kind == .removed && $0.text == "10" && $0.oldLine == 10 })
+    #expect(rows.contains { $0.kind == .added && $0.text == "ten" && $0.newLine == 10 })
+    #expect(rows.last?.kind == .fold(7))
+    #expect(DiffRows.sides(old: old, new: new, unfolded: true).filter { $0.kind == .context }.count == 19)
+
+    let patch = """
+    commit abc
+    Author: Me
+
+        Did a thing
+
+    diff --git a/x.txt b/x.txt
+    index 1..2 100644
+    --- a/x.txt
+    +++ b/x.txt
+    @@ -1,3 +1,3 @@ heading
+     a
+    -b
+    +B
+     c
+    """
+    let p = DiffRows.patch(patch)
+    #expect(p.contains { $0.kind == .file("x.txt") })
+    #expect(p.contains { $0.kind == .hunk && $0.text == "heading" })
+    #expect(p.contains { $0.kind == .removed && $0.oldLine == 2 && $0.text == "b" })
+    #expect(p.contains { $0.kind == .added && $0.newLine == 2 && $0.text == "B" })
+    #expect(p.contains { $0.kind == .context && $0.oldLine == 3 && $0.newLine == 3 && $0.text == "c" })
+    #expect(p.first?.text == "commit abc")
+}

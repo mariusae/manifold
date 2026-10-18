@@ -285,7 +285,7 @@ final class SearchView: NSView, PaneContent, NSTableViewDataSource, NSTableViewD
             if let root = query?.root, shown.hasPrefix(root + "/") { shown = String(shown.dropFirst(root.count + 1)) }
             let s = NSMutableAttributedString(string: shown, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text])
             s.append(NSAttributedString(string: "  \(count)", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText]))
-            f.attributedStringValue = s
+            f.attributedStringValue = s.truncatingTail()
         case let .hit(h):
             let s = NSMutableAttributedString(string: "\(h.line)  ", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: Theme.secondaryText])
             let line = h.text.trimmingCharacters(in: .whitespaces)
@@ -294,7 +294,7 @@ final class SearchView: NSView, PaneContent, NSTableViewDataSource, NSTableViewD
                 body.addAttribute(.backgroundColor, value: TextView.matchColor, range: NSRange(r, in: line))
             }
             s.append(body)
-            f.attributedStringValue = s
+            f.attributedStringValue = s.truncatingTail()
         }
         return cell
     }

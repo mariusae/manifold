@@ -128,8 +128,8 @@ public struct Child {
 
     /// Runs `argv` to completion with `input` on its stdin; its output and
     /// status.
-    public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120) throws -> (output: Data, status: Int32) {
-        let child = try spawn(argv, stderrToNull: false)
+    public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, quiet: Bool = false) throws -> (output: Data, status: Int32) {
+        let child = try spawn(argv, stderrToNull: quiet)
         let writer = Thread {
             input.withUnsafeBytes { raw in
                 var off = 0

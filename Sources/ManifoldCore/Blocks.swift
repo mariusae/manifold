@@ -201,6 +201,86 @@ public struct SearchState: Codable, Equatable, Sendable {
     public init() {}
 }
 
+// MARK: Git
+
+/// A file in a repository as `git status` has it: the index and work tree
+/// letters (` M`, `M `, `??`, `A `, `D `...).
+public struct GitStatusEntry: Codable, Equatable, Sendable {
+    public var path: String
+    public var index: String
+    public var workTree: String
+
+    public init(path: String, index: String, workTree: String) {
+        self.path = path
+        self.index = index
+        self.workTree = workTree
+    }
+
+    public var isUntracked: Bool { index == "?" }
+}
+
+public struct GitCommit: Codable, Equatable, Sendable {
+    public var sha: String
+    public var short: String
+    public var author: String
+    /// Seconds since 1970.
+    public var date: Double
+    public var summary: String
+
+    public init(sha: String, short: String, author: String, date: Double, summary: String) {
+        self.sha = sha
+        self.short = short
+        self.author = author
+        self.date = date
+        self.summary = summary
+    }
+}
+
+/// A git block: a repository (the block's path), its branch, what's
+/// changed, and its recent history, as the host last looked.
+public struct GitState: Codable, Equatable, Sendable {
+    public var branch: String?
+    public var status: [GitStatusEntry] = []
+    public var log: [GitCommit] = []
+    public var ahead = 0
+    public var behind = 0
+    public var error: String?
+    public var refreshedAt: Stamp?
+    public init() {}
+}
+
+// MARK: Diff
+
+/// One side of a diff: a file as it is in the work tree (`revision` nil),
+/// or as a revision has it (`HEAD`, a sha, `:0` for the index).
+public struct DiffSide: Codable, Equatable, Sendable {
+    public var path: String
+    public var revision: String?
+
+    public init(path: String, revision: String? = nil) {
+        self.path = path
+        self.revision = revision
+    }
+}
+
+/// What a diff block compares: a file at two points, or a whole commit.
+public enum DiffSubject: Codable, Equatable, Sendable {
+    case sides(old: DiffSide, new: DiffSide)
+    case commit(repo: String, sha: String)
+}
+
+/// A diff block: the subject, and the texts (or the patch) the host read
+/// for it, kept in the log so the block is a record of what was compared.
+public struct DiffState: Codable, Equatable, Sendable {
+    public var subject: DiffSubject?
+    public var oldText: String?
+    public var newText: String?
+    public var patch: String?
+    public var error: String?
+    public var loadedAt: Stamp?
+    public init() {}
+}
+
 // MARK: Web
 
 public struct WebState: Codable, Equatable, Sendable {
@@ -309,6 +389,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var directory: DirectoryState?
     public var web: WebState?
     public var search: SearchState?
+    public var git: GitState?
+    public var diff: DiffState?
     public var arrangement: ArrangementState?
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
@@ -323,6 +405,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .directory: directory = DirectoryState()
         case .web: web = WebState()
         case .search: search = SearchState()
+        case .git: git = GitState()
+        case .diff: diff = DiffState()
         case .arrangement: arrangement = ArrangementState()
         default: break
         }
@@ -335,6 +419,18 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let t = terminal?.title, !t.isEmpty { return t }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
+        if kind == .git, let path { return path.lastPathComponent + (git?.branch.map { " (\($0))" } ?? "") }
+        if let subject = diff?.subject {
+            switch subject {
+            case let .sides(old, new):
+                let name = new.path.lastPathComponent
+                let from = old.revision ?? "working tree", to = new.revision ?? "working tree"
+                return "\(name): \(from) → \(to)"
+            case let .commit(_, sha):
+                let first = diff?.patch?.split(separator: "\n").first(where: { $0.hasPrefix("    ") })?.trimmingCharacters(in: .whitespaces)
+                return first.map { "\(sha.prefix(7)) \($0)" } ?? String(sha.prefix(7))
+            }
+        }
         if let path { return path.lastPathComponent }
         if kind == .arrangement, let a = arrangement, !a.isEmpty {
             return "Untitled"

@@ -71,6 +71,8 @@ final class TextView: NSView, NSTextInputClient {
     var highlights: [TextRange] = [] { didSet { needsDisplay = true } }
     /// What the language server says, underlined.
     var diagnostics: [Diagnostic] = [] { didSet { needsDisplay = true } }
+    /// How lines stand against what's committed: bars in the gutter.
+    var gutterMarks: [GutterMark] = [] { didSet { needsDisplay = true } }
     /// The document version the view last made or saw.
     var undoKnownVersion: Int { knownVersion }
 
@@ -387,6 +389,33 @@ final class TextView: NSView, NSTextInputClient {
         }
         ctx.restoreGState()
 
+        // The git gutter: a bar beside added and changed lines, a wedge
+        // where lines were taken out.
+        if showsLineNumbers, !gutterMarks.isEmpty {
+            let x = Self.insets.left + 2
+            for m in gutterMarks where m.line <= last && m.line + max(m.count, 1) >= first {
+                guard m.line < text.lineCount || m.kind == .deleted else { continue }
+                switch m.kind {
+                case .added, .modified:
+                    (m.kind == .added ? Self.addedColor : Self.modifiedColor).setFill()
+                    let end = min(m.line + m.count, text.lineCount) - 1
+                    guard end >= m.line else { continue }
+                    let y0 = top(ofLine: m.line)
+                    let y1 = top(ofLine: end) + CGFloat(layout(line: end).rows.count) * lineHeight
+                    NSRect(x: x, y: y0 + 1, width: 3, height: y1 - y0 - 2).fill()
+                case .deleted:
+                    Self.deletedColor.setFill()
+                    let y = m.line < text.lineCount ? top(ofLine: m.line) : top(ofLine: text.lineCount - 1) + CGFloat(layout(line: text.lineCount - 1).rows.count) * lineHeight
+                    let p = NSBezierPath()
+                    p.move(to: NSPoint(x: x, y: y - 4))
+                    p.line(to: NSPoint(x: x + 7, y: y))
+                    p.line(to: NSPoint(x: x, y: y + 4))
+                    p.close()
+                    p.fill()
+                }
+            }
+        }
+
         // Diagnostics: underlined, and a mark in the gutter.
         if !diagnostics.isEmpty {
             let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
@@ -418,6 +447,10 @@ final class TextView: NSView, NSTextInputClient {
             }
         }
     }
+
+    static let addedColor = NSColor.dynamic(NSColor(srgbRed: 0.3, green: 0.72, blue: 0.4, alpha: 1), NSColor(srgbRed: 0.4, green: 0.8, blue: 0.5, alpha: 1))
+    static let modifiedColor = NSColor.dynamic(NSColor(srgbRed: 0.35, green: 0.6, blue: 0.95, alpha: 1), NSColor(srgbRed: 0.45, green: 0.65, blue: 1, alpha: 1))
+    static let deletedColor = NSColor.dynamic(NSColor(srgbRed: 0.9, green: 0.35, blue: 0.35, alpha: 1), NSColor(srgbRed: 1, green: 0.45, blue: 0.45, alpha: 1))
 
     static func diagnosticColor(_ severity: Int) -> NSColor {
         switch severity {

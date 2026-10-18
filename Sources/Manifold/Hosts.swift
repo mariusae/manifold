@@ -18,6 +18,7 @@ final class Hosts {
     /// A `manifold` command on `host` asks for paths to be opened.
     var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
+    var onGutter: ((BlockID) -> Void)?
     var onLanguageServer: ((HostID, String, String, String) -> Void)?
     private var pushedLanguageServers: [HostID: [LanguageServerConfig]] = [:]
     private var editing: Set<BlockID> = []
@@ -42,6 +43,7 @@ final class Hosts {
             client.propose(.editing(self.editing.filter { $0.host == client.host }))
         }
         client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
+        client.onGutter = { [weak self] block in self?.onGutter?(block) }
         client.onLanguageServer = { [weak self, weak client] language, root, state in
             guard let self, let client else { return }
             self.onLanguageServer?(client.host, language, root, state)
@@ -70,6 +72,7 @@ final class Hosts {
     }
 
     func diagnostics(_ block: BlockID) -> [Diagnostic] { client(of: block)?.diagnostics[block] ?? [] }
+    func gutter(_ block: BlockID) -> [GutterMark] { client(of: block)?.gutters[block] ?? [] }
 
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         let block: BlockID
@@ -112,7 +115,8 @@ final class Hosts {
     func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
         switch proposal {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
-             let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block):
+             let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
+             let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block):
             (client(of: block) ?? local).propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {

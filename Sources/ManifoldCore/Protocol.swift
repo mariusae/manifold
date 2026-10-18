@@ -125,6 +125,13 @@ public enum Proposal: Codable, Sendable {
     case search(block: BlockID, query: SearchQuery)
     /// Stop looking.
     case cancelSearch(block: BlockID)
+    /// A git block for the repository holding `path` (made if new),
+    /// refreshed.
+    case git(block: BlockID, path: String)
+    case refreshGit(block: BlockID)
+    /// A diff block (made if new), its texts read.
+    case diff(block: BlockID, subject: DiffSubject)
+    case reloadDiff(block: BlockID)
 }
 
 /// What a host asks the leader of a shard to append.
@@ -183,4 +190,6 @@ public enum ServerMessage: Codable, Sendable {
     case lspResult(id: Int, LSPResult)
     /// A language server's state: starting, ready, or gone, with a word.
     case languageServer(language: String, root: String, state: String)
+    /// How a text block's lines stand against what's committed.
+    case gutter(BlockID, [GutterMark])
 }

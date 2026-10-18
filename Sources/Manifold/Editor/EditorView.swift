@@ -12,6 +12,8 @@ protocol EditorViewDelegate: AnyObject {
     func editorEditedChanged(_ view: EditorView)
     /// What the block's language server says about it.
     func editorDiagnostics(_ view: EditorView) -> [Diagnostic]
+    /// How the block's lines stand against what's committed.
+    func editorGutter(_ view: EditorView) -> [GutterMark]
     /// The editor asks the block's language server something.
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
@@ -166,6 +168,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         findBar?.refresh()
         diagnosticsChanged()
+        gutterChanged()
+    }
+
+    /// The host redid the block's git gutter.
+    func gutterChanged() {
+        let marks = delegate?.editorGutter(self) ?? []
+        if marks != textView.gutterMarks { textView.gutterMarks = marks }
     }
 
     /// The language server said something new about the block.

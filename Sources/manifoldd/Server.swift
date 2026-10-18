@@ -50,9 +50,15 @@ final class Server {
     private var dirtyShards: Set<ShardID> = []
     private let languageServers: LanguageServers
     private let searches: Searches
+    private let git: Git
+    /// Gutter marks pending for text blocks, a moment after their last change.
+    private var gutterWork: [BlockID: DispatchWorkItem] = [:]
+    /// Repositories watched (their index) for git blocks and gutters.
+    private var repoWatchers: [String: FileWatcher] = [:]
 
     init() {
         store = LogStore(directory: Paths.logs)
+        git = Git(queue: queue)
         searches = Searches(queue: queue)
         languageServers = LanguageServers(queue: queue)
         languageServers.textOf = { [weak self] block in
@@ -215,6 +221,7 @@ final class Server {
         if block.kind == .text, block.path != nil,
            entries.contains(where: { if case .edit = $0.event { return true }; if case .content = $0.event { return true }; return false }) {
             languageServers.textChanged(id)
+            scheduleGutter(id)
         }
         let registry = node.registry(host)
         let current = registry.blocks[id]
@@ -271,6 +278,7 @@ final class Server {
                 conn.send(.message(ServerMessage.propose(shard: .block(block), .clean(version: version, fingerprint: fingerprint))))
                 watch(b, force: true)
                 languageServers.textChanged(block, saved: true)
+                gitChanged(under: path)
                 done()
             } catch {
                 done(error.localizedDescription)
@@ -308,6 +316,33 @@ final class Server {
             done()
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
+            for id in ids where gutterWork[id] == nil { scheduleGutter(id) }
+            done()
+        case let .git(block, path):
+            guard let root = git.root(of: path.expandingTildeInPath) else { return done("\(path) isn't in a git repository") }
+            if node.block(block) == nil {
+                append(.create(kind: .git, title: nil, path: root), to: .block(block))
+            }
+            refreshGit(block)
+            watchRepo(root)
+            done()
+        case let .refreshGit(block):
+            refreshGit(block)
+            done()
+        case let .diff(block, subject):
+            if node.block(block) == nil {
+                let path: String
+                switch subject {
+                case let .sides(_, new): path = new.path
+                case let .commit(repo, _): path = repo
+                }
+                append(.create(kind: .diff, title: nil, path: path), to: .block(block))
+            }
+            append(.diffSubject(subject), to: .block(block))
+            loadDiff(block)
+            done()
+        case let .reloadDiff(block):
+            loadDiff(block)
             done()
         case let .search(block, query):
             var q = query
@@ -345,6 +380,83 @@ final class Server {
         guard let b = node.block(block), b.kind == .directory, let path = b.path else { return }
         if let entries = TextFile.list(path) {
             append(.entries(entries, at: clock.now()), to: .block(block))
+        }
+    }
+
+    // MARK: Git
+
+    /// The gutter for a text block in a repository: its lines against
+    /// HEAD's, a moment after the last change.
+    private func scheduleGutter(_ block: BlockID) {
+        gutterWork[block]?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.computeGutter(block) }
+        gutterWork[block] = work
+        queue.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    private func computeGutter(_ block: BlockID) {
+        guard let b = node.block(block), b.kind == .text, let path = b.path, let text = b.text?.text else { return }
+        guard git.root(of: path) != nil else { return }
+        git.show(path, at: "HEAD") { [weak self] head in
+            guard let self, let head, let now = self.node.block(block)?.text?.text else { return }
+            let marks = GutterMark.marks(LineDiff.hunks(old: head, new: now.string))
+            let frame = Frame.message(ServerMessage.gutter(block, marks))
+            for c in self.clients { c.send(frame) }
+        }
+    }
+
+    private func refreshGit(_ block: BlockID) {
+        guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
+        git.run([["status", "--porcelain=v1", "-z", "-b"], ["log", "-n", "200", "--format=\(Git.logFormat)"]], in: root) { [weak self] results in
+            guard let self, self.node.block(block) != nil else { return }
+            var error: String?
+            var branch: String?, ahead = 0, behind = 0, status: [GitStatusEntry] = [], log: [GitCommit] = []
+            switch results[0] {
+            case .success(let out): (branch, ahead, behind, status) = Git.parseStatus(out)
+            case .failure(let e): error = e.message
+            }
+            if case .success(let out) = results[1] { log = Git.parseLog(out) }
+            self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
+        }
+    }
+
+    /// A file under a repository was written (by us) or its index changed:
+    /// its git blocks refresh, its open files' gutters are redone.
+    private func gitChanged(under path: String) {
+        guard let root = git.root(of: path) else { return }
+        for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
+        for b in node.blocks where b.kind == .text && gutterWork[b.id] != nil && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
+    }
+
+    private func watchRepo(_ root: String) {
+        guard repoWatchers[root] == nil else { return }
+        let index = root.appendingPathComponent(".git/index")
+        repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in self?.gitChanged(under: index) }
+    }
+
+    private func loadDiff(_ block: BlockID) {
+        guard let b = node.block(block), b.kind == .diff, let subject = b.diff?.subject else { return }
+        switch subject {
+        case let .sides(old, new):
+            func side(_ s: DiffSide, _ done: @escaping (String?) -> Void) {
+                if let rev = s.revision { git.show(s.path, at: rev, done: done) } else { done(TextFile.read(s.path)?.text ?? "") }
+            }
+            side(old) { [weak self] oldText in
+                side(new) { newText in
+                    guard let self, self.node.block(block) != nil else { return }
+                    self.append(.diffLoaded(oldText: oldText ?? "", newText: newText ?? "", patch: nil, error: nil, at: self.clock.now()), to: .block(block))
+                }
+            }
+        case let .commit(repo, sha):
+            git.run(["show", "--no-color", "--format=medium", sha], in: repo) { [weak self] result in
+                guard let self, self.node.block(block) != nil else { return }
+                switch result {
+                case .success(let patch):
+                    self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                case .failure(let e):
+                    self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
+                }
+            }
         }
     }
 

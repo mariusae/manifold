@@ -72,6 +72,17 @@ enum Theme {
     }
 }
 
+extension NSMutableAttributedString {
+    /// One line, cut with an ellipsis: attributed strings in labels don't
+    /// take the label's line breaking.
+    func truncatingTail() -> NSMutableAttributedString {
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingTail
+        addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: length))
+        return self
+    }
+}
+
 extension NSPasteboard.PasteboardType {
     /// An arrangement being dragged, by id.
     static let manifoldArrangement = NSPasteboard.PasteboardType("com.manifold.arrangement")

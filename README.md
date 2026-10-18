@@ -121,6 +121,17 @@ when you find it again.
   found, matches marked. ⏎ in the field asks again (Aa for case, .* for a
   regular expression); ↓ then ⏎, or a double-click, opens the file at the
   hit beside the results. A search is found again by its query in ⌘O.
+- **Git** is a block per repository (File ▸ Git for This Project, ⌥⌘G, for
+  the focused block's): the branch (with how far ahead or behind), what's
+  changed, and the last 200 commits, looked at again when shown, when a
+  file is saved from Manifold, or when the index changes. ⏎ or a
+  double-click on a change opens a **diff** block beside it — the file
+  against HEAD, context folded (click to unfold), double-click a row to
+  open the file there; on a commit, the whole commit. Compare with Last
+  Commit (⌥⌘D) does the same for the file being edited. The editor's
+  gutter shows how its lines stand against HEAD: a green bar for added
+  lines, blue for changed, a red wedge where lines were taken out. Diff
+  blocks keep the texts they compared in their logs, so they're records.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: an address
   bar, back and forward, and its pages in its log.

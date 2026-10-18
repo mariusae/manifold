@@ -112,6 +112,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.openRequest(on: host, id: id, client: client, paths: paths, beside: beside, wait: wait)
         }
         hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.languageServersWindow?.refresh() }
+        hosts.onGutter = { [weak self] block in
+            guard let self else { return }
+            for case let e as EditorView in self.views.values where e.block == block { e.gutterChanged() }
+        }
         hosts.onDiagnostics = { [weak self] block in
             guard let self else { return }
             for case let e as EditorView in self.views.values where e.block == block { e.diagnosticsChanged() }
@@ -187,6 +191,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
+            for case let g as GitView in views.values { g.documentChanged() }
+            for case let d as DiffView in views.values { d.documentChanged() }
         } else {
             content.clear()
             window.title = "Manifold"
@@ -237,6 +243,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.font = desk.appearance.editorFont
                 e.theme = desk.appearance.theme
             }
+            if let d = v as? DiffView { d.theme = desk.appearance.theme }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
@@ -257,6 +264,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = m
         case .directory:
             let d = DirectoryView(placement: p.id, block: p.block)
+            d.delegate = self
+            d.source = { [weak self] in self?.hosts.block(p.block) }
+            v = d
+        case .git:
+            let g = GitView(placement: p.id, block: p.block)
+            g.delegate = self
+            g.source = { [weak self] in self?.hosts.block(p.block) }
+            v = g
+        case .diff:
+            let d = DiffView(placement: p.id, block: p.block, theme: desk.appearance.theme)
             d.delegate = self
             d.source = { [weak self] in self?.hosts.block(p.block) }
             v = d
@@ -624,6 +641,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "magnifyingglass", title: "Find in Files…", subtitle: "⇧⌘F") { [weak self] in
             self?.findInFiles(nil)
         })
+        items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Git for This Project", subtitle: "⌥⌘G") { [weak self] in
+            self?.showGit(nil)
+        })
+        if let f = focusedShown, f.lens == .editor || f.lens == .preview, f.path != nil {
+            items.append(PaletteItem(symbol: "arrow.left.arrow.right", title: "Compare with Last Commit", subtitle: "⌥⌘D") { [weak self] in
+                self?.compareWithHead(nil)
+            })
+        }
         items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
             guard let self else { return }
             self.place(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, beside: self.focusedShown?.lens == .terminal ? self.focusedShown?.id : nil)
@@ -1143,6 +1168,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .search:
                 hay = title + " " + (block.search?.query?.root ?? "")
                 detail = "Search in \(block.search?.query?.root.abbreviatingHome ?? "")"
+            case .git:
+                hay = "git " + (block.path ?? title)
+                detail = "Git, \(block.path?.abbreviatingHome ?? "")"
+            case .diff:
+                hay = "diff " + title + " " + (block.path ?? "")
+                detail = "Diff, \(block.path?.deletingLastPathComponent.abbreviatingHome ?? "")"
             default:
                 hay = title
                 detail = block.kind.defaultTitle
@@ -1241,6 +1272,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let client = hosts.client(on) else { return }
         let block = client.newSearch(SearchQuery(text: text, root: root))
         place(block, lens: .search, beside: focusedShown?.id)
+    }
+
+    /// Git for This Project: the git block for the repository the focused
+    /// block is in, placed beside it.
+    @objc func showGit(_ sender: Any?) {
+        let on = focusedHost
+        guard let client = hosts.client(on) else { return }
+        let path = focusedCwd ?? NSHomeDirectory()
+        let block = client.gitBlock(for: path)
+        place(block, lens: .git, beside: focusedShown?.id)
+    }
+
+    /// Compare with Last Commit: the focused file against HEAD, beside it.
+    @objc func compareWithHead(_ sender: Any?) {
+        guard let f = focusedShown, let path = f.path, f.lens == .editor || f.lens == .preview,
+              let client = hosts.client(f.placement.block.host) else { return }
+        let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
+        hosts.link(from: f.placement.block, to: block, kind: .opened)
+        place(block, lens: .diff, beside: f.id)
     }
 
     /// Opens a file at a place (line and column from 1) beside a placement,
@@ -1768,6 +1818,10 @@ extension MainWindowController: EditorViewDelegate {
         hosts.diagnostics(view.block)
     }
 
+    func editorGutter(_ view: EditorView) -> [GutterMark] {
+        hosts.gutter(view.block)
+    }
+
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         hosts.lsp(request, done: done)
     }
@@ -1833,6 +1887,33 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewRefresh(_ view: DirectoryView) {
         hosts.propose(.listDirectory(view.block))
+    }
+}
+
+extension MainWindowController: GitViewDelegate {
+    func gitView(_ view: GitView, openDiff subject: DiffSubject) {
+        guard let client = hosts.client(view.block.host) else { return }
+        let block = client.diffBlock(subject)
+        hosts.link(from: view.block, to: block, kind: .opened)
+        place(block, lens: .diff, beside: view.placement)
+    }
+
+    func gitView(_ view: GitView, open path: String) {
+        open(path: path, line: 1, column: nil, on: view.block.host, beside: view.placement)
+    }
+
+    func gitViewRefresh(_ view: GitView) {
+        hosts.propose(.refreshGit(block: view.block))
+    }
+}
+
+extension MainWindowController: DiffViewDelegate {
+    func diffView(_ view: DiffView, open path: String, line: Int) {
+        open(path: path, line: line, column: nil, on: view.block.host, beside: view.placement)
+    }
+
+    func diffViewReload(_ view: DiffView) {
+        hosts.propose(.reloadDiff(block: view.block))
     }
 }
 

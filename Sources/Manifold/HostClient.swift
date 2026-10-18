@@ -28,6 +28,8 @@ final class HostClient {
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
+    /// How each text block stands against what's committed.
+    private(set) var gutters: [BlockID: [GutterMark]] = [:]
     /// Each language server's state, by "language|root".
     private(set) var languageServerStates: [String: String] = [:]
     private var changeScheduled = false
@@ -164,6 +166,31 @@ final class HostClient {
         if let b = directoryBlock(path: path) { return b.id }
         let id = BlockID(host: host)
         propose(.directory(block: id, path: path))
+        return id
+    }
+
+    /// The git block for the repository a path is in: an existing one
+    /// whose root holds the path, else a new one the host roots.
+    func gitBlock(for path: String) -> BlockID {
+        let roots = node.blocks.filter { $0.kind == .git && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
+        if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
+            propose(.refreshGit(block: b.id))
+            return b.id
+        }
+        let id = BlockID(host: host)
+        propose(.git(block: id, path: path))
+        return id
+    }
+
+    /// A diff block comparing something: the one that already does, reloaded,
+    /// else a new one.
+    func diffBlock(_ subject: DiffSubject) -> BlockID {
+        if let b = node.blocks.first(where: { $0.kind == .diff && $0.diff?.subject == subject }) {
+            propose(.reloadDiff(block: b.id))
+            return b.id
+        }
+        let id = BlockID(host: host)
+        propose(.diff(block: id, subject: subject))
         return id
     }
 
@@ -381,6 +408,9 @@ final class HostClient {
         case let .diagnostics(block, items):
             diagnostics[block] = items
             onDiagnostics?(block)
+        case let .gutter(block, marks):
+            gutters[block] = marks
+            onGutter?(block)
         case let .lspResult(id, result):
             pendingLSP.removeValue(forKey: id)?(result)
         case let .languageServer(language, root, state):
@@ -392,6 +422,7 @@ final class HostClient {
     /// The host welcomed us (each time: a reconnection too).
     var onConnected: (() -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
+    var onGutter: ((BlockID) -> Void)?
     var onLanguageServer: ((String, String, String) -> Void)?
 
     var onHistory: ((ShardID, [Entry]) -> Void)?

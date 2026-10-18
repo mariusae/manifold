@@ -167,6 +167,13 @@ public enum Event: Codable, Equatable, Sendable {
     // Web.
     case url(String?, viaHost: Bool)
 
+    // Git.
+    case gitRefreshed(branch: String?, status: [GitStatusEntry], log: [GitCommit], ahead: Int, behind: Int, error: String?, at: Stamp)
+
+    // Diff.
+    case diffSubject(DiffSubject)
+    case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
+
     // Search.
     /// A query asked: the hits so far go, and the host is looking.
     case search(SearchQuery, at: Stamp)
@@ -242,7 +249,39 @@ extension Block {
         if directory != nil { directory!.apply(event) }
         if web != nil { web!.apply(event) }
         if search != nil { search!.apply(event) }
+        if git != nil { git!.apply(event) }
+        if diff != nil { diff!.apply(event) }
         if arrangement != nil { arrangement!.apply(event) }
+    }
+}
+
+extension GitState {
+    public mutating func apply(_ event: Event) {
+        if case let .gitRefreshed(branch, status, log, ahead, behind, error, at) = event {
+            self.branch = branch
+            self.status = status
+            self.log = log
+            self.ahead = ahead
+            self.behind = behind
+            self.error = error
+            refreshedAt = at
+        }
+    }
+}
+
+extension DiffState {
+    public mutating func apply(_ event: Event) {
+        switch event {
+        case let .diffSubject(s):
+            subject = s
+        case let .diffLoaded(old, new, patch, error, at):
+            oldText = old
+            newText = new
+            self.patch = patch
+            self.error = error
+            loadedAt = at
+        default: break
+        }
     }
 }
 
