@@ -572,7 +572,9 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 - The graph (§3.5): `Graph` in the core, kept in step by `Node` with every
   entry — `placed` intervals from arrangement logs, the link kinds from
   the links shards (with `context`), the trail from `focus` and `select` —
-  indexed by block and kind both ways with live counts; the trail kept
+  indexed by block and kind both ways with live counts, every edge
+  stamped (a placement keeps its stamp in the state, so a snapshot keeps
+  it too) and every list newest first; the trail kept
   in the registry (the host turns clients' `focus` and `select` into
   `step` entries, so it survives snapshots and restarts) and indexed by
   block; `neighborhood(of:at:)`, `distances(from:)`,

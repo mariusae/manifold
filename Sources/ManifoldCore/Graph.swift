@@ -217,7 +217,7 @@ public final class Graph {
             counts[s.block] = (c.0 + 1, max(c.1, s.at))
         }
         return counts.map { TrailNeighbor(block: $0.key, count: $0.value.0, last: $0.value.1) }
-            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.last > $1.last }
+            .sorted { $0.last != $1.last ? $0.last > $1.last : $0.count > $1.count }
     }
 
     /// The step before (offset -1) or after (+1) the latest visit to a
@@ -358,7 +358,7 @@ public final class Graph {
         case .block(let b):
             if let a = b.arrangement {
                 for p in a.placements where byID[p.id] == nil {
-                    add(Edge(kind: .placed, from: b.id, to: p.block, at: b.created, id: p.id, shard: shard))
+                    add(Edge(kind: .placed, from: b.id, to: p.block, at: p.placedAt ?? b.created, id: p.id, shard: shard))
                 }
                 // Placements the state no longer has, but the entries placed: ended at an unknown time.
                 for id in byShard[shard] ?? [] {

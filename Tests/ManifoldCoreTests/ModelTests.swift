@@ -493,3 +493,28 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     fresh.remove(.links(host))
     #expect(fresh.graph.count(from: t, kind: .link(.opened)) == 0)
 }
+
+@Test func placementsKeepTheirStampThroughASnapshot() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    let a = BlockID(host: host), t = BlockID(host: host)
+    _ = node.append(.create(kind: .terminal, title: nil, path: nil), to: .block(t), at: stamp(1))
+    _ = node.append(.create(kind: .arrangement, title: nil, path: nil), to: .block(a), at: stamp(10))
+    let p = Placement(block: t, lens: .terminal)
+    _ = node.append(.place(p, column: 0, at: 0), to: .block(a), at: stamp(50))
+    #expect(node.block(a)?.arrangement?.placement(p.id)?.placedAt == stamp(50))
+    #expect(node.graph.edges(to: t, kind: .placed).first?.at == stamp(50))
+    // Loaded from a snapshot (no entries), the edge keeps its stamp.
+    let fresh = Node()
+    fresh.load(node.snapshot(.block(a))!)
+    #expect(fresh.graph.edges(to: t, kind: .placed).first?.at == stamp(50))
+    // The trail's neighbors come most recent first.
+    let f = BlockID(host: host), g = BlockID(host: host)
+    for (ms, b) in [(100, f), (110, t), (120, g), (130, t), (140, f), (150, t)] {
+        _ = node.append(.step(Step(block: b, at: stamp(Int64(ms)))), to: .registry(host), at: stamp(Int64(ms)))
+    }
+    let before = node.graph.trailNeighbors(of: t, offset: -1)
+    #expect(before.map(\.block) == [f, g])
+    #expect(before[0].count == 2)
+}

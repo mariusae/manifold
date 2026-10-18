@@ -12,6 +12,8 @@ final class HostClient {
         case local
         /// Another machine's, over a provider's pipe to a bridge there.
         case remote(Destination, name: String)
+
+        var isLocal: Bool { if case .local = self { return true } else { return false } }
     }
 
     let node = Node()
@@ -92,12 +94,21 @@ final class HostClient {
     var selectedArrangement: BlockID? { desk.selected }
 
     /// The text block for a file on this host, if there is one.
-    func textBlock(path: String) -> Block? {
-        node.blocks.first { $0.kind == .text && $0.path == path }
-    }
+    func textBlock(path: String) -> Block? { block(kind: .text, path: path) }
 
-    func directoryBlock(path: String) -> Block? {
-        node.blocks.first { $0.kind == .directory && $0.path == path }
+    func directoryBlock(path: String) -> Block? { block(kind: .directory, path: path) }
+
+    /// The block for a path, by its spelling first, then — on this
+    /// machine, where it can be looked up — as the file system resolves
+    /// it (/tmp and /private/tmp are one file).
+    func block(kind: BlockKind, path: String) -> Block? {
+        if let b = node.blocks.first(where: { $0.kind == kind && $0.path == path }) { return b }
+        guard transport.isLocal else { return nil }
+        let wanted = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        return node.blocks.first { b in
+            guard b.kind == kind, let p = b.path else { return false }
+            return URL(fileURLWithPath: p).resolvingSymlinksInPath().path == wanted
+        }
     }
 
     // MARK: Writing
@@ -172,7 +183,7 @@ final class HostClient {
 
     /// The block for an image or PDF at a path, made if there isn't one.
     func mediaBlock(for path: String, kind: BlockKind) -> BlockID {
-        if let b = node.blocks.first(where: { $0.kind == kind && $0.path == path }) { return b.id }
+        if let b = block(kind: kind, path: path) { return b.id }
         let id = BlockID(host: host)
         append(.create(kind: kind, title: nil, path: path), to: .block(id))
         return id

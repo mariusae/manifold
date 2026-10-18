@@ -1365,6 +1365,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // the graph comes first, nearest first; a match near it outranks
         // one far from it.
         let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 3) } ?? [:]
+        // When each neighbor was last joined to the focused block: the newest
+        // connection ranks first among equals.
+        var joinedAt: [BlockID: Int64] = [:]
+        if let f = focusedShown?.placement.block {
+            let n = hosts.neighborhood(of: f)
+            for es in n.outbound.values { for e in es { joinedAt[e.to] = max(joinedAt[e.to] ?? 0, e.at.wall) } }
+            for es in n.inbound.values { for e in es { joinedAt[e.from] = max(joinedAt[e.from] ?? 0, e.at.wall) } }
+            for t in n.before + n.after { joinedAt[t.block] = max(joinedAt[t.block] ?? 0, t.last.wall) }
+        }
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(block.id.host)" : ""
@@ -1421,7 +1430,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let id = block.id
             let kind = block.kind
             let path = block.path
-            scored.append((score, entry.lastSeen.wall, FinderItem(
+            scored.append((score, max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), FinderItem(
                 symbol: Theme.symbolName(for: kind, path: path), title: title, detail: detail + remote, note: note,
                 run: { [weak self] in self?.recall(id) })))
         }

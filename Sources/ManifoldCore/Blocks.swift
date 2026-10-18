@@ -333,11 +333,25 @@ public struct Placement: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var id: PlacementID
     public var block: BlockID
     public var lens: Lens
+    /// When it was placed: the `placed` edge's stamp, kept with the state
+    /// so it outlives the log entry.
+    public var placedAt: Stamp?
 
-    public init(id: PlacementID = ULID.make(), block: BlockID, lens: Lens) {
+    enum CodingKeys: String, CodingKey { case id, block, lens, placedAt }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(PlacementID.self, forKey: .id)
+        block = try c.decode(BlockID.self, forKey: .block)
+        lens = try c.decode(Lens.self, forKey: .lens)
+        placedAt = try? c.decodeIfPresent(Stamp.self, forKey: .placedAt)
+    }
+
+    public init(id: PlacementID = ULID.make(), block: BlockID, lens: Lens, placedAt: Stamp? = nil) {
         self.id = id
         self.block = block
         self.lens = lens
+        self.placedAt = placedAt
     }
 }
 

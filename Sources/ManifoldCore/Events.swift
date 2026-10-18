@@ -295,7 +295,7 @@ extension Block {
         if git != nil { git!.apply(event) }
         if diff != nil { diff!.apply(event) }
         if processes != nil { processes!.apply(event) }
-        if arrangement != nil { arrangement!.apply(event) }
+        if arrangement != nil { arrangement!.apply(event, at: at) }
     }
 }
 
@@ -459,12 +459,16 @@ extension WebState {
 }
 
 extension ArrangementState {
-    public mutating func apply(_ event: Event) {
+    public mutating func apply(_ event: Event) { apply(event, at: nil) }
+
+    public mutating func apply(_ event: Event, at stamp: Stamp?) {
         switch event {
         case let .title(t):
             title = t
-        case let .place(p, column, at):
-            guard placement(p.id) == nil else { return }
+        case let .place(placed, column, at):
+            guard placement(placed.id) == nil else { return }
+            var p = placed
+            if p.placedAt == nil { p.placedAt = stamp }
             if column >= columns.count {
                 columns.append([p])
                 fractions = Self.equalFractions(columns.count)
@@ -521,7 +525,7 @@ extension ArrangementState {
         case let .layout(l):
             layout = l
         case let .adopt(cols, at):
-            let fresh = cols.map { $0.filter { placement($0.id) == nil } }.filter { !$0.isEmpty }
+            let fresh = cols.map { $0.filter { placement($0.id) == nil }.map { p -> Placement in var q = p; if q.placedAt == nil { q.placedAt = stamp }; return q } }.filter { !$0.isEmpty }
             guard !fresh.isEmpty else { return }
             columns.insert(contentsOf: fresh, at: min(max(at, 0), columns.count))
             fractions = Self.equalFractions(columns.count)

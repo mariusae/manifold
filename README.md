@@ -54,8 +54,9 @@ when you find it again.
 
 - **⌘O finds anything** the host knows, ranked by where you are: what's
   linked to the focused block (opened from it, placed with it, compared
-  against it) comes first, nearest first, with nothing typed; a match
-  near it outranks one far from it. Then blocks by title and path, named
+  against it) comes first, nearest first and the most recently joined
+  first among them, with nothing typed; a match near it outranks one far
+  from it. Then blocks by title and path, named
   arrangements, terminals by where they are, and the files under the
   focused block's folder, ranked by how well they match and how recently
   they were seen. Choosing a block places it beside the focused terminal,

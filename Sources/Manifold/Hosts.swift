@@ -120,8 +120,8 @@ final class Hosts {
         }
         for k in n.outbound.keys { n.outbound[k]!.sort { $0.at > $1.at } }
         for k in n.inbound.keys { n.inbound[k]!.sort { $0.at > $1.at } }
-        n.before.sort { $0.count != $1.count ? $0.count > $1.count : $0.last > $1.last }
-        n.after.sort { $0.count != $1.count ? $0.count > $1.count : $0.last > $1.last }
+        n.before.sort { $0.last != $1.last ? $0.last > $1.last : $0.count > $1.count }
+        n.after.sort { $0.last != $1.last ? $0.last > $1.last : $0.count > $1.count }
         return n
     }
 
