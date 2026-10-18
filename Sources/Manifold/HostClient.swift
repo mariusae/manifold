@@ -252,9 +252,9 @@ final class HostClient {
         return id
     }
 
-    func link(from: BlockID, to: BlockID, kind: LinkKind) {
+    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
         guard from != to else { return }
-        propose(.link(Link(from: from, to: to, kind: kind, at: clock.now())))
+        propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context)))
     }
 
     func select(_ arrangement: BlockID?) {

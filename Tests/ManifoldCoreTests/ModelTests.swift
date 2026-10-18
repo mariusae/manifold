@@ -424,3 +424,71 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(VCS.repository(of: dir + "/repo/sub")?.vcs == .sapling)
     #expect(VCS.repository(of: dir) == nil)
 }
+
+// MARK: The graph
+
+@Test func graphIndexesPlacementsLinksAndTheTrail() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    let a = BlockID(host: host), f = BlockID(host: host), t = BlockID(host: host), g = BlockID(host: host)
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    put(.create(kind: .terminal, title: nil, path: nil), to: .block(t), at: 1)
+    put(.create(kind: .text, title: nil, path: "/x/f.swift"), to: .block(f), at: 2)
+    put(.create(kind: .text, title: nil, path: "/x/g.swift"), to: .block(g), at: 3)
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(a), at: 10)
+    let pt = Placement(block: t, lens: .terminal), pf = Placement(block: f, lens: .editor)
+    put(.place(pt, column: 0, at: 0), to: .block(a), at: 11)
+    put(.focus(pt.id), to: .block(a), at: 12)
+    put(.place(pf, column: 1, at: 0), to: .block(a), at: 20)
+    put(.focus(pf.id), to: .block(a), at: 21)
+    put(.link(Link(from: t, to: f, kind: .opened, at: stamp(20), context: "vim f.swift")), to: .links(host), at: 20)
+    put(.focus(pt.id), to: .block(a), at: 30)
+    put(.focus(pf.id), to: .block(a), at: 40)
+    put(.remove(pf.id), to: .block(a), at: 50)
+    let graph = node.graph
+
+    // Placed: an interval, live until removed, held at moments in between.
+    #expect(graph.count(to: t, kind: .placed) == 1)
+    #expect(graph.count(to: f, kind: .placed) == 0)
+    #expect(graph.arrangements(holding: f) == [])
+    #expect(graph.arrangements(holding: f, at: stamp(25)) == [a])
+    #expect(graph.arrangements(holding: f, at: stamp(15)) == [])
+    #expect(graph.edges(from: a, kind: .placed).count == 1)
+    #expect(graph.edges(from: a, kind: .placed, at: stamp(25)).count == 2)
+
+    // Links: by kind, with context; a repeat replaces.
+    #expect(graph.count(from: t, kind: .link(.opened)) == 1)
+    #expect(graph.edges(to: f, kind: .link(.opened)).first?.context == "vim f.swift")
+    put(.link(Link(from: t, to: f, kind: .opened, at: stamp(60), context: "again")), to: .links(host), at: 60)
+    #expect(graph.count(from: t, kind: .link(.opened)) == 1)
+    #expect(graph.edges(to: f, kind: .link(.opened)).first?.context == "again")
+
+    // The trail: t, f, t, f. Before f came t, twice; after t came f, twice.
+    #expect(graph.visits(f).count == 2)
+    #expect(graph.trailNeighbors(of: f, offset: -1) == [TrailNeighbor(block: t, count: 2, last: stamp(30))])
+    #expect(graph.trailNeighbors(of: t, offset: 1) == [TrailNeighbor(block: f, count: 2, last: stamp(40))])
+    #expect(graph.step(from: f, offset: -1)?.block == t)
+    #expect(graph.step(from: f, offset: 1) == nil)
+    #expect(graph.recent().map(\.block) == [f, t])
+
+    // The neighborhood, and distances for ranking.
+    let n = graph.neighborhood(of: f)
+    #expect(n.inbound[.link(.opened)]?.count == 1)
+    #expect(n.inbound[.placed] == nil)
+    #expect(n.before.first?.block == t)
+    let d = graph.distances(from: g)
+    #expect(d == [g: 0])
+    let dt = graph.distances(from: t)
+    #expect(dt[f] == 1 && dt[a] == 1)
+
+    // A snapshot load rebuilds from state: live placements and links come
+    // back, the trail does not.
+    let fresh = Node()
+    for shard in [ShardID.block(a), .block(t), .block(f), .links(host)] { fresh.load(node.snapshot(shard)!) }
+    #expect(fresh.graph.count(to: t, kind: .placed) == 1)
+    #expect(fresh.graph.count(from: t, kind: .link(.opened)) == 1)
+    #expect(fresh.graph.visits(f).isEmpty)
+    fresh.remove(.links(host))
+    #expect(fresh.graph.count(from: t, kind: .link(.opened)) == 0)
+}

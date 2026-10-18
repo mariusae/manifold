@@ -67,13 +67,17 @@ public struct Link: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var to: BlockID
     public var kind: LinkKind
     public var at: Stamp
+    /// What made it, in words: the terminal line a path was ⌘-clicked on,
+    /// the editor line that named it, the search hit.
+    public var context: String?
 
-    public init(id: String = ULID.make(), from: BlockID, to: BlockID, kind: LinkKind, at: Stamp) {
+    public init(id: String = ULID.make(), from: BlockID, to: BlockID, kind: LinkKind, at: Stamp, context: String? = nil) {
         self.id = id
         self.from = from
         self.to = to
         self.kind = kind
         self.at = at
+        self.context = context
     }
 }
 

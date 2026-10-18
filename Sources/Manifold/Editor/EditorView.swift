@@ -186,6 +186,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     var isDirty: Bool { document?.isDirty == true }
+    /// The caret's line, trimmed: what a link made from here was made on.
+    var lineAtCaret: String {
+        let text = textView.text
+        guard text.lineCount > 0 else { return "" }
+        return String(text.lineText(text.line(at: textView.primarySelection.head)).trimmingCharacters(in: .whitespaces).prefix(200))
+    }
     /// The file's text has arrived (or it couldn't be read).
     var isLoaded: Bool { (document?.version ?? 0) > 0 || document?.unreadable == true }
 

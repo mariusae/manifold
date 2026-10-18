@@ -1279,12 +1279,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Places a block in the selected arrangement: beside a placement (on
     /// the stack to its right, or a new column), or on the focused stack.
-    func place(_ block: BlockID, lens: Lens, beside: PlacementID?) {
+    func place(_ block: BlockID, lens: Lens, beside: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
         let id = arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
         let events = a.placing(block, lens: lens, beside: beside, newPlacement: { ULID.make() })
         hosts.append(events, to: .block(id))
-        if let beside, let from = a.placement(beside)?.block { hosts.link(from: from, to: block, kind: .opened) }
+        if let beside, let from = a.placement(beside)?.block { hosts.link(from: from, to: block, kind: kind, context: context) }
     }
 
     func place(_ block: BlockID, lens: Lens, onColumn column: Int) {
@@ -1362,23 +1362,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let f = focusedShown, let path = f.path, f.lens == .editor || f.lens == .preview,
               let client = hosts.client(f.placement.block.host) else { return }
         let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
-        hosts.link(from: f.placement.block, to: block, kind: .opened)
-        place(block, lens: .diff, beside: f.id)
+        hosts.link(from: block, to: f.placement.block, kind: .source, context: "HEAD → working tree")
+        place(block, lens: .diff, beside: f.id, context: "Compare with Last Commit")
     }
 
     /// Opens a file at a place (line and column from 1) beside a placement,
     /// on the host the placement's block is on.
-    func open(path: String, line: Int, column: Int?, on: HostID, beside: PlacementID?) {
+    func open(path: String, line: Int, column: Int?, on: HostID, beside: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
-        if let beside, let from = shown(beside)?.placement.block { hosts.link(from: from, to: block, kind: .opened) }
-        place(block, lens: .editor, beside: beside)
+        place(block, lens: .editor, beside: beside, kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
     }
 
-    func openDirectory(_ path: String, beside: PlacementID?) {
+    func openDirectory(_ path: String, beside: PlacementID?, context: String? = nil) {
         let on = beside.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
-        place(block, lens: .directory, beside: beside)
+        place(block, lens: .directory, beside: beside, context: context)
     }
 
     /// An image or a PDF, by its name.
@@ -1402,7 +1401,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func open(_ target: String, from placement: PlacementID?) {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
             if scheme == "http" || scheme == "https" {
-                place(host.newWeb(url: url.absoluteString), lens: .web, beside: placement)
+                place(host.newWeb(url: url.absoluteString), lens: .web, beside: placement, context: target)
             } else {
                 NSWorkspace.shared.open(url)
             }
@@ -1435,18 +1434,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            place(hosts.textBlock(for: base, on: on), lens: .editor, beside: placement)
+            place(hosts.textBlock(for: base, on: on), lens: .editor, beside: placement, context: target)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         if isDir.boolValue {
-            openDirectory(path, beside: placement)
+            openDirectory(path, beside: placement, context: target)
         } else if Lens.isMarkdown(path) {
-            place(hosts.textBlock(for: path, on: on), lens: .preview, beside: placement)
+            place(hosts.textBlock(for: path, on: on), lens: .preview, beside: placement, context: target)
         } else if Self.isEditable(path) {
-            place(hosts.textBlock(for: path, on: on), lens: .editor, beside: placement)
+            place(hosts.textBlock(for: path, on: on), lens: .editor, beside: placement, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: placement)
+            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: placement, context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -1466,12 +1465,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
-            place(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, beside: beside)
+            place(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, beside: beside, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: beside)
+            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: beside, context: target)
         } else {
             if let line { pendingJump = (path, line, column) }
-            place(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, beside: beside)
+            place(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, beside: beside, context: target)
         }
     }
 
@@ -1659,8 +1658,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let client = self.hosts.client(block.host) else { return }
             self.hideHistory()
             let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
-            self.hosts.link(from: block, to: diff, kind: .opened)
-            self.place(diff, lens: .diff, beside: placement)
+            self.hosts.link(from: diff, to: block, kind: .source, context: "then → now")
+            self.place(diff, lens: .diff, beside: placement, context: "Compare with Now")
         }
         historyOf = block
         hosts.propose(.history(.block(block)))
@@ -1972,7 +1971,7 @@ extension MainWindowController: EditorViewDelegate {
         let on = view.block.host
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
-        hosts.link(from: view.block, to: block, kind: .opened)
+        hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
         if let a = arrangement, let c = a.columnIndex(of: view.placement) {
             place(block, lens: .editor, onColumn: c)
         } else {
@@ -2002,7 +2001,7 @@ extension MainWindowController: MarkdownViewDelegate {
         // The link's file takes the preview's place.
         guard let a = arrangement, let p = a.placement(view.placement), let (c, i) = a.locate(view.placement) else { return }
         let block = host.textBlock(for: path)
-        hosts.link(from: p.block, to: block, kind: .opened)
+        hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
         appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .preview), column: c, at: i)])
     }
 }
@@ -2055,12 +2054,21 @@ extension MainWindowController: GitViewDelegate {
     func gitView(_ view: GitView, openDiff subject: DiffSubject) {
         guard let client = hosts.client(view.block.host) else { return }
         let block = client.diffBlock(subject)
-        hosts.link(from: view.block, to: block, kind: .opened)
-        place(block, lens: .diff, beside: view.placement)
+        var context = ""
+        switch subject {
+        case let .sides(_, new):
+            if let file = hosts.client(view.block.host)?.textBlock(path: new.path) {
+                hosts.link(from: block, to: file.id, kind: .source, context: "HEAD → working tree")
+            }
+            context = new.path.lastPathComponent
+        case let .commit(_, sha): context = String(sha.prefix(7))
+        case .versions: break
+        }
+        place(block, lens: .diff, beside: view.placement, context: context)
     }
 
     func gitView(_ view: GitView, open path: String) {
-        open(path: path, line: 1, column: nil, on: view.block.host, beside: view.placement)
+        open(path: path, line: 1, column: nil, on: view.block.host, beside: view.placement, context: path.lastPathComponent)
     }
 
     func gitViewRefresh(_ view: GitView) {
@@ -2070,7 +2078,7 @@ extension MainWindowController: GitViewDelegate {
 
 extension MainWindowController: DiffViewDelegate {
     func diffView(_ view: DiffView, open path: String, line: Int) {
-        open(path: path, line: line, column: nil, on: view.block.host, beside: view.placement)
+        open(path: path, line: line, column: nil, on: view.block.host, beside: view.placement, context: "\(path.lastPathComponent):\(line)")
     }
 
     func diffViewReload(_ view: DiffView) {
@@ -2084,7 +2092,8 @@ extension MainWindowController: SearchViewDelegate {
     }
 
     func searchView(_ view: SearchView, open hit: SearchHit) {
-        open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, beside: view.placement)
+        open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, beside: view.placement,
+             kind: .found, context: hit.text.trimmingCharacters(in: .whitespaces))
     }
 
     func searchViewCancel(_ view: SearchView) {

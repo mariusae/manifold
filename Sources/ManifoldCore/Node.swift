@@ -55,6 +55,8 @@ public final class Node {
     }
 
     public private(set) var shards: [ShardID: Replica] = [:]
+    /// The graph over the shards (§3.5), kept in step with them.
+    public let graph = Graph()
     /// How many recent entries a replica keeps in memory.
     public var keptEntries = 4096
     /// Called with each shard that changed.
@@ -120,9 +122,11 @@ public final class Node {
             r.entries.append(entry)
             if r.entries.count > keptEntries { r.entries.removeFirst(r.entries.count - keptEntries) }
             shards[shard] = r
+            graph.apply(entry, to: shard, state: r.state)
         } else {
             guard entry.seq == 1, let state = Self.initialState(shard, entry) else { return false }
             shards[shard] = Replica(seq: 1, state: state, entries: [entry])
+            graph.apply(entry, to: shard, state: state)
         }
         onChange?(shard)
         return true
@@ -145,6 +149,7 @@ public final class Node {
     /// Takes a snapshot in whole, replacing what's here.
     public func load(_ snapshot: ShardSnapshot) {
         shards[snapshot.shard] = Replica(seq: snapshot.seq, state: snapshot.state, entries: [])
+        graph.load(snapshot.shard, state: snapshot.state, entries: [])
         onChange?(snapshot.shard)
     }
 
@@ -154,6 +159,7 @@ public final class Node {
 
     public func remove(_ shard: ShardID) {
         shards.removeValue(forKey: shard)
+        graph.remove(shard)
         onChange?(shard)
     }
 

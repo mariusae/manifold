@@ -569,6 +569,13 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   parsing; status, log, `show`/`cat`),
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
+- The graph (§3.5): `Graph` in the core, kept in step by `Node` with every
+  entry — `placed` intervals from arrangement logs, the link kinds from
+  the links shards (with `context`), the trail from `focus` and `select` —
+  indexed by block and kind both ways with live counts, a sorted trail
+  with an index by block; `neighborhood(of:at:)`, `distances(from:)`,
+  `step(from:offset:)`; `Hosts` merges every host's. Rebuilt from states
+  and kept entries after a snapshot.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own

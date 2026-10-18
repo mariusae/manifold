@@ -103,6 +103,46 @@ final class Hosts {
     var links: [Link] { all.flatMap { $0.links.links } }
     func isConnected(_ host: HostID) -> Bool { client(host)?.isConnected ?? false }
 
+    // MARK: The graph, across hosts
+
+    /// A block's neighborhood over every host's graph: its placements are
+    /// in the local host's arrangements, links to it may sit in any host's
+    /// links shard (each keeps the links its own blocks made), and the
+    /// trail is the local desk's.
+    func neighborhood(of block: BlockID, at stamp: Stamp? = nil) -> Neighborhood {
+        var n = Neighborhood(block: block)
+        for c in all {
+            let part = c.node.graph.neighborhood(of: block, at: stamp)
+            for (k, e) in part.outbound { n.outbound[k, default: []].append(contentsOf: e) }
+            for (k, e) in part.inbound { n.inbound[k, default: []].append(contentsOf: e) }
+            n.before += part.before
+            n.after += part.after
+        }
+        for k in n.outbound.keys { n.outbound[k]!.sort { $0.at > $1.at } }
+        for k in n.inbound.keys { n.inbound[k]!.sort { $0.at > $1.at } }
+        n.before.sort { $0.count != $1.count ? $0.count > $1.count : $0.last > $1.last }
+        n.after.sort { $0.count != $1.count ? $0.count > $1.count : $0.last > $1.last }
+        return n
+    }
+
+    /// How many edges of a kind touch a block, over every host: constant
+    /// time per host.
+    func count(to block: BlockID, kind: EdgeKind) -> Int { all.reduce(0) { $0 + $1.node.graph.count(to: block, kind: kind) } }
+    func count(from block: BlockID, kind: EdgeKind) -> Int { all.reduce(0) { $0 + $1.node.graph.count(from: block, kind: kind) } }
+
+    /// Graph distance from a block to every block within reach, the
+    /// nearest first, over every host's edges.
+    func distances(from block: BlockID, limit: Int = 3) -> [BlockID: Int] {
+        var out: [BlockID: Int] = [:]
+        for c in all {
+            for (b, d) in c.node.graph.distances(from: block, limit: limit) where out[b].map({ d < $0 }) ?? true { out[b] = d }
+        }
+        return out
+    }
+
+    /// One step back or forward along the local trail from a block.
+    func step(from block: BlockID, offset: Int) -> Step? { local.node.graph.step(from: block, offset: offset) }
+
     // MARK: Writing
 
     func append(_ events: [Event], to shard: ShardID) {
@@ -160,8 +200,8 @@ final class Hosts {
         (client(host) ?? local).directoryBlock(for: path)
     }
 
-    func link(from: BlockID, to: BlockID, kind: LinkKind) {
-        (client(of: from) ?? local).link(from: from, to: to, kind: kind)
+    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
+        (client(of: from) ?? local).link(from: from, to: to, kind: kind, context: context)
     }
 
     // MARK: Attaching
