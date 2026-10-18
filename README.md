@@ -142,6 +142,16 @@ when you find it again.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: an address
   bar, back and forward, and its pages in its log.
+- **Images and PDFs** open in their own lenses, their bytes from the
+  file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
+  for actual size), PDFs page in PDFKit.
+- **Agents** (File ▸ New Agent, ⌥⌘A) are terminal blocks that run the
+  agent command (`claude` unless the settings say otherwise) in a login
+  shell where the focused block is; their transcripts are kept like a
+  terminal's, and they come back after a restart the same way.
+- **Processes** (File ▸ Processes) is a block per host listing what `ps`
+  sees, again every few seconds while shown: filter, sort by column, End
+  (SIGTERM) or Force End (SIGKILL) the selected one.
 
 ## Contrast correction
 
@@ -188,6 +198,13 @@ is migrated into logs on first run.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
   host, `manifoldd open --wait`): `git commit` and friends edit in a sheet
   beside the terminal and return when it's taken off (⌘W).
+- **Retention** is tunable, in View ▸ Keep History: how many days of text
+  changes to keep (older ones are folded into a base state beside the
+  log, once an hour; history and scrubbing start from the base), how long
+  to keep the transcripts of dormant terminals, and how many undo steps
+  an editor holds. Tidy Unused Blocks Away and End Idle Shells set when
+  unnamed arrangements lose unseen blocks and when off-screen shells go
+  dormant.
 - `manifoldd state` prints what the host has; `manifoldd stop` ends it.
 - Protocol: length-prefixed binary frames over a Unix socket
   ([Protocol.swift](Sources/ManifoldCore/Protocol.swift)); the same

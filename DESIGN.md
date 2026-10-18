@@ -481,8 +481,13 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   log to the arrangement's moment, and a diff block can compare a text
   block at two moments (`DiffSubject.versions`).
 
-Not yet: the image, PDF, process and agent lenses; retention and
-compaction of logs.
+- The image, PDF, process and agent lenses (§7.5): bytes read on the
+  host; `ps` as entries; an agent is a terminal block with a command.
+- Retention (§4): `LogStore.compact` folds entries before a cutoff into a
+  `.base` beside the log; history carries the base; transcripts of long
+  dormant terminals go; the editor's undo depth is a setting.
+
+Still open: sharing (§10), and the finer points listed there.
 
 ## 9. From here to there
 
@@ -518,9 +523,8 @@ Milestones, each usable on its own:
 
 ## 10. Open questions
 
-- **Language servers.** Out of scope for the editor's first version; as
-  tools, when they come, they'd propose diagnostics and edits like any
-  other.
+- **Language servers** run per host now (§7.1); what's open is whether
+  their diagnostics and edits should also be entries, so they scrub.
 - **Tuning.** The defaults of §4 — when a placement leaves an unnamed
   arrangement, when a terminal goes dormant, how long history stays at full
   resolution — are guesses until used.
