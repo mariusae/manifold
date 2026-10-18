@@ -270,6 +270,8 @@ public struct GitCommit: Codable, Equatable, Sendable {
 /// A git block: a repository (the block's path), its branch, what's
 /// changed, and its recent history, as the host last looked.
 public struct GitState: Codable, Equatable, Sendable {
+    /// Which system the repository is under; nil before the host said.
+    public var vcs: VCS?
     public var branch: String?
     public var status: [GitStatusEntry] = []
     public var log: [GitCommit] = []

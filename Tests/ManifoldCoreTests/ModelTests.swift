@@ -390,3 +390,37 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(again.base?.state.block?.text?.text.string == "one\ntwo\nthree\n")
     store.closeAll()
 }
+
+// MARK: Version control
+
+@Test func saplingStatusAndLogParse() {
+    let status = VCS.parseSaplingStatus("M src/a.swift\nA new.txt\nR gone.txt\n? scratch\n! lost.c\n")
+    #expect(status.map(\.path) == ["src/a.swift", "new.txt", "gone.txt", "scratch", "lost.c"])
+    #expect(status[0].workTree == "M" && status[0].index == " ")
+    #expect(status[3].isUntracked)
+    #expect(VCS.parseSaplingWhere("main\nabc1234\n") == "main")
+    #expect(VCS.parseSaplingWhere("\nabc1234\n") == "abc1234")
+    let log = VCS.sapling.parseLog("deadbeef\u{1f}deadbee\u{1f}Ada Lovelace <ada@example.com>\u{1f}1700000000 25200\u{1f}First line\n")
+    #expect(log.count == 1)
+    #expect(log[0].author == "Ada Lovelace")
+    #expect(log[0].date == 1_700_000_000)
+    #expect(log[0].summary == "First line")
+    #expect(VCS.git.parseLog("abc\u{1f}a\u{1f}Me\u{1f}42\u{1f}Hi\n")[0].date == 42)
+    // The committed version: HEAD for git, the working parent for Sapling.
+    #expect(VCS.git.catArguments(path: "x", revision: "HEAD") == ["show", "HEAD:x"])
+    #expect(VCS.sapling.catArguments(path: "x", revision: "HEAD") == ["cat", "x"])
+    #expect(VCS.sapling.catArguments(path: "x", revision: "abc") == ["cat", "-r", "abc", "x"])
+}
+
+@Test func repositoryDetectionPrefersSapling() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-vcs-\(UUID().uuidString)").path
+    defer { try? FileManager.default.removeItem(atPath: dir) }
+    try FileManager.default.createDirectory(atPath: dir + "/repo/.git", withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(atPath: dir + "/repo/sub", withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: dir + "/repo/sub/f.txt", contents: Data())
+    #expect(VCS.repository(of: dir + "/repo/sub/f.txt")?.root == dir + "/repo")
+    #expect(VCS.repository(of: dir + "/repo/sub/f.txt")?.vcs == .git)
+    try FileManager.default.createDirectory(atPath: dir + "/repo/.sl", withIntermediateDirectories: true)
+    #expect(VCS.repository(of: dir + "/repo/sub")?.vcs == .sapling)
+    #expect(VCS.repository(of: dir) == nil)
+}

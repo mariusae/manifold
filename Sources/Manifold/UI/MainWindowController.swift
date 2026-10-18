@@ -683,7 +683,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "cpu", title: "Processes on \(focusedHost == host.host ? "This Mac" : focusedHost.raw)", subtitle: "Action") { [weak self] in
             self?.showProcesses(nil)
         })
-        items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Git for This Project", subtitle: "⌥⌘G") { [weak self] in
+        items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Source Control for This Project", subtitle: "⌥⌘G") { [weak self] in
             self?.showGit(nil)
         })
         if let f = focusedShown, f.lens == .editor || f.lens == .preview, f.path != nil {

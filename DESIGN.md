@@ -472,7 +472,9 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   menu; the Language Servers… table.
 - Search blocks (§7.5): the query and hits as entries, host-led; `rg` or
   `grep` on the host, read in batches; the search lens.
-- Git and diff blocks (§7.5): `Git` on the host (status, log, `show`),
+- Git and diff blocks (§7.5): `Git` on the host runs git or Sapling by
+  the nearest `.sl` or `.git` (`VCS` in the core: the commands and their
+  parsing; status, log, `show`/`cat`),
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its

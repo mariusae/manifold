@@ -121,10 +121,13 @@ when you find it again.
   found, matches marked. ⏎ in the field asks again (Aa for case, .* for a
   regular expression); ↓ then ⏎, or a double-click, opens the file at the
   hit beside the results. A search is found again by its query in ⌘O.
-- **Git** is a block per repository (File ▸ Git for This Project, ⌥⌘G, for
-  the focused block's): the branch (with how far ahead or behind), what's
-  changed, and the last 200 commits, looked at again when shown, when a
-  file is saved from Manifold, or when the index changes. ⏎ or a
+- **Git and Sapling** repositories get a block each (File ▸ Source Control
+  for This Project, ⌥⌘G, for the focused block's; the nearest `.sl` or
+  `.git` up from it says which, `.sl` first): the branch or bookmark
+  (with how far ahead or behind), what's changed, and the last 200
+  commits, looked at again when shown, when a file is saved from
+  Manifold, or when the index (or `.sl/dirstate`) changes. Sapling is
+  spoken to as `sl` on the host's PATH. ⏎ or a
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
   open the file there; on a commit, the whole commit. Compare with Last

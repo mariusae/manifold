@@ -341,12 +341,13 @@ final class Server {
             for id in ids where gutterWork[id] == nil { scheduleGutter(id) }
             done()
         case let .git(block, path):
-            guard let root = git.root(of: path.expandingTildeInPath) else { return done("\(path) isn't in a git repository") }
+            guard let (root, vcs) = git.repository(of: path.expandingTildeInPath) else { return done("\(path) isn't in a git or Sapling repository") }
             if node.block(block) == nil {
                 append(.create(kind: .git, title: nil, path: root), to: .block(block))
             }
+            if node.block(block)?.git?.vcs != vcs { append(.vcs(vcs), to: .block(block)) }
             refreshGit(block)
-            watchRepo(root)
+            watchRepo(root, vcs)
             done()
         case let .refreshGit(block):
             refreshGit(block)
@@ -449,15 +450,21 @@ final class Server {
 
     private func refreshGit(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
-        git.run([["status", "--porcelain=v1", "-z", "-b"], ["log", "-n", "200", "--format=\(Git.logFormat)"]], in: root) { [weak self] results in
+        let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
+        var commands = [vcs.statusArguments, vcs.logArguments(limit: 200)]
+        if let w = vcs.whereArguments { commands.append(w) }
+        if let a = vcs.aheadArguments { commands.append(a) }
+        git.run(vcs, commands, in: root) { [weak self] results in
             guard let self, self.node.block(block) != nil else { return }
             var error: String?
             var branch: String?, ahead = 0, behind = 0, status: [GitStatusEntry] = [], log: [GitCommit] = []
             switch results[0] {
-            case .success(let out): (branch, ahead, behind, status) = Git.parseStatus(out)
+            case .success(let out): (branch, ahead, behind, status) = vcs.parseStatus(out)
             case .failure(let e): error = e.message
             }
-            if case .success(let out) = results[1] { log = Git.parseLog(out) }
+            if case .success(let out) = results[1] { log = vcs.parseLog(out) }
+            if vcs.whereArguments != nil, case .success(let out) = results[2] { branch = VCS.parseSaplingWhere(out) }
+            if vcs.aheadArguments != nil, case .success(let out) = results[3] { ahead = out.split(separator: "\n").count }
             self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
         }
     }
@@ -470,9 +477,9 @@ final class Server {
         for b in node.blocks where b.kind == .text && gutterWork[b.id] != nil && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
     }
 
-    private func watchRepo(_ root: String) {
+    private func watchRepo(_ root: String, _ vcs: VCS) {
         guard repoWatchers[root] == nil else { return }
-        let index = root.appendingPathComponent(".git/index")
+        let index = root.appendingPathComponent(vcs.stateFile)
         repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in self?.gitChanged(under: index) }
     }
 
@@ -495,7 +502,8 @@ final class Server {
             let new = to.map { Block.replaying(entries, id: id, upTo: $0)?.text?.text.string ?? "" } ?? (node.block(id)?.text?.text.string ?? "")
             append(.diffLoaded(oldText: old, newText: new, patch: nil, error: nil, at: clock.now()), to: .block(block))
         case let .commit(repo, sha):
-            git.run(["show", "--no-color", "--format=medium", sha], in: repo) { [weak self] result in
+            let vcs = git.repository(of: repo)?.vcs ?? .git
+            git.run(vcs, vcs.showArguments(sha), in: repo) { [weak self] result in
                 guard let self, self.node.block(block) != nil else { return }
                 switch result {
                 case .success(let patch):

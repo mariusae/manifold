@@ -173,6 +173,8 @@ public enum Event: Codable, Equatable, Sendable {
     case url(String?, viaHost: Bool)
 
     // Git.
+    /// Which system the repository is under.
+    case vcs(VCS)
     case gitRefreshed(branch: String?, status: [GitStatusEntry], log: [GitCommit], ahead: Int, behind: Int, error: String?, at: Stamp)
 
     // Diff.
@@ -289,7 +291,10 @@ extension ProcessState {
 
 extension GitState {
     public mutating func apply(_ event: Event) {
-        if case let .gitRefreshed(branch, status, log, ahead, behind, error, at) = event {
+        switch event {
+        case let .vcs(v):
+            vcs = v
+        case let .gitRefreshed(branch, status, log, ahead, behind, error, at):
             self.branch = branch
             self.status = status
             self.log = log
@@ -297,6 +302,7 @@ extension GitState {
             self.behind = behind
             self.error = error
             refreshedAt = at
+        default: break
         }
     }
 }

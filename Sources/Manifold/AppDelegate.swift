@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
         file.addItem(.separator())
-        item(file, "Git for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
+        item(file, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
         item(file, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option])
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")

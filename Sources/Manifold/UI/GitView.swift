@@ -100,7 +100,7 @@ final class GitView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDele
     func documentChanged() {
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
-        header.stringValue = root.abbreviatingHome
+        header.stringValue = root.abbreviatingHome + (g.vcs == .sapling ? " · Sapling" : "")
         var branch = g.branch ?? ""
         if g.ahead > 0 { branch += " ↑\(g.ahead)" }
         if g.behind > 0 { branch += " ↓\(g.behind)" }
