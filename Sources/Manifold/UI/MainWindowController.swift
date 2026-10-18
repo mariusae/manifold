@@ -681,25 +681,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
         let i = a.focused.flatMap { a.columnIndex(of: $0) } ?? a.columns.count - 1
         let t = host.newTerminal(cwd: focusedCwd)
-        appendToSelected([.place(Placement(block: t, lens: .terminal), column: i + 1, at: 0)])
-        // `place` at a column past the end appends; one in the middle needs a
-        // new column there: move it after.
-        if i + 1 < a.columns.count, let placed = arrangement?.placements(of: t).first {
-            appendToSelected([.move(placed.id, column: a.columns.count, at: 0)])
-            reorderColumn(from: a.columns.count, to: i + 1)
-        }
+        placeInNewColumn(t, lens: .terminal, at: i + 1)
     }
 
     /// Moves a whole column to another index.
     private func reorderColumn(from: Int, to: Int) {
         guard let a = arrangement, from < a.columns.count, from != to else { return }
-        // Placements are moved one by one into a new column at `to`.
-        let placements = a.columns[from]
-        var events: [Event] = []
-        for (i, p) in placements.enumerated() {
-            events.append(.move(p.id, column: i == 0 ? min(to, a.columns.count) : to, at: i))
-        }
-        appendToSelected(events)
+        appendToSelected([.moveColumn(from: from, to: to)])
     }
 
     @objc func newNote(_ sender: Any?) {
@@ -1481,6 +1469,14 @@ extension MainWindowController: TabContentDelegate {
         reorderColumn(from: from, to: min(to, from))
     }
 
+    /// A new column at `index` holding `block`.
+    private func placeInNewColumn(_ block: BlockID, lens: Lens, at index: Int) {
+        guard let a = arrangement else { return }
+        let p = Placement(block: block, lens: lens)
+        appendToSelected([.place(p, column: a.columns.count, at: 0)])
+        if index < a.columns.count { reorderColumn(from: a.columns.count, to: index) }
+    }
+
     func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
     func contentDragAtLeftEdge() {
@@ -1495,9 +1491,9 @@ extension MainWindowController: TabContentDelegate {
 extension MainWindowController: TilingDelegate {
     func tilingFocus(_ placement: PlacementID) { focus(placement) }
 
-    func tilingMove(_ placement: PlacementID, column: Int, at: Int) {
+    func tilingMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool) {
         guard let a = arrangement else { return }
-        if column >= a.columns.count || (at == 0 && column < a.columns.count && !a.columns[column].contains(where: { $0.id == placement }) && false) {
+        if newColumn || column >= a.columns.count {
             movePlacement(placement, toNewColumn: column, in: a)
         } else {
             appendToSelected([.move(placement, column: column, at: at)])

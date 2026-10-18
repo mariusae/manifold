@@ -124,6 +124,10 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.visible.count == 2, "tiling shows everything")
     a.apply(.move(t2.id, column: 1, at: 0))
     #expect(a.columns.count == 2)
+    a.apply(.fractions([0.3, 0.7]))
+    a.apply(.moveColumn(from: 1, to: 0))
+    #expect(a.columns[0].first?.id == t2.id)
+    #expect(a.fractions == [0.7, 0.3])
 }
 
 @Test func separatingColumns() {

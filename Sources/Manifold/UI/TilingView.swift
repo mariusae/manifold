@@ -3,7 +3,7 @@ import ManifoldCore
 
 protocol TilingDelegate: AnyObject {
     func tilingFocus(_ placement: PlacementID)
-    func tilingMove(_ placement: PlacementID, column: Int, at: Int)
+    func tilingMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool)
     func tilingDropArrangement(_ arrangement: BlockID, column: Int)
     func tilingCanDrop(_ arrangement: BlockID) -> Bool
     func tilingResized(fractions: [Double])
@@ -265,12 +265,7 @@ final class TilingView: NSView, NSDraggingSource {
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
         if let placement = pb.string(forType: .manifoldPlacement) {
-            if target.newColumn {
-                delegate?.tilingMove(placement, column: target.column, at: 0)
-                // A new column: the delegate's `at` of 0 in a column past the end.
-            } else {
-                delegate?.tilingMove(placement, column: target.column, at: target.at)
-            }
+            delegate?.tilingMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
             return true
         }
         guard let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) else { return false }

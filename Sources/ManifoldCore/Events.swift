@@ -179,6 +179,8 @@ public enum Event: Codable, Equatable, Sendable {
     case layout(ArrangementLayout)
     /// Columns swapped in whole from another arrangement (merging tabs).
     case adopt(columns: [[Placement]], at: Int)
+    /// A whole column moved to another index.
+    case moveColumn(from: Int, to: Int)
 
     // Desk.
     case order([BlockID])
@@ -397,6 +399,13 @@ extension ArrangementState {
             columns.insert(contentsOf: fresh, at: min(max(at, 0), columns.count))
             fractions = Self.equalFractions(columns.count)
             focused = fresh.last?.last?.id ?? focused
+        case let .moveColumn(from, to):
+            guard from >= 0, from < columns.count else { return }
+            let column = columns.remove(at: from)
+            let f = fractions.count > from ? fractions.remove(at: from) : 1 / Double(max(columns.count, 1))
+            let index = min(max(to, 0), columns.count)
+            columns.insert(column, at: index)
+            if fractions.count == columns.count - 1 { fractions.insert(f, at: index) }
         default:
             return
         }
