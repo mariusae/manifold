@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import ManifoldCore
 
 protocol TerminalViewDelegate: AnyObject {
     func terminalDidFocus(_ view: TerminalView)
@@ -8,10 +9,11 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, open target: String)
 }
 
-/// A pane's terminal: a ghostty surface running `manifoldd attach <pane>`,
-/// which connects it to the pane's session in the server.
+/// A terminal block's view: a ghostty surface running `manifoldd attach
+/// <block>`, which connects it to the block's shell in the server.
 final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemValidation {
-    let pane: UUID
+    let placement: PlacementID
+    let block: BlockID
     private(set) var surface: ghostty_surface_t?
     weak var delegate: TerminalViewDelegate?
     var cellSize = NSSize(width: 8, height: 16)
@@ -33,8 +35,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return Unmanaged<TerminalView>.fromOpaque(userdata).takeUnretainedValue()
     }
 
-    init(pane: UUID, command: String) {
-        self.pane = pane
+    init(placement: PlacementID, block: BlockID, command: String) {
+        self.placement = placement
+        self.block = block
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
 
@@ -49,7 +52,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             config.command = cmd
             return ghostty_surface_new(GhosttyRuntime.shared.app, &config)
         }
-        if surface == nil { NSLog("manifold: could not create a terminal surface for %@", pane.uuidString) }
+        if surface == nil { NSLog("manifold: could not create a terminal surface for %@", block.description) }
     }
 
     required init?(coder: NSCoder) { fatalError() }

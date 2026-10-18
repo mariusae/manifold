@@ -8,15 +8,22 @@ protocol MarkdownViewDelegate: AnyObject {
     func markdownView(_ view: MarkdownView, open path: String)
 }
 
-/// A live preview of a Markdown file: rendered by cmark-gfm into a web view,
-/// and rendered again whenever the file changes, keeping the scroll position.
+/// The preview lens on a text block: its Markdown rendered by cmark-gfm into
+/// a web view, and rendered again as the text changes (edits in an editor
+/// on the same block, or the file saved by another program), keeping the
+/// scroll position.
 final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
-    let pane: UUID
+    let placement: PlacementID
+    private(set) var block: BlockID
     private(set) var path: String
     weak var delegate: MarkdownViewDelegate?
     private let web: WKWebView
-    private var watcher: FileWatcher?
     private var loaded = false
+    /// The text as last rendered, to skip renders that would show the same.
+    private var renderedVersion = -1
+    private var renderWork: DispatchWorkItem?
+    /// Where the text comes from.
+    var source: () -> (text: String, version: Int)? = { nil }
     var theme: FontTheme {
         didSet { if theme != oldValue, loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) } }
     }
@@ -24,8 +31,9 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
     var focusView: NSView { web }
     var isDead: Bool { false }
 
-    init(pane: UUID, path: String, theme: FontTheme) {
-        self.pane = pane
+    init(placement: PlacementID, block: BlockID, path: String, theme: FontTheme) {
+        self.placement = placement
+        self.block = block
         self.path = path
         self.theme = theme
         let config = WKWebViewConfiguration()
@@ -39,13 +47,21 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
-        watch()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func destroy() {
-        watcher = nil
+        renderWork?.cancel()
+    }
+
+    /// The block's text may have changed: render it again, soon.
+    func textChanged() {
+        guard let (_, version) = source(), version != renderedVersion else { return }
+        renderWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.render(scrollToTop: false) }
+        renderWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 
     override func layout() {
@@ -53,23 +69,38 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         web.frame = bounds
     }
 
-    /// Shows another file, from the top.
-    func show(path: String) {
-        guard path != self.path else { return }
-        self.path = path
-        watch()
-        render(scrollToTop: true)
+    /// Moved between lenses: the page is drawn again, as WebKit lets a view
+    /// taken out of its window go blank.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, loaded else { return }
+        // The page is loaded afresh (its scroll position kept by the view).
+        loaded = false
+        renderedVersion = -1
+        web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
-    private func watch() {
-        watcher = FileWatcher(path: path) { [weak self] in self?.render(scrollToTop: false) }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loaded = false
+        renderedVersion = -1
+        web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
+    }
+
+    /// Shows another block, from the top.
+    func show(block: BlockID, path: String) {
+        guard block != self.block || path != self.path else { return }
+        self.block = block
+        self.path = path
+        renderedVersion = -1
+        render(scrollToTop: true)
     }
 
     private func render(scrollToTop: Bool) {
         guard loaded else { return }
         let body: String
-        if let data = FileManager.default.contents(atPath: path) {
-            body = MarkdownRenderer.html(String(decoding: data, as: UTF8.self))
+        if let (text, version) = source() {
+            renderedVersion = version
+            body = MarkdownRenderer.html(text)
         } else {
             body = "<p class=\"missing\">\(escape(path)) can't be read.</p>"
         }
@@ -117,58 +148,5 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         } else {
             NSWorkspace.shared.open(url)
         }
-    }
-}
-
-/// Watches a file, calling back when it changes. Editors often save by
-/// writing a new file and renaming it over the old one, so on a rename or
-/// delete the path is watched afresh.
-final class FileWatcher {
-    private let path: String
-    private let onChange: () -> Void
-    private var source: DispatchSourceFileSystemObject?
-    private var pending: DispatchWorkItem?
-
-    init(path: String, onChange: @escaping () -> Void) {
-        self.path = path
-        self.onChange = onChange
-        start(retries: 0)
-    }
-
-    deinit { source?.cancel() }
-
-    private func start(retries: Int) {
-        source?.cancel()
-        source = nil
-        let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else {
-            // Gone, perhaps mid-save: look again shortly, for a while.
-            if retries < 20 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                    self?.start(retries: retries + 1)
-                }
-            }
-            return
-        }
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename, .attrib, .link], queue: .main)
-        source.setEventHandler { [weak self, weak source] in
-            guard let self, let source else { return }
-            if !source.data.isDisjoint(with: [.delete, .rename]) {
-                self.start(retries: 0)
-            }
-            self.changed()
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        self.source = source
-        if retries > 0 { changed() }
-    }
-
-    private func changed() {
-        pending?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.onChange() }
-        pending = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
     }
 }

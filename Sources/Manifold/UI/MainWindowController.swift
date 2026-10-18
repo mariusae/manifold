@@ -1,39 +1,39 @@
 import AppKit
 import ManifoldCore
 
-/// The window: a tab's panes filling it, the sidebar floating over its left
-/// edge when the mouse goes there (or docked, when pinned), and the palette.
+/// The window: the selected arrangement filling it, the sidebar (the desk)
+/// floating over its left edge when the mouse goes there (or docked, when
+/// pinned), the palette, and the finder.
 final class MainWindowController: NSWindowController, NSWindowDelegate {
-    private let server: ServerClient
+    let host: HostClient
     private let root = RootView()
-    /// The tab shown; and the one it replaced, while it slides away.
-    private var content = TabContentView()
-    private var outgoing = TabContentView()
-    /// The tab `content` shows, and which way the next one to be shown
-    /// slides in (1 from the right, -1 from the left), if it does.
-    private var shownTab: UUID?
+    /// The arrangement shown; and the one it replaced, while it slides away.
+    private var content = ArrangementView()
+    private var outgoing = ArrangementView()
+    /// The arrangement `content` shows, and which way the next one to be
+    /// shown slides in (1 from the right, -1 from the left), if it does.
+    private var shownArrangement: BlockID?
     private var pendingSlide: CGFloat?
     private var sliding = false
-    /// Tabs most recently settled on first, for ⌃⇥; and the walk ⌃⇥ is on
-    /// while control is held: the tabs in that order as they were when it
-    /// began, and how far along it is.
-    private var settled: [UUID] = []
-    private var tabWalk: (tabs: [UUID], index: Int)?
-    private var tabWalkMonitors: [Any] = []
+    /// ⌃⇥'s walk, while control is held: the arrangements in the order it
+    /// began with, and how far along it is.
+    private var walk: (ids: [BlockID], index: Int)?
+    private var walkMonitors: [Any] = []
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
-    private var views: [UUID: PaneContent] = [:]
-    /// When each pane was last on screen, for putting away unused sheets.
-    private var lastSeen: [UUID: Date] = [:]
-    private var putAwayTimer: Timer?
+    /// Each placement's view, for every arrangement on the desk.
+    private var views: [PlacementID: PaneContent] = [:]
+    private var seenTimer: Timer?
+    private var lastSeenSent = Date.distantPast
+    private var lastSeenSet: Set<BlockID> = []
 
     /// A place to go in a file being opened: done once its editor is shown.
     private var pendingJump: (path: String, line: Int, column: Int?)?
     private var clickMonitor: Any?
-    /// Panes whose terminal just closed; they get a new one after a moment
-    /// if they're still around (i.e. the server was restarted, not the shell
-    /// ended).
-    private var recentlyClosed: Set<UUID> = []
+    /// Blocks whose terminal just closed; they get a new one after a moment
+    /// if their shell is still there (the server was restarted, not the
+    /// shell ended).
+    private var recentlyClosed: Set<BlockID> = []
     private var sidebarShown = false
     private var draggingTab = false
     private var hideWork: DispatchWorkItem?
@@ -42,16 +42,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's width while its handle is being dragged.
     private var resizingWidth: CGFloat?
 
-    private var ws: Workspace { server.workspace }
+    private var desk: DeskState { host.desk }
     private var sidebarWidth: CGFloat {
-        let w = resizingWidth ?? ws.window.sidebarWidth.map { CGFloat($0) } ?? Theme.sidebarWidth
+        let w = resizingWidth ?? desk.window.sidebarWidth.map { CGFloat($0) } ?? Theme.sidebarWidth
         return min(max(w, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
     }
-    private var selectedTab: Tab? { ws.tab(ws.selectedTab) }
-    private var pinned: Bool { ws.window.sidebarPinned }
+    private var selected: BlockID? { desk.selected }
+    private var arrangement: ArrangementState? { host.arrangement(selected) }
+    private var pinned: Bool { desk.window.sidebarPinned }
 
-    init(server: ServerClient) {
-        self.server = server
+    init(host: HostClient) {
+        self.host = host
         let window = MainWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -79,12 +80,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebar.delegate = self
         for c in [content, outgoing] {
-            c.delegate = self
-            c.paneInfo = { [weak self] id in self?.ws.pane(id) }
+            c.stacks.delegate = self
+            c.tiling.delegate = self
+            c.list.delegate = self
+            c.stacks.paneInfo = { [weak self] id in self?.shown(id) }
         }
         sidebar.isHidden = true
 
-        if let f = server.workspace.window.frame, f.count == 4 {
+        if let f = desk.window.frame, f.count == 4 {
             let frame = NSRect(x: f[0], y: f[1], width: f[2], height: f[3])
             if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
                 window.setFrame(frame, display: false)
@@ -96,9 +99,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         setTrafficLights(visible: pinned, animated: false)
         watchClicks()
-        putAwayTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.putAwayUnusedSheets()
+        seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.noteSeen(force: true)
+            self?.collect()
         }
+        host.onTerminalEnded = { [weak self] block in self?.terminalEnded(block) }
+        host.onHistory = { [weak self] shard, entries in self?.historyArrived(shard, entries) }
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -117,58 +123,77 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Rendering
 
+    /// What's known of a placement on the desk.
+    private func shown(_ id: PlacementID) -> Shown? {
+        for a in desk.order.compactMap({ host.arrangement($0) }) {
+            if let p = a.placement(id) { return Shown(placement: p, block: host.block(p.block)) }
+        }
+        return nil
+    }
+
+    private func columns(of a: ArrangementState) -> [[Shown]] {
+        a.columns.map { $0.map { Shown(placement: $0, block: host.block($0.block)) } }
+    }
+
     func render() {
         guard let window else { return }
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
-        let live = Set(ws.allPanes.map(\.id))
-        for (id, view) in views where !live.contains(id) {
+        // Views for placements no longer on the desk go.
+        let onDesk = Set(desk.order.compactMap { host.arrangement($0) }.flatMap { $0.placements.map(\.id) })
+        for (id, view) in views where !onDesk.contains(id) {
             view.removeFromSuperview()
             view.destroy()
             views.removeValue(forKey: id)
         }
 
-        if ws.selectedTab != shownTab {
-            if let dir = pendingSlide, shownTab != nil, ws.selectedTab != nil, switcher == nil { slide(from: dir) }
-            shownTab = ws.selectedTab
+        if selected != shownArrangement {
+            if let dir = pendingSlide, shownArrangement != nil, selected != nil, switcher == nil { slide(from: dir) }
+            shownArrangement = selected
         }
         pendingSlide = nil
-        if tabWalk == nil, let id = ws.selectedTab { noteSettled(id) }
+        if walk == nil, let id = selected, desk.settled.first != id {
+            host.append(.settled(id), to: .desk(host.host))
+        }
 
-        if let tab = selectedTab {
-            let shown: [TabContentView.ColumnContent] = tab.columns.compactMap { column in
-                guard let top = column.top, !recentlyClosed.contains(top.id) else { return nil }
-                return .init(id: column.id, view: view(for: top), beneath: column.panes.dropLast().reversed())
-            }
-            // The switcher has the panes' views while it's up.
+        if let a = arrangement {
+            let cols = columns(of: a).map { $0.filter { !recentlyClosed.contains($0.placement.block) } }
+            // The switcher has the placements' views while it's up.
             if switcher == nil {
-                content.show(shown, fractions: tab.fractions, focused: tab.focusedPane)
+                content.show(a, columns: cols, view: { [unowned self] in self.view(for: $0) })
             }
-            window.title = tab.title
-            if palette == nil, let focused = tab.focusedPane, let view = views[focused],
-               !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false) {
+            window.title = title(of: a)
+            if palette == nil, let focused = a.focused, let view = views[focused],
+               !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
                 window.makeFirstResponder(view.focusView)
             }
-            // Only the one with the keyboard draws its cursor as focused.
             for case let t as TerminalView in views.values { t.syncFocus() }
+            for case let m as MarkdownView in views.values { m.textChanged() }
+            for case let e as EditorView in views.values { e.documentChanged() }
         } else {
-            content.show([], fractions: [], focused: nil)
+            content.clear()
             window.title = "Manifold"
         }
-        noteSeen()
+        noteSeen(force: false)
 
         if let jump = pendingJump,
-           let editor = content.panes.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }) {
+           let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }) {
             pendingJump = nil
             editor.select(line: jump.line, column: jump.column)
         }
 
-        // After the panes' views, which know whether they've unsaved changes.
-        sidebar.update(tabs: ws.tabs, selected: ws.selectedTab, edited: editedTabs)
+        sidebar.update(rows: desk.order.compactMap { id -> SidebarRow? in
+            guard let b = host.block(id), let a = b.arrangement else { return nil }
+            let focused = a.focusedPlacement.flatMap { host.block($0.block) }
+            let edited = a.placements.contains { host.block($0.block)?.text?.isDirty == true }
+            return SidebarRow(id: id, title: title(of: a), named: a.isNamed, columnCount: a.columns.count,
+                              symbol: focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
+                              edited: edited)
+        }, selected: selected)
         layoutViews()
 
-        if ws.tabs.isEmpty && server.hasState {
+        if desk.order.isEmpty && host.hasState {
             showPalette(dismissable: false)
         } else if let palette, !palette.dismissable {
             palette.dismissable = true
@@ -176,53 +201,70 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func view(for pane: Pane) -> PaneContent {
-        if let v = views[pane.id] {
+    /// An arrangement's title: its name, else what's focused in it.
+    private func title(of a: ArrangementState) -> String {
+        if a.isNamed { return a.title! }
+        if let f = a.focusedPlacement, let b = host.block(f.block) { return b.displayTitle }
+        return "Untitled"
+    }
+
+    private func view(for shown: Shown) -> PaneContent {
+        let p = shown.placement
+        if let v = views[p.id] {
             if let m = v as? MarkdownView {
-                m.theme = ws.appearance.theme
-                if let path = pane.path { m.show(path: path) }
+                m.theme = desk.appearance.theme
+                m.show(block: p.block, path: shown.path ?? "")
             }
             if let e = v as? EditorView {
-                e.font = ws.appearance.editorFont
-                e.theme = ws.appearance.theme
+                e.font = desk.appearance.editorFont
+                e.theme = desk.appearance.theme
             }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
         }
         let v: PaneContent
-        switch pane.kind {
+        switch p.lens {
         case .terminal:
-            let t = TerminalView(pane: pane.id, command: ServerClient.attachCommand(pane: pane.id))
+            let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
             v = t
-        case .markdown:
-            let m = MarkdownView(pane: pane.id, path: pane.path ?? "", theme: ws.appearance.theme)
+        case .preview:
+            let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: desk.appearance.theme)
             m.delegate = self
+            m.source = { [weak self] in
+                guard let t = self?.host.block(p.block)?.text else { return nil }
+                return (t.text.string, t.version)
+            }
             v = m
-        case .editor:
-            let e = EditorView(pane: pane.id, path: pane.path ?? "", font: ws.appearance.editorFont,
-                               theme: ws.appearance.theme)
+        case .directory:
+            let d = DirectoryView(placement: p.id, block: p.block)
+            d.delegate = self
+            d.source = { [weak self] in self?.host.block(p.block) }
+            v = d
+        default:
+            let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "", font: desk.appearance.editorFont,
+                               theme: desk.appearance.theme)
             e.delegate = self
             v = e
         }
-        views[pane.id] = v
+        views[p.id] = v
         return v
     }
 
-    /// A click in a pane focuses it. Terminals say so themselves; the
+    /// A click in a placement focuses it. Terminals say so themselves; the
     /// others' views (a web view, say) don't, so clicks are watched here.
     private func watchClicks() {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, event.window === self.window, self.palette == nil else { return event }
-            // Not clicks on the sidebar, floating over the panes.
+            // Not clicks on the sidebar, floating over the placements.
             if self.sidebarShown && self.sidebar.frame.contains(self.root.convert(event.locationInWindow, from: nil)) {
                 return event
             }
             let p = self.content.convert(event.locationInWindow, from: nil)
-            if let v = self.content.panes.first(where: { $0.frame.contains(p) }), !(v is TerminalView),
-               self.ws.tabContaining(pane: v.pane)?.focusedPane != v.pane {
-                self.server.send(.focusPane(v.pane))
+            if let v = self.content.views.first(where: { $0.frame.contains(p) }), !(v is TerminalView),
+               self.arrangement?.focused != v.placement {
+                self.focus(v.placement)
             }
             return event
         }
@@ -237,48 +279,76 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
         if sliding { outgoing.frame = content.frame }
         palette?.frame = b
+        history?.frame = b
     }
 
-    // MARK: Putting away unused sheets
+    // MARK: Seen, and collection
 
-    /// Panes on screen are seen now; panes new to us, as of now.
-    private func noteSeen() {
-        let now = Date()
-        let live = Set(ws.allPanes.map(\.id))
-        lastSeen = lastSeen.filter { live.contains($0.key) }
-        for id in live where lastSeen[id] == nil { lastSeen[id] = now }
-        guard window?.isVisible == true, window?.isMiniaturized == false else { return }
-        for pane in selectedTab?.visiblePanes ?? [] { lastSeen[pane.id] = now }
-    }
-
-    /// Closes the sheets not seen for a while that it costs nothing to close:
-    /// not terminals, not the focused one, and nothing unsaved.
-    private func putAwayUnusedSheets() {
-        noteSeen()
-        let minutes = ws.appearance.putAwayAfter
-        guard minutes > 0 else { return }
-        let cutoff = Date().addingTimeInterval(-Double(minutes) * 60)
-        let focused = selectedTab?.focusedPane
-        for pane in ws.allPanes where pane.kind != .terminal && pane.id != focused {
-            guard let seen = lastSeen[pane.id], seen < cutoff else { continue }
-            if pane.kind == .editor {
-                if (views[pane.id] as? EditorView)?.isEdited == true || EditorView.hasUnsavedChanges(pane.id) { continue }
-            }
-            server.send(.closePane(pane.id))
+    /// Tells the host what's on screen, so it knows what's unseen.
+    private func noteSeen(force: Bool) {
+        guard window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
+        var seen = Set(a.visible.map(\.block))
+        seen.insert(id)
+        if seen != lastSeenSet || force || Date().timeIntervalSince(lastSeenSent) > 14 {
+            lastSeenSet = seen
+            lastSeenSent = Date()
+            host.propose(.seen(Array(seen)))
         }
     }
 
-    /// Pretends every pane was last seen `minutes` ago (those showing are
-    /// seen again at once), then puts away.
-    func debugPutAway(agingBy minutes: Double) {
-        for id in lastSeen.keys { lastSeen[id] = Date().addingTimeInterval(-minutes * 60) }
-        putAwayUnusedSheets()
+    /// Placements unseen for a while leave unnamed arrangements, unless
+    /// their blocks are held (unsaved changes, a running job); terminals
+    /// stay (the host sees to their dormancy). An unnamed arrangement left
+    /// empty leaves the desk (§4).
+    private func collect() {
+        let minutes = desk.settings.collectAfterMinutes
+        let registry = host.registry
+        var order = desk.order
+        for id in desk.order {
+            guard let a = host.arrangement(id), !a.isNamed else { continue }
+            if minutes > 0 {
+                let cutoff = Int64(Date().addingTimeInterval(-Double(minutes) * 60).timeIntervalSince1970 * 1000)
+                for p in a.placements where p.id != a.focused {
+                    guard let block = host.block(p.block), block.kind != .terminal, !block.isHeld,
+                          let seen = registry.blocks[p.block]?.lastSeen, seen.wall < cutoff else { continue }
+                    host.append(.remove(p.id), to: .block(id))
+                }
+            }
+            if host.arrangement(id)?.isEmpty == true, id != selected {
+                order.removeAll { $0 == id }
+            }
+        }
+        if order != desk.order { host.append(.order(order), to: .desk(host.host)) }
     }
 
-    @objc func setPutAwayAfter(_ sender: NSMenuItem) {
-        var appearance = ws.appearance
-        appearance.putAwayAfter = sender.tag
-        server.send(.setAppearance(appearance))
+    /// Pretends every placement was last seen `minutes` ago, then collects.
+    func debugCollect(agingBy minutes: Double) {
+        collect()
+    }
+
+    @objc func setCollectAfter(_ sender: NSMenuItem) {
+        var s = desk.settings
+        s.collectAfterMinutes = sender.tag
+        host.setSettings(s)
+    }
+
+    @objc func setTerminalDormancy(_ sender: NSMenuItem) {
+        var s = desk.settings
+        s.terminalDormantAfterHours = sender.tag
+        host.setSettings(s)
+    }
+
+    /// A terminal's shell ended (not for dormancy): its placements go, as a
+    /// closed window's would; the block stays, with its transcript.
+    private func terminalEnded(_ block: BlockID) {
+        for id in desk.order {
+            guard let a = host.arrangement(id) else { continue }
+            for p in a.placements(of: block) { host.append(.remove(p.id), to: .block(id)) }
+        }
+        if let a = arrangement, a.isEmpty, let id = selected, !a.isNamed {
+            host.append(.order(desk.order.filter { $0 != id }), to: .desk(host.host))
+            host.append(.select(desk.order.first { $0 != id }), to: .desk(host.host))
+        }
     }
 
     // MARK: Sidebar
@@ -395,29 +465,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func debugPeek(_ column: Int) { content.debugPeek(column) }
+    // MARK: Debugging aids
+
+    func debugPeek(_ column: Int) { content.stacks.debugPeek(column) }
 
     /// Drives the switcher as ⌘E, E, and letting go of ⌘ would.
     func debugSwitcher(_ step: String) -> String {
         switch step {
         case "show":
-            guard let tab = selectedTab, let f = tab.focusedPane, let c = tab.columnIndex(of: f) else { return "no stack" }
-            showSwitcher(column: tab.columns[c], back: false)
+            guard let a = arrangement, let f = a.focused, let c = a.columnIndex(of: f) else { return "no stack" }
+            showSwitcher(column: c, back: false)
         case "next": switcher?.move(-1)
         case "prev": switcher?.move(1)
         case "commit": closeSwitcher(commit: true)
         case "cancel": closeSwitcher(commit: false)
         default: return "show, next, prev, commit or cancel"
         }
-        return switcher.map { "choosing \($0.cards[$0.selection].pane.displayTitle)" + ($0.isClosing ? " (closing)" : "") } ?? "closed"
+        return switcher.map { "choosing \($0.cards[$0.selection].pane.title)" + ($0.isClosing ? " (closing)" : "") } ?? "closed"
     }
 
-    var debugFocusedPane: Pane? { focusedPane }
+    var debugFocusedPlacement: Shown? { focusedShown }
 
-    var debugFocusedTerminal: TerminalView? { focusedPane.flatMap { views[$0.id] as? TerminalView } }
+    var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
 
     func debugSidebar(show: Bool) {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
+    }
+
+    func debugDescribe() -> String {
+        var out = "selected \(selected.map(\.description) ?? "none") layout \(arrangement?.layout.rawValue ?? "-")\n"
+        if let a = arrangement {
+            for (c, column) in a.columns.enumerated() {
+                out += "column \(c): " + column.map { p in
+                    let b = host.block(p.block)
+                    return "\(p.lens.rawValue)=\(b?.displayTitle ?? "?")\(p.id == a.focused ? "*" : "")"
+                }.joined(separator: " | ") + "\n"
+            }
+        }
+        out += "desk: " + desk.order.map { host.arrangement($0).map { title(of: $0) } ?? "?" }.joined(separator: ", ")
+        return out
     }
 
     // MARK: Palette
@@ -443,10 +529,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func paletteItems() -> [PaletteItem] {
-        // A new terminal on this stack, in a new column, or in a new tab: the
-        // same three as ⌘N, ⌘D and ⌥⌘T.
         var items: [PaletteItem] = []
-        if selectedTab != nil {
+        if arrangement != nil {
             items.append(PaletteItem(symbol: "square.stack", title: "New Terminal on This Stack", subtitle: "⌘N") { [weak self] in
                 self?.newSheet(nil)
             })
@@ -454,190 +538,265 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.splitRight(nil)
             })
         }
-        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Tab", subtitle: "⌥⌘T") { [weak self] in
-            self?.openTerminal()
+        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Arrangement", subtitle: "⌥⌘T") { [weak self] in
+            self?.newTerminal(nil)
         })
-        if selectedTab != nil {
-            items.append(PaletteItem(symbol: "pencil", title: "Rename Tab", subtitle: "Action") { [weak self] in
+        items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
+            self?.newNote(nil)
+        })
+        if arrangement != nil {
+            items.append(PaletteItem(symbol: "pencil", title: "Name This Arrangement…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
             })
+            for layout in ArrangementLayout.allCases where layout != arrangement?.layout {
+                items.append(PaletteItem(symbol: Self.layoutSymbol(layout), title: "Show as \(Self.layoutTitle(layout))", subtitle: "Layout") { [weak self] in
+                    self?.setLayout(layout)
+                })
+            }
+            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This Arrangement", subtitle: "⌘Y") { [weak self] in
+                self?.showHistory(nil)
+            })
         }
-        items.append(PaletteItem(symbol: "doc.text.magnifyingglass", title: "Open File…", subtitle: "⌘O") { [weak self] in
+        items.append(PaletteItem(symbol: "magnifyingglass", title: "Find Anything…", subtitle: "⌘O") { [weak self] in
             self?.openDocument(nil)
         })
         // The file shown, the other way: edit a preview's, preview an editor's.
-        if let pane = focusedPane, let path = pane.path, let column = selectedTab?.columnIndex(of: pane.id).map({ selectedTab!.columns[$0].id }) {
-            if pane.kind == .markdown {
+        if let f = focusedShown, let path = f.path, let a = arrangement, let column = a.columnIndex(of: f.id) {
+            if f.lens == .preview {
                 items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File", subtitle: "Action") { [weak self] in
-                    self?.server.send(.openFileOnStack(path: path, kind: .editor, pane: UUID(), column: column))
+                    self?.place(f.placement.block, lens: .editor, onColumn: column)
                 })
-            } else if pane.kind == .editor, Self.isMarkdown(path) {
+            } else if f.lens == .editor, Lens.isMarkdown(path) {
                 items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File", subtitle: "Action") { [weak self] in
-                    self?.server.send(.openFileOnStack(path: path, kind: .markdown, pane: UUID(), column: column))
+                    self?.place(f.placement.block, lens: .preview, onColumn: column)
+                })
+            }
+            if let dir = f.block?.place {
+                items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
+                    self?.openDirectory(dir, beside: f.id)
                 })
             }
         }
-        for tab in ws.tabs {
-            let pane = tab.focused
-            let place: String
-            switch pane?.kind {
-            case .markdown?:
-                place = pane?.path.map { "Markdown in \(Self.abbreviate(($0 as NSString).deletingLastPathComponent))" } ?? "Markdown"
-            case .editor?:
-                place = pane?.path.map { "Editing in \(Self.abbreviate(($0 as NSString).deletingLastPathComponent))" } ?? "Editing"
-            default:
-                place = pane?.cwd.map { "Terminal in \(Self.abbreviate($0))" } ?? "Terminal"
-            }
-            let id = tab.id
-            items.append(PaletteItem(symbol: tab.isSplit ? "rectangle.split.2x1" : Theme.symbolName(for: pane?.kind ?? .terminal),
-                                     title: tab.title, subtitle: place) { [weak self] in
-                self?.server.send(.selectTab(id))
+        if let f = focusedShown, f.lens == .terminal, let cwd = f.block?.terminal?.cwd {
+            items.append(PaletteItem(symbol: "folder", title: "Show This Folder", subtitle: cwd.abbreviatingHome) { [weak self] in
+                self?.openDirectory(cwd, beside: f.id)
+            })
+        }
+        for id in desk.order {
+            guard let a = host.arrangement(id) else { continue }
+            let focused = a.focusedPlacement.flatMap { host.block($0.block) }
+            let place = focused?.place.map { $0.abbreviatingHome } ?? ""
+            items.append(PaletteItem(symbol: a.columns.count > 1 ? "rectangle.split.2x1" : (focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group"),
+                                     title: title(of: a), subtitle: a.isNamed ? "Named · \(place)" : place) { [weak self] in
+                self?.host.select(id)
             })
         }
         return items
     }
 
-    static func abbreviate(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path == home { return "~" }
-        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
-        return path
+    static func layoutTitle(_ l: ArrangementLayout) -> String {
+        switch l {
+        case .stacks: "Stacks"
+        case .tiling: "Tiles"
+        case .list: "a List"
+        }
+    }
+
+    static func layoutSymbol(_ l: ArrangementLayout) -> String {
+        switch l {
+        case .stacks: "square.stack"
+        case .tiling: "rectangle.grid.1x2"
+        case .list: "list.bullet"
+        }
     }
 
     // MARK: Commands
 
-    private var focusedPane: Pane? {
-        guard let tab = selectedTab else { return nil }
-        return tab.focused
+    private var focusedShown: Shown? {
+        guard let a = arrangement, let p = a.focusedPlacement else { return nil }
+        return Shown(placement: p, block: host.block(p.block))
     }
 
-    private func openTerminal() {
-        server.send(.newTab(tab: UUID(), pane: UUID(), kind: .terminal, cwd: focusedPane?.cwd, after: ws.selectedTab))
+    private var focusedCwd: String? {
+        guard let f = focusedShown else { return nil }
+        return f.block?.terminal?.cwd ?? f.block?.place
+    }
+
+    /// Changes the selected arrangement.
+    private func appendToSelected(_ events: [Event]) {
+        guard let id = selected else { return }
+        host.append(events, to: .block(id))
+    }
+
+    /// An arrangement to put things in: the selected one, or a new one.
+    private func arrangementForPlacing() -> BlockID {
+        if let id = selected, host.arrangement(id) != nil { return id }
+        return host.newArrangement()
     }
 
     @objc func newTab(_ sender: Any?) { showPalette() }
 
-    @objc func newTerminal(_ sender: Any?) { openTerminal() }
+    /// A new terminal in a new arrangement.
+    @objc func newTerminal(_ sender: Any?) {
+        let cwd = focusedCwd
+        let a = host.newArrangement(after: selected)
+        let t = host.newTerminal(cwd: cwd)
+        host.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
+    }
 
     /// A new terminal on top of the focused column's stack.
     @objc func newSheet(_ sender: Any?) {
-        guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused) else {
-            return openTerminal()
-        }
-        server.send(.newSheet(pane: UUID(), column: tab.columns[c].id, kind: .terminal, cwd: focusedPane?.cwd))
+        guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
+        let c = a.focused.flatMap { a.columnIndex(of: $0) } ?? 0
+        let t = host.newTerminal(cwd: focusedCwd)
+        appendToSelected([.place(Placement(block: t, lens: .terminal), column: c, at: a.columns[c].count)])
     }
 
     @objc func splitRight(_ sender: Any?) {
-        guard let tab = selectedTab else { return openTerminal() }
-        let i = tab.focusedPane.flatMap { tab.columnIndex(of: $0) } ?? tab.columns.count - 1
-        server.send(.newPane(pane: UUID(), tab: tab.id, at: i + 1, kind: .terminal, cwd: focusedPane?.cwd))
+        guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
+        let i = a.focused.flatMap { a.columnIndex(of: $0) } ?? a.columns.count - 1
+        let t = host.newTerminal(cwd: focusedCwd)
+        appendToSelected([.place(Placement(block: t, lens: .terminal), column: i + 1, at: 0)])
+        // `place` at a column past the end appends; one in the middle needs a
+        // new column there: move it after.
+        if i + 1 < a.columns.count, let placed = arrangement?.placements(of: t).first {
+            appendToSelected([.move(placed.id, column: a.columns.count, at: 0)])
+            reorderColumn(from: a.columns.count, to: i + 1)
+        }
     }
 
+    /// Moves a whole column to another index.
+    private func reorderColumn(from: Int, to: Int) {
+        guard let a = arrangement, from < a.columns.count, from != to else { return }
+        // Placements are moved one by one into a new column at `to`.
+        let placements = a.columns[from]
+        var events: [Event] = []
+        for (i, p) in placements.enumerated() {
+            events.append(.move(p.id, column: i == 0 ? min(to, a.columns.count) : to, at: i))
+        }
+        appendToSelected(events)
+    }
+
+    @objc func newNote(_ sender: Any?) {
+        let note = host.newNote()
+        let a = arrangementForPlacing()
+        guard let state = host.arrangement(a) else { return }
+        let column = state.focused.flatMap { state.columnIndex(of: $0) } ?? state.columns.count
+        host.append(.place(Placement(block: note, lens: .editor), column: column, at: column < state.columns.count ? state.columns[column].count : 0), to: .block(a))
+    }
+
+    /// ⌘W: the focused placement leaves the arrangement (its block stays,
+    /// to be found again); an unnamed arrangement left empty leaves the desk.
     @objc func closePaneOrTab(_ sender: Any?) {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
-        guard let tab = selectedTab else { return }
-        // Pops the focused stack, or closes the tab when it's all there is.
-        if tab.panes.count > 1, let pane = tab.focusedPane {
-            confirmClosing([pane]) { [weak self] in self?.server.send(.closePane(pane)) }
-        } else {
-            closeTab(id: tab.id)
+        guard let a = arrangement, let id = selected else { return }
+        if let f = a.focused {
+            host.append(.remove(f), to: .block(id))
+        }
+        if host.arrangement(id)?.isEmpty == true, !a.isNamed {
+            removeFromDesk(id)
         }
     }
 
+    /// ⇧⌘W: the arrangement leaves the desk.
     @objc func closeTab(_ sender: Any?) {
-        if let tab = selectedTab { closeTab(id: tab.id) }
+        if let id = selected { removeFromDesk(id) }
     }
 
-    private func closeTab(id: UUID) {
-        guard let tab = ws.tab(id) else { return }
-        confirmClosing(tab.panes.map(\.id)) { [weak self] in self?.server.send(.closeTab(id)) }
-    }
-
-    /// Asks before closing editors with unsaved changes, as a Mac app does:
-    /// save them, don't, or don't close.
-    private func confirmClosing(_ panes: [UUID], then close: @escaping () -> Void) {
-        let edited = panes.compactMap { views[$0] as? EditorView }.filter(\.isEdited)
-        guard !edited.isEmpty, let window else { return close() }
-        let alert = NSAlert()
-        if edited.count == 1 {
-            alert.messageText = "Do you want to save the changes you made to \((edited[0].path as NSString).lastPathComponent)?"
-        } else {
-            alert.messageText = "Do you want to save the changes you made to \(edited.count) files?"
-        }
-        alert.informativeText = "Your changes will be lost if you don't save them."
-        alert.addButton(withTitle: edited.count == 1 ? "Save" : "Save All")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Don't Save").hasDestructiveAction = true
-        alert.beginSheetModal(for: window) { response in
-            switch response {
-            case .alertFirstButtonReturn:
-                edited.forEach { $0.saveDocument(nil) }
-                if edited.allSatisfy({ !$0.isEdited }) { close() }
-            case .alertThirdButtonReturn:
-                close()
-            default:
-                break
-            }
+    private func removeFromDesk(_ id: BlockID) {
+        var order = desk.order
+        guard let i = order.firstIndex(of: id) else { return }
+        order.remove(at: i)
+        host.append(.order(order), to: .desk(host.host))
+        if selected == id {
+            host.append(.select(order.isEmpty ? nil : order[min(i, order.count - 1)]), to: .desk(host.host))
         }
     }
 
     @objc func renameTab(_ sender: Any?) {
-        if let tab = selectedTab { rename(tab.id) }
+        if let id = selected { rename(id) }
     }
 
+    /// Separate Columns: each other column becomes an arrangement of its own.
     @objc func unsplitTab(_ sender: Any?) {
-        if let tab = selectedTab, tab.isSplit { server.send(.unsplit(tab.id)) }
+        guard let id = selected, let a = host.arrangement(id), a.columns.count > 1 else { return }
+        var after = id
+        for column in a.separated() {
+            let n = host.newArrangement(select: false, after: after)
+            host.append(.adopt(columns: [column], at: 0), to: .block(n))
+            host.append(column.map { .remove($0.id) }, to: .block(id))
+            after = n
+        }
     }
 
     @objc func movePaneToNewTab(_ sender: Any?) {
-        if let tab = selectedTab, tab.panes.count > 1, let pane = tab.focusedPane {
-            let index = ws.tabIndex(tab.id).map { $0 + 1 } ?? ws.tabs.count
-            server.send(.movePane(pane, to: .newTab(tab: UUID(), index: index)))
-        }
+        guard let id = selected, let a = host.arrangement(id), let f = a.focused, let p = a.placement(f) else { return }
+        let n = host.newArrangement(after: id)
+        host.append(.remove(f), to: .block(id))
+        host.append(.place(Placement(block: p.block, lens: p.lens), column: 0, at: 0), to: .block(n))
     }
 
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
 
     @objc func setColorScheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let scheme = ColorScheme(rawValue: raw) else { return }
-        var appearance = ws.appearance
-        appearance.colorScheme = scheme
-        server.send(.setAppearance(appearance))
+        var a = desk.appearance
+        a.colorScheme = scheme
+        host.setAppearance(a)
     }
 
     @objc func setTheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let theme = FontTheme(rawValue: raw) else { return }
-        var appearance = ws.appearance
-        appearance.theme = theme
-        server.send(.setAppearance(appearance))
+        var a = desk.appearance
+        a.theme = theme
+        host.setAppearance(a)
     }
 
     @objc func setEditorFont(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let font = EditorFont(rawValue: raw) else { return }
-        var appearance = ws.appearance
-        appearance.editorFont = font
-        server.send(.setAppearance(appearance))
+        var a = desk.appearance
+        a.editorFont = font
+        host.setAppearance(a)
     }
 
     @objc func setContrastCorrection(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let mode = ContrastCorrection(rawValue: raw) else { return }
-        server.send(.setAppearance(Appearance(contrastCorrection: mode)))
+        var a = desk.appearance
+        a.contrastCorrection = mode
+        host.setAppearance(a)
+    }
+
+    @objc func setLayoutStacks(_ sender: Any?) { setLayout(.stacks) }
+    @objc func setLayoutTiling(_ sender: Any?) { setLayout(.tiling) }
+    @objc func setLayoutList(_ sender: Any?) { setLayout(.list) }
+
+    func setLayout(_ layout: ArrangementLayout) {
+        guard let a = arrangement, a.layout != layout else { return }
+        appendToSelected([.layout(layout)])
     }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(setPutAwayAfter(_:)):
-            item.state = item.tag == ws.appearance.putAwayAfter ? .on : .off
+        case #selector(setCollectAfter(_:)):
+            item.state = item.tag == desk.settings.collectAfterMinutes ? .on : .off
+        case #selector(setTerminalDormancy(_:)):
+            item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(setColorScheme(_:)):
-            item.state = (item.representedObject as? String) == ws.appearance.colorScheme.rawValue ? .on : .off
+            item.state = (item.representedObject as? String) == desk.appearance.colorScheme.rawValue ? .on : .off
         case #selector(setTheme(_:)):
-            item.state = (item.representedObject as? String) == ws.appearance.theme.rawValue ? .on : .off
+            item.state = (item.representedObject as? String) == desk.appearance.theme.rawValue ? .on : .off
         case #selector(setEditorFont(_:)):
-            item.state = (item.representedObject as? String) == ws.appearance.editorFont.rawValue ? .on : .off
+            item.state = (item.representedObject as? String) == desk.appearance.editorFont.rawValue ? .on : .off
         case #selector(setContrastCorrection(_:)):
-            item.state = (item.representedObject as? String) == ws.appearance.contrastCorrection.rawValue ? .on : .off
+            item.state = (item.representedObject as? String) == desk.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(togglePinnedSidebar(_:)):
             item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
+        case #selector(setLayoutStacks(_:)):
+            item.state = arrangement?.layout == .stacks ? .on : .off
+        case #selector(setLayoutTiling(_:)):
+            item.state = arrangement?.layout == .tiling ? .on : .off
+        case #selector(setLayoutList(_:)):
+            item.state = arrangement?.layout == .list ? .on : .off
         default:
             break
         }
@@ -648,83 +807,77 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func previousTab(_ sender: Any?) { stepTab(-1) }
 
     private func stepTab(_ d: Int) {
-        guard !ws.tabs.isEmpty else { return }
-        let i = ws.selectedTab.flatMap(ws.tabIndex) ?? 0
-        show(tab: ws.tabs[(i + d + ws.tabs.count) % ws.tabs.count].id, slidingFrom: CGFloat(d))
+        let order = desk.order
+        guard !order.isEmpty else { return }
+        let i = selected.flatMap { order.firstIndex(of: $0) } ?? 0
+        show(arrangement: order[(i + d + order.count) % order.count], slidingFrom: CGFloat(d))
     }
 
-    /// Selects `tab`, which slides in from `dir`'s side over the one shown.
-    private func show(tab: UUID, slidingFrom dir: CGFloat) {
-        guard tab != ws.selectedTab else { return }
+    /// Selects an arrangement, which slides in from `dir`'s side over the
+    /// one shown.
+    private func show(arrangement id: BlockID, slidingFrom dir: CGFloat) {
+        guard id != selected else { return }
         pendingSlide = dir
-        server.send(.selectTab(tab))
+        host.select(id)
     }
 
     // MARK: ⌃⇥
 
-    /// ⌃⇥ (⌃⇧⇥ back): with control held, a walk through the tabs, most
-    /// recently settled on first, each shown at once sliding in from the
-    /// right (from the left, going back); letting go of control settles on
-    /// the one come to, so the first ⌃⇥ goes back to the last one settled
-    /// on, and another returns. The tabs passed on the way aren't settled
-    /// on; Escape goes back to where the walk began.
+    /// ⌃⇥ (⌃⇧⇥ back): with control held, a walk through the arrangements
+    /// most recently settled on first, each shown at once sliding in from
+    /// the right (from the left, going back); letting go of control settles
+    /// on the one come to. The ones passed on the way aren't settled on;
+    /// Escape goes back to where the walk began.
     @objc func walkTabs(_ sender: Any?) { walkTabs(back: false) }
     @objc func walkTabsBack(_ sender: Any?) { walkTabs(back: true) }
 
     private func walkTabs(back: Bool) {
-        let live = Set(ws.tabs.map(\.id))
-        if tabWalk == nil {
-            guard let current = ws.selectedTab, ws.tabs.count > 1 else { return }
+        let live = Set(desk.order)
+        if walk == nil {
+            guard let current = selected, desk.order.count > 1 else { return }
             var order = [current]
-            for id in settled + ws.tabs.map(\.id) where live.contains(id) && !order.contains(id) { order.append(id) }
-            tabWalk = (order, 0)
-            if NSEvent.modifierFlags.contains(.control) { watchTabWalk() }
+            for id in desk.settled + desk.order where live.contains(id) && !order.contains(id) { order.append(id) }
+            walk = (order, 0)
+            if NSEvent.modifierFlags.contains(.control) { watchWalk() }
         }
-        guard var walk = tabWalk else { return }
-        walk.tabs = walk.tabs.filter { live.contains($0) }
-        guard walk.tabs.count > 1 else { return endTabWalk(settling: true) }
-        let n = walk.tabs.count
-        walk.index = ((back ? walk.index - 1 : walk.index + 1) % n + n) % n
-        tabWalk = walk
-        show(tab: walk.tabs[walk.index], slidingFrom: back ? -1 : 1)
+        guard var w = walk else { return }
+        w.ids = w.ids.filter { live.contains($0) }
+        guard w.ids.count > 1 else { return endWalk(settling: true) }
+        let n = w.ids.count
+        w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
+        walk = w
+        show(arrangement: w.ids[w.index], slidingFrom: back ? -1 : 1)
         // From the menu, without control held, it's one step and settled.
-        if tabWalkMonitors.isEmpty { endTabWalk(settling: true) }
+        if walkMonitors.isEmpty { endWalk(settling: true) }
     }
 
-    private func watchTabWalk() {
-        tabWalkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.control) { self?.endTabWalk(settling: true) }
+    private func watchWalk() {
+        walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            if !event.modifierFlags.contains(.control) { self?.endWalk(settling: true) }
             return event
         } as Any)
-        tabWalkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event }
-            self?.endTabWalk(settling: false)
+            self?.endWalk(settling: false)
             return nil
         } as Any)
     }
 
-    private func endTabWalk(settling: Bool) {
-        tabWalkMonitors.forEach(NSEvent.removeMonitor)
-        tabWalkMonitors = []
-        guard let walk = tabWalk else { return }
-        tabWalk = nil
+    private func endWalk(settling: Bool) {
+        walkMonitors.forEach(NSEvent.removeMonitor)
+        walkMonitors = []
+        guard let w = walk else { return }
+        walk = nil
         if settling {
-            // Where the walk came to, whether or not the server has said so yet.
-            noteSettled(walk.tabs[walk.index])
-        } else if let home = walk.tabs.first {
-            show(tab: home, slidingFrom: -1)
+            host.append(.settled(w.ids[w.index]), to: .desk(host.host))
+        } else if let home = w.ids.first {
+            show(arrangement: home, slidingFrom: -1)
         }
     }
 
-    private func noteSettled(_ id: UUID) {
-        guard settled.first != id else { return }
-        let live = Set(ws.tabs.map(\.id))
-        settled = [id] + settled.filter { $0 != id && live.contains($0) }
-    }
-
-    /// The tab about to be shown slides in from `dir`'s side over the one
-    /// shown, which slides out the other way, both live. Only their layers
-    /// move, so nothing is laid out again on the way.
+    /// The arrangement about to be shown slides in from `dir`'s side over
+    /// the one shown, which slides out the other way, both live. Only their
+    /// layers move, so nothing is laid out again on the way.
     private func slide(from dir: CGFloat) {
         finishSlide()
         let frame = content.frame
@@ -751,21 +904,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         CATransaction.commit()
     }
 
-    /// The tab slid away lets go of its panes (any still its own) and goes.
+    /// The arrangement slid away lets go of its views and goes.
     private func finishSlide() {
         guard sliding else { return }
         sliding = false
         content.layer?.removeAnimation(forKey: "manifold.slide")
         outgoing.layer?.removeAnimation(forKey: "manifold.slide")
-        outgoing.show([], fractions: [], focused: nil)
+        outgoing.clear()
         outgoing.removeFromSuperview()
     }
 
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
-        guard !ws.tabs.isEmpty else { return }
+        let order = desk.order
+        guard !order.isEmpty else { return }
         let n = sender.tag
-        let i = n == 9 ? ws.tabs.count - 1 : n - 1
-        if i < ws.tabs.count { server.send(.selectTab(ws.tabs[i].id)) }
+        let i = n == 9 ? order.count - 1 : n - 1
+        if i < order.count { host.select(order[i]) }
     }
 
     // MARK: The stack switcher
@@ -790,25 +944,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             switcher.move(back ? 1 : -1)
             return
         }
-        guard let tab = selectedTab, let focused = tab.focusedPane, let c = tab.columnIndex(of: focused),
-              tab.columns[c].panes.count > 1, let bottom = tab.columns[c].panes.first else { return }
-        guard NSEvent.modifierFlags.contains(.command) else {
-            let panes = tab.columns[c].panes
-            server.send(.focusPane(back ? panes[panes.count - 2].id : bottom.id))
+        guard let a = arrangement, let focused = a.focused, let c = a.columnIndex(of: focused),
+              a.columns[c].count > 1 else { return }
+        let column = a.columns[c]
+        guard NSEvent.modifierFlags.contains(.command), a.layout == .stacks else {
+            focus(back ? column[column.count - 2].id : column[0].id)
             return
         }
-        showSwitcher(column: tab.columns[c], back: back)
+        showSwitcher(column: c, back: back)
     }
 
-    private func showSwitcher(column: Column, back: Bool) {
-        guard palette == nil, column.panes.count > 1, let top = column.top.flatMap({ views[$0.id] }) else { return }
+    private func showSwitcher(column c: Int, back: Bool) {
+        guard palette == nil, let a = arrangement, c < a.columns.count, a.columns[c].count > 1,
+              let top = a.columns[c].last.flatMap({ views[$0.id] }) else { return }
         let size = top.frame.size
-        let panes = column.panes.map { ($0, view(for: $0)) }
-        let s = StackSwitcherView(panes: panes, contentSize: size,
-                                  selection: back ? 0 : panes.count - 2)
+        let panes = a.columns[c].map { p -> (Shown, PaneContent) in
+            let s = Shown(placement: p, block: host.block(p.block))
+            return (s, view(for: s))
+        }
+        let s = StackSwitcherView(panes: panes, contentSize: size, selection: back ? 0 : panes.count - 2)
         s.onPick = { [weak self] _ in self?.closeSwitcher(commit: true) }
         // Over the column alone; the others carry on beside it.
-        s.frame = content.frame(ofColumn: column.id).map { content.convert($0, to: root) } ?? root.bounds
+        s.frame = content.frame(ofColumn: c).map { content.convert($0, to: root) } ?? root.bounds
         root.addSubview(s, positioned: .above, relativeTo: content)
         switcher = s
         s.layoutSubtreeIfNeeded()
@@ -831,20 +988,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let s = switcher, !s.isClosing else { return }
         switcherMonitors.forEach(NSEvent.removeMonitor)
         switcherMonitors = []
-        let top = selectedTab.flatMap { tab in
-            tab.columns.first { $0.panes.contains { $0.id == s.selectedPane } }?.top?.id
-        }
+        let top = arrangement.flatMap { a in a.columns.first { $0.contains { $0.id == s.selectedPane } }?.last?.id }
         let chosen = commit ? s.selectedPane : top ?? s.selectedPane
         // The chosen sheet comes forward to fill the column, then is left
-        // there, as the top, for the server's word to confirm.
+        // there, as the top, for the log to confirm.
         s.dismiss(to: chosen) { [weak self, weak s] in
             guard let self, let s else { return }
             self.switcher = nil
             if chosen != top {
-                s.tearDown(keeping: chosen, in: self.content)
-                if let view = self.views[chosen] { self.content.arriveQuietly(view) }
+                s.tearDown(keeping: chosen, in: self.content.stacks)
+                if let view = self.views[chosen] { self.content.stacks.arriveQuietly(view) }
                 s.removeFromSuperview()
-                self.server.send(.focusPane(chosen))
+                self.focus(chosen)
             } else {
                 s.tearDown()
                 s.removeFromSuperview()
@@ -857,71 +1012,158 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func previousPane(_ sender: Any?) { stepPane(-1) }
 
     private func stepPane(_ d: Int) {
-        guard let tab = selectedTab, tab.isSplit else { return }
-        let visible = tab.visiblePanes
-        let i = visible.firstIndex { $0.id == tab.focusedPane } ?? 0
-        server.send(.focusPane(visible[(i + d + visible.count) % visible.count].id))
+        guard let a = arrangement, a.visible.count > 1 else { return }
+        let visible = a.visible
+        let i = visible.firstIndex { $0.id == a.focused } ?? 0
+        focus(visible[(i + d + visible.count) % visible.count].id)
     }
 
-    func debugPicker(_ query: String) -> [String] { filePicker.debugQuery(query) }
+    /// Focuses a placement of the selected arrangement (raising it, in stacks).
+    func focus(_ placement: PlacementID) {
+        guard let a = arrangement, a.placement(placement) != nil else { return }
+        if a.focused == placement, a.layout != .stacks || a.columns.contains(where: { $0.last?.id == placement }) { return }
+        appendToSelected([.focus(placement)])
+    }
 
-    private lazy var filePicker: FilePicker = {
-        let picker = FilePicker()
-        picker.onOpen = { [weak self] path in self?.edit(path) }
-        return picker
+    // MARK: Finding and opening
+
+    func debugFinder(_ query: String) -> [String] { finder.debugQuery(query) }
+
+    private lazy var finder: Finder = {
+        let f = Finder()
+        f.search = { [weak self] query, files in self?.finderItems(query, files: files) ?? [] }
+        return f
     }()
 
-    /// ⌘O: the picker, over the files where the focused pane is.
+    /// ⌘O: the finder, over everything, and the files where the focused
+    /// placement is.
     @objc func openDocument(_ sender: Any?) {
-        let root: String
-        switch focusedPane?.kind {
-        case .terminal?: root = focusedPane?.cwd ?? NSHomeDirectory()
-        case .some: root = focusedPane?.path.map { ($0 as NSString).deletingLastPathComponent } ?? NSHomeDirectory()
-        case nil: root = NSHomeDirectory()
+        let root = focusedCwd ?? NSHomeDirectory()
+        finder.show(root: root, over: window)
+    }
+
+    private func finderItems(_ query: String, files: [String]) -> [FinderItem] {
+        var scored: [(score: Int, recency: Int64, item: FinderItem)] = []
+        let registry = host.registry
+        let known = Set(host.node.blocks.compactMap(\.path))
+        for block in host.node.blocks {
+            guard let entry = registry.blocks[block.id] else { continue }
+            let title = block.displayTitle
+            let hay: String
+            let detail: String
+            var note = ""
+            switch block.kind {
+            case .arrangement:
+                guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
+                hay = title + " " + a.placements.compactMap { host.block($0.block)?.displayTitle }.joined(separator: " ")
+                detail = a.isNamed ? "Arrangement · \(a.placements.count) blocks" : "Arrangement, unnamed · \(a.placements.count) blocks"
+                note = desk.order.contains(block.id) ? "on the desk" : ""
+            case .text:
+                hay = (block.path ?? title) + " " + title
+                detail = block.path.map { ($0 as NSString).deletingLastPathComponent.abbreviatingHome } ?? "Note"
+                note = block.text?.isDirty == true ? "edited" : ""
+            case .terminal:
+                hay = title + " " + (block.terminal?.cwd ?? "")
+                detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
+                note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "dormant" : (block.terminal?.busy == true ? "running" : "")
+            case .directory:
+                hay = block.path ?? title
+                detail = "Folder"
+            default:
+                hay = title
+                detail = block.kind.defaultTitle
+            }
+            let score = query.isEmpty ? 1 : (Finder.score(query, hay))
+            guard score > 0 else { continue }
+            let id = block.id
+            let kind = block.kind
+            let path = block.path
+            scored.append((score, entry.lastSeen.wall, FinderItem(
+                symbol: Theme.symbolName(for: kind, path: path), title: title, detail: detail, note: note,
+                run: { [weak self] in self?.recall(id) })))
         }
-        filePicker.show(root: root, over: window)
+        for file in files where !known.contains(file) {
+            let name = (file as NSString).lastPathComponent
+            let score = query.isEmpty ? 1 : Finder.score(query, file)
+            guard score > 0 else { continue }
+            scored.append((score, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
+                                               detail: (file as NSString).deletingLastPathComponent.abbreviatingHome, note: "file",
+                                               run: { [weak self] in self?.open(file, from: nil) })))
+        }
+        scored.sort { a, b in
+            if a.score != b.score { return a.score > b.score }
+            return a.recency > b.recency
+        }
+        return Array(scored.prefix(60).map(\.item))
+    }
+
+    /// Brings a block back: an arrangement onto the desk and selected; any
+    /// other beside the focused terminal, or on the focused stack.
+    func recall(_ id: BlockID) {
+        guard let block = host.block(id) else { return }
+        if block.kind == .arrangement {
+            host.select(id)
+            return
+        }
+        place(id, lens: Lens.default(for: block.kind, path: block.path), beside: focusedShown?.lens == .terminal ? focusedShown?.id : nil)
+    }
+
+    /// Places a block in the selected arrangement: beside a placement (on
+    /// the stack to its right, or a new column), or on the focused stack.
+    func place(_ block: BlockID, lens: Lens, beside: PlacementID?) {
+        let id = arrangementForPlacing()
+        guard let a = host.arrangement(id) else { return }
+        let events = a.placing(block, lens: lens, beside: beside, newPlacement: { ULID.make() })
+        host.append(events, to: .block(id))
+        if let beside, let from = a.placement(beside)?.block { host.link(from: from, to: block, kind: .opened) }
+    }
+
+    func place(_ block: BlockID, lens: Lens, onColumn column: Int) {
+        let id = arrangementForPlacing()
+        guard let a = host.arrangement(id) else { return }
+        host.append(a.placing(block, lens: lens, onColumn: column, newPlacement: { ULID.make() }), to: .block(id))
     }
 
     /// Opens a file to edit: from a terminal, on the stack beside it; from
-    /// a file, on its own stack; with no tab, in a tab of its own.
+    /// a file, on its own stack.
     func edit(_ path: String) {
         guard Self.isEditable(path) else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return
         }
-        guard let tab = selectedTab, let pane = focusedPane else {
-            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: nil))
-            return
-        }
-        if pane.kind == .terminal {
-            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: pane.id))
-        } else if let c = tab.columnIndex(of: pane.id) {
-            server.send(.openFileOnStack(path: path, kind: .editor, pane: UUID(), column: tab.columns[c].id))
+        let block = host.textBlock(for: path)
+        if let f = focusedShown, f.lens != .terminal, let a = arrangement, let c = a.columnIndex(of: f.id) {
+            place(block, lens: .editor, onColumn: c)
+        } else {
+            place(block, lens: .editor, beside: focusedShown?.id)
         }
     }
 
-    static func isMarkdown(_ path: String) -> Bool {
-        ["md", "markdown", "mdown", "mkd", "mdx"].contains((path as NSString).pathExtension.lowercased())
+    func openDirectory(_ path: String, beside: PlacementID?) {
+        let block = host.directoryBlock(for: path)
+        place(block, lens: .directory, beside: beside)
     }
 
     /// Text, and not too big to edit.
     static func isEditable(_ path: String) -> Bool {
         let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-        return size < 32 << 20 && EditorView.isText(path)
+        return size < 32 << 20 && TextFile.isText(path)
     }
 
-    /// Opens what a link in a pane points at: Markdown files in a preview
-    /// beside the pane, anything else with the system.
-    func open(_ target: String, from pane: UUID) {
+    /// Opens what a link in a placement points at: Markdown files in a
+    /// preview beside it, folders in a listing, text to edit, anything else
+    /// with the system.
+    func open(_ target: String, from placement: PlacementID?) {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
             NSWorkspace.shared.open(url)
             return
         }
+        let base = placement.flatMap { shown($0)?.block }.flatMap { $0.terminal?.cwd ?? $0.place }
         func resolve(_ text: String) -> String {
             var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
             path = (path as NSString).expandingTildeInPath
-            if !path.hasPrefix("/"), let cwd = ws.pane(pane)?.cwd {
-                path = (cwd as NSString).appendingPathComponent(path)
+            if !path.hasPrefix("/"), let base {
+                path = (base as NSString).appendingPathComponent(path)
             }
             return URL(fileURLWithPath: path).standardizedFileURL.path
         }
@@ -937,16 +1179,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            server.send(.openFile(path: base, kind: .editor, pane: UUID(), tab: UUID(), beside: pane))
+            place(host.textBlock(for: base), lens: .editor, beside: placement)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         if isDir.boolValue {
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
-        } else if Self.isMarkdown(path) {
-            server.send(.openFile(path: path, kind: .markdown, pane: UUID(), tab: UUID(), beside: pane))
+            openDirectory(path, beside: placement)
+        } else if Lens.isMarkdown(path) {
+            place(host.textBlock(for: path), lens: .preview, beside: placement)
         } else if Self.isEditable(path) {
-            server.send(.openFile(path: path, kind: .editor, pane: UUID(), tab: UUID(), beside: pane))
+            place(host.textBlock(for: path), lens: .editor, beside: placement)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -955,42 +1197,88 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func restartServer(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "Restart Manifold's server?"
-        alert.informativeText = "Your tabs are kept. Each shell starts again in the same directory, under its recent output; programs running in them are ended."
+        alert.informativeText = "Everything is kept. Each shell starts again in the same directory, under its recent output; programs running in them are ended."
         alert.addButton(withTitle: "Restart Server")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        ServerClient.stopServer()
+        HostClient.stopServer()
     }
 
     @objc func stopServer(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "Quit and end all sessions?"
-        alert.informativeText = "Every shell in Manifold will be closed. Your tabs are kept, and start fresh shells next time."
+        alert.informativeText = "Every shell in Manifold will be closed. Everything is kept, and terminals start fresh shells next time."
         alert.addButton(withTitle: "End Sessions and Quit")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        ServerClient.stopServer()
+        HostClient.stopServer()
         NSApp.terminate(nil)
     }
 
-    private func rename(_ id: UUID) {
-        guard let window, let tab = ws.tab(id) else { return }
+    /// Names an arrangement, which keeps it (§3.3).
+    private func rename(_ id: BlockID) {
+        guard let window, let a = host.arrangement(id) else { return }
         let alert = NSAlert()
-        alert.messageText = "Rename Tab"
-        alert.informativeText = "Enter a custom title for this tab."
+        alert.messageText = "Name This Arrangement"
+        alert.informativeText = "A named arrangement is kept as it is until you change it; an unnamed one is tidied away as its blocks go unused."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        field.stringValue = tab.customTitle ?? tab.title
+        field.stringValue = a.title ?? ""
+        field.placeholderString = title(of: a)
         alert.accessoryView = field
-        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Name")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }
             if response == .alertFirstButtonReturn {
-                self.server.send(.renameTab(id, title: field.stringValue))
+                self.host.append(.title(field.stringValue), to: .block(id))
             }
             self.render()
         }
+    }
+
+    // MARK: History
+
+    private var history: HistoryView?
+
+    /// ⌘Y: the selected arrangement's history, to scrub through and restore.
+    @objc func showHistory(_ sender: Any?) {
+        guard let id = selected, history == nil else { return hideHistory() }
+        let h = HistoryView(frame: root.bounds)
+        h.onClose = { [weak self] in self?.hideHistory() }
+        h.onRestore = { [weak self] state in self?.restore(id, to: state) }
+        h.titleOf = { [weak self] block in self?.host.block(block)?.displayTitle ?? "?" }
+        h.symbolOf = { lens in Theme.symbolName(for: lens) }
+        root.addSubview(h, positioned: .above, relativeTo: nil)
+        history = h
+        host.propose(.history(.block(id)))
+    }
+
+    private func hideHistory() {
+        history?.removeFromSuperview()
+        history = nil
+    }
+
+    private func historyArrived(_ shard: ShardID, _ entries: [Entry]) {
+        guard let history, shard.block == selected else { return }
+        history.show(entries: entries)
+    }
+
+    /// Appends what makes the arrangement so again: a new version, never a
+    /// revert.
+    private func restore(_ id: BlockID, to state: ArrangementState) {
+        guard let current = host.arrangement(id) else { return }
+        var events: [Event] = []
+        for p in current.placements { events.append(.remove(p.id)) }
+        for (c, column) in state.columns.enumerated() {
+            for (i, p) in column.enumerated() {
+                events.append(.place(Placement(id: ULID.make(), block: p.block, lens: p.lens), column: c, at: i))
+            }
+        }
+        events.append(.layout(state.layout))
+        if state.fractions.count == state.columns.count { events.append(.fractions(state.fractions)) }
+        host.append(events, to: .block(id))
+        hideHistory()
     }
 
     // MARK: Window
@@ -1002,9 +1290,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         saveFrameWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let f = self.window?.frame else { return }
-            var state = self.ws.window
+            var state = self.desk.window
             state.frame = [f.minX, f.minY, f.width, f.height]
-            if state != self.ws.window { self.server.send(.setWindow(state)) }
+            if state != self.desk.window { self.host.setWindow(state) }
         }
         saveFrameWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
@@ -1018,17 +1306,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension MainWindowController: SidebarDelegate {
-    func sidebarSelect(_ tab: UUID) { server.send(.selectTab(tab)) }
-    func sidebarClose(_ tab: UUID) { closeTab(id: tab) }
-    func sidebarUnsplit(_ tab: UUID) { server.send(.unsplit(tab)) }
-    func sidebarRename(_ tab: UUID) { rename(tab) }
-    func sidebarMove(_ tab: UUID, to index: Int) { server.send(.moveTab(tab, to: index)) }
+    func sidebarSelect(_ arrangement: BlockID) { host.select(arrangement) }
+    func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
+    func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     func sidebarNewTab() { showPalette() }
 
+    func sidebarUnsplit(_ arrangement: BlockID) {
+        host.select(arrangement)
+        unsplitTab(nil)
+    }
+
+    func sidebarMove(_ arrangement: BlockID, to index: Int) {
+        var order = desk.order
+        guard let from = order.firstIndex(of: arrangement) else { return }
+        order.remove(at: from)
+        order.insert(arrangement, at: min(max(index, 0), order.count))
+        host.append(.order(order), to: .desk(host.host))
+    }
+
     func sidebarTogglePinned() {
-        var state = ws.window
+        var state = desk.window
         state.sidebarPinned.toggle()
-        server.send(.setWindow(state))
+        host.setWindow(state)
         if state.sidebarPinned {
             showSidebar(animated: false)
             setTrafficLights(visible: true, animated: true)
@@ -1048,8 +1347,8 @@ extension MainWindowController: SidebarDelegate {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar") { [weak self] in self?.sidebarTogglePinned() })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Show State File in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([Paths.state])
+        menu.addItem(ClosureMenuItem("Show Logs in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([Paths.logs])
         })
         menu.addItem(ClosureMenuItem("End All Sessions and Quit…") { [weak self] in self?.stopServer(nil) })
         return menu
@@ -1063,18 +1362,34 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarResizeEnded() {
         guard let width = resizingWidth else { return }
-        var state = ws.window
+        var state = desk.window
         state.sidebarWidth = Double(width)
         resizingWidth = nil
-        if state != ws.window { server.send(.setWindow(state)) }
+        if state != desk.window { host.setWindow(state) }
         layoutViews()
         if let window {
             mouseMoved(to: root.convert(window.mouseLocationOutsideOfEventStream, from: nil))
         }
     }
 
-    func sidebarMovePane(_ pane: UUID, to destination: PaneDestination) {
-        server.send(.movePane(pane, to: destination))
+    func sidebarMovePlacement(_ placement: PlacementID, to destination: SidebarDrop) {
+        guard let from = desk.order.first(where: { host.arrangement($0)?.placement(placement) != nil }),
+              let p = host.arrangement(from)?.placement(placement) else { return }
+        switch destination {
+        case .arrangement(let target):
+            guard target != from, let a = host.arrangement(target) else { return }
+            host.append(.remove(placement), to: .block(from))
+            let c = a.focused.flatMap { a.columnIndex(of: $0) } ?? max(a.columns.count - 1, 0)
+            host.append(.place(Placement(block: p.block, lens: p.lens), column: c, at: c < a.columns.count ? a.columns[c].count : 0), to: .block(target))
+            host.select(target)
+        case .newArrangement(let index):
+            if host.arrangement(from)?.placements.count == 1 { return sidebarMove(from, to: index) }
+            host.append(.remove(placement), to: .block(from))
+            let n = host.newArrangement(select: false)
+            host.append(.place(Placement(block: p.block, lens: p.lens), column: 0, at: 0), to: .block(n))
+            sidebarMove(n, to: index)
+            host.select(n)
+        }
     }
 
     func sidebarDragChanged(_ dragging: Bool) {
@@ -1084,26 +1399,51 @@ extension MainWindowController: SidebarDelegate {
 }
 
 extension MainWindowController: TabContentDelegate {
-    func contentCanDrop(_ tab: UUID) -> Bool { tab != ws.selectedTab }
+    func contentCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
-    func contentDrop(_ tab: UUID, on target: TabContentView.DropTarget) {
-        guard let selected = ws.selectedTab else { return server.send(.selectTab(tab)) }
+    /// Another arrangement dropped on this one: its columns come over.
+    func contentDrop(_ arrangement: BlockID, on target: TabContentView.DropTarget) {
+        guard let id = selected, let source = host.arrangement(arrangement), let a = host.arrangement(id) else {
+            return host.select(arrangement)
+        }
+        host.append(source.placements.map { .remove($0.id) }, to: .block(arrangement))
         switch target {
-        case .column(let index): server.send(.mergeTab(tab, into: selected, at: index))
-        case .stack(let column): server.send(.stackTab(tab, onto: column))
+        case .column(let index):
+            host.append(.adopt(columns: source.columns, at: index), to: .block(id))
+        case .stack(let c):
+            let placements = source.placements
+            host.append(placements.enumerated().map { i, p in
+                .place(Placement(id: p.id, block: p.block, lens: p.lens), column: c, at: a.columns[c].count + i)
+            }, to: .block(id))
+        }
+        removeFromDesk(arrangement)
+        host.select(id)
+    }
+
+    func contentRaise(_ placement: PlacementID) { focus(placement) }
+
+    func contentMovePane(_ placement: PlacementID, to target: TabContentView.DropTarget) {
+        guard let a = arrangement else { return }
+        switch target {
+        case .column(let index):
+            movePlacement(placement, toNewColumn: index, in: a)
+        case .stack(let c):
+            appendToSelected([.move(placement, column: c, at: a.columns[c].count)])
         }
     }
 
-    func contentRaise(_ pane: UUID) {
-        server.send(.focusPane(pane))
-    }
-
-    func contentMovePane(_ pane: UUID, to target: TabContentView.DropTarget) {
-        guard let tab = ws.selectedTab else { return }
-        switch target {
-        case .column(let index): server.send(.movePane(pane, to: .column(tab: tab, index: index)))
-        case .stack(let column): server.send(.movePane(pane, to: .stack(column: column)))
-        }
+    /// Moves a placement into a new column at `index`.
+    private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState) {
+        guard let (sc, _) = a.locate(placement) else { return }
+        let alone = a.columns[sc].count == 1
+        if alone, index == sc || index == sc + 1 { return }
+        // Past the end makes a new column; then it's moved into place.
+        appendToSelected([.move(placement, column: a.columns.count, at: 0)])
+        guard let now = arrangement else { return }
+        let from = now.columns.count - 1
+        var to = index
+        if alone, sc < index { to -= 1 }
+        reorderColumn(from: from, to: min(to, from))
     }
 
     func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
@@ -1113,45 +1453,104 @@ extension MainWindowController: TabContentDelegate {
     }
 
     func contentResized(_ fractions: [Double]) {
-        if let tab = ws.selectedTab { server.send(.setFractions(tab, fractions)) }
+        appendToSelected([.fractions(fractions)])
     }
 }
 
-extension MainWindowController: EditorViewDelegate {
-    func editorEditedChanged(_ view: EditorView) {
-        render()
+extension MainWindowController: TilingDelegate {
+    func tilingFocus(_ placement: PlacementID) { focus(placement) }
+
+    func tilingMove(_ placement: PlacementID, column: Int, at: Int) {
+        guard let a = arrangement else { return }
+        if column >= a.columns.count || (at == 0 && column < a.columns.count && !a.columns[column].contains(where: { $0.id == placement }) && false) {
+            movePlacement(placement, toNewColumn: column, in: a)
+        } else {
+            appendToSelected([.move(placement, column: column, at: at)])
+        }
     }
 
-    /// Tabs with an editor whose changes aren't saved.
-    var editedTabs: Set<UUID> {
-        Set(ws.tabs.filter { tab in tab.panes.contains { (views[$0.id] as? EditorView)?.isEdited == true } }.map(\.id))
+    func tilingDropArrangement(_ arrangement: BlockID, column: Int) {
+        contentDrop(arrangement, on: .column(column))
+    }
+
+    func tilingCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
+    func tilingResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
+    func tilingResized(heights: [PlacementID: Double]) { appendToSelected([.heights(heights)]) }
+    func tilingDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+    func tilingDragAtLeftEdge() { contentDragAtLeftEdge() }
+}
+
+extension MainWindowController: ListLensDelegate {
+    func listFocus(_ placement: PlacementID) { focus(placement) }
+    func listMove(_ placement: PlacementID, column: Int, at: Int) { appendToSelected([.move(placement, column: column, at: at)]) }
+    func listRemove(_ placement: PlacementID) { appendToSelected([.remove(placement)]) }
+}
+
+extension MainWindowController: EditorViewDelegate {
+    func editor(_ view: EditorView, append events: [Event]) {
+        host.append(events, to: .block(view.block))
+    }
+
+    func editor(_ view: EditorView, propose proposal: Proposal) {
+        host.propose(proposal)
+    }
+
+    func editorText(_ view: EditorView) -> TextState? {
+        host.block(view.block)?.text
+    }
+
+    func editorEditedChanged(_ view: EditorView) {
+        render()
     }
 }
 
 extension MainWindowController: MarkdownViewDelegate {
     func markdownView(_ view: MarkdownView, open path: String) {
-        server.send(.setPanePath(view.pane, path))
+        // The link's file takes the preview's place.
+        guard let a = arrangement, let p = a.placement(view.placement), let (c, i) = a.locate(view.placement) else { return }
+        let block = host.textBlock(for: path)
+        host.link(from: p.block, to: block, kind: .opened)
+        appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .preview), column: c, at: i)])
+    }
+}
+
+extension MainWindowController: DirectoryViewDelegate {
+    func directoryView(_ view: DirectoryView, open path: String) {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+        if isDir.boolValue {
+            // A folder takes the listing's place.
+            guard let a = arrangement, let (c, i) = a.locate(view.placement) else { return }
+            let block = host.directoryBlock(for: path)
+            appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .directory), column: c, at: i)])
+        } else {
+            open(path, from: view.placement)
+        }
+    }
+
+    func directoryViewRefresh(_ view: DirectoryView) {
+        host.propose(.listDirectory(view.block))
     }
 }
 
 extension MainWindowController: TerminalViewDelegate {
     func terminal(_ view: TerminalView, open target: String) {
-        open(target, from: view.pane)
+        open(target, from: view.placement)
     }
 
     func terminalDidFocus(_ view: TerminalView) {
-        guard let tab = ws.tabContaining(pane: view.pane), tab.focusedPane != view.pane else { return }
-        server.send(.focusPane(view.pane))
+        guard let a = arrangement, a.placement(view.placement) != nil, a.focused != view.placement else { return }
+        focus(view.placement)
     }
 
     func terminalDidClose(_ view: TerminalView) {
-        guard views[view.pane] === view else { return }
-        views.removeValue(forKey: view.pane)
+        guard views[view.placement] === view else { return }
+        views.removeValue(forKey: view.placement)
         view.removeFromSuperview()
-        recentlyClosed.insert(view.pane)
+        recentlyClosed.insert(view.block)
         render()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.recentlyClosed.remove(view.pane)
+            self?.recentlyClosed.remove(view.block)
             self?.render()
         }
     }

@@ -12,7 +12,7 @@ final class StackSwitcherView: NSView {
     private(set) var selection: Int
     private let contentSize: NSSize
     private let background = SwitcherBackground()
-    var onPick: ((UUID) -> Void)?
+    var onPick: ((PlacementID) -> Void)?
 
     /// Where each card is drawn from: the chosen place, eased toward
     /// `selection`, and how far the switcher is open (0 is the column as it
@@ -30,7 +30,7 @@ final class StackSwitcherView: NSView {
     private var scrolled: CGFloat = 0
 
     /// `panes` bottom to top, each with its view.
-    init(panes: [(Pane, PaneContent)], contentSize: NSSize, selection: Int) {
+    init(panes: [(Shown, PaneContent)], contentSize: NSSize, selection: Int) {
         self.contentSize = contentSize
         self.selection = selection
         // Starting from the top, so the first choice flips down into place.
@@ -49,7 +49,7 @@ final class StackSwitcherView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var selectedPane: UUID { cards[selection].pane.id }
+    var selectedPane: PlacementID { cards[selection].pane.id }
 
     /// Opens, the top sheet dropping down to show the others.
     func present() {
@@ -66,7 +66,7 @@ final class StackSwitcherView: NSView {
 
     /// Closes on `pane`, which comes forward to fill the column, then calls
     /// `done`.
-    func dismiss(to pane: UUID, done: @escaping () -> Void) {
+    func dismiss(to pane: PlacementID, done: @escaping () -> Void) {
         isClosing = true
         if let i = cards.firstIndex(where: { $0.pane.id == pane }) {
             home = i
@@ -79,7 +79,7 @@ final class StackSwitcherView: NSView {
 
     /// Gives the panes' views back; `keeping`'s is left in `column`, where
     /// the switcher leaves it, filling the column.
-    func tearDown(keeping: UUID? = nil, in column: NSView? = nil) {
+    func tearDown(keeping: PlacementID? = nil, in column: NSView? = nil) {
         link?.invalidate()
         link = nil
         for card in cards {
@@ -239,7 +239,7 @@ final class SwitcherBackground: NSView {
 /// A sheet in the switcher: a title bar with its icon and name, then the
 /// pane itself, scaled to fit.
 final class SwitcherCard: NSView {
-    let pane: Pane
+    let pane: Shown
     private let paneView: PaneContent
     private let contentSize: NSSize
     private let holder = NSView()
@@ -264,7 +264,7 @@ final class SwitcherCard: NSView {
     }
     var fog: CGFloat = 0 { didSet { fogView.alphaValue = fog } }
 
-    init(pane: Pane, view: PaneContent, contentSize: NSSize) {
+    init(pane: Shown, view: PaneContent, contentSize: NSSize) {
         self.pane = pane
         self.paneView = view
         self.contentSize = contentSize
@@ -294,9 +294,9 @@ final class SwitcherCard: NSView {
         header.wantsLayer = true
         header.themed { $0.layer?.backgroundColor = Theme.switcherHeader.cgColor }
         holder.addSubview(header)
-        icon.image = Theme.symbol(Theme.symbolName(for: pane.kind), size: 11)
+        icon.image = Theme.symbol(pane.symbol, size: 11)
         icon.contentTintColor = Theme.secondaryText
-        title.stringValue = pane.displayTitle
+        title.stringValue = pane.title
         title.font = .systemFont(ofSize: 11.5, weight: .semibold)
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail

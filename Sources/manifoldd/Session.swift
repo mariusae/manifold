@@ -5,7 +5,7 @@ import ManifoldCore
 /// A shell running on a pseudo-terminal the server owns, so it outlives the
 /// app. Terminals in the app attach to it through `manifoldd attach`.
 final class Session {
-    let id: UUID
+    let id: BlockID
     let pid: pid_t
     private let master: Int32
     private let queue: DispatchQueue
@@ -21,15 +21,19 @@ final class Session {
     private var inputSource: DispatchSourceWrite?
     private var inputSourceActive = false
     private var exited = false
+    /// Set when the shell was ended for lying idle, so its end is recorded
+    /// as dormancy rather than an exit.
+    private(set) var endedForIdleness = false
+    private(set) var idleSeconds = 0
 
-    var onExit: (() -> Void)?
+    var onExit: ((Int32) -> Void)?
     var onTitle: ((String) -> Void)?
 
-    init?(id: UUID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
+    init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           queue: DispatchQueue) {
         var (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
         // So `manifold` run in this shell knows where it is.
-        environment["MANIFOLD_PANE"] = id.uuidString
+        environment["MANIFOLD_BLOCK"] = id.description
         let argv0 = "-" + (shell as NSString).lastPathComponent
         let dir = cwd.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -61,11 +65,32 @@ final class Session {
         exitSource.resume()
     }
 
+    /// What's written across the transcript where a dormant terminal's old
+    /// shell ended and its new one begins (§4): never a silent restart.
+    static func seam(idle: Int, since: Date) -> Data {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        let hours = idle / 3600
+        let how = hours >= 1 ? "\(hours) h" : "\(max(idle / 60, 1)) min"
+        let line = "\r\n\u{1b}[0m\u{1b}[2m── new shell · the last one ended \(f.string(from: since)), after \(how) idle ──\u{1b}[0m\r\n"
+        return Data(line.utf8)
+    }
+
     /// Hangs up on the shell, as closing a terminal window does.
     func terminate() {
         guard !exited else { return }
         kill(-pid, SIGHUP)
         kill(pid, SIGHUP)
+    }
+
+    /// Ends the shell for having lain idle off screen; its exit is recorded
+    /// as dormancy.
+    func endForIdleness(idleSeconds: Int) {
+        guard !exited else { return }
+        endedForIdleness = true
+        self.idleSeconds = idleSeconds
+        terminate()
     }
 
     func attach(_ conn: Connection, cols: UInt16, rows: UInt16) {
@@ -78,6 +103,8 @@ final class Session {
     func detach(_ conn: Connection) {
         attachments.removeAll { $0 === conn }
     }
+
+    var isAttached: Bool { !attachments.isEmpty }
 
     func handle(_ frame: Frame) {
         switch frame.kind {
@@ -101,6 +128,13 @@ final class Session {
         var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN))
         guard mf_proc_cwd(pid, &buf, Int32(buf.count)) == 0 else { return nil }
         return String(cString: buf)
+    }
+
+    /// Whether something other than the shell itself is in the foreground.
+    var isBusy: Bool {
+        guard !exited else { return false }
+        let fg = mf_pty_foreground(master)
+        return fg > 0 && fg != pid
     }
 
     private func resize(cols: UInt16, rows: UInt16) {
@@ -165,7 +199,10 @@ final class Session {
             var buf = [UInt8](repeating: 0, count: 65536)
             let n = read(master, &buf, buf.count)
             guard n > 0 else { break }
-            let frame = Frame(.data, Data(buf[0..<n]))
+            let data = Data(buf[0..<n])
+            replay.append(data)
+            unsaved = true
+            let frame = Frame(.data, data)
             for conn in attachments { conn.send(frame) }
         }
         if let inputSource {
@@ -177,7 +214,7 @@ final class Session {
         let conns = attachments
         attachments = []
         for conn in conns { conn.close() }
-        onExit?()
+        onExit?(status)
     }
 
     /// The user's login shell, and the environment to start it with: ours,
@@ -185,7 +222,7 @@ final class Session {
     private static func shellAndEnvironment(clientEnv: [String: String]) -> (String, [String: String]) {
         var env = ProcessInfo.processInfo.environment
         for key in ["__CFBundleIdentifier", "XPC_SERVICE_NAME", "XPC_FLAGS", "PWD", "OLDPWD", "SHLVL",
-                    "MANIFOLD_PANE", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {
+                    "MANIFOLD_PANE", "MANIFOLD_BLOCK", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {
             env.removeValue(forKey: key)
         }
         for key in env.keys where key.hasPrefix("GHOSTTY_") || key.hasPrefix("OS_ACTIVITY_") {

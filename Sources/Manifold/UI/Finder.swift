@@ -1,12 +1,23 @@
 import AppKit
 import ManifoldCore
 
-/// File ▸ Open (⌘O): one field that finds a file under a folder by name (or
-/// takes a path), and opens it to edit. With nothing typed, it lists the
-/// folder's files, nearest first.
-final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    /// Told the chosen file's full path.
-    var onOpen: ((String) -> Void)?
+/// Something the finder can go to: a block (recalled), an arrangement, or a
+/// file not yet a block.
+struct FinderItem {
+    var symbol: String
+    var title: String
+    var detail: String
+    /// A word on the right: "edited", "dormant", "named", or where it is.
+    var note: String
+    var run: () -> Void
+}
+
+/// ⌘O: one field that finds anything the attached hosts know — blocks by
+/// title and path, arrangements by name, files under the focused folder by
+/// name — ranked by how well the query matches, and goes to it.
+final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+    /// Items for a query, given the files under the folder listed so far.
+    var search: ((String, [String]) -> [FinderItem])?
 
     private let panel: PickerPanel
     private let field = NSTextField()
@@ -15,7 +26,7 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private let hint = NSTextField(labelWithString: "")
     private var root = ""
     private var files: [String] = []
-    private var shown: [String] = []
+    private var shown: [FinderItem] = []
     private var listing = 0
 
     private static let width: CGFloat = 640
@@ -59,7 +70,7 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 22, weight: .regular)
-        field.placeholderString = "Open a file…"
+        field.placeholderString = "Find anything…"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
         field.cell?.lineBreakMode = .byTruncatingTail
@@ -71,7 +82,7 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         table.intercellSpacing = NSSize(width: 0, height: 2)
         table.style = .inset
         table.selectionHighlightStyle = .regular
-        table.addTableColumn(NSTableColumn(identifier: .init("file")))
+        table.addTableColumn(NSTableColumn(identifier: .init("item")))
         table.dataSource = self
         table.delegate = self
         table.target = self
@@ -91,14 +102,13 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
 
     // MARK: Showing
 
-    /// Shows the files under `root`, over `window`.
+    /// Shows, listing the files under `root` among everything else.
     func show(root: String, over window: NSWindow?) {
         self.root = root
         field.stringValue = ""
         files = []
         shown = []
         table.reloadData()
-        updateHint()
         listing += 1
         let token = listing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -113,16 +123,16 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             let frame = window.frame
             panel.setFrameOrigin(NSPoint(x: frame.midX - Self.width / 2, y: frame.maxY - frame.height * 0.18 - panel.frame.height))
         }
+        refresh()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
-        layout()
     }
 
     /// Types a query and says what's listed (for DebugControl).
     func debugQuery(_ query: String) -> [String] {
         field.stringValue = query
         refresh()
-        return shown
+        return shown.map { "\($0.title) — \($0.detail)" }
     }
 
     func close() {
@@ -131,8 +141,8 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     }
 
     private func updateHint() {
-        let folder = MainWindowController.abbreviate(root)
-        hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "In \(folder)    ↩ Open    ⎋ Close"
+        let folder = root.abbreviatingHome
+        hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, arrangements, and files in \(folder)    ↩ Open    ⎋ Close"
     }
 
     /// Sizes the panel to its results, keeping its top where it is.
@@ -157,12 +167,7 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
 
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        var results = FileFinder.rank(query, files)
-        // A path typed out, to a file that's there: that first.
-        if let typed = typedPath(query), !results.contains(where: { absolute($0) == typed }) {
-            results.insert(typed, at: 0)
-        }
-        shown = results
+        shown = search?(query, files.map { absolute($0) }) ?? []
         table.reloadData()
         if !shown.isEmpty {
             table.selectRowIndexes([0], byExtendingSelection: false)
@@ -170,17 +175,6 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         }
         updateHint()
         layout()
-    }
-
-    /// A query that's a path to a file, made absolute.
-    private func typedPath(_ query: String) -> String? {
-        guard query.hasPrefix("/") || query.hasPrefix("~") || query.hasPrefix(".") else { return nil }
-        let expanded = (query as NSString).expandingTildeInPath
-        let path = expanded.hasPrefix("/") ? expanded : (root as NSString).appendingPathComponent(expanded)
-        let standard = URL(fileURLWithPath: path).standardizedFileURL.path
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: standard, isDirectory: &isDir), !isDir.boolValue else { return nil }
-        return standard
     }
 
     private func absolute(_ item: String) -> String {
@@ -215,9 +209,9 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
 
     private func openSelected() {
         guard table.selectedRow >= 0, table.selectedRow < shown.count else { return }
-        let path = absolute(shown[table.selectedRow])
+        let item = shown[table.selectedRow]
         close()
-        onOpen?(path)
+        item.run()
     }
 
     // MARK: Table
@@ -227,14 +221,11 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
         let item = shown[row]
-        let name = (item as NSString).lastPathComponent
-        let dir = (item as NSString).deletingLastPathComponent
-        cell.show(title: name, detail: item.hasPrefix("/") ? MainWindowController.abbreviate(dir) : (dir.isEmpty ? "" : dir),
-                  symbol: Self.symbol(for: name))
+        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note)
         return cell
     }
 
-    static func symbol(for name: String) -> String {
+    static func symbol(forFile name: String) -> String {
         switch (name as NSString).pathExtension.lowercased() {
         case "md", "markdown", "txt", "rtf": "doc.text"
         case "png", "jpg", "jpeg", "gif", "heic", "svg", "webp": "photo"
@@ -244,14 +235,21 @@ final class FilePicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         default: "chevron.left.forwardslash.chevron.right"
         }
     }
+
+    /// How well `query` matches `text`: 0 for not at all.
+    static func score(_ query: String, _ text: String) -> Int {
+        guard !query.isEmpty else { return 1 }
+        return FileFinder.score(query.lowercased(), text.lowercased()) ?? 0
+    }
 }
 
-/// A file in the list: its name, and its folder under it.
+/// An item in the list: its title, where it is under it, and a note at the right.
 final class FileCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("FileCell")
     private let symbol = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private let note = NSTextField(labelWithString: "")
 
     init() {
         super.init(frame: .zero)
@@ -261,13 +259,16 @@ final class FileCell: NSTableCellView {
         title.font = .systemFont(ofSize: 14, weight: .medium)
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .tertiaryLabelColor
+        note.alignment = .right
         for field in [title, detail] {
             field.lineBreakMode = .byTruncatingMiddle
             field.maximumNumberOfLines = 1
             field.cell?.usesSingleLineMode = true
             field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
-        for view in [symbol, title, detail] {
+        for view in [symbol, title, detail, note] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -276,25 +277,29 @@ final class FileCell: NSTableCellView {
             symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
             symbol.widthAnchor.constraint(equalToConstant: 22),
             title.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 10),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: note.leadingAnchor, constant: -8),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 5),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            detail.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            detail.trailingAnchor.constraint(lessThanOrEqualTo: note.leadingAnchor, constant: -8),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
+            note.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            note.centerYAnchor.constraint(equalTo: centerYAnchor),
+            note.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(title text: String, detail folder: String, symbol name: String) {
+    func show(title text: String, detail folder: String, symbol name: String, note text2: String) {
         symbol.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
         title.stringValue = text
         detail.stringValue = folder
         detail.isHidden = folder.isEmpty
+        note.stringValue = text2
     }
 }
 
-/// The picker's window: floating, with no title bar to speak of, that can
+/// The finder's window: floating, with no title bar to speak of, that can
 /// take the keyboard and gives it back when it loses it.
 final class PickerPanel: NSPanel {
     var onResign: (() -> Void)?

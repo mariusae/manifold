@@ -2,9 +2,9 @@ import AppKit
 import ManifoldCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let server = ServerClient()
+    private let host = HostClient()
     private var windowController: MainWindowController?
-    private var createdFirstTab = false
+    private var createdFirst = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         signal(SIGPIPE, SIG_IGN)
@@ -14,27 +14,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
             [weak self] _ in
             guard let self else { return }
-            GhosttyRuntime.shared.apply(self.server.workspace.appearance, dark: NSApp.effectiveAppearance.isDark)
+            GhosttyRuntime.shared.apply(self.host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
         }
 
-        server.onState = { [weak self] ws in self?.stateChanged(ws) }
-        server.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
-        server.connect()
+        host.onChange = { [weak self] in self?.stateChanged() }
+        host.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
+        host.connect()
         DebugControl.start { [weak self] in self?.windowController }
     }
 
-    private func stateChanged(_ ws: Workspace) {
-        let scheme = ws.appearance.colorScheme.appearance
+    private func stateChanged() {
+        guard host.hasState else { return }
+        let scheme = host.desk.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
-        GhosttyRuntime.shared.apply(ws.appearance, dark: NSApp.effectiveAppearance.isDark)
+        GhosttyRuntime.shared.apply(host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
-            let wc = MainWindowController(server: server)
+            let wc = MainWindowController(host: host)
             windowController = wc
             // The very first time, start with a terminal rather than an empty
             // window.
-            if ws.tabs.isEmpty && !createdFirstTab && !FileManager.default.fileExists(atPath: Paths.state.path) {
-                createdFirstTab = true
-                server.send(.newTab(tab: UUID(), pane: UUID(), kind: .terminal, cwd: nil, after: nil))
+            if host.desk.order.isEmpty && !createdFirst && host.node.blocks.isEmpty {
+                createdFirst = true
+                wc.newTerminal(nil)
             }
             wc.showWindow(nil)
             NSApp.activate()
@@ -52,11 +53,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = "Manifold's server is from another version"
-            alert.informativeText = "Manifold was updated, but its server is still the old one (protocol \(version), not \(protocolVersion)), so some things won't work until it's restarted. Your tabs are kept; each shell starts again in the same directory, under its recent output."
+            alert.informativeText = "Manifold was updated, but its server is still the old one (protocol \(version), not \(protocolVersion)), so some things won't work until it's restarted. Everything is kept; each shell starts again in the same directory, under its recent output."
             alert.addButton(withTitle: "Restart Server")
             alert.addButton(withTitle: "Not Now")
             if alert.runModal() == .alertFirstButtonReturn {
-                ServerClient.stopServer()
+                HostClient.stopServer()
             }
         }
     }
@@ -126,16 +127,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "New Terminal on This Stack", #selector(MainWindowController.newSheet(_:)), "n")
         item(file, "New Terminal in a New Column", #selector(MainWindowController.splitRight(_:)), "d")
-        item(file, "New Terminal in a New Tab", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
-        item(file, "Open…", #selector(MainWindowController.openDocument(_:)), "o")
+        item(file, "New Terminal in a New Arrangement", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
+        item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
+        item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
-        item(file, "Rename Tab…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
-        file.addItem(.separator())
-        item(file, "Close", #selector(MainWindowController.closePaneOrTab(_:)), "w")
-        item(file, "Close Tab", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
+        item(file, "Take Off This Arrangement", #selector(MainWindowController.closePaneOrTab(_:)), "w")
+        item(file, "Take Arrangement Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")
@@ -161,6 +161,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Go to Line…", #selector(EditorView.goToLine(_:)), "l")
         edit.addItem(.separator())
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
+
+        let arrangement = submenu(main, "Arrangement")
+        item(arrangement, "Name…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
+        arrangement.addItem(.separator())
+        item(arrangement, "Show as Stacks", #selector(MainWindowController.setLayoutStacks(_:)), "1", [.command, .control])
+        item(arrangement, "Show as Tiles", #selector(MainWindowController.setLayoutTiling(_:)), "2", [.command, .control])
+        item(arrangement, "Show as a List", #selector(MainWindowController.setLayoutList(_:)), "3", [.command, .control])
+        arrangement.addItem(.separator())
+        item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
+        arrangement.addItem(.separator())
+        item(arrangement, "Move Block to New Arrangement", #selector(MainWindowController.movePaneToNewTab(_:)), "")
+        item(arrangement, "Separate Columns", #selector(MainWindowController.unsplitTab(_:)), "")
 
         let view = submenu(main, "View")
         item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
@@ -199,14 +211,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fontsItem = NSMenuItem(title: "Editor Font", action: nil, keyEquivalent: "")
         fontsItem.submenu = fonts
         view.addItem(fontsItem)
-        let putAway = NSMenu(title: "Put Away Unused Sheets")
+        let collect = NSMenu(title: "Tidy Unused Blocks Away")
         for (minutes, title) in [(15, "After 15 Minutes"), (60, "After an Hour"), (240, "After 4 Hours"),
                                  (1440, "After a Day"), (0, "Never")] {
-            item(putAway, title, #selector(MainWindowController.setPutAwayAfter(_:)), "", []).tag = minutes
+            item(collect, title, #selector(MainWindowController.setCollectAfter(_:)), "", []).tag = minutes
         }
-        let putAwayItem = NSMenuItem(title: "Put Away Unused Sheets", action: nil, keyEquivalent: "")
-        putAwayItem.submenu = putAway
-        view.addItem(putAwayItem)
+        let collectItem = NSMenuItem(title: "Tidy Unused Blocks Away", action: nil, keyEquivalent: "")
+        collectItem.submenu = collect
+        view.addItem(collectItem)
+        let dormancy = NSMenu(title: "End Idle Shells")
+        for (hours, title) in [(2, "After 2 Hours Off Screen"), (8, "After 8 Hours Off Screen"), (24, "After a Day Off Screen"),
+                               (168, "After a Week Off Screen"), (0, "Never")] {
+            item(dormancy, title, #selector(MainWindowController.setTerminalDormancy(_:)), "", []).tag = hours
+        }
+        let dormancyItem = NSMenuItem(title: "End Idle Shells", action: nil, keyEquivalent: "")
+        dormancyItem.submenu = dormancy
+        view.addItem(dormancyItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")
@@ -221,20 +241,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())
-        item(window, "Show Next Tab", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
-        item(window, "Show Previous Tab", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        item(window, "Switch to Recent Tab", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
-        item(window, "Switch to Recent Tab, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
+        item(window, "Show Next Arrangement", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
+        item(window, "Show Previous Arrangement", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
+        item(window, "Switch to Recent Arrangement", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
+        item(window, "Switch to Recent Arrangement, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
-            item(window, n == 9 ? "Select Last Tab" : "Select Tab \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
+            item(window, n == 9 ? "Select Last Arrangement" : "Select Arrangement \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         window.addItem(.separator())
         item(window, "Cycle Stack", #selector(MainWindowController.cycleStack(_:)), "e")
         item(window, "Cycle Stack Backward", #selector(MainWindowController.cycleStackBack(_:)), "e", [.command, .shift])
-        item(window, "Focus Next Pane", #selector(MainWindowController.nextPane(_:)), "]")
-        item(window, "Focus Previous Pane", #selector(MainWindowController.previousPane(_:)), "[")
-        item(window, "Move Pane to New Tab", #selector(MainWindowController.movePaneToNewTab(_:)), "")
-        item(window, "Separate Columns", #selector(MainWindowController.unsplitTab(_:)), "")
+        item(window, "Focus Next Block", #selector(MainWindowController.nextPane(_:)), "]")
+        item(window, "Focus Previous Block", #selector(MainWindowController.previousPane(_:)), "[")
         NSApp.windowsMenu = window
 
         return main

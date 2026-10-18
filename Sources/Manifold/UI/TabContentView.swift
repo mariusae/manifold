@@ -1,53 +1,45 @@
 import AppKit
 import ManifoldCore
 
-/// What a pane shows: a terminal, a Markdown preview, and so on.
-protocol PaneContent: NSView {
-    var pane: UUID { get }
-    /// The view that takes the keyboard when the pane is focused.
-    var focusView: NSView { get }
-    /// Whether the view failed and should be made again.
-    var isDead: Bool { get }
-    func destroy()
-}
-
 protocol TabContentDelegate: AnyObject {
-    /// Whether a dragged tab may be dropped into the shown tab.
-    func contentCanDrop(_ tab: UUID) -> Bool
-    func contentDrop(_ tab: UUID, on target: TabContentView.DropTarget)
+    /// Whether a dragged arrangement may be dropped into the shown one.
+    func contentCanDrop(_ arrangement: BlockID) -> Bool
+    func contentDrop(_ arrangement: BlockID, on target: TabContentView.DropTarget)
     func contentResized(_ fractions: [Double])
-    /// A pane beneath the top of its stack was picked.
-    func contentRaise(_ pane: UUID)
-    /// A pane (a sheet) was dropped here.
-    func contentMovePane(_ pane: UUID, to target: TabContentView.DropTarget)
-    /// A pane is being dragged, or has stopped being.
+    /// A placement beneath the top of its stack was picked.
+    func contentRaise(_ placement: PlacementID)
+    /// A placement (a sheet) was dropped here.
+    func contentMovePane(_ placement: PlacementID, to target: TabContentView.DropTarget)
+    /// A placement is being dragged, or has stopped being.
     func contentPaneDragChanged(_ dragging: Bool)
     /// Something is being dragged along the window's left edge.
     func contentDragAtLeftEdge()
 }
 
-/// Shows the selected tab: its columns side by side, each the top of its
-/// stack, with the edges of the sheets beneath peeking out above it.
+/// The stacks lens: an arrangement's columns side by side, each showing the
+/// top of its stack, with the edges of the sheets beneath peeking out above
+/// it.
 final class TabContentView: NSView, NSDraggingSource {
     struct ColumnContent {
-        var id: UUID
+        /// The column's bottom placement, which stays with it.
+        var id: PlacementID
         var view: PaneContent
-        /// The panes beneath the top, nearest first.
-        var beneath: [Pane]
+        /// The placements beneath the top, nearest first.
+        var beneath: [Shown]
     }
 
     enum DropTarget: Equatable {
         /// A new column at this index.
         case column(Int)
         /// On top of this column's stack.
-        case stack(UUID)
+        case stack(Int)
     }
 
     weak var delegate: TabContentDelegate?
     private(set) var columns: [ColumnContent] = []
     var panes: [PaneContent] { columns.map(\.view) }
     private var fractions: [Double] = []
-    private var focused: UUID?
+    private var focused: PlacementID?
     private var dividers: [DividerView] = []
     private var strips: [StackStripView] = []
     private let focusBar = NSView()
@@ -77,12 +69,12 @@ final class TabContentView: NSView, NSDraggingSource {
         focusBar.wantsLayer = true
         focusBar.layer?.backgroundColor = Theme.accent.cgColor
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldTab, .manifoldPane])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ columns: [ColumnContent], fractions: [Double], focused: UUID?) {
+    func show(_ columns: [ColumnContent], fractions: [Double], focused: PlacementID?) {
         let views = columns.map(\.view)
         // A column whose top changed: the new top comes forward out of the
         // stack, and the old one, if it went beneath, sinks back into it.
@@ -97,7 +89,7 @@ final class TabContentView: NSView, NSDraggingSource {
                 continue
             }
             arriving.append(column.view)
-            if column.beneath.contains(where: { $0.id == before.view.pane }) {
+            if column.beneath.contains(where: { $0.id == before.view.placement }) {
                 leaving.append((before.view, column.view))
             }
         }
@@ -137,11 +129,11 @@ final class TabContentView: NSView, NSDraggingSource {
             strip.onClick = { [weak self] in
                 guard let self, i < self.columns.count else { return }
                 self.hideStackList()
-                self.delegate?.contentRaise(self.columns[i].beneath.first?.id ?? self.columns[i].view.pane)
+                self.delegate?.contentRaise(self.columns[i].beneath.first?.id ?? self.columns[i].view.placement)
             }
             strip.onDragStart = { [weak self, weak strip] event in
                 guard let self, let strip, i < self.columns.count else { return }
-                self.beginDrag(of: self.columns[i].view.pane, event: event, from: strip)
+                self.beginDrag(of: self.columns[i].view.placement, event: event, from: strip)
             }
             addSubview(strip)
             return strip
@@ -220,8 +212,8 @@ final class TabContentView: NSView, NSDraggingSource {
     }
 
     /// Where a column is, in this view's coordinates.
-    func frame(ofColumn id: UUID) -> NSRect? {
-        columns.firstIndex { $0.id == id }.map { columnFrames()[$0] }
+    func frame(ofColumn i: Int) -> NSRect? {
+        i < columns.count ? columnFrames()[i] : nil
     }
 
     /// Room above a column's top card for the sheets beneath: the same for
@@ -276,7 +268,7 @@ final class TabContentView: NSView, NSDraggingSource {
                 strip.cardTop = top < f.maxY ? Self.grabBand : 0
             }
         }
-        if columns.count > 1, let i = columns.firstIndex(where: { $0.view.pane == focused }) {
+        if columns.count > 1, let i = columns.firstIndex(where: { $0.view.placement == focused }) {
             focusBar.isHidden = false
             focusBar.frame = NSRect(x: frames[i].minX, y: 0, width: frames[i].width, height: 2)
         } else {
@@ -387,9 +379,9 @@ final class TabContentView: NSView, NSDraggingSource {
 
     // MARK: Dragging sheets
 
-    private func beginDrag(of pane: UUID, event: NSEvent, from view: NSView) {
+    private func beginDrag(of pane: PlacementID, event: NSEvent, from view: NSView) {
         let item = NSPasteboardItem()
-        item.setString(pane.uuidString, forType: .manifoldPane)
+        item.setString(pane, forType: .manifoldPlacement)
         let dragItem = NSDraggingItem(pasteboardWriter: item)
         let image = SheetDragImage.make(for: paneInfo(pane))
         let p = view.convert(event.locationInWindow, from: nil)
@@ -400,8 +392,8 @@ final class TabContentView: NSView, NSDraggingSource {
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
-    /// What's known of a pane shown here, for its drag image.
-    var paneInfo: (UUID) -> Pane? = { _ in nil }
+    /// What's known of a placement shown here, for its drag image.
+    var paneInfo: (PlacementID) -> Shown? = { _ in nil }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .withinApplication ? .move : []
@@ -444,7 +436,7 @@ final class TabContentView: NSView, NSDraggingSource {
             if point.x > f.maxX - edge {
                 return (.column(i + 1), NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height))
             }
-            return (.stack(columns[i].id), f)
+            return (.stack(i), f)
         }
         return nil
     }
@@ -456,8 +448,8 @@ final class TabContentView: NSView, NSDraggingSource {
         // The sidebar can't be hovered open mid-drag; the window's edge does it.
         if convert(point, to: nil).x < 8 { delegate?.contentDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
-        let isPane = pb.string(forType: .manifoldPane) != nil
-        let tab = pb.string(forType: .manifoldTab).flatMap(UUID.init(uuidString:))
+        let isPane = pb.string(forType: .manifoldPlacement) != nil
+        let tab = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
         guard isPane || (tab != nil && delegate?.contentCanDrop(tab!) == true),
               let (target, rect) = dropTarget(at: point) else {
             hideDrop()
@@ -483,11 +475,11 @@ final class TabContentView: NSView, NSDraggingSource {
         defer { hideDrop() }
         guard let target = dropTarget else { return false }
         let pb = sender.draggingPasteboard
-        if let pane = pb.string(forType: .manifoldPane).flatMap(UUID.init(uuidString:)) {
+        if let pane = pb.string(forType: .manifoldPlacement) {
             delegate?.contentMovePane(pane, to: target)
             return true
         }
-        guard let tab = pb.string(forType: .manifoldTab).flatMap(UUID.init(uuidString:)) else { return false }
+        guard let tab = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) else { return false }
         delegate?.contentDrop(tab, on: target)
         return true
     }
@@ -592,18 +584,18 @@ final class StackStripView: NSView {
 /// What's beneath a stack's top, nearest first; picking one raises it.
 final class StackListView: NSView {
     let column: Int
-    var onPick: ((UUID) -> Void)?
-    var onDragStart: ((UUID, NSEvent) -> Void)?
+    var onPick: ((PlacementID) -> Void)?
+    var onDragStart: ((PlacementID, NSEvent) -> Void)?
     var onHover: ((Bool) -> Void)?
     private let rows: [PaletteRowView]
-    private let ids: [UUID]
+    private let ids: [PlacementID]
     private static let rowHeight: CGFloat = 28
 
-    init(column: Int, panes: [Pane]) {
+    init(column: Int, panes: [Shown]) {
         self.column = column
         ids = panes.map(\.id)
         rows = panes.map { pane in
-            PaletteRowView(item: PaletteItem(symbol: Theme.symbolName(for: pane.kind), title: pane.displayTitle,
+            PaletteRowView(item: PaletteItem(symbol: pane.symbol, title: pane.title,
                                              subtitle: "", run: {}))
         }
         super.init(frame: .zero)
@@ -690,8 +682,8 @@ final class DividerView: NSView {
 /// What follows the cursor when a sheet is dragged: a small sheet with the
 /// pane's icon and title.
 enum SheetDragImage {
-    static func make(for pane: Pane?) -> NSImage {
-        let title = pane?.displayTitle ?? "Pane"
+    static func make(for pane: Shown?) -> NSImage {
+        let title = pane?.title ?? "Sheet"
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let textWidth = ceil((title as NSString).size(withAttributes: [.font: font]).width)
         let size = NSSize(width: min(max(textWidth + 52, 140), 320), height: 34)
@@ -703,7 +695,7 @@ enum SheetDragImage {
             TabContentView.sheetEdge(hovered: true).setStroke()
             path.lineWidth = 1
             path.stroke()
-            if let icon = Theme.symbol(Theme.symbolName(for: pane?.kind ?? .terminal), size: 13) {
+            if let icon = Theme.symbol(pane?.symbol ?? "apple.terminal", size: 13) {
                 let tinted = icon.copy() as! NSImage
                 tinted.isTemplate = true
                 NSGraphicsContext.current?.saveGraphicsState()

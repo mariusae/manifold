@@ -2,20 +2,39 @@ import AppKit
 import ManifoldCore
 
 protocol SidebarDelegate: AnyObject {
-    func sidebarSelect(_ tab: UUID)
-    func sidebarClose(_ tab: UUID)
-    func sidebarUnsplit(_ tab: UUID)
-    func sidebarRename(_ tab: UUID)
-    func sidebarMove(_ tab: UUID, to index: Int)
+    func sidebarSelect(_ arrangement: BlockID)
+    /// Takes an arrangement off the desk (it stays, to be found again).
+    func sidebarRemove(_ arrangement: BlockID)
+    func sidebarUnsplit(_ arrangement: BlockID)
+    func sidebarRename(_ arrangement: BlockID)
+    func sidebarMove(_ arrangement: BlockID, to index: Int)
     func sidebarNewTab()
     func sidebarTogglePinned()
     func sidebarMoreMenu() -> NSMenu
     func sidebarDragChanged(_ dragging: Bool)
-    /// A pane (a sheet) was dropped on the sidebar.
-    func sidebarMovePane(_ pane: UUID, to destination: PaneDestination)
+    /// A placement (a sheet) was dropped on the sidebar.
+    func sidebarMovePlacement(_ placement: PlacementID, to destination: SidebarDrop)
     /// The resize handle was dragged to make the sidebar this wide.
     func sidebarResize(to width: CGFloat)
     func sidebarResizeEnded()
+}
+
+/// Where a sheet dropped on the sidebar goes.
+enum SidebarDrop {
+    /// Onto an arrangement's focused stack.
+    case arrangement(BlockID)
+    /// A new arrangement of its own, at an index on the desk.
+    case newArrangement(index: Int)
+}
+
+/// What the sidebar shows of an arrangement.
+struct SidebarRow {
+    var id: BlockID
+    var title: String
+    var named: Bool
+    var columnCount: Int
+    var symbol: String
+    var edited: Bool
 }
 
 class FlippedView: NSView {
@@ -32,8 +51,8 @@ final class SidebarView: NSView {
     private let scroll = NSScrollView()
     private let list = TabListView()
     private let newTabRow = NewTabRowView()
-    private var rows: [UUID: TabRowView] = [:]
-    private var order: [UUID] = []
+    private var rows: [BlockID: TabRowView] = [:]
+    private var order: [BlockID] = []
     var pinned = false { didSet { updateChrome() } }
 
     static let headerHeight: CGFloat = 40
@@ -73,7 +92,7 @@ final class SidebarView: NSView {
         card.addSubview(scroll)
 
         list.sidebar = self
-        list.registerForDraggedTypes([.manifoldTab, .manifoldPane])
+        list.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement])
         newTabRow.onClick = { [weak self] in self?.delegate?.sidebarNewTab() }
         newTabRow.onMore = { [weak self] button in
             guard let self, let menu = self.delegate?.sidebarMoreMenu() else { return }
@@ -107,22 +126,22 @@ final class SidebarView: NSView {
         pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
     }
 
-    func update(tabs: [Tab], selected: UUID?, edited: Set<UUID> = []) {
-        let ids = tabs.map(\.id)
+    func update(rows items: [SidebarRow], selected: BlockID?) {
+        let ids = items.map(\.id)
         for (id, row) in rows where !ids.contains(id) {
             row.removeFromSuperview()
             rows.removeValue(forKey: id)
         }
-        for tab in tabs {
-            let row = rows[tab.id] ?? {
-                let r = TabRowView(tab: tab.id)
+        for item in items {
+            let row = rows[item.id] ?? {
+                let r = TabRowView(tab: item.id)
                 r.sidebar = self
                 list.addSubview(r)
-                rows[tab.id] = r
+                rows[item.id] = r
                 return r
             }()
-            row.configure(title: tab.title, paneCount: tab.columns.count, selected: tab.id == selected,
-                          symbol: Theme.symbolName(for: tab.focused?.kind ?? .terminal), edited: edited.contains(tab.id))
+            row.configure(title: item.title, paneCount: item.columnCount, selected: item.id == selected,
+                          symbol: item.symbol, edited: item.edited, named: item.named)
         }
         order = ids
         layoutRows()
@@ -145,20 +164,20 @@ final class SidebarView: NSView {
 
     // MARK: From rows and the list
 
-    func rowClicked(_ id: UUID) { delegate?.sidebarSelect(id) }
-    func rowDoubleClicked(_ id: UUID) { delegate?.sidebarRename(id) }
-    func rowClose(_ id: UUID) { delegate?.sidebarClose(id) }
-    func rowUnsplit(_ id: UUID) { delegate?.sidebarUnsplit(id) }
+    func rowClicked(_ id: BlockID) { delegate?.sidebarSelect(id) }
+    func rowDoubleClicked(_ id: BlockID) { delegate?.sidebarRename(id) }
+    func rowClose(_ id: BlockID) { delegate?.sidebarRemove(id) }
+    func rowUnsplit(_ id: BlockID) { delegate?.sidebarUnsplit(id) }
     func dragChanged(_ dragging: Bool) { delegate?.sidebarDragChanged(dragging) }
 
-    func rowMenu(_ id: UUID, split: Bool) -> NSMenu {
+    func rowMenu(_ id: BlockID, split: Bool) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Rename Tab…") { [weak self] in self?.delegate?.sidebarRename(id) })
+        menu.addItem(ClosureMenuItem("Name…") { [weak self] in self?.delegate?.sidebarRename(id) })
         if split {
             menu.addItem(ClosureMenuItem("Separate Columns") { [weak self] in self?.delegate?.sidebarUnsplit(id) })
         }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Close Tab") { [weak self] in self?.delegate?.sidebarClose(id) })
+        menu.addItem(ClosureMenuItem("Take Off the Desk") { [weak self] in self?.delegate?.sidebarRemove(id) })
         return menu
     }
 
@@ -183,11 +202,11 @@ final class SidebarView: NSView {
         rows.values.first { $0.frame.insetBy(dx: 0, dy: $0.frame.height * 0.2).contains(NSPoint(x: $0.frame.midX, y: y)) }
     }
 
-    func movePane(_ pane: UUID, to destination: PaneDestination) {
-        delegate?.sidebarMovePane(pane, to: destination)
+    func movePlacement(_ placement: PlacementID, to destination: SidebarDrop) {
+        delegate?.sidebarMovePlacement(placement, to: destination)
     }
 
-    func moveTab(_ id: UUID, toInsertionIndex index: Int) {
+    func moveTab(_ id: BlockID, toInsertionIndex index: Int) {
         guard let from = order.firstIndex(of: id) else { return }
         let to = from < index ? index - 1 : index
         if to != from { delegate?.sidebarMove(id, to: to) }
@@ -297,9 +316,9 @@ final class TabListView: FlippedView {
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let pb = sender.draggingPasteboard
-        guard let sidebar, pb.string(forType: .manifoldTab) != nil || pb.string(forType: .manifoldPane) != nil else { return [] }
+        guard let sidebar, pb.string(forType: .manifoldArrangement) != nil || pb.string(forType: .manifoldPlacement) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
-        if pb.string(forType: .manifoldPane) != nil, let row = sidebar.row(at: p.y) {
+        if pb.string(forType: .manifoldPlacement) != nil, let row = sidebar.row(at: p.y) {
             dropRow = row
             dropIndex = nil
             indicator.isHidden = true
@@ -325,25 +344,25 @@ final class TabListView: FlippedView {
         defer { dropRow = nil }
         guard let sidebar else { return false }
         let pb = sender.draggingPasteboard
-        if let pane = pb.string(forType: .manifoldPane).flatMap(UUID.init(uuidString:)) {
+        if let placement = pb.string(forType: .manifoldPlacement) {
             if let row = dropRow {
-                sidebar.movePane(pane, to: .tabStack(tab: row.tab))
+                sidebar.movePlacement(placement, to: .arrangement(row.tab))
             } else if let index = dropIndex {
-                sidebar.movePane(pane, to: .newTab(tab: UUID(), index: index))
+                sidebar.movePlacement(placement, to: .newArrangement(index: index))
             } else {
                 return false
             }
             return true
         }
-        guard let index = dropIndex, let id = pb.string(forType: .manifoldTab).flatMap(UUID.init(uuidString:)) else { return false }
+        guard let index = dropIndex, let id = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) else { return false }
         sidebar.moveTab(id, toInsertionIndex: index)
         return true
     }
 }
 
-/// A tab in the sidebar.
+/// An arrangement on the desk.
 final class TabRowView: NSView, NSDraggingSource {
-    let tab: UUID
+    let tab: BlockID
     weak var sidebar: SidebarView?
     private let icon = NSImageView()
     private let badge = BadgeView()
@@ -354,6 +373,8 @@ final class TabRowView: NSView, NSDraggingSource {
     private var selected = false
     private var paneCount = 1
     private var symbol = "apple.terminal"
+    private var named = false
+    private let bookmark = NSImageView()
     /// Whether an editor in it has unsaved changes: a dot where the close
     /// button goes, as a Mac window's is.
     private var edited = false
@@ -363,7 +384,7 @@ final class TabRowView: NSView, NSDraggingSource {
     var dropTarget = false { didSet { updateAppearance() } }
     private var mouseDownPoint: NSPoint?
 
-    init(tab: UUID) {
+    init(tab: BlockID) {
         self.tab = tab
         super.init(frame: .zero)
         wantsLayer = true
@@ -376,19 +397,22 @@ final class TabRowView: NSView, NSDraggingSource {
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail
         title.cell?.truncatesLastVisibleLine = true
-        closeButton.toolTip = "Close Tab"
+        closeButton.toolTip = "Take Off the Desk"
         unsplitButton.toolTip = "Separate Columns"
+        bookmark.image = Theme.symbol("bookmark.fill", size: 9)
+        bookmark.contentTintColor = Theme.secondaryText
         editedDot.wantsLayer = true
         editedDot.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
         editedDot.layer?.cornerRadius = 3.5
-        for v in [icon, badge, title, unsplitButton, closeButton, editedDot] { addSubview(v) }
+        for v in [icon, badge, title, unsplitButton, closeButton, editedDot, bookmark] { addSubview(v) }
         themed { $0.updateAppearance() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title text: String, paneCount: Int, selected: Bool, symbol: String, edited: Bool = false) {
+    func configure(title text: String, paneCount: Int, selected: Bool, symbol: String, edited: Bool = false, named: Bool = false) {
         self.edited = edited
+        self.named = named
         if symbol != self.symbol {
             self.symbol = symbol
             icon.image = Theme.symbol(symbol, size: 13)
@@ -410,7 +434,8 @@ final class TabRowView: NSView, NSDraggingSource {
         var right = bounds.width - 6
         closeButton.frame = NSRect(x: right - 20, y: (h - 20) / 2, width: 20, height: 20)
         editedDot.frame = NSRect(x: right - 13.5, y: (h - 7) / 2, width: 7, height: 7)
-        if !editedDot.isHidden { right -= 22 }
+        bookmark.frame = NSRect(x: right - 15, y: (h - 12) / 2, width: 10, height: 12)
+        if !editedDot.isHidden || !bookmark.isHidden { right -= 22 }
         if !closeButton.isHidden { right -= 22 }
         unsplitButton.frame = NSRect(x: right - 20, y: (h - 20) / 2, width: 20, height: 20)
         if !unsplitButton.isHidden { right -= 22 }
@@ -427,8 +452,9 @@ final class TabRowView: NSView, NSDraggingSource {
         badge.isHidden = !split
         closeButton.isHidden = !hovering
         editedDot.isHidden = hovering || !edited
+        bookmark.isHidden = hovering || edited || !named
         unsplitButton.isHidden = !(hovering && split)
-        title.font = .systemFont(ofSize: 13, weight: selected ? .medium : .regular)
+        title.font = .systemFont(ofSize: 13, weight: selected || named ? .medium : .regular)
         if selected {
             layer?.backgroundColor = Theme.selected.cgColor
             layer?.shadowColor = NSColor.black.cgColor
@@ -473,7 +499,7 @@ final class TabRowView: NSView, NSDraggingSource {
         guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
         mouseDownPoint = nil
         let item = NSPasteboardItem()
-        item.setString(tab.uuidString, forType: .manifoldTab)
+        item.setString(tab.description, forType: .manifoldArrangement)
         let dragItem = NSDraggingItem(pasteboardWriter: item)
         dragItem.setDraggingFrame(bounds, contents: snapshot())
         sidebar?.dragChanged(true)
@@ -531,7 +557,7 @@ final class BadgeView: NSView {
 final class NewTabRowView: NSView {
     var onClick: (() -> Void)?
     var onMore: ((NSView) -> Void)?
-    private let label = NSTextField(labelWithString: "New Tab")
+    private let label = NSTextField(labelWithString: "New")
     private let plus = NSImageView()
     private lazy var more = IconButton(symbol: "ellipsis", size: 12, weight: .medium, target: self, action: #selector(moreClicked))
     private var hovering = false {

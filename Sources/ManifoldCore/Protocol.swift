@@ -1,15 +1,15 @@
 import Foundation
 
 /// Bumped whenever the messages below change incompatibly.
-public let protocolVersion = 6
+public let protocolVersion = 7
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
 /// the payload. The first frame on a connection says which kind it is: a
 /// `hello` (the app) or an `attach` (a terminal's byte stream).
 public enum FrameKind: UInt8, Sendable {
-    /// A JSON `ClientMessage` or `ServerMessage`.
-    case json = 1
+    /// A `ClientMessage` or `ServerMessage`, as `Codec` encodes it.
+    case message = 1
     /// Terminal bytes: input from the attach helper, output from the server.
     case data = 2
     /// A terminal size: cols then rows, 2 bytes each, big-endian.
@@ -36,8 +36,8 @@ public struct Frame: Sendable {
         return d
     }
 
-    public static func json<T: Encodable>(_ value: T) -> Frame {
-        Frame(.json, try! JSONEncoder().encode(value))
+    public static func message<T: Encodable>(_ value: T) -> Frame {
+        Frame(.message, try! Codec.encode(value))
     }
 
     public static func resize(cols: UInt16, rows: UInt16) -> Frame {
@@ -54,8 +54,8 @@ public struct Frame: Sendable {
     }
 
     public func decode<T: Decodable>(_ type: T.Type) -> T? {
-        guard kind == .json else { return nil }
-        return try? JSONDecoder().decode(type, from: payload)
+        guard kind == .message else { return nil }
+        return try? Codec.decode(type, from: payload)
     }
 }
 
@@ -73,7 +73,7 @@ public struct FrameDecoder: Sendable {
         guard buffer.count >= 5 else { return nil }
         let start = buffer.startIndex
         let n = buffer[start..<start + 4].reduce(0) { $0 << 8 | Int($1) }
-        guard n <= 64 << 20 else { throw ProtocolError.frameTooLarge }
+        guard n <= 256 << 20 else { throw ProtocolError.frameTooLarge }
         guard buffer.count >= 5 + n else { return nil }
         guard let kind = FrameKind(rawValue: buffer[start + 4]) else { throw ProtocolError.badFrameKind }
         let payload = buffer.subdata(in: start + 5..<start + 5 + n)
@@ -87,24 +87,56 @@ public enum ProtocolError: Error {
     case badFrameKind
 }
 
+/// What a client asks of a host that only the host can do (its files, its
+/// processes, its own shards), answered with `done`, and with entries or a
+/// proposal back.
+public enum Proposal: Codable, Sendable {
+    /// Makes a terminal block, with a shell started when it's attached to.
+    case newTerminal(block: BlockID, cwd: String?)
+    case endTerminal(BlockID)
+    /// Reads the file a text block names; the host proposes its content.
+    case readFile(BlockID)
+    /// Writes a text block's text at `version` to its file; the host
+    /// proposes `clean`.
+    case writeFile(BlockID, version: Int, text: String)
+    /// Makes (or finds) the directory block for a path, and lists it.
+    case directory(block: BlockID, path: String)
+    case listDirectory(BlockID)
+    case seen([BlockID])
+    case link(Link)
+    case unlink(String)
+    /// The whole history of a shard, for scrubbing.
+    case history(ShardID)
+}
+
+/// What a host asks the leader of a shard to append.
+public enum HostProposal: Codable, Sendable {
+    case content(String, encoding: String, lineEnding: String, fingerprint: String)
+    case clean(version: Int, fingerprint: String)
+    case stale
+    case unreadable
+}
+
 public enum ClientMessage: Codable, Sendable {
-    case hello(version: Int)
-    case command(Command)
+    case hello(version: Int, name: String)
+    /// Entries the client appended as a shard's leader.
+    case append(shard: ShardID, entries: [Entry])
+    case propose(id: Int, Proposal)
     case attach(AttachRequest)
     /// Asks the server to exit, ending every session.
     case shutdown
 }
 
 public struct AttachRequest: Codable, Sendable {
-    public var pane: UUID
+    public var block: BlockID
     public var cols: UInt16
     public var rows: UInt16
     /// Terminal-related variables from the attaching terminal (TERM and the
     /// like), used if the attach starts a new session.
     public var env: [String: String]
 
-    public init(pane: UUID, cols: UInt16, rows: UInt16, env: [String: String]) {
-        self.pane = pane
+    public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String]) {
+        self.block = block
         self.cols = cols
         self.rows = rows
         self.env = env
@@ -112,6 +144,14 @@ public struct AttachRequest: Codable, Sendable {
 }
 
 public enum ServerMessage: Codable, Sendable {
-    case welcome(version: Int, pid: Int32)
-    case state(Workspace)
+    case welcome(version: Int, pid: Int32, host: HostID, attachment: Int, snapshots: [ShardSnapshot])
+    case entries(shard: ShardID, entries: [Entry])
+    case snapshot(ShardSnapshot)
+    /// The client's append didn't continue the log; a snapshot follows.
+    case rejected(shard: ShardID)
+    case propose(shard: ShardID, HostProposal)
+    case done(id: Int, error: String?)
+    case history(shard: ShardID, entries: [Entry])
+    /// A shard is gone (a block forgotten).
+    case removed(shard: ShardID)
 }

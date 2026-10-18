@@ -2,33 +2,35 @@ import AppKit
 import ManifoldCore
 
 protocol EditorViewDelegate: AnyObject {
+    /// The editor appends to its block's log.
+    func editor(_ view: EditorView, append events: [Event])
+    /// The editor asks the host for something (a save, a reload).
+    func editor(_ view: EditorView, propose proposal: Proposal)
+    /// The block's text, as the replica has it.
+    func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
     func editorEditedChanged(_ view: EditorView)
 }
 
-/// A text file, being edited: plain text, in the theme's proportional or fixed-width font,
-/// with the usual Mac editing (undo, find, and so on) and nothing clever.
-///
-/// Unsaved changes, the selection, and the scroll position are kept on disk
-/// beside the server's state, so they're there again after a quit.
+/// The editor lens on a text block: plain text, in the theme's proportional
+/// or fixed-width font, with the usual Mac editing (undo, find, and so on).
+/// Every edit is an entry in the block's log, so unsaved changes, the
+/// selection and the scroll position are all there again after a quit.
 final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValidation {
-    let pane: UUID
+    let placement: PlacementID
+    let block: BlockID
     private(set) var path: String
     weak var delegate: EditorViewDelegate?
 
     private let scroll: NSScrollView
     private let text: EditorTextView
     private var banner: EditorBanner?
-    private var watcher: FileWatcher?
-
-    /// The file's text, as last loaded or saved.
-    private var saved = ""
-    private var encoding: String.Encoding = .utf8
-    private var lineEnding = "\n"
-    private(set) var isEdited = false
-    private var checkWork: DispatchWorkItem?
+    /// The block's version the view's text matches.
+    private var appliedVersion = -1
+    private var applying = false
+    private var isEdited = false
     private var stateWork: DispatchWorkItem?
-    private var loadFailed = false
+    private var restored = false
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
     var theme: FontTheme { didSet { if theme != oldValue { applyFont() } } }
@@ -37,8 +39,9 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     var focusView: NSView { text }
     var isDead: Bool { false }
 
-    init(pane: UUID, path: String, font: EditorFont, theme: FontTheme) {
-        self.pane = pane
+    init(placement: PlacementID, block: BlockID, path: String, font: EditorFont, theme: FontTheme) {
+        self.placement = placement
+        self.block = block
         self.path = path
         self.font = font
         self.theme = theme
@@ -88,14 +91,14 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
             NSColor(srgbRed: 0.81, green: 0.886, blue: 0.984, alpha: 1),
             NSColor(srgbRed: 0.149, green: 0.31, blue: 0.47, alpha: 1))]
         applyFont()
-
-        load(restoring: true)
-        watch()
-        NotificationCenter.default.addObserver(self, selector: #selector(saveState),
-                                               name: NSApplication.willTerminateNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        documentChanged()
+    }
 
     override func layout() {
         super.layout()
@@ -104,11 +107,75 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - bannerHeight)
     }
 
-    /// The pane's gone: its unsaved changes go with it.
     func destroy() {
-        watcher = nil
-        try? FileManager.default.removeItem(at: stateFile)
-        NotificationCenter.default.removeObserver(self)
+        stateWork?.cancel()
+    }
+
+    // MARK: The block
+
+    private var document: TextState? { delegate?.editorText(self) }
+
+    /// The block's log moved: if not by us, the text is set to it again.
+    func documentChanged() {
+        guard let doc = document else { return }
+        if doc.version != appliedVersion {
+            let selection = text.selectedRange()
+            let y = scroll.contentView.bounds.origin.y
+            applying = true
+            setText(doc.text.string)
+            applying = false
+            appliedVersion = doc.version
+            let length = (text.string as NSString).length
+            if !restored {
+                restored = true
+                if let ranges = doc.selections[placement], let first = ranges.first {
+                    let loc = doc.text.utf16Offset(ofByte: first.start)
+                    let end = doc.text.utf16Offset(ofByte: first.end)
+                    text.setSelectedRange(NSRange(location: min(loc, length), length: max(0, min(end, length) - min(loc, length))))
+                }
+                if let sy = doc.scroll[placement] {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, sy)))
+                        self.scroll.reflectScrolledClipView(self.scroll.contentView)
+                    }
+                }
+            } else {
+                text.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+        }
+        if doc.unreadable {
+            text.isEditable = false
+        }
+        if doc.stale, banner == nil { showBanner() }
+        if !doc.stale, banner != nil { hideBanner() }
+        if doc.isDirty != isEdited {
+            isEdited = doc.isDirty
+            delegate?.editorEditedChanged(self)
+        }
+        if let p = document?.text, path.isEmpty, p.count == 0 {}
+    }
+
+    var isDirty: Bool { document?.isDirty == true }
+
+    private func setText(_ s: String) {
+        let attributes = text.typingAttributes
+        text.textStorage?.setAttributedString(NSAttributedString(string: s, attributes: attributes))
+    }
+
+    /// An edit about to be made in the view becomes an entry; the view then
+    /// makes it too (NSTextView's own undo passes through here as well, so
+    /// undo and redo are entries like any other).
+    func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
+        guard !applying, let doc = document, let replacement = replacementString else { return true }
+        let rope = doc.text
+        let start = rope.byteOffset(ofUTF16: range.location)
+        let end = rope.byteOffset(ofUTF16: range.location + range.length)
+        delegate?.editor(self, append: [.edit([TextEdit(start: start, end: end, text: replacement)])])
+        appliedVersion = (document?.version) ?? appliedVersion
+        return true
     }
 
     // MARK: Fonts
@@ -140,150 +207,40 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
     @objc func decreaseFontSize(_ sender: Any?) { sizeAdjust -= 1; applyFont() }
     @objc func resetFontSize(_ sender: Any?) { sizeAdjust = 0; applyFont() }
 
-    // MARK: Loading and saving
-
-    /// Reads the file; the first time, puts back unsaved changes, selection,
-    /// and scroll position from before.
-    private func load(restoring: Bool) {
-        let disk = Self.read(path)
-        loadFailed = disk == nil
-        saved = disk?.text ?? ""
-        encoding = disk?.encoding ?? .utf8
-        lineEnding = disk?.lineEnding ?? "\n"
-        var shown = saved
-        var state: EditorState?
-        if restoring, let s = EditorState.load(from: stateFile) {
-            state = s
-            if let draft = s.draft { shown = draft }
-        }
-        setText(shown)
-        if let state {
-            let length = (text.string as NSString).length
-            let sel = NSRange(location: min(state.selection[0], length), length: 0)
-            let end = min(state.selection[0] + state.selection[1], length)
-            text.setSelectedRange(NSRange(location: sel.location, length: max(0, end - sel.location)))
-            DispatchQueue.main.async { [weak self] in
-                self?.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, state.scrollY)))
-                self?.scroll.reflectScrolledClipView(self!.scroll.contentView)
-            }
-            // The file changed under unsaved changes while we were away.
-            if state.draft != nil, let base = state.base, base != Self.fingerprint(saved) {
-                showBanner()
-            }
-        }
-        updateEdited()
-        if loadFailed && FileManager.default.fileExists(atPath: path) {
-            text.isEditable = false
-            setText("\(path) can't be read as text.")
-        }
-    }
-
-    private func setText(_ s: String) {
-        let attributes = text.typingAttributes
-        text.textStorage?.setAttributedString(NSAttributedString(string: s, attributes: attributes))
-        text.undoManager?.removeAllActions()
-    }
-
-    struct Disk {
-        var text: String
-        var encoding: String.Encoding
-        var lineEnding: String
-    }
-
-    /// A text file's text, with its line endings made "\n".
-    static func read(_ path: String) -> Disk? {
-        guard let data = FileManager.default.contents(atPath: path) else { return nil }
-        let encoding: String.Encoding
-        let raw: String
-        if let s = String(data: data, encoding: .utf8) {
-            (raw, encoding) = (s, .utf8)
-        } else if let s = String(data: data, encoding: .isoLatin1) {
-            (raw, encoding) = (s, .isoLatin1)
-        } else {
-            return nil
-        }
-        let crlf = raw.contains("\r\n")
-        return Disk(text: crlf ? raw.replacingOccurrences(of: "\r\n", with: "\n") : raw,
-                    encoding: encoding, lineEnding: crlf ? "\r\n" : "\n")
-    }
-
-    /// Whether a file looks like text: no NULs near its start.
-    static func isText(_ path: String) -> Bool {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? handle.close() }
-        let head = (try? handle.read(upToCount: 8192)) ?? Data()
-        return !head.contains(0)
-    }
+    // MARK: Saving
 
     @objc func saveDocument(_ sender: Any?) {
-        guard !loadFailed || !FileManager.default.fileExists(atPath: path) else { return }
-        var out = text.string
-        if lineEnding != "\n" { out = out.replacingOccurrences(of: "\n", with: lineEnding) }
-        guard let data = out.data(using: encoding) ?? out.data(using: .utf8) else { return }
-        let url = URL(fileURLWithPath: path)
-        // An atomic write makes a new file; keep the old one's permissions.
-        let permissions = (try? FileManager.default.attributesOfItem(atPath: path))?[.posixPermissions]
-        do {
-            try data.write(to: url, options: .atomic)
-            if let permissions {
-                try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
-            }
-            saved = text.string
-            hideBanner()
-            updateEdited()
-            saveState()
-        } catch {
-            let alert = NSAlert(error: error)
-            if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+        guard let doc = document, !doc.unreadable else { return }
+        if path.isEmpty { return saveAs() }
+        delegate?.editor(self, propose: .writeFile(block, version: doc.version, text: doc.text.string))
+    }
+
+    /// A note, saved: it becomes a file.
+    private func saveAs() {
+        guard let window else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Note.md"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url, let doc = self.document else { return }
+            self.path = url.path
+            self.delegate?.editor(self, append: [.path(url.path)])
+            self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
         }
     }
 
     @objc func revertDocumentToSaved(_ sender: Any?) {
-        reload()
-    }
-
-    private func reload() {
-        let selection = text.selectedRange()
-        let y = scroll.contentView.bounds.origin.y
-        guard let disk = Self.read(path) else { return }
-        saved = disk.text
-        encoding = disk.encoding
-        lineEnding = disk.lineEnding
-        setText(saved)
-        let length = (text.string as NSString).length
-        text.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        hideBanner()
-        updateEdited()
-        saveState()
-    }
-
-    // MARK: Changes on disk
-
-    private func watch() {
-        watcher = FileWatcher(path: path) { [weak self] in self?.fileChanged() }
-    }
-
-    private func fileChanged() {
-        guard let disk = Self.read(path), disk.text != saved else { return }
-        if isEdited {
-            showBanner()
-        } else {
-            reload()
-        }
+        guard !path.isEmpty else { return }
+        delegate?.editor(self, propose: .readFile(block))
     }
 
     private func showBanner() {
         guard banner == nil else { return }
         let b = EditorBanner(message: "This file changed on disk.")
-        b.onReload = { [weak self] in self?.reload() }
+        b.onReload = { [weak self] in self?.revertDocumentToSaved(nil) }
         b.onKeep = { [weak self] in
             guard let self else { return }
             // Keep the edits, against what's on disk now.
-            if let disk = Self.read(self.path) { self.saved = disk.text }
-            self.hideBanner()
-            self.updateEdited()
+            self.delegate?.editor(self, append: [.stale(false)])
         }
         addSubview(b)
         banner = b
@@ -300,10 +257,6 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
 
     func textDidChange(_ notification: Notification) {
         text.highlightedLine = nil
-        checkWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.updateEdited() }
-        checkWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
         scheduleStateSave()
     }
 
@@ -316,47 +269,26 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
         scheduleStateSave()
     }
 
-    private func updateEdited() {
-        let edited = !loadFailed && text.string != saved
-        guard edited != isEdited else { return }
-        isEdited = edited
-        delegate?.editorEditedChanged(self)
-    }
-
     // MARK: Kept state
 
-    private var stateFile: URL { Self.stateFile(pane) }
-
-    static func stateFile(_ pane: UUID) -> URL {
-        Paths.directory.appendingPathComponent("editors").appendingPathComponent("\(pane.uuidString).json")
-    }
-
-    /// Whether an editor has unsaved changes kept, open or not.
-    static func hasUnsavedChanges(_ pane: UUID) -> Bool {
-        EditorState.load(from: stateFile(pane))?.draft != nil
-    }
-
     private func scheduleStateSave() {
+        guard restored else { return }
         stateWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.saveState() }
         stateWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
-    @objc private func saveState() {
+    private func saveState() {
         stateWork?.cancel()
+        guard let doc = document else { return }
         let sel = text.selectedRange()
-        let draft = text.string != saved ? text.string : nil
-        let state = EditorState(selection: [sel.location, sel.length], scrollY: scroll.contentView.bounds.origin.y,
-                                draft: draft, base: draft == nil ? nil : Self.fingerprint(saved))
-        state.save(to: stateFile)
-    }
-
-    /// Enough to tell whether a file's text changed.
-    static func fingerprint(_ s: String) -> String {
-        var hash: UInt64 = 0xcbf29ce484222325
-        for byte in s.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
-        return "\(s.utf8.count)-\(String(hash, radix: 16))"
+        let range = TextRange(doc.text.byteOffset(ofUTF16: sel.location), doc.text.byteOffset(ofUTF16: sel.location + sel.length))
+        var events: [Event] = []
+        if doc.selections[placement] != [range] { events.append(.selection(placement: placement, ranges: [range])) }
+        let y = Double(scroll.contentView.bounds.origin.y)
+        if abs((doc.scroll[placement] ?? -1) - y) > 0.5 { events.append(.scroll(placement: placement, y: y)) }
+        if !events.isEmpty { delegate?.editor(self, append: events) }
     }
 
     // MARK: Go to line
@@ -403,8 +335,10 @@ final class EditorView: NSView, PaneContent, NSTextViewDelegate, NSMenuItemValid
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(saveDocument(_:)), #selector(revertDocumentToSaved(_:)):
-            return isEdited || banner != nil
+        case #selector(saveDocument(_:)):
+            return isDirty || path.isEmpty
+        case #selector(revertDocumentToSaved(_:)):
+            return (isDirty || banner != nil) && !path.isEmpty
         default:
             return true
         }
@@ -453,25 +387,6 @@ final class EditorTextView: NSTextView {
         let indent = String(head.prefix { $0 == " " || $0 == "\t" })
         super.insertNewline(sender)
         if !indent.isEmpty { insertText(indent, replacementRange: selectedRange()) }
-    }
-}
-
-/// What an editor keeps between runs: where it was, and unsaved changes
-/// (with a fingerprint of the file they were made against).
-struct EditorState: Codable {
-    var selection: [Int]
-    var scrollY: Double
-    var draft: String?
-    var base: String?
-
-    static func load(from url: URL) -> EditorState? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(EditorState.self, from: data)
-    }
-
-    func save(to url: URL) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let data = try? JSONEncoder().encode(self) { try? data.write(to: url, options: .atomic) }
     }
 }
 

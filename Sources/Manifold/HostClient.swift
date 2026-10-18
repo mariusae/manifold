@@ -1,0 +1,290 @@
+import AppKit
+import CPTY
+import ManifoldCore
+
+/// The app's attachment to a host's `manifoldd`: a replica of its shards,
+/// led here for the ones the app edits (arrangements, text, the desk) and
+/// followed for the rest. It starts the local server when there isn't one,
+/// and starts it again if it goes away.
+final class HostClient {
+    let node = Node()
+    let clock = Clock(host: .local)
+    private(set) var host = HostID.local
+    private var conn: Connection?
+    private(set) var hasState = false
+    private var nextProposal = 1
+    private var pendingProposals: [Int: (String?) -> Void] = [:]
+    private var changeScheduled = false
+
+    /// Called on the main queue once per turn in which something changed.
+    var onChange: (() -> Void)?
+    var onDisconnect: (() -> Void)?
+    /// The server speaks another version of the protocol (it's from an older
+    /// or newer build, still running).
+    var onVersionMismatch: ((Int) -> Void)?
+
+    init() {
+        node.onChange = { [weak self] _ in self?.scheduleChange() }
+    }
+
+    /// The server executable: next to ours in the app bundle.
+    static var serverExecutable: String {
+        Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("manifoldd").path
+    }
+
+    /// The command a terminal runs to attach to a block's shell. Ghostty
+    /// splits commands on spaces, so a path with spaces goes through a symlink.
+    static func attachCommand(block: BlockID) -> String {
+        var exe = serverExecutable
+        if exe.contains(" ") {
+            let link = NSTemporaryDirectory() + "manifoldd-\(getuid())"
+            unlink(link)
+            symlink(exe, link)
+            exe = link
+        }
+        return "direct:\(exe) attach \(block.description)"
+    }
+
+    // MARK: Reading
+
+    var desk: DeskState { node.desk(host) }
+    var registry: Registry { node.registry(host) }
+    var links: Links { node.links(host) }
+    func block(_ id: BlockID) -> Block? { node.block(id) }
+    func arrangement(_ id: BlockID?) -> ArrangementState? { id.flatMap { node.block($0)?.arrangement } }
+    var selectedArrangement: BlockID? { desk.selected }
+
+    /// The text block for a file on this host, if there is one.
+    func textBlock(path: String) -> Block? {
+        node.blocks.first { $0.kind == .text && $0.path == path }
+    }
+
+    func directoryBlock(path: String) -> Block? {
+        node.blocks.first { $0.kind == .directory && $0.path == path }
+    }
+
+    // MARK: Writing
+
+    /// Appends events to a shard the app leads: applied here at once, and
+    /// sent to the host to keep and pass on.
+    func append(_ events: [Event], to shard: ShardID) {
+        guard !events.isEmpty else { return }
+        var entries: [Entry] = []
+        for e in events {
+            if let entry = node.append(e, to: shard, at: clock.now()) { entries.append(entry) }
+        }
+        if !entries.isEmpty { conn?.send(.message(ClientMessage.append(shard: shard, entries: entries))) }
+    }
+
+    func append(_ event: Event, to shard: ShardID) { append([event], to: shard) }
+
+    /// Asks the host to do something only it can.
+    func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
+        let id = nextProposal
+        nextProposal += 1
+        if let done { pendingProposals[id] = done }
+        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+    }
+
+    // MARK: Conveniences
+
+    /// A new, empty arrangement on the desk, selected.
+    @discardableResult
+    func newArrangement(title: String? = nil, select: Bool = true, after: BlockID? = nil) -> BlockID {
+        let id = BlockID(host: host)
+        append(.create(kind: .arrangement, title: title, path: nil), to: .block(id))
+        var order = desk.order
+        let index = after.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? order.count
+        order.insert(id, at: index)
+        append(.order(order), to: .desk(host))
+        if select { append(.select(id), to: .desk(host)) }
+        return id
+    }
+
+    /// A new terminal block on the host, in `cwd`.
+    func newTerminal(cwd: String?) -> BlockID {
+        let id = BlockID(host: host)
+        propose(.newTerminal(block: id, cwd: cwd))
+        return id
+    }
+
+    /// The text block for a path, made (and read) if there isn't one.
+    func textBlock(for path: String) -> BlockID {
+        if let b = textBlock(path: path) { return b.id }
+        let id = BlockID(host: host)
+        append(.create(kind: .text, title: nil, path: path), to: .block(id))
+        propose(.readFile(id))
+        return id
+    }
+
+    func directoryBlock(for path: String) -> BlockID {
+        if let b = directoryBlock(path: path) { return b.id }
+        let id = BlockID(host: host)
+        propose(.directory(block: id, path: path))
+        return id
+    }
+
+    /// A note: text with no file.
+    func newNote() -> BlockID {
+        let id = BlockID(host: host)
+        append(.create(kind: .text, title: nil, path: nil), to: .block(id))
+        append(.content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(id))
+        return id
+    }
+
+    func link(from: BlockID, to: BlockID, kind: LinkKind) {
+        guard from != to else { return }
+        propose(.link(Link(from: from, to: to, kind: kind, at: clock.now())))
+    }
+
+    func select(_ arrangement: BlockID?) {
+        guard desk.selected != arrangement else { return }
+        if let arrangement, !desk.order.contains(arrangement) {
+            append(.order(desk.order + [arrangement]), to: .desk(host))
+        }
+        append(.select(arrangement), to: .desk(host))
+    }
+
+    func setAppearance(_ a: Appearance) { append(.appearance(a), to: .desk(host)) }
+    func setSettings(_ s: Settings) { append(.settings(s), to: .desk(host)) }
+    func setWindow(_ w: WindowState) { append(.window(w), to: .desk(host)) }
+
+    // MARK: Connection
+
+    func connect() {
+        Paths.ensureDirectory()
+        if let fd = try? UnixSocket.connect(path: Paths.socket) {
+            attach(fd)
+            return
+        }
+        launchServer()
+        var attempts = 0
+        func retry() {
+            attempts += 1
+            if let fd = try? UnixSocket.connect(path: Paths.socket) {
+                attach(fd)
+            } else if attempts < 100 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: retry)
+            } else {
+                let alert = NSAlert()
+                alert.messageText = "Manifold couldn't start its server."
+                alert.informativeText = "See \(Paths.log.path)."
+                alert.runModal()
+                NSApp.terminate(nil)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: retry)
+    }
+
+    /// Ends the server and every session in it.
+    static func stopServer() {
+        guard let fd = try? UnixSocket.connect(path: Paths.socket) else { return }
+        let frame = Frame.message(ClientMessage.shutdown).encoded
+        _ = frame.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        var b: UInt8 = 0
+        _ = read(fd, &b, 1)
+        close(fd)
+    }
+
+    private func launchServer() {
+        let exe = Self.serverExecutable
+        let pid = withCStrings([exe, "serve"]) { argv in
+            mf_spawn_detached(exe, argv, Paths.log.path)
+        }
+        if pid < 0 { NSLog("could not start %@: %s", exe, strerror(errno)) }
+    }
+
+    private func attach(_ fd: Int32) {
+        let conn = Connection(fd: fd, queue: .main)
+        conn.onFrame = { [weak self] frame in
+            guard let self, let message = frame.decode(ServerMessage.self) else { return }
+            self.handle(message)
+        }
+        conn.onClose = { [weak self] in
+            guard let self else { return }
+            self.conn = nil
+            self.onDisconnect?()
+            // Bring the server back; terminals re-attach once it's up.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.connect() }
+        }
+        conn.start()
+        conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
+        self.conn = conn
+    }
+
+    private func handle(_ message: ServerMessage) {
+        switch message {
+        case let .welcome(version, _, host, _, snapshots):
+            if version != protocolVersion {
+                NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
+                onVersionMismatch?(version)
+            }
+            self.host = host
+            for s in snapshots { node.load(s) }
+            // Shards we had that the host no longer has (a fresh host).
+            let known = Set(snapshots.map(\.shard))
+            for shard in node.shards.keys where !known.contains(shard) { node.remove(shard) }
+            hasState = true
+            scheduleChange()
+        case let .entries(shard, entries):
+            for e in entries { clock.observe(e.at) }
+            if !node.apply(entries, to: shard) {
+                NSLog("entries for %@ don't follow; waiting for a snapshot", shard.description)
+            }
+            if let block = shard.block {
+                for e in entries {
+                    if case .shell(.ended) = e.event { onTerminalEnded?(block) }
+                }
+            }
+        case let .snapshot(snap):
+            node.load(snap)
+        case let .rejected(shard):
+            NSLog("append to %@ was refused", shard.description)
+        case let .propose(shard, proposal):
+            lower(proposal, into: shard)
+        case let .done(id, error):
+            if let error { NSLog("proposal %d: %@", id, error) }
+            pendingProposals.removeValue(forKey: id)?(error)
+        case let .history(shard, entries):
+            onHistory?(shard, entries)
+        case let .removed(shard):
+            node.remove(shard)
+        }
+    }
+
+    var onHistory: ((ShardID, [Entry]) -> Void)?
+    /// A terminal's shell ended (not for dormancy), while we were attached.
+    var onTerminalEnded: ((BlockID) -> Void)?
+
+    /// The host asked us, as the leader, to append something.
+    private func lower(_ proposal: HostProposal, into shard: ShardID) {
+        guard node.has(shard) else { return }
+        switch proposal {
+        case let .content(text, encoding, lineEnding, fingerprint):
+            append(.content(text, encoding: encoding, lineEnding: lineEnding, fingerprint: fingerprint), to: shard)
+        case let .clean(version, fingerprint):
+            append(.clean(version: version, fingerprint: fingerprint), to: shard)
+        case .stale:
+            append(.stale(true), to: shard)
+        case .unreadable:
+            append(.unreadable(true), to: shard)
+        }
+    }
+
+    private func scheduleChange() {
+        guard !changeScheduled else { return }
+        changeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.changeScheduled = false
+            self.onChange?()
+        }
+    }
+}
+
+func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R) -> R {
+    var ptrs: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
+    ptrs.append(nil)
+    defer { for p in ptrs { free(p) } }
+    return ptrs.withUnsafeBufferPointer { body($0.baseAddress!) }
+}

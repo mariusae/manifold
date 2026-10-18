@@ -44,12 +44,26 @@ enum Theme {
                  NSColor(white: 0.19 - CGFloat(level) * 0.025, alpha: 1))
     }
 
-    static func symbolName(for kind: PaneKind) -> String {
-        switch kind {
+    static func symbolName(for lens: Lens) -> String {
+        switch lens {
         case .terminal: "apple.terminal"
-        case .markdown: "doc.richtext"
+        case .preview: "doc.richtext"
         case .editor: "doc.text"
+        case .directory: "folder"
+        case .web: "globe"
+        case .image: "photo"
+        case .pdf: "doc.richtext.fill"
+        case .search: "magnifyingglass"
+        case .diff: "arrow.left.arrow.right"
+        case .git: "arrow.triangle.branch"
+        case .process: "cpu"
+        case .agent: "sparkles"
+        case .card: "rectangle.3.group"
         }
+    }
+
+    static func symbolName(for kind: BlockKind, path: String? = nil) -> String {
+        symbolName(for: Lens.default(for: kind, path: path))
     }
 
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
@@ -59,10 +73,10 @@ enum Theme {
 }
 
 extension NSPasteboard.PasteboardType {
-    /// A tab being dragged, by id.
-    static let manifoldTab = NSPasteboard.PasteboardType("com.manifold.tab")
-    /// A pane (a sheet) being dragged, by id.
-    static let manifoldPane = NSPasteboard.PasteboardType("com.manifold.pane")
+    /// An arrangement being dragged, by id.
+    static let manifoldArrangement = NSPasteboard.PasteboardType("com.manifold.arrangement")
+    /// A placement (a sheet) being dragged, by id.
+    static let manifoldPlacement = NSPasteboard.PasteboardType("com.manifold.placement")
 }
 
 /// A small borderless button showing a symbol, with a hover background.

@@ -2,396 +2,221 @@ import Foundation
 import Testing
 @testable import ManifoldCore
 
-private func ids(_ n: Int) -> [UUID] { (0..<n).map { _ in UUID() } }
+// MARK: Rope
 
-private func workspace(tabs n: Int) -> (Workspace, tabs: [UUID], panes: [UUID]) {
-    var ws = Workspace()
-    let tabs = ids(n), panes = ids(n)
-    for i in 0..<n {
-        ws.apply(.newTab(tab: tabs[i], pane: panes[i], kind: .terminal, cwd: nil, after: nil))
-    }
-    return (ws, tabs, panes)
+@Test func ropeCountsAndLines() {
+    let r = Rope("hello\nwörld\n😀 end")
+    #expect(r.count == "hello\nwörld\n😀 end".utf8.count)
+    #expect(r.lineCount == 3)
+    #expect(r.utf16Count == ("hello\nwörld\n😀 end" as NSString).length)
+    #expect(r.lineText(0) == "hello")
+    #expect(r.lineText(1) == "wörld")
+    #expect(r.lineText(2) == "😀 end")
+    #expect(r.line(at: 0) == 0)
+    #expect(r.line(at: 6) == 1)
+    #expect(r.line(at: r.count) == 2)
+    #expect(r.offset(ofLine: 1) == 6)
+    #expect(r.offset(ofLine: 2) == 13)
+    #expect(r.offset(ofLine: 99) == r.count)
 }
 
-@Test func newTabIsSelectedAndPlacedAfter() {
-    var (ws, tabs, _) = workspace(tabs: 3)
-    #expect(ws.selectedTab == tabs[2])
-    let t = UUID()
-    ws.apply(.newTab(tab: t, pane: UUID(), kind: .terminal, cwd: "/tmp", after: tabs[0]))
-    #expect(ws.tabs.map(\.id) == [tabs[0], t, tabs[1], tabs[2]])
-    #expect(ws.selectedTab == t)
-    #expect(ws.tab(t)?.panes.first?.cwd == "/tmp")
+@Test func ropeEditsAcrossChunks() {
+    var text = ""
+    for i in 0..<3000 { text += "line \(i) with some text in it é\n" }
+    var r = Rope(text)
+    #expect(r.string == text)
+    #expect(r.lineCount == 3001)
+    r.replace(TextRange(0, 0), with: "START ")
+    text = "START " + text
+    #expect(r.string == text)
+    let mid = text.utf8.count / 2
+    let floorMid = r.floorBoundary(mid)
+    r.replace(TextRange(floorMid, floorMid + 10), with: "X")
+    var bytes = Array(text.utf8)
+    bytes.replaceSubrange(floorMid..<floorMid + 10, with: Array("X".utf8))
+    text = String(decoding: bytes, as: UTF8.self)
+    #expect(r.string == text)
+    r.replace(TextRange(0, r.count), with: "")
+    #expect(r.isEmpty)
+    #expect(r.lineCount == 1)
+    r.replace(TextRange(0, 0), with: "a\nb")
+    #expect(r.lineRange(1) == TextRange(2, 3))
 }
 
-@Test func closingSelectedTabSelectsNeighbor() {
-    var (ws, tabs, panes) = workspace(tabs: 3)
-    ws.apply(.selectTab(tabs[1]))
-    #expect(ws.apply(.closeTab(tabs[1])) == [panes[1]])
-    #expect(ws.selectedTab == tabs[2])
-    ws.apply(.closeTab(tabs[2]))
-    #expect(ws.selectedTab == tabs[0])
-    ws.apply(.closeTab(tabs[0]))
-    #expect(ws.selectedTab == nil)
-    #expect(ws.tabs.isEmpty)
+@Test func ropeUTF16Offsets() {
+    let r = Rope("a😀b\né")
+    // a=1 unit, 😀=2 units (4 bytes), b=1, \n, é=1 (2 bytes).
+    #expect(r.utf16Offset(ofByte: 0) == 0)
+    #expect(r.utf16Offset(ofByte: 1) == 1)
+    #expect(r.utf16Offset(ofByte: 5) == 3)
+    #expect(r.utf16Offset(ofByte: r.count) == 6)
+    #expect(r.byteOffset(ofUTF16: 3) == 5)
+    #expect(r.byteOffset(ofUTF16: 1) == 1)
+    #expect(r.byteOffset(ofUTF16: 6) == r.count)
+    #expect(r.next(1) == 5)
+    #expect(r.previous(5) == 1)
 }
 
-@Test func mergeAndUnsplit() {
-    var (ws, tabs, panes) = workspace(tabs: 3)
-    // Drop tab 2 onto the right half of tab 1's only pane.
-    ws.apply(.mergeTab(tabs[2], into: tabs[1], at: 1))
-    #expect(ws.tabs.map(\.id) == [tabs[0], tabs[1]])
-    #expect(ws.tab(tabs[1])?.panes.map(\.id) == [panes[1], panes[2]])
-    #expect(ws.tab(tabs[1])?.focusedPane == panes[2])
-    #expect(ws.tab(tabs[1])?.fractions == [0.5, 0.5])
-    #expect(ws.selectedTab == tabs[1])
-
-    ws.apply(.unsplit(tabs[1]))
-    #expect(ws.tabs.count == 3)
-    // The focused pane keeps the tab; the other gets a new tab after it.
-    #expect(ws.tabs[1].id == tabs[1])
-    #expect(ws.tabs[1].panes.map(\.id) == [panes[2]])
-    #expect(ws.tabs[2].panes.map(\.id) == [panes[1]])
+@Test func ropeFinds() {
+    let r = Rope("one two One two")
+    #expect(r.find("two", from: 0) == TextRange(4, 7))
+    #expect(r.find("two", from: 5) == TextRange(12, 15))
+    #expect(r.find("two", from: 15, backwards: true) == TextRange(12, 15))
+    #expect(r.findAll("one", caseInsensitive: true).count == 2)
 }
 
-@Test func mergeIntoItselfDoesNothing() {
-    var (ws, tabs, _) = workspace(tabs: 2)
-    let before = ws
-    ws.apply(.mergeTab(tabs[0], into: tabs[0], at: 0))
-    #expect(ws == before)
+// MARK: Blocks and logs
+
+private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000)) }
+
+@Test func textBlockFollowsItsLog() {
+    let node = Node()
+    let id = BlockID()
+    let shard = ShardID.block(id)
+    #expect(node.append(.edit([.insert("x", at: 0)]), to: shard, at: stamp()) == nil, "a block begins with create")
+    node.append(.create(kind: .text, title: nil, path: "/tmp/a.txt"), to: shard, at: stamp())
+    node.append(.content("hello", encoding: "utf-8", lineEnding: "\n", fingerprint: "f1"), to: shard, at: stamp())
+    var b = node.block(id)!
+    #expect(b.text?.text.string == "hello")
+    #expect(b.text?.isDirty == false)
+    node.append(.edit([.insert(" world", at: 5)]), to: shard, at: stamp())
+    b = node.block(id)!
+    #expect(b.text?.text.string == "hello world")
+    #expect(b.text?.isDirty == true)
+    #expect(b.isHeld)
+    node.append(.clean(version: b.text!.version, fingerprint: "f2"), to: shard, at: stamp())
+    #expect(node.block(id)?.text?.isDirty == false)
+    #expect(node.seq(shard) == 4)
+    // A gap is refused; a repeat is harmless.
+    #expect(!node.apply(Entry(seq: 9, at: stamp(), event: .title("x")), to: shard))
+    #expect(node.apply(Entry(seq: 2, at: stamp(), event: .title("x")), to: shard))
+    #expect(node.block(id)?.title == nil)
 }
 
-@Test func closingLastPaneOfSplitLeavesTab() {
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 0))
-    #expect(ws.tab(tabs[0])?.panes.map(\.id) == [panes[1], panes[0]])
-    ws.apply(.closePane(panes[1]))
-    #expect(ws.tab(tabs[0])?.panes.map(\.id) == [panes[0]])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
-    #expect(ws.tab(tabs[0])?.fractions == [1])
-    ws.apply(.closePane(panes[0]))
-    #expect(ws.tabs.isEmpty)
+@Test func arrangementPlacesAndStacks() {
+    var a = ArrangementState()
+    let t1 = Placement(block: BlockID(), lens: .terminal)
+    let t2 = Placement(block: BlockID(), lens: .terminal)
+    let e = Placement(block: BlockID(), lens: .editor)
+    a.apply(.place(t1, column: 0, at: 0))
+    a.apply(.place(t2, column: 1, at: 0))
+    #expect(a.columns.count == 2)
+    #expect(a.fractions == [0.5, 0.5])
+    #expect(a.focused == t2.id)
+    // Beside t1: onto the column to its right.
+    for ev in a.placing(e.block, lens: .editor, beside: t1.id, newPlacement: { e.id }) { a.apply(ev) }
+    #expect(a.columns[1].map(\.id) == [t2.id, e.id])
+    #expect(a.visible.map(\.id) == [t1.id, e.id])
+    // Focusing t2 raises it in stacks.
+    a.apply(.focus(t2.id))
+    #expect(a.columns[1].last?.id == t2.id)
+    // Placing the same block again on that column raises rather than repeats.
+    let again = a.placing(e.block, lens: .editor, onColumn: 1, newPlacement: { "new" })
+    #expect(again == [.focus(e.id)])
+    a.apply(.remove(t2.id))
+    #expect(a.columns[1].map(\.id) == [e.id])
+    #expect(a.focused == e.id)
+    a.apply(.remove(e.id))
+    #expect(a.columns.count == 1)
+    #expect(a.focused == t1.id)
+    a.apply(.layout(.tiling))
+    a.apply(.place(t2, column: 0, at: 0))
+    #expect(a.visible.count == 2, "tiling shows everything")
+    a.apply(.move(t2.id, column: 1, at: 0))
+    #expect(a.columns.count == 2)
 }
 
-@Test func movePaneToANewTab() {
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 1))
-    let t = UUID()
-    ws.apply(.movePane(panes[0], to: .newTab(tab: t, index: 1)))
-    #expect(ws.tabs.map(\.id) == [tabs[0], t])
-    #expect(ws.tab(t)?.panes.map(\.id) == [panes[0]])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[1])
-    #expect(ws.selectedTab == t)
-    // A pane that's a tab of its own already stays put.
-    ws.apply(.movePane(panes[0], to: .newTab(tab: UUID(), index: 0)))
-    #expect(ws.tabs.map(\.id) == [tabs[0], t])
+@Test func separatingColumns() {
+    var a = ArrangementState()
+    let p = (0..<3).map { _ in Placement(block: BlockID(), lens: .terminal) }
+    for (i, x) in p.enumerated() { a.apply(.place(x, column: i, at: 0)) }
+    a.apply(.focus(p[1].id))
+    let others = a.separated()
+    #expect(others.map { $0[0].id } == [p[0].id, p[2].id])
 }
 
-@Test func titles() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    #expect(ws.tabs[0].title == "Terminal")
-    ws.apply(.setPaneTitle(panes[0], "vim"))
-    #expect(ws.tabs[0].title == "vim")
-    ws.apply(.renameTab(tabs[0], title: "  work "))
-    #expect(ws.tabs[0].title == "work")
-    ws.apply(.renameTab(tabs[0], title: ""))
-    #expect(ws.tabs[0].customTitle == nil)
+@Test func deskAndRegistry() {
+    let node = Node()
+    let host = HostID.local
+    let a = BlockID(), b = BlockID()
+    node.append(.order([a, b]), to: .desk(host), at: stamp())
+    node.append(.select(b), to: .desk(host), at: stamp())
+    node.append(.settled(b), to: .desk(host), at: stamp())
+    node.append(.settled(a), to: .desk(host), at: stamp())
+    #expect(node.desk(host).selected == b)
+    #expect(node.desk(host).settled == [a, b])
+    let now = stamp()
+    node.append(.register(RegistryEntry(id: a, kind: .arrangement, created: now, lastSeen: now)), to: .registry(host), at: now)
+    node.append(.seen([a], at: Stamp(wall: now.wall + 5)), to: .registry(host), at: now)
+    #expect(node.registry(host).blocks[a]?.lastSeen.wall == now.wall + 5)
+    #expect(node.leader(of: .desk(host)) == .client)
+    #expect(node.leader(of: .registry(host)) == .host)
 }
 
-@Test func moveTabAndFractions() {
-    var (ws, tabs, _) = workspace(tabs: 3)
-    ws.apply(.moveTab(tabs[0], to: 2))
-    #expect(ws.tabs.map(\.id) == [tabs[1], tabs[2], tabs[0]])
-    ws.apply(.mergeTab(tabs[2], into: tabs[1], at: 1))
-    ws.apply(.setFractions(tabs[1], [3, 1]))
-    #expect(ws.tab(tabs[1])?.fractions == [0.75, 0.25])
-    ws.apply(.setFractions(tabs[1], [1]))
-    #expect(ws.tab(tabs[1])?.fractions == [0.75, 0.25])
+@Test func storeRoundTripsAndSnapshots() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-store-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = LogStore(directory: dir)
+    let node = Node()
+    let id = BlockID()
+    let shard = ShardID.block(id)
+    var written: [Entry] = []
+    written.append(node.append(.create(kind: .text, title: "t", path: nil), to: shard, at: stamp())!)
+    written.append(node.append(.content("abc", encoding: "utf-8", lineEnding: "\n", fingerprint: nil), to: shard, at: stamp())!)
+    store.append(written, to: shard)
+    store.snapshot(node, shard)
+    let more = node.append(.edit([.insert("d", at: 3)]), to: shard, at: stamp())!
+    store.append([more], to: shard)
+    store.closeAll()
+
+    let again = Node()
+    let fresh = LogStore(directory: dir)
+    #expect(fresh.shards() == [shard])
+    #expect(fresh.load(shard, into: again))
+    #expect(again.block(id)?.text?.text.string == "abcd")
+    #expect(again.seq(shard) == 3)
+    #expect(fresh.entries(shard).count == 3)
 }
 
-@Test func workspaceRoundTrips() throws {
-    var (ws, tabs, _) = workspace(tabs: 2)
-    ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 1))
-    ws.apply(.setWindow(WindowState(frame: [1, 2, 3, 4], sidebarPinned: true)))
-    let data = try JSONEncoder().encode(ws)
-    #expect(try JSONDecoder().decode(Workspace.self, from: data) == ws)
-    let cmd = Command.mergeTab(tabs[0], into: tabs[1], at: 3)
-    #expect(try JSONDecoder().decode(Command.self, from: JSONEncoder().encode(cmd)) == cmd)
+@Test func codecEncodesIds() throws {
+    let id = BlockID(host: HostID("devbox"), ulid: "01ABC")
+    let data = try Codec.encode([id])
+    #expect(try Codec.decode([BlockID].self, from: data) == [id])
+    #expect(BlockID(string: "devbox/01ABC") == id)
+    let u1 = ULID.make(), u2 = ULID.make(now: Date().addingTimeInterval(2))
+    #expect(u1.count == 26 && u2.count == 26)
+    #expect(u1 < u2)
 }
 
-@Test func frames() throws {
-    var d = FrameDecoder()
-    let a = Frame.resize(cols: 300, rows: 40).encoded
-    let b = Frame(.data, Data("hello".utf8)).encoded
-    let all = a + b
-    // Byte at a time.
-    var got: [Frame] = []
-    for byte in all {
-        d.append(Data([byte]))
-        while let f = try d.next() { got.append(f) }
-    }
-    #expect(got.count == 2)
-    #expect(got[0].size?.cols == 300 && got[0].size?.rows == 40)
-    #expect(got[1].payload == Data("hello".utf8))
+@Test func clockNeverRunsBackwards() {
+    let c = Clock(host: .local)
+    let a = c.now(), b = c.now()
+    #expect(a < b)
+    c.observe(Stamp(wall: a.wall + 10_000, logical: 3, host: HostID("other")))
+    let d = c.now()
+    #expect(d.wall >= a.wall + 10_000)
 }
 
-@Test func titleScanner() {
-    var s = TitleScanner()
-    #expect(s.feed(Data("plain \u{1b}[1mtext".utf8)) == nil)
-    #expect(s.feed(Data("\u{1b}]0;one\u{07}".utf8)) == "one")
-    #expect(s.feed(Data("\u{1b}]2;tw".utf8)) == nil)
-    #expect(s.feed(Data("o\u{1b}\\x".utf8)) == "two")
-    #expect(s.feed(Data("\u{1b}]7;file://host/tmp\u{07}".utf8)) == nil)
-    #expect(s.feed(Data("\u{1b}]0;a\u{07}\u{1b}]2;b\u{07}".utf8)) == "b")
-}
-
-@Test func replayTracksAltScreen() {
-    var r = ReplayBuffer(limit: 100)
-    r.append(Data("$ vim\r\n\u{1b}[?10".utf8))
-    #expect(!r.altScreen)
-    r.append(Data("49h".utf8))
-    #expect(r.altScreen)
-    // Trim away the switch; the replay must put it back.
-    r.append(Data(String(repeating: "line\r\n", count: 30).utf8))
-    let replay = String(decoding: r.replay, as: UTF8.self)
-    #expect(replay.contains("\u{1b}[?1049h"))
-    #expect(!replay.contains("vim"))
-    r.append(Data("\u{1b}[?1049l$ ".utf8))
-    #expect(!r.altScreen)
-}
-
-@Test func replayRestoresHistory() {
-    var old = ReplayBuffer()
-    old.append(Data("$ ls\r\nfile\r\n$ vim\u{1b}[?1049h~~~".utf8))
-    let r = ReplayBuffer(restoring: old.contents)
-    #expect(!r.altScreen)
-    let text = String(decoding: r.replay, as: UTF8.self)
-    #expect(text.contains("file"))
-    #expect(text.hasSuffix("\u{1b}[0m\u{1b}[?1049l\r\n"))
-    #expect(ReplayBuffer(restoring: Data()).contents.isEmpty)
-}
-
-@Test func oldStateDecodesWithDefaults() throws {
-    let json = #"{"tabs":[],"window":{"sidebarPinned":true}}"#
-    let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
-    #expect(ws.window.sidebarPinned)
-    #expect(ws.appearance == Appearance())
-    var ws2 = ws
-    ws2.apply(.setAppearance(Appearance(contrastCorrection: .off)))
-    #expect(ws2.appearance.contrastCorrection == .off)
-}
-
-@Test func themeDefaultsToMonaAndSurvivesUnknownThemes() throws {
-    let old = #"{"contrastCorrection":"typical"}"#
-    #expect(try JSONDecoder().decode(Appearance.self, from: Data(old.utf8)).theme == .mona)
-    #expect(try JSONDecoder().decode(Appearance.self, from: Data(old.utf8)).colorScheme == .system)
-    let future = #"{"theme":"comic","contrastCorrection":"off"}"#
-    let a = try JSONDecoder().decode(Appearance.self, from: Data(future.utf8))
-    #expect(a.theme == .mona)
-    #expect(a.contrastCorrection == .off)
-    let go = Appearance(theme: .go, colorScheme: .dark)
-    #expect(try JSONDecoder().decode(Appearance.self, from: JSONEncoder().encode(go)) == go)
-}
-
-@Test func openFileBesideAPaneMakesAColumnThenStacksOnIt() {
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    let a = UUID(), b = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
-    #expect(ws.tabs.count == 2)
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a]])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[0], "focus stays in the terminal")
-    #expect(ws.selectedTab == tabs[0])
-    // Another file goes on the right-hand stack, not into a third column.
-    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a, b]])
-    #expect(ws.tab(tabs[0])?.visiblePanes.map(\.id) == [panes[0], b])
-    // A file already on the stack is raised, not pushed again.
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: UUID(), beside: panes[0]))
-    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b, a])
-}
-
-@Test func openFileStacksOnAnExistingRightColumn() {
-    // A terminal already on the right: the preview goes on its stack.
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    ws.apply(.mergeTab(tabs[1], into: tabs[0], at: 1))
-    let md = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: md, tab: UUID(), beside: panes[0]))
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [panes[1], md]])
-}
-
-@Test func closingTheTopPopsTheStack() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let a = UUID(), b = UUID()
-    ws.apply(.newPane(pane: a, tab: tabs[0], at: 1, kind: .terminal, cwd: nil))
-    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
-    // [p0] [a, b], focus on a's column top after focusing b
-    ws.apply(.focusPane(b))
-    #expect(ws.apply(.closePane(b)) == [b])
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [a]])
-    #expect(ws.tab(tabs[0])?.focusedPane == a, "the pane beneath takes focus")
-    ws.apply(.closePane(a))
-    #expect(ws.tab(tabs[0])?.columns.count == 1)
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
-}
-
-@Test func focusingABuriedPaneRaisesIt() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let a = UUID(), b = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
-    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
-    ws.apply(.focusPane(a))
-    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b, a])
-    #expect(ws.tab(tabs[0])?.focusedPane == a)
-}
-
-@Test func closingABuriedPaneLeavesFocusAlone() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let a = UUID(), b = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
-    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
-    ws.apply(.closePane(a))
-    #expect(ws.tab(tabs[0])?.columns[1].panes.map(\.id) == [b])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
-}
-
-@Test func stackingATabPushesItsPanes() {
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    let column = ws.tab(tabs[0])!.columns[0].id
-    ws.apply(.stackTab(tabs[1], onto: column))
-    #expect(ws.tabs.map(\.id) == [tabs[0]])
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0], panes[1]]])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[1])
-    #expect(!ws.tab(tabs[0])!.isSplit)
-}
-
-@Test func unsplitKeepsEachColumnsStack() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let a = UUID(), b = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: a, tab: UUID(), beside: panes[0]))
-    ws.apply(.openFile(path: "/tmp/b.md", kind: .markdown, pane: b, tab: UUID(), beside: panes[0]))
-    ws.apply(.unsplit(tabs[0]))
-    #expect(ws.tabs.count == 2)
-    #expect(ws.tabs[1].columns.map { $0.panes.map(\.id) } == [[a, b]])
-}
-
-@Test func stateSavedBeforeStacksLoads() throws {
-    let p0 = UUID(), p1 = UUID(), t = UUID()
+@Test func migratesOldState() throws {
     let json = """
-        {"tabs":[{"id":"\(t)","panes":[{"id":"\(p0)","kind":"terminal"},{"id":"\(p1)","kind":"terminal"}],
-          "focusedPane":"\(p1)","fractions":[0.3,0.7]}],"selectedTab":"\(t)","window":{"sidebarPinned":false}}
-        """
-    let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
-    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[p0], [p1]])
-    #expect(ws.tabs[0].fractions == [0.3, 0.7])
-    #expect(ws.tabs[0].focusedPane == p1)
-    // And round-trips in the new form.
-    let again = try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(ws))
-    #expect(again == ws)
-}
-
-@Test func openFileWithoutAPaneMakesOrReusesATab() {
-    var (ws, tabs, _) = workspace(tabs: 1)
-    let t = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: t, beside: nil))
-    #expect(ws.tabs.map(\.id) == [tabs[0], t])
-    #expect(ws.selectedTab == t)
-    ws.apply(.selectTab(tabs[0]))
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: UUID(), tab: UUID(), beside: nil))
-    #expect(ws.tabs.count == 2)
-    #expect(ws.selectedTab == t)
-}
-
-@Test func setPanePathFollowsLinks() {
-    var ws = Workspace()
-    let p = UUID()
-    ws.apply(.openFile(path: "/tmp/a.md", kind: .markdown, pane: p, tab: UUID(), beside: nil))
-    ws.apply(.setPanePath(p, "/tmp/b.md"))
-    #expect(ws.pane(p)?.path == "/tmp/b.md")
-    #expect(ws.tabs[0].title == "b.md")
-}
-
-@Test func newSheetPushesOntoAStack() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let column = ws.tabs[0].columns[0].id
-    let p = UUID()
-    ws.apply(.newSheet(pane: p, column: column, kind: .terminal, cwd: "/tmp"))
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0], p]])
-    #expect(ws.tab(tabs[0])?.focusedPane == p)
-    #expect(ws.pane(p)?.cwd == "/tmp")
-}
-
-@Test func movePaneBetweenStacksAndColumns() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let left = ws.tabs[0].columns[0].id
-    let a = UUID(), b = UUID()
-    ws.apply(.newPane(pane: a, tab: tabs[0], at: 1, kind: .terminal, cwd: nil))
-    ws.apply(.newSheet(pane: b, column: left, kind: .terminal, cwd: nil))
-    // [p0, b] [a]: move b onto the right-hand stack.
-    let right = ws.tabs[0].columns[1].id
-    ws.apply(.movePane(b, to: .stack(column: right)))
-    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[panes[0]], [a, b]])
-    #expect(ws.tabs[0].focusedPane == b)
-    // Then into a new column at the far left.
-    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 0)))
-    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[b], [panes[0]], [a]])
-    // Moving a column's only pane beside itself changes nothing.
-    let before = ws
-    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 1)))
-    #expect(ws == before)
-    // Moving it past its neighbour does move it; its old column goes.
-    ws.apply(.movePane(b, to: .column(tab: tabs[0], index: 3)))
-    #expect(ws.tabs[0].columns.map { $0.panes.map(\.id) } == [[panes[0]], [a], [b]])
-}
-
-@Test func movePaneOntoAnotherTabsStack() {
-    var (ws, tabs, panes) = workspace(tabs: 2)
-    let b = UUID()
-    ws.apply(.newSheet(pane: b, column: ws.tabs[0].columns[0].id, kind: .terminal, cwd: nil))
-    ws.apply(.movePane(b, to: .tabStack(tab: tabs[1])))
-    #expect(ws.tab(tabs[0])?.panes.map(\.id) == [panes[0]])
-    #expect(ws.tab(tabs[1])?.columns.map { $0.panes.map(\.id) } == [[panes[1], b]])
-    #expect(ws.selectedTab == tabs[1])
-    #expect(ws.tab(tabs[1])?.focusedPane == b)
-    // A tab's last pane, moved away, takes the tab with it.
-    ws.apply(.movePane(panes[0], to: .tabStack(tab: tabs[1])))
-    #expect(ws.tabs.map(\.id) == [tabs[1]])
-    #expect(ws.tabs[0].columns[0].panes.map(\.id) == [panes[1], b, panes[0]])
-}
-
-@Test func movePaneOntoItsOwnStackRaisesIt() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let column = ws.tabs[0].columns[0].id
-    let b = UUID()
-    ws.apply(.newSheet(pane: b, column: column, kind: .terminal, cwd: nil))
-    ws.apply(.movePane(panes[0], to: .stack(column: column)))
-    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [b, panes[0]])
-    #expect(ws.tab(tabs[0])?.focusedPane == panes[0])
-}
-
-@Test func openingAnEditorFocusesIt() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let e = UUID()
-    ws.apply(.openFile(path: "/tmp/a.swift", kind: .editor, pane: e, tab: UUID(), beside: panes[0]))
-    #expect(ws.tab(tabs[0])?.columns.map { $0.panes.map(\.id) } == [[panes[0]], [e]])
-    #expect(ws.tab(tabs[0])?.focusedPane == e)
-    #expect(ws.pane(e)?.displayTitle == "a.swift")
-}
-
-@Test func openFileOnStackPushesOrRaises() {
-    var (ws, tabs, panes) = workspace(tabs: 1)
-    let column = ws.tabs[0].columns[0].id
-    let a = UUID(), b = UUID()
-    ws.apply(.openFileOnStack(path: "/tmp/a.txt", kind: .editor, pane: a, column: column))
-    ws.apply(.openFileOnStack(path: "/tmp/b.txt", kind: .editor, pane: b, column: column))
-    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [panes[0], a, b])
-    ws.apply(.openFileOnStack(path: "/tmp/a.txt", kind: .editor, pane: UUID(), column: column))
-    #expect(ws.tab(tabs[0])?.columns[0].panes.map(\.id) == [panes[0], b, a])
-    #expect(ws.tab(tabs[0])?.focusedPane == a)
-}
-
-@Test func appearanceSavedBeforeEditorFontLoads() throws {
-    let json = #"{"tabs":[],"appearance":{"contrastCorrection":"typical"}}"#
-    let ws = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
-    #expect(ws.appearance.contrastCorrection == .typical)
-    #expect(ws.appearance.editorFont == .proportional)
-    #expect(ws.appearance.putAwayAfter == 60)
+    {"tabs":[{"id":"11111111-1111-1111-1111-111111111111","customTitle":"work",
+      "columns":[{"id":"22222222-2222-2222-2222-222222222222","panes":[
+        {"id":"33333333-3333-3333-3333-333333333333","kind":"terminal","cwd":"/tmp"},
+        {"id":"44444444-4444-4444-4444-444444444444","kind":"editor","path":"/tmp/x.txt"}]}],
+      "focusedPane":"33333333-3333-3333-3333-333333333333","fractions":[1]}],
+     "selectedTab":"11111111-1111-1111-1111-111111111111","window":{"sidebarPinned":true}}
+    """
+    let out = Migration.migrate(stateJSON: Data(json.utf8), editorsDirectory: nil, readFile: { _ in "disk" },
+                                host: .local, clock: Clock(host: .local))
+    let node = Node()
+    for (shard, entries) in out { #expect(node.apply(entries, to: shard)) }
+    let arrangements = node.blocks(of: .arrangement)
+    #expect(arrangements.count == 1)
+    #expect(arrangements[0].title == "work")
+    #expect(arrangements[0].arrangement?.columns[0].count == 2)
+    #expect(node.blocks(of: .terminal).first?.terminal?.cwd == "/tmp")
+    #expect(node.blocks(of: .text).first?.text?.text.string == "disk")
+    #expect(node.desk(.local).window.sidebarPinned)
+    #expect(node.desk(.local).selected == arrangements[0].id)
+    #expect(node.registry(.local).blocks.count == 3)
 }

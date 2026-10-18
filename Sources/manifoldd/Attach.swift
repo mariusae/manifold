@@ -1,14 +1,14 @@
 import Foundation
 import ManifoldCore
 
-/// `manifoldd attach <pane>`: the program each terminal in the app runs. It
-/// connects the terminal it runs in to the pane's session in the server,
+/// `manifoldd attach <block>`: the program each terminal in the app runs. It
+/// connects the terminal it runs in to the block's shell in the server,
 /// passing bytes both ways, like dtach or tmux attach.
 enum Attach {
     private static var original = termios()
     private static var acceptInput = false
 
-    static func run(pane: UUID) -> Never {
+    static func run(block: BlockID) -> Never {
         signal(SIGPIPE, SIG_IGN)
         guard let fd = connect() else {
             FileHandle.standardError.write(Data("manifold: can't reach the server\r\n".utf8))
@@ -47,7 +47,7 @@ enum Attach {
         where ["TERM", "TERMINFO", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"].contains(k) || k.hasPrefix("GHOSTTY_") {
             env[k] = v
         }
-        conn.send(.json(ClientMessage.attach(AttachRequest(pane: pane, cols: cols, rows: rows, env: env))))
+        conn.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: cols, rows: rows, env: env))))
 
         let stdin = DispatchSource.makeReadSource(fileDescriptor: 0, queue: .main)
         stdin.setEventHandler {

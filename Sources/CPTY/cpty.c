@@ -95,3 +95,8 @@ int mf_pty_foreground_name(int master, char *buf, int len) {
     if (proc_name(pg, buf, len) <= 0) return -1;
     return 0;
 }
+
+pid_t mf_pty_foreground(int master) {
+    pid_t pg = tcgetpgrp(master);
+    return pg <= 0 ? -1 : pg;
+}

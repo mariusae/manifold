@@ -24,4 +24,7 @@ int mf_proc_cwd(pid_t pid, char *buf, int len);
 // The name of the terminal's foreground process, or -1.
 int mf_pty_foreground_name(int master, char *buf, int len);
 
+// The terminal's foreground process group, or -1.
+pid_t mf_pty_foreground(int master);
+
 #endif

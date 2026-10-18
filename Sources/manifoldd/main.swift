@@ -1,10 +1,10 @@
 import Foundation
 import ManifoldCore
 
-// manifoldd serve          run the server (the app starts it as needed)
-// manifoldd attach <pane>  connect this terminal to a pane's session
-// manifoldd stop           end the server and every session
-// manifoldd state          print the workspace
+// manifoldd serve           run the server (the app starts it as needed)
+// manifoldd attach <block>  connect this terminal to a terminal block's shell
+// manifoldd stop            end the server and every session
+// manifoldd state           print what the host has
 
 let args = CommandLine.arguments.dropFirst()
 
@@ -24,15 +24,15 @@ case "serve":
     dispatchMain()
 
 case "attach":
-    guard args.count == 2, let pane = UUID(uuidString: args[args.startIndex + 1]) else {
-        FileHandle.standardError.write(Data("usage: manifoldd attach <pane>\n".utf8))
+    guard args.count == 2, let block = BlockID(string: args[args.startIndex + 1]) else {
+        FileHandle.standardError.write(Data("usage: manifoldd attach <host/block>\n".utf8))
         exit(2)
     }
-    Attach.run(pane: pane)
+    Attach.run(block: block)
 
 case "stop":
     guard let fd = try? UnixSocket.connect(path: Paths.socket) else { exit(0) }
-    let frame = Frame.json(ClientMessage.shutdown).encoded
+    let frame = Frame.message(ClientMessage.shutdown).encoded
     _ = frame.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
     var b: UInt8 = 0
     _ = read(fd, &b, 1)
@@ -42,7 +42,7 @@ case "state":
         FileHandle.standardError.write(Data("manifoldd is not running\n".utf8))
         exit(1)
     }
-    let hello = Frame.json(ClientMessage.hello(version: protocolVersion)).encoded
+    let hello = Frame.message(ClientMessage.hello(version: protocolVersion, name: "state")).encoded
     _ = hello.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
     var decoder = FrameDecoder()
     var buf = [UInt8](repeating: 0, count: 65536)
@@ -51,16 +51,33 @@ case "state":
         guard n > 0 else { exit(1) }
         decoder.append(Data(buf[0..<n]))
         while let frame = try decoder.next() {
-            if case .state(let ws)? = frame.decode(ServerMessage.self) {
-                let enc = JSONEncoder()
-                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-                print(String(decoding: try enc.encode(ws), as: UTF8.self))
+            if case let .welcome(_, _, host, _, snapshots)? = frame.decode(ServerMessage.self) {
+                let node = Node()
+                for s in snapshots { node.load(s) }
+                if args.count > 1, args[args.startIndex + 1] == "--json" {
+                    let enc = JSONEncoder()
+                    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    print(String(decoding: try enc.encode(snapshots), as: UTF8.self))
+                } else {
+                    print("host \(host)")
+                    let desk = node.desk(host)
+                    print("desk: \(desk.order.count) on it, selected \(desk.selected.map(\.description) ?? "none")")
+                    for b in node.blocks.sorted(by: { $0.created < $1.created }) {
+                        var line = "\(b.id) \(b.kind) \"\(b.displayTitle)\""
+                        if let p = b.path { line += " \(p)" }
+                        if let a = b.arrangement { line += " columns=\(a.columns.map(\.count)) layout=\(a.layout) focused=\(a.focused ?? "-")" }
+                        if let t = b.text { line += " v\(t.version) clean\(t.cleanVersion)\(t.isDirty ? " dirty" : "")\(t.stale ? " stale" : "")" }
+                        if let t = b.terminal { line += " cwd=\(t.cwd ?? "-")\(t.busy ? " busy" : "")\(t.dormantSince != nil ? " dormant" : "")" }
+                        if let r = node.registry(host).blocks[b.id] { line += " [\(r.life)\(r.held ? " held" : "")]" }
+                        print(line)
+                    }
+                }
                 exit(0)
             }
         }
     }
 
 default:
-    FileHandle.standardError.write(Data("usage: manifoldd [serve | attach <pane> | stop | state]\n".utf8))
+    FileHandle.standardError.write(Data("usage: manifoldd [serve | attach <block> | stop | state]\n".utf8))
     exit(2)
 }

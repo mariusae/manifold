@@ -22,6 +22,7 @@ import ManifoldCore
 ///   type <text>          type into the focused text view (\n for newlines)
 ///   picker               open the ⌘O picker
 ///   dump                 describe the window's views
+///   state                describe the desk and the selected arrangement
 enum DebugControl {
     private static var listener: DispatchSourceRead?
 
@@ -149,7 +150,7 @@ enum DebugControl {
         case "open":
             // As if the target were command-clicked in the focused terminal.
             guard let wc, let t = wc.debugFocusedTerminal else { return "no terminal focused" }
-            wc.open(arg, from: t.pane)
+            wc.open(arg, from: t.placement)
             return "ok"
         case "peek":
             wc?.debugPeek(Int(arg) ?? 0)
@@ -178,8 +179,8 @@ enum DebugControl {
             let f = window.frame
             return "\(Int(f.minX)),\(Int(screen.frame.height - f.maxY)),\(Int(f.width)),\(Int(f.height))"
         case "dragimage":
-            // Writes the image a dragged sheet shows, for the focused pane.
-            guard let pane = wc?.debugFocusedPane else { return "no pane" }
+            // Writes the image a dragged sheet shows, for the focused placement.
+            guard let pane = wc?.debugFocusedPlacement else { return "no placement" }
             let image = SheetDragImage.make(for: pane)
             let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: arg))
@@ -240,9 +241,14 @@ enum DebugControl {
             let line = before.components(separatedBy: "\n").count
             let column = loc - (before as NSString).range(of: "\n", options: .backwards).location
             return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
-        case "putaway":
-            // "putaway <minutes>": as if every hidden sheet were last seen that long ago.
-            wc?.debugPutAway(agingBy: Double(arg) ?? 120)
+        case "collect":
+            wc?.debugCollect(agingBy: Double(arg) ?? 120)
+            return "ok"
+        case "state":
+            return wc?.debugDescribe() ?? "no window"
+        case "recall":
+            guard let id = BlockID(string: arg) else { return "usage: recall host/ulid" }
+            wc?.recall(id)
             return "ok"
         case "switcher":
             return wc?.debugSwitcher(arg) ?? "no window"
@@ -258,7 +264,7 @@ enum DebugControl {
                 wc?.openDocument(nil)
                 return "ok"
             }
-            return (wc?.debugPicker(arg == "-" ? "" : arg) ?? []).prefix(8).joined(separator: " | ")
+            return (wc?.debugFinder(arg == "-" ? "" : arg) ?? []).prefix(8).joined(separator: " | ")
         case "dump":
             guard let v = wc?.window?.contentView else { return "no window" }
             return describe(v, 0) + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"
@@ -274,7 +280,7 @@ enum DebugControl {
 
     private static func describe(_ v: NSView, _ depth: Int) -> String {
         var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")"
-        if let t = v as? TerminalView { s += " pane=\(t.pane) surface=\(t.surface != nil)" }
+        if let t = v as? TerminalView { s += " block=\(t.block) surface=\(t.surface != nil)" }
         if let keys = v.layer?.animationKeys(), !keys.isEmpty { s += " animating=\(keys)" }
         for sub in v.subviews where depth < 4 { s += "\n" + describe(sub, depth + 1) }
         return s
