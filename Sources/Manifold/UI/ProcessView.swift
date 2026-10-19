@@ -10,7 +10,8 @@ protocol ProcessViewDelegate: AnyObject {
 /// them, listed again every few seconds while shown; a field narrows them,
 /// the columns sort, and the selected one can be ended (SIGTERM) or
 /// killed (SIGKILL).
-final class ProcessView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: ProcessViewDelegate?
@@ -73,12 +74,33 @@ final class ProcessView: NSView, PaneContent, NSTableViewDataSource, NSTableView
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() { timer?.invalidate() }
+    func destroy() {
+        timer?.invalidate()
+        keeper.flush()
+    }
+
+    private func restoreState() {
+        guard !keeper.restored, !all.isEmpty else { return }
+        keeper.restored = true
+        var again = false
+        if let f = keeper.value("filter"), f != field.stringValue { field.stringValue = f; again = true }
+        if let k = keeper.value("sort"), k != sortKey { sortKey = k; again = true }
+        if let a = keeper.value("asc") { ascending = a == "1"; again = true }
+        if again {
+            table.sortDescriptors = [NSSortDescriptor(key: sortKey, ascending: ascending)]
+            refilter()
+        }
+        if let pid = keeper.int("selected"), let i = shown.firstIndex(where: { Int($0.pid) == pid }) {
+            table.selectRowIndexes([i], byExtendingSelection: false)
+        }
+        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+    }
 
     override func layout() {
         super.layout()
@@ -133,20 +155,26 @@ final class ProcessView: NSView, PaneContent, NSTableViewDataSource, NSTableView
         status.stringValue = q.isEmpty ? "\(all.count) processes" : "\(shown.count) of \(all.count)"
         end.isEnabled = table.selectedRow >= 0
         kill.isEnabled = table.selectedRow >= 0
+        restoreState()
     }
 
-    func controlTextDidChange(_ obj: Notification) { refilter() }
+    func controlTextDidChange(_ obj: Notification) {
+        refilter()
+        keeper.note(["filter": field.stringValue])
+    }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let d = tableView.sortDescriptors.first, let key = d.key else { return }
         sortKey = key
         ascending = d.ascending
         refilter()
+        keeper.note(["sort": key, "asc": d.ascending ? "1" : "0"])
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         end.isEnabled = table.selectedRow >= 0
         kill.isEnabled = table.selectedRow >= 0
+        keeper.note(["selected": selectedPID.map { "\($0)" } ?? ""])
     }
 
     private var selectedPID: Int32? {

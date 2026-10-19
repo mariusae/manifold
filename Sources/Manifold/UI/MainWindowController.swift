@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 import ManifoldCore
 
 /// The window: the selected arrangement filling it, the sidebar (the desk)
@@ -309,6 +310,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             e.delegate = self
             v = e
         }
+        if let k = v as? KeepsViewState {
+            let id = p.id
+            k.keeper.load = { [weak self] in
+                guard let self, let b = self.shown(id)?.placement.block else { return [:] }
+                return self.hosts.block(b)?.views?[id] ?? [:]
+            }
+            k.keeper.save = { [weak self] values in
+                guard let self, let b = self.shown(id)?.placement.block else { return }
+                self.hosts.append(.view(placement: id, values), to: .block(b))
+            }
+        }
         views[p.id] = v
         return v
     }
@@ -561,6 +573,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugFoot(_ column: Int, bunch: Int?) -> String { content.stacks.debugFoot(column, bunch: bunch) }
     var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
     var debugFocusedMarkdown: MarkdownView? { focusedShown.flatMap { views[$0.id] as? MarkdownView } }
+    var debugFocusedView: NSView? { focusedShown.flatMap { views[$0.id] } }
+    var debugFocusedWebView: WKWebView? {
+        guard let v = debugFocusedView else { return nil }
+        func find(_ v: NSView) -> WKWebView? { (v as? WKWebView) ?? v.subviews.lazy.compactMap(find).first }
+        return find(v)
+    }
 
     func debugPeek(_ column: Int) { content.stacks.debugPeek(column) }
 

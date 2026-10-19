@@ -170,6 +170,13 @@ when you find it again.
   when a block is pointed at. Click a block to look around *it* instead
   (Back returns), double-click or ⏎ to go there, arrow keys move, Space
   re-centers, ⎋ closes.
+- **Every lens comes back as it was.** Each placement keeps its lens's
+  state in the block's log — the editor's selection and scroll, a
+  preview's scroll and selection, a web page's history and scroll, a
+  folder's or search's or git block's selected row and scroll, a diff's
+  scroll and whether it was unfolded, an image's zoom, a PDF's page, the
+  process list's filter and sort — so a restart, a move between lenses or
+  a reload shows exactly what you left.
 - **History** (Arrangement ▸ History…, ⌘Y) scrubs the arrangement through
   its log: the layout then, the blocks as they are now; with **Everything
   as it was** checked, each placed file is read as of that moment too, and

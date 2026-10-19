@@ -14,7 +14,8 @@ protocol SearchViewDelegate: AnyObject {
 /// beneath grouped by file as the host finds them, and a line saying how
 /// many. ⏎ in the field asks again; ⏎ or a double-click on a hit opens
 /// the file there, beside the results.
-final class SearchView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: SearchViewDelegate?
@@ -95,12 +96,29 @@ final class SearchView: NSView, PaneContent, NSTableViewDataSource, NSTableViewD
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let row = table.selectedRow
+        if row >= 0, row < rows.count, case let .hit(h) = rows[row] { keeper.note(["selected": "\(h.path):\(h.line)"]) }
+    }
+
+    /// Back as it was: the hit chosen, the scroll, a query typed but not asked.
+    private func restoreState() {
+        guard !keeper.restored else { return }
+        keeper.restored = true
+        if let draft = keeper.value("draft"), !draft.isEmpty, field.currentEditor() == nil { field.stringValue = draft }
+        if let key = keeper.value("selected"), let i = rows.firstIndex(where: { if case let .hit(h) = $0 { return "\(h.path):\(h.line)" == key } else { return false } }) {
+            table.selectRowIndexes([i], byExtendingSelection: false)
+        }
+        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+    }
 
     override func layout() {
         super.layout()
@@ -169,6 +187,11 @@ final class SearchView: NSView, PaneContent, NSTableViewDataSource, NSTableViewD
         let selected = table.selectedRow
         table.reloadData()
         if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
+        if let s = source()?.search, !s.running { restoreState() }
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        keeper.note(["draft": field.stringValue == query?.text ? "" : field.stringValue])
     }
 
     // MARK: Asking

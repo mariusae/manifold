@@ -12,8 +12,12 @@ protocol MarkdownViewDelegate: AnyObject {
 /// a web view, and rendered again as the text changes (edits in an editor
 /// on the same block, or the file saved by another program), keeping the
 /// scroll position.
-final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
+final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     let placement: PlacementID
+    let keeper = ViewStateKeeper()
+    /// The page was (re)loaded: its scroll and selection go back after
+    /// the first render.
+    private var restorePending = true
     private(set) var block: BlockID
     private(set) var path: String
     weak var delegate: MarkdownViewDelegate?
@@ -39,8 +43,11 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         let config = WKWebViewConfiguration()
         // The document's own scripts don't run; ours (evaluateJavaScript) do.
         config.defaultWebpagePreferences.allowsContentJavaScript = false
+        let handler = StateMessages()
+        config.userContentController.add(handler, name: "manifoldState")
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
+        handler.onState = { [weak self] values in self?.keeper.note(values) }
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         wantsLayer = true
@@ -53,6 +60,7 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
 
     func destroy() {
         renderWork?.cancel()
+        keeper.flush()
     }
 
     /// The block's text may have changed: render it again, soon.
@@ -74,15 +82,18 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil, loaded else { return }
-        // The page is loaded afresh (its scroll position kept by the view).
+        // The page is loaded afresh; what was kept comes back after.
+        keeper.flush()
         loaded = false
         renderedVersion = -1
+        restorePending = true
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         loaded = false
         renderedVersion = -1
+        restorePending = true
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -92,6 +103,8 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
         self.block = block
         self.path = path
         renderedVersion = -1
+        keeper.restored = false
+        restorePending = true
         render(scrollToTop: true)
     }
 
@@ -105,7 +118,15 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
             body = "<p class=\"missing\">\(escape(path)) can't be read.</p>"
         }
         let base = URL(fileURLWithPath: path).deletingLastPathComponent().absoluteString
-        let js = "manifoldRender(\(json(body)), \(json(base)), \(scrollToTop));"
+        var js = "manifoldRender(\(json(body)), \(json(base)), \(scrollToTop && !restorePending));"
+        if restorePending {
+            // Back where it was: the scroll and the selection, then watching.
+            restorePending = false
+            let y = keeper.double("scroll").map { "\($0)" } ?? "null"
+            let s = keeper.int("selStart").map { "\($0)" } ?? "null", e = keeper.int("selEnd").map { "\($0)" } ?? "null"
+            js += " manifoldRestore(\(y), \(s), \(e)); manifoldWatch();"
+            keeper.restored = true
+        }
         web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js)
     }
 
@@ -146,5 +167,21 @@ final class MarkdownView: NSView, PaneContent, WKNavigationDelegate {
             return
         }
         delegate?.markdownView(self, follow: url)
+    }
+}
+
+/// What the page says about its scroll and selection, as the keeper takes it.
+final class StateMessages: NSObject, WKScriptMessageHandler {
+    var onState: (([String: String]) -> Void)?
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let dict = message.body as? [String: Any] else { return }
+        var values: [String: String] = [:]
+        if let y = dict["scroll"] as? Double { values["scroll"] = "\(Int(y.rounded()))" }
+        if let s = dict["selStart"] as? Int, let e = dict["selEnd"] as? Int {
+            values["selStart"] = s < 0 ? "" : "\(s)"
+            values["selEnd"] = e < 0 ? "" : "\(e)"
+        }
+        if !values.isEmpty { onState?(values) }
     }
 }

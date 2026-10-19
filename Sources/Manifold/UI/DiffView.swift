@@ -11,7 +11,8 @@ protocol DiffViewDelegate: AnyObject {
 /// rows of context, additions and removals with line numbers on both
 /// sides, long stretches of context folded (click to unfold). Double-click
 /// a row to open the file there.
-final class DiffView: NSView, PaneContent {
+final class DiffView: NSView, PaneContent, KeepsViewState {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: DiffViewDelegate?
@@ -47,6 +48,7 @@ final class DiffView: NSView, PaneContent {
         rowsView.onFold = { [weak self] in
             self?.unfolded = true
             self?.rebuild()
+            self?.keeper.note(["unfolded": "1"])
         }
         rowsView.onOpen = { [weak self] row in
             guard let self, let b = self.source(), let subject = b.diff?.subject else { return }
@@ -64,12 +66,24 @@ final class DiffView: NSView, PaneContent {
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        scroll.watchScrolling { [weak self] x, y in self?.keeper.note(["scrollX": "\(x)", "scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    private func restoreState() {
+        guard !keeper.restored, !rowsView.rows.isEmpty else { return }
+        keeper.restored = true
+        if keeper.value("unfolded") == "1", !unfolded {
+            unfolded = true
+            rebuild()
+        }
+        let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
+        if x != 0 || y != 0 { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: x, y: y) } }
+    }
 
     override func layout() {
         super.layout()
@@ -111,6 +125,7 @@ final class DiffView: NSView, PaneContent {
         }
         rowsView.rows = rows
         rowsView.relayout()
+        if d.loadedAt != nil { restoreState() }
     }
 }
 

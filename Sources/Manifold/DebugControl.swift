@@ -163,6 +163,25 @@ enum DebugControl {
             for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
             lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
             return lines.joined(separator: "\n")
+        case "js":
+            // "js <code>": runs it in the focused preview's or web block's page.
+            guard let wc, let web = wc.debugFocusedWebView else { return "no page focused" }
+            let done = DispatchSemaphore(value: 0)
+            var out = ""
+            web.evaluateJavaScript(arg) { r, e in out = e.map { "error: \($0.localizedDescription)" } ?? "\(r ?? "")"; done.signal() }
+            // Pumped on the main thread: the socket is handled there too.
+            while done.wait(timeout: .now()) != .success { RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02)) }
+            return out
+        case "views":
+            // The focused placement's kept lens state.
+            guard let wc, let f = wc.debugFocusedPlacement?.id, let b = wc.debugFocusedBlock else { return "nothing focused" }
+            return (wc.hosts.block(b)?.views?[f] ?? [:]).map { "\($0.key)=\($0.value.prefix(60))" }.sorted().joined(separator: "\n")
+        case "tablesel":
+            // The focused lens's table: its selected row.
+            guard let wc, let v = wc.debugFocusedView else { return "nothing focused" }
+            func find(_ v: NSView) -> NSTableView? { (v as? NSTableView) ?? v.subviews.lazy.compactMap(find).first }
+            guard let t = find(v) else { return "no table" }
+            return "row \(t.selectedRow) of \(t.numberOfRows)"
         case "mdlink":
             // "mdlink <n>": clicks the nth link in the focused preview, as a reader would.
             guard let wc, let m = wc.debugFocusedMarkdown else { return "no preview focused" }

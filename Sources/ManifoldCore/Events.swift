@@ -159,6 +159,8 @@ public enum Event: Codable, Equatable, Sendable {
     case create(kind: BlockKind, title: String?, path: String?)
     case title(String?)
     case path(String?)
+    /// A placement's lens state: keys set (an empty value takes one away).
+    case view(placement: PlacementID, [String: String])
 
     // Text.
     /// The whole text, as read from disk (or set at creation).
@@ -284,6 +286,13 @@ extension Block {
             if title?.isEmpty == true { title = nil }
         case let .path(p):
             path = p
+        case let .view(placement, values):
+            var v = views?[placement] ?? [:]
+            for (k, value) in values {
+                if value.isEmpty { v.removeValue(forKey: k) } else { v[k] = value }
+            }
+            if views == nil { views = [:] }
+            views![placement] = v
         default:
             break
         }

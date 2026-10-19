@@ -47,6 +47,69 @@ protocol PaneContent: NSView {
     func destroy()
 }
 
+/// A lens's keeper of its state (DESIGN.md §3.5): what it notes is written
+/// to the block's log a moment later, by placement, and read back when the
+/// lens is made again — after a restart, a move between lenses, a reload.
+final class ViewStateKeeper {
+    var save: (([String: String]) -> Void)?
+    var load: () -> [String: String] = { [:] }
+    private var pending: [String: String] = [:]
+    private var work: DispatchWorkItem?
+    /// Whether the lens has read its state back yet: nothing is saved
+    /// before, so what was kept isn't written over by a fresh view's zeros.
+    var restored = false
+
+    /// Notes values to keep; written after a pause in the noting.
+    func note(_ values: [String: String], after delay: Double = 0.5) {
+        guard restored else { return }
+        let known = load()
+        var changed = false
+        for (k, v) in values where known[k] != v && pending[k] != v {
+            pending[k] = v
+            changed = true
+        }
+        guard changed else { return }
+        work?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.flush() }
+        work = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
+    }
+
+    func flush() {
+        work?.cancel()
+        work = nil
+        guard !pending.isEmpty else { return }
+        let values = pending
+        pending = [:]
+        save?(values)
+    }
+
+    func value(_ key: String) -> String? { pending[key] ?? load()[key] }
+    func double(_ key: String) -> Double? { value(key).flatMap(Double.init) }
+    func int(_ key: String) -> Int? { value(key).flatMap(Int.init) }
+}
+
+/// A lens that keeps its state through a keeper.
+protocol KeepsViewState: AnyObject {
+    var keeper: ViewStateKeeper { get }
+}
+
+extension NSScrollView {
+    /// Tells when the content scrolls.
+    func watchScrolling(_ handler: @escaping (CGFloat, CGFloat) -> Void) {
+        contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: contentView, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            handler(self.contentView.bounds.origin.x, self.contentView.bounds.origin.y)
+        }
+    }
+
+    func scrollTo(x: CGFloat, y: CGFloat) {
+        contentView.scroll(to: NSPoint(x: x, y: y))
+        reflectScrolledClipView(contentView)
+    }
+}
+
 extension String {
     /// A path with the home folder as `~`.
     var abbreviatingHome: String {

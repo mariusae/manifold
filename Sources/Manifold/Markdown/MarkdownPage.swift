@@ -38,6 +38,79 @@ enum MarkdownPage {
           var e = document.getElementById(id) || document.getElementsByName(id)[0];
           if (e) e.scrollIntoView({ block: 'start' });
         };
+        // The selection as offsets into the content's text, so it can be
+        // put back after the page is rendered again.
+        window.manifoldOffsets = function () {
+          var sel = window.getSelection();
+          if (!sel || sel.rangeCount == 0 || sel.isCollapsed || !sel.toString().trim()) return null;
+          var r = sel.getRangeAt(0), main = document.getElementById('content');
+          function offsetOf(node, off) {
+            var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT), total = 0, n;
+            while ((n = w.nextNode())) { if (n === node) return total + off; total += n.data.length; }
+            return total;
+          }
+          function point(node, off) {
+            if (node.nodeType === 3) return offsetOf(node, off);
+            // An element boundary: before its off-th child, or past its last.
+            if (off < node.childNodes.length) {
+              var w = document.createTreeWalker(node.childNodes[off], NodeFilter.SHOW_TEXT), t = w.nextNode();
+              if (t) return offsetOf(t, 0);
+              var after = node.childNodes[off];
+              while (after && !(after.nodeType === 3)) { after = after.nextSibling || (after.parentNode === main ? null : after.parentNode.nextSibling); }
+              return after ? offsetOf(after, 0) : offsetOf(node, 0);
+            }
+            var w2 = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), last = null, n;
+            while ((n = w2.nextNode())) last = n;
+            return last ? offsetOf(last, last.data.length) : offsetOf(node, 0);
+          }
+          return [point(r.startContainer, r.startOffset), point(r.endContainer, r.endOffset)];
+        };
+        window.manifoldRestore = function (y, start, end) {
+          // Selection changes right after are the page settling (focus
+          // coming and going), not the reader's: not kept.
+          window.manifoldQuiet = Date.now() + 1500;
+          if (y != null) window.scrollTo(0, y);
+          if (start != null && end != null && end > start) {
+            var main = document.getElementById('content');
+            function at(offset) {
+              var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT), total = 0, n, last = null;
+              while ((n = w.nextNode())) {
+                if (total + n.data.length >= offset) return [n, offset - total];
+                total += n.data.length; last = n;
+              }
+              return last ? [last, last.data.length] : null;
+            }
+            function apply() {
+              var a = at(start), b = at(end);
+              if (!a || !b) return;
+              var range = document.createRange();
+              range.setStart(a[0], a[1]); range.setEnd(b[0], b[1]);
+              var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+            }
+            apply();
+            // The view settling into its window can clear it: put back.
+            [300, 1200].forEach(function (ms) {
+              setTimeout(function () { if (!window.getSelection().toString()) apply(); }, ms);
+            });
+          }
+        };
+        // Told of scrolling and selecting, a moment after each stops.
+        window.manifoldWatch = function () {
+          if (window.manifoldWatching) return;
+          window.manifoldWatching = true;
+          function post(m) { try { window.webkit.messageHandlers.manifoldState.postMessage(m); } catch (e) {} }
+          var t1, t2;
+          window.addEventListener('scroll', function () {
+            clearTimeout(t1); t1 = setTimeout(function () { post({ scroll: window.scrollY }); }, 250);
+          });
+          document.addEventListener('selectionchange', function () {
+            if (window.manifoldQuiet && Date.now() < window.manifoldQuiet) return;
+            clearTimeout(t2); t2 = setTimeout(function () {
+              var o = manifoldOffsets();
+              post(o ? { selStart: o[0], selEnd: o[1] } : { selStart: -1, selEnd: -1 });
+            }, 250);
+          });
+        };
 
         """
 

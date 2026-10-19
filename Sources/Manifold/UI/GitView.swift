@@ -12,7 +12,8 @@ protocol GitViewDelegate: AnyObject {
 /// The git lens (DESIGN.md §7.5): a repository's branch, what's changed,
 /// and its recent history, as the host last looked; a change or a commit
 /// opens as a diff beside it.
-final class GitView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDelegate {
+final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: GitViewDelegate?
@@ -75,12 +76,35 @@ final class GitView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDele
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    private func rowKey(_ row: Row) -> String? {
+        switch row {
+        case let .change(s): "change:" + s.path
+        case let .commit(c): "commit:" + c.sha
+        default: nil
+        }
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let row = table.selectedRow
+        keeper.note(["selected": row >= 0 && row < rows.count ? (rowKey(rows[row]) ?? "") : ""])
+    }
+
+    private func restoreState() {
+        guard !keeper.restored, !rows.isEmpty else { return }
+        keeper.restored = true
+        if let key = keeper.value("selected"), let i = rows.firstIndex(where: { rowKey($0) == key }) {
+            table.selectRowIndexes([i], byExtendingSelection: false)
+        }
+        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+    }
 
     override func layout() {
         super.layout()
@@ -117,6 +141,7 @@ final class GitView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDele
         let selected = table.selectedRow
         table.reloadData()
         if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
+        restoreState()
     }
 
     @objc private func refreshClicked() { delegate?.gitViewRefresh(self) }

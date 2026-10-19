@@ -10,7 +10,8 @@ protocol MediaViewDelegate: AnyObject {
 /// The image and PDF lenses (DESIGN.md §7.5): the file as its host has
 /// it, read again each time it's shown. Images fit the view and zoom with
 /// a pinch or ⌘+/−; PDFs page in PDFKit.
-final class MediaView: NSView, PaneContent {
+final class MediaView: NSView, PaneContent, KeepsViewState {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     let kind: Lens
@@ -66,12 +67,43 @@ final class MediaView: NSView, PaneContent {
             scroll.autohidesScrollers = true
             scroll.drawsBackground = false
             addSubview(scroll)
+            scroll.watchScrolling { [weak self] x, y in
+                guard let self, self.keeper.restored else { return }
+                self.keeper.note(["scrollX": "\(x)", "scroll": "\(y)", "zoom": "\(self.scroll.magnification)"])
+            }
+        }
+        if let p = pdfView {
+            NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: p, queue: .main) { [weak self] _ in
+                guard let self, let doc = p.document, let page = p.currentPage else { return }
+                self.keeper.note(["page": "\(doc.index(for: page))"])
+            }
+            NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: p, queue: .main) { [weak self] _ in
+                self?.keeper.note(["zoom": "\(p.scaleFactor)", "autoscale": p.autoScales ? "1" : "0"])
+            }
         }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    /// Back as it was: the zoom and place in an image, the page of a PDF.
+    private func restoreState() {
+        guard !keeper.restored else { return }
+        keeper.restored = true
+        if let p = pdfView, let doc = p.document {
+            if keeper.value("autoscale") == "0", let z = keeper.double("zoom") {
+                p.autoScales = false
+                p.scaleFactor = z
+            }
+            if let i = keeper.int("page"), let page = doc.page(at: i) { p.go(to: page) }
+        } else if let z = keeper.double("zoom") {
+            fitted = true
+            scroll.magnification = z
+            let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
+            DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: x, y: y) }
+        }
+    }
 
     override func layout() {
         super.layout()
@@ -107,6 +139,7 @@ final class MediaView: NSView, PaneContent {
                 let doc = PDFDocument(data: data)
                 pdfView.document = doc
                 self.note.stringValue = doc.map { "\($0.pageCount) page\($0.pageCount == 1 ? "" : "s")" } ?? "Not a PDF"
+                self.restoreState()
             } else if let image = NSImage(data: data) {
                 self.imageView.image = image
                 let size = image.representations.first.map { NSSize(width: $0.pixelsWide, height: $0.pixelsHigh) } ?? image.size
@@ -114,6 +147,8 @@ final class MediaView: NSView, PaneContent {
                 self.note.stringValue = "\(Int(size.width)) × \(Int(size.height))"
                 self.fitted = false
                 self.needsLayout = true
+                self.layoutSubtreeIfNeeded()
+                self.restoreState()
             } else {
                 self.note.stringValue = "Not an image"
             }

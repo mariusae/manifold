@@ -8,7 +8,8 @@ protocol DirectoryViewDelegate: AnyObject {
 
 /// The directory lens: a folder's entries as a list (name, date, size),
 /// as the host lists them; opening one places its block beside the listing.
-final class DirectoryView: NSView, PaneContent, NSTableViewDataSource, NSTableViewDelegate {
+final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: DirectoryViewDelegate?
@@ -52,12 +53,28 @@ final class DirectoryView: NSView, PaneContent, NSTableViewDataSource, NSTableVi
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let row = table.selectedRow
+        keeper.note(["selected": row >= 0 && row < entries.count ? entries[row].name : ""])
+    }
+
+    /// Back as it was: the entry selected, the scroll.
+    private func restoreState() {
+        guard !keeper.restored, !entries.isEmpty else { return }
+        keeper.restored = true
+        if let name = keeper.value("selected"), let i = entries.firstIndex(where: { $0.name == name }) {
+            table.selectRowIndexes([i], byExtendingSelection: false)
+        }
+        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+    }
 
     override func layout() {
         super.layout()
@@ -75,6 +92,7 @@ final class DirectoryView: NSView, PaneContent, NSTableViewDataSource, NSTableVi
             listedAt = b.directory?.listedAt
             entries = listing.filter { !$0.isHidden }
             table.reloadData()
+            restoreState()
         }
     }
 

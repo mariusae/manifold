@@ -11,7 +11,8 @@ protocol WebViewDelegate: AnyObject {
 /// The web lens: an embedded browser on a web block, with an address bar,
 /// back and forward, and find. Where it is goes in the block's log, so its
 /// history is the pages it showed.
-final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDelegate {
+final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, NSTextFieldDelegate {
+    let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: WebViewDelegate?
@@ -31,8 +32,18 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
         self.placement = placement
         self.block = block
         let config = WKWebViewConfiguration()
+        // Scrolling is told of, so the page's state is kept as it moves.
+        let watch = WKUserScript(source: """
+            (function () { var t; window.addEventListener('scroll', function () {
+              clearTimeout(t); t = setTimeout(function () { try { window.webkit.messageHandlers.manifoldState.postMessage({ scroll: window.scrollY }); } catch (e) {} }, 400);
+            }); })();
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        config.userContentController.addUserScript(watch)
+        let handler = StateMessages()
+        config.userContentController.add(handler, name: "manifoldState")
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
+        handler.onState = { [weak self] _ in self?.keepInteraction() }
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         web.navigationDelegate = self
@@ -62,7 +73,14 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() {}
+    func destroy() { keeper.flush() }
+
+    /// WebKit's whole account of the page — its history, its scroll — kept
+    /// by the placement, to be the same page again.
+    private func keepInteraction() {
+        guard keeper.restored, let data = web.interactionState as? Data else { return }
+        keeper.note(["interaction": data.base64EncodedString(), "interactionURL": web.url?.absoluteString ?? ""], after: 1)
+    }
 
     override func layout() {
         super.layout()
@@ -80,6 +98,14 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
         guard let b = source(), let url = b.web?.url, url != shownURL else { return }
         shownURL = url
         address.stringValue = url
+        if !keeper.restored {
+            keeper.restored = true
+            // Back as it was, if what was kept is of this page.
+            if keeper.value("interactionURL") == url, let s = keeper.value("interaction"), let data = Data(base64Encoded: s) {
+                web.interactionState = data
+                return
+            }
+        }
         load(url)
     }
 
@@ -113,6 +139,7 @@ final class WebView: NSView, PaneContent, WKNavigationDelegate, NSTextFieldDeleg
         forward.isEnabled = web.canGoForward
         let url = web.url?.absoluteString ?? ""
         address.stringValue = url
+        keepInteraction()
         var events: [Event] = []
         if url != shownURL {
             shownURL = url

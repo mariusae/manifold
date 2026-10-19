@@ -518,3 +518,20 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(before.map(\.block) == [f, g])
     #expect(before[0].count == 2)
 }
+
+@Test func placementsKeepLensState() {
+    let node = Node()
+    let id = BlockID(host: .local)
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: .local) }
+    _ = node.append(.create(kind: .text, title: nil, path: "/x/a.md"), to: .block(id), at: stamp(1))
+    _ = node.append(.view(placement: "p1", ["scroll": "120", "selStart": "3", "selEnd": "9"]), to: .block(id), at: stamp(2))
+    _ = node.append(.view(placement: "p2", ["scroll": "7"]), to: .block(id), at: stamp(3))
+    // Keys merge; an empty value takes one away; placements are apart.
+    _ = node.append(.view(placement: "p1", ["scroll": "150", "selStart": "", "selEnd": ""]), to: .block(id), at: stamp(4))
+    #expect(node.block(id)?.views?["p1"] == ["scroll": "150"])
+    #expect(node.block(id)?.views?["p2"] == ["scroll": "7"])
+    // A snapshot carries it.
+    let fresh = Node()
+    fresh.load(node.snapshot(.block(id))!)
+    #expect(fresh.block(id)?.views?["p1"]?["scroll"] == "150")
+}

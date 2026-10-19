@@ -442,6 +442,11 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var diff: DiffState?
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
+    /// What each placement's lens needs to come back as it was — scroll
+    /// position, selection, zoom, a filter — by placement, as the lens
+    /// keeps it (§3.5): in the log, so it survives a restart and a move
+    /// between lenses, like the editor's selection does.
+    public var views: [PlacementID: [String: String]]?
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
         self.id = id
