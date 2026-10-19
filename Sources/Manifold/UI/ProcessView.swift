@@ -59,7 +59,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             b.isEnabled = false
         }
         for v in [field, status, end, kill] { addSubview(v) }
-        for (id, title, width) in [("pid", "PID", 60.0), ("cpu", "CPU", 55.0), ("memory", "Memory", 75.0), ("command", "Command", 360.0), ("path", "Path", 300.0)] {
+        for (id, title, width) in [("command", "Command", 380.0), ("pid", "PID", 60.0), ("cpu", "CPU", 55.0), ("memory", "Memory", 75.0), ("path", "Path", 300.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
             c.width = width

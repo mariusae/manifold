@@ -22,6 +22,8 @@ protocol GridDelegate: AnyObject {
     func gridStash(_ placement: PlacementID, behind: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
+    /// ⌥-click: the block's path, folder by folder, each going there.
+    func gridPathMenu(for placement: PlacementID) -> NSMenu?
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -131,6 +133,14 @@ final class GridView: NSView, NSDraggingSource {
                         self.delegate?.gridFill(id)
                     } else {
                         self.delegate?.gridGrow(id)
+                    }
+                }
+                pill.onPathClick = { [weak self] in
+                    guard let self, !stashed else { return }
+                    self.delegate?.gridFocus(id)
+                    if let menu = self.delegate?.gridPathMenu(for: id), let pill = self.pills[id] {
+                        let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
+                        menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
                 pill.onIconClick = { [weak self] in
@@ -583,6 +593,8 @@ final class GridView: NSView, NSDraggingSource {
 final class TilePill: NSView {
     var onClick: (() -> Void)?
     var onIconClick: (() -> Void)?
+    /// ⌥-clicked: the path menu.
+    var onPathClick: (() -> Void)?
     var onDragStart: ((NSEvent) -> Void)?
     private let glass = NSView()
     private let icon = NSImageView()
@@ -751,7 +763,8 @@ final class TilePill: NSView {
     override func mouseUp(with event: NSEvent) {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
-            if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?() }
+            if event.modifierFlags.contains(.option) { onPathClick?() }
+            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?() }
         }
         downAt = nil
     }

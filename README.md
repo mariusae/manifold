@@ -59,7 +59,10 @@ and Mona Sans (bundled).
   resize them. Each tile wears a **pill** floating over its top, one
   width for all, with its symbol, name and status glyph: drag it to
   move the tile; click it to grow the tile a step, ⌘-click to fill the
-  column; click its symbol for the tile's menu. ⌥⌘[ and ⌥⌘] move the
+  column; click its symbol for the tile's menu; ⌥-click it for where the
+  block is, folder by folder up to the root (a terminal's working
+  directory likewise), each browsing that folder here, as ⌘-clicking a
+  document's title does in the Finder. ⌥⌘[ and ⌥⌘] move the
   focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the workspace it is in (this one if it is here, else

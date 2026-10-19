@@ -2885,6 +2885,39 @@ extension MainWindowController: GridDelegate {
     }
 
     /// A tile's pill clicked: its menu.
+    /// ⌥-click on a pill: where the block is, as a path — the file or
+    /// folder, then each folder up to the root (a terminal's working
+    /// directory likewise); choosing one browses that folder here, as
+    /// ⌘-clicking a document's title does in the Finder.
+    func gridPathMenu(for placement: PlacementID) -> NSMenu? {
+        guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block) else { return nil }
+        let on = b.id.host
+        guard let start = b.path ?? b.terminal?.cwd ?? b.home, start.hasPrefix("/") else { return nil }
+        let menu = NSMenu()
+        var path = start
+        var first = true
+        while true {
+            let name = path == "/" ? "/" : path.lastPathComponent
+            let isFolder = !first || b.path == nil || b.kind == .directory
+            let here = path
+            let item = ClosureMenuItem(name, symbol: isFolder ? "folder" : Theme.symbolName(for: b.kind, path: b.path)) { [weak self] in
+                guard let self else { return }
+                if isFolder, let client = self.hosts.client(on) {
+                    self.show(client.directoryBlock(for: here), lens: .directory, .here)
+                } else {
+                    self.focus(placement)
+                }
+            }
+            item.indentationLevel = 0
+            menu.addItem(item)
+            if path == "/" { break }
+            path = path.deletingLastPathComponent
+            if path.isEmpty { path = "/" }
+            first = false
+        }
+        return menu
+    }
+
     func gridPillMenu(for placement: PlacementID) -> NSMenu? {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
         let block = p.block
