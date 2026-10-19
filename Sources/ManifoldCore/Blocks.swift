@@ -486,6 +486,14 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     /// Stashed: not laid out, its pill bunched under the column's filling tile.
     public func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
 
+    /// The shown tile a stashed one is behind: the nearest shown above it
+    /// in its column, else the column's first shown tile.
+    public func tile(behind id: PlacementID) -> Placement? {
+        guard let (c, i) = locate(id) else { return nil }
+        if let above = columns[c][..<i].last(where: { !isStashed($0.id) }) { return above }
+        return columns[c].first { !isStashed($0.id) }
+    }
+
     /// A column's tiles that show, and those stashed, in order.
     public func shownTiles(inColumn c: Int) -> [Placement] { columns[c].filter { !isStashed($0.id) } }
     public func stashedTiles(inColumn c: Int) -> [Placement] { columns[c].filter { isStashed($0.id) } }

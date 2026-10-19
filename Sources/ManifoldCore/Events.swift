@@ -214,6 +214,9 @@ public enum Event: Codable, Equatable, Sendable {
     /// `at` in it (past the end: on top).
     case place(Placement, column: Int, at: Int)
     case move(PlacementID, column: Int, at: Int)
+    /// A tile into the stack behind another (§3.1): placed right after it
+    /// in its column, taking no room.
+    case stash(PlacementID, behind: PlacementID)
     case remove(PlacementID)
     case focus(PlacementID?)
     case fractions([Double])
@@ -531,6 +534,17 @@ extension ArrangementState {
                 columns[c].insert(p, at: i)
             }
             focused = p.id
+            normalize()
+        case let .stash(id, behind):
+            guard id != behind, let (c, i) = locate(id), locate(behind) != nil, !isStashed(behind) else { return }
+            let p = columns[c].remove(at: i)
+            giveBack(id, inColumn: c, wasAt: i)
+            if columns[c].isEmpty { columns.remove(at: c) }
+            guard let (tc, ti) = locate(behind) else { return }
+            columns[tc].insert(p, at: ti + 1)
+            heights[p.id] = 0
+            fractions = fractions.count == columns.count ? fractions : Self.equalFractions(columns.count)
+            if focused == id { focused = behind }
             normalize()
         case let .move(id, column, at):
             guard let (c, i) = locate(id) else { return }

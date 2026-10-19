@@ -259,14 +259,18 @@ extension ArrangementState {
         return [.heights([id: 0, heir.id: height(of: heir.id) + height(of: id)])]
     }
 
-    /// Heights after a stashed tile comes back: the lower half of the
-    /// column's biggest shown tile.
+    /// Heights after a stashed tile comes back: the lower half of the tile
+    /// it was behind.
     public func unstashing(_ id: PlacementID) -> [Event] {
-        guard let (c, _) = locate(id), isStashed(id) else { return [] }
-        guard let big = shownTiles(inColumn: c).max(by: { height(of: $0.id) < height(of: $1.id) }) else {
-            return [.heights([id: 1])]
-        }
-        let h = height(of: big.id) / 2
-        return [.heights([id: h, big.id: h]), .focus(id)]
+        guard locate(id) != nil, isStashed(id) else { return [] }
+        guard let top = tile(behind: id) else { return [.heights([id: 1])] }
+        let h = height(of: top.id) / 2
+        return [.heights([id: h, top.id: h]), .focus(id)]
+    }
+
+    /// A tile dropped on another's pill: into the stack behind it.
+    public func stashing(_ id: PlacementID, behind target: PlacementID) -> [Event] {
+        guard id != target, locate(id) != nil, locate(target) != nil, !isStashed(target) else { return [] }
+        return [.stash(id, behind: target)]
     }
 }

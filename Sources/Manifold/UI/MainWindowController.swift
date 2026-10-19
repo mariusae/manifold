@@ -2539,6 +2539,9 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarDragChanged(_ dragging: Bool) {
         draggingTab = dragging
+        // While anything is dragged, the grid catches it over every tile,
+        // web views included.
+        content.dragging = dragging
         if !dragging { scheduleHide() }
     }
 }
@@ -2584,6 +2587,11 @@ extension MainWindowController: GridDelegate {
     func gridUnstash(_ placement: PlacementID) {
         guard let a = arrangement else { return }
         appendToSelected(a.unstashing(placement))
+    }
+
+    func gridStash(_ placement: PlacementID, behind: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected(a.stashing(placement, behind: behind))
     }
 
     func gridToggleFull(_ placement: PlacementID) {

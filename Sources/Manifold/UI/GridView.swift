@@ -19,6 +19,7 @@ protocol GridDelegate: AnyObject {
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
     /// A stashed tile's pill was clicked: it comes back (§3.1).
     func gridUnstash(_ placement: PlacementID)
+    func gridStash(_ placement: PlacementID, behind: PlacementID)
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -48,9 +49,26 @@ final class GridView: NSView, NSDraggingSource {
     private var columnDividers: [DividerView] = []
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
-    private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool)?
+    private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
+    /// While a block is dragged anywhere: a catcher over every tile takes
+    /// the drag, since a web view would otherwise keep it to itself.
+    var dragging = false {
+        didSet {
+            guard dragging != oldValue else { return }
+            if dragging {
+                dragCatcher.grid = self
+                dragCatcher.frame = bounds
+                addSubview(dragCatcher)
+            } else {
+                dragCatcher.removeFromSuperview()
+                hideDrop()
+            }
+        }
+    }
+    private let dragCatcher = DragCatcherView()
     /// The column whose stack of stashed pills is fanned out, under the pointer.
-    private var fanned: Int? { didSet { if fanned != oldValue { needsLayout = true } } }
+    /// The shown tile whose stack is fanned out under its pill.
+    private var fanned: PlacementID? { didSet { if fanned != oldValue { needsLayout = true } } }
 
     /// The band at a tile's top that its pill floats in; the content runs
     /// underneath it.
@@ -115,7 +133,7 @@ final class GridView: NSView, NSDraggingSource {
                 tile.view.isHidden = stashed
             }
         }
-        if let f = fanned, f >= columns.count || stashedTiles(f).isEmpty { fanned = nil }
+        if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
         columnDividers.forEach { $0.removeFromSuperview() }
         columnDividers = (0..<max(0, columns.count - 1)).map { i in
             let d = DividerView()
@@ -127,15 +145,18 @@ final class GridView: NSView, NSDraggingSource {
         rowDividers.forEach { $0.removeFromSuperview() }
         rowDividers = []
         for (c, column) in columns.enumerated() where shownTiles(c).count > 1 {
-            for r in 0..<(shownTiles(c).count - 1) {
+            let shown = shownTiles(c)
+            for r in 0..<(shown.count - 1) {
                 let d = RowDividerView()
-                d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, row: r, to: y) }
+                let above = shown[r].shown.id, below = shown[r + 1].shown.id
+                d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, above: above, below: below, to: y) }
                 d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
                 addSubview(d)
                 rowDividers.append(d)
             }
         }
         addSubview(dropOverlay)
+        if dragging { addSubview(dragCatcher) }
         needsLayout = true
     }
 
@@ -153,6 +174,23 @@ final class GridView: NSView, NSDraggingSource {
     private func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
     private func shownTiles(_ c: Int) -> [Tile] { columns[c].filter { !isStashed($0.shown.id) } }
     private func stashedTiles(_ c: Int) -> [Tile] { columns[c].filter { isStashed($0.shown.id) } }
+
+    /// A column's shown tiles, each with the stack behind it: the stashed
+    /// tiles that follow it in the column (those before the first shown
+    /// tile are behind it).
+    private func stacks(_ c: Int) -> [(top: Tile, behind: [Tile])] {
+        var out: [(top: Tile, behind: [Tile])] = []
+        var early: [Tile] = []
+        for t in columns[c] {
+            if isStashed(t.shown.id) {
+                if out.isEmpty { early.append(t) } else { out[out.count - 1].behind.append(t) }
+            } else {
+                out.append((t, early))
+                early = []
+            }
+        }
+        return out
+    }
 
     private func columnFrames() -> [NSRect] {
         let n = columns.count
@@ -250,23 +288,25 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 shownIndex += 1
             }
-            // The stashed tiles' pills: a small stack peeking out under the
-            // top tile's pill, or fanned out below it.
-            let stashed = stashedTiles(c)
-            guard let top, !stashed.isEmpty else { continue }
-            let band = NSRect(x: top.minX, y: top.maxY - Self.band, width: top.width, height: Self.band)
-            let open = fanned == c
-            let topPill = pills[columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id ?? ""]
-            topPill?.behind = stashed.count
-            for (i, tile) in stashed.enumerated() {
-                guard let pill = pills[tile.shown.id] else { continue }
-                // Gathered, the top pill draws their edges; fanned, they come out below it.
-                pill.isHidden = !open
-                let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
-                if let topPill { addSubview(pill, positioned: .above, relativeTo: topPill) }
-                pill.frame = open ? target : band
+            // Each stack's pills: a few edges peeking out beside the pill of
+            // the tile they're behind, or fanned out below it.
+            _ = top
+            for stack in stacks(c) where !stack.behind.isEmpty {
+                guard let topPill = pills[stack.top.shown.id] else { continue }
+                let band = topPill.frame
+                let open = fanned == stack.top.shown.id
+                topPill.behind = stack.behind.count
+                for (i, tile) in stack.behind.enumerated() {
+                    guard let pill = pills[tile.shown.id] else { continue }
+                    // Gathered, the top pill draws their edges; fanned, they come out below it.
+                    pill.isHidden = !open
+                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
+                    addSubview(pill, positioned: .above, relativeTo: topPill)
+                    pill.frame = open ? target : band
+                }
             }
         }
+        if dragging { dragCatcher.frame = bounds }
         for (i, d) in columnDividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX - 3, y: 0, width: Self.gap + 6, height: bounds.height)
         }
@@ -284,17 +324,39 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
     }
 
-    private func dragRowDivider(column c: Int, row r: Int, to y: CGFloat) {
+    /// The line between two tiles dragged: the two share their room by
+    /// where it is. Pushed past a tile's least height, that tile goes into
+    /// the stack (its room to the other side), and the line goes on
+    /// against the next, until all above or below are stashed.
+    private func dragRowDivider(column c: Int, above a0: PlacementID, below b0: PlacementID, to y: CGFloat) {
+        guard c < columns.count else { return }
+        let column = columns[c]
+        guard let ia = column.firstIndex(where: { $0.shown.id == a0 }), let ib = column.firstIndex(where: { $0.shown.id == b0 }) else { return }
+        let aboves = column[...ia].filter { !isStashed($0.shown.id) }
+        let belows = column[ib...].filter { !isStashed($0.shown.id) }
+        guard let a = aboves.last?.shown.id, let b = belows.first?.shown.id else { return }
         let f = columnFrames()[c]
         let frames = tileFrames(column: c, in: f)
+        guard let ra = column.firstIndex(where: { $0.shown.id == a }), let rb = column.firstIndex(where: { $0.shown.id == b }) else { return }
         let minHeight = Self.band + 24
-        let top = frames[r].maxY, bottom = frames[r + 1].minY
+        let top = frames[ra].maxY, bottom = frames[rb].minY
+        let n = Double(max(shownTiles(c).count, 1))
+        func share(_ id: PlacementID) -> Double { heights[id] ?? 1 / n }
+        if y > top - minHeight, aboves.count > 1 {
+            heights[b] = share(b) + share(a)
+            heights[a] = 0
+            needsLayout = true
+            return dragRowDivider(column: c, above: a0, below: b0, to: y)
+        }
+        if y < bottom + minHeight, belows.count > 1 {
+            heights[a] = share(a) + share(b)
+            heights[b] = 0
+            needsLayout = true
+            return dragRowDivider(column: c, above: a0, below: b0, to: y)
+        }
         let split = min(max(y, bottom + minHeight), top - minHeight)
-        let tiles = columns[c]
-        let a = tiles[r].shown.id, b = tiles[r + 1].shown.id
-        let ha = heights[a] ?? 1 / Double(tiles.count), hb = heights[b] ?? 1 / Double(tiles.count)
-        let pair = ha + hb
-        let total = (top - bottom)
+        let pair = share(a) + share(b)
+        let total = top - bottom
         heights[a] = pair * Double((top - split) / total)
         heights[b] = pair - heights[a]!
         needsLayout = true
@@ -308,18 +370,20 @@ final class GridView: NSView, NSDraggingSource {
         super.updateTrackingAreas()
     }
 
-    /// The pointer over a column's stack (its top pill, or the fanned-out
-    /// pills) fans it out; elsewhere gathers it in.
+    /// The pointer over a stack (the pill of the tile it's behind, or the
+    /// fanned-out pills) fans it out; elsewhere gathers it in.
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        var over: Int?
-        for c in columns.indices where !stashedTiles(c).isEmpty {
-            guard let topID = columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id, let topPill = pills[topID] else { continue }
-            var zone = topPill.capsule(in: self).insetBy(dx: -8, dy: -4)
-            if fanned == c {
-                for t in stashedTiles(c) { if let pill = pills[t.shown.id] { zone = zone.union(pill.capsule(in: self).insetBy(dx: -8, dy: -4)) } }
+        var over: PlacementID?
+        search: for c in columns.indices {
+            for stack in stacks(c) where !stack.behind.isEmpty {
+                guard let topPill = pills[stack.top.shown.id] else { continue }
+                var zone = topPill.capsule(in: self).insetBy(dx: -8, dy: -4)
+                if fanned == stack.top.shown.id {
+                    for t in stack.behind { if let pill = pills[t.shown.id] { zone = zone.union(pill.capsule(in: self).insetBy(dx: -8, dy: -4)) } }
+                }
+                if zone.contains(p) { over = stack.top.shown.id; break search }
             }
-            if zone.contains(p) { over = c; break }
         }
         fanned = over
     }
@@ -349,27 +413,38 @@ final class GridView: NSView, NSDraggingSource {
         delegate?.gridDragChanged(false)
     }
 
-    /// Near a column's side: a new column there. Else between two tiles (or
-    /// above the first, below the last) of the column under the pointer.
-    private func dropTarget(at point: NSPoint) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool)? {
+    /// On a tile's pill: into the stack behind it (a placement, not the
+    /// one dragged). Near a column's side: a new column there. Else between
+    /// two tiles (or above the first, below the last) of the column under
+    /// the pointer.
+    private func dropTarget(at point: NSPoint, dragged: PlacementID?) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)? {
         let frames = columnFrames()
-        guard !frames.isEmpty else { return (0, 0, bounds, true) }
+        guard !frames.isEmpty else { return (0, 0, bounds, true, nil) }
+        if dragged != nil {
+            for c in columns.indices {
+                for (i, t) in columns[c].enumerated() where !isStashed(t.shown.id) && t.shown.id != dragged {
+                    guard let pill = pills[t.shown.id], !pill.isHidden else { continue }
+                    let capsule = pill.capsule(in: self).insetBy(dx: -4, dy: -4)
+                    if capsule.contains(point) { return (c, i + 1, capsule, false, t.shown.id) }
+                }
+            }
+        }
         for (c, f) in frames.enumerated() where point.x >= f.minX && point.x <= f.maxX + Self.gap {
             let edge = min(f.width * 0.2, 80)
             if point.x < f.minX + edge {
-                return (c, 0, NSRect(x: f.minX, y: f.minY, width: f.width / 2, height: f.height), true)
+                return (c, 0, NSRect(x: f.minX, y: f.minY, width: f.width / 2, height: f.height), true, nil)
             }
             if point.x > f.maxX - edge {
-                return (c + 1, 0, NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height), true)
+                return (c + 1, 0, NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height), true, nil)
             }
             let tiles = tileFrames(column: c, in: f)
             for (i, r) in tiles.enumerated() where point.y >= r.minY && point.y <= r.maxY {
                 if point.y > r.midY {
-                    return (c, i, NSRect(x: r.minX, y: r.midY, width: r.width, height: r.height / 2), false)
+                    return (c, i, NSRect(x: r.minX, y: r.midY, width: r.width, height: r.height / 2), false, nil)
                 }
-                return (c, i + 1, NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height / 2), false)
+                return (c, i + 1, NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height / 2), false, nil)
             }
-            return (c, tiles.count, f, false)
+            return (c, tiles.count, f, false, nil)
         }
         return nil
     }
@@ -383,7 +458,7 @@ final class GridView: NSView, NSDraggingSource {
         let isBlock = pb.string(forType: .manifoldPlacement) != nil || pb.string(forType: .manifoldBlock) != nil
         let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
         guard isBlock || (arrangement != nil && delegate?.gridCanDrop(arrangement!) == true),
-              let target = dropTarget(at: point) else {
+              let target = dropTarget(at: point, dragged: pb.string(forType: .manifoldPlacement)) else {
             hideDrop()
             return []
         }
@@ -406,7 +481,11 @@ final class GridView: NSView, NSDraggingSource {
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
         if let placement = pb.string(forType: .manifoldPlacement) {
-            delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
+            if let onto = target.onto {
+                delegate?.gridStash(placement, behind: onto)
+            } else {
+                delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
+            }
             return true
         }
         if let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) {
@@ -620,6 +699,27 @@ final class RowDividerView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { onEnd?() }
+}
+
+/// Over the whole grid while something is dragged: takes the drag for
+/// the grid, so a tile that is a drop target itself (a web view) doesn't
+/// keep it. Gone as soon as the drag ends.
+final class DragCatcherView: NSView {
+    weak var grid: GridView?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { grid?.draggingEntered(sender) ?? [] }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { grid?.draggingUpdated(sender) ?? [] }
+    override func draggingExited(_ sender: NSDraggingInfo?) { grid?.draggingExited(sender) }
+    override func draggingEnded(_ sender: NSDraggingInfo) { grid?.draggingEnded(sender) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { grid?.performDragOperation(sender) ?? false }
 }
 
 /// Where a dragged block would land: half a column, for a new column;

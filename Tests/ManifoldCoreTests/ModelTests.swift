@@ -768,6 +768,32 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     try? FileManager.default.removeItem(at: dir)
 }
 
+@Test func aTileStashedBehindAnotherComesBackUnderIt() {
+    var a = ArrangementState()
+    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)
+    a.apply(.place(x, column: 0, at: 0))
+    a.apply(.place(y, column: 0, at: 1))
+    a.apply(.place(z, column: 1, at: 0))
+    // z, from the other column, dropped on x's pill: behind x, in x's column, taking no room; its column gone.
+    a.apply(.stash(z.id, behind: x.id))
+    #expect(a.columns.count == 1)
+    #expect(a.columns[0].map(\.id) == [x.id, z.id, y.id])
+    #expect(a.isStashed(z.id))
+    #expect(a.tile(behind: z.id)?.id == x.id)
+    #expect(abs(a.height(of: x.id) + a.height(of: y.id) - 1) < 0.001)
+    // Back: the lower half of x, the tile it was behind.
+    for e in a.unstashing(z.id) { a.apply(e) }
+    #expect(!a.isStashed(z.id))
+    #expect(abs(a.height(of: z.id) - a.height(of: x.id)) < 0.001)
+    #expect(a.focused == z.id)
+    // A stashed tile before every shown one is behind the first shown.
+    var b = ArrangementState()
+    b.apply(.place(x, column: 0, at: 0))
+    b.apply(.place(y, column: 0, at: 1))
+    b.apply(.heights([x.id: 0, y.id: 1]))
+    #expect(b.tile(behind: x.id)?.id == y.id)
+}
+
 @Test func aFoldedLogIsEmptyAndLoadsAsItWas() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-fold-\(ULID.make())")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

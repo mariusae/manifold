@@ -24,10 +24,13 @@ cp "$bin/Manifold" "$bin/manifoldd" "$app/Contents/MacOS/"
 # file system doesn't tell the two names apart.
 cp "$bin/ManifoldCLI" "$app/Contents/Helpers/manifold"
 # The servers carried for other hosts (DESIGN.md §8): this machine's, and
-# Linux ones when scripts/build-linux.sh has made them.
+# Linux ones when scripts/build-linux.sh has made them. The Linux ones go
+# under Resources: codesign won't seal a bundle with ELF files among its
+# helpers.
 cp "$bin/manifoldd" "$app/Contents/Helpers/manifoldd-darwin-aarch64"
+mkdir -p "$app/Contents/Resources/servers"
 for t in x86_64 aarch64; do
-  [ -f ".build/$t-swift-linux-musl/release/manifoldd" ] && cp ".build/$t-swift-linux-musl/release/manifoldd" "$app/Contents/Helpers/manifoldd-linux-$t"
+  [ -f ".build/$t-swift-linux-musl/release/manifoldd" ] && cp ".build/$t-swift-linux-musl/release/manifoldd" "$app/Contents/Resources/servers/manifoldd-linux-$t"
 done
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Ghostty looks for terminfo next to its resources directory.

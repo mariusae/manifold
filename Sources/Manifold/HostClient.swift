@@ -366,8 +366,10 @@ final class HostClient {
     static func bootstrap(_ dest: Destination, name: String) throws -> Child {
         let probe = try Bootstrap.probe(dest)
         let binaryName = Bootstrap.binaryName(os: probe.os, arch: probe.arch)
-        let helpers = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers")
-        var binary = helpers.appendingPathComponent(binaryName)
+        // Servers for other systems under Resources/servers; this Mac's own kind beside it in Helpers.
+        let contents = Bundle.main.bundleURL.appendingPathComponent("Contents")
+        var binary = contents.appendingPathComponent("Resources/servers").appendingPathComponent(binaryName)
+        if !FileManager.default.fileExists(atPath: binary.path) { binary = contents.appendingPathComponent("Helpers").appendingPathComponent(binaryName) }
         if !FileManager.default.fileExists(atPath: binary.path), probe.os == "darwin", probe.arch == "arm64" {
             binary = URL(fileURLWithPath: serverExecutable)
         }
