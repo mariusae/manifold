@@ -124,11 +124,11 @@ final class GridView: NSView, NSDraggingSource {
                 // The capsule clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
                 // the tile's menu.
-                pill.onClick = { [weak self, weak pill] at in
+                pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                        if mods.contains(.shift) {
                             self.delegate?.gridSwap(id)
                         } else {
                             self.delegate?.gridUnstash(id)
@@ -142,7 +142,7 @@ final class GridView: NSView, NSDraggingSource {
                         return NSPoint(x: at.x - c.minX, y: at.y - c.minY)
                     }
                     self.delegate?.gridFocus(id)
-                    if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                    if mods.contains(.command) {
                         self.delegate?.gridFill(id)
                     } else {
                         self.delegate?.gridGrow(id)
@@ -165,11 +165,11 @@ final class GridView: NSView, NSDraggingSource {
                         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
-                pill.onIconClick = { [weak self] in
+                pill.onIconClick = { [weak self] mods in
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                        if mods.contains(.shift) {
                             self.delegate?.gridSwap(id)
                         } else {
                             self.delegate?.gridUnstash(id)
@@ -634,8 +634,10 @@ final class GridView: NSView, NSDraggingSource {
 /// capsule takes the mouse; around it, the tile does.
 final class TilePill: NSView {
     /// Clicked, with where in the pill (its coordinates).
-    var onClick: ((NSPoint) -> Void)?
-    var onIconClick: (() -> Void)?
+    /// Clicked: where, and with which modifiers held (the click's own,
+    /// not whatever event the app last saw).
+    var onClick: ((NSPoint, NSEvent.ModifierFlags) -> Void)?
+    var onIconClick: ((NSEvent.ModifierFlags) -> Void)?
     /// ⌥-clicked: the path menu.
     var onPathClick: (() -> Void)?
     var onDragStart: ((NSEvent) -> Void)?
@@ -807,7 +809,7 @@ final class TilePill: NSView {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
             if event.modifierFlags.contains(.option) { onPathClick?() }
-            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?(p) }
+            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
     }

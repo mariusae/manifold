@@ -95,8 +95,8 @@ final class StateView: NSView {
                 return p
             }()
             pill.show(item.shown, focused: false)
-            pill.onClick = { [weak self] _ in
-                if NSApp.currentEvent?.modifierFlags.contains(.command) == true { self?.onBring?(block) } else { self?.onGoTo?(block) }
+            pill.onClick = { [weak self] _, mods in
+                if mods.contains(.command) { self?.onBring?(block) } else { self?.onGoTo?(block) }
             }
             pill.onDragStart = nil
         }
