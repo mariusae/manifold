@@ -217,7 +217,7 @@ final class GridView: NSView, NSDraggingSource {
             tile.view.frame = bounds
             if let pill = pills[full] {
                 pill.isHidden = false
-                pill.stackLevel = 0
+                pill.behind = 0
                 pill.frame = NSRect(x: 0, y: bounds.height - Self.band, width: bounds.width, height: Self.band)
                 addSubview(pill, positioned: .above, relativeTo: tile.view)
             }
@@ -226,6 +226,7 @@ final class GridView: NSView, NSDraggingSource {
         for t in columns.flatMap({ $0 }) {
             t.view.isHidden = isStashed(t.shown.id)
             pills[t.shown.id]?.isHidden = false
+            pills[t.shown.id]?.behind = 0
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -240,7 +241,6 @@ final class GridView: NSView, NSDraggingSource {
                 tile.view.frame = r
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
-                    pill.stackLevel = 0
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
                     addSubview(pill, positioned: .above, relativeTo: tile.view)
                 }
@@ -256,24 +256,15 @@ final class GridView: NSView, NSDraggingSource {
             guard let top, !stashed.isEmpty else { continue }
             let band = NSRect(x: top.minX, y: top.maxY - Self.band, width: top.width, height: Self.band)
             let open = fanned == c
+            let topPill = pills[columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id ?? ""]
+            topPill?.behind = stashed.count
             for (i, tile) in stashed.enumerated() {
                 guard let pill = pills[tile.shown.id] else { continue }
-                pill.stackLevel = open ? 0 : i + 1
-                let target = open
-                    ? band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
-                    : band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * 5)
-                if let topPill = pills[columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id ?? ""] {
-                    addSubview(pill, positioned: open ? .above : .below, relativeTo: topPill)
-                }
-                if pill.frame.size == target.size, pill.frame != target, window != nil {
-                    NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = 0.16
-                        ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                        pill.animator().frame = target
-                    }
-                } else {
-                    pill.frame = target
-                }
+                // Gathered, the top pill draws their edges; fanned, they come out below it.
+                pill.isHidden = !open
+                let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
+                if let topPill { addSubview(pill, positioned: .above, relativeTo: topPill) }
+                pill.frame = open ? target : band
             }
         }
         for (i, d) in columnDividers.enumerated() {
@@ -327,8 +318,6 @@ final class GridView: NSView, NSDraggingSource {
             var zone = topPill.capsule(in: self).insetBy(dx: -8, dy: -4)
             if fanned == c {
                 for t in stashedTiles(c) { if let pill = pills[t.shown.id] { zone = zone.union(pill.capsule(in: self).insetBy(dx: -8, dy: -4)) } }
-            } else if let last = stashedTiles(c).last, let pill = pills[last.shown.id] {
-                zone = zone.union(pill.capsule(in: self))
             }
             if zone.contains(p) { over = c; break }
         }
@@ -461,16 +450,25 @@ final class TilePill: NSView {
     private var downAt: NSPoint?
     private var focused = false
     private var maximized = false
-    /// 0 for a tile's own pill; deeper, a stashed one bunched beneath it,
-    /// narrower and fainter the deeper.
-    var stackLevel = 0 { didSet { if stackLevel != oldValue { needsLayout = true; updateColors() } } }
+    /// How many stashed tiles are bunched under this pill (§3.1): their
+    /// edges peek out at its right, level with it, as Prism's sheets do.
+    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; needsDisplay = true } } }
 
     static let height: CGFloat = 24
     /// Every pill the same width, within its tile.
     static let width: CGFloat = 220
+    /// Edges shown at most, and how far each peeks out.
+    private static let mostBehind = 3
+    private static let step: CGFloat = 6
 
-    /// The capsule's frame, in `view`'s coordinates.
-    func capsule(in view: NSView) -> NSRect { convert(glass.frame, to: view) }
+    private var edges: Int { min(behind, Self.mostBehind) }
+
+    /// The capsule's frame, the edges behind it included, in `view`'s coordinates.
+    func capsule(in view: NSView) -> NSRect {
+        var r = glass.frame
+        r.size.width += CGFloat(edges) * Self.step
+        return convert(r, to: view)
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -514,7 +512,7 @@ final class TilePill: NSView {
         self.stashed = stashed
         corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
         corner.toolTip = maximized ? "Restore (⇧⌘↩)" : "Maximize (⇧⌘↩)"
-        corner.isHidden = stackLevel > 0 || stashed
+        corner.isHidden = stashed
         icon.image = Theme.symbol(shown.symbol, size: 11)
         name.stringValue = shown.title + (shown.isDormant ? "  (dormant)" : "")
         dirty.isHidden = !shown.isDirty
@@ -533,7 +531,7 @@ final class TilePill: NSView {
         name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
         name.textColor = focused ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
-        alphaValue = stackLevel > 0 ? max(0.35, 0.8 - 0.15 * Double(stackLevel)) : (focused ? 1 : 0.88)
+        alphaValue = focused ? 1 : 0.88
     }
 
     /// One width for every pill, within the tile.
@@ -552,13 +550,13 @@ final class TilePill: NSView {
         let h = Self.height
         let w = pillWidth
         let y = ((bounds.height - h) / 2).rounded()
-        // A stacked pill sits a little to the right of the one over it.
-        glass.frame = NSRect(x: ((bounds.width - w) / 2).rounded() + CGFloat(stackLevel) * 8, y: y, width: w, height: h)
+        // Centered with the edges behind it counted in.
+        glass.frame = NSRect(x: ((bounds.width - w - CGFloat(edges) * Self.step) / 2).rounded(), y: y, width: w, height: h)
         var x = glass.frame.minX + 10
         icon.frame = NSRect(x: x, y: y + (h - 14) / 2, width: 16, height: 14)
         x += 22
         var right = glass.frame.maxX - 12
-        corner.isHidden = stackLevel > 0 || stashed
+        corner.isHidden = stashed
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 14, y: y + (h - 16) / 2, width: 16, height: 16)
             right -= 18
@@ -590,6 +588,21 @@ final class TilePill: NSView {
     override func mouseUp(with event: NSEvent) {
         if downAt != nil { onClick?() }
         downAt = nil
+    }
+
+    /// The edges of the stashed tiles' pills, the furthest first, each a
+    /// step to the right of the one before it, level with the capsule.
+    override func draw(_ dirtyRect: NSRect) {
+        guard edges > 0 else { return }
+        for level in stride(from: edges, through: 1, by: -1) {
+            let rect = glass.frame.offsetBy(dx: CGFloat(level) * Self.step, dy: 0).insetBy(dx: 0.5, dy: 0.5)
+            let path = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
+            Theme.sheet(level: level).setFill()
+            path.fill()
+            Theme.text.withAlphaComponent(0.1).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
     }
 }
 
