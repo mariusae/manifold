@@ -33,11 +33,17 @@ and Mona Sans (bundled).
   below the biggest tile of the active column, taking its lower half;
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
-  others: their pills bunch in a small stack under its pill, fan out
-  when the pointer rests on it, and one clicked comes back (Stash, in a
-  pill's menu, puts a tile away the same way). Maximize Tile (⇧⌘↩, or
-  the ⤢ at the right of a pill) puts a tile over the whole workspace
-  until it is restored. Drag the lines between tiles and columns to
+  others. A stash is a stack behind any tile: a few edges peek out
+  beside its pill, fan out when the pointer rests there, and one clicked
+  comes back as that tile's lower half. Drop a pill on another's to
+  stash it there; Stash, in a pill's menu, puts a tile behind its
+  neighbor above. Dragging the line between two tiles past one's least
+  height stashes it and goes on against the next, until all above or
+  below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
+  pill) puts a tile over the whole workspace until it is restored, or
+  until you go to another tile. Overview (⌘') shows every block in the
+  workspace at once, Mission Control fashion; ⎋ comes back. Drag the
+  lines between tiles and columns to
   resize them. Each tile wears a **pill** floating over its top, one
   width for all, with its symbol, name and status glyph: drag it to
   move the tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the
@@ -55,7 +61,11 @@ and Mona Sans (bundled).
   it below the opener, taking its lower half, and links the two; a
   preview going page to page and a listing going into a folder change
   in place. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
-  are brought here; ⌥⌘T starts a new workspace with a terminal.
+  are brought here, into the active column; ⌥⇧⌘N opens a terminal in a
+  new column, ⌥⌘T a new workspace with one. A note is at home in the
+  folder of the block it was made from: it is found there, and saved
+  there by default. Open Folder… (⌥⌘O) browses a folder you choose
+  beside the focused block; Browse This Folder (⌃⌘O) its own.
   **Go Back** and **Go Forward** (⌘[ ⌘]) walk the trail across tiles
   and workspaces.
 - **⌃⇥** walks the workspaces most recently settled on first, each
@@ -117,7 +127,8 @@ when you find it again.
   on one asks where to save it). The **editor** lens is Manifold's own
   text view: the file's text laid out with Core Text, line numbers, several
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
-  adds one), find and replace (⌘F, ⌥⌘F; every match marked), Go to Line
+  adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
+  below), Go to Line
   (⌘L), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⌃⇧K, join ⌃J,
   comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection),
   brackets and quotes paired, new lines indented like the last, undo as
@@ -163,6 +174,11 @@ when you find it again.
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open in a listing (name, date, size); double-click an entry
   to open it, ⌘↑ for the folder above.
+- **Find** is a pill at a tile's upper right (⌘F): the query, how many
+  matches, ↑ ↓ for the previous and next (↩ and ⇧↩, ⌘G and ⇧⌘G too), Aa
+  for case, and ×; ⌥⌘F adds a row to replace with. ⌘E finds the word at
+  hand and goes on to its next occurrence. Editors, Markdown previews,
+  web pages and diffs are searched this way (terminals not yet).
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the
