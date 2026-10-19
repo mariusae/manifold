@@ -410,8 +410,8 @@ makes multiple cursors and very large files tractable.
 
 What it is to use, modelled on Panic's Nova, without syntax highlighting:
 
-- Proportional (SF Pro with its single-story a, as Notes has it; or Mona
-  Sans) or fixed-width text from the theme, as now.
+- Proportional (SF Pro with its single-story a, as Notes has it; Tiempos
+  Text; or Mona Sans) or fixed-width text from the theme, as now.
 - Multiple cursors and selections; select next occurrence; column
   selection with ⌥-drag.
 - Line operations: move, duplicate, delete, join, sort; indent and

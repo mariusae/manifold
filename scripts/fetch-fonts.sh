@@ -2,8 +2,10 @@
 # Fetches the fonts the app bundles (SIL Open Font License, bar Go): Monaspace,
 # into Frameworks/monaspace, only the four faces a terminal uses of each of
 # its five families; and Mona Sans, the editor's proportional font, into
-# Frameworks/monasans; and Recursive and Go, for their themes. Files already
-# there are kept.
+# Frameworks/monasans; and Recursive, Go and JetBrains Mono, for their
+# themes. Tiempos Text (Klim's, licensed, so not fetched) is copied from
+# $TIEMPOS_DIR, by default its folder in iCloud Drive's Fonts, when it's
+# there. Files already there are kept.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -60,3 +62,29 @@ for face in Regular Italic Medium Bold Bold-Italic Mono Mono-Italic Mono-Bold Mo
 done
 github_file golang/image $go LICENSE "$out/LICENSE"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+
+# JetBrains Mono (OFL), for the Tiempos theme.
+jb=2.304
+out=Frameworks/jetbrainsmono
+mkdir -p "$out"
+zip=vendor/JetBrainsMono-$jb.zip
+[ -f "$zip" ] || curl -sSfL -o "$zip" \
+  "https://github.com/JetBrains/JetBrainsMono/releases/download/v$jb/JetBrainsMono-$jb.zip"
+for face in Regular Italic Bold BoldItalic; do
+  [ -s "$out/JetBrainsMono-$face.ttf" ] || unzip -qjo "$zip" "fonts/ttf/JetBrainsMono-$face.ttf" -d "$out"
+done
+[ -s "$out/OFL.txt" ] || unzip -qjo "$zip" OFL.txt -d "$out"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+
+# Tiempos Text, for the Tiempos theme: copied, not fetched.
+tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
+out=Frameworks/tiempos
+if [ -d "$tiempos" ]; then
+  mkdir -p "$out"
+  for face in Regular RegularItalic Bold BoldItalic; do
+    [ -s "$out/TiemposText-$face.otf" ] || cp "$tiempos/TiemposText-$face.otf" "$out/"
+  done
+  echo "copied $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
+else
+  echo "no Tiempos Text at $tiempos; the Tiempos theme will fall back to the system's fonts" >&2
+fi

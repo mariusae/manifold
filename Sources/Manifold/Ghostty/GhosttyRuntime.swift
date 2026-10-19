@@ -201,9 +201,9 @@ final class GhosttyRuntime {
         }
     }
 
-    /// Makes the fonts in Resources/Fonts (Monaspace, Mona Sans, Recursive,
-    /// Go) available to this
-    /// process only; nothing is installed.
+    /// Makes the fonts in Resources/Fonts (Monaspace, Mona Sans, Tiempos
+    /// Text, JetBrains Mono, Recursive, Go) available to this process only;
+    /// nothing is installed.
     private static func registerBundledFonts() {
         guard let dir = Bundle.main.resourceURL?.appendingPathComponent("Fonts"),
               let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)

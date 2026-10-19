@@ -8,6 +8,7 @@ extension FontTheme {
     var title: String {
         switch self {
         case .notes: "Notes"
+        case .tiempos: "Tiempos"
         case .mona: "Mona"
         case .recursive: "Recursive"
         case .go: "Go"
@@ -18,6 +19,7 @@ extension FontTheme {
     var proportionalName: String {
         switch self {
         case .notes: "SF Pro"
+        case .tiempos: "Tiempos Text"
         case .mona: "Mona Sans"
         case .recursive: "Recursive Sans"
         case .go: "Go"
@@ -28,6 +30,7 @@ extension FontTheme {
     var monospacedName: String {
         switch self {
         case .notes: "Menlo"
+        case .tiempos: "JetBrains Mono"
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
         case .go: "Go Mono"
@@ -49,6 +52,7 @@ extension FontTheme {
             font-feature = ss08
             """
         case .notes: "font-family = Menlo"
+        case .tiempos: "font-family = JetBrains Mono"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
         // Terminal.app's copy, registered for this process at launch.
@@ -69,13 +73,13 @@ extension FontTheme {
     }
 
     /// The editor's size for each kind: the fonts differ in how big they
-    /// look at a size.
+    /// look at a size (Tiempos Text is a text face, set a point larger).
     func editorSize(_ kind: EditorFont) -> CGFloat {
         switch (self, kind) {
-        case (.mona, .proportional): 15
+        case (.mona, .proportional), (.tiempos, .proportional): 15
         case (.recursive, .proportional): 14.5
         case (.go, .proportional), (.system, .proportional), (.notes, .proportional): 14
-        case (.go, .monospaced), (.notes, .monospaced): 13
+        case (.go, .monospaced), (.notes, .monospaced), (.tiempos, .monospaced): 13
         case (_, .monospaced): 13.5
         }
     }
@@ -84,6 +88,7 @@ extension FontTheme {
         switch kind {
         case .proportional:
             let name: String? = switch self {
+            case .tiempos: "Tiempos Text"
             case .mona: "Mona Sans"
             case .recursive: "Recursive Sans Linear Static"
             case .go: "Go"
@@ -98,6 +103,7 @@ extension FontTheme {
         case .monospaced:
             let name: String? = switch self {
             case .notes: "Menlo"
+            case .tiempos: "JetBrains Mono"
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
             case .go: "Go Mono"
@@ -119,6 +125,7 @@ extension FontTheme {
         let sansFeatures = proportionalFeatures.isEmpty ? "normal" : proportionalFeatures.map { "\"\($0)\"" }.joined(separator: ", ")
         return switch self {
         case .notes: ("-apple-system", "Menlo", features, sansFeatures)
+        case .tiempos: (#""Tiempos Text""#, #""JetBrains Mono""#, features, sansFeatures)
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
         case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)
