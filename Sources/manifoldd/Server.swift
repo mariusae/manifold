@@ -56,9 +56,20 @@ final class Server {
     private var gutterWork: [BlockID: DispatchWorkItem] = [:]
     /// Repositories watched (their index) for git blocks and gutters.
     private var repoWatchers: [String: FileWatcher] = [:]
+    /// When each repository's git blocks last refreshed for a change
+    /// under it, and a refresh waiting its turn.
+    private var gitRefreshedAt: [String: Date] = [:]
+    private var gitRefreshDue: [String: DispatchWorkItem] = [:]
 
-    init() {
+    /// Held for the life of the server: one per directory.
+    private let lock: Int32
+
+    init() throws {
         Paths.ensureDirectory()
+        // One server per directory: a second one exits quietly. Taken
+        // before anything is read or rewritten.
+        lock = open(Paths.directory.appendingPathComponent("manifoldd.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ServerError.alreadyRunning }
         let session = HostSession.identify(directory: Paths.directory, logs: Paths.logs)
         host = session.id
         label = session.label
@@ -106,10 +117,6 @@ final class Server {
     }
 
     func run() throws {
-        Paths.ensureDirectory()
-        // One server per directory: a second one exits quietly.
-        let lock = open(Paths.directory.appendingPathComponent("manifoldd.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-        guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ServerError.alreadyRunning }
         load()
         pruneHistory()
         let fd = try UnixSocket.listen(path: Paths.socket)
@@ -555,7 +562,13 @@ final class Server {
             if case .success(let out) = results[1] { log = vcs.parseLog(out) }
             if vcs.whereArguments != nil, case .success(let out) = results[2] { branch = VCS.parseSaplingWhere(out) }
             if vcs.aheadArguments != nil, case .success(let out) = results[3] { ahead = out.split(separator: "\n").count }
-            self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
+            // Only a change is worth an entry: a refresh that finds the
+            // repository as it was is not history.
+            let was = self.node.block(block)?.git
+            let same = was.map { $0.branch == branch && $0.status == status && $0.log == log && $0.ahead == ahead && $0.behind == behind && $0.error == error } ?? false
+            if !same {
+                self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
+            }
             if let error { self.report(block, .error, msg: error) } else { self.report(block, .done, msg: "\(status.count) change\(status.count == 1 ? "" : "s")") }
         }
     }
@@ -564,6 +577,20 @@ final class Server {
     /// its git blocks refresh, its open files' gutters are redone.
     private func gitChanged(under path: String) {
         guard let root = git.root(of: path) else { return }
+        // Listing the status can itself touch what's watched: refreshes a
+        // repository's changes bring come no closer than a second apart,
+        // the ones in between folded into one.
+        if let last = gitRefreshedAt[root], Date().timeIntervalSince(last) < 1 {
+            guard gitRefreshDue[root] == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                self?.gitRefreshDue[root] = nil
+                self?.gitChanged(under: path)
+            }
+            gitRefreshDue[root] = work
+            queue.asyncAfter(deadline: .now() + 1, execute: work)
+            return
+        }
+        gitRefreshedAt[root] = Date()
         for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
         for b in node.blocks where b.kind == .text && gutterWork[b.id] != nil && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
     }
@@ -835,6 +862,9 @@ final class Server {
                 store.compact(.block(b.id), before: cutoff, node: node)
             }
         }
+        // A git block's refreshes replace one another: its log is folded
+        // into its base whole, every time.
+        for b in node.blocks(of: .git) { store.fold(.block(b.id), node: node) }
         if settings.terminalHistoryDays > 0 {
             let cutoff = Int64(Date().addingTimeInterval(-Double(settings.terminalHistoryDays) * 86400).timeIntervalSince1970 * 1000)
             for b in node.blocks(of: .terminal) + node.blocks(of: .agent) {

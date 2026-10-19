@@ -36,7 +36,9 @@ public enum VCS: String, Codable, Sendable {
     /// Arguments after the command for the status listing.
     public var statusArguments: [String] {
         switch self {
-        case .git: ["status", "--porcelain=v1", "-z", "-b"]
+        // Without optional locks, listing the status doesn't rewrite the
+        // index, which the host watches for changes.
+        case .git: ["--no-optional-locks", "status", "--porcelain=v1", "-z", "-b"]
         case .sapling: ["status", "--root-relative"]
         }
     }

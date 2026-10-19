@@ -45,9 +45,10 @@ case "open":
 case "serve":
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
-    let server = Server()
+    var server: Server?
     do {
-        try server.run()
+        server = try Server()
+        try server?.run()
     } catch ServerError.alreadyRunning {
         exit(0)
     } catch {

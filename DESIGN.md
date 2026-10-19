@@ -412,7 +412,10 @@ workspaces; it never deletes a block. Policy, per host:
   and per workspace (a named workspace may keep its blocks' history
   longer). The defaults are a starting point to be tuned with use: text
   logs kept in full (they are small), terminal rows thinned after a while
-  (they add up), undo as deep as the text's history.
+  (they add up), undo as deep as the text's history. A git block's
+  refreshes only replace one another, so they are no history at all: one
+  is logged only when the repository changed, and the block's log is
+  folded into its base whole whenever retention runs.
 
 Every number in this section — idle times, retention, thinning — is a
 setting the core reads, never a constant in it, so policy can be tuned

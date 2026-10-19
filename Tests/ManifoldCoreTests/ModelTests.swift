@@ -701,6 +701,66 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     try? FileManager.default.removeItem(at: dir)
 }
 
+@Test func aRewriteCutShortResumesAndKeepsTheSnapshotsPlace() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
+    let logs = dir.appendingPathComponent("logs")
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+    let store = LogStore(directory: logs)
+    let old = HostID.local
+    let block = BlockID(host: old)
+    let at = Stamp(wall: 1, host: old)
+    let node = Node()
+    let shard = ShardID.block(block)
+    let create = Entry(seq: 1, at: at, event: .create(kind: .text, title: "note", path: nil))
+    store.append([create], to: shard)
+    node.apply(create, to: shard)
+    // A snapshot part way, then more log after it.
+    store.snapshot(node, shard)
+    let rename = Entry(seq: 2, at: Stamp(wall: 2, host: old), event: .title("renamed"))
+    store.append([rename], to: shard)
+    store.closeAll()
+    // A session already minted, as after a rewrite that was cut short.
+    let minted = HostSession.mint()
+    try Data(minted.raw.utf8).write(to: dir.appendingPathComponent("session"))
+    let got = HostSession.identify(directory: dir, logs: logs)
+    #expect(got.id == minted)
+    let reloaded = LogStore(directory: logs)
+    #expect(reloaded.shards() == [.block(BlockID(host: minted, ulid: block.ulid))])
+    let replica = Node()
+    for s in reloaded.shards() { reloaded.load(s, into: replica) }
+    let moved = BlockID(host: minted, ulid: block.ulid)
+    #expect(replica.block(moved)?.title == "renamed", "the entry after the snapshot is replayed from where the snapshot's offset landed")
+    #expect(replica.seq(.block(moved)) == 2)
+    try? FileManager.default.removeItem(at: dir)
+}
+
+@Test func aFoldedLogIsEmptyAndLoadsAsItWas() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-fold-\(ULID.make())")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let store = LogStore(directory: dir)
+    let host = HostID("h0000000000")
+    let block = BlockID(host: host)
+    let shard = ShardID.block(block)
+    let node = Node()
+    let at = Stamp(wall: 1, host: host)
+    let entries = [
+        Entry(seq: 1, at: at, event: .create(kind: .git, title: "repo", path: "/r")),
+        Entry(seq: 2, at: at, event: .gitRefreshed(branch: "main", status: [], log: [], ahead: 0, behind: 0, error: nil, at: at)),
+    ]
+    store.append(entries, to: shard)
+    for e in entries { node.apply(e, to: shard) }
+    store.closeAll()
+    store.fold(shard, node: node)
+    let size = (try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent(shard.fileName + ".log").path))?[.size] as? UInt64
+    #expect(size == 0)
+    let replica = Node()
+    #expect(LogStore(directory: dir).load(shard, into: replica))
+    #expect(replica.block(block)?.git?.branch == "main")
+    #expect(replica.seq(shard) == 2)
+    #expect(store.history(shard).base != nil && store.history(shard).entries.isEmpty)
+    try? FileManager.default.removeItem(at: dir)
+}
+
 @Test func remoteProvidersFillInTheirTemplates() {
     let p = RemoteProvider(name: "my", command: "my_special_script.sh --to %h %c")
     #expect(p.arguments(host: "box", command: "manifoldd bridge") == ["my_special_script.sh", "--to", "box", "manifoldd bridge"])

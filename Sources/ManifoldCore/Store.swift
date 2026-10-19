@@ -111,6 +111,19 @@ public final class LogStore {
         }
     }
 
+    /// Folds a shard's whole log into its base, leaving the log empty:
+    /// for shards whose entries only replace one another (a git block's
+    /// refreshes), history isn't worth the room. Nothing is read.
+    public func fold(_ shard: ShardID, node: Node) {
+        let size = (try? FileManager.default.attributesOfItem(atPath: logURL(shard).path))?[.size] as? UInt64 ?? 0
+        guard size > 0, let snap = node.snapshot(shard), let baseData = try? Codec.encode(snap),
+              let snapData = try? Codec.encode(SnapshotFile(snapshot: snap, logOffset: 0)) else { return }
+        try? handles.removeValue(forKey: shard)?.close()
+        try? baseData.write(to: baseURL(shard), options: .atomic)
+        try? snapData.write(to: snapURL(shard), options: .atomic)
+        try? Data().write(to: logURL(shard), options: .atomic)
+    }
+
     /// Every entry in a shard's log, from the beginning (for history).
     public func entries(_ shard: ShardID) -> [Entry] {
         guard let data = try? Data(contentsOf: logURL(shard)) else { return [] }

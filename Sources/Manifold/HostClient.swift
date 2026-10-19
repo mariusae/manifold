@@ -316,14 +316,16 @@ final class HostClient {
             attach(Connection(fd: fd, queue: .main))
             return
         }
-        launchServer()
+        let pid = launchServer()
         var attempts = 0
         func retry() {
             attempts += 1
             if let fd = try? UnixSocket.connect(path: Paths.socket) {
                 attach(Connection(fd: fd, queue: .main))
-            } else if attempts < 100 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: retry)
+            } else if attempts < 100 || (pid > 0 && kill(pid, 0) == 0) {
+                // As long as the server lives, it's coming: it may be
+                // rewriting its logs first.
+                DispatchQueue.main.asyncAfter(deadline: .now() + (attempts < 100 ? 0.05 : 0.25), execute: retry)
             } else {
                 let alert = NSAlert()
                 alert.messageText = "Manifold couldn't start its server."
@@ -345,12 +347,15 @@ final class HostClient {
         close(fd)
     }
 
-    private func launchServer() {
+    /// Starts a server, returning its pid, or -1.
+    @discardableResult
+    private func launchServer() -> pid_t {
         let exe = Self.serverExecutable
         let pid = withCStrings([exe, "serve"]) { argv in
             mf_spawn_detached(exe, argv, Paths.log.path)
         }
         if pid < 0 { NSLog("could not start %@: %s", exe, strerror(errno)) }
+        return pid
     }
 
     /// Readies a remote host: asks what it is, installs our server if the
