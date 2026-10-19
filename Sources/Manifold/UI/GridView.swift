@@ -457,6 +457,10 @@ final class GridView: NSView, NSDraggingSource {
                 // sight): one that was dodging when stashed comes back,
                 // or it would be lost — unseen in the fan, taking no clicks.
                 if isStashed(tile.shown.id) { pill.dodging = false; continue }
+                // Only the focused tile's pill dodges: nothing is being
+                // typed under the others, and their names are what you
+                // find them by.
+                if tile.shown.id != focused { pill.dodging = false; continue }
                 guard !pill.isHidden else { continue }
                 var away = false
                 if let caret = tile.view.caretRectInWindow {
