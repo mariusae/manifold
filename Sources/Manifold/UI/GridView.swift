@@ -571,7 +571,8 @@ final class TilePill: NSView {
             dirty.frame = NSRect(x: right - 6, y: y + (h - 6) / 2, width: 6, height: 6)
             right -= 12
         }
-        name.frame = NSRect(x: x - 2, y: y + ((h - 17) / 2).rounded(), width: max(0, right - x + 4), height: 17)
+        let th = ceil(name.intrinsicContentSize.height)
+        name.frame = NSRect(x: x - 2, y: y + ((h - th) / 2).rounded() - 0.5, width: max(0, right - x + 4), height: th)
     }
 
     override func resetCursorRects() { addCursorRect(glass.frame, cursor: .openHand) }
