@@ -11,7 +11,8 @@ for d in monaspace monasans recursive gofont firacode; do [ -d Frameworks/$d ] |
 config=${CONFIG:-release}
 swift build -c "$config"
 # The servers for Linux hosts (scripts/build-linux.sh), built by default
-# when the toolchain is there; LINUX=0 skips them.
+# when swiftly is there (the script installs the toolchain and SDK it
+# needs); LINUX=0 skips them.
 if [ "${LINUX:-1}" != 0 ] && [ -x "${SWIFTLY:-$HOME/.swiftly/bin/swiftly}" ]; then
   scripts/build-linux.sh
 fi

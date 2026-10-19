@@ -370,8 +370,12 @@ is migrated into logs on first run.
   says so, with Attach. Two Manifolds may attach to one host and share
   it: each block a client can edit (a note, a file, a web page, a
   workspace) has one owner at a time, whichever focused it last; the
-  other mirrors until it focuses the block again. Linux
-  servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
+  other mirrors until it focuses the block again. Linux servers (x86_64
+  and aarch64, static) come from `scripts/build-linux.sh`, which
+  `scripts/build-app.sh` runs: they are built with a swift.org toolchain
+  through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its
+  Static Linux SDK, if missing), since the SDK goes with the toolchain
+  of its own version and not with Xcode's; `LINUX=0` skips them.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
   host, `manifoldd open --wait`): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
