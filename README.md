@@ -393,9 +393,13 @@ is migrated into logs on first run.
   with their destination and label, and attached again at start. A
   remembered host stands in the sidebar from the start: a spinner and
   "connecting…" while it's being reached, a slashed ring and
-  "unreachable" (dimmed) when it can't be — tried again every half
-  minute, and, once connected, pinged every fifteen seconds so a bridge
-  that hangs is noticed and made again. While a host is unreachable its
+  "unreachable" (dimmed) when it can't be — tried again after two
+  seconds, then four, eight, up to two minutes between tries (the
+  tooltip says when the next is; **Try Again Now** in the row's menu
+  hurries it), and once connected, pinged every fifteen seconds so a
+  bridge that hangs is noticed and made again. A bridge that keeps
+  dying before the host answers is taken as a server gone missing
+  there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an
   editor there takes no edits, and nothing new reaches it until it's
   back. Click a host's row in Files (or Desk) and its home folder opens

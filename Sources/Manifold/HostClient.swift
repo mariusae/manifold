@@ -42,6 +42,51 @@ final class HostClient {
     }
     /// The last time the host answered.
     private(set) var lastHeard: Date?
+    /// How long until the next try at reaching the host: doubles with
+    /// each failure, from two seconds to two minutes, and starts over
+    /// once the host answers.
+    private var backoff: TimeInterval = 2
+    private var retryWork: DispatchWorkItem?
+    /// When the next try is due, while there is one.
+    private(set) var nextTry: Date?
+
+    /// Bridges that closed before the host answered, in a row: after a
+    /// few, the host is bootstrapped again (its server put back) rather
+    /// than bridged to.
+    private var closedUnanswered = 0
+    /// Set by the hosts registry: bootstrap this host again.
+    var onNeedsBootstrap: (() -> Void)?
+
+    func nextRetryDelay() -> TimeInterval {
+        let delay = backoff
+        backoff = min(backoff * 2, 120)
+        return delay
+    }
+
+    /// A try, `delay` from now (or at once): the work is kept so Try
+    /// Again Now can hurry it.
+    func scheduleRetry(after delay: TimeInterval, _ work: @escaping () -> Void) {
+        retryWork?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.retryWork = nil
+            self?.nextTry = nil
+            work()
+        }
+        retryWork = item
+        nextTry = Date().addingTimeInterval(delay)
+        NSLog("host %@: trying again in %.0f s", host.raw, delay)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        scheduleChange()
+    }
+
+    /// Try Again Now: whatever try was due, now.
+    func retryNow() {
+        guard let item = retryWork else { return }
+        retryWork = nil
+        nextTry = nil
+        backoff = 2
+        DispatchQueue.main.async(execute: item)
+    }
     private var pingTimer: Timer?
     private var pingSent: Date?
     private var nextProposal = 1
@@ -422,7 +467,7 @@ final class HostClient {
                     self.adopt(child)
                 } else {
                     self.link = .unreachable(why)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.reconnectRemote() }
+                    self.scheduleRetry(after: self.nextRetryDelay()) { [weak self] in self?.reconnectRemote() }
                 }
             }
         }
@@ -436,6 +481,7 @@ final class HostClient {
 
     func disconnect() {
         disconnected = true
+        retryWork?.cancel()
         pingTimer?.invalidate()
         conn?.close()
         if let child { kill(child.pid, SIGTERM) }
@@ -481,7 +527,10 @@ final class HostClient {
             self.isConnected = false
             self.pingTimer?.invalidate()
             self.pingSent = nil
-            if case .connected = self.link { self.link = .unreachable(nil) }
+            // Gone before it answered: unreachable, not still connecting.
+            let answered = self.link == .connected
+            self.link = .unreachable(answered ? nil : "the connection closed before the host answered")
+            self.closedUnanswered = answered ? 0 : self.closedUnanswered + 1
             if let child = self.child {
                 var status: Int32 = 0
                 waitpid(child.pid, &status, WNOHANG)
@@ -490,9 +539,17 @@ final class HostClient {
             self.onDisconnect?()
             self.scheduleChange()
             guard !self.disconnected else { return }
-            // Bring the server back; terminals re-attach once it's up.
-            let delay: TimeInterval = self.isRemote ? 5 : 0.5
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.connect() }
+            // Bring the server back; terminals re-attach once it's up — a
+            // remote one after a while, longer each time it can't be.
+            if self.isRemote {
+                let again = self.closedUnanswered >= 3 && self.onNeedsBootstrap != nil
+                self.scheduleRetry(after: self.nextRetryDelay()) { [weak self] in
+                    guard let self else { return }
+                    if again { self.closedUnanswered = 0; self.onNeedsBootstrap?() } else { self.connect() }
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.connect() }
+            }
         }
         conn.start()
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
@@ -514,6 +571,8 @@ final class HostClient {
             self.home = home
             lastHeard = Date()
             link = .connected
+            backoff = 2
+            closedUnanswered = 0
             startPinging()
             fenced = []
             clock = Clock(host: host)

@@ -1592,7 +1592,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .unreachable(let why):
             n.look = .offline
             n.detail = "unreachable"
-            n.tooltip = why.map { "Can't be reached: \($0)" } ?? "Can't be reached now; tried again every so often"
+            let when = c.nextTry.map { " · trying again in \(max(Int($0.timeIntervalSinceNow.rounded()), 0)) s" } ?? ""
+            n.tooltip = (why.map { "Can't be reached: \($0)" } ?? "Can't be reached now") + when
             n.dimmed = true
         }
         if c.isRemote || c.home != nil {
@@ -3495,6 +3496,19 @@ extension MainWindowController: OrganizationViewDelegate {
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
+        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote {
+            if c.link != .connected {
+                menu.addItem(ClosureMenuItem("Try Again Now", symbol: "arrow.clockwise") { [weak self] in
+                    c.retryNow()
+                    self?.refreshOrganization(now: true)
+                })
+            }
+            menu.addItem(ClosureMenuItem("Open Home Folder", symbol: "house") { [weak self] in
+                guard let self, let home = c.home else { return }
+                self.openDirectory(home, on: c.host)
+            })
+            return menu
+        }
         if let arr = node.arrangement, node.column == nil {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())

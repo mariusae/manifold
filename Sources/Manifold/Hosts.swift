@@ -318,6 +318,10 @@ final class Hosts {
             remotes[id] = c
             return c
         }
+        standing?.onNeedsBootstrap = { [weak self, weak standing] in
+            guard let self, let standing, let known, self.remotes[known] === standing else { return }
+            self.attach(dest, known: known, label: name) { _ in }
+        }
         onChange?()
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
@@ -335,8 +339,9 @@ final class Hosts {
                     self.onChange?()
                     completion(.failure(error))
                     if let known, let standing {
-                        // Again in a while, as long as it's still wanted.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                        // Again in a while — longer each time — as long as
+                        // it's still wanted.
+                        standing.scheduleRetry(after: standing.nextRetryDelay()) { [weak self] in
                             guard let self, self.remotes[known] === standing, standing.link != .connected else { return }
                             self.attach(dest, known: known, label: name) { _ in }
                         }

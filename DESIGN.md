@@ -345,9 +345,12 @@ blocked and done.
 A remote host is a client the app keeps whether or not it can reach it
 (§8): `HostClient.link` is connecting, connected, or unreachable with a
 reason. A remembered host is made at launch in the connecting state,
-bootstrapped in the background, and tried again every thirty seconds
-while unreachable; a connected bridge is pinged every fifteen seconds
-and dropped (to be made again) when a pong doesn't come. The mirrored
+bootstrapped in the background, and tried again while unreachable with
+the wait doubling from two seconds to two minutes (reset once it
+answers; Try Again Now hurries it); a connected bridge is pinged every
+fifteen seconds and dropped (to be made again) when a pong doesn't
+come, and three bridges in a row that close before the welcome mean the
+server there is gone: the host is bootstrapped again. The mirrored
 node stays as last seen: tiles of its blocks wear the offline glyph,
 editors there take no edits, appends go nowhere. The sidebar's host row
 shows the state and opens the host's home (the welcome carries it).
