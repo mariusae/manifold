@@ -224,6 +224,16 @@ enum DebugControl {
             guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
             wc.hosts.propose(.attend(b))
             return "ok"
+        case "scroll":
+            // "scroll x y dy": a wheel turned dy lines over that point (window
+            // coordinates from the top-left), to the view there.
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 3, let window = wc?.window, let content = window.contentView else { return "usage: scroll x y dy" }
+            let p = NSPoint(x: a[0], y: content.bounds.height - a[1])
+            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(a[2]), wheel2: 0, wheel3: 0),
+                  let e = NSEvent(cgEvent: cg), let hit = content.hitTest(p) else { return "no event" }
+            hit.scrollWheel(with: e)
+            return "scrolled \(type(of: hit))"
         case "hover":
             // "hover x y": the pointer moved there (window coordinates from the top-left).
             let a = arg.split(separator: " ").compactMap { Double($0) }

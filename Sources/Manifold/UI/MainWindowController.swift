@@ -156,7 +156,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Views for placements no longer on the desk go (a state view's stay
         // while it's up: its blocks are settled before any view is made,
         // since making one can render again).
-        let stateBlocks = stateGroup.map { statusGroups("")[$0] ?? [] } ?? []
+        var stateBlocks = stateGroup.map { statusGroups("")[$0] ?? [] } ?? []
+        if stateGroup != nil {
+            // Membership sticks while the view is up: a block that leaves
+            // the state for a moment (a diff reloading, a repository
+            // refreshing) keeps its place rather than its view being torn
+            // down and made again; new arrivals come first.
+            let current = Set(stateBlocks.map(\.0.id))
+            let staying = stateMembers.filter { !current.contains($0) }.compactMap { id -> (Block, StatusRecord?, Stamp)? in
+                guard let b = hosts.block(id) else { return nil }
+                return (b, b.statusRecord, b.statusRecord?.at ?? b.created)
+            }
+            let arrivals = stateBlocks.filter { !stateMembers.contains($0.0.id) }
+            let kept = stateMembers.compactMap { id in stateBlocks.first { $0.0.id == id } ?? staying.first { $0.0.id == id } }
+            stateBlocks = arrivals + kept
+            stateMembers = stateBlocks.map(\.0.id)
+        }
         var onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
         onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
@@ -259,6 +274,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return v
         }
         if let v = views[p.id] {
+            if v is PlaceholderView {
+                // The block is known now: its view is made below.
+                v.removeFromSuperview()
+                views[p.id] = nil
+            } else {
             if let m = v as? MarkdownView {
                 m.theme = hosts.state.appearance.theme
                 m.show(block: p.block, path: shown.path ?? "")
@@ -272,6 +292,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
+            }
         }
         let v: PaneContent
         switch p.lens {
@@ -1222,6 +1243,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             stateView = v
         }
         stateGroup = group
+        stateMembers = []
         content.isHidden = true
         layoutViews()
         render()
@@ -1237,6 +1259,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.isHidden = false
         render()
     }
+
+    /// The blocks the state view shows, in order, while it's up.
+    private var stateMembers: [BlockID] = []
+    /// When each diff was last compared at a view's asking.
+    private var diffReloaded: [BlockID: Date] = [:]
 
     func debugStateView(mode: StateView.Mode) {
         stateMode = mode
@@ -2747,7 +2774,11 @@ extension MainWindowController: DiffViewDelegate {
         open(path: path, line: line, column: nil, on: view.block.host, from: view.placement, context: "\(path.lastPathComponent):\(line)")
     }
 
+    /// A diff shown again is compared again — but not when it was a moment
+    /// ago: a view made afresh for a block just compared leaves it be.
     func diffViewReload(_ view: DiffView) {
+        if let last = diffReloaded[view.block], Date().timeIntervalSince(last) < 5 { return }
+        diffReloaded[view.block] = Date()
         hosts.propose(.reloadDiff(block: view.block))
     }
 }
