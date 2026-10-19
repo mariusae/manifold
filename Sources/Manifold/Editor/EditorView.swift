@@ -254,11 +254,15 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         delegate?.editor(self, propose: .writeFile(block, version: doc.version, text: doc.text.string))
     }
 
+    /// Where the block lives (its folder): where a note is saved by default.
+    var home: String?
+
     /// A note, saved: it becomes a file.
     private func saveAs() {
         guard let window else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Note.md"
+        if let home { panel.directoryURL = URL(fileURLWithPath: home) }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url, let doc = self.document else { return }
             self.path = url.path

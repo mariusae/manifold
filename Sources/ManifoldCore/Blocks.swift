@@ -532,6 +532,9 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var title: String?
     /// For a file, folder or image: its path on its host.
     public var path: String?
+    /// For a block with no file (a note): the folder it was made in, where
+    /// it is found and where it is saved by default.
+    public var home: String?
     public var text: TextState?
     public var terminal: TerminalState?
     public var directory: DirectoryState?
@@ -624,9 +627,10 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         return false
     }
 
-    /// Where it is, for finding it: a folder, or a working directory.
+    /// Where it is, for finding it: a folder, a working directory, or the
+    /// folder a note was made in.
     public var place: String? {
         if let path { return path.deletingLastPathComponent }
-        return terminal?.cwd
+        return terminal?.cwd ?? home
     }
 }

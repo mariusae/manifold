@@ -267,6 +267,12 @@ final class Session {
         }
         env["SHELL"] = shell
         if env["PATH"] == nil { env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin" }
+        // `manifold` on the PATH: beside the server in the app bundle
+        // (Helpers/), or the server's own folder on a host it was installed
+        // on, where a `manifold` script stands in for it.
+        for dir in toolDirectories.reversed() where !(env["PATH"] ?? "").split(separator: ":").contains(Substring(dir)) {
+            env["PATH"] = dir + ":" + (env["PATH"] ?? "")
+        }
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
         for (k, v) in clientEnv where allowedClientEnv.contains(k) {
             env[k] = v
@@ -285,6 +291,18 @@ final class Session {
             }
         }
         return (shell, env)
+    }
+
+    /// Folders with the `manifold` command: Helpers/ beside this server in
+    /// the app bundle, if there; the server's own folder.
+    static var toolDirectories: [String] {
+        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let own = exe.deletingLastPathComponent()
+        let helpers = own.deletingLastPathComponent().appendingPathComponent("Helpers")
+        var dirs: [String] = []
+        if FileManager.default.isExecutableFile(atPath: helpers.appendingPathComponent("manifold").path) { dirs.append(helpers.path) }
+        if FileManager.default.isExecutableFile(atPath: own.appendingPathComponent("manifold").path) { dirs.append(own.path) }
+        return dirs
     }
 
     /// The `manifold` command, as a shell runs it with `--wait`: beside

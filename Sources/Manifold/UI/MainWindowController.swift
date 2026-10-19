@@ -295,6 +295,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 m.show(block: p.block, path: shown.path ?? "")
             }
             if let e = v as? EditorView {
+                e.home = hosts.block(p.block)?.place
                 e.font = hosts.state.appearance.editorFont
                 e.theme = hosts.state.appearance.theme
                 e.undoLimit = desk.settings.undoDepth
@@ -876,8 +877,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// ⇧⌘N: a new note beside the focused block.
+    /// ⇧⌘N: a note on the focused block's host, at home in its folder.
     @objc func newNote(_ sender: Any?) {
-        show(host.newNote(), lens: .editor, .beside)
+        let client = hosts.client(focusedHost) ?? host
+        show(client.newNote(home: focusedCwd), lens: .editor, .beside)
+    }
+
+    /// Open Folder…: a folder chosen, browsed beside the focused block.
+    @objc func openFolder(_ sender: Any?) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Browse"
+        if let cwd = focusedCwd { panel.directoryURL = URL(fileURLWithPath: cwd) }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.show(self.host.directoryBlock(for: url.path), lens: .directory, .beside)
+        }
+    }
+
+    /// Browse This Folder: the focused block's folder, beside it.
+    @objc func browseFocusedFolder(_ sender: Any?) {
+        guard let cwd = focusedCwd, let client = hosts.client(focusedHost) else { return NSSound.beep() }
+        show(client.directoryBlock(for: cwd), lens: .directory, .beside)
     }
 
     /// ⌘W: the focused block leaves its column, which shows what it showed

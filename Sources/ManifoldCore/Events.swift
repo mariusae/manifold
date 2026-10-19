@@ -294,6 +294,9 @@ extension Block {
             if title?.isEmpty == true { title = nil }
         case let .path(p):
             path = p
+        case let .cwd(c) where terminal == nil:
+            // A block without a shell: where it was made.
+            home = c
         case let .view(placement, values):
             var v = views?[placement] ?? [:]
             for (k, value) in values {

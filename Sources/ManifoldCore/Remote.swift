@@ -235,9 +235,12 @@ public enum Bootstrap {
         return (String(parts[0]).lowercased(), String(parts[1]).lowercased(), lines.count > 1 ? lines[1] : nil)
     }
 
-    /// Installs `binary` as the destination's server.
+    /// Installs `binary` as the destination's server, with a `manifold`
+    /// script beside it that runs `manifoldd open`, so terminals there
+    /// have the command on their PATH as terminals here do.
     public static func upload(_ dest: Destination, binary: Data) throws {
         let cmd = "mkdir -p ~/.manifold/bin && cat > ~/.manifold/bin/manifoldd.new && chmod +x ~/.manifold/bin/manifoldd.new && mv ~/.manifold/bin/manifoldd.new ~/.manifold/bin/manifoldd"
+            + " && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/manifoldd\" open \"$@\"' > ~/.manifold/bin/manifold && chmod +x ~/.manifold/bin/manifold"
         let (out, status) = try Child.run(dest.invocation(cmd), input: binary, timeout: 600)
         guard status == 0 else { throw RemoteError.uploadFailed(String(decoding: out, as: UTF8.self)) }
     }

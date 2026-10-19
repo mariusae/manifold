@@ -10,6 +10,11 @@ for d in monaspace monasans recursive gofont; do [ -d Frameworks/$d ] || { scrip
 
 config=${CONFIG:-release}
 swift build -c "$config"
+# The servers for Linux hosts (scripts/build-linux.sh), built by default
+# when the toolchain is there; LINUX=0 skips them.
+if [ "${LINUX:-1}" != 0 ] && [ -x "${SWIFTLY:-$HOME/.swiftly/bin/swiftly}" ]; then
+  scripts/build-linux.sh
+fi
 bin=$(swift build -c "$config" --show-bin-path)
 app=${APP:-build/Manifold.app}
 rm -rf "$app"

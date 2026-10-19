@@ -276,10 +276,12 @@ final class HostClient {
         return id
     }
 
-    /// A note: text with no file.
-    func newNote() -> BlockID {
+    /// A note: text with no file, at home in `home` — the folder of the
+    /// block it was made from, where it is found and saved by default.
+    func newNote(home: String? = nil) -> BlockID {
         let id = BlockID(host: host)
         append(.create(kind: .text, title: nil, path: nil), to: .block(id))
+        if let home { append(.cwd(home), to: .block(id)) }
         append(.content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(id))
         return id
     }

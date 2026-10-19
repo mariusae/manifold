@@ -138,6 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
+        item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
+        item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
         item(file, "Go to Tile or Heading…", #selector(MainWindowController.goToTile(_:)), "\\")
         file.addItem(.separator())
         item(file, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
