@@ -235,10 +235,11 @@ final class WindowDragView: NSView {
 final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
-    init(_ title: String, key: String = "", _ handler: @escaping () -> Void) {
+    init(_ title: String, symbol: String? = nil, key: String = "", _ handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: key)
         target = self
+        if let symbol { image = Theme.symbol(symbol, size: 12) }
     }
 
     required init(coder: NSCoder) { fatalError() }

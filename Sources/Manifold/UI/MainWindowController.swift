@@ -182,7 +182,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     return GridView.Tile(shown: shown, view: view(for: shown))
                 }
             }.filter { !$0.isEmpty }
-            content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused)
+            content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             window.title = title(of: a)
             if palette == nil, stateView == nil, let focused = a.focused, let view = views[focused],
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
@@ -582,6 +582,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugFocusedPlacement: Shown? { focusedShown }
     var debugOrganization: OrganizationView { sidebar.organizationView }
+    /// A pointer move, handed to the surface as its tracking area would.
+    func debugHover(_ event: NSEvent) { content.mouseMoved(with: event) }
 
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
 
@@ -1242,6 +1244,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     guard let b = hosts.block(p.block), matches(filter, [b.displayTitle, b.path]) else { continue }
                     var notes: [String] = []
                     if b.text?.isDirty == true { notes.append("edited") }
+                    if a.isStashed(p.id) { notes.append("stashed") }
+                    if a.full == p.id { notes.append("maximized") }
                     if a.columns.count > 1 { notes.append("column \(c + 1)") }
                     let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: b.displayTitle,
                                     symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
@@ -2257,12 +2261,12 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarMoreMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar") { [weak self] in self?.sidebarTogglePinned() })
+        menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar", symbol: "sidebar.left") { [weak self] in self?.sidebarTogglePinned() })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Show Logs in Finder") {
+        menu.addItem(ClosureMenuItem("Show Logs in Finder", symbol: "folder") {
             NSWorkspace.shared.activateFileViewerSelecting([Paths.logs])
         })
-        menu.addItem(ClosureMenuItem("End All Sessions and Quit…") { [weak self] in self?.stopServer(nil) })
+        menu.addItem(ClosureMenuItem("End All Sessions and Quit…", symbol: "power") { [weak self] in self?.stopServer(nil) })
         return menu
     }
 
@@ -2328,6 +2332,22 @@ extension MainWindowController: GridDelegate {
         }
     }
 
+    func gridUnstash(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected(a.unstashing(placement))
+    }
+
+    func gridToggleFull(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected([.full(a.full == placement ? nil : placement)])
+    }
+
+    /// ⇧⌘↩: the focused tile over the whole arrangement, or back.
+    @objc func toggleMaximize(_ sender: Any?) {
+        guard let a = arrangement, let f = a.focused else { return }
+        gridToggleFull(f)
+    }
+
     func gridResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
     func gridResized(heights: [PlacementID: Double]) { appendToSelected([.heights(heights)]) }
     func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
@@ -2341,21 +2361,26 @@ extension MainWindowController: GridDelegate {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
         let block = p.block
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Grow") { [weak self] in self?.appendToSelected(a.growing(placement)) })
-        menu.addItem(ClosureMenuItem("Fill the Column") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        let maximized = a.full == placement
+        menu.addItem(ClosureMenuItem(maximized ? "Restore" : "Maximize", symbol: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") { [weak self] in self?.gridToggleFull(placement) })
+        menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
+        menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
+            menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down") { [weak self] in self?.appendToSelected(a.stashing(placement)) })
+        }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
+        menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
             self?.linksCenter = block
             self?.setOrganization(.links)
         })
         if let b = hosts.block(block), b.kind == .text, let path = b.path {
             let other: Lens? = p.lens == .preview ? .editor : (p.lens == .editor && Lens.isMarkdown(path) ? .preview : nil)
             if let other {
-                menu.addItem(ClosureMenuItem(other == .editor ? "Edit" : "Preview") { [weak self] in self?.replace(placement, with: block, lens: other) })
+                menu.addItem(ClosureMenuItem(other == .editor ? "Edit" : "Preview", symbol: other == .editor ? "pencil" : "doc.richtext") { [weak self] in self?.replace(placement, with: block, lens: other) })
             }
         }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Take Off This Arrangement") { [weak self] in
+        menu.addItem(ClosureMenuItem("Take Off This Arrangement", symbol: "xmark") { [weak self] in
             self?.hosts.append(.remove(placement), to: .block(id))
         })
         return menu
@@ -2710,25 +2735,25 @@ extension MainWindowController: OrganizationViewDelegate {
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
         if let arr = node.arrangement, node.column == nil {
-            menu.addItem(ClosureMenuItem("Name…") { [weak self] in self?.rename(arr) })
+            menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Take Off the Desk") { [weak self] in self?.removeFromDesk(arr) })
+            menu.addItem(ClosureMenuItem("Take Off the Desk", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             return menu
         }
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, let p = node.placement {
-            menu.addItem(ClosureMenuItem("Take Off This Arrangement") { [weak self] in
+            menu.addItem(ClosureMenuItem("Take Off This Arrangement", symbol: "xmark") { [weak self] in
                 guard let self else { return }
                 self.hosts.append(.remove(p), to: .block(arr))
                 if self.hosts.arrangement(arr)?.isEmpty == true, self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
             })
             menu.addItem(.separator())
         } else {
-            menu.addItem(ClosureMenuItem("Go To") { [weak self] in self?.organizationOpen(node, newColumn: false) })
-            menu.addItem(ClosureMenuItem("Bring Here") { [weak self] in self?.organizationOpen(node, newColumn: true) })
+            menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, newColumn: false) })
+            menu.addItem(ClosureMenuItem("Bring Here", symbol: "arrow.down.to.line") { [weak self] in self?.organizationOpen(node, newColumn: true) })
             menu.addItem(.separator())
         }
-        menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
+        menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
             self?.linksCenter = id
             self?.setOrganization(.links)
         })

@@ -132,14 +132,45 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 /// The rows, drawn: two line-number gutters, then the text; colored by
 /// kind.
 final class DiffRowsView: NSView {
-    var rows: [DiffRow] = []
+    var rows: [DiffRow] = [] { didSet { pairs = Self.pair(rows) } }
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) { didSet { relayout() } }
     var minWidth: CGFloat = 0
     var onFold: (() -> Void)?
     var onOpen: ((DiffRow) -> Void)?
     private let rowHeight: CGFloat = 19
     private let gutter: CGFloat = 92
+    /// Each side's gutter, side by side.
+    private let sideGutter: CGFloat = 52
     private var widest: CGFloat = 0
+    /// Rows paired for side-by-side: a removed line beside the added one
+    /// that replaced it, or either alone; a context, hunk, file or fold
+    /// row spanning both sides.
+    private var pairs: [(left: DiffRow?, right: DiffRow?, span: DiffRow?)] = []
+    /// Side by side when there's room for two columns of the widest line.
+    private(set) var sideBySide = false
+
+    private static func pair(_ rows: [DiffRow]) -> [(left: DiffRow?, right: DiffRow?, span: DiffRow?)] {
+        var out: [(left: DiffRow?, right: DiffRow?, span: DiffRow?)] = []
+        var i = 0
+        while i < rows.count {
+            let r = rows[i]
+            switch r.kind {
+            case .removed, .added:
+                var removed: [DiffRow] = [], added: [DiffRow] = []
+                while i < rows.count, case .removed = rows[i].kind { removed.append(rows[i]); i += 1 }
+                while i < rows.count, case .added = rows[i].kind { added.append(rows[i]); i += 1 }
+                for j in 0..<max(removed.count, added.count) {
+                    out.append((j < removed.count ? removed[j] : nil, j < added.count ? added[j] : nil, nil))
+                }
+            default:
+                out.append((nil, nil, r))
+                i += 1
+            }
+        }
+        return out
+    }
+
+    private var lineCount: Int { sideBySide ? pairs.count : rows.count }
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -150,8 +181,9 @@ final class DiffRowsView: NSView {
         for r in rows.prefix(4000) where !r.text.isEmpty {
             widest = max(widest, (r.text as NSString).size(withAttributes: attrs).width)
         }
-        let w = max(minWidth, gutter + widest + 40)
-        frame = NSRect(x: 0, y: 0, width: w, height: max(CGFloat(rows.count) * rowHeight + 20, minWidth > 0 ? (enclosingScrollView?.contentSize.height ?? 0) : 0))
+        sideBySide = minWidth >= 2 * (sideGutter + min(widest, 300) + 16) && minWidth >= 700
+        let w = sideBySide ? minWidth : max(minWidth, gutter + widest + 40)
+        frame = NSRect(x: 0, y: 0, width: w, height: max(CGFloat(lineCount) * rowHeight + 20, minWidth > 0 ? (enclosingScrollView?.contentSize.height ?? 0) : 0))
         needsDisplay = true
     }
 
@@ -170,11 +202,12 @@ final class DiffRowsView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard !rows.isEmpty else { return }
-        let first = max(0, Int(dirtyRect.minY / rowHeight)), last = min(rows.count - 1, Int(dirtyRect.maxY / rowHeight))
-        guard first <= last else { return }
         let numberFont = NSFont.monospacedDigitSystemFont(ofSize: font.pointSize * 0.85, weight: .regular)
         let textAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
         let dimAttrs: [NSAttributedString.Key: Any] = [.font: numberFont, .foregroundColor: TextView.gutterText]
+        if sideBySide { return drawSides(dirtyRect, textAttrs: textAttrs, dimAttrs: dimAttrs) }
+        let first = max(0, Int(dirtyRect.minY / rowHeight)), last = min(rows.count - 1, Int(dirtyRect.maxY / rowHeight))
+        guard first <= last else { return }
         for i in first...last {
             let r = rows[i]
             let y = CGFloat(i) * rowHeight
@@ -214,12 +247,78 @@ final class DiffRowsView: NSView {
         }
     }
 
+    /// Old on the left, new on the right, a line between; a removed line
+    /// faces the added one that replaced it.
+    private func drawSides(_ dirtyRect: NSRect, textAttrs: [NSAttributedString.Key: Any], dimAttrs: [NSAttributedString.Key: Any]) {
+        let first = max(0, Int(dirtyRect.minY / rowHeight)), last = min(pairs.count - 1, Int(dirtyRect.maxY / rowHeight))
+        guard first <= last else { return }
+        let half = (bounds.width / 2).rounded()
+        let textY = { (y: CGFloat) in y + (self.rowHeight - self.font.pointSize * 1.2) / 2 - 1 }
+        func side(_ row: DiffRow?, x: CGFloat, width: CGFloat, y: CGFloat, number: Int?) {
+            guard let row else { return }
+            let band = NSRect(x: x, y: y, width: width, height: rowHeight)
+            var marker = " "
+            switch row.kind {
+            case .added: Self.addedBackground.setFill(); band.fill(); marker = "+"
+            case .removed: Self.removedBackground.setFill(); band.fill(); marker = "−"
+            default: break
+            }
+            if let number {
+                let s = NSAttributedString(string: "\(number)", attributes: dimAttrs)
+                s.draw(at: NSPoint(x: x + 36 - s.size().width, y: textY(y) + 1))
+            }
+            (marker as NSString).draw(at: NSPoint(x: x + sideGutter - 12, y: textY(y)), withAttributes: textAttrs)
+            NSGraphicsContext.current?.saveGraphicsState()
+            NSBezierPath(rect: NSRect(x: x + sideGutter, y: y, width: max(0, width - sideGutter - 8), height: rowHeight)).addClip()
+            (row.text as NSString).draw(at: NSPoint(x: x + sideGutter, y: textY(y)), withAttributes: textAttrs)
+            NSGraphicsContext.current?.restoreGraphicsState()
+        }
+        for i in first...last {
+            let pair = pairs[i]
+            let y = CGFloat(i) * rowHeight
+            if let r = pair.span {
+                var attrs = textAttrs
+                let band = NSRect(x: 0, y: y, width: bounds.width, height: rowHeight)
+                switch r.kind {
+                case .hunk:
+                    Self.hunkBackground.setFill(); band.fill(); attrs[.foregroundColor] = Theme.secondaryText
+                    ("@@ −\(r.oldLine ?? 0) +\(r.newLine ?? 0) @@ \(r.text)" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
+                case let .file(name):
+                    Theme.hover.setFill(); band.fill()
+                    attrs[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+                    (name as NSString).draw(at: NSPoint(x: 12, y: textY(y)), withAttributes: attrs)
+                case let .fold(n):
+                    attrs[.foregroundColor] = Theme.secondaryText
+                    ("⋯ \(n) unchanged line\(n == 1 ? "" : "s")" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
+                default:
+                    // Context: the same line on both sides, numbered each way.
+                    side(r, x: 0, width: half, y: y, number: r.oldLine)
+                    side(r, x: half, width: bounds.width - half, y: y, number: r.newLine)
+                }
+            } else {
+                side(pair.left, x: 0, width: half, y: y, number: pair.left?.oldLine)
+                side(pair.right, x: half, width: bounds.width - half, y: y, number: pair.right?.newLine)
+            }
+        }
+        Theme.divider.setFill()
+        NSRect(x: half - 0.5, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
         let i = Int(p.y / rowHeight)
-        guard i >= 0, i < rows.count else { return }
-        if case .fold = rows[i].kind { onFold?(); return }
-        if event.clickCount == 2 { onOpen?(rows[i]) }
+        let row: DiffRow?
+        if sideBySide {
+            guard i >= 0, i < pairs.count else { return }
+            let pair = pairs[i]
+            row = pair.span ?? (p.x < bounds.width / 2 ? pair.left ?? pair.right : pair.right ?? pair.left)
+        } else {
+            guard i >= 0, i < rows.count else { return }
+            row = rows[i]
+        }
+        guard let row else { return }
+        if case .fold = row.kind { onFold?(); return }
+        if event.clickCount == 2 { onOpen?(row) }
     }
 }

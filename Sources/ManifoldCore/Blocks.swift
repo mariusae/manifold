@@ -415,11 +415,17 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     public var columns: [[Placement]] = []
     /// Each column's share of the width; sums to 1.
     public var fractions: [Double] = []
-    /// Each tile's share of its column's height; a column's sum to 1.
+    /// Each tile's share of its column's height; a column's shown tiles'
+    /// sum to 1. A share of 0 is a **stashed** tile (§3.1): not laid out,
+    /// its pill bunched under the tile that fills the column, until it is
+    /// unstashed.
     public var heights: [PlacementID: Double] = [:]
     public var focused: PlacementID?
+    /// A tile **maximized** over the whole arrangement (§3.1), the rest
+    /// hidden behind it until it is restored.
+    public var full: PlacementID?
 
-    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused }
+    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused, full }
 
     public init() {}
 
@@ -430,6 +436,7 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         fractions = try c.decodeIfPresent([Double].self, forKey: .fractions) ?? []
         heights = (try? c.decodeIfPresent([PlacementID: Double].self, forKey: .heights)) ?? [:]
         focused = try c.decodeIfPresent(PlacementID.self, forKey: .focused)
+        full = try? c.decodeIfPresent(PlacementID.self, forKey: .full)
         normalize()
     }
 
@@ -476,6 +483,13 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         return columns[c].max { height(of: $0.id) < height(of: $1.id) }
     }
 
+    /// Stashed: not laid out, its pill bunched under the column's filling tile.
+    public func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
+
+    /// A column's tiles that show, and those stashed, in order.
+    public func shownTiles(inColumn c: Int) -> [Placement] { columns[c].filter { !isStashed($0.id) } }
+    public func stashedTiles(inColumn c: Int) -> [Placement] { columns[c].filter { isStashed($0.id) } }
+
     public func placements(of block: BlockID) -> [Placement] { placements.filter { $0.block == block } }
 
     static func equalFractions(_ n: Int) -> [Double] {
@@ -487,21 +501,24 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         if fractions.count != columns.count || fractions.contains(where: { !($0 > 0) }) {
             fractions = Self.equalFractions(columns.count)
         }
-        // Every tile has a share, and each column's sum to 1.
+        // Every tile has a share, and each column's shown ones sum to 1;
+        // stashed tiles (0) stay so, unless a column is all stashed.
         var fixed: [PlacementID: Double] = [:]
         for column in columns {
-            let shares: [Double?] = column.map { heights[$0.id].flatMap { $0 > 0 ? $0 : nil } }
+            let shares: [Double?] = column.map { heights[$0.id].flatMap { $0 >= 0 ? $0 : nil } }
             let known = shares.compactMap { $0 }
             let missing = shares.filter { $0 == nil }.count
             let left = max(0, 1 - known.reduce(0, +))
             var out = shares.map { $0 ?? (missing > 0 ? max(left / Double(missing), 0.05) : 0) }
-            let sum = out.reduce(0, +)
-            if sum > 0 { out = out.map { $0 / sum } }
+            var sum = out.reduce(0, +)
+            if sum == 0 { out = out.map { _ in 1 }; sum = Double(out.count) }
+            out = out.map { $0 / sum }
             for (p, h) in zip(column, out) { fixed[p.id] = h }
         }
         heights = fixed
         if let f = focused, placement(f) == nil { focused = nil }
         if focused == nil { focused = placements.first?.id }
+        if let f = full, placement(f) == nil { full = nil }
     }
 }
 

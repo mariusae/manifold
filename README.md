@@ -31,12 +31,17 @@ and Mona Sans (bundled).
   An arrangement is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
   below the biggest tile of the active column, taking its lower half;
-  Arrangement ▸ Grow Tile (⌃⌘=) takes a step from its neighbors, Fill
-  the Column (⌃⇧⌘=) all but a sliver of each; drag the lines between
-  tiles and columns to resize them. Each tile wears a **pill** at its
-  top with its symbol, name and status glyph: drag it to move the
-  tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the focus
-  between tiles.
+  Arrangement ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
+  the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
+  others: their pills bunch in a small stack under its pill, fan out
+  when the pointer rests on it, and one clicked comes back (Stash, in a
+  pill's menu, puts a tile away the same way). Maximize Tile (⇧⌘↩, or
+  the ⤢ at the right of a pill) puts a tile over the whole arrangement
+  until it is restored. Drag the lines between tiles and columns to
+  resize them. Each tile wears a **pill** floating over its top, one
+  width for all, with its symbol, name and status glyph: drag it to
+  move the tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the
+  focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the arrangement it is in (this one if it is here, else
   the one most recently settled on) is selected and the tile focused.
@@ -171,7 +176,9 @@ when you find it again.
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
   open the file there; on a commit, the whole commit. Compare with Last
-  Commit (⌥⌘D) does the same for the file being edited. The editor's
+  Commit (⌥⌘D) does the same for the file being edited. A diff shows
+  old and new side by side when its tile is wide enough for two
+  columns, unified when it isn't. The editor's
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.

@@ -706,9 +706,12 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   tiling — columns of tiles with `heights`, a new tile taking the lower
   half of the column's biggest (`bringing(_:lens:inColumn:below:)`),
   `growing(_:step:whole:)` for colgrow, a removed tile's height to its
-  neighbor; `GridView` with `TilePill` (glass, symbol, name, status
-  glyph; drag to move, click for the menu), dividers, drops between
-  tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
+  neighbor; a share of 0 is a stashed tile, bunched as a pill under
+  the column's top pill and fanned out on hover (`stashing`,
+  `unstashing`); `full` a tile maximized over the arrangement;
+  `GridView` with `TilePill` (one width, opaque; symbol, name, status
+  glyph, a maximize corner; drag to move, click for the menu),
+  dividers, drops between tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
   here) as the two verbs, in the controller, the sidebar, the finder
   and every opener; collection of placements retired; the sidebar as
   spine: `OrganizationView` for every organization including the desk

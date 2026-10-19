@@ -193,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         arrangement.addItem(.separator())
         item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(arrangement, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
+        item(arrangement, "Maximize Tile", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
         arrangement.addItem(.separator())
         item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
         item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])

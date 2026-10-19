@@ -23,7 +23,7 @@ final class StateView: NSView {
     private let header = NSView()
     private let title = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
-    private let modes = NSSegmentedControl(labels: ["List", "Overview"], trackingMode: .selectOne, target: nil, action: nil)
+    private let modes = NSSegmentedControl(images: [Theme.symbol("list.bullet", size: 11)!, Theme.symbol("square.grid.2x2", size: 11)!], trackingMode: .selectOne, target: nil, action: nil)
     private let leave = IconButton(symbol: "xmark", size: 12, weight: .medium, target: nil, action: nil)
     private let scroll = NSScrollView()
     private let document = FlippedView()
@@ -50,7 +50,8 @@ final class StateView: NSView {
         count.textColor = Theme.secondaryText
         modes.segmentStyle = .capsule
         modes.controlSize = .small
-        modes.font = .systemFont(ofSize: 11)
+        modes.setToolTip("List", forSegment: 0)
+        modes.setToolTip("Overview", forSegment: 1)
         modes.selectedSegment = 0
         modes.target = self
         modes.action = #selector(modeChosen)
@@ -117,7 +118,7 @@ final class StateView: NSView {
         count.sizeToFit()
         count.frame = NSRect(x: title.frame.maxX + 10, y: (h - count.frame.height) / 2, width: count.frame.width, height: count.frame.height)
         leave.frame = NSRect(x: bounds.width - Self.margin - 20, y: (h - 20) / 2, width: 20, height: 20)
-        modes.frame = NSRect(x: leave.frame.minX - 12 - 150, y: (h - 22) / 2, width: 150, height: 22)
+        modes.frame = NSRect(x: leave.frame.minX - 12 - 76, y: (h - 22) / 2, width: 76, height: 22)
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight)
         let width = scroll.contentSize.width
         let m = Self.margin

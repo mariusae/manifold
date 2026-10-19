@@ -217,6 +217,8 @@ public enum Event: Codable, Equatable, Sendable {
     case fractions([Double])
     case heights([PlacementID: Double])
     case layout(ArrangementLayout)
+    /// A tile maximized over the whole arrangement, or none (§3.1).
+    case full(PlacementID?)
     /// Columns swapped in whole from another arrangement (merging tabs).
     case adopt(columns: [[Placement]], at: Int)
     /// A whole column moved to another index.
@@ -577,10 +579,13 @@ extension ArrangementState {
                 fractions = f.map { $0 / sum }
             }
         case let .heights(h):
-            for (k, v) in h where placement(k) != nil && v > 0 { heights[k] = v }
+            for (k, v) in h where placement(k) != nil && v >= 0 { heights[k] = v }
             normalize()
         case .layout:
             break
+        case let .full(id):
+            full = id.flatMap { placement($0) != nil ? $0 : nil }
+            if let id = full { focused = id }
         case let .adopt(cols, at):
             let fresh = cols.map { $0.filter { placement($0.id) == nil }.map { p -> Placement in var q = p; if q.placedAt == nil { q.placedAt = stamp }; return q } }.filter { !$0.isEmpty }
             guard !fresh.isEmpty else { return }

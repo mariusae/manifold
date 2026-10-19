@@ -4,8 +4,9 @@ import ManifoldCore
 /// A block's status in one glyph (§3.7), drawn wherever its name is: a
 /// thin arc turning for working (filling clockwise from the top when the
 /// program says how far), an amber ring with a dot for a block that needs
-/// you, a filled check for done and not yet read (red for failed), a
-/// plain grey check once read, and a moon for a terminal gone inactive.
+/// you, a check in a faint ring for done and not yet read (red for
+/// failed), a plain grey check once read, and a moon for a terminal gone
+/// inactive.
 final class StatusGlyph: NSView {
     enum Look: Equatable {
         case working(progress: Int?)
@@ -141,14 +142,18 @@ final class StatusGlyph: NSView {
             check.move(to: NSPoint(x: center.x - 1.9 * k, y: center.y - 0.1 * k))
             check.line(to: NSPoint(x: center.x - 0.6 * k, y: center.y - 1.4 * k))
             check.line(to: NSPoint(x: center.x + 2.0 * k, y: center.y + 1.3 * k))
+            let failed = look == .failed(read: read)
             if read {
-                (look == .done(read: true) ? Theme.secondaryText : Theme.statusError.withAlphaComponent(0.7)).setStroke()
+                (failed ? Theme.statusError.withAlphaComponent(0.6) : Theme.secondaryText.withAlphaComponent(0.8)).setStroke()
                 check.stroke()
             } else {
-                let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius - 0.5, y: center.y - radius - 0.5, width: 2 * radius + 1, height: 2 * radius + 1))
-                (look == .done(read: false) ? Theme.text : Theme.statusError).setFill()
-                disc.fill()
-                Theme.windowBackground.setStroke()
+                // Not yet read: the check within a faint ring, a little darker.
+                let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+                ring.lineWidth = 1.2
+                (failed ? Theme.statusError : Theme.text).withAlphaComponent(0.3).setStroke()
+                ring.stroke()
+                (failed ? Theme.statusError : Theme.text.withAlphaComponent(0.85)).setStroke()
+                check.lineWidth = 1.5
                 check.stroke()
             }
         case .inactive:

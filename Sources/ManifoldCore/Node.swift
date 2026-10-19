@@ -220,16 +220,16 @@ extension ArrangementState {
     }
 
     /// Heights after a tile grows (acme's colgrow): by `step` of the column
-    /// taken from its neighbors nearest first, or, with `whole`, to all but
-    /// a sliver of each other tile.
+    /// taken from its shown neighbors nearest first, or, with `whole`, the
+    /// whole column, every other tile stashed (§3.1).
     public func growing(_ id: PlacementID, step: Double = 0.15, whole: Bool = false) -> [Event] {
         guard let (c, i) = locate(id), columns[c].count > 1 else { return [] }
         let column = columns[c]
         var h = column.reduce(into: [PlacementID: Double]()) { $0[$1.id] = height(of: $1.id) }
         let sliver = 0.04
         if whole {
-            for p in column where p.id != id { h[p.id] = sliver }
-            h[id] = max(sliver, 1 - sliver * Double(column.count - 1))
+            for p in column where p.id != id { h[p.id] = 0 }
+            h[id] = 1
             return [.heights(h)]
         }
         var want = step
@@ -241,7 +241,7 @@ extension ArrangementState {
             if i - d >= 0 { order.append(i - d) }
             d += 1
         }
-        for j in order where want > 0 {
+        for j in order where want > 0 && !isStashed(column[j].id) {
             let pid = column[j].id
             let give = min(want, max(0, (h[pid] ?? 0) - sliver))
             h[pid] = (h[pid] ?? 0) - give
@@ -249,5 +249,25 @@ extension ArrangementState {
         }
         h[id] = (h[id] ?? 0) + (step - want)
         return [.heights(h)]
+    }
+
+    /// Heights after a tile is stashed: its share to the column's biggest
+    /// other tile. Nothing, for the last shown tile of a column.
+    public func stashing(_ id: PlacementID) -> [Event] {
+        guard let (c, _) = locate(id), !isStashed(id) else { return [] }
+        let others = shownTiles(inColumn: c).filter { $0.id != id }
+        guard let heir = others.max(by: { height(of: $0.id) < height(of: $1.id) }) else { return [] }
+        return [.heights([id: 0, heir.id: height(of: heir.id) + height(of: id)])]
+    }
+
+    /// Heights after a stashed tile comes back: the lower half of the
+    /// column's biggest shown tile.
+    public func unstashing(_ id: PlacementID) -> [Event] {
+        guard let (c, _) = locate(id), isStashed(id) else { return [] }
+        guard let big = shownTiles(inColumn: c).max(by: { height(of: $0.id) < height(of: $1.id) }) else {
+            return [.heights([id: 1])]
+        }
+        let h = height(of: big.id) / 2
+        return [.heights([id: h, big.id: h]), .focus(id)]
     }
 }

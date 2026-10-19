@@ -221,6 +221,17 @@ enum DebugControl {
             guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
             wc.hosts.propose(.attend(b))
             return "ok"
+        case "hover":
+            // "hover x y": the pointer moved there (window coordinates from the top-left).
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let window = wc?.window else { return "usage: hover x y" }
+            let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
+            if let e = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+                window.sendEvent(e)
+                wc?.debugHover(e)
+            }
+            return "ok"
         case "click":
             // "click x y [count]": a left click at window coordinates from the
             // top-left, sent through the window as a real one would be.

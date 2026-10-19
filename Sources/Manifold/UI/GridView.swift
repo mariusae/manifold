@@ -17,13 +17,21 @@ protocol GridDelegate: AnyObject {
     func gridDragAtLeftEdge()
     /// A tile's pill was clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
+    /// A stashed tile's pill was clicked: it comes back (§3.1).
+    func gridUnstash(_ placement: PlacementID)
+    /// The pill's corner button: the tile maximized over the arrangement,
+    /// or restored.
+    func gridToggleFull(_ placement: PlacementID)
 }
 
 /// The surface (DESIGN.md §3.1): the arrangement as a grid, columns side
 /// by side and each column's tiles top to bottom, every tile a block, all
 /// visible, as acme tiles its windows. Each tile wears a pill floating
 /// over its top, centered, to drag it by and to open its menu; the lines
-/// between tiles and columns resize them.
+/// between tiles and columns resize them. A column one tile fills keeps
+/// the others **stashed**: not laid out, their pills bunched in a small
+/// stack under the filling tile's, fanned out while the pointer is over
+/// them, each clicked to come back.
 final class GridView: NSView, NSDraggingSource {
     struct Tile {
         var shown: Shown
@@ -35,11 +43,14 @@ final class GridView: NSView, NSDraggingSource {
     private var fractions: [Double] = []
     private var heights: [PlacementID: Double] = [:]
     private var focused: PlacementID?
+    private var full: PlacementID?
     private var pills: [PlacementID: TilePill] = [:]
     private var columnDividers: [DividerView] = []
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool)?
+    /// The column whose stack of stashed pills is fanned out, under the pointer.
+    private var fanned: Int? { didSet { if fanned != oldValue { needsLayout = true } } }
 
     /// The band at a tile's top that its pill floats in; the content runs
     /// underneath it.
@@ -58,7 +69,7 @@ final class GridView: NSView, NSDraggingSource {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?) {
+    func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?, full: PlacementID? = nil) {
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
         for v in views where !incoming.contains(v.placement) && v.superview === self { v.removeFromSuperview() }
         for (id, p) in pills where !incoming.contains(id) {
@@ -69,6 +80,7 @@ final class GridView: NSView, NSDraggingSource {
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
         self.heights = heights
         self.focused = focused
+        self.full = full
         for column in columns {
             for tile in column {
                 if tile.view.superview !== self { addSubview(tile.view) }
@@ -78,10 +90,17 @@ final class GridView: NSView, NSDraggingSource {
                     addSubview(p)
                     return p
                 }()
-                pill.show(tile.shown, focused: tile.shown.id == focused)
                 let id = tile.shown.id
+                let stashed = isStashed(id)
+                pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
+                pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.onClick = { [weak self] in
                     guard let self else { return }
+                    if stashed {
+                        self.fanned = nil
+                        self.delegate?.gridUnstash(id)
+                        return
+                    }
                     self.delegate?.gridFocus(id)
                     if let menu = self.delegate?.gridPillMenu(for: id), let pill = self.pills[id] {
                         // Under the pointer, as a menu is.
@@ -89,12 +108,14 @@ final class GridView: NSView, NSDraggingSource {
                         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
-                pill.onDragStart = { [weak self, weak pill] event in
+                pill.onDragStart = stashed ? nil : { [weak self, weak pill] event in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill)
                 }
+                tile.view.isHidden = stashed
             }
         }
+        if let f = fanned, f >= columns.count || stashedTiles(f).isEmpty { fanned = nil }
         columnDividers.forEach { $0.removeFromSuperview() }
         columnDividers = (0..<max(0, columns.count - 1)).map { i in
             let d = DividerView()
@@ -105,8 +126,8 @@ final class GridView: NSView, NSDraggingSource {
         }
         rowDividers.forEach { $0.removeFromSuperview() }
         rowDividers = []
-        for (c, column) in columns.enumerated() where column.count > 1 {
-            for r in 0..<(column.count - 1) {
+        for (c, column) in columns.enumerated() where shownTiles(c).count > 1 {
+            for r in 0..<(shownTiles(c).count - 1) {
                 let d = RowDividerView()
                 d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, row: r, to: y) }
                 d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
@@ -129,6 +150,10 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Geometry
 
+    private func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
+    private func shownTiles(_ c: Int) -> [Tile] { columns[c].filter { !isStashed($0.shown.id) } }
+    private func stashedTiles(_ c: Int) -> [Tile] { columns[c].filter { isStashed($0.shown.id) } }
+
     private func columnFrames() -> [NSRect] {
         let n = columns.count
         guard n > 0 else { return [] }
@@ -142,9 +167,20 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Each tile's frame in a column, band included, top to bottom; no
-    /// tile shorter than its band.
+    /// tile shorter than its band; a stashed tile's is empty.
     private func tileFrames(column c: Int, in f: NSRect) -> [NSRect] {
-        let tiles = columns[c]
+        let all = columns[c]
+        let shown = tileFramesShown(column: c, in: f)
+        var next = 0
+        return all.map { tile in
+            if isStashed(tile.shown.id) { return .zero }
+            defer { next += 1 }
+            return next < shown.count ? shown[next] : .zero
+        }
+    }
+
+    private func tileFramesShown(column c: Int, in f: NSRect) -> [NSRect] {
+        let tiles = shownTiles(c)
         guard !tiles.isEmpty else { return [] }
         var shares = tiles.map { heights[$0.shown.id] ?? 1 / Double(tiles.count) }
         let sum = shares.reduce(0, +)
@@ -170,20 +206,73 @@ final class GridView: NSView, NSDraggingSource {
 
     override func layout() {
         super.layout()
+        if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
+            // One tile over everything; the rest wait behind it.
+            for t in columns.flatMap({ $0 }) where t.shown.id != full {
+                t.view.isHidden = true
+                pills[t.shown.id]?.isHidden = true
+            }
+            for d in columnDividers + rowDividers { d.isHidden = true }
+            tile.view.isHidden = false
+            tile.view.frame = bounds
+            if let pill = pills[full] {
+                pill.isHidden = false
+                pill.stackLevel = 0
+                pill.frame = NSRect(x: 0, y: bounds.height - Self.band, width: bounds.width, height: Self.band)
+                addSubview(pill, positioned: .above, relativeTo: tile.view)
+            }
+            return
+        }
+        for t in columns.flatMap({ $0 }) {
+            t.view.isHidden = isStashed(t.shown.id)
+            pills[t.shown.id]?.isHidden = false
+        }
+        for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
         var rowIndex = 0
         for (c, f) in frames.enumerated() {
             let tiles = tileFrames(column: c, in: f)
+            var shownIndex = 0
+            var top: NSRect?
             for (i, tile) in columns[c].enumerated() {
+                guard !isStashed(tile.shown.id) else { continue }
                 let r = tiles[i]
                 tile.view.frame = r
+                if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
+                    pill.stackLevel = 0
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
                     addSubview(pill, positioned: .above, relativeTo: tile.view)
                 }
-                if i > 0, rowIndex < rowDividers.count {
+                if shownIndex > 0, rowIndex < rowDividers.count {
                     rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY - 2, width: r.width, height: Self.gap + 4)
                     rowIndex += 1
+                }
+                shownIndex += 1
+            }
+            // The stashed tiles' pills: a small stack peeking out under the
+            // top tile's pill, or fanned out below it.
+            let stashed = stashedTiles(c)
+            guard let top, !stashed.isEmpty else { continue }
+            let band = NSRect(x: top.minX, y: top.maxY - Self.band, width: top.width, height: Self.band)
+            let open = fanned == c
+            for (i, tile) in stashed.enumerated() {
+                guard let pill = pills[tile.shown.id] else { continue }
+                pill.stackLevel = open ? 0 : i + 1
+                let target = open
+                    ? band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
+                    : band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * 5)
+                if let topPill = pills[columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id ?? ""] {
+                    addSubview(pill, positioned: open ? .above : .below, relativeTo: topPill)
+                }
+                if pill.frame.size == target.size, pill.frame != target, window != nil {
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = 0.16
+                        ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                        pill.animator().frame = target
+                    }
+                } else {
+                    pill.frame = target
                 }
             }
         }
@@ -219,6 +308,34 @@ final class GridView: NSView, NSDraggingSource {
         heights[b] = pair - heights[a]!
         needsLayout = true
     }
+
+    // MARK: Hovering a stack
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    /// The pointer over a column's stack (its top pill, or the fanned-out
+    /// pills) fans it out; elsewhere gathers it in.
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        var over: Int?
+        for c in columns.indices where !stashedTiles(c).isEmpty {
+            guard let topID = columns[c].first(where: { !isStashed($0.shown.id) })?.shown.id, let topPill = pills[topID] else { continue }
+            var zone = topPill.capsule(in: self).insetBy(dx: -8, dy: -4)
+            if fanned == c {
+                for t in stashedTiles(c) { if let pill = pills[t.shown.id] { zone = zone.union(pill.capsule(in: self).insetBy(dx: -8, dy: -4)) } }
+            } else if let last = stashedTiles(c).last, let pill = pills[last.shown.id] {
+                zone = zone.union(pill.capsule(in: self))
+            }
+            if zone.contains(p) { over = c; break }
+        }
+        fanned = over
+    }
+
+    override func mouseExited(with event: NSEvent) { fanned = nil }
 
     // MARK: Dragging tiles
 
@@ -326,61 +443,78 @@ final class GridView: NSView, NSDraggingSource {
 }
 
 /// A tile's pill (§3.1), as Prism names the note at the top of its
-/// column: a small glass capsule floating centered over the tile's top,
-/// the content running underneath, with the block's symbol, its name and
-/// its status glyph. Dragged, it moves the tile; clicked, the tile's
-/// menu. Only the capsule takes the mouse; around it, the tile does.
+/// column: a small opaque capsule of one width floating centered over the
+/// tile's top, the content running underneath and showing nothing
+/// through, with the block's symbol, its name (cut to fit) and its status
+/// glyph. Dragged, it moves the tile; clicked, the tile's menu. Only the
+/// capsule takes the mouse; around it, the tile does.
 final class TilePill: NSView {
     var onClick: (() -> Void)?
     var onDragStart: ((NSEvent) -> Void)?
-    private let glass: NSView
+    private let glass = NSView()
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
     private let dirty = NSView()
+    private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
+    var onToggleFull: (() -> Void)?
     private var downAt: NSPoint?
     private var focused = false
+    private var maximized = false
+    /// 0 for a tile's own pill; deeper, a stashed one bunched beneath it,
+    /// narrower and fainter the deeper.
+    var stackLevel = 0 { didSet { if stackLevel != oldValue { needsLayout = true; updateColors() } } }
 
     static let height: CGFloat = 24
+    /// Every pill the same width, within its tile.
+    static let width: CGFloat = 220
+
+    /// The capsule's frame, in `view`'s coordinates.
+    func capsule(in view: NSView) -> NSRect { convert(glass.frame, to: view) }
 
     override init(frame: NSRect) {
-        if #available(macOS 26, *) {
-            let g = NSGlassEffectView()
-            g.cornerRadius = Self.height / 2
-            glass = g
-        } else {
-            let v = NSVisualEffectView()
-            v.material = .popover
-            v.blendingMode = .withinWindow
-            v.state = .active
-            v.wantsLayer = true
-            v.layer?.cornerRadius = Self.height / 2
-            v.layer?.masksToBounds = true
-            glass = v
-        }
         super.init(frame: frame)
         wantsLayer = true
         glass.wantsLayer = true
-        // The ring follows the capsule: the layer's corners, not just the glass's.
         glass.layer?.cornerRadius = Self.height / 2
         glass.layer?.cornerCurve = .continuous
         glass.layer?.borderWidth = 0.5
+        glass.layer?.shadowOpacity = 0.14
+        glass.layer?.shadowRadius = 5
+        glass.layer?.shadowOffset = CGSize(width: 0, height: -1.5)
+        glass.themed {
+            $0.layer?.backgroundColor = Theme.panel.cgColor
+            $0.layer?.shadowColor = NSColor.black.cgColor
+        }
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
         name.font = .systemFont(ofSize: 11.5, weight: .medium)
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
+        name.alignment = .center
         dirty.wantsLayer = true
         dirty.layer?.cornerRadius = 3
         dirty.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
         dirty.isHidden = true
-        for v in [icon, name, glyph, dirty] { addSubview(v) }
+        corner.target = self
+        corner.action = #selector(cornerClicked)
+        corner.toolTip = "Maximize"
+        for v in [icon, name, glyph, dirty, corner] { addSubview(v) }
         themed { $0.updateColors() }
     }
 
+    @objc private func cornerClicked() { onToggleFull?() }
+
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ shown: Shown, focused: Bool) {
+    private var stashed = false
+
+    func show(_ shown: Shown, focused: Bool, maximized: Bool = false, stashed: Bool = false) {
+        self.maximized = maximized
+        self.stashed = stashed
+        corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
+        corner.toolTip = maximized ? "Restore (⇧⌘↩)" : "Maximize (⇧⌘↩)"
+        corner.isHidden = stackLevel > 0 || stashed
         icon.image = Theme.symbol(shown.symbol, size: 11)
         name.stringValue = shown.title + (shown.isDormant ? "  (dormant)" : "")
         dirty.isHidden = !shown.isDirty
@@ -399,22 +533,18 @@ final class TilePill: NSView {
         name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
         name.textColor = focused ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
-        alphaValue = focused ? 1 : 0.88
+        alphaValue = stackLevel > 0 ? max(0.35, 0.8 - 0.15 * Double(stackLevel)) : (focused ? 1 : 0.88)
     }
 
-    /// As wide as its name wants, within the tile.
-    private var pillWidth: CGFloat {
-        let text = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width)
-        var w = 10 + 16 + 6 + text + 6 + 12
-        if !glyph.isHidden { w += StatusGlyph.size + 6 }
-        if !dirty.isHidden { w += 12 }
-        return min(max(w, 60), bounds.width - 24)
-    }
+    /// One width for every pill, within the tile.
+    private var pillWidth: CGFloat { min(Self.width, bounds.width - 24) }
 
-    /// Only the capsule is the pill; the rest is the tile beneath.
+    /// Only the capsule is the pill (its corner button included); the
+    /// rest is the tile beneath.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = convert(point, from: superview)
-        return glass.frame.contains(p) ? self : nil
+        guard glass.frame.contains(p) else { return nil }
+        return super.hitTest(point) ?? self
     }
 
     override func layout() {
@@ -422,11 +552,17 @@ final class TilePill: NSView {
         let h = Self.height
         let w = pillWidth
         let y = ((bounds.height - h) / 2).rounded()
-        glass.frame = NSRect(x: ((bounds.width - w) / 2).rounded(), y: y, width: w, height: h)
+        // A stacked pill sits a little to the right of the one over it.
+        glass.frame = NSRect(x: ((bounds.width - w) / 2).rounded() + CGFloat(stackLevel) * 8, y: y, width: w, height: h)
         var x = glass.frame.minX + 10
         icon.frame = NSRect(x: x, y: y + (h - 14) / 2, width: 16, height: 14)
         x += 22
         var right = glass.frame.maxX - 12
+        corner.isHidden = stackLevel > 0 || stashed
+        if !corner.isHidden {
+            corner.frame = NSRect(x: right - 14, y: y + (h - 16) / 2, width: 16, height: 16)
+            right -= 18
+        }
         if !glyph.isHidden {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: y + (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 6
