@@ -245,4 +245,7 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError() }
 
     @objc private func run() { handler() }
+
+    /// Debugging: as choosing the item.
+    func debugRun() { handler() }
 }

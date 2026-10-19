@@ -407,6 +407,9 @@ final class Server {
                 append(.status(id: rootStatusID, r), to: .block(block))
             }
             done()
+        case let .clearStatus(block):
+            if node.block(block)?.status != nil { append(.status(id: rootStatusID, nil), to: .block(block)) }
+            done()
         case let .link(link):
             append(.link(link), to: .links(host))
             done()

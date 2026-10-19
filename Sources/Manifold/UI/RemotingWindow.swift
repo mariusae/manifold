@@ -118,6 +118,7 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
     @objc private func attachClicked() { onAttach?() }
 
     func numberOfRows(in tableView: NSTableView) -> Int { providers.count }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         guard row < providers.count, let id = tableColumn?.identifier.rawValue else { return nil }

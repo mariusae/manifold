@@ -142,6 +142,7 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { configs.count }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         guard row < configs.count, let id = tableColumn?.identifier.rawValue else { return nil }

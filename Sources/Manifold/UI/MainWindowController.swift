@@ -3017,6 +3017,9 @@ extension MainWindowController: GridDelegate {
             })
         }
         menu.addItem(.separator())
+        if hosts.block(block)?.statusRecord != nil {
+            menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
+        }
         menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
             self?.linksCenter = block
             self?.setOrganization(.links)
@@ -3400,7 +3403,19 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Take Off the Desk", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             return menu
         }
+        if node.id.hasPrefix("status:"), let group = StatusGroup.allCases.first(where: { "status:\($0)" == node.id }), group != .inactive {
+            let blocks = (statusGroups("")[group] ?? []).map(\.0).filter { $0.statusRecord != nil }
+            guard !blocks.isEmpty else { return nil }
+            menu.addItem(ClosureMenuItem("Clear All \(group.title)", symbol: "eraser") { [weak self] in
+                for b in blocks { self?.hosts.propose(.clearStatus(b.id)) }
+            })
+            return menu
+        }
         guard let id = node.block else { return nil }
+        if hosts.block(id)?.statusRecord != nil {
+            menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(id)) })
+            menu.addItem(.separator())
+        }
         if let arr = node.arrangement, let p = node.placement {
             menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
                 guard let self else { return }

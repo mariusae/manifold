@@ -287,7 +287,9 @@ when you find it again.
   overview, all of them in one grid at once, as Mission Control lays out
   windows. Nothing is placed: click a pill to go to the block, ⌘-click
   to bring it to the workspace you were in, ⎋ (or ×) to go back.
-  From a shell:
+  **Clear Status**, in a row's menu in Status or the tile's pill menu,
+  forgets what a block reported until it reports again; a group's row
+  offers Clear All. From a shell:
 
   ```sh
   status() { printf '\e]7501;state=%s:msg=%s\e\\' "$1" "$(printf '%s' "$2" | base64 | tr -d '\n')"; }

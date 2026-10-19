@@ -11,6 +11,9 @@ enum Theme {
     static let secondaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.6, alpha: 1))
     static let hover = NSColor.dynamic(NSColor(white: 0, alpha: 0.055), NSColor(white: 1, alpha: 0.07))
     static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
+    /// A selected row in a list: a step in lightness, not a hue, so it
+    /// reads the same to every eye and the row's own colors stay.
+    static let selection = NSColor.dynamic(NSColor(white: 0, alpha: 0.09), NSColor(white: 1, alpha: 0.14))
     static let divider = NSColor.dynamic(NSColor(white: 0, alpha: 0.1), NSColor(white: 1, alpha: 0.1))
     static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
     /// A block that failed (§3.7).
@@ -71,6 +74,7 @@ enum Theme {
     /// Older names for symbols a macOS before this one's may not have,
     /// tried in turn; last, a dot, so nothing is ever blank.
     static let symbolFallbacks: [String: [String]] = [
+        "eraser": ["eraser.fill", "xmark.circle"],
         "rectangle.expand.vertical": ["arrow.up.and.down.square", "arrow.up.and.down"],
         "point.3.connected.trianglepath.dotted": ["link", "circle.hexagongrid"],
         "tray.and.arrow.down": ["tray", "square.and.arrow.down"],
@@ -143,5 +147,26 @@ final class IconButton: NSButton {
             NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
         }
         super.draw(dirtyRect)
+    }
+}
+
+
+/// A list's selected row drawn as a lightness change with a bar at the
+/// left, instead of the system's hue — colorblind-safe, and the row's
+/// text and highlights keep their colors (`interiorBackgroundStyle`
+/// stays normal). Every table and outline makes its rows from this.
+final class SelectionRowView: NSTableRowView {
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        let style = (superview as? NSTableView)?.effectiveStyle ?? .plain
+        let inset: CGFloat = style == .plain || style == .fullWidth ? 0 : 6
+        let r = bounds.insetBy(dx: inset, dy: 0)
+        Theme.selection.setFill()
+        NSBezierPath(roundedRect: r, xRadius: inset == 0 ? 0 : 5, yRadius: inset == 0 ? 0 : 5).fill()
+        let bar = NSRect(x: r.minX, y: r.minY + 3, width: 3, height: r.height - 6)
+        Theme.accent.withAlphaComponent(isEmphasized ? 1 : 0.5).setFill()
+        NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
     }
 }

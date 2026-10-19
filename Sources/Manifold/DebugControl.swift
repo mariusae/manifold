@@ -66,6 +66,11 @@ enum DebugControl {
             // from the one that has it; give it back.
             let responder = window.firstResponder
             defer { window.makeFirstResponder(responder) }
+            // "snapshot <path> picker": the picker's panel instead.
+            if arg.hasSuffix(" picker") {
+                guard let panel = NSApp.windows.first(where: { $0 is PickerPanel && $0.isVisible }) else { return "no picker" }
+                return snapshot(panel, to: String(arg.dropLast(7)))
+            }
             return snapshot(window, to: arg.isEmpty ? "/tmp/manifold.png" : arg)
         case "action":
             let sel = Selector(arg)
@@ -205,7 +210,8 @@ enum DebugControl {
             }
             if a.first == "expand", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row) }
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
-            return "usage: org rows | org click <row> [cmd|double] | org expand <row> | org hover <row>"
+            if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }
+            return "usage: org rows | org click <row> [cmd|double] | org expand <row> | org hover <row> | org menu <row> [title]"
         case "run":
             // "run <title prefix>": a palette item, by its title.
             return wc?.debugRunPaletteItem(arg) ?? "no window"

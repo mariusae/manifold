@@ -223,6 +223,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = tableColumn?.identifier.rawValue ?? "command"

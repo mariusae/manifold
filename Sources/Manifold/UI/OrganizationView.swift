@@ -220,6 +220,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { false }
 
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
+
     func outlineViewItemDidExpand(_ notification: Notification) {
         if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.insert(n.id); collapsedByHand.remove(n.id) }
     }
@@ -313,6 +315,15 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                                          context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return "no event" }
         mouseMoved(with: e)
         return "hovered \(trackedRow)"
+    }
+
+    /// The row's context menu: its titles, or the item named chosen.
+    func debugMenu(row: Int, choose: String) -> String {
+        guard let node = outline.item(atRow: row) as? OrgNode, let menu = delegate?.organizationMenu(for: node) else { return "no menu" }
+        if choose.isEmpty { return menu.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n") }
+        guard let item = menu.items.first(where: { $0.title == choose }) as? ClosureMenuItem else { return "no such item" }
+        item.debugRun()
+        return "chose \(choose)"
     }
 
     func debugExpand(row: Int) -> String {
