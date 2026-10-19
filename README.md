@@ -36,8 +36,10 @@ and Mona Sans (bundled).
   others. A stash is a stack behind any tile: a few edges peek out
   beside its pill, fan out when the pointer rests there, and one clicked
   comes back as that tile's lower half; ⇧-clicked (an edge or a
-  fanned-out pill), it takes the top instead, the tile that showed
-  going behind it. Going to a stashed block from the sidebar or the
+  fanned-out pill), it takes the top instead, whole, the tile that
+  showed going behind it with the rest of the stack. A stack is one
+  thing: drop its top tile's pill on another's and the whole stack goes
+  behind that tile; move the top tile and the stack moves with it. Going to a stashed block from the sidebar or the
   finder brings it out too, and the pointer follows. Drop a pill on
   another's to stash it there; ⇧-drag a pill and it's not the tile you
   carry but its path (a terminal's folder, a page's address): dropped on

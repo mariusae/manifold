@@ -515,11 +515,25 @@ extension WebState {
 extension ArrangementState {
     /// A tile gone from column `c`: its height to the one below it, else
     /// the one above (acme's colclose).
+    /// A tile gone from a column leaves its room to the nearest tile that
+    /// shows — the one that took its place, else the next below, else the
+    /// nearest above — never to a stashed one, which would come out.
     private mutating func giveBack(_ id: PlacementID, inColumn c: Int, wasAt i: Int) {
         let h = heights.removeValue(forKey: id) ?? 0
         guard !columns[c].isEmpty else { return }
-        let heir = columns[c][min(i, columns[c].count - 1)].id
+        let column = columns[c]
+        let at = min(i, column.count - 1)
+        let heir = column[at...].first(where: { !isStashed($0.id) })?.id
+            ?? column[..<at].last(where: { !isStashed($0.id) })?.id
+            ?? column[at].id
         heights[heir] = (heights[heir] ?? 0) + h
+    }
+
+    /// The stashed tiles right under a tile in its column: the stack
+    /// behind it, which goes where it goes.
+    private func followers(of id: PlacementID) -> [Placement] {
+        guard let (c, i) = locate(id) else { return [] }
+        return Array(columns[c][(i + 1)...].prefix { isStashed($0.id) })
     }
 
     public mutating func apply(_ event: Event) { apply(event, at: nil) }
@@ -562,18 +576,25 @@ extension ArrangementState {
             normalize()
         case let .stash(id, behind):
             guard id != behind, let (c, i) = locate(id), locate(behind) != nil, !isStashed(behind) else { return }
+            // Its own stack goes with it, so stacks merge whole.
+            let stack = isStashed(id) ? [] : followers(of: id)
+            guard !stack.contains(where: { $0.id == behind }) else { return }
             let p = columns[c].remove(at: i)
+            columns[c].removeAll { t in stack.contains { $0.id == t.id } }
             giveBack(id, inColumn: c, wasAt: i)
             if columns[c].isEmpty { columns.remove(at: c) }
             guard let (tc, ti) = locate(behind) else { return }
-            columns[tc].insert(p, at: ti + 1)
+            columns[tc].insert(contentsOf: [p] + stack, at: ti + 1)
             heights[p.id] = 0
             fractions = fractions.count == columns.count ? fractions : Self.equalFractions(columns.count)
             if focused == id { focused = behind }
             normalize()
         case let .move(id, column, at):
             guard let (c, i) = locate(id) else { return }
+            // A shown tile's stack moves with it.
+            let stack = isStashed(id) ? [] : followers(of: id)
             let p = columns[c].remove(at: i)
+            columns[c].removeAll { t in stack.contains { $0.id == t.id } }
             giveBack(id, inColumn: c, wasAt: i)
             var target = column
             if columns[c].isEmpty {
@@ -581,20 +602,22 @@ extension ArrangementState {
                 if target > c { target -= 1 }
             }
             if target >= columns.count {
-                columns.append([p])
+                columns.append([p] + stack)
                 heights[p.id] = 1
             } else {
                 let t = max(target, 0)
                 let j = min(max(at, 0), columns[t].count)
-                if columns[t].isEmpty {
-                    heights[p.id] = 1
-                } else {
-                    let donor = columns[t][j > 0 ? j - 1 : 0].id
-                    let h = heights[donor] ?? 1 / Double(columns[t].count)
+                // The room comes from the nearest tile that shows above the
+                // spot, else the first that shows; a stashed one has none.
+                let shown = columns[t].filter { !isStashed($0.id) }
+                if let donor = (columns[t][..<j].last { !isStashed($0.id) } ?? shown.first)?.id {
+                    let h = heights[donor] ?? 1 / Double(max(shown.count, 1))
                     heights[donor] = h / 2
                     heights[p.id] = h / 2
+                } else {
+                    heights[p.id] = 1
                 }
-                columns[t].insert(p, at: j)
+                columns[t].insert(contentsOf: [p] + stack, at: j)
             }
             fractions = fractions.count == columns.count ? fractions : Self.equalFractions(columns.count)
             focused = id

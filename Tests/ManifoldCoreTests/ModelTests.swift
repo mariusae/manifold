@@ -874,3 +874,37 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(short.arguments(host: "box", command: "run") == ["script.sh", "box", "run"], "no %c: the command is appended")
     #expect(RemoteProvider.ssh.arguments(host: "me@host", command: "x").first == "ssh")
 }
+
+
+@Test func aStackMovesWholeAndNeverComesOutByAccident() {
+    var a = ArrangementState()
+    let web = Placement(block: BlockID(), lens: .web), t1 = Placement(block: BlockID(), lens: .terminal)
+    let t2 = Placement(block: BlockID(), lens: .terminal), dir = Placement(block: BlockID(), lens: .directory)
+    let other = Placement(block: BlockID(), lens: .editor)
+    a.apply(.place(web, column: 0, at: 0))
+    a.apply(.place(t1, column: 0, at: 1))
+    a.apply(.place(t2, column: 0, at: 2))
+    a.apply(.place(dir, column: 0, at: 3))
+    a.apply(.place(other, column: 1, at: 0))
+    for p in [t1, t2, dir] { a.apply(.stash(p.id, behind: web.id)) }
+    // The last stashed is nearest behind.
+    #expect(a.columns[0].map(\.id) == [web.id, dir.id, t2.id, t1.id])
+    // ⇧-click on dir's pill: dir takes web's place whole, the rest of the
+    // stack (and web) behind it — nothing stashed comes out.
+    for e in a.unstashing(dir.id) + [.stash(web.id, behind: dir.id), .focus(dir.id)] { a.apply(e) }
+    #expect(a.shownTiles(inColumn: 0).map(\.id) == [dir.id])
+    #expect(abs(a.height(of: dir.id) - 1) < 0.001)
+    #expect(a.stashedTiles(inColumn: 0).count == 3)
+    #expect(a.focused == dir.id)
+    // dir's pill dropped on other's: dir and its whole stack go behind other.
+    a.apply(.stash(dir.id, behind: other.id))
+    #expect(a.columns.count == 1)
+    #expect(a.columns[0].first?.id == other.id)
+    #expect(a.stashedTiles(inColumn: 0).count == 4)
+    #expect(a.columns[0].map(\.id).firstIndex(of: dir.id) == 1)
+    #expect(abs(a.height(of: other.id) - 1) < 0.001)
+    // Moved to a column of its own, the stack follows.
+    a.apply(.move(other.id, column: 1, at: 0))
+    #expect(a.columns.count == 1)
+    #expect(a.columns[0].count == 5)
+}
