@@ -121,18 +121,33 @@ final class GridView: NSView, NSDraggingSource {
                 // The capsule clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
                 // the tile's menu.
-                pill.onClick = { [weak self] in
+                pill.onClick = { [weak self, weak pill] at in
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
                         self.delegate?.gridUnstash(id)
                         return
                     }
+                    // Where in the capsule the click was: the pointer follows
+                    // the pill there once the tile has grown and moved it.
+                    let offset = pill.map { p -> NSPoint in
+                        let c = p.capsule(in: p)
+                        return NSPoint(x: at.x - c.minX, y: at.y - c.minY)
+                    }
                     self.delegate?.gridFocus(id)
                     if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
                         self.delegate?.gridFill(id)
                     } else {
                         self.delegate?.gridGrow(id)
+                    }
+                    if let offset {
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, let pill = self.pills[id], let window = pill.window, !pill.isHidden else { return }
+                            self.layoutSubtreeIfNeeded()
+                            let c = pill.capsule(in: pill)
+                            let p = pill.convert(NSPoint(x: c.minX + offset.x, y: c.minY + offset.y), to: nil)
+                            Pointer.warp(to: window.convertPoint(toScreen: p))
+                        }
                     }
                 }
                 pill.onPathClick = { [weak self] in
@@ -591,7 +606,8 @@ final class GridView: NSView, NSDraggingSource {
 /// glyph. Dragged, it moves the tile; clicked, the tile's menu. Only the
 /// capsule takes the mouse; around it, the tile does.
 final class TilePill: NSView {
-    var onClick: (() -> Void)?
+    /// Clicked, with where in the pill (its coordinates).
+    var onClick: ((NSPoint) -> Void)?
     var onIconClick: (() -> Void)?
     /// ⌥-clicked: the path menu.
     var onPathClick: (() -> Void)?
@@ -764,7 +780,7 @@ final class TilePill: NSView {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
             if event.modifierFlags.contains(.option) { onPathClick?() }
-            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?() }
+            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?(p) }
         }
         downAt = nil
     }
@@ -799,6 +815,16 @@ final class RowDividerView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { onEnd?() }
+}
+
+/// The pointer, moved by us: to a point in screen coordinates (AppKit's,
+/// from the bottom left of the main screen).
+enum Pointer {
+    static func warp(to screen: NSPoint) {
+        guard let main = NSScreen.screens.first else { return }
+        CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: main.frame.maxY - screen.y))
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
 }
 
 /// A ring around the focused tile (§3.1): drawn, taking no clicks.

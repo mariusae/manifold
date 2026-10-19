@@ -1870,10 +1870,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for es in n.inbound.values { for e in es { joinedAt[e.from] = max(joinedAt[e.from] ?? 0, e.at.wall) } }
             for t in n.before + n.after { joinedAt[t.block] = max(joinedAt[t.block] ?? 0, t.last.wall) }
         }
+        // What runs in each terminal (the process trees under the shells,
+        // §7.5), so a terminal is found by its program — "claude" — too.
+        var running: [BlockID: [String]] = [:]
+        for pb in hosts.blocks where pb.kind == .process {
+            var shells = Set<BlockID>()
+            for e in pb.processes?.entries ?? [] {
+                guard let under = e.block else { continue }
+                // The first process under a block is its shell; the rest run in it.
+                guard shells.contains(under) else { shells.insert(under); continue }
+                let name = (e.path ?? e.command.split(separator: " ").first.map(String.init) ?? "").lastPathComponent
+                if !name.isEmpty, !(running[under]?.contains(name) ?? false) { running[under, default: []].append(name) }
+            }
+        }
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
             let title = block.displayTitle
+            let programs = running[block.id] ?? []
             let hay: String
             let detail: String
             var note = ""
@@ -1888,8 +1902,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 detail = block.path.map { ($0 as NSString).deletingLastPathComponent.abbreviatingHome } ?? "Note"
                 note = block.text?.isDirty == true ? "edited" : ""
             case .terminal:
-                hay = title + " " + (block.terminal?.cwd ?? "")
-                detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
+                hay = title + " " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
+                detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
                 note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "dormant" : (block.terminal?.busy == true ? "running" : "")
             case .directory:
                 hay = block.path ?? title
@@ -1904,8 +1918,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 hay = "processes " + title
                 detail = "Processes"
             case .agent:
-                hay = "agent " + title + " " + (block.terminal?.cwd ?? "")
-                detail = "Agent in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
+                hay = "agent " + title + " " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
+                detail = "Agent in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
                 note = block.terminal?.pid == nil ? "ended" : ""
             case .git:
                 hay = "git " + (block.path ?? title)
