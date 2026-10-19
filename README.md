@@ -362,8 +362,15 @@ is migrated into logs on first run.
   other mirrors until it focuses the block again. Linux
   servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
-  host, `manifoldd open --wait`): `git commit` and friends edit beside
-  the terminal and return when it's taken off (⌘W).
+  host, `manifoldd open --wait`): `git commit` and friends edit in the
+  editor beside the terminal and return when it's taken off (⌘W).
+- **`manifold` is first on the PATH** in Manifold's shells, once your rc
+  files have run: the app's Helpers folder here, the server's folder on
+  a remote host (with a `manifold` script standing in). zsh gets it
+  through a .zshenv layer of Manifold's own that hands over to Ghostty's
+  integration and then yours; fish through a command run after its
+  configuration; bash through an rc file of Manifold's that sources the
+  profile files and .bashrc.
 - **Retention** is tunable, in View ▸ Keep History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long
