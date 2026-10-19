@@ -188,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
         code.addItem(.separator())
         item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "n", [.command, .control])
-        item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .control])
+        item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .option, .shift])
         let codeItem = NSMenuItem(title: "Code", action: nil, keyEquivalent: "")
         codeItem.submenu = code
         edit.addItem(codeItem)

@@ -186,7 +186,7 @@ when you find it again.
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
   Definition (⌃⌘J, or ⌘-click), Find References (⌃⌘R), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
-  on disk when they aren't open), Format Document (⌃⌘F). Manifold ▸
+  on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
   Language Servers… is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
@@ -234,7 +234,8 @@ when you find it again.
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
   across hosts, as a sparse tree; in every folder, what is on a
-  workspace now comes first, and the rest after, dimmed
+  workspace now is listed, and the rest waits under Recent, which opens
+  when the pointer rests on it
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;

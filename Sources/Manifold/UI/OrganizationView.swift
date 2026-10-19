@@ -304,13 +304,24 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }.joined(separator: "\n")
     }
 
-    /// As a click (or ⌘-click, or double-click) on a row would do.
+    /// As the pointer moving onto the row (-1: off every row), through the
+    /// same path a real move takes.
+    func debugHover(row: Int) -> String {
+        let p = row >= 0 ? NSPoint(x: outline.rect(ofRow: row).midX, y: outline.rect(ofRow: row).midY) : NSPoint(x: -100, y: -100)
+        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: outline.convert(p, to: nil), modifierFlags: [],
+                                         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window?.windowNumber ?? 0,
+                                         context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return "no event" }
+        mouseMoved(with: e)
+        return "hovered \(trackedRow)"
+    }
+
     func debugExpand(row: Int) -> String {
         guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
         outline.expandItem(node)
         return "expanded"
     }
 
+    /// As a click (or ⌘-click, or double-click) on a row would do.
     func debugClick(row: Int, command: Bool, double: Bool) -> String {
         guard row >= 0, row < outline.numberOfRows, let node = outline.item(atRow: row) as? OrgNode else { return "no such row" }
         if double {
@@ -332,11 +343,39 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         super.updateTrackingAreas()
     }
 
+    /// A Recent group (Files) opened by the pointer resting on it, closed
+    /// again when the pointer moves off it and what it holds.
+    private var hoverOpened: OrgNode?
+    private var hoverWork: DispatchWorkItem?
+
+    private func hoverReveal(row: Int) {
+        let node = row >= 0 ? outline.item(atRow: row) as? OrgNode : nil
+        if let opened = hoverOpened {
+            var within = false
+            var n: Any? = node
+            while let cur = n as? OrgNode { if cur === opened { within = true; break }; n = outline.parent(forItem: cur) }
+            if !within {
+                outline.collapseItem(opened)
+                hoverOpened = nil
+            }
+        }
+        hoverWork?.cancel()
+        guard let node, node.id.hasPrefix("recent:"), !outline.isItemExpanded(node) else { return }
+        let work = DispatchWorkItem { [weak self, weak node] in
+            guard let self, let node, self.trackedRow == row else { return }
+            self.outline.expandItem(node)
+            self.hoverOpened = node
+        }
+        hoverWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
     override func mouseMoved(with event: NSEvent) {
         let p = outline.convert(event.locationInWindow, from: nil)
         let row = outline.row(at: p)
         guard row != trackedRow else { return }
         trackedRow = row
+        hoverReveal(row: row)
         if row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.block != nil {
             delegate?.organizationHover(node, at: outline.convert(outline.rect(ofRow: row), to: nil), in: self)
         } else {
@@ -346,6 +385,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     override func mouseExited(with event: NSEvent) {
         trackedRow = -1
+        hoverWork?.cancel()
+        if let opened = hoverOpened {
+            outline.collapseItem(opened)
+            hoverOpened = nil
+        }
         delegate?.organizationHover(nil, at: .zero, in: self)
     }
 }

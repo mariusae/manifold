@@ -1479,7 +1479,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var active: [ObjectIdentifier: Bool] = [:]
         func convert(_ f: FileNode) -> OrgNode? {
             let made = f.children.compactMap(convert)
-            let children = made.filter { active[ObjectIdentifier($0)] == true } + made.filter { active[ObjectIdentifier($0)] != true }
+            var children = made.filter { active[ObjectIdentifier($0)] == true }
+            // The rest — not on any workspace now — under Recent, which
+            // opens when the pointer rests on it (or with a filter).
+            let rest = made.filter { active[ObjectIdentifier($0)] != true }
+            if !rest.isEmpty {
+                let recentID = "recent:\(f.host.raw):\(f.path)"
+                let recent = OrgNode(id: recentID, title: "Recent", symbol: "clock", count: rest.count, isGroup: true, children: rest)
+                recent.dimmed = true
+                if !filter.isEmpty { open.insert(recentID) }
+                children.append(recent)
+            }
             let block = f.block.flatMap { hosts.block($0) }
             if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
             let id = "file:\(f.host.raw):\(f.path)"

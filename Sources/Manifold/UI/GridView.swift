@@ -358,6 +358,7 @@ final class GridView: NSView, NSDraggingSource {
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
             focusRing.isHidden = false
             focusRing.frame = t.view.frame
+            focusRing.needsDisplay = true
             addSubview(focusRing, positioned: .above, relativeTo: pills[focused])
         } else {
             focusRing.isHidden = true
@@ -831,7 +832,8 @@ enum Pointer {
 final class FocusRingView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
+        // Not layer-backed: drawn by AppKit whenever its frame changes, so
+        // nothing stale is stretched over a resized tile.
     }
 
     required init?(coder: NSCoder) { fatalError() }
