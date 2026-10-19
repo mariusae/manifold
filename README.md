@@ -12,11 +12,20 @@ and Mona Sans (bundled).
 
 ## Using it
 
-- The window is all content. Move the mouse to its left edge and the
-  sidebar slides out over it: the window buttons, the **desk** (your
-  arrangements), and **New**. It slides away again when the mouse leaves.
-  ⌃⌘S (or the button at its top right) shows or hides it for good; drag its
-  right edge to resize it, and its top to move the window.
+- The **sidebar** is the spine of the window: the window buttons, New
+  (+) and ⋯ along its top, then one browser over everything you have,
+  organized four ways (Desk · Files · Links · Time, below), with a
+  filter. It sits beside the content; ⌃⌘S (or the button at its top
+  right) makes it slide out over the content when the mouse goes to the
+  window's left edge instead. Drag its right edge to resize it, and its
+  top to move the window. Under **Desk**, each arrangement expands to
+  its columns in order, the selected one open and the focused column
+  highlighted, so the sidebar is the table of contents of the screen:
+  click a column to focus it, an arrangement to go to it, double-click
+  one to name it; drag a block from anywhere in the sidebar onto a
+  column to show it there, onto an arrangement for its focused column,
+  or between arrangements for one of its own, and drag arrangements to
+  reorder them.
 - An **arrangement** is a row of columns, and a column shows **one
   block** (DESIGN.md §3.1). What a column showed before is its past:
   ⌘[ goes back to it, ⌘] forward again, and nothing of it is drawn.

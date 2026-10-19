@@ -16,6 +16,7 @@ import ManifoldCore
 ///   focus                render as focused, without activating the app
 ///   open <target>        as if command-clicked in the focused terminal
 ///   column back|forward  walk the focused column's past
+///   org rows | org click <row> [cmd|double]   the sidebar's rows, clicked
 ///   click x y [count]    click (count times, as a multi-click) in the window
 ///   front                bring the window forward; print its screen rect
 ///   dragimage <path>     write the drag image for the focused pane
@@ -190,6 +191,15 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
+        case "org":
+            // "org rows": the sidebar's rows; "org click <row> [cmd|double]".
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc else { return "no window" }
+            if a.first == "rows" { return wc.debugOrganization.debugRows() }
+            if a.first == "click", a.count >= 2, let row = Int(a[1]) {
+                return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
+            }
+            return "usage: org rows | org click <row> [cmd|double]"
         case "column":
             // "column back|forward": the focused column's past, walked.
             if arg == "back" { wc?.columnBack(nil) } else if arg == "forward" { wc?.columnForward(nil) } else { return "usage: column back|forward" }

@@ -86,8 +86,10 @@ extension NSMutableAttributedString {
 extension NSPasteboard.PasteboardType {
     /// An arrangement being dragged, by id.
     static let manifoldArrangement = NSPasteboard.PasteboardType("com.manifold.arrangement")
-    /// A placement (a sheet) being dragged, by id.
+    /// A placement (a column's block) being dragged, by id.
     static let manifoldPlacement = NSPasteboard.PasteboardType("com.manifold.placement")
+    /// A block being dragged from the sidebar, by id.
+    static let manifoldBlock = NSPasteboard.PasteboardType("com.manifold.block")
 }
 
 /// A small borderless button showing a symbol, with a hover background.

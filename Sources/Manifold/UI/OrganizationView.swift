@@ -2,8 +2,8 @@ import AppKit
 import ManifoldCore
 
 /// How the sidebar organizes the graph (DESIGN.md §3.6): the desk's
-/// arrangements; files under folders under roots, across hosts; what's
-/// linked to the focused block; blocks by day.
+/// arrangements and their columns; files under folders under roots,
+/// across hosts; what's linked to the focused block; blocks by day.
 enum Organization: String, CaseIterable {
     case desk, files, links, time
 
@@ -30,6 +30,15 @@ final class OrgNode {
     /// How long unseen, 0 fresh to 1 long ago: rows fade with it.
     var age: Double?
     var isGroup: Bool
+    /// Set off from the rest: the selected arrangement, the focused column.
+    var emphasis = false
+    /// On the desk: the arrangement this row is, or is a column of.
+    var arrangement: BlockID?
+    /// On the desk: which column of its arrangement, and the placement shown.
+    var column: Int?
+    var placement: PlacementID?
+    /// A row that does something rather than opening a block (New…).
+    var action: (() -> Void)?
     private var given: [OrgNode]
     var loadChildren: (() -> [OrgNode])?
     private var loaded = false
@@ -59,18 +68,42 @@ final class OrgNode {
     var hasChildren: Bool { !given.isEmpty || (loadChildren != nil && !loaded) }
 }
 
+/// What's being dragged over the sidebar.
+enum OrgDragItem {
+    case block(BlockID)
+    case placement(PlacementID)
+    case arrangement(BlockID)
+
+    init?(_ pb: NSPasteboard) {
+        if let a = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) { self = .arrangement(a) }
+        else if let p = pb.string(forType: .manifoldPlacement) { self = .placement(p) }
+        else if let b = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) { self = .block(b) }
+        else { return nil }
+    }
+}
+
 protocol OrganizationViewDelegate: AnyObject {
-    /// A block's row was clicked: recall it beside what's focused, or in a
-    /// column of its own.
-    func organizationOpen(_ block: BlockID, newColumn: Bool)
+    /// A row was clicked: show its block here, or beside (§3.1); go to
+    /// an arrangement; focus a column.
+    func organizationOpen(_ node: OrgNode, newColumn: Bool)
+    /// A row was double-clicked; true if that meant something (naming an
+    /// arrangement), else the row opens or closes.
+    func organizationActivate(_ node: OrgNode) -> Bool
     /// The pointer rests on a row: its card, or none.
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView)
     func organizationMenu(for node: OrgNode) -> NSMenu?
+    /// Something dragged onto a row, or between the rows under `node`
+    /// (nil for the top level) at `index`.
+    func organizationCanDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool
+    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool
+    func organizationDragChanged(_ dragging: Bool)
 }
 
 /// The tree of an organization, as an outline: rows with a symbol, a
 /// name, a count, fading with age; groups open and close; a block's row
-/// opens it. Expansion is remembered by row id across refreshes.
+/// opens it. Expansion is remembered by row id across refreshes. Rows
+/// drag (a block, and an arrangement or placement where the row is one)
+/// and take drops.
 final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     weak var delegate: OrganizationViewDelegate?
     private let scroll = NSScrollView()
@@ -78,7 +111,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var roots: [OrgNode] = []
     private var expanded: Set<String> = []
     private var expandedByDefault: Set<String> = []
+    private var collapsedByHand: Set<String> = []
     private var trackedRow: Int = -1
+    private var selecting = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -100,6 +135,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         outline.menu = NSMenu()
         outline.menu?.delegate = self
         outline.backgroundColor = .clear
+        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+        outline.setDraggingSourceOperationMask(.move, forLocal: true)
+        outline.draggingDestinationFeedbackStyle = .regular
         scroll.documentView = outline
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -118,8 +156,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     /// Shows a tree; rows open as they were, or as `openByDefault` says
-    /// the first time.
-    func show(_ nodes: [OrgNode], openByDefault: Set<String> = []) {
+    /// the first time; the row `selected` is highlighted.
+    func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
         roots = nodes
         expandedByDefault = openByDefault
         outline.reloadData()
@@ -130,9 +168,14 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             }
         }
         expandAll(nodes)
+        selecting = true
+        defer { selecting = false }
+        if let selected, let row = (0..<outline.numberOfRows).first(where: { (outline.item(atRow: $0) as? OrgNode)?.id == selected }) {
+            outline.selectRowIndexes([row], byExtendingSelection: false)
+        } else {
+            outline.deselectAll(nil)
+        }
     }
-
-    private var collapsedByHand: Set<String> = []
 
     // MARK: Data
 
@@ -159,7 +202,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? OrgNode)?.block != nil
+        guard let n = item as? OrgNode else { return false }
+        return n.block != nil || n.action != nil
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -172,18 +216,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     // MARK: Clicks
 
-    private var lastClickModifiers: NSEvent.ModifierFlags = []
-
-    override func mouseDown(with event: NSEvent) {
-        lastClickModifiers = event.modifierFlags
-        super.mouseDown(with: event)
-    }
-
     @objc private func rowClicked() {
         let row = outline.clickedRow
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
-        if let block = node.block {
-            delegate?.organizationOpen(block, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
+        if let action = node.action {
+            action()
+        } else if node.block != nil {
+            delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
         } else if node.hasChildren {
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         }
@@ -191,8 +230,65 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     @objc private func rowDoubleClicked() {
         let row = outline.clickedRow
-        guard row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.hasChildren else { return }
+        guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
+        if delegate?.organizationActivate(node) == true { return }
+        guard node.hasChildren else { return }
         if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
+    }
+
+    // MARK: Dragging
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let node = item as? OrgNode, let block = node.block else { return nil }
+        let pb = NSPasteboardItem()
+        pb.setString(block.description, forType: .manifoldBlock)
+        if let a = node.arrangement, node.column == nil { pb.setString(a.description, forType: .manifoldArrangement) }
+        if let p = node.placement { pb.setString(p, forType: .manifoldPlacement) }
+        return pb
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
+        HoverCard.shared.hide()
+        delegate?.organizationDragChanged(true)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        delegate?.organizationDragChanged(false)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        guard let drag = OrgDragItem(info.draggingPasteboard) else { return [] }
+        let node = item as? OrgNode
+        return delegate?.organizationCanDrop(drag, onto: node, at: index) == true ? .move : []
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        guard let drag = OrgDragItem(info.draggingPasteboard) else { return false }
+        return delegate?.organizationDrop(drag, onto: item as? OrgNode, at: index) ?? false
+    }
+
+    // MARK: Debugging aids
+
+    /// The rows as shown, one per line: depth, id, title.
+    func debugRows() -> String {
+        (0..<outline.numberOfRows).compactMap { row in
+            guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)"
+        }.joined(separator: "\n")
+    }
+
+    /// As a click (or ⌘-click, or double-click) on a row would do.
+    func debugClick(row: Int, command: Bool, double: Bool) -> String {
+        guard row >= 0, row < outline.numberOfRows, let node = outline.item(atRow: row) as? OrgNode else { return "no such row" }
+        if double {
+            if delegate?.organizationActivate(node) == true { return "activated" }
+            if node.hasChildren { if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) } }
+            return "toggled"
+        }
+        if let action = node.action { action(); return "ran" }
+        if node.block != nil { delegate?.organizationOpen(node, newColumn: command); return "opened" }
+        if node.hasChildren { if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }; return "toggled" }
+        return "nothing"
     }
 
     // MARK: Hovering
@@ -265,7 +361,8 @@ final class OrgRowView: NSTableCellView {
             icon.image = Theme.symbol(node.symbol, size: 12)
         }
         name.stringValue = node.title
-        name.font = .systemFont(ofSize: 13, weight: node.isGroup ? .medium : .regular)
+        name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
+        icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
         count.stringValue = node.count.map { "\($0)" } ?? ""
         count.isHidden = node.count == nil
         detail.stringValue = node.detail
@@ -298,83 +395,5 @@ final class OrgRowView: NSTableCellView {
             detail.frame = NSRect(x: 22 + nw + 6, y: (h - 15) / 2 - 0.5, width: max(0, dw), height: 15)
             detail.alphaValue = dw < 36 ? 0 : 1
         }
-    }
-}
-
-/// A block's card, shown while the pointer rests on its row: what it is,
-/// where, when it was last seen, and a little of its text.
-final class HoverCard: NSObject {
-    static let shared = HoverCard()
-    private let panel: NSPanel
-    private let box = NSView()
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
-    private let body = NSTextField(wrappingLabelWithString: "")
-    private var pendingShow: DispatchWorkItem?
-
-    private override init() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 100), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        super.init()
-        panel.hasShadow = true
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.isFloatingPanel = true
-        panel.level = .popUpMenu
-        panel.ignoresMouseEvents = true
-        box.wantsLayer = true
-        box.layer?.cornerRadius = 10
-        box.layer?.borderWidth = 0.5
-        box.themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingMiddle
-        detail.font = .systemFont(ofSize: 11.5)
-        detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingMiddle
-        body.font = .systemFont(ofSize: 12)
-        body.textColor = Theme.text
-        body.maximumNumberOfLines = 8
-        for v in [title, detail, body] { box.addSubview(v) }
-        panel.contentView = box
-    }
-
-    /// Shows the card beside a rect (in window coordinates) after a moment.
-    func show(title: String, detail: String, body: String, font: NSFont?, beside rect: NSRect, in window: NSWindow) {
-        pendingShow?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.title.stringValue = title
-            self.detail.stringValue = detail
-            self.body.stringValue = body
-            self.body.font = font ?? .systemFont(ofSize: 12)
-            self.body.isHidden = body.isEmpty
-            let width: CGFloat = 320, pad: CGFloat = 12
-            self.body.preferredMaxLayoutWidth = width - 2 * pad
-            let bodyHeight = body.isEmpty ? 0 : ceil(self.body.sizeThatFits(NSSize(width: width - 2 * pad, height: 200)).height)
-            let height = pad + 17 + 2 + (detail.isEmpty ? 0 : 16) + (body.isEmpty ? 0 : 8 + bodyHeight) + pad
-            self.title.frame = NSRect(x: pad, y: height - pad - 17, width: width - 2 * pad, height: 17)
-            self.detail.frame = NSRect(x: pad, y: height - pad - 17 - 2 - 16, width: width - 2 * pad, height: 16)
-            self.detail.isHidden = detail.isEmpty
-            self.body.frame = NSRect(x: pad, y: pad, width: width - 2 * pad, height: bodyHeight)
-            var origin = window.convertToScreen(NSRect(origin: NSPoint(x: rect.maxX + 8, y: rect.midY), size: .zero)).origin
-            origin.y -= height / 2
-            if let screen = window.screen {
-                origin.y = max(screen.visibleFrame.minY + 8, min(origin.y, screen.visibleFrame.maxY - height - 8))
-                if origin.x + width > screen.visibleFrame.maxX { origin.x = window.convertToScreen(NSRect(origin: NSPoint(x: rect.minX, y: 0), size: .zero)).origin.x - width - 8 }
-            }
-            self.panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
-            self.panel.orderFront(nil)
-        }
-        pendingShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
-    }
-
-    func hide() {
-        pendingShow?.cancel()
-        pendingShow = nil
-        panel.orderOut(nil)
     }
 }

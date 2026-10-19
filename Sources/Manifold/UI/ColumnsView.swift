@@ -8,6 +8,8 @@ protocol ColumnsDelegate: AnyObject {
     func contentResized(_ fractions: [Double])
     /// A column's block was dropped somewhere.
     func contentMovePane(_ placement: PlacementID, to target: ColumnsView.DropTarget)
+    /// A block from the sidebar was dropped somewhere: shown there.
+    func contentShowBlock(_ block: BlockID, at target: ColumnsView.DropTarget)
     /// A block is being dragged, or has stopped being.
     func contentPaneDragChanged(_ dragging: Bool)
     /// Something is being dragged along the window's left edge.
@@ -53,7 +55,7 @@ final class ColumnsView: NSView, NSDraggingSource {
         focusBar.wantsLayer = true
         focusBar.layer?.backgroundColor = Theme.accent.cgColor
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -228,7 +230,7 @@ final class ColumnsView: NSView, NSDraggingSource {
         // The sidebar can't be hovered open mid-drag; the window's edge does it.
         if convert(point, to: nil).x < 8 { delegate?.contentDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
-        let isPane = pb.string(forType: .manifoldPlacement) != nil
+        let isPane = pb.string(forType: .manifoldPlacement) != nil || pb.string(forType: .manifoldBlock) != nil
         let tab = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
         guard isPane || (tab != nil && delegate?.contentCanDrop(tab!) == true),
               let (target, rect) = dropTarget(at: point) else {
@@ -256,6 +258,10 @@ final class ColumnsView: NSView, NSDraggingSource {
         let pb = sender.draggingPasteboard
         if let pane = pb.string(forType: .manifoldPlacement) {
             delegate?.contentMovePane(pane, to: target)
+            return true
+        }
+        if pb.string(forType: .manifoldArrangement) == nil, let block = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) {
+            delegate?.contentShowBlock(block, at: target)
             return true
         }
         guard let tab = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) else { return false }

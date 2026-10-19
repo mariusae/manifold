@@ -208,14 +208,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             editor.select(line: jump.line, column: jump.column)
         }
 
-        sidebar.update(rows: desk.order.compactMap { id -> SidebarRow? in
-            guard let b = hosts.block(id), let a = b.arrangement else { return nil }
-            let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
-            let edited = a.placements.contains { hosts.block($0.block)?.text?.isDirty == true }
-            return SidebarRow(id: id, title: title(of: a), named: a.isNamed, columnCount: a.columns.count,
-                              symbol: focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
-                              edited: edited)
-        }, selected: selected)
         layoutViews()
 
         if desk.order.isEmpty && host.hasState {
@@ -576,6 +568,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugFocusedPlacement: Shown? { focusedShown }
+    var debugOrganization: OrganizationView { sidebar.organizationView }
 
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
 
@@ -1074,20 +1067,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         refreshOrganization(now: true)
     }
 
-    /// The sidebar's tree again, a moment after the last change.
+    /// The sidebar's tree again, a moment after the last change (the
+    /// desk's sooner: it follows the focus).
     func refreshOrganization(now: Bool = false) {
         let org = organization
         if sidebar.organization != org { sidebar.setOrganization(org) }
-        guard org != .desk else { return }
         organizationWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let filter = self.sidebar.filterText.lowercased()
             let (nodes, open) = self.organizationTree(org, filter: filter)
-            self.sidebar.organizationView.show(nodes, openByDefault: open)
+            let selected = org == .desk ? self.deskSelectedRow : nil
+            self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
         }
         organizationWork = work
-        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work) }
+        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (org == .desk ? 0.05 : 0.2), execute: work) }
+    }
+
+    /// The desk row for the focused column of the selected arrangement.
+    private var deskSelectedRow: String? {
+        guard let id = selected, let a = hosts.arrangement(id) else { return nil }
+        if let c = a.focusedColumn, a.shown(in: c) != nil { return "arr/\(id)/col/\(c)" }
+        return "arr/\(id)"
     }
 
     private static func age(_ stamp: Stamp?) -> Double? {
@@ -1109,11 +1110,50 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The tree for an organization, and which rows open by themselves.
     func organizationTree(_ org: Organization, filter: String) -> ([OrgNode], Set<String>) {
         switch org {
-        case .desk: return ([], [])
+        case .desk: return deskTree(filter)
         case .files: return filesTree(filter)
         case .links: return linksTree(filter)
         case .time: return timeTree(filter)
         }
+    }
+
+    /// Desk: the arrangements, each expanding to its columns in order,
+    /// the selected one open and the focused column marked (§3.6): the
+    /// table of contents of the screen. New… at the end.
+    private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        var nodes: [OrgNode] = []
+        var open: Set<String> = []
+        for id in desk.order {
+            guard let a = hosts.arrangement(id) else { continue }
+            let aid = "arr/\(id)"
+            let columns = a.columns.indices.compactMap { c -> OrgNode? in
+                guard let p = a.shown(in: c), let b = hosts.block(p.block) else { return nil }
+                guard matches(filter, [b.displayTitle, b.path]) else { return nil }
+                let i = a.columns[c].firstIndex { $0.id == p.id } ?? 0
+                var notes: [String] = []
+                if b.text?.isDirty == true { notes.append("edited") }
+                if i > 0 { notes.append("\(i) before") }
+                if i < a.columns[c].count - 1 { notes.append("\(a.columns[c].count - 1 - i) after") }
+                let n = OrgNode(id: "\(aid)/col/\(c)", block: p.block, title: b.displayTitle,
+                                symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
+                n.arrangement = id
+                n.column = c
+                n.placement = p.id
+                n.emphasis = id == selected && p.id == a.focused
+                return n
+            }
+            let titleMatches = matches(filter, [title(of: a)])
+            guard filter.isEmpty || titleMatches || !columns.isEmpty else { continue }
+            let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
+            let n = OrgNode(id: aid, block: id, title: title(of: a),
+                            symbol: a.columns.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
+                            detail: a.isNamed ? "kept" : "", count: a.columns.count > 1 ? a.columns.count : nil, children: columns)
+            n.arrangement = id
+            n.emphasis = id == selected
+            nodes.append(n)
+            if id == selected || !filter.isEmpty { open.insert(aid) }
+        }
+        return (nodes, open)
     }
 
     /// Files: each host's sparse tree, roots open.
@@ -1509,6 +1549,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case inColumn(Int)
         /// A new column to the right of the focused one.
         case beside
+        /// A new column at an index.
+        case inNewColumn(Int)
         /// Beside the placement that opened it: in the column to its right
         /// if that column's block was opened from this one, else a new
         /// column there. Links the two.
@@ -1520,9 +1562,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         placement.map { .besideOpener($0) } ?? .here
     }
 
-    /// Shows a block in the selected arrangement, by the rules.
-    func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil) {
-        let id = arrangementForPlacing()
+    /// Shows a block in the selected arrangement (or `arrangement`), by
+    /// the rules.
+    func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil) {
+        let id = arrangement ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
         let fresh = { ULID.make() }
         let events: [Event]
@@ -1533,6 +1576,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             events = a.showing(block, lens: lens, inColumn: c, newPlacement: fresh)
         case .beside:
             events = a.showing(block, lens: lens, inNewColumnAt: (a.focusedColumn ?? a.columns.count - 1) + 1, newPlacement: fresh)
+        case .inNewColumn(let i):
+            events = a.showing(block, lens: lens, inNewColumnAt: i, newPlacement: fresh)
         case .besideOpener(let p):
             guard let c = a.columnIndex(of: p), let from = a.placement(p)?.block else {
                 return show(block, lens: lens, .beside, kind: kind, context: context)
@@ -2044,7 +2089,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension MainWindowController: SidebarDelegate {
-    func sidebarSelect(_ arrangement: BlockID) { host.select(arrangement) }
 
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
     func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
@@ -2105,26 +2149,6 @@ extension MainWindowController: SidebarDelegate {
         layoutViews()
         if let window {
             mouseMoved(to: root.convert(window.mouseLocationOutsideOfEventStream, from: nil))
-        }
-    }
-
-    func sidebarMovePlacement(_ placement: PlacementID, to destination: SidebarDrop) {
-        guard let from = desk.order.first(where: { hosts.arrangement($0)?.placement(placement) != nil }),
-              let p = hosts.arrangement(from)?.placement(placement) else { return }
-        switch destination {
-        case .arrangement(let target):
-            guard target != from, let a = hosts.arrangement(target) else { return }
-            hosts.append(.remove(placement), to: .block(from))
-            let c = a.focused.flatMap { a.columnIndex(of: $0) } ?? max(a.columns.count - 1, 0)
-            hosts.append(.place(Placement(block: p.block, lens: p.lens), column: c, at: c < a.columns.count ? a.columns[c].count : 0), to: .block(target))
-            host.select(target)
-        case .newArrangement(let index):
-            if hosts.arrangement(from)?.placements.count == 1 { return sidebarMove(from, to: index) }
-            hosts.append(.remove(placement), to: .block(from))
-            let n = host.newArrangement(select: false)
-            hosts.append(.place(Placement(block: p.block, lens: p.lens), column: 0, at: 0), to: .block(n))
-            sidebarMove(n, to: index)
-            host.select(n)
         }
     }
 
@@ -2220,6 +2244,17 @@ extension MainWindowController: ColumnsDelegate {
         var to = index
         if alone, sc < index { to -= 1 }
         reorderColumn(from: from, to: min(to, from))
+    }
+
+    /// A block from the sidebar dropped on the surface: shown there.
+    func contentShowBlock(_ block: BlockID, at target: ColumnsView.DropTarget) {
+        guard let b = hosts.block(block) else { return }
+        if b.kind == .arrangement { return host.select(block) }
+        let lens = Lens.default(for: b.kind, path: b.path)
+        switch target {
+        case .column(let i): show(block, lens: lens, .inNewColumn(i))
+        case .into(let c): show(block, lens: lens, .inColumn(c))
+        }
     }
 
     func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
@@ -2481,12 +2516,29 @@ final class RootView: NSView {
 }
 
 extension MainWindowController: OrganizationViewDelegate {
-    func organizationOpen(_ block: BlockID, newColumn: Bool) {
+    /// A row clicked: an arrangement is gone to; a column is focused (in
+    /// its arrangement); any other block is shown here, or beside.
+    func organizationOpen(_ node: OrgNode, newColumn: Bool) {
         HoverCard.shared.hide()
-        guard let b = hosts.block(block) else { return }
+        if let arr = node.arrangement {
+            if arr != selected { host.select(arr) }
+            if let p = node.placement, hosts.arrangement(arr)?.placement(p) != nil, !newColumn {
+                hosts.append(.focus(p), to: .block(arr))
+                return
+            }
+            if node.column == nil { return }
+        }
+        guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return host.select(block) }
         show(block, lens: Lens.default(for: b.kind, path: b.path), newColumn ? .beside : .here)
         if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
+    }
+
+    /// Double-clicking an arrangement names it.
+    func organizationActivate(_ node: OrgNode) -> Bool {
+        guard let arr = node.arrangement, node.column == nil else { return false }
+        rename(arr)
+        return true
     }
 
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
@@ -2505,22 +2557,98 @@ extension MainWindowController: OrganizationViewDelegate {
         case .search:
             body = b.search.map { "\($0.hits.count) hits" } ?? ""
         case .arrangement:
-            body = b.arrangement.map { a in a.placements.compactMap { self.hosts.block($0.block)?.displayTitle }.joined(separator: " · ") } ?? ""
+            body = b.arrangement.map { a in a.visible.compactMap { self.hosts.block($0.block)?.displayTitle }.joined(separator: " · ") } ?? ""
         default: break
         }
         HoverCard.shared.show(title: b.displayTitle, detail: detail, body: body, font: font, beside: rect, in: window)
     }
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
-        guard let id = node.block else { return nil }
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Show Here") { [weak self] in self?.organizationOpen(id, newColumn: false) })
-        menu.addItem(ClosureMenuItem("Show Beside") { [weak self] in self?.organizationOpen(id, newColumn: true) })
-        menu.addItem(.separator())
+        if let arr = node.arrangement, node.column == nil {
+            menu.addItem(ClosureMenuItem("Name…") { [weak self] in self?.rename(arr) })
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Take Off the Desk") { [weak self] in self?.removeFromDesk(arr) })
+            return menu
+        }
+        guard let id = node.block else { return nil }
+        if let arr = node.arrangement, let p = node.placement {
+            menu.addItem(ClosureMenuItem("Take Off This Column") { [weak self] in
+                guard let self else { return }
+                self.hosts.append(.remove(p), to: .block(arr))
+                if self.hosts.arrangement(arr)?.isEmpty == true, self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
+            })
+            menu.addItem(.separator())
+        } else {
+            menu.addItem(ClosureMenuItem("Show Here") { [weak self] in self?.organizationOpen(node, newColumn: false) })
+            menu.addItem(ClosureMenuItem("Show Beside") { [weak self] in self?.organizationOpen(node, newColumn: true) })
+            menu.addItem(.separator())
+        }
         menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
             self?.linksCenter = id
             self?.setOrganization(.links)
         })
         return menu
     }
+
+    // MARK: Drops on the sidebar (§3.6)
+
+    /// The block a dragged item stands for, and the placement to take
+    /// away if it's a column's block being moved.
+    private func dragged(_ item: OrgDragItem) -> (block: BlockID, from: (arrangement: BlockID, placement: Placement)?)? {
+        switch item {
+        case .block(let b): return (b, nil)
+        case .arrangement(let a): return (a, nil)
+        case .placement(let p):
+            for id in desk.order {
+                if let a = hosts.arrangement(id), let placed = a.placement(p) { return (placed.block, (id, placed)) }
+            }
+            return nil
+        }
+    }
+
+    func organizationCanDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool {
+        guard organization == .desk else { return false }
+        switch item {
+        case .arrangement:
+            // Reordered among the top-level rows.
+            return node == nil && index >= 0
+        case .block, .placement:
+            if let node { return node.arrangement != nil }
+            return index >= 0
+        }
+    }
+
+    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool {
+        if case .arrangement(let a) = item {
+            guard node == nil, let from = desk.order.firstIndex(of: a) else { return false }
+            let to = from < index ? index - 1 : index
+            if to != from { sidebarMove(a, to: to) }
+            return true
+        }
+        guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
+        let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
+        if let node, let arr = node.arrangement {
+            // Onto a column: shown there; onto an arrangement: in its focused column.
+            if let from, from.arrangement != arr { hosts.append(.remove(from.placement.id), to: .block(from.arrangement)) }
+            let place: Where = node.column.map { .inColumn($0) } ?? .here
+            show(block, lens: lens, place, in: arr)
+            host.select(arr)
+            return true
+        }
+        guard node == nil else { return false }
+        // Between arrangements: one of its own there.
+        if let from, hosts.arrangement(from.arrangement)?.placements.count == 1 {
+            sidebarMove(from.arrangement, to: index)
+            return true
+        }
+        if let from { hosts.append(.remove(from.placement.id), to: .block(from.arrangement)) }
+        let n = host.newArrangement(select: false)
+        show(block, lens: lens, .here, in: n)
+        sidebarMove(n, to: index)
+        host.select(n)
+        return true
+    }
+
+    func organizationDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 }

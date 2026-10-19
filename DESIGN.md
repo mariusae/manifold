@@ -617,11 +617,10 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   links kept in step; proposals for terminals, files, folders, `seen`,
   links and history; file watching; terminal dormancy with the seam.
 - The app: `HostClient` (the replica, leading and proposing),
-  `MainWindowController` over arrangements and placements, the three
-  lenses (`TabContentView`, `TilingView`, `ListLensView` in an
-  `ArrangementView`), the desk in the sidebar, the finder, collection,
-  the history view, and the lenses: terminal, editor (`TextView`),
-  preview, directory, web.
+  `MainWindowController` over arrangements and placements, the surface
+  (`ColumnsView`), the sidebar, the finder, collection, the history
+  view, and the lenses: terminal, editor (`TextView`), preview,
+  directory, web.
 
 - Remote hosts (§8.1): providers, the bootstrap, the bridge, `Hosts` in
   the app over any number of `HostClient`s; Linux servers from the static
@@ -652,11 +651,19 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   the core (`Mention.find`) and kept as links by the host (`Mentions`);
   the sidebar's chooser, filter and `OrganizationView` over `OrgNode`
   trees built by the controller; `HoverCard`.
-- The foot of a block (§3.5): `FootView` under each sheet in the stacks
-  lens, shown as the pointer nears the bottom, bunches per edge kind
-  dealt out on hover; Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail;
-  the finder ranked by graph distance; `NeighborhoodView` (⌥⌘N), the
-  neighborhood to distance 2 in graph form, walked by re-centering.
+- The neighborhood (§3.5): Links in the sidebar, following the focus,
+  from the same bunches per edge kind (`footBunches`); Go Back and Go
+  Forward (⌃⌘[ ⌃⌘]) walk the trail; the finder ranked by graph
+  distance; `NeighborhoodView`, the neighborhood to distance 2 in graph
+  form, walked by re-centering, from the palette.
+- The surface, simplified (§3.1, milestones 14–16): `shown` per column
+  in `ArrangementState`, kept by `Focus`; `ColumnsView`, one block per
+  column, dividers, a grab band, drops; ⌘[ ⌘] walk a column's past;
+  `show(_:lens:_:)` in the controller, the one open rule, with
+  `showing(_:lens:inColumn:)` and `showing(_:lens:inNewColumnAt:)` in
+  the core; the sidebar as spine: `OrganizationView` for every
+  organization including the desk (`deskTree`), rows that drag and take
+  drops (`OrgDragItem`), New and ⋯ in its header, pinned by default.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own
