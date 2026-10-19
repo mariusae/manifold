@@ -126,9 +126,12 @@ final class StateView: NSView {
         case .list:
             for item in items {
                 let block = item.shown.placement.block
-                pills[block]?.frame = NSRect(x: m, y: y, width: width - 2 * m, height: GridView.band)
-                item.view.frame = NSRect(x: m, y: y + GridView.band, width: width - 2 * m, height: Self.listHeight)
-                y += GridView.band + Self.listHeight + m
+                item.view.frame = NSRect(x: m, y: y, width: width - 2 * m, height: Self.listHeight)
+                if let pill = pills[block] {
+                    pill.frame = NSRect(x: m, y: y, width: width - 2 * m, height: GridView.band)
+                    document.addSubview(pill, positioned: .above, relativeTo: item.view)
+                }
+                y += Self.listHeight + m
             }
         case .overview:
             let columns = max(1, Int((width - m) / (Self.cellWidth + m)))
@@ -137,8 +140,11 @@ final class StateView: NSView {
                 let block = item.shown.placement.block
                 let x = m + CGFloat(i % columns) * (cw + m)
                 let top = m + CGFloat(i / columns) * (Self.cellHeight + m)
-                pills[block]?.frame = NSRect(x: x, y: top, width: cw, height: GridView.band)
-                item.view.frame = NSRect(x: x, y: top + GridView.band, width: cw, height: Self.cellHeight - GridView.band)
+                item.view.frame = NSRect(x: x, y: top, width: cw, height: Self.cellHeight)
+                if let pill = pills[block] {
+                    pill.frame = NSRect(x: x, y: top, width: cw, height: GridView.band)
+                    document.addSubview(pill, positioned: .above, relativeTo: item.view)
+                }
                 y = max(y, top + Self.cellHeight + m)
             }
         }

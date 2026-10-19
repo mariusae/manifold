@@ -21,9 +21,9 @@ protocol GridDelegate: AnyObject {
 
 /// The surface (DESIGN.md §3.1): the arrangement as a grid, columns side
 /// by side and each column's tiles top to bottom, every tile a block, all
-/// visible, as acme tiles its windows. Each tile wears a pill at its top
-/// to drag it by and to open its menu; the lines between tiles and
-/// columns resize them.
+/// visible, as acme tiles its windows. Each tile wears a pill floating
+/// over its top, centered, to drag it by and to open its menu; the lines
+/// between tiles and columns resize them.
 final class GridView: NSView, NSDraggingSource {
     struct Tile {
         var shown: Shown
@@ -41,8 +41,9 @@ final class GridView: NSView, NSDraggingSource {
     private let dropOverlay = DropOverlayView()
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool)?
 
-    /// The band at a tile's top that its pill sits in.
-    static let band: CGFloat = 34
+    /// The band at a tile's top that its pill floats in; the content runs
+    /// underneath it.
+    static let band: CGFloat = 32
     static let gap: CGFloat = 1
 
     var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
@@ -173,8 +174,11 @@ final class GridView: NSView, NSDraggingSource {
             let tiles = tileFrames(column: c, in: f)
             for (i, tile) in columns[c].enumerated() {
                 let r = tiles[i]
-                pills[tile.shown.id]?.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
-                tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.band))
+                tile.view.frame = r
+                if let pill = pills[tile.shown.id] {
+                    pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
+                    addSubview(pill, positioned: .above, relativeTo: tile.view)
+                }
                 if i > 0, rowIndex < rowDividers.count {
                     rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY - 2, width: r.width, height: Self.gap + 4)
                     rowIndex += 1
@@ -320,12 +324,13 @@ final class GridView: NSView, NSDraggingSource {
 }
 
 /// A tile's pill (§3.1), as Prism names the note at the top of its
-/// column: glass, with the block's symbol, its name and its status glyph.
-/// Dragged, it moves the tile; clicked, the tile's menu.
+/// column: a small glass capsule floating centered over the tile's top,
+/// the content running underneath, with the block's symbol, its name and
+/// its status glyph. Dragged, it moves the tile; clicked, the tile's
+/// menu. Only the capsule takes the mouse; around it, the tile does.
 final class TilePill: NSView {
     var onClick: (() -> Void)?
     var onDragStart: ((NSEvent) -> Void)?
-    private let ground = NSView()
     private let glass: NSView
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
@@ -334,7 +339,7 @@ final class TilePill: NSView {
     private var downAt: NSPoint?
     private var focused = false
 
-    static let height: CGFloat = 26
+    static let height: CGFloat = 24
 
     override init(frame: NSRect) {
         if #available(macOS 26, *) {
@@ -353,14 +358,14 @@ final class TilePill: NSView {
         }
         super.init(frame: frame)
         wantsLayer = true
-        ground.wantsLayer = true
-        ground.themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        addSubview(ground)
         glass.wantsLayer = true
-        glass.layer?.borderWidth = 1
+        // The ring follows the capsule: the layer's corners, not just the glass's.
+        glass.layer?.cornerRadius = Self.height / 2
+        glass.layer?.cornerCurve = .continuous
+        glass.layer?.borderWidth = 0.5
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
-        name.font = .systemFont(ofSize: 12.5, weight: .medium)
+        name.font = .systemFont(ofSize: 11.5, weight: .medium)
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         dirty.wantsLayer = true
@@ -387,28 +392,35 @@ final class TilePill: NSView {
 
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.55) : Theme.cardBorder).cgColor
+            glass.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.5) : Theme.cardBorder).cgColor
         }
-        name.font = .systemFont(ofSize: 12.5, weight: focused ? .semibold : .medium)
+        name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
+        name.textColor = focused ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
+        alphaValue = focused ? 1 : 0.88
     }
 
     /// As wide as its name wants, within the tile.
     private var pillWidth: CGFloat {
         let text = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width)
-        var w = 10 + 16 + 6 + text + 12
+        var w = 10 + 16 + 6 + text + 6 + 12
         if !glyph.isHidden { w += StatusGlyph.size + 6 }
         if !dirty.isHidden { w += 12 }
-        return min(max(w, 60), bounds.width - 16)
+        return min(max(w, 60), bounds.width - 24)
+    }
+
+    /// Only the capsule is the pill; the rest is the tile beneath.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        return glass.frame.contains(p) ? self : nil
     }
 
     override func layout() {
         super.layout()
-        ground.frame = bounds
         let h = Self.height
         let w = pillWidth
         let y = ((bounds.height - h) / 2).rounded()
-        glass.frame = NSRect(x: 8, y: y, width: w, height: h)
+        glass.frame = NSRect(x: ((bounds.width - w) / 2).rounded(), y: y, width: w, height: h)
         var x = glass.frame.minX + 10
         icon.frame = NSRect(x: x, y: y + (h - 14) / 2, width: 16, height: 14)
         x += 22
@@ -421,7 +433,7 @@ final class TilePill: NSView {
             dirty.frame = NSRect(x: right - 6, y: y + (h - 6) / 2, width: 6, height: 6)
             right -= 12
         }
-        name.frame = NSRect(x: x, y: y + ((h - 17) / 2).rounded(), width: max(0, right - x), height: 17)
+        name.frame = NSRect(x: x - 2, y: y + ((h - 17) / 2).rounded(), width: max(0, right - x + 4), height: 17)
     }
 
     override func resetCursorRects() { addCursorRect(glass.frame, cursor: .openHand) }
