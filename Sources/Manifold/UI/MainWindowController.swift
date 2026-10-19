@@ -880,7 +880,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⇧⌘N: a note on the focused block's host, at home in its folder.
     @objc func newNote(_ sender: Any?) {
         let client = hosts.client(focusedHost) ?? host
-        show(client.newNote(home: focusedCwd), lens: .editor, .beside)
+        show(client.newNote(home: focusedCwd), lens: .editor, .here)
     }
 
     /// Open Folder…: a folder chosen, browsed beside the focused block.
@@ -894,14 +894,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let cwd = focusedCwd { panel.directoryURL = URL(fileURLWithPath: cwd) }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }
-            self.show(self.host.directoryBlock(for: url.path), lens: .directory, .beside)
+            self.show(self.host.directoryBlock(for: url.path), lens: .directory, .here)
         }
     }
 
     /// Browse This Folder: the focused block's folder, beside it.
     @objc func browseFocusedFolder(_ sender: Any?) {
         guard let cwd = focusedCwd, let client = hosts.client(focusedHost) else { return NSSound.beep() }
-        show(client.directoryBlock(for: cwd), lens: .directory, .beside)
+        show(client.directoryBlock(for: cwd), lens: .directory, .here)
     }
 
     /// ⌘W: the focused block leaves its column, which shows what it showed
@@ -1916,7 +1916,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let client = hosts.client(on) else { return }
         let block = client.newSearch(SearchQuery(text: text, root: root))
-        show(block, lens: .search, .beside)
+        show(block, lens: .search, .here)
     }
 
     /// New Agent: a terminal running the agent command (the settings'),
@@ -1925,13 +1925,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = focusedHost
         guard let client = hosts.client(on) else { return }
         let block = client.newAgent(cwd: focusedCwd, command: desk.settings.agentCommand)
-        show(block, lens: .agent, .beside)
+        show(block, lens: .agent, .here)
     }
 
     /// Processes: the focused block's host's process list, beside it.
     @objc func showProcesses(_ sender: Any?) {
         guard let client = hosts.client(focusedHost) else { return }
-        show(client.processBlock(), lens: .process, .beside)
+        show(client.processBlock(), lens: .process, .here)
     }
 
     /// Git for This Project: the git block for the repository the focused
@@ -1941,7 +1941,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let client = hosts.client(on) else { return }
         let path = focusedCwd ?? NSHomeDirectory()
         let block = client.gitBlock(for: path)
-        show(block, lens: .git, .beside)
+        show(block, lens: .git, .here)
     }
 
     /// Compare with Last Commit: the focused file against HEAD, beside it.
@@ -2276,7 +2276,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
                 : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
-            show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .beside)
+            show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
                 placed.append(p.id)
             }
