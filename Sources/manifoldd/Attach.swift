@@ -43,10 +43,16 @@ enum Attach {
             case .data:
                 writeAll(1, frame.payload)
             case .replayDone:
-                // The replay can contain queries the terminal has now answered;
-                // those answers aren't for the shell, so drop input a moment
-                // longer.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { acceptInput = true }
+                // A replay no one has seen yet is live output (a shell just
+                // started, its queries waiting for answers): input goes
+                // through at once. One seen before holds queries the
+                // terminal answers again now; those answers aren't for the
+                // shell, so input waits a moment longer.
+                if frame.payload.first == 1 {
+                    acceptInput = true
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { acceptInput = true }
+                }
             default:
                 break
             }

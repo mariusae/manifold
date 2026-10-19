@@ -63,7 +63,7 @@ final class Session {
         if command == nil {
             switch shell.lastPathComponent {
             case "fish":
-                args.append(contentsOf: ["-C", "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end"])
+                args.append(contentsOf: ["-C", Session.fishStartup])
             case "bash":
                 if let rc = Session.bashLayer() { args = [shell.lastPathComponent, "--rcfile", rc] }
             default: break
@@ -128,11 +128,17 @@ final class Session {
     /// program isn't left drawing for a pane that is gone.
     private var sizes: [ObjectIdentifier: (cols: UInt16, rows: UInt16)] = [:]
 
+    /// Whether any attachment has seen the output so far: until one
+    /// has, the replay is live — a shell's startup queries, say, whose
+    /// answers it is still waiting for — and the attachment is told so.
+    private var replayShown = false
+
     func attach(_ conn: Connection, cols: UInt16, rows: UInt16) {
         attachments.append(conn)
         sizes[ObjectIdentifier(conn)] = (cols, rows)
         conn.send(Frame(.data, replay.replay))
-        conn.send(Frame(.replayDone))
+        conn.send(Frame(.replayDone, Data([replayShown ? 0 : 1])))
+        replayShown = true
         resize(cols: cols, rows: rows)
     }
 
@@ -196,6 +202,7 @@ final class Session {
         replay.append(data)
         unsaved = true
         if let title = titles.feed(data) { onTitle?(title) }
+        if !attachments.isEmpty { replayShown = true }
         let signals = statuses.feed(data)
         // A program asking whether 7501 is spoken is answered at once,
         // here, on its own input — ahead of the client's reply to any
@@ -367,6 +374,16 @@ final class Session {
         } catch {
             return nil
         }
+    }
+
+    /// What fish runs after its configuration: $MANIFOLD_BIN's folders
+    /// first on the PATH, in their order.
+    static let fishStartup = "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end"
+
+    /// The startup arguments Manifold gives a shell, as `ps` shows them,
+    /// so a listing can leave them out: they are Manifold's, not yours.
+    static var startupArguments: [String] {
+        [" -C " + fishStartup, " --rcfile " + Paths.directory.appendingPathComponent("bash/rc").path]
     }
 
     /// bash's rc file, written fresh: it sources the profile files a login

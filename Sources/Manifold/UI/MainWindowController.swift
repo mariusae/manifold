@@ -1175,12 +1175,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Focuses a tile of the selected arrangement.
     func focus(_ placement: PlacementID) {
-        guard let a = arrangement, a.placement(placement) != nil, a.focused != placement else { return }
-        // Gone to while another tile is maximized: that gives way, so the
-        // tile gone to shows.
-        var events: [Event] = [.focus(placement)]
+        guard let a = arrangement, a.placement(placement) != nil, a.focused != placement || a.isStashed(placement) else { return }
+        appendToSelected(revealing(placement, in: a))
+    }
+
+    /// What brings a tile into view and focus: a maximized other tile
+    /// gives way, a stashed one comes back (as its tile's lower half),
+    /// and it is focused.
+    private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] {
+        var events: [Event] = a.isStashed(placement) ? a.unstashing(placement) : [.focus(placement)]
         if let full = a.full, full != placement { events.insert(.full(nil), at: 0) }
-        appendToSelected(events)
+        return events
     }
 
     /// Grow (acme's colgrow): the focused tile takes a step from its
@@ -2015,7 +2020,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
                 hosts.select(arr)
-                hosts.append(.focus(t.id), to: .block(arr))
+                hosts.append(revealing(t.id, in: a), to: .block(arr))
                 return
             }
         }

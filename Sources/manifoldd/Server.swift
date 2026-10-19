@@ -492,11 +492,15 @@ final class Server {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
             var all: [Int32: ProcessEntry] = [:]
+            let ours = Session.startupArguments
             for line in String(decoding: out, as: UTF8.self).split(separator: "\n") {
                 let f = line.split(separator: " ", maxSplits: 5, omittingEmptySubsequences: true)
                 guard f.count >= 6, let pid = Int32(f[0]), let ppid = Int32(f[1]) else { continue }
+                // A shell's startup arguments are Manifold's, not yours: left out.
+                var command = String(f[5])
+                for arg in ours { command = command.replacingOccurrences(of: arg, with: "") }
                 all[pid] = ProcessEntry(pid: pid, parent: ppid, user: String(f[2]), cpu: Double(f[3]) ?? 0,
-                                        memory: Int64(f[4]) ?? 0, command: String(f[5]))
+                                        memory: Int64(f[4]) ?? 0, command: command)
             }
             var children: [Int32: [Int32]] = [:]
             for e in all.values { children[e.parent, default: []].append(e.pid) }
