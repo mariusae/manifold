@@ -302,6 +302,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     /// As a click (or ⌘-click, or double-click) on a row would do.
+    func debugExpand(row: Int) -> String {
+        guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
+        outline.expandItem(node)
+        return "expanded"
+    }
+
     func debugClick(row: Int, command: Bool, double: Bool) -> String {
         guard row >= 0, row < outline.numberOfRows, let node = outline.item(atRow: row) as? OrgNode else { return "no such row" }
         if double {

@@ -230,7 +230,10 @@ when you find it again.
   blocks keep the texts they compared in their logs, so they're records.
 - **The sidebar organizes the same graph five ways** (View ▸ Organize
   By, ⌥⌘1–5): **Desk** — the workspaces, as before; **Files** — every
-  block with a path under its folders, across hosts, as a sparse tree
+  block with a path under its folders — and every block that is *at* a
+  folder, under it by its title: a terminal in its working directory
+  (moving as it moves), a note at home there, a patch against it —
+  across hosts, as a sparse tree
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;

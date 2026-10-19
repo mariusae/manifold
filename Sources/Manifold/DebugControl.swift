@@ -203,7 +203,8 @@ enum DebugControl {
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
-            return "usage: org rows | org click <row> [cmd|double]"
+            if a.first == "expand", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row) }
+            return "usage: org rows | org click <row> [cmd|double] | org expand <row>"
         case "run":
             // "run <title prefix>": a palette item, by its title.
             return wc?.debugRunPaletteItem(arg) ?? "no window"

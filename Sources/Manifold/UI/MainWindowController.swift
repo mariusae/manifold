@@ -1483,6 +1483,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                detail: "", count: children.isEmpty ? nil : f.count, age: Self.age(f.latest), isGroup: true, children: children)
             }
             let edited = block?.text?.isDirty == true ? "edited" : ""
+            if f.isPlace, let block {
+                // At the folder, not a file in it: by its own title (a
+                // terminal whose title is only its folder says "Terminal").
+                let shown = block.displayTitle
+                let title = block.terminal != nil && (shown.hasPrefix("~") || shown.hasPrefix("/")) ? block.kind.defaultTitle : shown
+                if !filter.isEmpty, !matches(filter, [title, f.path]) { return nil }
+                let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block.kind, path: block.path),
+                                   detail: edited, age: Self.age(f.latest))
+                node.look = StatusGlyph.look(of: block)
+                return node
+            }
             return OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
                            detail: edited, age: Self.age(f.latest))
         }

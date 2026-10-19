@@ -616,6 +616,17 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     _ = node.append(.path("/Users/me/src/app/B.swift"), to: .block(a), at: stamp(60))
     #expect(g.edges(from: ui, kind: .contains).isEmpty)
     #expect(g.edges(from: repo, kind: .contains).map(\.to).contains(a))
+    // A terminal working in a folder is at it: under the folder, as a place
+    // (named by the app), and it moves with its working directory.
+    let term = BlockID(host: host)
+    _ = node.append(.create(kind: .terminal, title: nil, path: nil), to: .block(term), at: stamp(70))
+    _ = node.append(.cwd("/Users/me/src/app/Sources/UI"), to: .block(term), at: stamp(71))
+    var ui2 = g.fileTree(host: host, home: "/Users/me").first { $0.path == "/Users/me/src/app" }!.children.first { $0.path == "/Users/me/src/app/Sources/UI" }!
+    #expect(ui2.children.contains { $0.isPlace && $0.block == term && $0.name.isEmpty })
+    _ = node.append(.cwd("/Users/me"), to: .block(term), at: stamp(72))
+    ui2 = g.fileTree(host: host, home: "/Users/me").first { $0.path == "/Users/me/src/app" }!.children.first { $0.path == "/Users/me/src/app/Sources/UI" }!
+    #expect(!ui2.children.contains { $0.block == term })
+    #expect(g.fileTree(host: host, home: "/Users/me").first { $0.path == "/Users/me" }!.children.contains { $0.isPlace && $0.block == term })
 }
 
 @Test func mentionsAreFoundInText() {

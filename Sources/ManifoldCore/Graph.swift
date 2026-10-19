@@ -44,6 +44,11 @@ public struct FileNode: Equatable, Sendable {
     public var count: Int
     /// The latest a block here or beneath was seen or made.
     public var latest: Stamp?
+    /// A block that is *at* a folder rather than a file in it — a
+    /// terminal in its working directory, a note at home there, a patch
+    /// against it: shown under the folder by its own title (the tree
+    /// doesn't know titles; `name` is empty).
+    public var isPlace = false
 }
 
 public struct Edge: Hashable, Sendable {
@@ -118,6 +123,10 @@ public final class Graph {
     // Paths: for `contains`, and the file tree.
     private var pathOf: [BlockID: (path: String, kind: BlockKind)] = [:]
     private var atPath: [HostID: [String: [BlockID]]] = [:]
+    /// Where a block without a file is (§3.6): a terminal's working
+    /// directory, a note's home; by block, and by folder.
+    private var placeOf: [BlockID: String] = [:]
+    private var atPlace: [HostID: [String: [BlockID]]] = [:]
     private var createdOf: [BlockID: Stamp] = [:]
     private var lastSeen: [BlockID: Stamp] = [:]
 
@@ -163,6 +172,20 @@ public final class Graph {
         atPath[block.host, default: [:]][path, default: []].append(block)
     }
 
+    private func setPlace(_ block: BlockID, _ path: String?) {
+        if let old = placeOf[block] {
+            atPlace[block.host]?[old]?.removeAll { $0 == block }
+            placeOf.removeValue(forKey: block)
+        }
+        guard let path, path.hasPrefix("/") else { return }
+        let p = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        placeOf[block] = p
+        atPlace[block.host, default: [:]][p, default: []].append(block)
+    }
+
+    /// Where a block without a file is, if it said.
+    public func place(of block: BlockID) -> String? { placeOf[block] }
+
     private static func isFolderKind(_ kind: BlockKind) -> Bool { kind == .directory || kind == .git }
 
     /// The folder blocks holding a block, by its path's parent.
@@ -194,7 +217,8 @@ public final class Graph {
     /// folders that are blocks (a listing, a repository) keep their own.
     public func fileTree(host: HostID, home: String? = nil) -> [FileNode] {
         let paths = atPath[host] ?? [:]
-        guard !paths.isEmpty else { return [] }
+        let places = (atPlace[host] ?? [:]).filter { !$0.value.isEmpty }
+        guard !paths.isEmpty || !places.isEmpty else { return [] }
         let repos = Set(pathOf.filter { $0.key.host == host && $0.value.kind == .git }.map(\.value.path))
         func root(of path: String) -> String {
             if let r = repos.filter({ path == $0 || path.hasPrefix($0 + "/") }).max(by: { $0.count < $1.count }) { return r }
@@ -205,11 +229,13 @@ public final class Graph {
         final class Trie {
             var children: [String: Trie] = [:]
             var blocks: [BlockID] = []
+            /// Blocks at this folder (not files in it): shown by title.
+            var places: [BlockID] = []
             var path: String
             init(path: String) { self.path = path }
         }
         var roots: [String: Trie] = [:]
-        for (path, blocks) in paths {
+        func trie(at path: String) -> Trie {
             let r = root(of: path)
             let trie = roots[r] ?? { let t = Trie(path: r); roots[r] = t; return t }()
             var node = trie
@@ -220,8 +246,10 @@ public final class Graph {
                     node = child
                 }
             }
-            node.blocks += blocks
+            return node
         }
+        for (path, blocks) in paths { trie(at: path).blocks += blocks }
+        for (path, blocks) in places { trie(at: path).places += blocks }
         func build(_ t: Trie, name: String, root: Bool = false) -> FileNode {
             // A single folder beneath with nothing of its own: folded into
             // this one — but a root keeps its name, being what the tree
@@ -234,14 +262,20 @@ public final class Graph {
             }
             let folderBlock = node.blocks.first { pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false }
             let fileBlocks = node.blocks.filter { !(pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false) }
-            let isFolder = !node.children.isEmpty || folderBlock != nil
+            let isFolder = !node.children.isEmpty || folderBlock != nil || !node.places.isEmpty
             // Under a root, single folders fold too ("/" shows "tmp/scratch").
             var children = node.children.map { build($0.value, name: $0.key) }
-            // Files at this very path that aren't the folder itself (a file
-            // block and a listing can't share a path, but a note might).
+            // Blocks at this very folder that aren't the folder itself: a
+            // patch against it (a non-folder block with the folder's path),
+            // a terminal working here, a note at home here — each under the
+            // folder by its own title.
             for b in fileBlocks where isFolder {
-                children.append(FileNode(path: node.path, host: host, name: node.path.lastPathComponent, block: b, kind: pathOf[b]?.kind,
-                                         isFolder: false, children: [], count: 1, latest: seen(b)))
+                children.append(FileNode(path: node.path, host: host, name: "", block: b, kind: pathOf[b]?.kind,
+                                         isFolder: false, children: [], count: 1, latest: seen(b), isPlace: true))
+            }
+            for b in node.places where pathOf[b] == nil {
+                children.append(FileNode(path: node.path, host: host, name: "", block: b, kind: nil,
+                                         isFolder: false, children: [], count: 1, latest: seen(b), isPlace: true))
             }
             children.sort { a, b in
                 if a.isFolder != b.isFolder { return a.isFolder }
@@ -466,6 +500,11 @@ public final class Graph {
             setPath(id, path, kind: kind)
         case let (.block(id), .path(p)):
             if let kind = pathOf[id]?.kind ?? state.block?.kind { setPath(id, p, kind: kind) }
+            if p != nil { setPlace(id, nil) }
+        case let (.block(id), .cwd(c)):
+            // Where a terminal works, or a note is at home: its place, while
+            // it has no file of its own.
+            if pathOf[id] == nil { setPlace(id, c) }
         case let (.registry, .seen(ids, at)):
             for id in ids { lastSeen[id] = at }
         case let (.registry, .register(e)):
@@ -499,6 +538,7 @@ public final class Graph {
         byShard.removeValue(forKey: shard)
         if case .block(let id) = shard {
             if let (_, kind) = pathOf[id] { setPath(id, nil, kind: kind) }
+            setPlace(id, nil)
             createdOf.removeValue(forKey: id)
         }
         if stepShards.contains(shard) {
@@ -529,6 +569,9 @@ public final class Graph {
         case .block(let b):
             createdOf[b.id] = b.created
             setPath(b.id, b.path, kind: b.kind)
+            // Its place, from the state: a terminal's working directory, a
+            // note's home — when it has no file of its own.
+            setPlace(b.id, b.path == nil ? (b.terminal?.cwd ?? b.home) : nil)
             if let a = b.arrangement {
                 for p in a.placements where byID[p.id] == nil {
                     add(Edge(kind: .placed, from: b.id, to: p.block, at: p.placedAt ?? b.created, id: p.id, shard: shard))
@@ -550,7 +593,7 @@ public final class Graph {
     /// Everything again, from a node.
     public func rebuild(from node: Node) {
         out = [:]; inbound = [:]; byID = [:]; byShard = [:]; liveOut = [:]; liveIn = [:]
-        pathOf = [:]; atPath = [:]; createdOf = [:]; lastSeen = [:]
+        pathOf = [:]; atPath = [:]; placeOf = [:]; atPlace = [:]; createdOf = [:]; lastSeen = [:]
         steps = []; stepShards = []; stepIndex = [:]; stepIndexValid = true
         for (shard, r) in node.shards { load(shard, state: r.state, entries: r.entries) }
     }
