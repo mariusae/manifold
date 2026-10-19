@@ -93,7 +93,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.block(id)?.title == nil)
 }
 
-@Test func arrangementPlacesAndStacks() {
+@Test func arrangementColumnsShowOneAndKeepTheirPast() {
     var a = ArrangementState()
     let t1 = Placement(block: BlockID(), lens: .terminal)
     let t2 = Placement(block: BlockID(), lens: .terminal)
@@ -103,40 +103,57 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns.count == 2)
     #expect(a.fractions == [0.5, 0.5])
     #expect(a.focused == t2.id)
-    // Beside t1: onto the column to its right.
-    for ev in a.placing(e.block, lens: .editor, beside: t1.id, newPlacement: { e.id }) { a.apply(ev) }
+    // Here, in column 1: on the end of it, and shown; t2 joins the past.
+    for ev in a.showing(e.block, lens: .editor, inColumn: 1, newPlacement: { e.id }) { a.apply(ev) }
     #expect(a.columns[1].map(\.id) == [t2.id, e.id])
     #expect(a.visible.map(\.id) == [t1.id, e.id])
-    // Focusing t2 raises it in stacks.
+    #expect(a.step(inColumn: 1, offset: -1)?.id == t2.id)
+    #expect(a.step(inColumn: 1, offset: 1) == nil)
+    // Focusing a placement in the past shows it again; forward is e.
     a.apply(.focus(t2.id))
-    #expect(a.columns[1].last?.id == t2.id)
-    // Placing the same block again on that column raises rather than repeats.
-    let again = a.placing(e.block, lens: .editor, onColumn: 1, newPlacement: { "new" })
-    #expect(again == [.focus(e.id)])
-    a.apply(.remove(t2.id))
-    #expect(a.columns[1].map(\.id) == [e.id])
-    #expect(a.focused == e.id)
+    #expect(a.shown(in: 1)?.id == t2.id)
+    #expect(a.step(inColumn: 1, offset: 1)?.id == e.id)
+    // Showing a block shown anywhere focuses it rather than placing again;
+    // one in the column's past comes up.
+    #expect(a.showing(t1.block, lens: .terminal, inColumn: 1, newPlacement: { "new" }) == [.focus(t1.id)])
+    #expect(a.showing(e.block, lens: .editor, inColumn: 1, newPlacement: { "new" }) == [.focus(e.id)])
+    // Beside: a new column after column 0.
+    let n = Placement(block: BlockID(), lens: .preview)
+    for ev in a.showing(n.block, lens: .preview, inNewColumnAt: 1, newPlacement: { n.id }) { a.apply(ev) }
+    #expect(a.columns.count == 3)
+    #expect(a.visible.map(\.id) == [t1.id, n.id, t2.id])
+    #expect(a.focused == n.id)
+    // Removing what's shown shows what the column showed before it.
+    a.apply(.focus(e.id))
     a.apply(.remove(e.id))
-    #expect(a.columns.count == 1)
-    #expect(a.focused == t1.id)
-    a.apply(.layout(.tiling))
-    a.apply(.place(t2, column: 0, at: 0))
-    #expect(a.visible.count == 2, "tiling shows everything")
-    a.apply(.move(t2.id, column: 1, at: 0))
+    #expect(a.columns[2].map(\.id) == [t2.id])
+    #expect(a.focused == t2.id)
+    a.apply(.remove(t2.id))
     #expect(a.columns.count == 2)
+    #expect(a.focused == n.id)
+    // Layouts from older logs are read and ignored.
+    a.apply(.layout(.tiling))
+    a.apply(.heights([t1.id: 0.5]))
+    #expect(a.visible.count == 2)
     a.apply(.fractions([0.3, 0.7]))
     a.apply(.moveColumn(from: 1, to: 0))
-    #expect(a.columns[0].first?.id == t2.id)
+    #expect(a.columns[0].first?.id == n.id)
     #expect(a.fractions == [0.7, 0.3])
+    #expect(a.shown == [n.id, t1.id])
 }
 
-@Test func separatingColumns() {
-    var a = ArrangementState()
-    let p = (0..<3).map { _ in Placement(block: BlockID(), lens: .terminal) }
-    for (i, x) in p.enumerated() { a.apply(.place(x, column: i, at: 0)) }
-    a.apply(.focus(p[1].id))
-    let others = a.separated()
-    #expect(others.map { $0[0].id } == [p[0].id, p[2].id])
+@Test func anOlderArrangementDecodesWithItsTopsShown() throws {
+    // As saved before §3.1: a stack whose last entry was on top, with a
+    // layout and heights; no `shown`.
+    let b1 = BlockID(), b2 = BlockID()
+    let json = """
+    {"title":"work","columns":[[{"id":"p1","block":"\(b1)","lens":"terminal"},{"id":"p2","block":"\(b2)","lens":"editor"}]],
+     "fractions":[1],"focused":"p2","layout":"tiling","heights":{"p1":0.5}}
+    """
+    let a = try JSONDecoder().decode(ArrangementState.self, from: Data(json.utf8))
+    #expect(a.shown == ["p2"])
+    #expect(a.visible.map(\.id) == ["p2"])
+    #expect(a.step(inColumn: 0, offset: -1)?.id == "p1")
 }
 
 @Test func deskAndRegistry() {

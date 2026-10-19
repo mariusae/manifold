@@ -11,8 +11,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var host: HostClient { hosts.local }
     private let root = RootView()
     /// The arrangement shown; and the one it replaced, while it slides away.
-    private var content = ArrangementView()
-    private var outgoing = ArrangementView()
+    private var content = ColumnsView()
+    private var outgoing = ColumnsView()
     /// The arrangement `content` shows, and which way the next one to be
     /// shown slides in (1 from the right, -1 from the left), if it does.
     private var shownArrangement: BlockID?
@@ -85,10 +85,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         sidebar.delegate = self
         sidebar.organizationView.delegate = self
         for c in [content, outgoing] {
-            c.stacks.delegate = self
-            c.tiling.delegate = self
-            c.list.delegate = self
-            c.stacks.paneInfo = { [weak self] id in self?.shown(id) }
+            c.delegate = self
+            c.paneInfo = { [weak self] id in self?.shown(id) }
         }
         sidebar.isHidden = true
 
@@ -150,10 +148,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return nil
     }
 
-    private func columns(of a: ArrangementState) -> [[Shown]] {
-        a.columns.map { $0.map { Shown(placement: $0, block: hosts.block($0.block)) } }
-    }
-
     func render() {
         guard let window else { return }
         sidebar.pinned = pinned
@@ -168,7 +162,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if selected != shownArrangement {
-            if let dir = pendingSlide, shownArrangement != nil, selected != nil, switcher == nil { slide(from: dir) }
+            if let dir = pendingSlide, shownArrangement != nil, selected != nil { slide(from: dir) }
             shownArrangement = selected
         }
         pendingSlide = nil
@@ -177,11 +171,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if let a = arrangement {
-            let cols = columns(of: a).map { $0.filter { !recentlyClosed.contains($0.placement.block) } }
-            // The switcher has the placements' views while it's up.
-            if switcher == nil {
-                content.show(a, columns: cols, view: { [unowned self] in self.view(for: $0) })
+            // One block per column (§3.1): what each shows.
+            let cols = a.visible.filter { !recentlyClosed.contains($0.block) }.map { p -> ColumnsView.Column in
+                ColumnsView.Column(id: p.id, view: view(for: Shown(placement: p, block: hosts.block(p.block))))
             }
+            content.show(cols, fractions: a.fractions, focused: a.focused)
             window.title = title(of: a)
             if palette == nil, let focused = a.focused, let view = views[focused],
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
@@ -205,7 +199,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteSeen(force: false)
         noteEditing()
         checkOpenWaits()
-        content.stacks.refreshFeet()
         noteTrailFocus()
         refreshOrganization()
 
@@ -384,10 +377,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Placements unseen for a while leave unnamed arrangements, unless
-    /// their blocks are held (unsaved changes, a running job); terminals
-    /// stay (the host sees to their dormancy). An unnamed arrangement left
-    /// empty leaves the desk (§4).
+    /// A column's past is trimmed (§4): placements unseen for a while leave
+    /// unnamed arrangements, unless their blocks are held (unsaved changes,
+    /// a running job); terminals stay (the host sees to their dormancy).
+    /// What a column shows is never collected. An unnamed arrangement left
+    /// empty leaves the desk.
     private func collect() {
         let minutes = desk.settings.collectAfterMinutes
         var order = desk.order
@@ -395,7 +389,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let a = hosts.arrangement(id), !a.isNamed else { continue }
             if minutes > 0 {
                 let cutoff = Int64(Date().addingTimeInterval(-Double(minutes) * 60).timeIntervalSince1970 * 1000)
-                for p in a.placements where p.id != a.focused {
+                for p in a.placements where !a.visible.contains(where: { $0.id == p.id }) {
                     guard let block = hosts.block(p.block), block.kind != .terminal, !block.isHeld,
                           let seen = hosts.registryEntry(p.block)?.lastSeen, seen.wall < cutoff else { continue }
                     hosts.append(.remove(p.id), to: .block(id))
@@ -572,7 +566,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Debugging aids
 
-    func debugFoot(_ column: Int, bunch: Int?) -> String { content.stacks.debugFoot(column, bunch: bunch) }
     var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
     var debugFocusedMarkdown: MarkdownView? { focusedShown.flatMap { views[$0.id] as? MarkdownView } }
     var debugFocusedView: NSView? { focusedShown.flatMap { views[$0.id] } }
@@ -580,23 +573,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let v = debugFocusedView else { return nil }
         func find(_ v: NSView) -> WKWebView? { (v as? WKWebView) ?? v.subviews.lazy.compactMap(find).first }
         return find(v)
-    }
-
-    func debugPeek(_ column: Int) { content.stacks.debugPeek(column) }
-
-    /// Drives the switcher as ⌘E, E, and letting go of ⌘ would.
-    func debugSwitcher(_ step: String) -> String {
-        switch step {
-        case "show":
-            guard let a = arrangement, let f = a.focused, let c = a.columnIndex(of: f) else { return "no stack" }
-            showSwitcher(column: c, back: false)
-        case "next": switcher?.move(-1)
-        case "prev": switcher?.move(1)
-        case "commit": closeSwitcher(commit: true)
-        case "cancel": closeSwitcher(commit: false)
-        default: return "show, next, prev, commit or cancel"
-        }
-        return switcher.map { "choosing \($0.cards[$0.selection].pane.title)" + ($0.isClosing ? " (closing)" : "") } ?? "closed"
     }
 
     var debugFocusedPlacement: Shown? { focusedShown }
@@ -608,12 +584,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func debugDescribe() -> String {
-        var out = "selected \(selected.map(\.description) ?? "none") layout \(arrangement?.layout.rawValue ?? "-")\n"
+        var out = "selected \(selected.map(\.description) ?? "none")\n"
         if let a = arrangement {
             for (c, column) in a.columns.enumerated() {
                 out += "column \(c): " + column.map { p in
                     let b = hosts.block(p.block)
-                    return "\(p.lens.rawValue)=\(b?.displayTitle ?? "?")\(p.id == a.focused ? "*" : "")"
+                    let mark = p.id == a.focused ? "*" : (a.shown(in: c)?.id == p.id ? "!" : "")
+                    return "\(p.lens.rawValue)=\(b?.displayTitle ?? "?")\(mark)"
                 }.joined(separator: " | ") + "\n"
             }
         }
@@ -646,11 +623,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func paletteItems() -> [PaletteItem] {
         var items: [PaletteItem] = []
         if arrangement != nil {
-            items.append(PaletteItem(symbol: "square.stack", title: "New Terminal on This Stack", subtitle: "⌘N") { [weak self] in
-                self?.newSheet(nil)
-            })
-            items.append(PaletteItem(symbol: "rectangle.split.2x1", title: "New Terminal in a New Column", subtitle: "⌘D") { [weak self] in
-                self?.splitRight(nil)
+            items.append(PaletteItem(symbol: "rectangle.split.2x1", title: "New Terminal Beside", subtitle: "⌘N") { [weak self] in
+                self?.newTerminalBeside(nil)
             })
         }
         items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Arrangement", subtitle: "⌥⌘T") { [weak self] in
@@ -663,11 +637,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             items.append(PaletteItem(symbol: "pencil", title: "Name This Arrangement…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
             })
-            for layout in ArrangementLayout.allCases where layout != arrangement?.layout {
-                items.append(PaletteItem(symbol: Self.layoutSymbol(layout), title: "Show as \(Self.layoutTitle(layout))", subtitle: "Layout") { [weak self] in
-                    self?.setLayout(layout)
-                })
-            }
             items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This Arrangement", subtitle: "⌘Y") { [weak self] in
                 self?.showHistory(nil)
             })
@@ -723,7 +692,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
             guard let self else { return }
-            self.place(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, beside: self.focusedShown?.lens == .terminal ? self.focusedShown?.id : nil)
+            self.show(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
         })
         // The file shown, the other way: edit a preview's, preview an editor's.
         if let f = focusedShown, let path = f.path, let a = arrangement, let column = a.columnIndex(of: f.id) {
@@ -745,13 +714,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             _ = column
             if let dir = f.block?.place {
                 items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
-                    self?.openDirectory(dir, beside: f.id)
+                    self?.openDirectory(dir, from: f.id)
                 })
             }
         }
         if let f = focusedShown, f.lens == .terminal, let cwd = f.block?.terminal?.cwd {
             items.append(PaletteItem(symbol: "folder", title: "Show This Folder", subtitle: cwd.abbreviatingHome) { [weak self] in
-                self?.openDirectory(cwd, beside: f.id)
+                self?.openDirectory(cwd, from: f.id)
             })
         }
         // What's linked to the focused block, both ways (§6.2).
@@ -776,22 +745,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             })
         }
         return items
-    }
-
-    static func layoutTitle(_ l: ArrangementLayout) -> String {
-        switch l {
-        case .stacks: "Stacks"
-        case .tiling: "Tiles"
-        case .list: "a List"
-        }
-    }
-
-    static func layoutSymbol(_ l: ArrangementLayout) -> String {
-        switch l {
-        case .stacks: "square.stack"
-        case .tiling: "rectangle.grid.1x2"
-        case .list: "list.bullet"
-        }
     }
 
     // MARK: Commands
@@ -831,19 +784,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
     }
 
-    /// A new terminal on top of the focused column's stack.
-    @objc func newSheet(_ sender: Any?) {
+    /// ⌘N: a new terminal beside the focused block, in a new column
+    /// (§3.1), where the focused block is.
+    @objc func newTerminalBeside(_ sender: Any?) {
         guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
-        let c = a.focused.flatMap { a.columnIndex(of: $0) } ?? 0
         let t = hosts.newTerminal(on: focusedHost, cwd: focusedCwd)
-        appendToSelected([.place(Placement(block: t, lens: .terminal), column: c, at: a.columns[c].count)])
-    }
-
-    @objc func splitRight(_ sender: Any?) {
-        guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
-        let i = a.focused.flatMap { a.columnIndex(of: $0) } ?? a.columns.count - 1
-        let t = hosts.newTerminal(on: focusedHost, cwd: focusedCwd)
-        placeInNewColumn(t, lens: .terminal, at: i + 1)
+        show(t, lens: .terminal, .beside)
     }
 
     /// Moves a whole column to another index.
@@ -852,16 +798,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         appendToSelected([.moveColumn(from: from, to: to)])
     }
 
+    /// ⇧⌘N: a new note beside the focused block.
     @objc func newNote(_ sender: Any?) {
-        let note = host.newNote()
-        let a = arrangementForPlacing()
-        guard let state = hosts.arrangement(a) else { return }
-        let column = state.focused.flatMap { state.columnIndex(of: $0) } ?? state.columns.count
-        hosts.append(.place(Placement(block: note, lens: .editor), column: column, at: column < state.columns.count ? state.columns[column].count : 0), to: .block(a))
+        show(host.newNote(), lens: .editor, .beside)
     }
 
-    /// ⌘W: the focused placement leaves the arrangement (its block stays,
-    /// to be found again); an unnamed arrangement left empty leaves the desk.
+    /// ⌘W: the focused block leaves its column, which shows what it showed
+    /// before (its block stays, to be found again); an unnamed arrangement
+    /// left empty leaves the desk.
     @objc func closePaneOrTab(_ sender: Any?) {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
@@ -890,25 +834,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func renameTab(_ sender: Any?) {
         if let id = selected { rename(id) }
-    }
-
-    /// Separate Columns: each other column becomes an arrangement of its own.
-    @objc func unsplitTab(_ sender: Any?) {
-        guard let id = selected, let a = hosts.arrangement(id), a.columns.count > 1 else { return }
-        var after = id
-        for column in a.separated() {
-            let n = host.newArrangement(select: false, after: after)
-            hosts.append(.adopt(columns: [column], at: 0), to: .block(n))
-            hosts.append(column.map { .remove($0.id) }, to: .block(id))
-            after = n
-        }
-    }
-
-    @objc func movePaneToNewTab(_ sender: Any?) {
-        guard let id = selected, let a = hosts.arrangement(id), let f = a.focused, let p = a.placement(f) else { return }
-        let n = host.newArrangement(after: id)
-        hosts.append(.remove(f), to: .block(id))
-        hosts.append(.place(Placement(block: p.block, lens: p.lens), column: 0, at: 0), to: .block(n))
     }
 
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
@@ -941,15 +866,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         host.setAppearance(a)
     }
 
-    @objc func setLayoutStacks(_ sender: Any?) { setLayout(.stacks) }
-    @objc func setLayoutTiling(_ sender: Any?) { setLayout(.tiling) }
-    @objc func setLayoutList(_ sender: Any?) { setLayout(.list) }
-
-    func setLayout(_ layout: ArrangementLayout) {
-        guard let a = arrangement, a.layout != layout else { return }
-        appendToSelected([.layout(layout)])
-    }
-
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(setCollectAfter(_:)):
@@ -975,12 +891,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = (item.representedObject as? String) == desk.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(togglePinnedSidebar(_:)):
             item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
-        case #selector(setLayoutStacks(_:)):
-            item.state = arrangement?.layout == .stacks ? .on : .off
-        case #selector(setLayoutTiling(_:)):
-            item.state = arrangement?.layout == .tiling ? .on : .off
-        case #selector(setLayoutList(_:)):
-            item.state = arrangement?.layout == .list ? .on : .off
+        case #selector(columnBack(_:)):
+            return arrangement.flatMap { a in a.focusedColumn.flatMap { a.step(inColumn: $0, offset: -1) } } != nil
+        case #selector(columnForward(_:)):
+            return arrangement.flatMap { a in a.focusedColumn.flatMap { a.step(inColumn: $0, offset: 1) } } != nil
         default:
             break
         }
@@ -1106,94 +1020,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if i < order.count { host.select(order[i]) }
     }
 
-    // MARK: The stack switcher
+    // MARK: A column's past (§3.1)
 
-    private var switcher: StackSwitcherView?
-    private var switcherMonitors: [Any] = []
+    /// ⌘[: what the focused column showed before this.
+    @objc func columnBack(_ sender: Any?) { stepColumn(-1) }
+    /// ⌘]: forward again.
+    @objc func columnForward(_ sender: Any?) { stepColumn(1) }
 
-    /// ⌘E: with ⌘ held, the focused stack's sheets as a file of cards, the
-    /// one beneath the top chosen; more E's choose further down (⇧E back
-    /// up), and letting go of ⌘ raises the one chosen. Without ⌘ held (from
-    /// the menu, say), the bottom sheet comes straight to the top (going
-    /// back, the one beneath the top).
-    @objc func cycleStack(_ sender: Any?) {
-        cycleStack(back: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+    private func stepColumn(_ offset: Int) {
+        guard let a = arrangement, let c = a.focusedColumn, let p = a.step(inColumn: c, offset: offset) else { return }
+        appendToSelected([.focus(p.id)])
     }
 
-    /// ⇧⌘E: the same, the other way: up the stack, from the bottom.
-    @objc func cycleStackBack(_ sender: Any?) { cycleStack(back: true) }
-
-    private func cycleStack(back: Bool) {
-        if let switcher {
-            switcher.move(back ? 1 : -1)
-            return
-        }
-        guard let a = arrangement, let focused = a.focused, let c = a.columnIndex(of: focused),
-              a.columns[c].count > 1 else { return }
-        let column = a.columns[c]
-        guard NSEvent.modifierFlags.contains(.command), a.layout == .stacks else {
-            focus(back ? column[column.count - 2].id : column[0].id)
-            return
-        }
-        showSwitcher(column: c, back: back)
-    }
-
-    private func showSwitcher(column c: Int, back: Bool) {
-        guard palette == nil, let a = arrangement, c < a.columns.count, a.columns[c].count > 1,
-              let top = a.columns[c].last.flatMap({ views[$0.id] }) else { return }
-        let size = top.frame.size
-        let panes = a.columns[c].map { p -> (Shown, PaneContent) in
-            let s = Shown(placement: p, block: hosts.block(p.block))
-            return (s, view(for: s))
-        }
-        let s = StackSwitcherView(panes: panes, contentSize: size, selection: back ? 0 : panes.count - 2)
-        s.onPick = { [weak self] _ in self?.closeSwitcher(commit: true) }
-        // Over the column alone; the others carry on beside it.
-        s.frame = content.frame(ofColumn: c).map { content.convert($0, to: root) } ?? root.bounds
-        root.addSubview(s, positioned: .above, relativeTo: content)
-        switcher = s
-        s.layoutSubtreeIfNeeded()
-        s.present()
-        // Letting go of ⌘ chooses; Escape doesn't; nothing else gets typed.
-        switcherMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.command) { self?.closeSwitcher(commit: true) }
-            return event
-        } as Any)
-        switcherMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
-                self?.closeSwitcher(commit: false)
-                return nil
-            }
-            return event.modifierFlags.contains(.command) ? event : nil
-        } as Any)
-    }
-
-    private func closeSwitcher(commit: Bool) {
-        guard let s = switcher, !s.isClosing else { return }
-        switcherMonitors.forEach(NSEvent.removeMonitor)
-        switcherMonitors = []
-        let top = arrangement.flatMap { a in a.columns.first { $0.contains { $0.id == s.selectedPane } }?.last?.id }
-        let chosen = commit ? s.selectedPane : top ?? s.selectedPane
-        // The chosen sheet comes forward to fill the column, then is left
-        // there, as the top, for the log to confirm.
-        s.dismiss(to: chosen) { [weak self, weak s] in
-            guard let self, let s else { return }
-            self.switcher = nil
-            if chosen != top {
-                s.tearDown(keeping: chosen, in: self.content.stacks)
-                if let view = self.views[chosen] { self.content.stacks.arriveQuietly(view) }
-                s.removeFromSuperview()
-                self.focus(chosen)
-            } else {
-                s.tearDown()
-                s.removeFromSuperview()
-                self.render()
-            }
-        }
-    }
-
-    @objc func nextPane(_ sender: Any?) { stepPane(1) }
-    @objc func previousPane(_ sender: Any?) { stepPane(-1) }
+    @objc func nextColumn(_ sender: Any?) { stepPane(1) }
+    @objc func previousColumn(_ sender: Any?) { stepPane(-1) }
 
     private func stepPane(_ d: Int) {
         guard let a = arrangement, a.visible.count > 1 else { return }
@@ -1202,10 +1042,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         focus(visible[(i + d + visible.count) % visible.count].id)
     }
 
-    /// Focuses a placement of the selected arrangement (raising it, in stacks).
+    /// Focuses a placement of the selected arrangement (showing it, if it
+    /// is in its column's past).
     func focus(_ placement: PlacementID) {
         guard let a = arrangement, a.placement(placement) != nil else { return }
-        if a.focused == placement, a.layout != .stacks || a.columns.contains(where: { $0.last?.id == placement }) { return }
+        if a.focused == placement, a.visible.contains(where: { $0.id == placement }) { return }
         appendToSelected([.focus(placement)])
     }
 
@@ -1325,7 +1166,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let children = cards.map { card -> OrgNode in
                     let cid = "\(id)/\(card.block)"
                     let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
-                                       detail: card.detail + (card.at.map { " · " + FootView.ago($0) } ?? ""), age: Self.age(card.at))
+                                       detail: card.detail + (card.at.map { " · " + Age.ago($0) } ?? ""), age: Self.age(card.at))
                     node.loadChildren = { bunches(of: card.block, prefix: cid) }
                     return node
                 }
@@ -1529,7 +1370,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } else if let a = arrangement, let p = (step.placement.flatMap { a.placement($0) } ?? a.placements(of: step.block).first) {
             focus(p.id)
         } else {
-            place(step.block, lens: Lens.default(for: b.kind, path: b.path), beside: focusedShown?.id, context: "back along the trail")
+            show(step.block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "back along the trail")
         }
         render()
         lastTrailFocus = arrangement?.focused
@@ -1650,34 +1491,66 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Brings a block back: an arrangement onto the desk and selected; any
-    /// other beside the focused terminal, or on the focused stack.
+    /// other shown here, in the focused column.
     func recall(_ id: BlockID) {
         guard let block = hosts.block(id) else { return }
         if block.kind == .arrangement {
             host.select(id)
             return
         }
-        place(id, lens: Lens.default(for: block.kind, path: block.path), beside: focusedShown?.lens == .terminal ? focusedShown?.id : nil)
+        show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
     }
 
-    /// Places a block in the selected arrangement: beside a placement (on
-    /// the stack to its right, or a new column), or on the focused stack.
-    func place(_ block: BlockID, lens: Lens, beside: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
+    /// Where a block goes (§3.1): the only three places anything is put.
+    enum Where {
+        /// In the focused column; what it showed joins its past.
+        case here
+        /// In a column, as `here` there.
+        case inColumn(Int)
+        /// A new column to the right of the focused one.
+        case beside
+        /// Beside the placement that opened it: in the column to its right
+        /// if that column's block was opened from this one, else a new
+        /// column there. Links the two.
+        case besideOpener(PlacementID)
+    }
+
+    /// `besideOpener` when there is an opener, else `here`.
+    private func opener(_ placement: PlacementID?) -> Where {
+        placement.map { .besideOpener($0) } ?? .here
+    }
+
+    /// Shows a block in the selected arrangement, by the rules.
+    func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil) {
         let id = arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
-        let events = a.placing(block, lens: lens, beside: beside, newPlacement: { ULID.make() })
+        let fresh = { ULID.make() }
+        let events: [Event]
+        switch place {
+        case .here:
+            events = a.showing(block, lens: lens, inColumn: a.focusedColumn ?? a.columns.count, newPlacement: fresh)
+        case .inColumn(let c):
+            events = a.showing(block, lens: lens, inColumn: c, newPlacement: fresh)
+        case .beside:
+            events = a.showing(block, lens: lens, inNewColumnAt: (a.focusedColumn ?? a.columns.count - 1) + 1, newPlacement: fresh)
+        case .besideOpener(let p):
+            guard let c = a.columnIndex(of: p), let from = a.placement(p)?.block else {
+                return show(block, lens: lens, .beside, kind: kind, context: context)
+            }
+            let right = c + 1
+            // The column to the right is the opener's if what it shows was
+            // opened from the opener (any link between them says so).
+            let reuse = a.shown(in: right).map { shownRight in
+                shownRight.block == from || hosts.client(of: from)?.node.graph.edges(from: from).contains { $0.to == shownRight.block } == true
+            } ?? false
+            events = reuse ? a.showing(block, lens: lens, inColumn: right, newPlacement: fresh)
+                : a.showing(block, lens: lens, inNewColumnAt: right, newPlacement: fresh)
+            hosts.link(from: from, to: block, kind: kind, context: context)
+        }
         hosts.append(events, to: .block(id))
-        if let beside, let from = a.placement(beside)?.block { hosts.link(from: from, to: block, kind: kind, context: context) }
     }
 
-    func place(_ block: BlockID, lens: Lens, onColumn column: Int) {
-        let id = arrangementForPlacing()
-        guard let a = hosts.arrangement(id) else { return }
-        hosts.append(a.placing(block, lens: lens, onColumn: column, newPlacement: { ULID.make() }), to: .block(id))
-    }
-
-    /// Opens a file to edit: from a terminal, on the stack beside it; from
-    /// a file, on its own stack.
+    /// Opens a file to edit: from a terminal, beside it; else here.
     func edit(_ path: String) {
         let on = focusedHost
         guard on != host.host || Self.isEditable(path) else {
@@ -1685,11 +1558,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         let block = hosts.textBlock(for: path, on: on)
-        if let f = focusedShown, f.lens != .terminal, let a = arrangement, let c = a.columnIndex(of: f.id) {
-            place(block, lens: .editor, onColumn: c)
-        } else {
-            place(block, lens: .editor, beside: focusedShown?.id)
-        }
+        show(block, lens: .editor, focusedShown?.lens == .terminal ? opener(focusedShown?.id) : .here)
     }
 
     /// Find in Files…: a search block on the focused block's host, under
@@ -1712,7 +1581,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let client = hosts.client(on) else { return }
         let block = client.newSearch(SearchQuery(text: text, root: root))
-        place(block, lens: .search, beside: focusedShown?.id)
+        show(block, lens: .search, .beside)
     }
 
     /// New Agent: a terminal running the agent command (the settings'),
@@ -1721,13 +1590,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = focusedHost
         guard let client = hosts.client(on) else { return }
         let block = client.newAgent(cwd: focusedCwd, command: desk.settings.agentCommand)
-        place(block, lens: .agent, beside: focusedShown?.id)
+        show(block, lens: .agent, .beside)
     }
 
     /// Processes: the focused block's host's process list, beside it.
     @objc func showProcesses(_ sender: Any?) {
         guard let client = hosts.client(focusedHost) else { return }
-        place(client.processBlock(), lens: .process, beside: focusedShown?.id)
+        show(client.processBlock(), lens: .process, .beside)
     }
 
     /// Git for This Project: the git block for the repository the focused
@@ -1737,7 +1606,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let client = hosts.client(on) else { return }
         let path = focusedCwd ?? NSHomeDirectory()
         let block = client.gitBlock(for: path)
-        place(block, lens: .git, beside: focusedShown?.id)
+        show(block, lens: .git, .beside)
     }
 
     /// Compare with Last Commit: the focused file against HEAD, beside it.
@@ -1746,21 +1615,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
               let client = hosts.client(f.placement.block.host) else { return }
         let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
         hosts.link(from: block, to: f.placement.block, kind: .source, context: "HEAD → working tree")
-        place(block, lens: .diff, beside: f.id, context: "Compare with Last Commit")
+        show(block, lens: .diff, .besideOpener(f.id), context: "Compare with Last Commit")
     }
 
-    /// Opens a file at a place (line and column from 1) beside a placement,
-    /// on the host the placement's block is on.
-    func open(path: String, line: Int, column: Int?, on: HostID, beside: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
+    /// Opens a file at a place (line and column from 1) beside the
+    /// placement that opened it, on the host the placement's block is on.
+    func open(path: String, line: Int, column: Int?, on: HostID, from: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
-        place(block, lens: .editor, beside: beside, kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
+        show(block, lens: .editor, opener(from), kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
     }
 
-    func openDirectory(_ path: String, beside: PlacementID?, context: String? = nil) {
-        let on = beside.flatMap { shown($0)?.placement.block.host } ?? focusedHost
+    func openDirectory(_ path: String, from: PlacementID?, context: String? = nil) {
+        let on = from.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
-        place(block, lens: .directory, beside: beside, context: context)
+        show(block, lens: .directory, opener(from), context: context)
     }
 
     /// A web page kept as a file, by its name.
@@ -1806,7 +1675,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .editor where Lens.isMarkdown(path): other = .preview
         default: return
         }
-        place(f.placement.block, lens: other, beside: f.id, kind: .source, context: other == .editor ? "edited beside" : "previewed beside")
+        show(f.placement.block, lens: other, .besideOpener(f.id), kind: .source, context: other == .editor ? "edited beside" : "previewed beside")
     }
 
     /// Opens what a link in a placement points at: Markdown files in a
@@ -1815,7 +1684,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func open(_ target: String, from placement: PlacementID?) {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
             if scheme == "http" || scheme == "https" {
-                place(host.newWeb(url: url.absoluteString), lens: .web, beside: placement, context: target)
+                show(host.newWeb(url: url.absoluteString), lens: .web, opener(placement), context: target)
             } else {
                 NSWorkspace.shared.open(url)
             }
@@ -1825,7 +1694,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
         if on != host.host {
             // Another host's file: it says what it is.
-            openRemote(target, on: on, base: base, beside: placement)
+            openRemote(target, on: on, base: base, from: placement)
             return
         }
         func resolve(_ text: String) -> String {
@@ -1848,20 +1717,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            place(hosts.textBlock(for: base, on: on), lens: .editor, beside: placement, context: target)
+            show(hosts.textBlock(for: base, on: on), lens: .editor, opener(placement), context: target)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         if isDir.boolValue {
-            openDirectory(path, beside: placement, context: target)
+            openDirectory(path, from: placement, context: target)
         } else if Lens.isMarkdown(path) {
-            place(hosts.textBlock(for: path, on: on), lens: .preview, beside: placement, context: target)
+            show(hosts.textBlock(for: path, on: on), lens: .preview, opener(placement), context: target)
         } else if Self.isHTML(path), on == host.host {
-            place(host.webBlock(forFile: path), lens: .web, beside: placement, context: target)
+            show(host.webBlock(forFile: path), lens: .web, opener(placement), context: target)
         } else if Self.isEditable(path) {
-            place(hosts.textBlock(for: path, on: on), lens: .editor, beside: placement, context: target)
+            show(hosts.textBlock(for: path, on: on), lens: .editor, opener(placement), context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: placement, context: target)
+            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, opener(placement), context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -1870,7 +1739,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Opens a path on another host, where it can't be looked at from
     /// here: a folder if it ends in a slash, Markdown by its name, else
     /// text; `path:line:column` as from this host.
-    private func openRemote(_ target: String, on: HostID, base: String?, beside: PlacementID?) {
+    private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?) {
         var text = target
         var line: Int?, column: Int?
         if let loc = FileLocation.split(target), loc.line != nil {
@@ -1881,12 +1750,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
-            place(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, beside: beside, context: target)
+            show(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, opener(from), context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            place(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, beside: beside, context: target)
+            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, opener(from), context: target)
         } else {
             if let line { pendingJump = (path, line, column) }
-            place(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, beside: beside, context: target)
+            show(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, opener(from), context: target)
         }
     }
 
@@ -1977,7 +1846,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
                 : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
-            place(block, lens: lens, beside: besidePlacement?.id)
+            show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .beside)
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
                 placed.append(p.id)
             }
@@ -2077,7 +1946,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.hideHistory()
             let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
             self.hosts.link(from: diff, to: block, kind: .source, context: "then → now")
-            self.place(diff, lens: .diff, beside: placement, context: "Compare with Now")
+            self.show(diff, lens: .diff, .besideOpener(placement), context: "Compare with Now")
         }
         historyOf = block
         hosts.propose(.history(.block(block)))
@@ -2119,12 +1988,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let current = hosts.arrangement(id) else { return }
         var events: [Event] = []
         for p in current.placements { events.append(.remove(p.id)) }
+        var ids: [PlacementID: PlacementID] = [:]
         for (c, column) in state.columns.enumerated() {
             for (i, p) in column.enumerated() {
-                events.append(.place(Placement(id: ULID.make(), block: p.block, lens: p.lens), column: c, at: i))
+                let id = ULID.make()
+                ids[p.id] = id
+                events.append(.place(Placement(id: id, block: p.block, lens: p.lens), column: c, at: i))
             }
         }
-        events.append(.layout(state.layout))
+        // Each column shows what it showed then, and the focus is as it was.
+        for c in state.columns.indices {
+            if let shown = state.shown(in: c), let id = ids[shown.id] { events.append(.focus(id)) }
+        }
+        if let f = state.focused, let id = ids[f] { events.append(.focus(id)) }
         if state.fractions.count == state.columns.count { events.append(.fractions(state.fractions)) }
         hosts.append(events, to: .block(id))
         if let moment, let history {
@@ -2175,11 +2051,6 @@ extension MainWindowController: SidebarDelegate {
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     func sidebarNewTab() { showPalette() }
-
-    func sidebarUnsplit(_ arrangement: BlockID) {
-        host.select(arrangement)
-        unsplitTab(nil)
-    }
 
     func sidebarMove(_ arrangement: BlockID, to index: Int) {
         var order = desk.order
@@ -2263,11 +2134,11 @@ extension MainWindowController: SidebarDelegate {
     }
 }
 
-extension MainWindowController: TabContentDelegate {
+extension MainWindowController: ColumnsDelegate {
     func contentCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
     /// Another arrangement dropped on this one: its columns come over.
-    func contentDrop(_ arrangement: BlockID, on target: TabContentView.DropTarget) {
+    func contentDrop(_ arrangement: BlockID, on target: ColumnsView.DropTarget) {
         guard let id = selected, let source = hosts.arrangement(arrangement), let a = hosts.arrangement(id) else {
             return host.select(arrangement)
         }
@@ -2275,7 +2146,7 @@ extension MainWindowController: TabContentDelegate {
         switch target {
         case .column(let index):
             hosts.append(.adopt(columns: source.columns, at: index), to: .block(id))
-        case .stack(let c):
+        case .into(let c):
             let placements = source.placements
             hosts.append(placements.enumerated().map { i, p in
                 .place(Placement(id: p.id, block: p.block, lens: p.lens), column: c, at: a.columns[c].count + i)
@@ -2285,15 +2156,8 @@ extension MainWindowController: TabContentDelegate {
         host.select(id)
     }
 
-    func contentRaise(_ placement: PlacementID) { focus(placement) }
-
-    /// The neighborhood at a placement's foot (§3.5): each edge kind and
-    /// direction that has anything, as a bunch of cards.
-    func contentFoot(for placement: PlacementID) -> [FootBunch] {
-        guard let p = shown(placement)?.placement else { return [] }
-        return footBunches(of: p.block)
-    }
-
+    /// A block's neighborhood (§3.5), each edge kind and direction that
+    /// has anything as a bunch of cards: what Links shows.
     func footBunches(of block: BlockID) -> [FootBunch] {
         let n = hosts.neighborhood(of: block)
         var bunches: [FootBunch] = []
@@ -2333,26 +2197,13 @@ extension MainWindowController: TabContentDelegate {
         return bunches
     }
 
-    /// A card at a foot: its block recalled beside the placement, or in a
-    /// column of its own; an arrangement is gone to.
-    func contentFootOpen(_ block: BlockID, beside placement: PlacementID, newColumn: Bool) {
-        guard let b = hosts.block(block) else { return }
-        if b.kind == .arrangement { return host.select(block) }
-        let lens = Lens.default(for: b.kind, path: b.path)
-        if newColumn, let a = arrangement, let c = a.columnIndex(of: placement) {
-            placeInNewColumn(block, lens: lens, at: c + 1)
-            if let from = shown(placement)?.placement.block { hosts.link(from: from, to: block, kind: .opened, context: "recalled") }
-        } else {
-            place(block, lens: lens, beside: placement, context: "recalled")
-        }
-    }
-
-    func contentMovePane(_ placement: PlacementID, to target: TabContentView.DropTarget) {
+    func contentMovePane(_ placement: PlacementID, to target: ColumnsView.DropTarget) {
         guard let a = arrangement else { return }
         switch target {
         case .column(let index):
             movePlacement(placement, toNewColumn: index, in: a)
-        case .stack(let c):
+        case .into(let c):
+            if a.columnIndex(of: placement) == c { return }
             appendToSelected([.move(placement, column: c, at: a.columns[c].count)])
         }
     }
@@ -2371,14 +2222,6 @@ extension MainWindowController: TabContentDelegate {
         reorderColumn(from: from, to: min(to, from))
     }
 
-    /// A new column at `index` holding `block`.
-    private func placeInNewColumn(_ block: BlockID, lens: Lens, at index: Int) {
-        guard let a = arrangement else { return }
-        let p = Placement(block: block, lens: lens)
-        appendToSelected([.place(p, column: a.columns.count, at: 0)])
-        if index < a.columns.count { reorderColumn(from: a.columns.count, to: index) }
-    }
-
     func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
     func contentDragAtLeftEdge() {
@@ -2388,35 +2231,6 @@ extension MainWindowController: TabContentDelegate {
     func contentResized(_ fractions: [Double]) {
         appendToSelected([.fractions(fractions)])
     }
-}
-
-extension MainWindowController: TilingDelegate {
-    func tilingFocus(_ placement: PlacementID) { focus(placement) }
-
-    func tilingMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool) {
-        guard let a = arrangement else { return }
-        if newColumn || column >= a.columns.count {
-            movePlacement(placement, toNewColumn: column, in: a)
-        } else {
-            appendToSelected([.move(placement, column: column, at: at)])
-        }
-    }
-
-    func tilingDropArrangement(_ arrangement: BlockID, column: Int) {
-        contentDrop(arrangement, on: .column(column))
-    }
-
-    func tilingCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
-    func tilingResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
-    func tilingResized(heights: [PlacementID: Double]) { appendToSelected([.heights(heights)]) }
-    func tilingDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
-    func tilingDragAtLeftEdge() { contentDragAtLeftEdge() }
-}
-
-extension MainWindowController: ListLensDelegate {
-    func listFocus(_ placement: PlacementID) { focus(placement) }
-    func listMove(_ placement: PlacementID, column: Int, at: Int) { appendToSelected([.move(placement, column: column, at: at)]) }
-    func listRemove(_ placement: PlacementID) { appendToSelected([.remove(placement)]) }
 }
 
 extension MainWindowController: EditorViewDelegate {
@@ -2453,10 +2267,12 @@ extension MainWindowController: EditorViewDelegate {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
+        // A definition is gone to here, in the editor's column: a thread
+        // followed, that ⌘[ comes back along.
         if let a = arrangement, let c = a.columnIndex(of: view.placement) {
-            place(block, lens: .editor, onColumn: c)
+            show(block, lens: .editor, .inColumn(c))
         } else {
-            place(block, lens: .editor, beside: view.placement)
+            show(block, lens: .editor, .here)
         }
     }
 
@@ -2489,7 +2305,8 @@ extension MainWindowController: MarkdownViewDelegate {
             if Lens.isMarkdown(path) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
                 hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
-                appendToSelected([.place(Placement(block: block, lens: .preview), column: c, at: a.columns[c].count)])
+                // Page to page, here, as a browser goes; ⌘[ comes back.
+                show(block, lens: .preview, .inColumn(c))
             } else {
                 open(path, from: view.placement)
             }
@@ -2510,10 +2327,9 @@ extension MainWindowController: DirectoryViewDelegate {
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
         if isDir.boolValue {
-            // A folder takes the listing's place.
-            guard let a = arrangement, let (c, i) = a.locate(view.placement) else { return }
-            let block = host.directoryBlock(for: path)
-            appendToSelected([.remove(view.placement), .place(Placement(block: block, lens: .directory), column: c, at: i)])
+            // A folder takes the listing's place, here; ⌘[ comes back up.
+            guard let a = arrangement, let c = a.columnIndex(of: view.placement) else { return }
+            show(host.directoryBlock(for: path), lens: .directory, .inColumn(c))
         } else {
             open(path, from: view.placement)
         }
@@ -2557,11 +2373,11 @@ extension MainWindowController: GitViewDelegate {
         case let .commit(_, sha): context = String(sha.prefix(7))
         case .versions: break
         }
-        place(block, lens: .diff, beside: view.placement, context: context)
+        show(block, lens: .diff, .besideOpener(view.placement), context: context)
     }
 
     func gitView(_ view: GitView, open path: String) {
-        open(path: path, line: 1, column: nil, on: view.block.host, beside: view.placement, context: path.lastPathComponent)
+        open(path: path, line: 1, column: nil, on: view.block.host, from: view.placement, context: path.lastPathComponent)
     }
 
     func gitViewRefresh(_ view: GitView) {
@@ -2571,7 +2387,7 @@ extension MainWindowController: GitViewDelegate {
 
 extension MainWindowController: DiffViewDelegate {
     func diffView(_ view: DiffView, open path: String, line: Int) {
-        open(path: path, line: line, column: nil, on: view.block.host, beside: view.placement, context: "\(path.lastPathComponent):\(line)")
+        open(path: path, line: line, column: nil, on: view.block.host, from: view.placement, context: "\(path.lastPathComponent):\(line)")
     }
 
     func diffViewReload(_ view: DiffView) {
@@ -2585,7 +2401,7 @@ extension MainWindowController: SearchViewDelegate {
     }
 
     func searchView(_ view: SearchView, open hit: SearchHit) {
-        open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, beside: view.placement,
+        open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, from: view.placement,
              kind: .found, context: hit.text.trimmingCharacters(in: .whitespaces))
     }
 
@@ -2669,20 +2485,14 @@ extension MainWindowController: OrganizationViewDelegate {
         HoverCard.shared.hide()
         guard let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return host.select(block) }
-        let lens = Lens.default(for: b.kind, path: b.path)
-        if newColumn, let a = arrangement {
-            let c = focusedShown.flatMap { a.columnIndex(of: $0.id) } ?? a.columns.count - 1
-            placeInNewColumn(block, lens: lens, at: c + 1)
-        } else {
-            place(block, lens: lens, beside: focusedShown?.id, context: "from the sidebar")
-        }
+        show(block, lens: Lens.default(for: b.kind, path: b.path), newColumn ? .beside : .here)
         if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
     }
 
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
         guard let node, let id = node.block, let b = hosts.block(id), let window else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
-        if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + FootView.ago(seen) }
+        if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }
         if id.host != host.host { detail += " · on \(id.host.raw)" }
         var body = ""
         var font: NSFont? = nil
@@ -2704,8 +2514,8 @@ extension MainWindowController: OrganizationViewDelegate {
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         guard let id = node.block else { return nil }
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Open Beside") { [weak self] in self?.organizationOpen(id, newColumn: false) })
-        menu.addItem(ClosureMenuItem("Open in a New Column") { [weak self] in self?.organizationOpen(id, newColumn: true) })
+        menu.addItem(ClosureMenuItem("Show Here") { [weak self] in self?.organizationOpen(id, newColumn: false) })
+        menu.addItem(ClosureMenuItem("Show Beside") { [weak self] in self?.organizationOpen(id, newColumn: true) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
             self?.linksCenter = id

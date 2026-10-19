@@ -769,7 +769,7 @@ final class Server {
         for b in node.blocks.sorted(by: { $0.created < $1.created }) {
             out += "\(b.id) \(b.kind) \"\(b.displayTitle)\""
             if let p = b.path { out += " \(p)" }
-            if let a = b.arrangement { out += " columns=\(a.columns.map(\.count)) layout=\(a.layout)" }
+            if let a = b.arrangement { out += " columns=\(a.columns.map(\.count)) shown=\(a.shown)" }
             if let t = b.text { out += " v\(t.version) clean\(t.cleanVersion)\(t.isDirty ? " dirty" : "")" }
             if let t = b.terminal { out += " cwd=\(t.cwd ?? "-")\(t.busy ? " busy" : "")\(t.dormantSince != nil ? " dormant" : "")" }
             out += "\n"

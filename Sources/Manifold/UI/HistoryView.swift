@@ -270,53 +270,33 @@ final class ArrangementDiagram: NSView {
         let usable = bounds.width - gap * CGFloat(n + 1)
         var x = gap
         let fractions = state.fractions.count == n ? state.fractions : Array(repeating: 1 / Double(n), count: n)
-        for (c, column) in state.columns.enumerated() {
+        for c in state.columns.indices {
             let w = usable * CGFloat(fractions[c])
             let rect = NSRect(x: x, y: gap, width: w, height: bounds.height - 2 * gap)
-            drawColumn(column, in: rect)
+            drawColumn(c, in: rect)
             x += w + gap
         }
     }
 
-    private func drawColumn(_ column: [Placement], in rect: NSRect) {
+    private func drawColumn(_ c: Int, in rect: NSRect) {
         let font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
-        if state.layout == .stacks {
-            // Beneath first, each a little higher and narrower, the top whole.
-            let beneath = Array(column.dropLast().suffix(3).reversed())
-            for (i, p) in beneath.enumerated().reversed() {
-                let inset = CGFloat(6 * (i + 1))
-                let y = rect.maxY - CGFloat(22 * (i + 1))
-                let r = NSRect(x: rect.minX + inset, y: y - 18, width: rect.width - 2 * inset, height: 18 + 22)
-                let path = NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5)
-                Theme.sheet(level: i).setFill()
-                path.fill()
-                Theme.sheetEdge(hovered: false).setStroke()
-                path.stroke()
-                let s = NSAttributedString(string: titleOf(p.block), attributes: [.font: font, .foregroundColor: Theme.secondaryText])
-                s.draw(in: NSRect(x: r.minX + 8, y: r.maxY - 18, width: r.width - 16, height: 16))
-            }
-            guard let top = column.last else { return }
-            let topY = rect.maxY - CGFloat(22 * beneath.count)
-            let r = NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: topY - rect.minY)
-            let path = NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5)
-            Theme.windowBackground.setFill()
-            path.fill()
-            Theme.sheetEdge(hovered: true).setStroke()
-            path.stroke()
-            drawTitle(top, in: r, font: font)
-        } else {
-            let h = (rect.height - CGFloat(column.count - 1) * 4) / CGFloat(max(column.count, 1))
-            var y = rect.maxY
-            for p in column {
-                let r = NSRect(x: rect.minX, y: y - h, width: rect.width, height: h)
-                let path = NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5)
-                Theme.windowBackground.setFill()
-                path.fill()
-                Theme.sheetEdge(hovered: false).setStroke()
-                path.stroke()
-                drawTitle(p, in: r, font: font)
-                y -= h + 4
-            }
+        guard let shown = state.shown(in: c) else { return }
+        let column = state.columns[c]
+        // The block shown, whole; its past as a note at the foot.
+        let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
+        Theme.windowBackground.setFill()
+        path.fill()
+        Theme.sheetEdge(hovered: true).setStroke()
+        path.stroke()
+        drawTitle(shown, in: rect, font: font)
+        let i = column.firstIndex { $0.id == shown.id } ?? column.count - 1
+        var notes: [String] = []
+        if i > 0 { notes.append("\(i) before") }
+        if i < column.count - 1 { notes.append("\(column.count - 1 - i) after") }
+        if !notes.isEmpty {
+            let s = NSAttributedString(string: notes.joined(separator: " · "),
+                                       attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText])
+            s.draw(in: NSRect(x: rect.minX + 8, y: rect.minY + 6, width: rect.width - 16, height: 15))
         }
     }
 

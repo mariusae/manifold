@@ -319,7 +319,7 @@ final class GraphCanvas: NSView {
             if focus != nil, near {
                 var words = e.label
                 if let c = e.context, !c.isEmpty { words += " · " + c }
-                if let at = e.at { words += " · " + FootView.ago(at) }
+                if let at = e.at { words += " · " + Age.ago(at) }
                 let text = NSAttributedString(string: String(words.prefix(60)), attributes: [.font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: Theme.text])
                 let size = text.size()
                 let mid = NSPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)

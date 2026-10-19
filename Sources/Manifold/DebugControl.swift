@@ -15,7 +15,7 @@ import ManifoldCore
 ///   contrast <mode>      set contrast correction (off, typical, deuteranopia)
 ///   focus                render as focused, without activating the app
 ///   open <target>        as if command-clicked in the focused terminal
-///   peek <column>        list what's beneath a column's top, as hovering does
+///   column back|forward  walk the focused column's past
 ///   click x y [count]    click (count times, as a multi-click) in the window
 ///   front                bring the window forward; print its screen rect
 ///   dragimage <path>     write the drag image for the focused pane
@@ -190,13 +190,9 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
-        case "foot":
-            // "foot <column> [bunch]": the column's foot, a bunch dealt out.
-            let a = arg.split(separator: " ").compactMap { Int($0) }
-            guard let wc, let column = a.first else { return "usage: foot <column> [bunch]" }
-            return wc.debugFoot(column, bunch: a.count > 1 ? a[1] : nil)
-        case "peek":
-            wc?.debugPeek(Int(arg) ?? 0)
+        case "column":
+            // "column back|forward": the focused column's past, walked.
+            if arg == "back" { wc?.columnBack(nil) } else if arg == "forward" { wc?.columnForward(nil) } else { return "usage: column back|forward" }
             return "ok"
         case "click":
             // "click x y [count]": a left click at window coordinates from the
@@ -224,7 +220,7 @@ enum DebugControl {
         case "dragimage":
             // Writes the image a dragged sheet shows, for the focused placement.
             guard let pane = wc?.debugFocusedPlacement else { return "no placement" }
-            let image = SheetDragImage.make(for: pane)
+            let image = BlockDragImage.make(for: pane)
             let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: arg))
             return "wrote \(arg)"
@@ -344,8 +340,6 @@ enum DebugControl {
             guard let id = BlockID(string: arg) else { return "usage: recall host/ulid" }
             wc?.recall(id)
             return "ok"
-        case "switcher":
-            return wc?.debugSwitcher(arg) ?? "no window"
         case "chain":
             // The responder chain from the first responder.
             var r: NSResponder? = wc?.window?.firstResponder

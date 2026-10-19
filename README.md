@@ -17,35 +17,36 @@ and Mona Sans (bundled).
   arrangements), and **New**. It slides away again when the mouse leaves.
   ⌃⌘S (or the button at its top right) shows or hides it for good; drag its
   right edge to resize it, and its top to move the window.
-- An **arrangement** is a row of columns of blocks. Shown as **stacks**
-  (the default), each column shows its top block, with the edges of the
-  ones beneath peeking out above it like a stack of paper: hover the edges
-  to list them, click one to raise it. Shown as **tiles** (Arrangement ▸
-  Show as Tiles, ⌃⌘2), every block in a column is visible, top to bottom,
-  each with a title bar to grab it by and lines between to resize. Shown
-  as a **list** (⌃⌘3), one row per block, with the chosen one beneath.
-  Switching lens changes nothing in the arrangement.
-- A new terminal goes on the focused column's stack (⌘N), in a new column
-  beside it (⌘D), or in a new arrangement (⌥⌘T), starting in the focused
-  block's directory. ⇧⌘N makes a note. ⌘T opens the palette, which offers
-  those first, then whatever is linked to the focused block, then the desk.
-- **⌘E** turns the focused stack into a file of cards, live: the top sheet
-  drops flat to the bottom and the one beneath it stands up in front. More
-  E's flip further down (⇧E back up; ⇧⌘E starts from the bottom), and
-  letting go of ⌘ brings the chosen one forward.
+- An **arrangement** is a row of columns, and a column shows **one
+  block** (DESIGN.md §3.1). What a column showed before is its past:
+  ⌘[ goes back to it, ⌘] forward again, and nothing of it is drawn.
+  ⌥⌘[ and ⌥⌘] move the focus between columns; drag the divider
+  between two to resize them.
+- Three rules say where anything goes, and nothing else does. A row
+  clicked in the sidebar, or chosen in the finder, shows **here**, in
+  the focused column (what was there joins its past). ⌘-click a row, or
+  make something new — a terminal (⌘N), a note (⇧⌘N), a search, an
+  agent — and it goes **beside**, in a new column to the right of the
+  focused one. Open something from inside a block — ⌘-click a path in a
+  terminal, follow a link in a preview, a search hit, a change in a git
+  block — and it goes **beside the opener**: into the column to its
+  right if what's there was opened from the same block, else a new
+  column there. Links from page to page in a preview, and definitions
+  from an editor, go here, in the same column, as a browser's do; ⌘[
+  comes back. ⌥⌘T starts a new arrangement with a terminal in it.
 - **⌃⇥** walks the arrangements most recently settled on first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
   arrangements too.
-- Drag a block by its top edge (a stack's edges, a tile's title bar, or a
-  buried one by its row in the list): onto a column's middle to push it
-  onto that stack, near a column's side for a new column there, onto an
-  arrangement in the sidebar for its focused stack, or between arrangements
-  for one of its own. Arrangements drag from the sidebar onto the window
-  the same way; Separate Columns splits one back up.
-- **⌘W** takes the focused block off its arrangement; **⇧⌘W** takes the
-  arrangement off the desk. Neither loses anything: the block, with its
-  history, is a ⌘O away. There is no Close.
+- Drag a block by the band along the top of its column: onto a column's
+  middle to show it there, near a column's side for a new column there,
+  onto an arrangement in the sidebar for its focused column, or between
+  arrangements for one of its own. Arrangements drag from the sidebar
+  onto the window the same way.
+- **⌘W** takes the focused block off its column, which shows what it
+  showed before; **⇧⌘W** takes the arrangement off the desk. Neither
+  loses anything: the block, with its history, is a ⌘O away. There is no
+  Close.
 
 ## Nothing is closed
 
@@ -60,21 +61,22 @@ when you find it again.
   from it. Then blocks by title and path, named
   arrangements, terminals by where they are, and the files under the
   focused block's folder, ranked by how well they match and how recently
-  they were seen. Choosing a block places it beside the focused terminal,
-  or on the focused stack; choosing an arrangement puts it on the desk.
+  they were seen. Choosing a block shows it here, in the focused column;
+  choosing an arrangement puts it on the desk.
   A typed URL opens as a web page.
 - **Naming keeps.** An unnamed arrangement is scratch: blocks unseen for an
-  hour leave it (View ▸ Tidy Unused Blocks Away sets how long), unless they
-  have unsaved changes or a running job, and terminals never do; emptied,
-  it leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)
+  hour leave its columns' pasts (View ▸ Tidy Unused Blocks Away sets how
+  long), unless they have unsaved changes or a running job, and terminals
+  never do; what a column shows is never tidied away; emptied, it leaves
+  the desk. Name one (⇧⌘R, or double-click it in the sidebar)
   and it's kept as it is until you change it. Named arrangements wear a
   bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
   shell for eight hours (View ▸ End Idle Shells) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
   transcript, with a line across it saying when the last one ended and
-  after how long idle, so it's never a surprise. The finder and the tiles'
-  title bars say *dormant* before you go to one.
+  after how long idle, so it's never a surprise. The finder says
+  *dormant* before you go to one.
 - **⌘Y** shows an arrangement's history: a slider through every change,
   the arrangement drawn as it was, and Restore, which appends what makes it
   so again (a new version, never a revert).
@@ -103,9 +105,9 @@ when you find it again.
   preview into an editor in place, or a Markdown editor back into a
   preview; ⌥⇧⌘P puts the other beside it, so you can type on the left
   and read on the right. A link followed in a preview opens another
-  Markdown file as a preview on top of the same stack (the one it came
-  from stays beneath, to go back to), a web address as a web block
-  beside, any other file as what it is, beside; `#anchors` scroll.
+  Markdown file as a preview in the same column (⌘[ goes back to the
+  one it came from), a web address as a web block beside, any other
+  file as what it is, beside; `#anchors` scroll.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   finder, a folder listing, a link in a preview, or the `manifold`
@@ -129,7 +131,7 @@ when you find it again.
   clangd and zls by default), the files that mark a workspace root, on or
   off; it's a setting on the desk, so every host runs the same.
 - **⌘-click** a file's name in a terminal to open it beside the terminal,
-  on the stack to its right: Markdown in a preview, folders in a listing,
+  in the column to its right: Markdown in a preview, folders in a listing,
   text to edit; `path:line:column` (as grep and compilers print it) goes to
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
@@ -163,29 +165,26 @@ when you find it again.
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;
   **Time** — blocks by the day they were last seen. A filter narrows any
-  of them. The rows work the same everywhere: click to recall beside
-  what's focused, ⌘-click for a column of its own, rest the pointer for a
+  of them. The rows work the same everywhere: click to show here, in the
+  focused column, ⌘-click for a column beside it, rest the pointer for a
   card, right-click for Links Around This. Links written in a text —
   `[[title]]`, `[words](file.md)` — become edges the moment they're
   typed, so the Links view shows a note's backlinks whether or not
   anyone followed them.
-- **The foot of a block** is its neighborhood in the graph of blocks
-  (DESIGN.md §3.5): bring the pointer near the bottom of a sheet and
-  capsules appear — *opened from · 3*, *opened here · 5*, *found by*,
-  *compared*, *also in* (other arrangements holding it), *before* and
-  *after* (what you went to around it, from the trail). Hover one and its
-  cards deal out, each with what made the link (the ⌘-clicked line, the
-  search hit, the editor line that named a definition) and when; click a
-  card to recall its block beside this one, ⌘-click for a column of its
-  own, or go to an arrangement. Window ▸ Go Back and Go Forward (⌃⌘[,
-  ⌃⌘]) walk the same trail: back to the block you were at before, in
-  whatever arrangement it was, and forward again. Window ▸ Show the
-  Neighborhood (⌥⌘N) draws the focused block's surroundings in graph
-  form, two steps out — what it's joined to on a ring around it, what
-  those are joined to beyond, edges by kind, with what made each shown
-  when a block is pointed at. Click a block to look around *it* instead
-  (Back returns), double-click or ⏎ to go there, arrow keys move, Space
-  re-centers, ⎋ closes.
+- **Links is a block's neighborhood** in the graph of blocks (DESIGN.md
+  §3.5), in the sidebar, following the focus: *opened here*, *found by*,
+  *compared*, *mentions*, *also in* (other arrangements holding it),
+  *before* and *after* (what you went to around it, from the trail), each
+  row with what made the link (the ⌘-clicked line, the search hit, the
+  editor line that named a definition) and when. Window ▸ Go Back and Go
+  Forward (⌃⌘[, ⌃⌘]) walk the trail across columns and arrangements:
+  back to the block you were at before, wherever it was, and forward
+  again. Show the Neighborhood Map, in the palette, draws the focused
+  block's surroundings in graph form, two steps out — what it's joined
+  to on a ring around it, what those are joined to beyond, edges by
+  kind, with what made each shown when a block is pointed at. Click a
+  block to look around *it* instead (Back returns), double-click or ⏎ to
+  go there, arrow keys move, Space re-centers, ⎋ closes.
 - **Every lens comes back as it was.** Each placement keeps its lens's
   state in the block's log — the editor's selection and scroll, a
   preview's scroll and selection, a web page's history and scroll, a
@@ -257,8 +256,8 @@ is migrated into logs on first run.
   Hosts are remembered in `hosts.json` and attached again at start. Linux
   servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
-  host, `manifoldd open --wait`): `git commit` and friends edit in a sheet
-  beside the terminal and return when it's taken off (⌘W).
+  host, `manifoldd open --wait`): `git commit` and friends edit beside
+  the terminal and return when it's taken off (⌘W).
 - **Retention** is tunable, in View ▸ Keep History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long

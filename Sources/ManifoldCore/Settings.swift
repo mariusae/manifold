@@ -4,13 +4,15 @@ import Foundation
 public struct WindowState: Codable, Equatable, Sendable {
     /// x, y, width, height in screen coordinates.
     public var frame: [Double]?
-    public var sidebarPinned = false
+    /// The sidebar is the spine of the window (§3.6): beside the surface
+    /// unless set to slide out over it.
+    public var sidebarPinned = true
     /// The sidebar's width, once it's been resized.
     public var sidebarWidth: Double?
     /// Which organization the sidebar shows (§3.6): desk, files, links, time.
     public var organization: String?
 
-    public init(frame: [Double]? = nil, sidebarPinned: Bool = false, sidebarWidth: Double? = nil) {
+    public init(frame: [Double]? = nil, sidebarPinned: Bool = true, sidebarWidth: Double? = nil) {
         self.frame = frame
         self.sidebarPinned = sidebarPinned
         self.sidebarWidth = sidebarWidth

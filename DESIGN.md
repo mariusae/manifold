@@ -139,16 +139,18 @@ browser cuts its forward history, since nothing is lost.
 |---|---|
 | click a row in the sidebar, choose in the finder (⌘O) | **here**: in the focused column, what was there joining its past |
 | ⌘-click a row, ⌘N a terminal, ⇧⌘N a note, New in the palette | **beside**: a new column to the right of the focused one |
-| open from inside a block — ⌘-click a path in a terminal, follow a link in a preview, a search hit, a mention, a definition | **beside the opener**: in the column to the opener's right if that column's block was opened from this one (the `opened` edge says so), else in a new column there |
+| open from inside a block — ⌘-click a path in a terminal, follow a link in a preview, a search hit, a change in a git block | **beside the opener**: in the column to the opener's right if that column's block was opened from this one (any link between them says so), else in a new column there |
+| follow a thread — page to page in a preview, a folder in a listing, a definition from an editor | **here**, in that column, as a browser goes; ⌘[ comes back |
 
 Dragging a block onto a column shows it there; between columns, a new
 column. Dragging a column reorders. A new column takes a share of the
 width from its neighbor; the divider sets widths, kept per arrangement.
 Columns may be as many as fit; they never collapse to strips.
 
-The arrangement's log holds `Place{placement, column, at}`, `Show{column,
-placement}` (walking the past), `Move`, `Remove`, `Focus`, `Fractions`,
-`MoveColumn` and `Title`. That is all the layout there is.
+The arrangement's log holds `Place{placement, column, at}`, `Move`,
+`Remove`, `Focus` (which shows: focusing a placement in a column's past
+brings it up, so walking the past is a focus), `Fractions`, `MoveColumn`
+and `Title`. That is all the layout there is.
 
 **Retired** (what was §3.1 until October 2026): the tiling and list
 lenses and their per-lens sizes, sheets beneath a stack and their
@@ -730,12 +732,12 @@ on their own:
 Then the surface, simplified (§3.1), which comes before the rest of
 these are built on it:
 
-14. **Columns of one.** `shown` per column in `ArrangementState` and
-    `Show` in the log; the stacks view draws one block per column and
-    nothing of the past; ⌘[ ⌘] and ⌘W walk it; tiling, the list lens,
-    strips, the stack list, ⌘E and the foot removed, their log entries
-    still decoded and ignored. Existing arrangements need no migration:
-    a stack's top is the shown entry.
+14. **Columns of one.** `shown` per column in `ArrangementState`, kept
+    by `Focus`; `ColumnsView` draws one block per column and nothing of
+    the past; ⌘[ ⌘] and ⌘W walk it; tiling, the list lens, strips, the
+    stack list, ⌘E and the foot removed, their log entries still decoded
+    and ignored. Existing arrangements need no migration: a stack's top
+    is the shown entry.
 15. **The one open rule.** `show(here:)`, `show(beside:)` and
     `show(besideOpener:)` as the only three ways anything is placed; the
     palette, finder, sidebar, terminals, previews, search, git, diff,

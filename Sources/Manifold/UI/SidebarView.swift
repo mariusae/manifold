@@ -5,7 +5,6 @@ protocol SidebarDelegate: AnyObject {
     func sidebarSelect(_ arrangement: BlockID)
     /// Takes an arrangement off the desk (it stays, to be found again).
     func sidebarRemove(_ arrangement: BlockID)
-    func sidebarUnsplit(_ arrangement: BlockID)
     func sidebarRename(_ arrangement: BlockID)
     func sidebarMove(_ arrangement: BlockID, to index: Int)
     func sidebarNewTab()
@@ -226,15 +225,11 @@ final class SidebarView: NSView {
     func rowClicked(_ id: BlockID) { delegate?.sidebarSelect(id) }
     func rowDoubleClicked(_ id: BlockID) { delegate?.sidebarRename(id) }
     func rowClose(_ id: BlockID) { delegate?.sidebarRemove(id) }
-    func rowUnsplit(_ id: BlockID) { delegate?.sidebarUnsplit(id) }
     func dragChanged(_ dragging: Bool) { delegate?.sidebarDragChanged(dragging) }
 
     func rowMenu(_ id: BlockID, split: Bool) -> NSMenu {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Name…") { [weak self] in self?.delegate?.sidebarRename(id) })
-        if split {
-            menu.addItem(ClosureMenuItem("Separate Columns") { [weak self] in self?.delegate?.sidebarUnsplit(id) })
-        }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Take Off the Desk") { [weak self] in self?.delegate?.sidebarRemove(id) })
         return menu
@@ -427,8 +422,6 @@ final class TabRowView: NSView, NSDraggingSource {
     private let badge = BadgeView()
     private let title = NSTextField(labelWithString: "")
     private lazy var closeButton = IconButton(symbol: "xmark", target: self, action: #selector(closeClicked))
-    private lazy var unsplitButton = IconButton(symbol: "arrow.trianglehead.branch", size: 11, weight: .medium,
-                                                target: self, action: #selector(unsplitClicked))
     private var selected = false
     private var paneCount = 1
     private var symbol = "apple.terminal"
@@ -457,13 +450,12 @@ final class TabRowView: NSView, NSDraggingSource {
         title.lineBreakMode = .byTruncatingTail
         title.cell?.truncatesLastVisibleLine = true
         closeButton.toolTip = "Take Off the Desk"
-        unsplitButton.toolTip = "Separate Columns"
         bookmark.image = Theme.symbol("bookmark.fill", size: 9)
         bookmark.contentTintColor = Theme.secondaryText
         editedDot.wantsLayer = true
         editedDot.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
         editedDot.layer?.cornerRadius = 3.5
-        for v in [icon, badge, title, unsplitButton, closeButton, editedDot, bookmark] { addSubview(v) }
+        for v in [icon, badge, title, closeButton, editedDot, bookmark] { addSubview(v) }
         themed { $0.updateAppearance() }
     }
 
@@ -496,8 +488,6 @@ final class TabRowView: NSView, NSDraggingSource {
         bookmark.frame = NSRect(x: right - 15, y: (h - 12) / 2, width: 10, height: 12)
         if !editedDot.isHidden || !bookmark.isHidden { right -= 22 }
         if !closeButton.isHidden { right -= 22 }
-        unsplitButton.frame = NSRect(x: right - 20, y: (h - 20) / 2, width: 20, height: 20)
-        if !unsplitButton.isHidden { right -= 22 }
         title.frame = NSRect(x: 32, y: (h - 17) / 2, width: max(0, right - 34), height: 17)
     }
 
@@ -512,7 +502,6 @@ final class TabRowView: NSView, NSDraggingSource {
         closeButton.isHidden = !hovering
         editedDot.isHidden = hovering || !edited
         bookmark.isHidden = hovering || edited || !named
-        unsplitButton.isHidden = !(hovering && split)
         title.font = .systemFont(ofSize: 13, weight: selected || named ? .medium : .regular)
         if selected {
             layer?.backgroundColor = Theme.selected.cgColor
@@ -592,7 +581,6 @@ final class TabRowView: NSView, NSDraggingSource {
     }
 
     @objc private func closeClicked() { sidebar?.rowClose(tab) }
-    @objc private func unsplitClicked() { sidebar?.rowUnsplit(tab) }
 }
 
 /// The number of panes in a split tab, in a blue dot.

@@ -355,24 +355,39 @@ public struct Placement: Codable, Equatable, Hashable, Sendable, Identifiable {
     }
 }
 
-public enum ArrangementLayout: String, Codable, Sendable, CaseIterable {
+/// The layouts an arrangement had before §3.1 was simplified: kept so
+/// older logs' `layout` entries still decode; never applied.
+public enum ArrangementLayout: String, Codable, Sendable {
     case stacks, tiling, list
 }
 
-/// Columns of placements. In the stacks layout each column shows its last
-/// placement, the ones before it beneath; in tiling, all of them, top to
-/// bottom; the list, one row each.
+/// Columns of placements (§3.1). Each column's list is its history, oldest
+/// first, and one placement of it is **shown**; the rest are its past,
+/// walked back and forward, never drawn. (Older logs' layouts, tiling and
+/// list, and their heights are decoded and ignored: a stack's top is the
+/// shown placement.)
 public struct ArrangementState: Codable, Equatable, Sendable {
     public var title: String?
     public var columns: [[Placement]] = []
     /// Each column's share of the width; sums to 1.
     public var fractions: [Double] = []
+    /// What each column shows, one per column; `normalize` keeps it so.
+    public var shown: [PlacementID] = []
     public var focused: PlacementID?
-    public var layout: ArrangementLayout = .stacks
-    /// Tiling: each placement's share of its column's height.
-    public var heights: [PlacementID: Double] = [:]
+
+    enum CodingKeys: String, CodingKey { case title, columns, fractions, shown, focused }
 
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        columns = try c.decodeIfPresent([[Placement]].self, forKey: .columns) ?? []
+        fractions = try c.decodeIfPresent([Double].self, forKey: .fractions) ?? []
+        shown = (try? c.decodeIfPresent([PlacementID].self, forKey: .shown)) ?? []
+        focused = try c.decodeIfPresent(PlacementID.self, forKey: .focused)
+        normalize()
+    }
 
     /// Named arrangements are kept (§3.3).
     public var isNamed: Bool { !(title ?? "").isEmpty }
@@ -392,13 +407,32 @@ public struct ArrangementState: Codable, Equatable, Sendable {
 
     public func columnIndex(of id: PlacementID) -> Int? { locate(id)?.column }
 
-    /// What shows: in stacks, each column's top; otherwise everything.
-    public var visible: [Placement] {
-        layout == .stacks ? columns.compactMap(\.last) : placements
+    /// What column `c` shows.
+    public func shown(in c: Int) -> Placement? {
+        guard c >= 0, c < columns.count else { return nil }
+        if c < shown.count, let p = columns[c].first(where: { $0.id == shown[c] }) { return p }
+        return columns[c].last
     }
+
+    /// What shows: one placement per column.
+    public var visible: [Placement] { columns.indices.compactMap { shown(in: $0) } }
 
     public var focusedPlacement: Placement? {
         visible.first { $0.id == focused } ?? visible.first
+    }
+
+    /// The column the focus is in, else the last.
+    public var focusedColumn: Int? {
+        if let f = focused, let c = columnIndex(of: f) { return c }
+        return columns.isEmpty ? nil : columns.count - 1
+    }
+
+    /// Column `c`'s past and future around what it shows: the placement
+    /// `offset` steps along its history (-1 the one before), if any.
+    public func step(inColumn c: Int, offset: Int) -> Placement? {
+        guard let p = shown(in: c), let i = columns[c].firstIndex(where: { $0.id == p.id }) else { return nil }
+        let j = i + offset
+        return j >= 0 && j < columns[c].count ? columns[c][j] : nil
     }
 
     public func placements(of block: BlockID) -> [Placement] { placements.filter { $0.block == block } }
@@ -413,13 +447,13 @@ public struct ArrangementState: Codable, Equatable, Sendable {
             fractions = Self.equalFractions(columns.count)
         }
         if let f = focused, placement(f) == nil { focused = nil }
-        if layout == .stacks, let f = focused, let (c, _) = locate(f), columns[c].last?.id != f {
-            // Focus is always a column's top in stacks.
-            focused = columns[c].last?.id
+        shown = columns.enumerated().map { c, column in
+            // Focus shows: a focused placement in a column's past comes up.
+            if let f = focused, column.contains(where: { $0.id == f }) { return f }
+            if c < shown.count, column.contains(where: { $0.id == shown[c] }) { return shown[c] }
+            return column.last!.id
         }
         if focused == nil { focused = visible.first?.id }
-        let ids = Set(placements.map(\.id))
-        heights = heights.filter { ids.contains($0.key) }
     }
 }
 

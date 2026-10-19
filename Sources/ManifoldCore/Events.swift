@@ -486,12 +486,15 @@ extension ArrangementState {
                 columns[c].insert(p, at: min(max(at, 0), columns[c].count))
             }
             focused = p.id
+            normalize()
         case let .move(id, column, at):
             guard let (c, i) = locate(id) else { return }
             let p = columns[c].remove(at: i)
+            if c < shown.count, shown[c] == id, !columns[c].isEmpty { shown[c] = columns[c][max(i - 1, 0)].id }
             var target = column
             if columns[c].isEmpty {
                 columns.remove(at: c)
+                if c < shown.count { shown.remove(at: c) }
                 if target > c { target -= 1 }
             }
             if target >= columns.count {
@@ -502,25 +505,26 @@ extension ArrangementState {
             }
             fractions = fractions.count == columns.count ? fractions : Self.equalFractions(columns.count)
             focused = id
+            normalize()
         case let .remove(id):
             guard let (c, i) = locate(id) else { return }
             columns[c].remove(at: i)
-            var next: PlacementID? = columns[c].last?.id
+            // The column shows what it showed before this, else what came next.
+            var next: PlacementID? = columns[c].isEmpty ? nil : columns[c][max(i - 1, 0)].id
+            if c < shown.count, shown[c] == id, let n = next { shown[c] = n }
             if columns[c].isEmpty {
                 columns.remove(at: c)
+                if c < shown.count { shown.remove(at: c) }
                 fractions = Self.equalFractions(columns.count)
-                next = columns.isEmpty ? nil : columns[min(c, columns.count - 1)].last?.id
+                next = columns.isEmpty ? nil : shown(in: min(c, columns.count - 1))?.id
             }
             if focused == id { focused = next }
-            heights.removeValue(forKey: id)
+            normalize()
         case let .focus(id):
-            if let id, let (c, i) = locate(id) {
-                if layout == .stacks, i != columns[c].count - 1 {
-                    // Focusing raises, in stacks.
-                    let p = columns[c].remove(at: i)
-                    columns[c].append(p)
-                }
+            if let id, placement(id) != nil {
+                // Focusing shows: a placement in its column's past comes up.
                 focused = id
+                normalize()
             } else if id == nil {
                 focused = nil
             }
@@ -529,23 +533,28 @@ extension ArrangementState {
                 let sum = f.reduce(0, +)
                 fractions = f.map { $0 / sum }
             }
-        case let .heights(h):
-            for (k, v) in h where placement(k) != nil { heights[k] = v }
-        case let .layout(l):
-            layout = l
+        case .heights, .layout:
+            // Tiling and the list lens, retired (§3.1): read, not applied.
+            break
         case let .adopt(cols, at):
             let fresh = cols.map { $0.filter { placement($0.id) == nil }.map { p -> Placement in var q = p; if q.placedAt == nil { q.placedAt = stamp }; return q } }.filter { !$0.isEmpty }
             guard !fresh.isEmpty else { return }
-            columns.insert(contentsOf: fresh, at: min(max(at, 0), columns.count))
+            let index = min(max(at, 0), columns.count)
+            columns.insert(contentsOf: fresh, at: index)
+            shown.insert(contentsOf: fresh.map { $0.last!.id }, at: min(index, shown.count))
             fractions = Self.equalFractions(columns.count)
             focused = fresh.last?.last?.id ?? focused
+            normalize()
         case let .moveColumn(from, to):
             guard from >= 0, from < columns.count else { return }
             let column = columns.remove(at: from)
             let f = fractions.count > from ? fractions.remove(at: from) : 1 / Double(max(columns.count, 1))
+            let s = from < shown.count ? shown.remove(at: from) : column.last!.id
             let index = min(max(to, 0), columns.count)
             columns.insert(column, at: index)
             if fractions.count == columns.count - 1 { fractions.insert(f, at: index) }
+            shown.insert(s, at: min(index, shown.count))
+            normalize()
         default:
             return
         }

@@ -187,45 +187,34 @@ public final class Node {
 // MARK: Arrangement intents
 
 /// Changes to an arrangement that take some working out against its current
-/// state, lowered to events by whoever leads it.
+/// state, lowered to events by whoever leads it. These are the only ways a
+/// block is placed (§3.1): here, in a column, or beside, in a new one.
 extension ArrangementState {
-    /// Events that place `block` beside placement `beside` (to its right,
-    /// on that column's stack if there is one, else in a new column), or,
-    /// with no `beside`, on the focused column's stack. A placement of the
-    /// block already there is raised instead of a second one placed.
-    public func placing(_ block: BlockID, lens: Lens, beside: PlacementID?, newPlacement: () -> PlacementID) -> [Event] {
-        if let beside, let (c, _) = locate(beside) {
-            let right = c + 1
-            if right < columns.count {
-                if let existing = columns[right].first(where: { $0.block == block && $0.lens == lens }) {
-                    return [.focus(existing.id)]
-                }
-                return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: right, at: columns[right].count)]
-            }
-            return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
+    /// A placement of `block` through `lens` that is shown now, anywhere:
+    /// focused rather than shown twice.
+    private func alreadyShown(_ block: BlockID, lens: Lens) -> Placement? {
+        visible.first { $0.block == block && $0.lens == lens }
+    }
+
+    /// Events that show `block` in column `column` ("here"): a placement
+    /// of it shown anywhere is focused instead; one in this column's past
+    /// comes up; else a new placement goes on the end of the column (past
+    /// the last column: a new column).
+    public func showing(_ block: BlockID, lens: Lens, inColumn column: Int, newPlacement: () -> PlacementID) -> [Event] {
+        if let p = alreadyShown(block, lens: lens) { return [.focus(p.id)] }
+        if column >= 0, column < columns.count, let past = columns[column].first(where: { $0.block == block && $0.lens == lens }) {
+            return [.focus(past.id)]
         }
-        let c = focused.flatMap { columnIndex(of: $0) } ?? max(columns.count - 1, 0)
-        if c < columns.count, let existing = columns[c].first(where: { $0.block == block && $0.lens == lens }) {
-            return [.focus(existing.id)]
-        }
+        let c = max(column, 0)
         return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: c, at: c < columns.count ? columns[c].count : 0)]
     }
 
-    /// Events that put `block` on top of column `column`'s stack, or raise
-    /// it there.
-    public func placing(_ block: BlockID, lens: Lens, onColumn column: Int, newPlacement: () -> PlacementID) -> [Event] {
-        if column < columns.count, let existing = columns[column].first(where: { $0.block == block && $0.lens == lens }) {
-            return [.focus(existing.id)]
-        }
-        return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: column,
-                       at: column < columns.count ? columns[column].count : 0)]
-    }
-
-    /// The columns of this arrangement split out, one arrangement each
-    /// (the focused column stays): what the others take with them.
-    public func separated() -> [[Placement]] {
-        guard columns.count > 1 else { return [] }
-        let keep = focused.flatMap { columnIndex(of: $0) } ?? 0
-        return columns.enumerated().filter { $0.offset != keep }.map(\.element)
+    /// Events that show `block` in a new column at `index` ("beside"): a
+    /// placement of it shown anywhere is focused instead.
+    public func showing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, newPlacement: () -> PlacementID) -> [Event] {
+        if let p = alreadyShown(block, lens: lens) { return [.focus(p.id)] }
+        var events: [Event] = [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
+        if index < columns.count { events.append(.moveColumn(from: columns.count, to: max(index, 0))) }
+        return events
     }
 }
