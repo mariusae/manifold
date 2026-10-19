@@ -3,9 +3,8 @@
 # into Frameworks/monaspace, only the four faces a terminal uses of each of
 # its five families; and Mona Sans, the editor's proportional font, into
 # Frameworks/monasans; and Recursive and Go, for their themes. The Tiempos
-# theme's fonts are licensed, so not fetched: Tiempos Text (Klim) and
-# Berkeley Mono (Berkeley Graphics) are copied from $TIEMPOS_DIR and
-# $BERKELEY_DIR, by default their folders in iCloud Drive's Fonts, when
+# themes' Tiempos Text (Klim) is licensed, so not fetched: it is copied
+# from $TIEMPOS_DIR, by default its folder in iCloud Drive's Fonts, when
 # they're there. Files already there are kept.
 set -e
 cd "$(dirname "$0")/.."
@@ -76,7 +75,7 @@ done
 github_file tonsky/FiraCode $fira LICENSE "$out/LICENSE"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
 
-# Tiempos Text and Berkeley Mono, for the Tiempos theme: copied, not fetched.
+# Tiempos Text, for the Tiempos themes: copied, not fetched.
 tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
 out=Frameworks/tiempos
 if [ -d "$tiempos" ]; then
@@ -87,15 +86,4 @@ if [ -d "$tiempos" ]; then
   echo "copied $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
 else
   echo "no Tiempos Text at $tiempos; the Tiempos theme will fall back to the system's fonts" >&2
-fi
-berkeley=${BERKELEY_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/berkeley-mono-typeface/berkeley-mono/OTF"}
-out=Frameworks/berkeleymono
-if [ -d "$berkeley" ]; then
-  mkdir -p "$out"
-  for face in Regular Italic Bold BoldItalic; do
-    [ -s "$out/BerkeleyMono-$face.otf" ] || cp "$berkeley/BerkeleyMono-$face.otf" "$out/"
-  done
-  echo "copied $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
-else
-  echo "no Berkeley Mono at $berkeley; the Tiempos theme will fall back to the system's fixed-width font" >&2
 fi

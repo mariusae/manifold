@@ -131,10 +131,8 @@ enum MarkdownPage {
             ("Tiempos Text", "TiemposText-RegularItalic.otf", 400, "italic"),
             ("Tiempos Text", "TiemposText-Bold.otf", 700, "normal"),
             ("Tiempos Text", "TiemposText-BoldItalic.otf", 700, "italic"),
-            ("Berkeley Mono", "BerkeleyMono-Regular.otf", 400, "normal"),
-            ("Berkeley Mono", "BerkeleyMono-Italic.otf", 400, "italic"),
-            ("Berkeley Mono", "BerkeleyMono-Bold.otf", 700, "normal"),
-            ("Berkeley Mono", "BerkeleyMono-BoldItalic.otf", 700, "italic"),
+            ("Fira Code", "FiraCode-Regular.ttf", 400, "normal"),
+            ("Fira Code", "FiraCode-Bold.ttf", 700, "normal"),
         ] + ["Sans", "Mono"].flatMap { kind -> [(String, String, Int, String)] in [
             ("Recursive \(kind)", "Recursive\(kind)LnrSt-Regular.otf", 400, "normal"),
             ("Recursive \(kind)", "Recursive\(kind)LnrSt-Italic.otf", 400, "italic"),

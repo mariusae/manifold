@@ -31,7 +31,7 @@ extension FontTheme {
     var monospacedName: String {
         switch self {
         case .notes: "Menlo"
-        case .tiempos: "Berkeley Mono"
+        case .tiempos: "Menlo"
         case .tiemposFira: "Fira Code"
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
@@ -54,7 +54,7 @@ extension FontTheme {
             font-feature = ss08
             """
         case .notes: "font-family = Menlo"
-        case .tiempos: "font-family = Berkeley Mono"
+        case .tiempos: "font-family = Menlo"
         case .tiemposFira: "font-family = Fira Code"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
@@ -106,7 +106,7 @@ extension FontTheme {
         case .monospaced:
             let name: String? = switch self {
             case .notes: "Menlo"
-            case .tiempos: "Berkeley Mono"
+            case .tiempos: "Menlo"
             case .tiemposFira: "Fira Code"
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
@@ -129,7 +129,7 @@ extension FontTheme {
         let sansFeatures = proportionalFeatures.isEmpty ? "normal" : proportionalFeatures.map { "\"\($0)\"" }.joined(separator: ", ")
         return switch self {
         case .notes: ("-apple-system", "Menlo", features, sansFeatures)
-        case .tiempos: (#""Tiempos Text""#, #""Berkeley Mono""#, features, sansFeatures)
+        case .tiempos: (#""Tiempos Text""#, "Menlo", features, sansFeatures)
         case .tiemposFira: (#""Tiempos Text""#, #""Fira Code""#, features, sansFeatures)
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)

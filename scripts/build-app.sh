@@ -44,10 +44,8 @@ cp Frameworks/recursive/OFL.txt "$app/Contents/Resources/Fonts/Recursive-OFL.txt
 cp Frameworks/gofont/LICENSE "$app/Contents/Resources/Fonts/Go-LICENSE"
 cp Frameworks/firacode/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/firacode/LICENSE "$app/Contents/Resources/Fonts/FiraCode-LICENSE"
-# Tiempos Text and Berkeley Mono are licensed: bundled when
-# scripts/fetch-fonts.sh found them.
+# Tiempos Text is licensed: bundled when scripts/fetch-fonts.sh found it.
 [ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"
-[ -d Frameworks/berkeleymono ] && cp Frameworks/berkeleymono/*.otf "$app/Contents/Resources/Fonts/"
 
 # The icon is drawn by a script, and only redrawn when the script changes.
 if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ]; then

@@ -162,11 +162,11 @@ when you find it again.
   command. View ▸ Editor Font chooses proportional or fixed
   width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
-  width, the system font for the UI), Tiempos (Tiempos Text, Berkeley
-  Mono), Mona (Mona Sans, Monaspace), Recursive, Go, or System (SF, SF
-  Mono). All but SF are bundled; Tiempos Text and Berkeley Mono are
-  licensed, so the build copies them from your own fonts (`TIEMPOS_DIR`
-  and `BERKELEY_DIR`, by default their folders in iCloud Drive's Fonts)
+  width, the system font for the UI), Tiempos (Tiempos Text, Menlo),
+  Tiempos/Fira (Tiempos Text, Fira Code), Mona (Mona Sans, Monaspace),
+  Recursive, Go, or System (SF, SF Mono). All but SF are bundled;
+  Tiempos Text is licensed, so the build copies it from your own fonts
+  (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts)
   rather than fetching them.
 - **Language servers** run on the file's host, one per language and
   workspace root, started when a file of theirs is placed: what they say
