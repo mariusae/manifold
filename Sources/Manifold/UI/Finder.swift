@@ -9,6 +9,8 @@ struct FinderItem {
     var detail: String
     /// A word on the right: "edited", "dormant", "named", or where it is.
     var note: String
+    /// How far in, in an outline (⌘\): 0 at the top.
+    var level: Int = 0
     var run: () -> Void
 }
 
@@ -18,6 +20,8 @@ struct FinderItem {
 final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     /// Items for a query, given the files under the folder listed so far.
     var search: ((String, [String]) -> [FinderItem])?
+    /// ⌘\: the workspace as a hierarchy, filtered by a query, instead.
+    private var outline: ((String) -> [FinderItem])?
 
     private let panel: PickerPanel
     private let field = NSTextField()
@@ -105,6 +109,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Shows, listing the files under `root` among everything else.
     func show(root: String, over window: NSWindow?) {
         self.root = root
+        outline = nil
+        field.placeholderString = "Find anything…"
         field.stringValue = ""
         files = []
         shown = []
@@ -128,12 +134,34 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         panel.makeFirstResponder(field)
     }
 
+    /// Shows the workspace's outline (⌘\): tiles by column, and what is in
+    /// them, as `provider` lists them for a query.
+    func showOutline(_ provider: @escaping (String) -> [FinderItem], over window: NSWindow?) {
+        outline = provider
+        field.stringValue = ""
+        field.placeholderString = "Go to a tile, or a heading in one…"
+        files = []
+        shown = []
+        listing += 1
+        if let window {
+            let frame = window.frame
+            panel.setFrameOrigin(NSPoint(x: frame.midX - Self.width / 2, y: frame.maxY - frame.height * 0.18 - panel.frame.height))
+        }
+        refresh()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+    }
+
     /// Types a query and says what's listed (for DebugControl).
     func debugQuery(_ query: String) -> [String] {
         field.stringValue = query
         refresh()
-        return shown.map { "\($0.title) — \($0.detail)" }
+        return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") }
     }
+
+    /// Chooses the selected row, or moves the selection (for DebugControl).
+    func debugChoose() { openSelected() }
+    func debugMove(_ by: Int) { move(by) }
 
     func close() {
         listing += 1
@@ -141,6 +169,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
 
     private func updateHint() {
+        if outline != nil {
+            hint.stringValue = "The workspace, by column and tile, headings within    ↩ Go    ⎋ Close"
+            return
+        }
         let folder = root.abbreviatingHome
         hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, workspaces, and files in \(folder)    ↩ Open    ⎋ Close"
     }
@@ -167,7 +199,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        shown = search?(query, files.map { absolute($0) }) ?? []
+        shown = outline.map { $0(query) } ?? search?(query, files.map { absolute($0) }) ?? []
         table.reloadData()
         if !shown.isEmpty {
             table.selectRowIndexes([0], byExtendingSelection: false)
@@ -221,7 +253,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
         let item = shown[row]
-        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note)
+        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level)
         return cell
     }
 
@@ -250,6 +282,7 @@ final class FileCell: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
+    private var lead: NSLayoutConstraint!
 
     init() {
         super.init(frame: .zero)
@@ -272,8 +305,9 @@ final class FileCell: NSTableCellView {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        lead = symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
         NSLayoutConstraint.activate([
-            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            lead,
             symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
             symbol.widthAnchor.constraint(equalToConstant: 22),
             title.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 10),
@@ -290,7 +324,8 @@ final class FileCell: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(title text: String, detail folder: String, symbol name: String, note text2: String) {
+    func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0) {
+        lead.constant = 8 + CGFloat(level) * 22
         symbol.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
         title.stringValue = text
         detail.stringValue = folder

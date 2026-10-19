@@ -389,11 +389,20 @@ enum DebugControl {
             return out.joined(separator: " → ")
         case "picker":
             // "picker" opens it; "picker <query>" says what it lists for one.
+            // "picker go" chooses the selected row; "picker down"/"up" move it.
             if arg.isEmpty {
                 wc?.openDocument(nil)
                 return "ok"
             }
-            return (wc?.debugFinder(arg == "-" ? "" : arg) ?? []).prefix(8).joined(separator: " | ")
+            if arg == "go" {
+                wc?.debugFinderChoose()
+                return "ok"
+            }
+            if arg == "down" || arg == "up" {
+                wc?.debugFinderMove(arg == "down" ? 1 : -1)
+                return "ok"
+            }
+            return (wc?.debugFinder(arg == "-" ? "" : arg) ?? []).prefix(12).joined(separator: " | ")
         case "dump":
             guard let v = wc?.window?.contentView else { return "no window" }
             return describe(v, 0) + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"

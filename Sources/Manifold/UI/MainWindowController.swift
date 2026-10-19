@@ -1589,6 +1589,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Finding and opening
 
     func debugFinder(_ query: String) -> [String] { finder.debugQuery(query) }
+    func debugFinderChoose() { finder.debugChoose() }
+    func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
     private lazy var finder: Finder = {
         let f = Finder()
@@ -1893,6 +1895,62 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌥⌘P: the focused text block the other way round, in place — its
     /// preview as an editor, its editor as a preview (Markdown only).
     /// Editor and preview share the block, so an edit shows live.
+    /// ⌘\: the workspace as a hierarchy, as Prism's Move to Heading is —
+    /// its tiles by column, and the headings of the text in them, set in
+    /// under their tile; those whose words have every word of the query.
+    /// ↩ goes to a tile, or to a heading in its editor or preview.
+    @objc func goToTile(_ sender: Any?) {
+        guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
+        let outline = workspaceOutline(a)
+        finder.showOutline({ query in
+            let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+            return outline.filter { item in
+                words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
+            }
+        }, over: window)
+    }
+
+    private func workspaceOutline(_ a: ArrangementState) -> [FinderItem] {
+        var items: [FinderItem] = []
+        for (c, column) in a.columns.enumerated() {
+            for p in column {
+                guard let b = hosts.block(p.block) else { continue }
+                var notes: [String] = []
+                if a.columns.count > 1 { notes.append("column \(c + 1)") }
+                if a.isStashed(p.id) { notes.append("stashed") }
+                if p.id == a.focused { notes.append("focused") }
+                let id = p.id
+                items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
+                                        detail: b.place?.abbreviatingHome ?? "", note: notes.joined(separator: " · "),
+                                        run: { [weak self] in self?.focus(id) }))
+                // A text's headings, as Markdown has them, each gone to in
+                // its editor by line, in its preview by index.
+                guard b.kind == .text, let text = b.text?.text.string, Lens.isMarkdown(b.path ?? ".md") || p.lens == .preview else { continue }
+                var index = 0
+                var line = 0
+                var inFence = false
+                for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                    line += 1
+                    if raw.hasPrefix("```") { inFence.toggle() }
+                    guard !inFence, raw.hasPrefix("#") else { continue }
+                    let level = raw.prefix { $0 == "#" }.count
+                    guard level <= 6, raw.dropFirst(level).first == " " else { continue }
+                    let heading = raw.dropFirst(level).trimmingCharacters(in: .whitespaces)
+                    let at = line, nth = index
+                    items.append(FinderItem(symbol: "number", title: heading, detail: b.displayTitle, note: "", level: level,
+                                            run: { [weak self] in
+                        guard let self else { return }
+                        self.focus(id)
+                        if let e = self.views[id] as? EditorView { e.select(line: at) }
+                        else if let m = self.views[id] as? MarkdownView { m.scroll(toHeading: nth) }
+                    }))
+                    index += 1
+                }
+            }
+        }
+        return items
+    }
+
     @objc func toggleEditPreview(_ sender: Any?) {
         guard let f = focusedShown, let path = f.path, let a = arrangement, let (c, i) = a.locate(f.id) else { return }
         let other: Lens

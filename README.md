@@ -87,6 +87,10 @@ when you find it again.
   they were seen. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk.
   A typed URL opens as a web page.
+- **⌘\ goes through the workspace as an outline**, as Prism's Move to
+  Heading does: its tiles by column, and under a Markdown tile its
+  headings, set in by level; type words to narrow them, ↩ to focus the
+  tile or go to the heading in its editor or preview.
 - **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
   while leave nothing: nothing in a workspace is tidied away; an
   unnamed one emptied by hand leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)

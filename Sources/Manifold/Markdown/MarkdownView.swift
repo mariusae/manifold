@@ -22,6 +22,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private(set) var path: String
     weak var delegate: MarkdownViewDelegate?
     private let web: WKWebView
+
+    /// Scrolls to the page's `index`th heading (⌘\).
+    func scroll(toHeading index: Int) {
+        web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()")
+    }
     private var loaded = false
     /// The text as last rendered, to skip renders that would show the same.
     private var renderedVersion = -1
