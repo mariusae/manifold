@@ -1,0 +1,518 @@
+import AppKit
+import ManifoldCore
+
+protocol GridDelegate: AnyObject {
+    func gridFocus(_ placement: PlacementID)
+    /// A tile dropped at a place in the grid: into column `column` at
+    /// index `at`, or a new column at `column`.
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool)
+    /// A block from the sidebar dropped at a place in the grid: brought there.
+    func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
+    /// Another arrangement dropped: its columns come over at `column`.
+    func gridDropArrangement(_ arrangement: BlockID, column: Int)
+    func gridCanDrop(_ arrangement: BlockID) -> Bool
+    func gridResized(fractions: [Double])
+    func gridResized(heights: [PlacementID: Double])
+    func gridDragChanged(_ dragging: Bool)
+    func gridDragAtLeftEdge()
+    /// A tile's pill was clicked: its menu.
+    func gridPillMenu(for placement: PlacementID) -> NSMenu?
+}
+
+/// The surface (DESIGN.md §3.1): the arrangement as a grid, columns side
+/// by side and each column's tiles top to bottom, every tile a block, all
+/// visible, as acme tiles its windows. Each tile wears a pill at its top
+/// to drag it by and to open its menu; the lines between tiles and
+/// columns resize them.
+final class GridView: NSView, NSDraggingSource {
+    struct Tile {
+        var shown: Shown
+        var view: PaneContent
+    }
+
+    weak var delegate: GridDelegate?
+    private(set) var columns: [[Tile]] = []
+    private var fractions: [Double] = []
+    private var heights: [PlacementID: Double] = [:]
+    private var focused: PlacementID?
+    private var pills: [PlacementID: TilePill] = [:]
+    private var columnDividers: [DividerView] = []
+    private var rowDividers: [RowDividerView] = []
+    private let dropOverlay = DropOverlayView()
+    private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool)?
+
+    /// The band at a tile's top that its pill sits in.
+    static let band: CGFloat = 34
+    static let gap: CGFloat = 1
+
+    var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
+        dropOverlay.isHidden = true
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?) {
+        let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
+        for v in views where !incoming.contains(v.placement) && v.superview === self { v.removeFromSuperview() }
+        for (id, p) in pills where !incoming.contains(id) {
+            p.removeFromSuperview()
+            pills.removeValue(forKey: id)
+        }
+        self.columns = columns
+        self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
+        self.heights = heights
+        self.focused = focused
+        for column in columns {
+            for tile in column {
+                if tile.view.superview !== self { addSubview(tile.view) }
+                let pill = pills[tile.shown.id] ?? {
+                    let p = TilePill()
+                    pills[tile.shown.id] = p
+                    addSubview(p)
+                    return p
+                }()
+                pill.show(tile.shown, focused: tile.shown.id == focused)
+                let id = tile.shown.id
+                pill.onClick = { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.gridFocus(id)
+                    if let menu = self.delegate?.gridPillMenu(for: id), let pill = self.pills[id] {
+                        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: pill)
+                    }
+                }
+                pill.onDragStart = { [weak self, weak pill] event in
+                    guard let self, let pill else { return }
+                    self.beginDrag(of: id, event: event, from: pill)
+                }
+            }
+        }
+        columnDividers.forEach { $0.removeFromSuperview() }
+        columnDividers = (0..<max(0, columns.count - 1)).map { i in
+            let d = DividerView()
+            d.onDrag = { [weak self] x in self?.dragColumnDivider(i, to: x) }
+            d.onEnd = { [weak self] in self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
+            addSubview(d)
+            return d
+        }
+        rowDividers.forEach { $0.removeFromSuperview() }
+        rowDividers = []
+        for (c, column) in columns.enumerated() where column.count > 1 {
+            for r in 0..<(column.count - 1) {
+                let d = RowDividerView()
+                d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, row: r, to: y) }
+                d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
+                addSubview(d)
+                rowDividers.append(d)
+            }
+        }
+        addSubview(dropOverlay)
+        needsLayout = true
+    }
+
+    func clear() {
+        show([], fractions: [], heights: [:], focused: nil)
+    }
+
+    /// A placement's view, if on screen.
+    func view(of placement: PlacementID) -> PaneContent? {
+        views.first { $0.placement == placement }
+    }
+
+    // MARK: Geometry
+
+    private func columnFrames() -> [NSRect] {
+        let n = columns.count
+        guard n > 0 else { return [] }
+        let usable = bounds.width - CGFloat(n - 1) * Self.gap
+        var x: CGFloat = 0
+        return fractions.enumerated().map { i, f in
+            let w = i == n - 1 ? bounds.width - x : (usable * f).rounded()
+            defer { x += w + Self.gap }
+            return NSRect(x: x, y: 0, width: w, height: bounds.height)
+        }
+    }
+
+    /// Each tile's frame in a column, band included, top to bottom; no
+    /// tile shorter than its band.
+    private func tileFrames(column c: Int, in f: NSRect) -> [NSRect] {
+        let tiles = columns[c]
+        guard !tiles.isEmpty else { return [] }
+        var shares = tiles.map { heights[$0.shown.id] ?? 1 / Double(tiles.count) }
+        let sum = shares.reduce(0, +)
+        if sum > 0 { shares = shares.map { $0 / sum } }
+        let usable = f.height - CGFloat(tiles.count - 1) * Self.gap
+        var hs = shares.map { max(Self.band, (usable * CGFloat($0)).rounded()) }
+        // Over by the minimums: taken from the tallest.
+        var over = hs.reduce(0, +) - usable
+        while over > 0, let i = hs.indices.max(by: { hs[$0] < hs[$1] }), hs[i] > Self.band {
+            let take = min(over, hs[i] - Self.band)
+            hs[i] -= take
+            over -= take
+        }
+        var y = f.maxY
+        var out: [NSRect] = []
+        for (i, h) in hs.enumerated() {
+            let height = i == tiles.count - 1 ? y - f.minY : h
+            out.append(NSRect(x: f.minX, y: y - height, width: f.width, height: height))
+            y -= height + Self.gap
+        }
+        return out
+    }
+
+    override func layout() {
+        super.layout()
+        let frames = columnFrames()
+        var rowIndex = 0
+        for (c, f) in frames.enumerated() {
+            let tiles = tileFrames(column: c, in: f)
+            for (i, tile) in columns[c].enumerated() {
+                let r = tiles[i]
+                pills[tile.shown.id]?.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
+                tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.band))
+                if i > 0, rowIndex < rowDividers.count {
+                    rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY - 2, width: r.width, height: Self.gap + 4)
+                    rowIndex += 1
+                }
+            }
+        }
+        for (i, d) in columnDividers.enumerated() {
+            d.frame = NSRect(x: frames[i].maxX - 3, y: 0, width: Self.gap + 6, height: bounds.height)
+        }
+    }
+
+    private func dragColumnDivider(_ i: Int, to x: CGFloat) {
+        let frames = columnFrames()
+        let minWidth: CGFloat = 120
+        let left = frames[i].minX, right = frames[i + 1].maxX
+        let split = min(max(x, left + minWidth), right - minWidth)
+        let usable = bounds.width - CGFloat(columns.count - 1) * Self.gap
+        let pair = fractions[i] + fractions[i + 1]
+        fractions[i] = (split - left) / usable
+        fractions[i + 1] = pair - fractions[i]
+        needsLayout = true
+    }
+
+    private func dragRowDivider(column c: Int, row r: Int, to y: CGFloat) {
+        let f = columnFrames()[c]
+        let frames = tileFrames(column: c, in: f)
+        let minHeight = Self.band + 24
+        let top = frames[r].maxY, bottom = frames[r + 1].minY
+        let split = min(max(y, bottom + minHeight), top - minHeight)
+        let tiles = columns[c]
+        let a = tiles[r].shown.id, b = tiles[r + 1].shown.id
+        let ha = heights[a] ?? 1 / Double(tiles.count), hb = heights[b] ?? 1 / Double(tiles.count)
+        let pair = ha + hb
+        let total = (top - bottom)
+        heights[a] = pair * Double((top - split) / total)
+        heights[b] = pair - heights[a]!
+        needsLayout = true
+    }
+
+    // MARK: Dragging tiles
+
+    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView) {
+        let item = NSPasteboardItem()
+        item.setString(placement, forType: .manifoldPlacement)
+        let dragItem = NSDraggingItem(pasteboardWriter: item)
+        let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
+        let image = BlockDragImage.make(for: shown)
+        let p = view.convert(event.locationInWindow, from: nil)
+        dragItem.setDraggingFrame(NSRect(x: p.x - 24, y: p.y - image.size.height / 2, width: image.size.width,
+                                         height: image.size.height), contents: image)
+        delegate?.gridDragChanged(true)
+        view.beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? .move : []
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        delegate?.gridDragChanged(false)
+    }
+
+    /// Near a column's side: a new column there. Else between two tiles (or
+    /// above the first, below the last) of the column under the pointer.
+    private func dropTarget(at point: NSPoint) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool)? {
+        let frames = columnFrames()
+        guard !frames.isEmpty else { return (0, 0, bounds, true) }
+        for (c, f) in frames.enumerated() where point.x >= f.minX && point.x <= f.maxX + Self.gap {
+            let edge = min(f.width * 0.2, 80)
+            if point.x < f.minX + edge {
+                return (c, 0, NSRect(x: f.minX, y: f.minY, width: f.width / 2, height: f.height), true)
+            }
+            if point.x > f.maxX - edge {
+                return (c + 1, 0, NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height), true)
+            }
+            let tiles = tileFrames(column: c, in: f)
+            for (i, r) in tiles.enumerated() where point.y >= r.minY && point.y <= r.maxY {
+                if point.y > r.midY {
+                    return (c, i, NSRect(x: r.minX, y: r.midY, width: r.width, height: r.height / 2), false)
+                }
+                return (c, i + 1, NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height / 2), false)
+            }
+            return (c, tiles.count, f, false)
+        }
+        return nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let point = convert(sender.draggingLocation, from: nil)
+        if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
+        let pb = sender.draggingPasteboard
+        let isBlock = pb.string(forType: .manifoldPlacement) != nil || pb.string(forType: .manifoldBlock) != nil
+        let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
+        guard isBlock || (arrangement != nil && delegate?.gridCanDrop(arrangement!) == true),
+              let target = dropTarget(at: point) else {
+            hideDrop()
+            return []
+        }
+        if drop?.rect != target.rect || dropOverlay.isHidden {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = dropOverlay.isHidden ? 0 : 0.12
+                dropOverlay.animator().frame = target.rect
+            }
+            dropOverlay.isHidden = false
+        }
+        drop = target
+        return .move
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { hideDrop() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { hideDrop() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { hideDrop() }
+        guard let target = drop else { return false }
+        let pb = sender.draggingPasteboard
+        if let placement = pb.string(forType: .manifoldPlacement) {
+            delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
+            return true
+        }
+        if let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) {
+            delegate?.gridDropArrangement(arrangement, column: target.newColumn ? target.column : target.column + 1)
+            return true
+        }
+        if let block = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) {
+            delegate?.gridBring(block, column: target.column, at: target.at, newColumn: target.newColumn)
+            return true
+        }
+        return false
+    }
+
+    private func hideDrop() {
+        dropOverlay.isHidden = true
+        drop = nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.divider.setFill()
+        bounds.fill()
+    }
+}
+
+/// A tile's pill (§3.1), as Prism names the note at the top of its
+/// column: glass, with the block's symbol, its name and its status glyph.
+/// Dragged, it moves the tile; clicked, the tile's menu.
+final class TilePill: NSView {
+    var onClick: (() -> Void)?
+    var onDragStart: ((NSEvent) -> Void)?
+    private let ground = NSView()
+    private let glass: NSView
+    private let icon = NSImageView()
+    private let name = NSTextField(labelWithString: "")
+    private let glyph = StatusGlyph()
+    private let dirty = NSView()
+    private var downAt: NSPoint?
+    private var focused = false
+
+    static let height: CGFloat = 26
+
+    override init(frame: NSRect) {
+        if #available(macOS 26, *) {
+            let g = NSGlassEffectView()
+            g.cornerRadius = Self.height / 2
+            glass = g
+        } else {
+            let v = NSVisualEffectView()
+            v.material = .popover
+            v.blendingMode = .withinWindow
+            v.state = .active
+            v.wantsLayer = true
+            v.layer?.cornerRadius = Self.height / 2
+            v.layer?.masksToBounds = true
+            glass = v
+        }
+        super.init(frame: frame)
+        wantsLayer = true
+        ground.wantsLayer = true
+        ground.themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        addSubview(ground)
+        glass.wantsLayer = true
+        glass.layer?.borderWidth = 1
+        addSubview(glass)
+        icon.contentTintColor = Theme.secondaryText
+        name.font = .systemFont(ofSize: 12.5, weight: .medium)
+        name.textColor = Theme.text
+        name.lineBreakMode = .byTruncatingTail
+        dirty.wantsLayer = true
+        dirty.layer?.cornerRadius = 3
+        dirty.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
+        dirty.isHidden = true
+        for v in [icon, name, glyph, dirty] { addSubview(v) }
+        themed { $0.updateColors() }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ shown: Shown, focused: Bool) {
+        icon.image = Theme.symbol(shown.symbol, size: 11)
+        name.stringValue = shown.title + (shown.isDormant ? "  (dormant)" : "")
+        dirty.isHidden = !shown.isDirty
+        glyph.look = StatusGlyph.look(of: shown.block)
+        glyph.isHidden = glyph.look == nil
+        glyph.toolTip = StatusGlyph.tooltip(shown.block)
+        self.focused = focused
+        updateColors()
+        needsLayout = true
+    }
+
+    private func updateColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            glass.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.55) : Theme.cardBorder).cgColor
+        }
+        name.font = .systemFont(ofSize: 12.5, weight: focused ? .semibold : .medium)
+        icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
+    }
+
+    /// As wide as its name wants, within the tile.
+    private var pillWidth: CGFloat {
+        let text = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width)
+        var w = 10 + 16 + 6 + text + 12
+        if !glyph.isHidden { w += StatusGlyph.size + 6 }
+        if !dirty.isHidden { w += 12 }
+        return min(max(w, 60), bounds.width - 16)
+    }
+
+    override func layout() {
+        super.layout()
+        ground.frame = bounds
+        let h = Self.height
+        let w = pillWidth
+        let y = ((bounds.height - h) / 2).rounded()
+        glass.frame = NSRect(x: 8, y: y, width: w, height: h)
+        var x = glass.frame.minX + 10
+        icon.frame = NSRect(x: x, y: y + (h - 14) / 2, width: 16, height: 14)
+        x += 22
+        var right = glass.frame.maxX - 12
+        if !glyph.isHidden {
+            glyph.frame = NSRect(x: right - StatusGlyph.size, y: y + (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+            right -= StatusGlyph.size + 6
+        }
+        if !dirty.isHidden {
+            dirty.frame = NSRect(x: right - 6, y: y + (h - 6) / 2, width: 6, height: 6)
+            right -= 12
+        }
+        name.frame = NSRect(x: x, y: y + ((h - 17) / 2).rounded(), width: max(0, right - x), height: 17)
+    }
+
+    override func resetCursorRects() { addCursorRect(glass.frame, cursor: .openHand) }
+
+    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downAt else { return }
+        let p = event.locationInWindow
+        guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+        downAt = nil
+        onDragStart?(event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if downAt != nil { onClick?() }
+        downAt = nil
+    }
+}
+
+/// The grab area over the line between two tiles in a column.
+final class RowDividerView: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeUpDown) }
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let superview else { return }
+        onDrag?(superview.convert(event.locationInWindow, from: nil).y)
+    }
+
+    override func mouseUp(with event: NSEvent) { onEnd?() }
+}
+
+/// Where a dragged block would land: half a column, for a new column;
+/// half a tile, above or below it.
+final class DropOverlayView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.dropHighlight.setFill()
+        bounds.fill()
+        Theme.accent.withAlphaComponent(0.5).setStroke()
+        NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
+    }
+}
+
+final class DividerView: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let superview else { return }
+        onDrag?(superview.convert(event.locationInWindow, from: nil).x)
+    }
+
+    override func mouseUp(with event: NSEvent) { onEnd?() }
+}
+
+/// What follows the cursor when a block is dragged: a small card with its
+/// icon and title.
+enum BlockDragImage {
+    static func make(for pane: Shown?) -> NSImage {
+        let title = pane?.title ?? "Block"
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let textWidth = ceil((title as NSString).size(withAttributes: [.font: font]).width)
+        let size = NSSize(width: min(max(textWidth + 52, 140), 320), height: 34)
+        return NSImage(size: size, flipped: false) { rect in
+            let card = rect.insetBy(dx: 1, dy: 1)
+            let path = NSBezierPath(roundedRect: card, xRadius: 17, yRadius: 17)
+            Theme.windowBackground.withAlphaComponent(0.96).setFill()
+            path.fill()
+            Theme.sheetEdge(hovered: true).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+            if let icon = Theme.symbol(pane?.symbol ?? "apple.terminal", size: 13) {
+                let tinted = icon.copy() as! NSImage
+                tinted.isTemplate = true
+                NSGraphicsContext.current?.saveGraphicsState()
+                tinted.draw(in: NSRect(x: 12, y: (rect.height - 16) / 2, width: 16, height: 16))
+                NSGraphicsContext.current?.restoreGraphicsState()
+            }
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
+            let text = NSAttributedString(string: title, attributes: attrs)
+            text.draw(with: NSRect(x: 36, y: (rect.height - 17) / 2 + 3, width: rect.width - 46, height: 17),
+                      options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
+            return true
+        }
+    }
+}

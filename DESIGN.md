@@ -702,14 +702,23 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   Forward (⌃⌘[ ⌃⌘]) walk the trail; the finder ranked by graph
   distance; `NeighborhoodView`, the neighborhood to distance 2 in graph
   form, walked by re-centering, from the palette.
-- The surface, simplified (§3.1, milestones 14–16): `shown` per column
-  in `ArrangementState`, kept by `Focus`; `ColumnsView`, one block per
-  column, dividers, a grab band, drops; ⌘[ ⌘] walk a column's past;
-  `show(_:lens:_:)` in the controller, the one open rule, with
-  `showing(_:lens:inColumn:)` and `showing(_:lens:inNewColumnAt:)` in
-  the core; the sidebar as spine: `OrganizationView` for every
-  organization including the desk (`deskTree`), rows that drag and take
-  drops (`OrgDragItem`), New and ⋯ in its header, pinned by default.
+- The surface (§3.1, milestones 14–18): `ArrangementState` as acme's
+  tiling — columns of tiles with `heights`, a new tile taking the lower
+  half of the column's biggest (`bringing(_:lens:inColumn:below:)`),
+  `growing(_:step:whole:)` for colgrow, a removed tile's height to its
+  neighbor; `GridView` with `TilePill` (glass, symbol, name, status
+  glyph; drag to move, click for the menu), dividers, drops between
+  tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
+  here) as the two verbs, in the controller, the sidebar, the finder
+  and every opener; collection of placements retired; the sidebar as
+  spine: `OrganizationView` for every organization including the desk
+  (`deskTree`, a row per tile), rows that drag and take drops
+  (`OrgDragItem`), New and ⋯ in its header, pinned by default.
+- Status (§3.7, milestone 17): `StatusRecord` and `Block.status`,
+  `.status` entries, `StatusScanner` for OSC 7501, 9;4 and 133 fed by
+  each session on the host, the host reporting for searches, git and
+  diffs, `attend` marking done and error read; `StatusGlyph` in pills,
+  rows and the finder; the Status organization; the Dock badge.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own

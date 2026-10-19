@@ -11,8 +11,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var host: HostClient { hosts.local }
     private let root = RootView()
     /// The arrangement shown; and the one it replaced, while it slides away.
-    private var content = ColumnsView()
-    private var outgoing = ColumnsView()
+    private var content = GridView()
+    private var outgoing = GridView()
     /// The arrangement `content` shows, and which way the next one to be
     /// shown slides in (1 from the right, -1 from the left), if it does.
     private var shownArrangement: BlockID?
@@ -84,10 +84,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebar.delegate = self
         sidebar.organizationView.delegate = self
-        for c in [content, outgoing] {
-            c.delegate = self
-            c.paneInfo = { [weak self] id in self?.shown(id) }
-        }
+        for c in [content, outgoing] { c.delegate = self }
         sidebar.isHidden = true
 
         if let f = desk.window.frame, f.count == 4 {
@@ -171,11 +168,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if let a = arrangement {
-            // One block per column (§3.1): what each shows.
-            let cols = a.visible.filter { !recentlyClosed.contains($0.block) }.map { p -> ColumnsView.Column in
-                ColumnsView.Column(id: p.id, view: view(for: Shown(placement: p, block: hosts.block(p.block))))
-            }
-            content.show(cols, fractions: a.fractions, focused: a.focused)
+            // The grid (§3.1): every tile, in its column, top to bottom.
+            let tiles = a.columns.map { column in
+                column.filter { !recentlyClosed.contains($0.block) }.map { p -> GridView.Tile in
+                    let shown = Shown(placement: p, block: hosts.block(p.block))
+                    return GridView.Tile(shown: shown, view: view(for: shown))
+                }
+            }.filter { !$0.isEmpty }
+            content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused)
             window.title = title(of: a)
             if palette == nil, let focused = a.focused, let view = views[focused],
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
@@ -353,9 +353,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func attend() {
         if window?.isKeyWindow == true, let b = focusedShown?.placement.block, b != attended {
             attended = b
-            if let r = hosts.block(b)?.statusRecord, r.state == .done || r.state == .error { hosts.propose(.attend(b)) }
+            if let r = hosts.block(b)?.statusRecord, (r.state == .done || r.state == .error), r.read != true { hosts.propose(.attend(b)) }
         }
-        let waiting = hosts.blocks.filter { b in b.statusRecord.map { $0.state == .blocked || $0.state == .done } ?? false }.count
+        let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count
         let badge = waiting == 0 ? "" : "\(waiting)"
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
@@ -387,41 +387,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// A column's past is trimmed (§4): placements unseen for a while leave
-    /// unnamed arrangements, unless their blocks are held (unsaved changes,
-    /// a running job); terminals stay (the host sees to their dormancy).
-    /// What a column shows is never collected. An unnamed arrangement left
-    /// empty leaves the desk.
+    /// An arrangement is what you made it (§3.1): nothing in it is tidied
+    /// away. An unnamed one left empty leaves the desk (§4); the host sees
+    /// to terminals' dormancy.
     private func collect() {
-        let minutes = desk.settings.collectAfterMinutes
         var order = desk.order
         for id in desk.order {
-            guard let a = hosts.arrangement(id), !a.isNamed else { continue }
-            if minutes > 0 {
-                let cutoff = Int64(Date().addingTimeInterval(-Double(minutes) * 60).timeIntervalSince1970 * 1000)
-                for p in a.placements where !a.visible.contains(where: { $0.id == p.id }) {
-                    guard let block = hosts.block(p.block), block.kind != .terminal, !block.isHeld,
-                          let seen = hosts.registryEntry(p.block)?.lastSeen, seen.wall < cutoff else { continue }
-                    hosts.append(.remove(p.id), to: .block(id))
-                }
-            }
-            if hosts.arrangement(id)?.isEmpty == true, id != selected {
-                order.removeAll { $0 == id }
-            }
+            guard let a = hosts.arrangement(id), !a.isNamed, a.isEmpty, id != selected else { continue }
+            order.removeAll { $0 == id }
         }
         if order != desk.order { hosts.append(.order(order), to: .desk(host.host)) }
     }
 
-    /// Pretends every placement was last seen `minutes` ago, then collects.
-    func debugCollect(agingBy minutes: Double) {
-        collect()
-    }
-
-    @objc func setCollectAfter(_ sender: NSMenuItem) {
-        var s = desk.settings
-        s.collectAfterMinutes = sender.tag
-        host.setSettings(s)
-    }
+    func debugCollect(agingBy minutes: Double) { collect() }
 
     @objc func setTextHistory(_ sender: NSMenuItem) {
         var s = desk.settings
@@ -600,8 +578,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for (c, column) in a.columns.enumerated() {
                 out += "column \(c): " + column.map { p in
                     let b = hosts.block(p.block)
-                    let mark = p.id == a.focused ? "*" : (a.shown(in: c)?.id == p.id ? "!" : "")
-                    return "\(p.lens.rawValue)=\(b?.displayTitle ?? "?")\(mark)"
+                    let mark = p.id == a.focused ? "*" : ""
+                    return "\(p.lens.rawValue)=\(b?.displayTitle ?? "?")\(mark) \(Int((a.heights[p.id] ?? 0) * 100))%"
                 }.joined(separator: " | ") + "\n"
             }
         }
@@ -879,8 +857,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(setCollectAfter(_:)):
-            item.state = item.tag == desk.settings.collectAfterMinutes ? .on : .off
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
@@ -902,10 +878,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = (item.representedObject as? String) == desk.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(togglePinnedSidebar(_:)):
             item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
-        case #selector(columnBack(_:)):
-            return arrangement.flatMap { a in a.focusedColumn.flatMap { a.step(inColumn: $0, offset: -1) } } != nil
-        case #selector(columnForward(_:)):
-            return arrangement.flatMap { a in a.focusedColumn.flatMap { a.step(inColumn: $0, offset: 1) } } != nil
         default:
             break
         }
@@ -1031,20 +1003,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if i < order.count { host.select(order[i]) }
     }
 
-    // MARK: A column's past (§3.1)
+    // MARK: Tiles
 
-    /// ⌘[: what the focused column showed before this.
-    @objc func columnBack(_ sender: Any?) { stepColumn(-1) }
-    /// ⌘]: forward again.
-    @objc func columnForward(_ sender: Any?) { stepColumn(1) }
-
-    private func stepColumn(_ offset: Int) {
-        guard let a = arrangement, let c = a.focusedColumn, let p = a.step(inColumn: c, offset: offset) else { return }
-        appendToSelected([.focus(p.id)])
-    }
-
-    @objc func nextColumn(_ sender: Any?) { stepPane(1) }
-    @objc func previousColumn(_ sender: Any?) { stepPane(-1) }
+    @objc func nextTile(_ sender: Any?) { stepPane(1) }
+    @objc func previousTile(_ sender: Any?) { stepPane(-1) }
 
     private func stepPane(_ d: Int) {
         guard let a = arrangement, a.visible.count > 1 else { return }
@@ -1053,12 +1015,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         focus(visible[(i + d + visible.count) % visible.count].id)
     }
 
-    /// Focuses a placement of the selected arrangement (showing it, if it
-    /// is in its column's past).
+    /// Focuses a tile of the selected arrangement.
     func focus(_ placement: PlacementID) {
-        guard let a = arrangement, a.placement(placement) != nil else { return }
-        if a.focused == placement, a.visible.contains(where: { $0.id == placement }) { return }
+        guard let a = arrangement, a.placement(placement) != nil, a.focused != placement else { return }
         appendToSelected([.focus(placement)])
+    }
+
+    /// Grow (acme's colgrow): the focused tile takes a step from its
+    /// neighbors; with ⇧, as much of its column as can be.
+    @objc func growTile(_ sender: Any?) {
+        guard let a = arrangement, let f = a.focused else { return }
+        appendToSelected(a.growing(f, whole: NSApp.currentEvent?.modifierFlags.contains(.shift) == true))
+    }
+
+    @objc func fillColumn(_ sender: Any?) {
+        guard let a = arrangement, let f = a.focused else { return }
+        appendToSelected(a.growing(f, whole: true))
     }
 
     // MARK: Organizations (§3.6)
@@ -1103,10 +1075,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (org == .desk ? 0.05 : 0.2), execute: work) }
     }
 
-    /// The desk row for the focused column of the selected arrangement.
+    /// The desk row for the focused tile of the selected arrangement.
     private var deskSelectedRow: String? {
         guard let id = selected, let a = hosts.arrangement(id) else { return nil }
-        if let c = a.focusedColumn, a.shown(in: c) != nil { return "arr/\(id)/col/\(c)" }
+        if let f = a.focusedPlacement { return "arr/\(id)/tile/\(f.id)" }
         return "arr/\(id)"
     }
 
@@ -1120,36 +1092,56 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
         let n = OrgNode(id: id ?? block.id.description, block: block.id, title: block.displayTitle,
                         symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
-        n.status = block.statusRecord
+        n.look = StatusGlyph.look(of: block)
+        n.tooltip = StatusGlyph.tooltip(block)
         return n
     }
 
-    /// Status (§3.7): blocks by what they are doing, those that want
-    /// attention first — blocked, done, error — then working; nothing
-    /// idle, there being nothing to say of it.
+    /// Status (§3.7): blocks by what they are doing — needs you, done,
+    /// failed, working, inactive — the unread first in each, each row
+    /// with how long ago at the right. Nothing idle, there being nothing
+    /// to say of it.
     private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        var groups: [StatusState: [(Block, StatusRecord)]] = [:]
+        enum Group: Int, CaseIterable { case needsYou, done, failed, working, inactive }
+        var groups: [Group: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
             for b in c.node.blocks {
-                guard let r = b.statusRecord, r.state != .idle, matches(filter, [b.displayTitle, b.path, r.msg, r.app]) else { continue }
-                groups[r.state, default: []].append((b, r))
+                guard let look = StatusGlyph.look(of: b) else { continue }
+                let r = b.statusRecord
+                guard matches(filter, [b.displayTitle, b.path, r?.msg, r?.app]) else { continue }
+                let group: Group = switch look {
+                case .needsYou: .needsYou
+                case .done: .done
+                case .failed: .failed
+                case .working: .working
+                case .inactive: .inactive
+                }
+                let at = r?.at ?? b.terminal?.dormantSince ?? b.created
+                groups[group, default: []].append((b, r, at))
             }
         }
-        let order: [(StatusState, String, String)] = [
-            (.blocked, "Waiting on you", "hand.raised"), (.done, "Done", "checkmark.circle"),
-            (.error, "Failed", "exclamationmark.circle"), (.working, "Working", "circle.dotted"),
+        let titles: [Group: (String, String)] = [
+            .needsYou: ("Needs you", "hand.raised"), .done: ("Done", "checkmark.circle"), .failed: ("Failed", "exclamationmark.circle"),
+            .working: ("Working", "circle.dotted"), .inactive: ("Inactive", "moon"),
         ]
         var open: Set<String> = []
-        let nodes = order.compactMap { state, title, symbol -> OrgNode? in
-            guard let items = groups[state]?.sorted(by: { $0.1.at > $1.1.at }) else { return nil }
-            let id = "status:\(state.rawValue)"
-            open.insert(id)
-            let children = items.map { block, r -> OrgNode in
+        let nodes = Group.allCases.compactMap { group -> OrgNode? in
+            guard let items = groups[group]?.sorted(by: { a, b in
+                let ua = a.1?.wantsAttention ?? false, ub = b.1?.wantsAttention ?? false
+                return ua != ub ? ua : a.2 > b.2
+            }) else { return nil }
+            let (title, symbol) = titles[group]!
+            let id = "status:\(group)"
+            if group != .inactive { open.insert(id) }
+            let children = items.map { block, r, at -> OrgNode in
                 var words: [String] = []
-                if let app = r.app { words.append(app) }
-                if let msg = r.msg, !msg.isEmpty { words.append(msg) } else if let t = r.title, !t.isEmpty { words.append(t) }
-                words.append(Age.ago(r.at))
-                return node(for: block, id: id + "/" + block.id.description, detail: words.joined(separator: " · "))
+                if let app = r?.app { words.append(app) }
+                if let msg = r?.msg, !msg.isEmpty { words.append(msg) } else if let t = r?.title, !t.isEmpty { words.append(t) }
+                let n = node(for: block, id: id + "/" + block.id.description, detail: words.joined(separator: " · "))
+                n.trailing = Age.short(at)
+                n.emphasis = r?.wantsAttention ?? false
+                n.age = group == .inactive ? 0.6 : nil
+                return n
             }
             return OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
         }
@@ -1161,7 +1153,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         filter.isEmpty || texts.contains { $0?.lowercased().contains(filter) ?? false }
     }
 
-    /// The tree for an organization, and which rows open by themselves.
     func organizationTree(_ org: Organization, filter: String) -> ([OrgNode], Set<String>) {
         switch org {
         case .desk: return deskTree(filter)
@@ -1172,38 +1163,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Desk: the arrangements, each expanding to its columns in order,
-    /// the selected one open and the focused column marked (§3.6): the
-    /// table of contents of the screen. New… at the end.
+    /// Desk: the arrangements, each expanding to its tiles in order (by
+    /// column, top to bottom), the selected one open and the focused tile
+    /// marked (§3.6): the table of contents of the screen. New… at the end.
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var nodes: [OrgNode] = []
         var open: Set<String> = []
         for id in desk.order {
             guard let a = hosts.arrangement(id) else { continue }
             let aid = "arr/\(id)"
-            let columns = a.columns.indices.compactMap { c -> OrgNode? in
-                guard let p = a.shown(in: c), let b = hosts.block(p.block) else { return nil }
-                guard matches(filter, [b.displayTitle, b.path]) else { return nil }
-                let i = a.columns[c].firstIndex { $0.id == p.id } ?? 0
-                var notes: [String] = []
-                if b.text?.isDirty == true { notes.append("edited") }
-                if i > 0 { notes.append("\(i) before") }
-                if i < a.columns[c].count - 1 { notes.append("\(a.columns[c].count - 1 - i) after") }
-                let n = OrgNode(id: "\(aid)/col/\(c)", block: p.block, title: b.displayTitle,
-                                symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
-                n.status = b.statusRecord
-                n.arrangement = id
-                n.column = c
-                n.placement = p.id
-                n.emphasis = id == selected && p.id == a.focused
-                return n
+            var tiles: [OrgNode] = []
+            for (c, column) in a.columns.enumerated() {
+                for p in column {
+                    guard let b = hosts.block(p.block), matches(filter, [b.displayTitle, b.path]) else { continue }
+                    var notes: [String] = []
+                    if b.text?.isDirty == true { notes.append("edited") }
+                    if a.columns.count > 1 { notes.append("column \(c + 1)") }
+                    let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: b.displayTitle,
+                                    symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
+                    n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
+                    n.arrangement = id
+                    n.column = c
+                    n.placement = p.id
+                    n.emphasis = id == selected && p.id == a.focused
+                    tiles.append(n)
+                }
             }
             let titleMatches = matches(filter, [title(of: a)])
-            guard filter.isEmpty || titleMatches || !columns.isEmpty else { continue }
+            guard filter.isEmpty || titleMatches || !tiles.isEmpty else { continue }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let n = OrgNode(id: aid, block: id, title: title(of: a),
-                            symbol: a.columns.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
-                            detail: a.isNamed ? "kept" : "", count: a.columns.count > 1 ? a.columns.count : nil, children: columns)
+                            symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
+                            detail: a.isNamed ? "kept" : "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
             n.emphasis = id == selected
             nodes.append(n)
@@ -1263,7 +1254,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     let cid = "\(id)/\(card.block)"
                     let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
                                        detail: card.detail + (card.at.map { " · " + Age.ago($0) } ?? ""), age: Self.age(card.at))
-                    node.status = hosts.block(card.block)?.statusRecord
+                    node.look = StatusGlyph.look(of: hosts.block(card.block))
                     node.loadChildren = { bunches(of: card.block, prefix: cid) }
                     return node
                 }
@@ -1464,10 +1455,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         defer { navigatingTrail = false }
         if b.kind == .arrangement {
             host.select(step.block)
-        } else if let a = arrangement, let p = (step.placement.flatMap { a.placement($0) } ?? a.placements(of: step.block).first) {
-            focus(p.id)
         } else {
-            show(step.block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "back along the trail")
+            goTo(step.block)
         }
         render()
         lastTrailFocus = arrangement?.focused
@@ -1556,7 +1545,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             var score = query.isEmpty ? 1 : (Finder.score(query, hay + " " + block.id.host.raw))
             guard score > 0 else { continue }
             if let r = block.statusRecord, r.wantsAttention {
-                note = r.state == .blocked ? "waiting on you" : r.state == .done ? "done" : "failed"
+                note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
             }
             if let d = near[block.id], d > 0 {
                 score = query.isEmpty ? 1 + (4 - d) : score * (5 - d) / 2
@@ -1590,30 +1579,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return items
     }
 
-    /// Brings a block back: an arrangement onto the desk and selected; any
-    /// other shown here, in the focused column.
-    func recall(_ id: BlockID) {
+    /// Recall, from the finder: an arrangement onto the desk and selected;
+    /// any other block gone to.
+    func recall(_ id: BlockID) { goTo(id) }
+
+    /// **Go to** (§3.1): the block where it already is — a tile here is
+    /// focused; else the arrangement it is in, the one most recently
+    /// settled on first, is selected and its tile focused; else, placed
+    /// nowhere, it is brought here.
+    func goTo(_ id: BlockID) {
         guard let block = hosts.block(id) else { return }
-        if block.kind == .arrangement {
-            host.select(id)
-            return
+        if block.kind == .arrangement { return host.select(id) }
+        if let a = arrangement, let t = a.placements(of: id).first { return focus(t.id) }
+        let order = desk.settled + desk.order.filter { !desk.settled.contains($0) }
+        for arr in order where arr != selected {
+            if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
+                host.select(arr)
+                hosts.append(.focus(t.id), to: .block(arr))
+                return
+            }
         }
         show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
     }
 
-    /// Where a block goes (§3.1): the only three places anything is put.
+    /// **Bring here** (§3.1): where a tile is made for a block. Nothing
+    /// else makes one.
     enum Where {
-        /// In the focused column; what it showed joins its past.
+        /// Into the active column, as acme places a window: below its
+        /// biggest tile, taking the lower half.
         case here
-        /// In a column, as `here` there.
+        /// Into a column, the same way.
         case inColumn(Int)
         /// A new column to the right of the focused one.
         case beside
         /// A new column at an index.
         case inNewColumn(Int)
-        /// Beside the placement that opened it: in the column to its right
-        /// if that column's block was opened from this one, else a new
-        /// column there. Links the two.
+        /// Below the tile that opened it, taking its lower half; the two
+        /// are linked.
         case besideOpener(PlacementID)
     }
 
@@ -1622,8 +1624,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         placement.map { .besideOpener($0) } ?? .here
     }
 
-    /// Shows a block in the selected arrangement (or `arrangement`), by
-    /// the rules.
+    /// Brings a block into the selected arrangement (or `arrangement`): a
+    /// tile of it already there is focused instead.
     func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil) {
         let id = arrangement ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
@@ -1631,28 +1633,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let events: [Event]
         switch place {
         case .here:
-            events = a.showing(block, lens: lens, inColumn: a.focusedColumn ?? a.columns.count, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inColumn: a.focusedColumn ?? a.columns.count, newPlacement: fresh)
         case .inColumn(let c):
-            events = a.showing(block, lens: lens, inColumn: c, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inColumn: c, newPlacement: fresh)
         case .beside:
-            events = a.showing(block, lens: lens, inNewColumnAt: (a.focusedColumn ?? a.columns.count - 1) + 1, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inNewColumnAt: (a.focusedColumn ?? a.columns.count - 1) + 1, newPlacement: fresh)
         case .inNewColumn(let i):
-            events = a.showing(block, lens: lens, inNewColumnAt: i, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inNewColumnAt: i, newPlacement: fresh)
         case .besideOpener(let p):
             guard let c = a.columnIndex(of: p), let from = a.placement(p)?.block else {
-                return show(block, lens: lens, .beside, kind: kind, context: context)
+                return show(block, lens: lens, .here, kind: kind, context: context)
             }
-            let right = c + 1
-            // The column to the right is the opener's if what it shows was
-            // opened from the opener (any link between them says so).
-            let reuse = a.shown(in: right).map { shownRight in
-                shownRight.block == from || hosts.client(of: from)?.node.graph.edges(from: from).contains { $0.to == shownRight.block } == true
-            } ?? false
-            events = reuse ? a.showing(block, lens: lens, inColumn: right, newPlacement: fresh)
-                : a.showing(block, lens: lens, inNewColumnAt: right, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inColumn: c, below: p, newPlacement: fresh)
             hosts.link(from: from, to: block, kind: kind, context: context)
         }
         hosts.append(events, to: .block(id))
+    }
+
+    /// A tile's block replaced in place — a listing gone into a folder, a
+    /// preview gone to another page: the same tile, as a browser's window
+    /// is; Go Back comes back along the trail.
+    private func replace(_ placement: PlacementID, with block: BlockID, lens: Lens) {
+        guard let a = arrangement, let (c, i) = a.locate(placement) else { return }
+        let h = a.heights[placement]
+        let p = Placement(block: block, lens: lens)
+        var events: [Event] = [.remove(placement), .place(p, column: c, at: i)]
+        if let h { events.append(.heights([p.id: h])) }
+        appendToSelected(events)
     }
 
     /// Opens a file to edit: from a terminal, beside it; else here.
@@ -2101,10 +2108,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 events.append(.place(Placement(id: id, block: p.block, lens: p.lens), column: c, at: i))
             }
         }
-        // Each column shows what it showed then, and the focus is as it was.
-        for c in state.columns.indices {
-            if let shown = state.shown(in: c), let id = ids[shown.id] { events.append(.focus(id)) }
-        }
+        var heights: [PlacementID: Double] = [:]
+        for (old, new) in ids { if let h = state.heights[old] { heights[new] = h } }
+        if !heights.isEmpty { events.append(.heights(heights)) }
         if let f = state.focused, let id = ids[f] { events.append(.focus(id)) }
         if state.fractions.count == state.columns.count { events.append(.fractions(state.fractions)) }
         hosts.append(events, to: .block(id))
@@ -2218,26 +2224,75 @@ extension MainWindowController: SidebarDelegate {
     }
 }
 
-extension MainWindowController: ColumnsDelegate {
-    func contentCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
+extension MainWindowController: GridDelegate {
+    func gridFocus(_ placement: PlacementID) { focus(placement) }
+    func gridCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
     /// Another arrangement dropped on this one: its columns come over.
-    func contentDrop(_ arrangement: BlockID, on target: ColumnsView.DropTarget) {
-        guard let id = selected, let source = hosts.arrangement(arrangement), let a = hosts.arrangement(id) else {
-            return host.select(arrangement)
-        }
+    func gridDropArrangement(_ arrangement: BlockID, column: Int) {
+        guard let id = selected, let source = hosts.arrangement(arrangement) else { return host.select(arrangement) }
         hosts.append(source.placements.map { .remove($0.id) }, to: .block(arrangement))
-        switch target {
-        case .column(let index):
-            hosts.append(.adopt(columns: source.columns, at: index), to: .block(id))
-        case .into(let c):
-            let placements = source.placements
-            hosts.append(placements.enumerated().map { i, p in
-                .place(Placement(id: p.id, block: p.block, lens: p.lens), column: c, at: a.columns[c].count + i)
-            }, to: .block(id))
-        }
+        hosts.append(.adopt(columns: source.columns, at: column), to: .block(id))
         removeFromDesk(arrangement)
         host.select(id)
+    }
+
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool) {
+        guard let a = arrangement else { return }
+        if newColumn || column >= a.columns.count {
+            movePlacement(placement, toNewColumn: column, in: a)
+        } else {
+            appendToSelected([.move(placement, column: column, at: at)])
+        }
+    }
+
+    /// A block from the sidebar dropped in the grid: brought there.
+    func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool) {
+        guard let b = hosts.block(block) else { return }
+        if b.kind == .arrangement { return host.select(block) }
+        let lens = Lens.default(for: b.kind, path: b.path)
+        guard let a = arrangement else { return show(block, lens: lens, .here) }
+        if newColumn || column >= a.columns.count { return show(block, lens: lens, .inNewColumn(column)) }
+        let below = at > 0 && at - 1 < a.columns[column].count ? a.columns[column][at - 1].id : nil
+        if let t = a.tile(of: block, lens: lens) { return focus(t.id) }
+        if let below {
+            appendToSelected(a.bringing(block, lens: lens, inColumn: column, below: below, newPlacement: { ULID.make() }))
+        } else {
+            appendToSelected([.place(Placement(block: block, lens: lens), column: column, at: 0)])
+        }
+    }
+
+    func gridResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
+    func gridResized(heights: [PlacementID: Double]) { appendToSelected([.heights(heights)]) }
+    func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+
+    func gridDragAtLeftEdge() {
+        if !sidebarShown { showSidebar(animated: true) }
+    }
+
+    /// A tile's pill clicked: its menu.
+    func gridPillMenu(for placement: PlacementID) -> NSMenu? {
+        guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
+        let block = p.block
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Grow") { [weak self] in self?.appendToSelected(a.growing(placement)) })
+        menu.addItem(ClosureMenuItem("Fill the Column") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
+            self?.linksCenter = block
+            self?.setOrganization(.links)
+        })
+        if let b = hosts.block(block), b.kind == .text, let path = b.path {
+            let other: Lens? = p.lens == .preview ? .editor : (p.lens == .editor && Lens.isMarkdown(path) ? .preview : nil)
+            if let other {
+                menu.addItem(ClosureMenuItem(other == .editor ? "Edit" : "Preview") { [weak self] in self?.replace(placement, with: block, lens: other) })
+            }
+        }
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Take Off This Arrangement") { [weak self] in
+            self?.hosts.append(.remove(placement), to: .block(id))
+        })
+        return menu
     }
 
     /// A block's neighborhood (§3.5), each edge kind and direction that
@@ -2281,17 +2336,6 @@ extension MainWindowController: ColumnsDelegate {
         return bunches
     }
 
-    func contentMovePane(_ placement: PlacementID, to target: ColumnsView.DropTarget) {
-        guard let a = arrangement else { return }
-        switch target {
-        case .column(let index):
-            movePlacement(placement, toNewColumn: index, in: a)
-        case .into(let c):
-            if a.columnIndex(of: placement) == c { return }
-            appendToSelected([.move(placement, column: c, at: a.columns[c].count)])
-        }
-    }
-
     /// Moves a placement into a new column at `index`.
     private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState) {
         guard let (sc, _) = a.locate(placement) else { return }
@@ -2306,26 +2350,6 @@ extension MainWindowController: ColumnsDelegate {
         reorderColumn(from: from, to: min(to, from))
     }
 
-    /// A block from the sidebar dropped on the surface: shown there.
-    func contentShowBlock(_ block: BlockID, at target: ColumnsView.DropTarget) {
-        guard let b = hosts.block(block) else { return }
-        if b.kind == .arrangement { return host.select(block) }
-        let lens = Lens.default(for: b.kind, path: b.path)
-        switch target {
-        case .column(let i): show(block, lens: lens, .inNewColumn(i))
-        case .into(let c): show(block, lens: lens, .inColumn(c))
-        }
-    }
-
-    func contentPaneDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
-
-    func contentDragAtLeftEdge() {
-        if !sidebarShown { showSidebar(animated: true) }
-    }
-
-    func contentResized(_ fractions: [Double]) {
-        appendToSelected([.fractions(fractions)])
-    }
 }
 
 extension MainWindowController: EditorViewDelegate {
@@ -2362,13 +2386,7 @@ extension MainWindowController: EditorViewDelegate {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
-        // A definition is gone to here, in the editor's column: a thread
-        // followed, that ⌘[ comes back along.
-        if let a = arrangement, let c = a.columnIndex(of: view.placement) {
-            show(block, lens: .editor, .inColumn(c))
-        } else {
-            show(block, lens: .editor, .here)
-        }
+        show(block, lens: .editor, .besideOpener(view.placement), context: view.lineAtCaret)
     }
 
     /// A server's edits to other files on the block's host: files that are
@@ -2394,14 +2412,14 @@ extension MainWindowController: MarkdownViewDelegate {
     /// stays beneath, to go back to); a web address as a web block beside;
     /// any other file as what it is, beside; other schemes with the system.
     func markdownView(_ view: MarkdownView, follow url: URL) {
-        guard let a = arrangement, let p = a.placement(view.placement), let (c, _) = a.locate(view.placement) else { return }
+        guard let a = arrangement, let p = a.placement(view.placement) else { return }
         if url.isFileURL {
             let path = url.standardizedFileURL.path
             if Lens.isMarkdown(path) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
                 hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
-                // Page to page, here, as a browser goes; ⌘[ comes back.
-                show(block, lens: .preview, .inColumn(c))
+                // Page to page in the same tile, as a browser goes.
+                replace(view.placement, with: block, lens: .preview)
             } else {
                 open(path, from: view.placement)
             }
@@ -2422,9 +2440,8 @@ extension MainWindowController: DirectoryViewDelegate {
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
         if isDir.boolValue {
-            // A folder takes the listing's place, here; ⌘[ comes back up.
-            guard let a = arrangement, let c = a.columnIndex(of: view.placement) else { return }
-            show(host.directoryBlock(for: path), lens: .directory, .inColumn(c))
+            // A folder takes the listing's place, in the same tile.
+            replace(view.placement, with: host.directoryBlock(for: path), lens: .directory)
         } else {
             open(path, from: view.placement)
         }
@@ -2576,21 +2593,21 @@ final class RootView: NSView {
 }
 
 extension MainWindowController: OrganizationViewDelegate {
-    /// A row clicked: an arrangement is gone to; a column is focused (in
-    /// its arrangement); any other block is shown here, or beside.
-    func organizationOpen(_ node: OrgNode, newColumn: Bool) {
+    /// A row clicked: an arrangement is gone to; a tile is focused (in its
+    /// arrangement); any other block is gone to where it is, or, with ⌘,
+    /// brought here (§3.1).
+    func organizationOpen(_ node: OrgNode, newColumn bring: Bool) {
         HoverCard.shared.hide()
-        if let arr = node.arrangement {
+        if let arr = node.arrangement, !bring {
             if arr != selected { host.select(arr) }
-            if let p = node.placement, hosts.arrangement(arr)?.placement(p) != nil, !newColumn {
+            if let p = node.placement, hosts.arrangement(arr)?.placement(p) != nil {
                 hosts.append(.focus(p), to: .block(arr))
-                return
             }
-            if node.column == nil { return }
+            return
         }
         guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return host.select(block) }
-        show(block, lens: Lens.default(for: b.kind, path: b.path), newColumn ? .beside : .here)
+        if bring { show(block, lens: Lens.default(for: b.kind, path: b.path), .here) } else { goTo(block) }
         if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
     }
 
@@ -2633,15 +2650,15 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, let p = node.placement {
-            menu.addItem(ClosureMenuItem("Take Off This Column") { [weak self] in
+            menu.addItem(ClosureMenuItem("Take Off This Arrangement") { [weak self] in
                 guard let self else { return }
                 self.hosts.append(.remove(p), to: .block(arr))
                 if self.hosts.arrangement(arr)?.isEmpty == true, self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
             })
             menu.addItem(.separator())
         } else {
-            menu.addItem(ClosureMenuItem("Show Here") { [weak self] in self?.organizationOpen(node, newColumn: false) })
-            menu.addItem(ClosureMenuItem("Show Beside") { [weak self] in self?.organizationOpen(node, newColumn: true) })
+            menu.addItem(ClosureMenuItem("Go To") { [weak self] in self?.organizationOpen(node, newColumn: false) })
+            menu.addItem(ClosureMenuItem("Bring Here") { [weak self] in self?.organizationOpen(node, newColumn: true) })
             menu.addItem(.separator())
         }
         menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in

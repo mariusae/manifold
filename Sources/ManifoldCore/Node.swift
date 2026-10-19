@@ -187,34 +187,67 @@ public final class Node {
 // MARK: Arrangement intents
 
 /// Changes to an arrangement that take some working out against its current
-/// state, lowered to events by whoever leads it. These are the only ways a
-/// block is placed (§3.1): here, in a column, or beside, in a new one.
+/// state, lowered to events by whoever leads it. Bringing a block here
+/// (§3.1) is the one way a tile is made.
 extension ArrangementState {
-    /// A placement of `block` through `lens` that is shown now, anywhere:
-    /// focused rather than shown twice.
-    private func alreadyShown(_ block: BlockID, lens: Lens) -> Placement? {
-        visible.first { $0.block == block && $0.lens == lens }
+    /// A tile of `block` through `lens`, anywhere here.
+    public func tile(of block: BlockID, lens: Lens) -> Placement? {
+        placements.first { $0.block == block && $0.lens == lens }
     }
 
-    /// Events that show `block` in column `column` ("here"): a placement
-    /// of it shown anywhere is focused instead; one in this column's past
-    /// comes up; else a new placement goes on the end of the column (past
-    /// the last column: a new column).
-    public func showing(_ block: BlockID, lens: Lens, inColumn column: Int, newPlacement: () -> PlacementID) -> [Event] {
-        if let p = alreadyShown(block, lens: lens) { return [.focus(p.id)] }
-        if column >= 0, column < columns.count, let past = columns[column].first(where: { $0.block == block && $0.lens == lens }) {
-            return [.focus(past.id)]
-        }
+    /// Events that bring `block` into column `column`, as acme places a
+    /// new window: below the column's biggest tile, taking its lower half
+    /// (or below `below`, when given); a column past the end is a new
+    /// one. A tile of the block here already is focused instead.
+    public func bringing(_ block: BlockID, lens: Lens, inColumn column: Int, below: PlacementID? = nil, newPlacement: () -> PlacementID) -> [Event] {
+        if let t = tile(of: block, lens: lens) { return [.focus(t.id)] }
         let c = max(column, 0)
-        return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: c, at: c < columns.count ? columns[c].count : 0)]
+        guard c < columns.count else {
+            return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
+        }
+        let anchor = below.flatMap { id in columns[c].firstIndex { $0.id == id } }
+            ?? biggestTile(inColumn: c).flatMap { b in columns[c].firstIndex { $0.id == b.id } }
+        let at = anchor.map { $0 + 1 } ?? columns[c].count
+        return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: c, at: at)]
     }
 
-    /// Events that show `block` in a new column at `index` ("beside"): a
-    /// placement of it shown anywhere is focused instead.
-    public func showing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, newPlacement: () -> PlacementID) -> [Event] {
-        if let p = alreadyShown(block, lens: lens) { return [.focus(p.id)] }
+    /// Events that bring `block` into a new column at `index`.
+    public func bringing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, newPlacement: () -> PlacementID) -> [Event] {
+        if let t = tile(of: block, lens: lens) { return [.focus(t.id)] }
         var events: [Event] = [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
         if index < columns.count { events.append(.moveColumn(from: columns.count, to: max(index, 0))) }
         return events
+    }
+
+    /// Heights after a tile grows (acme's colgrow): by `step` of the column
+    /// taken from its neighbors nearest first, or, with `whole`, to all but
+    /// a sliver of each other tile.
+    public func growing(_ id: PlacementID, step: Double = 0.15, whole: Bool = false) -> [Event] {
+        guard let (c, i) = locate(id), columns[c].count > 1 else { return [] }
+        let column = columns[c]
+        var h = column.reduce(into: [PlacementID: Double]()) { $0[$1.id] = height(of: $1.id) }
+        let sliver = 0.04
+        if whole {
+            for p in column where p.id != id { h[p.id] = sliver }
+            h[id] = max(sliver, 1 - sliver * Double(column.count - 1))
+            return [.heights(h)]
+        }
+        var want = step
+        // Nearest neighbors first, below then above, each giving down to a sliver.
+        var order: [Int] = []
+        var d = 1
+        while order.count < column.count - 1 {
+            if i + d < column.count { order.append(i + d) }
+            if i - d >= 0 { order.append(i - d) }
+            d += 1
+        }
+        for j in order where want > 0 {
+            let pid = column[j].id
+            let give = min(want, max(0, (h[pid] ?? 0) - sliver))
+            h[pid] = (h[pid] ?? 0) - give
+            want -= give
+        }
+        h[id] = (h[id] ?? 0) + (step - want)
+        return [.heights(h)]
     }
 }

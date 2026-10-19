@@ -280,23 +280,21 @@ final class ArrangementDiagram: NSView {
 
     private func drawColumn(_ c: Int, in rect: NSRect) {
         let font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
-        guard let shown = state.shown(in: c) else { return }
         let column = state.columns[c]
-        // The block shown, whole; its past as a note at the foot.
-        let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
-        Theme.windowBackground.setFill()
-        path.fill()
-        Theme.sheetEdge(hovered: true).setStroke()
-        path.stroke()
-        drawTitle(shown, in: rect, font: font)
-        let i = column.firstIndex { $0.id == shown.id } ?? column.count - 1
-        var notes: [String] = []
-        if i > 0 { notes.append("\(i) before") }
-        if i < column.count - 1 { notes.append("\(column.count - 1 - i) after") }
-        if !notes.isEmpty {
-            let s = NSAttributedString(string: notes.joined(separator: " · "),
-                                       attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText])
-            s.draw(in: NSRect(x: rect.minX + 8, y: rect.minY + 6, width: rect.width - 16, height: 15))
+        guard !column.isEmpty else { return }
+        let gap: CGFloat = 4
+        let usable = rect.height - CGFloat(column.count - 1) * gap
+        var y = rect.maxY
+        for p in column {
+            let h = max(20, usable * CGFloat(state.height(of: p.id)))
+            let r = NSRect(x: rect.minX, y: y - h, width: rect.width, height: h)
+            let path = NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5)
+            Theme.windowBackground.setFill()
+            path.fill()
+            Theme.sheetEdge(hovered: p.id == state.focused).setStroke()
+            path.stroke()
+            drawTitle(p, in: r, font: font)
+            y -= h + gap
         }
     }
 

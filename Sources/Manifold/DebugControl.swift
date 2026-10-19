@@ -15,7 +15,6 @@ import ManifoldCore
 ///   contrast <mode>      set contrast correction (off, typical, deuteranopia)
 ///   focus                render as focused, without activating the app
 ///   open <target>        as if command-clicked in the focused terminal
-///   column back|forward  walk the focused column's past
 ///   org rows | org click <row> [cmd|double]   the sidebar's rows, clicked
 ///   click x y [count]    click (count times, as a multi-click) in the window
 ///   front                bring the window forward; print its screen rect
@@ -206,9 +205,11 @@ enum DebugControl {
             guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
             wc.hosts.propose(.attend(b))
             return "ok"
-        case "column":
-            // "column back|forward": the focused column's past, walked.
-            if arg == "back" { wc?.columnBack(nil) } else if arg == "forward" { wc?.columnForward(nil) } else { return "usage: column back|forward" }
+        case "attend":
+            // As focusing the block with the window key does: dismisses
+            // its done or failed status.
+            guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
+            wc.hosts.propose(.attend(b))
             return "ok"
         case "click":
             // "click x y [count]": a left click at window coordinates from the

@@ -34,7 +34,10 @@ final class OrgNode {
     /// Set off from the rest: the selected arrangement, the focused column.
     var emphasis = false
     /// What the block is doing (§3.7), shown as a glyph.
-    var status: StatusRecord?
+    var look: StatusGlyph.Look?
+    /// A word at the right, before the glyph: how long ago.
+    var trailing: String?
+    var tooltip: String?
     /// On the desk: the arrangement this row is, or is a column of.
     var arrangement: BlockID?
     /// On the desk: which column of its arrangement, and the placement shown.
@@ -336,6 +339,7 @@ final class OrgRowView: NSTableCellView {
     private let count = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
+    private let trailing = NSTextField(labelWithString: "")
     private var symbol = ""
 
     override init(frame: NSRect) {
@@ -354,14 +358,20 @@ final class OrgRowView: NSTableCellView {
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
-        for v in [icon, name, count, detail, glyph] { addSubview(v) }
+        trailing.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        trailing.textColor = Theme.secondaryText
+        trailing.alignment = .right
+        for v in [icon, name, count, detail, trailing, glyph] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ node: OrgNode) {
-        glyph.record = node.status
-        glyph.isHidden = !StatusGlyph.shows(node.status)
+        glyph.look = node.look
+        glyph.isHidden = node.look == nil
+        glyph.toolTip = node.tooltip
+        trailing.stringValue = node.trailing ?? ""
+        trailing.isHidden = node.trailing == nil
         if node.symbol != symbol {
             symbol = node.symbol
             icon.image = Theme.symbol(node.symbol, size: 12)
@@ -391,6 +401,11 @@ final class OrgRowView: NSTableCellView {
         if !glyph.isHidden {
             glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
+        }
+        if !trailing.isHidden {
+            let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
+            trailing.frame = NSRect(x: right - w, y: (h - 15) / 2 - 0.5, width: w, height: 15)
+            right -= w + 8
         }
         let nameWidth = max(0, right - 22)
         if detail.isHidden {

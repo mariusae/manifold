@@ -98,7 +98,7 @@ case "state":
                     for b in node.blocks.sorted(by: { $0.created < $1.created }) {
                         var line = "\(b.id) \(b.kind) \"\(b.displayTitle)\""
                         if let p = b.path { line += " \(p)" }
-                        if let a = b.arrangement { line += " columns=\(a.columns.map(\.count)) shown=\(a.shown) focused=\(a.focused ?? "-")" }
+                        if let a = b.arrangement { line += " columns=\(a.columns.map(\.count)) focused=\(a.focused ?? "-")" }
                         if let t = b.text { line += " v\(t.version) clean\(t.cleanVersion)\(t.isDirty ? " dirty" : "")\(t.stale ? " stale" : "")" }
                         if let t = b.terminal { line += " cwd=\(t.cwd ?? "-")\(t.busy ? " busy" : "")\(t.dormantSince != nil ? " dormant" : "")" }
                         if let r = node.registry(host).blocks[b.id] { line += " [\(r.life)\(r.held ? " held" : "")]" }

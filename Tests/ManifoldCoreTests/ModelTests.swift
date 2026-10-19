@@ -93,7 +93,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.block(id)?.title == nil)
 }
 
-@Test func arrangementColumnsShowOneAndKeepTheirPast() {
+@Test func arrangementTilesAsAcmeDoes() {
     var a = ArrangementState()
     let t1 = Placement(block: BlockID(), lens: .terminal)
     let t2 = Placement(block: BlockID(), lens: .terminal)
@@ -102,58 +102,51 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     a.apply(.place(t2, column: 1, at: 0))
     #expect(a.columns.count == 2)
     #expect(a.fractions == [0.5, 0.5])
+    #expect(a.heights[t1.id] == 1 && a.heights[t2.id] == 1)
     #expect(a.focused == t2.id)
-    // Here, in column 1: on the end of it, and shown; t2 joins the past.
-    for ev in a.showing(e.block, lens: .editor, inColumn: 1, newPlacement: { e.id }) { a.apply(ev) }
+    // Brought into column 1: below its biggest tile, taking its lower half.
+    for ev in a.bringing(e.block, lens: .editor, inColumn: 1, newPlacement: { e.id }) { a.apply(ev) }
     #expect(a.columns[1].map(\.id) == [t2.id, e.id])
-    #expect(a.visible.map(\.id) == [t1.id, e.id])
-    #expect(a.step(inColumn: 1, offset: -1)?.id == t2.id)
-    #expect(a.step(inColumn: 1, offset: 1) == nil)
-    // Focusing a placement in the past shows it again; forward is e.
-    a.apply(.focus(t2.id))
-    #expect(a.shown(in: 1)?.id == t2.id)
-    #expect(a.step(inColumn: 1, offset: 1)?.id == e.id)
-    // Showing a block shown anywhere focuses it rather than placing again;
-    // one in the column's past comes up.
-    #expect(a.showing(t1.block, lens: .terminal, inColumn: 1, newPlacement: { "new" }) == [.focus(t1.id)])
-    #expect(a.showing(e.block, lens: .editor, inColumn: 1, newPlacement: { "new" }) == [.focus(e.id)])
-    // Beside: a new column after column 0.
+    #expect(a.heights[t2.id] == 0.5 && a.heights[e.id] == 0.5)
+    // Bringing a block with a tile here focuses it instead.
+    #expect(a.bringing(t1.block, lens: .terminal, inColumn: 1, newPlacement: { "new" }) == [.focus(t1.id)])
+    // Another below t2 in particular: t2 halves again; the biggest is now e.
     let n = Placement(block: BlockID(), lens: .preview)
-    for ev in a.showing(n.block, lens: .preview, inNewColumnAt: 1, newPlacement: { n.id }) { a.apply(ev) }
-    #expect(a.columns.count == 3)
-    #expect(a.visible.map(\.id) == [t1.id, n.id, t2.id])
-    #expect(a.focused == n.id)
-    // Removing what's shown shows what the column showed before it.
-    a.apply(.focus(e.id))
-    a.apply(.remove(e.id))
-    #expect(a.columns[2].map(\.id) == [t2.id])
-    #expect(a.focused == t2.id)
-    a.apply(.remove(t2.id))
-    #expect(a.columns.count == 2)
-    #expect(a.focused == n.id)
-    // Layouts from older logs are read and ignored.
+    for ev in a.bringing(n.block, lens: .preview, inColumn: 1, below: t2.id, newPlacement: { n.id }) { a.apply(ev) }
+    #expect(a.columns[1].map(\.id) == [t2.id, n.id, e.id])
+    #expect(a.heights[t2.id] == 0.25 && a.heights[n.id] == 0.25 && a.heights[e.id] == 0.5)
+    #expect(a.biggestTile(inColumn: 1)?.id == e.id)
+    // Growing takes from the neighbors, nearest first; filling leaves slivers.
+    for ev in a.growing(n.id, step: 0.1) { a.apply(ev) }
+    #expect(abs(a.heights[n.id]! - 0.35) < 1e-9 && abs(a.heights[e.id]! - 0.4) < 1e-9)
+    for ev in a.growing(n.id, whole: true) { a.apply(ev) }
+    #expect(a.heights[t2.id]! < 0.05 && a.heights[n.id]! > 0.9)
+    // A tile removed gives its height to the one below, else above.
+    a.apply(.remove(n.id))
+    #expect(a.columns[1].map(\.id) == [t2.id, e.id])
+    #expect(abs(a.heights[t2.id]! + a.heights[e.id]! - 1) < 1e-9 && a.heights[e.id]! > 0.9)
+    #expect(a.focused == e.id)
+    // A new column beside; layouts from older logs are read and ignored.
+    for ev in a.bringing(n.block, lens: .preview, inNewColumnAt: 1, newPlacement: { n.id }) { a.apply(ev) }
+    #expect(a.columns.count == 3 && a.columns[1].first?.id == n.id)
     a.apply(.layout(.tiling))
-    a.apply(.heights([t1.id: 0.5]))
-    #expect(a.visible.count == 2)
-    a.apply(.fractions([0.3, 0.7]))
-    a.apply(.moveColumn(from: 1, to: 0))
-    #expect(a.columns[0].first?.id == n.id)
-    #expect(a.fractions == [0.7, 0.3])
-    #expect(a.shown == [n.id, t1.id])
+    a.apply(.fractions([0.2, 0.3, 0.5]))
+    a.apply(.moveColumn(from: 2, to: 0))
+    #expect(a.columns[0].first?.id == t2.id)
+    #expect(a.fractions == [0.5, 0.2, 0.3])
 }
 
-@Test func anOlderArrangementDecodesWithItsTopsShown() throws {
-    // As saved before §3.1: a stack whose last entry was on top, with a
-    // layout and heights; no `shown`.
+@Test func anOlderArrangementDecodesAsTiles() throws {
+    // As saved before the grid: a stack with `shown`, a layout, no heights.
     let b1 = BlockID(), b2 = BlockID()
     let json = """
     {"title":"work","columns":[[{"id":"p1","block":"\(b1)","lens":"terminal"},{"id":"p2","block":"\(b2)","lens":"editor"}]],
-     "fractions":[1],"focused":"p2","layout":"tiling","heights":{"p1":0.5}}
+     "fractions":[1],"focused":"p2","layout":"stacks","shown":["p2"]}
     """
     let a = try JSONDecoder().decode(ArrangementState.self, from: Data(json.utf8))
-    #expect(a.shown == ["p2"])
-    #expect(a.visible.map(\.id) == ["p2"])
-    #expect(a.step(inColumn: 0, offset: -1)?.id == "p1")
+    #expect(a.visible.map(\.id) == ["p1", "p2"])
+    #expect(a.heights["p1"] == 0.5 && a.heights["p2"] == 0.5)
+    #expect(a.focused == "p2")
 }
 
 @Test func deskAndRegistry() {

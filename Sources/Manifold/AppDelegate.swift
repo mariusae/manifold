@@ -191,6 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let arrangement = submenu(main, "Arrangement")
         item(arrangement, "Name…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         arrangement.addItem(.separator())
+        item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
+        item(arrangement, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
+        arrangement.addItem(.separator())
         item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
         item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
 
@@ -241,14 +244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         organizeItem.submenu = organize
         view.addItem(organizeItem)
         view.addItem(.separator())
-        let collect = NSMenu(title: "Tidy Unused Blocks Away")
-        for (minutes, title) in [(15, "After 15 Minutes"), (60, "After an Hour"), (240, "After 4 Hours"),
-                                 (1440, "After a Day"), (0, "Never")] {
-            item(collect, title, #selector(MainWindowController.setCollectAfter(_:)), "", []).tag = minutes
-        }
-        let collectItem = NSMenuItem(title: "Tidy Unused Blocks Away", action: nil, keyEquivalent: "")
-        collectItem.submenu = collect
-        view.addItem(collectItem)
         let dormancy = NSMenu(title: "End Idle Shells")
         for (hours, title) in [(2, "After 2 Hours Off Screen"), (8, "After 8 Hours Off Screen"), (24, "After a Day Off Screen"),
                                (168, "After a Week Off Screen"), (0, "Never")] {
@@ -294,14 +289,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item(window, n == 9 ? "Select Last Arrangement" : "Select Arrangement \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         window.addItem(.separator())
-        item(window, "Back in This Column", #selector(MainWindowController.columnBack(_:)), "[")
-        item(window, "Forward in This Column", #selector(MainWindowController.columnForward(_:)), "]")
-        item(window, "Focus Next Column", #selector(MainWindowController.nextColumn(_:)), "]", [.command, .option])
-        item(window, "Focus Previous Column", #selector(MainWindowController.previousColumn(_:)), "[", [.command, .option])
+        item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[")
+        item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]")
+        item(window, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
+        item(window, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
         window.addItem(.separator())
         item(window, "Show Links", #selector(MainWindowController.showLinks(_:)), "n", [.command, .option])
-        item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[", [.command, .control])
-        item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]", [.command, .control])
         NSApp.windowsMenu = window
 
         return main

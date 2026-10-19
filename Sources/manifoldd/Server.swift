@@ -343,9 +343,10 @@ final class Server {
             if !known.isEmpty { append(.seen(known, at: clock.now()), to: .registry(host)) }
             done()
         case let .attend(block):
-            // Attended to: what was done or failed is dismissed (§3.7).
-            if let r = node.block(block)?.status?[rootStatusID], r.state == .done || r.state == .error {
-                append(.status(id: rootStatusID, nil), to: .block(block))
+            // Attended to: what was done or failed has been read (§3.7).
+            if var r = node.block(block)?.status?[rootStatusID], r.state == .done || r.state == .error, r.read != true {
+                r.read = true
+                append(.status(id: rootStatusID, r), to: .block(block))
             }
             done()
         case let .link(link):
@@ -837,7 +838,7 @@ final class Server {
         for b in node.blocks.sorted(by: { $0.created < $1.created }) {
             out += "\(b.id) \(b.kind) \"\(b.displayTitle)\""
             if let p = b.path { out += " \(p)" }
-            if let a = b.arrangement { out += " columns=\(a.columns.map(\.count)) shown=\(a.shown)" }
+            if let a = b.arrangement { out += " columns=\(a.columns.map(\.count))" }
             if let t = b.text { out += " v\(t.version) clean\(t.cleanVersion)\(t.isDirty ? " dirty" : "")" }
             if let t = b.terminal { out += " cwd=\(t.cwd ?? "-")\(t.busy ? " busy" : "")\(t.dormantSince != nil ? " dormant" : "")" }
             out += "\n"

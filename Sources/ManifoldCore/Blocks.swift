@@ -154,9 +154,11 @@ public struct StatusRecord: Codable, Equatable, Sendable {
     public var msg: String?
     /// When it was reported.
     public var at: Stamp
+    /// Done or error, attended to since (§3.7): read, and quiet.
+    public var read: Bool?
 
     public init(state: StatusState, kind: BlockedKind? = nil, progress: Int? = nil, app: String? = nil,
-                title: String? = nil, msg: String? = nil, at: Stamp) {
+                title: String? = nil, msg: String? = nil, at: Stamp, read: Bool? = nil) {
         self.state = state
         self.kind = kind
         self.progress = progress
@@ -164,10 +166,12 @@ public struct StatusRecord: Codable, Equatable, Sendable {
         self.title = title
         self.msg = msg
         self.at = at
+        self.read = read
     }
 
-    /// Needs attending to: finished, failed, or waiting on you.
-    public var wantsAttention: Bool { state == .done || state == .error || state == .blocked }
+    /// Needs attending to: finished or failed and not yet read, or waiting
+    /// on you.
+    public var wantsAttention: Bool { ((state == .done || state == .error) && read != true) || state == .blocked }
 }
 
 /// The root record's id.
@@ -403,21 +407,19 @@ public enum ArrangementLayout: String, Codable, Sendable {
     case stacks, tiling, list
 }
 
-/// Columns of placements (§3.1). Each column's list is its history, oldest
-/// first, and one placement of it is **shown**; the rest are its past,
-/// walked back and forward, never drawn. (Older logs' layouts, tiling and
-/// list, and their heights are decoded and ignored: a stack's top is the
-/// shown placement.)
+/// A grid (§3.1): columns of tiles, every tile a placement and all of
+/// them visible, as acme tiles its windows. (Older logs' layouts and a
+/// column's `shown` are decoded and ignored.)
 public struct ArrangementState: Codable, Equatable, Sendable {
     public var title: String?
     public var columns: [[Placement]] = []
     /// Each column's share of the width; sums to 1.
     public var fractions: [Double] = []
-    /// What each column shows, one per column; `normalize` keeps it so.
-    public var shown: [PlacementID] = []
+    /// Each tile's share of its column's height; a column's sum to 1.
+    public var heights: [PlacementID: Double] = [:]
     public var focused: PlacementID?
 
-    enum CodingKeys: String, CodingKey { case title, columns, fractions, shown, focused }
+    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused }
 
     public init() {}
 
@@ -426,7 +428,7 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         title = try c.decodeIfPresent(String.self, forKey: .title)
         columns = try c.decodeIfPresent([[Placement]].self, forKey: .columns) ?? []
         fractions = try c.decodeIfPresent([Double].self, forKey: .fractions) ?? []
-        shown = (try? c.decodeIfPresent([PlacementID].self, forKey: .shown)) ?? []
+        heights = (try? c.decodeIfPresent([PlacementID: Double].self, forKey: .heights)) ?? [:]
         focused = try c.decodeIfPresent(PlacementID.self, forKey: .focused)
         normalize()
     }
@@ -449,32 +451,29 @@ public struct ArrangementState: Codable, Equatable, Sendable {
 
     public func columnIndex(of id: PlacementID) -> Int? { locate(id)?.column }
 
-    /// What column `c` shows.
-    public func shown(in c: Int) -> Placement? {
-        guard c >= 0, c < columns.count else { return nil }
-        if c < shown.count, let p = columns[c].first(where: { $0.id == shown[c] }) { return p }
-        return columns[c].last
-    }
-
-    /// What shows: one placement per column.
-    public var visible: [Placement] { columns.indices.compactMap { shown(in: $0) } }
+    /// What shows: everything, in column order, top to bottom.
+    public var visible: [Placement] { placements }
 
     public var focusedPlacement: Placement? {
-        visible.first { $0.id == focused } ?? visible.first
+        placements.first { $0.id == focused } ?? placements.first
     }
 
-    /// The column the focus is in, else the last.
+    /// The column the focus is in (acme's active column), else the last.
     public var focusedColumn: Int? {
         if let f = focused, let c = columnIndex(of: f) { return c }
         return columns.isEmpty ? nil : columns.count - 1
     }
 
-    /// Column `c`'s past and future around what it shows: the placement
-    /// `offset` steps along its history (-1 the one before), if any.
-    public func step(inColumn c: Int, offset: Int) -> Placement? {
-        guard let p = shown(in: c), let i = columns[c].firstIndex(where: { $0.id == p.id }) else { return nil }
-        let j = i + offset
-        return j >= 0 && j < columns[c].count ? columns[c][j] : nil
+    /// A tile's share of its column.
+    public func height(of id: PlacementID) -> Double {
+        guard let (c, _) = locate(id) else { return 0 }
+        return heights[id] ?? 1 / Double(columns[c].count)
+    }
+
+    /// The biggest tile of a column: where a new one takes its lower half.
+    public func biggestTile(inColumn c: Int) -> Placement? {
+        guard c >= 0, c < columns.count else { return nil }
+        return columns[c].max { height(of: $0.id) < height(of: $1.id) }
     }
 
     public func placements(of block: BlockID) -> [Placement] { placements.filter { $0.block == block } }
@@ -488,14 +487,21 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         if fractions.count != columns.count || fractions.contains(where: { !($0 > 0) }) {
             fractions = Self.equalFractions(columns.count)
         }
-        if let f = focused, placement(f) == nil { focused = nil }
-        shown = columns.enumerated().map { c, column in
-            // Focus shows: a focused placement in a column's past comes up.
-            if let f = focused, column.contains(where: { $0.id == f }) { return f }
-            if c < shown.count, column.contains(where: { $0.id == shown[c] }) { return shown[c] }
-            return column.last!.id
+        // Every tile has a share, and each column's sum to 1.
+        var fixed: [PlacementID: Double] = [:]
+        for column in columns {
+            let shares: [Double?] = column.map { heights[$0.id].flatMap { $0 > 0 ? $0 : nil } }
+            let known = shares.compactMap { $0 }
+            let missing = shares.filter { $0 == nil }.count
+            let left = max(0, 1 - known.reduce(0, +))
+            var out = shares.map { $0 ?? (missing > 0 ? max(left / Double(missing), 0.05) : 0) }
+            let sum = out.reduce(0, +)
+            if sum > 0 { out = out.map { $0 / sum } }
+            for (p, h) in zip(column, out) { fixed[p.id] = h }
         }
-        if focused == nil { focused = visible.first?.id }
+        heights = fixed
+        if let f = focused, placement(f) == nil { focused = nil }
+        if focused == nil { focused = placements.first?.id }
     }
 }
 

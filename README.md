@@ -19,43 +19,52 @@ and Mona Sans (bundled).
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
   top to move the window. Under **Desk**, each arrangement expands to
-  its columns in order, the selected one open and the focused column
+  its tiles in order, the selected one open and the focused tile
   highlighted, so the sidebar is the table of contents of the screen:
-  click a column to focus it, an arrangement to go to it, double-click
-  one to name it; drag a block from anywhere in the sidebar onto a
-  column to show it there, onto an arrangement for its focused column,
-  or between arrangements for one of its own, and drag arrangements to
+  click a tile to focus it, an arrangement to go to it, double-click
+  one to name it; drag a block from anywhere in the sidebar onto a tile
+  to bring it in beside, onto an arrangement for its active column, or
+  between arrangements for one of its own, and drag arrangements to
   reorder them.
-- An **arrangement** is a row of columns, and a column shows **one
-  block** (DESIGN.md §3.1). What a column showed before is its past:
-  ⌘[ goes back to it, ⌘] forward again, and nothing of it is drawn.
-  ⌥⌘[ and ⌥⌘] move the focus between columns; drag the divider
-  between two to resize them.
-- Three rules say where anything goes, and nothing else does. A row
-  clicked in the sidebar, or chosen in the finder, shows **here**, in
-  the focused column (what was there joins its past). ⌘-click a row, or
-  make something new — a terminal (⌘N), a note (⇧⌘N), a search, an
-  agent — and it goes **beside**, in a new column to the right of the
-  focused one. Open something from inside a block — ⌘-click a path in a
-  terminal, follow a link in a preview, a search hit, a change in a git
-  block — and it goes **beside the opener**: into the column to its
-  right if what's there was opened from the same block, else a new
-  column there. Links from page to page in a preview, and definitions
-  from an editor, go here, in the same column, as a browser's do; ⌘[
-  comes back. ⌥⌘T starts a new arrangement with a terminal in it.
+- An **arrangement** is a grid (DESIGN.md §3.1): columns of tiles,
+  every tile a block, all of them visible, as acme tiles its windows.
+  An arrangement is what you made it: a block brought in stays until
+  you take it off (⌘W), and nothing is tidied away. A new tile lands
+  below the biggest tile of the active column, taking its lower half;
+  Arrangement ▸ Grow Tile (⌃⌘=) takes a step from its neighbors, Fill
+  the Column (⌃⇧⌘=) all but a sliver of each; drag the lines between
+  tiles and columns to resize them. Each tile wears a **pill** at its
+  top with its symbol, name and status glyph: drag it to move the
+  tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the focus
+  between tiles.
+- Two verbs put a block in front of you. **Go to** finds it where it
+  already is: the arrangement it is in (this one if it is here, else
+  the one most recently settled on) is selected and the tile focused.
+  **Bring here** makes a tile of it in this arrangement; if it is here
+  already, that tile is focused. A row clicked in the sidebar, or
+  chosen in the finder (⌘O), goes to the block if it is placed anywhere,
+  else brings it here; ⌘-click, Bring Here in the menu, and a drag onto
+  the grid always bring (a drop between two tiles lands there). Opening
+  something from inside a block — ⌘-click a path in a terminal, follow
+  a link, a search hit, a change in a git block, a definition — brings
+  it below the opener, taking its lower half, and links the two; a
+  preview going page to page and a listing going into a folder change
+  in place. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
+  are brought here; ⌥⌘T starts a new arrangement with a terminal.
+  **Go Back** and **Go Forward** (⌘[ ⌘]) walk the trail across tiles
+  and arrangements.
 - **⌃⇥** walks the arrangements most recently settled on first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
   arrangements too.
-- Drag a block by the band along the top of its column: onto a column's
-  middle to show it there, near a column's side for a new column there,
-  onto an arrangement in the sidebar for its focused column, or between
-  arrangements for one of its own. Arrangements drag from the sidebar
-  onto the window the same way.
-- **⌘W** takes the focused block off its column, which shows what it
-  showed before; **⇧⌘W** takes the arrangement off the desk. Neither
-  loses anything: the block, with its history, is a ⌘O away. There is no
-  Close.
+- Drag a tile by its pill: between two tiles to put it there, near a
+  column's side for a new column there, onto an arrangement in the
+  sidebar for its active column, or between arrangements for one of
+  its own. Arrangements drag from the sidebar onto the grid the same
+  way, their columns coming over.
+- **⌘W** takes the focused tile off its arrangement; **⇧⌘W** takes the
+  arrangement off the desk. Neither loses anything: the block, with its
+  history, is a ⌘O away. There is no Close.
 
 ## Nothing is closed
 
@@ -73,11 +82,9 @@ when you find it again.
   they were seen. Choosing a block shows it here, in the focused column;
   choosing an arrangement puts it on the desk.
   A typed URL opens as a web page.
-- **Naming keeps.** An unnamed arrangement is scratch: blocks unseen for an
-  hour leave its columns' pasts (View ▸ Tidy Unused Blocks Away sets how
-  long), unless they have unsaved changes or a running job, and terminals
-  never do; what a column shows is never tidied away; emptied, it leaves
-  the desk. Name one (⇧⌘R, or double-click it in the sidebar)
+- **Naming keeps.** An unnamed arrangement is scratch: blocks unseen for a
+  while leave nothing: nothing in an arrangement is tidied away; an
+  unnamed one emptied by hand leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)
   and it's kept as it is until you change it. Named arrangements wear a
   bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
@@ -114,9 +121,9 @@ when you find it again.
   preview into an editor in place, or a Markdown editor back into a
   preview; ⌥⇧⌘P puts the other beside it, so you can type on the left
   and read on the right. A link followed in a preview opens another
-  Markdown file as a preview in the same column (⌘[ goes back to the
-  one it came from), a web address as a web block beside, any other
-  file as what it is, beside; `#anchors` scroll.
+  Markdown file in the same tile (Go Back returns to the one it came
+  from), a web address as a web block below it, any other file as what
+  it is, below; `#anchors` scroll.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   finder, a folder listing, a link in a preview, or the `manifold`
@@ -140,8 +147,8 @@ when you find it again.
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
   off; it's a setting on the desk, so every host runs the same.
-- **⌘-click** a file's name in a terminal to open it beside the terminal,
-  in the column to its right: Markdown in a preview, folders in a listing,
+- **⌘-click** a file's name in a terminal to open it below the terminal,
+  in its column: Markdown in a preview, folders in a listing,
   text to edit; `path:line:column` (as grep and compilers print it) goes to
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
@@ -176,9 +183,10 @@ when you find it again.
   joined to the focused block by kind, each row opening one more step;
   **Time** — blocks by the day they were last seen; **Status** — by
   what they are doing (below). A filter narrows any
-  of them. The rows work the same everywhere: click to show here, in the
-  focused column, ⌘-click for a column beside it, rest the pointer for a
-  card, right-click for Links Around This. Links written in a text —
+  of them. The rows work the same everywhere: click to go to the block
+  (or bring it here, if it is nowhere), ⌘-click to bring it here, rest
+  the pointer for a card, right-click for Go To, Bring Here and Links
+  Around This. Links written in a text —
   `[[title]]`, `[words](file.md)` — become edges the moment they're
   typed, so the Links view shows a note's backlinks whether or not
   anyone followed them.
@@ -204,14 +212,17 @@ when you find it again.
   program — the host reads OSC 7501 out of the byte stream it owns, so
   remote hosts work the same; OSC 9;4 progress counts until a 7501
   report arrives; a new prompt or the process ending clears working
-  and blocked; done and failed stay until you attend to the block by
-  focusing it. A busy terminal that says nothing is working. Searches,
-  git and diff blocks report as the host works for them. One glyph
-  says it wherever a block is named — a ring turning or filling for
-  working, pulsing for blocked, a dot for done, a red dot for failed —
-  in the sidebar's rows and the finder; the Dock badge counts the
-  blocks waiting on you or done. **Status** in the sidebar (⌥⌘5) lists
-  blocks by it: waiting on you, done, failed, working. From a shell:
+  and blocked; done and failed stay, read once you attend to the block
+  by focusing it. A busy terminal that says nothing is working.
+  Searches, git and diff blocks report as the host works for them. One
+  glyph says it wherever a block is named — a thin arc turning (or
+  filling, when the program says how far) for working, an amber ring
+  with a dot for a block that needs you, a filled check for done and
+  not read yet (red for failed), a plain check once read, a moon for a
+  terminal gone inactive — in each tile's pill, the sidebar's rows and
+  the finder; the Dock badge counts the blocks that need you or are
+  done and unread. **Status** in the sidebar (⌥⌘5) lists blocks by it,
+  the unread first and how long ago at the right. From a shell:
 
   ```sh
   status() { printf '\e]7501;state=%s:msg=%s\e\\' "$1" "$(printf '%s' "$2" | base64 | tr -d '\n')"; }
@@ -294,8 +305,7 @@ is migrated into logs on first run.
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long
   to keep the transcripts of dormant terminals, and how many undo steps
-  an editor holds. Tidy Unused Blocks Away and End Idle Shells set when
-  unnamed arrangements lose unseen blocks and when off-screen shells go
+  an editor holds. End Idle Shells sets when off-screen shells go
   dormant.
 - `manifoldd state` prints what the host has; `manifoldd stop` ends it.
 - Protocol: length-prefixed binary frames over a Unix socket

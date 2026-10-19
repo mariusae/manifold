@@ -1,56 +1,78 @@
 import AppKit
 import ManifoldCore
 
-/// A block's status in one glyph (§3.7), as apex's handle says what a
-/// window waits for: working is a ring, an arc turning while the program
-/// doesn't say how far, filled clockwise from the top as far as it does;
-/// blocked is the ring pulsing in the accent; done a filled dot in the
-/// accent; error a filled dot in red; idle nothing. Drawn wherever a
-/// block's name is: a pill, a sidebar row, a card.
+/// A block's status in one glyph (§3.7), drawn wherever its name is: a
+/// thin arc turning for working (filling clockwise from the top when the
+/// program says how far), an amber ring with a dot for a block that needs
+/// you, a filled check for done and not yet read (red for failed), a
+/// plain grey check once read, and a moon for a terminal gone inactive.
 final class StatusGlyph: NSView {
-    var record: StatusRecord? {
+    enum Look: Equatable {
+        case working(progress: Int?)
+        case needsYou
+        case done(read: Bool)
+        case failed(read: Bool)
+        case inactive
+    }
+
+    var look: Look? {
         didSet {
-            if record?.state != oldValue?.state || record?.progress != oldValue?.progress { needsDisplay = true }
+            if look != oldValue { needsDisplay = true }
             updateTimer()
-            toolTip = Self.tooltip(record)
         }
     }
 
-    static let size: CGFloat = 12
+    static let size: CGFloat = 13
     private var timer: Timer?
     private var phase: Double = 0
+
+    /// What a block shows: its status; else, for a terminal whose shell
+    /// ended for idleness, inactive; else nothing.
+    static func look(of block: Block?) -> Look? {
+        guard let block else { return nil }
+        if let r = block.statusRecord {
+            switch r.state {
+            case .idle: break
+            case .working: return .working(progress: r.progress)
+            case .blocked: return .needsYou
+            case .done: return .done(read: r.read == true)
+            case .error: return .failed(read: r.read == true)
+            }
+        }
+        if let t = block.terminal, t.dormantSince != nil, t.pid == nil { return .inactive }
+        return nil
+    }
+
+    static func tooltip(_ block: Block?) -> String? {
+        guard let block, let look = look(of: block) else { return nil }
+        let r = block.statusRecord
+        var words: [String]
+        switch look {
+        case .working(let p): words = [p.map { "Working, \($0)%" } ?? "Working"]
+        case .done(let read): words = [read ? "Done" : "Done, not read yet"]
+        case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
+        case .inactive: words = ["Inactive: the shell ended while idle"]
+        case .needsYou:
+            switch r?.kind {
+            case .permission?: words = ["Needs you: permission"]
+            case .question?: words = ["Needs you: a question"]
+            case .auth?: words = ["Needs you: a sign-in"]
+            case nil: words = ["Needs you"]
+            }
+        }
+        if let app = r?.app { words[0] += " · " + app }
+        if let title = r?.title, !title.isEmpty { words.append(title) }
+        if let msg = r?.msg, !msg.isEmpty { words.append(msg) }
+        return words.joined(separator: "\n")
+    }
 
     override var intrinsicContentSize: NSSize { NSSize(width: Self.size, height: Self.size) }
     override var isHidden: Bool { didSet { updateTimer() } }
 
-    static func tooltip(_ r: StatusRecord?) -> String? {
-        guard let r else { return nil }
-        var words: [String]
-        switch r.state {
-        case .idle: words = ["Idle"]
-        case .working: words = [r.progress.map { "Working, \($0)%" } ?? "Working"]
-        case .done: words = ["Done"]
-        case .error: words = ["Failed"]
-        case .blocked:
-            switch r.kind {
-            case .permission?: words = ["Waiting for permission"]
-            case .question?: words = ["Waiting for an answer"]
-            case .auth?: words = ["Waiting to sign in"]
-            case nil: words = ["Waiting on you"]
-            }
-        }
-        if let app = r.app { words[0] += " · " + app }
-        if let title = r.title, !title.isEmpty { words.append(title) }
-        if let msg = r.msg, !msg.isEmpty { words.append(msg) }
-        return words.joined(separator: "\n")
-    }
-
-    /// Whether anything shows for a record at all.
-    static func shows(_ r: StatusRecord?) -> Bool { r != nil && r?.state != .idle }
-
     private var animates: Bool {
-        guard !isHidden, window != nil, let r = record else { return false }
-        return (r.state == .working && r.progress == nil) || r.state == .blocked
+        guard !isHidden, window != nil, let look else { return false }
+        if case .working(nil) = look { return true }
+        return false
     }
 
     private func updateTimer() {
@@ -76,41 +98,67 @@ final class StatusGlyph: NSView {
 
     deinit { timer?.invalidate() }
 
+    static let amber = NSColor(srgbRed: 0.93, green: 0.68, blue: 0.3, alpha: 1)
+
     override func draw(_ dirtyRect: NSRect) {
-        guard let r = record, r.state != .idle else { return }
-        let rect = NSRect(x: (bounds.width - Self.size) / 2, y: (bounds.height - Self.size) / 2, width: Self.size, height: Self.size)
+        guard let look else { return }
+        let s = Self.size
+        let rect = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
         let center = NSPoint(x: rect.midX, y: rect.midY)
-        let radius = Self.size / 2 - 1.25
-        switch r.state {
-        case .done, .error:
-            (r.state == .done ? Theme.accent : Theme.statusError).setFill()
-            NSBezierPath(ovalIn: NSRect(x: center.x - radius + 1, y: center.y - radius + 1, width: 2 * radius - 2, height: 2 * radius - 2)).fill()
-        case .working, .blocked:
-            let faint = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-            faint.lineWidth = 1.5
-            (r.state == .blocked ? Theme.accent : Theme.secondaryText).withAlphaComponent(0.25).setStroke()
-            faint.stroke()
+        let radius = s / 2 - 1
+        switch look {
+        case .working(let p):
             let arc = NSBezierPath()
-            arc.lineWidth = 1.5
+            arc.lineWidth = 1.6
             arc.lineCapStyle = .round
-            if r.state == .blocked {
-                // Pulsing: the ring breathes in the accent.
-                let a = 0.55 + 0.45 * sin(phase * 2.6)
-                Theme.accent.withAlphaComponent(a).setStroke()
-                arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 450)
-            } else if let p = r.progress {
-                // Filled clockwise from the top, as far as the program says.
-                Theme.accent.setStroke()
+            Theme.text.withAlphaComponent(0.85).setStroke()
+            if let p {
+                let faint = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+                faint.lineWidth = 1.6
+                Theme.text.withAlphaComponent(0.18).setStroke()
+                faint.stroke()
+                Theme.text.withAlphaComponent(0.85).setStroke()
                 arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * Double(p) / 100, clockwise: true)
             } else {
-                // Turning, as long as it doesn't say.
-                Theme.accent.setStroke()
-                let start = 90 - (phase * 220).truncatingRemainder(dividingBy: 360)
-                arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 100, clockwise: true)
+                let start = 90 - (phase * 240).truncatingRemainder(dividingBy: 360)
+                arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 280, clockwise: true)
             }
             arc.stroke()
-        case .idle:
-            break
+        case .needsYou:
+            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+            ring.lineWidth = 1.6
+            Self.amber.setStroke()
+            ring.stroke()
+            Self.amber.setFill()
+            let r = radius * 0.42
+            NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
+        case .done(let read), .failed(let read):
+            let check = NSBezierPath()
+            check.lineWidth = read ? 1.6 : 1.8
+            check.lineCapStyle = .round
+            check.lineJoinStyle = .round
+            let k = s * 0.16
+            check.move(to: NSPoint(x: center.x - 1.9 * k, y: center.y - 0.1 * k))
+            check.line(to: NSPoint(x: center.x - 0.6 * k, y: center.y - 1.4 * k))
+            check.line(to: NSPoint(x: center.x + 2.0 * k, y: center.y + 1.3 * k))
+            if read {
+                (look == .done(read: true) ? Theme.secondaryText : Theme.statusError.withAlphaComponent(0.7)).setStroke()
+                check.stroke()
+            } else {
+                let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius - 0.5, y: center.y - radius - 0.5, width: 2 * radius + 1, height: 2 * radius + 1))
+                (look == .done(read: false) ? Theme.text : Theme.statusError).setFill()
+                disc.fill()
+                Theme.windowBackground.setStroke()
+                check.stroke()
+            }
+        case .inactive:
+            // A crescent: the disc less a disc shifted up and right.
+            let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+            let bite = NSBezierPath(ovalIn: NSRect(x: center.x - radius + 3.2, y: center.y - radius + 2.6, width: 2 * radius, height: 2 * radius))
+            disc.append(bite.reversed)
+            disc.windingRule = .nonZero
+            Theme.secondaryText.withAlphaComponent(0.75).setFill()
+            disc.fill()
         }
     }
 }
