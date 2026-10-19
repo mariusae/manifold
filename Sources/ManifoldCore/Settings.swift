@@ -81,7 +81,7 @@ public struct Settings: Codable, Equatable, Sendable {
 
 /// The fonts everything is set in, a proportional one and a fixed-width
 /// one, chosen together: SF Pro (with its single-story a, as Notes sets
-/// it) and Menlo; Tiempos Text and JetBrains Mono; Mona Sans and
+/// it) and Menlo; Tiempos Text and Berkeley Mono; Mona Sans and
 /// Monaspace; Recursive Sans and Mono; Go and Go Mono; or SF and SF Mono.
 /// Fixed, not configurable.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {

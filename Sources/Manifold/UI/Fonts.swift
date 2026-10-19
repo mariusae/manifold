@@ -30,7 +30,7 @@ extension FontTheme {
     var monospacedName: String {
         switch self {
         case .notes: "Menlo"
-        case .tiempos: "JetBrains Mono"
+        case .tiempos: "Berkeley Mono"
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
         case .go: "Go Mono"
@@ -52,7 +52,7 @@ extension FontTheme {
             font-feature = ss08
             """
         case .notes: "font-family = Menlo"
-        case .tiempos: "font-family = JetBrains Mono"
+        case .tiempos: "font-family = Berkeley Mono"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
         // Terminal.app's copy, registered for this process at launch.
@@ -103,7 +103,7 @@ extension FontTheme {
         case .monospaced:
             let name: String? = switch self {
             case .notes: "Menlo"
-            case .tiempos: "JetBrains Mono"
+            case .tiempos: "Berkeley Mono"
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
             case .go: "Go Mono"
@@ -125,7 +125,7 @@ extension FontTheme {
         let sansFeatures = proportionalFeatures.isEmpty ? "normal" : proportionalFeatures.map { "\"\($0)\"" }.joined(separator: ", ")
         return switch self {
         case .notes: ("-apple-system", "Menlo", features, sansFeatures)
-        case .tiempos: (#""Tiempos Text""#, #""JetBrains Mono""#, features, sansFeatures)
+        case .tiempos: (#""Tiempos Text""#, #""Berkeley Mono""#, features, sansFeatures)
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
         case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)

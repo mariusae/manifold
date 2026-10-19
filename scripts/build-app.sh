@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
-for d in monaspace monasans recursive gofont jetbrainsmono; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
+for d in monaspace monasans recursive gofont; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -33,10 +33,10 @@ cp Frameworks/monasans/OFL.txt "$app/Contents/Resources/Fonts/MonaSans-OFL.txt"
 cp Frameworks/recursive/*.otf Frameworks/gofont/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/recursive/OFL.txt "$app/Contents/Resources/Fonts/Recursive-OFL.txt"
 cp Frameworks/gofont/LICENSE "$app/Contents/Resources/Fonts/Go-LICENSE"
-cp Frameworks/jetbrainsmono/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/jetbrainsmono/OFL.txt "$app/Contents/Resources/Fonts/JetBrainsMono-OFL.txt"
-# Tiempos Text is licensed: bundled when scripts/fetch-fonts.sh found it.
+# Tiempos Text and Berkeley Mono are licensed: bundled when
+# scripts/fetch-fonts.sh found them.
 [ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"
+[ -d Frameworks/berkeleymono ] && cp Frameworks/berkeleymono/*.otf "$app/Contents/Resources/Fonts/"
 
 # The icon is drawn by a script, and only redrawn when the script changes.
 if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ]; then

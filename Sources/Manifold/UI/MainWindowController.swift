@@ -577,7 +577,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func debugDescribe() -> String {
-        var out = "selected \(selected.map(\.description) ?? "none")\n"
+        var out = "selected \(selected.map(\.description) ?? "none") theme \(desk.appearance.theme.rawValue)\n"
         if let a = arrangement {
             for (c, column) in a.columns.enumerated() {
                 out += "column \(c): " + column.map { p in
