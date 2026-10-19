@@ -253,8 +253,11 @@ public struct Rope: Equatable, Sendable, CustomStringConvertible {
     public mutating func apply(_ edit: TextEdit) { replace(edit.range, with: edit.text) }
 
     private mutating func insert(_ bytes: [UInt8], at offset: Int) {
+        // Into nothing: the text is the bytes, chunked, and indexed afresh.
         if chunks.isEmpty {
-            chunks = [Chunk([])]
+            chunks = Self.split(bytes)
+            reindex()
+            return
         }
         let (c, i) = locateForInsert(offset)
         var merged = chunks[c].bytes

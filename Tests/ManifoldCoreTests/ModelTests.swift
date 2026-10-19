@@ -535,3 +535,22 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     fresh.load(node.snapshot(.block(id))!)
     #expect(fresh.block(id)?.views?["p1"]?["scroll"] == "150")
 }
+
+@Test func typingIntoAnEmptyRope() {
+    var r = Rope("")
+    #expect(r.count == 0 && r.lineCount == 1)
+    r.apply(TextEdit(TextRange(0, 0), "h"))
+    #expect(r.string == "h" && r.count == 1)
+    r.apply(TextEdit(TextRange(1, 1), "i\n"))
+    #expect(r.string == "hi\n" && r.lineCount == 2)
+    // Emptied and typed into again.
+    r.apply(TextEdit(TextRange(0, 3), ""))
+    #expect(r.count == 0)
+    r.apply(TextEdit(TextRange(0, 0), "again"))
+    #expect(r.string == "again")
+    // A note's first entry is an empty content: the same path.
+    var state = TextState()
+    state.apply(.content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""))
+    state.apply(.edit([TextEdit(TextRange(0, 0), "note")]))
+    #expect(state.text.string == "note")
+}
