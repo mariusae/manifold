@@ -116,50 +116,47 @@ effect is an exec (§5).
 
 ### 3.1 The surface
 
-An arrangement is an ordered list of **columns**. A column shows **one
-block**, through one lens, at one width. That is the whole of what a
-window shows: the arrangement entire, nothing beneath, behind or folded
-away. The sidebar's Desk organization (§3.6) lists an arrangement as its
-columns, in order, and what it lists and what the window shows are the
-same thing.
+An arrangement is **human-constructed**: what is in it is what you put
+there, and it stays until you take it off. Nothing in it is tidied
+away, nothing hides beneath anything, and nothing is placed for you by
+a heuristic except where in the grid a new tile lands.
 
-A column's **past** is the blocks it showed before, in order. A column
-keeps its past in the arrangement's state (the same list a stack was,
-read the other way: the list is the column's history, and one entry of
-it is shown), so ⌘[ and ⌘] walk it, back and forward, and ⌘W steps back
-off the top. Nothing in a column's past is drawn — no edges, no strips,
-no cards — because the graph already carries it: it is in Links as
-*before* and *after*, in Time, in Files. Showing a new block in a column
-appends it after the end, whatever is shown; nothing ahead is cut, as a
-browser cuts its forward history, since nothing is lost.
+An arrangement is a **grid**, apex's tiling (apex §11, *Tiling, as
+built*), which is acme's: columns, each a stack of **tiles** top to
+bottom, every tile a block, all of them visible. A new tile lands in
+the biggest empty space, else takes the lower half of the biggest tile
+in the active column (acme's `makenewwindow`); a tile grows by a few
+lines, as big as can be, or to the whole column; the divider between
+columns sets widths; a tile closed gives its height to its neighbor.
+Each tile wears a **pill** at its top, as Prism names the note at the
+top of its column: a glass pill with the block's symbol, its name, and
+its status glyph (§3.7); the pill is the tile's handle to drag, and its
+menu, clicked. Pills, not acme's tag lines.
 
-**Where things go** is decided by three rules and no heuristics:
+Two verbs, and no others, put a block in front of you:
 
-| you | it goes |
+| verb | what it does |
 |---|---|
-| click a row in the sidebar, choose in the finder (⌘O) | **here**: in the focused column, what was there joining its past |
-| ⌘-click a row, ⌘N a terminal, ⇧⌘N a note, New in the palette | **beside**: a new column to the right of the focused one |
-| open from inside a block — ⌘-click a path in a terminal, follow a link in a preview, a search hit, a change in a git block | **beside the opener**: in the column to the opener's right if that column's block was opened from this one (any link between them says so), else in a new column there |
-| follow a thread — page to page in a preview, a folder in a listing, a definition from an editor | **here**, in that column, as a browser goes; ⌘[ comes back |
+| **Go to** | the block where it already is: the arrangement it is in (this one if it is here, else the one most recently settled on) is selected and the tile focused |
+| **Bring here** | a tile of it in this arrangement, by the grid's rule; if it is here already, that tile is focused |
 
-Dragging a block onto a column shows it there; between columns, a new
-column. Dragging a column reorders. A new column takes a share of the
-width from its neighbor; the divider sets widths, kept per arrangement.
-Columns may be as many as fit; they never collapse to strips.
+A row clicked in the sidebar, or chosen in the finder, *goes to* the
+block if it is placed anywhere, else *brings it here*; ⌘-click and a
+drag onto the surface always bring. Anything opened from inside a block
+— a path ⌘-clicked in a terminal, a link followed, a search hit, a
+change in a git block, a definition — is brought here, into the opener's
+column (acme's `activecol`), and linked to the opener. New things (a
+terminal, a note, a search) are brought here. Go Back and Go Forward
+(⌘[ ⌘]) walk the trail across tiles and arrangements.
 
 The arrangement's log holds `Place{placement, column, at}`, `Move`,
-`Remove`, `Focus` (which shows: focusing a placement in a column's past
-brings it up, so walking the past is a focus), `Fractions`, `MoveColumn`
-and `Title`. That is all the layout there is.
+`Remove`, `Focus`, `Fractions`, `Heights`, `MoveColumn` and `Title`.
 
-**Retired** (what was §3.1 until October 2026): the tiling and list
-lenses and their per-lens sizes, sheets beneath a stack and their
-strips, ⌘E filing through a stack, the foot dealt out under a sheet,
-columns collapsing. Each hid state, decided placement for you, or
-offered a second way to reach what the sidebar reaches. The list lens is
-the sidebar; the stack beneath is the column's past; the foot is Links.
-Tiling may return as a split within a column if it is missed, but it
-must earn its way back.
+**Retired:** the stacks (sheets beneath a column's top, strips, ⌘E, the
+foot), tiling as a second lens, the list lens, and, since October 2026,
+the column's past of §3.1's first simplification: a column of one with
+a hidden history was still something hidden. Collection of placements
+(§4) is retired with it: an arrangement is what you made it.
 
 ### 3.2 Names and the desk
 
@@ -292,6 +289,46 @@ language server's document symbols) and the desk's own history (the desk
 shard scrubbed as an arrangement is; a timeline lens with empty days
 folded to "⋯ Sep 21–25 · 5 days") sit beside this rather than in it.
 
+### 3.7 Status: what every block is doing
+
+Every block has a **status**, in the schema of OSC 7501 (Mitchell
+Hashimoto's program status protocol): a set of records keyed by a
+hierarchical id, the root record the block's own, each record a
+`state` — `idle`, `working` (with a `progress` 0–100, or none for
+indeterminate), `done` (finished, the result not yet attended to),
+`blocked` (needs you: `kind` permission, question or auth) or `error`
+— with an optional `app`, `title` and one-line `msg`. A report replaces
+its record whole; `clear` removes a record and its children. The
+record's stamp says when it was last reported.
+
+Where it comes from:
+
+- **Terminals and agents**: the program says, with OSC 7501, parsed by
+  the host from the byte stream it owns (so remote hosts work the same
+  and every client agrees). OSC 9;4 progress maps to the root record
+  until a 7501 report arrives. A new prompt (OSC 133 A) or the process
+  ending drops `working` and `blocked` records; `done` and `error`
+  survive them. A terminal that is busy (something in the foreground)
+  and says nothing is `working`, indeterminate.
+- **Searches, git and diff blocks**: the host reports as it works —
+  `working` while looking, `done` when the hits or the changes arrive,
+  `error` when it fails.
+- **Text blocks**: `working` while a save is in flight, `error` when it
+  fails; the editor's own dirtiness is held separately (§2.3).
+
+`done` and `error` are dismissed when the block is **attended**: it
+becomes the focused tile while the window is key. The host does the
+dismissing for the blocks it leads, on the client's `attend` proposal.
+
+**Indicators**, as apex's handle says what a window waits for: one
+glyph, drawn wherever a block's name is — its pill, its sidebar row, a
+finder row, a card. `working` is a ring, an arc turning while the
+program does not say how far and filled clockwise from the top as far
+as it does; `blocked` is the ring pulsing in the accent, its tooltip
+the kind and the message; `done` a filled dot in the accent; `error` a
+filled dot in red; `idle` nothing. The Dock badge counts the blocks
+blocked and done.
+
 ### 3.6 Organizations: views over the graph
 
 The graph is the representation; how it is *organized* is a view over it,
@@ -306,6 +343,7 @@ the graph has to capture everything any organization needs:
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 | **Links** | the neighborhood of a block by edge kind (§3.5), one more step on opening a row | the focused block, or one looked at |
 | **Time** | blocks by the day they were last seen or made | days |
+| **Status** | blocks by what they are doing (§3.7): blocked, working, done, error, idle; a group opened in the surface as a **state view** | the states |
 
 Two edges make the first two possible. **`contains`** (folder → file or
 folder) is read off the paths: every block with a path is under the
@@ -326,7 +364,15 @@ expands to its columns, in order, the focused one marked, so the sidebar
 is the table of contents of the screen; clicking a column row focuses
 it, and a block dragged onto one is shown there. Links follows focus.
 The arrangement stays the working surface; organizations are how you
-reach blocks, never where they live. The neighborhood map stays in the
+reach blocks, never where they live. One exception is on purpose: a
+**state view** shows a status group's blocks themselves in the surface,
+live, in one of two ways — a **list**, the blocks stacked down one
+scrolling column as Prism's column of notes is, each under its pill; or
+an **overview**, all of them laid out in one grid at once, as Mission
+Control lays out windows — so what is blocked, or done, can be looked at
+without placing any of it. A block clicked in a state view is gone to;
+⌘-clicked, brought to the arrangement last shown. A state view is not
+an arrangement: nothing is placed, nothing is logged. The neighborhood map stays in the
 palette as a picture of the Links organization; ⌘O stays the quick way
 in.
 
@@ -752,6 +798,21 @@ these are built on it:
 16. **The sidebar as spine.** Pinned by default; Desk rows expand to
     columns and follow focus; drag onto a column; Links follows focus
     with context lines; the history view's diagram draws columns.
+
+Then, putting the model to use (§3.7, §3.1 as a grid, state views):
+
+17. **Status.** `StatusRecord` and `Block.status`, `.status` entries;
+    `StatusScanner` in the core for OSC 7501, 9;4 and 133; the host
+    feeding it from each session, reporting for searches, git and
+    diffs, and dismissing on `attend`; the glyph (`StatusGlyph`) in
+    sidebar rows, the finder and cards; the Status organization; the
+    Dock badge.
+18. **Grids.** `ArrangementState` as acme's tiling (columns of tiles
+    with heights, `Heights` back in the log); `GridView` with pills
+    (`TilePill`) for tiles; placement by acme's rule; Go to and Bring
+    here as the two verbs everywhere; collection of placements retired.
+19. **State views.** `StateView` in the surface for a status group,
+    as a list or an overview; from the Status organization.
 
 ---
 
