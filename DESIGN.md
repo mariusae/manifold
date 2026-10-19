@@ -114,28 +114,50 @@ effect is an exec (§5).
 
 ## 3. Arrangements
 
-### 3.1 Layout
+### 3.1 The surface
 
-An arrangement's content is an ordered list of **columns**, each an ordered
-list of placements with sizes. That one structure is shown by three lenses:
+An arrangement is an ordered list of **columns**. A column shows **one
+block**, through one lens, at one width. That is the whole of what a
+window shows: the arrangement entire, nothing beneath, behind or folded
+away. The sidebar's Desk organization (§3.6) lists an arrangement as its
+columns, in order, and what it lists and what the window shows are the
+same thing.
 
-- **Stacks** — today's Manifold. Each column shows its last placement; the
-  ones before it are sheets beneath, their edges peeking out. ⌘E files
-  through them.
-- **Tiling** — acme's, as apex has it (apex §11, *Tiling, as built*). Every
-  placement in a column is visible, stacked vertically. A new one takes the
-  biggest empty space, else half of the biggest placement. Placements grow,
-  maximize within their column, and columns collapse to strips at the
-  edges. Placement is automatic; you nudge, not lay out.
-- **List** — one row per placement: kind, title, host, state, last seen.
-  A row opens in place, live, to its block; the list is also the
-  arrangement's table of contents.
+A column's **past** is the blocks it showed before, in order. A column
+keeps its past in the arrangement's state (the same list a stack was,
+read the other way: the list is the column's history, and one entry of
+it is shown), so ⌘[ and ⌘] walk it, back and forward, and ⌘W steps back
+off the top. Nothing in a column's past is drawn — no edges, no strips,
+no cards — because the graph already carries it: it is in Links as
+*before* and *after*, in Time, in Files. Showing a new block in a column
+appends it after the end, whatever is shown; nothing ahead is cut, as a
+browser cuts its forward history, since nothing is lost.
 
-Switching lens changes nothing in the arrangement. Sizes are kept per lens
-(stacks need none; tiling needs heights), so going back and forth is
-lossless. The arrangement's log holds placement and layout entries:
-`Place{placement, block, lens, column, at}`, `Move`, `Resize`, `Focus`,
-`Remove{placement}`, `Lens{arrangement lens}`, `Title`.
+**Where things go** is decided by three rules and no heuristics:
+
+| you | it goes |
+|---|---|
+| click a row in the sidebar, choose in the finder (⌘O) | **here**: in the focused column, what was there joining its past |
+| ⌘-click a row, ⌘N a terminal, ⇧⌘N a note, New in the palette | **beside**: a new column to the right of the focused one |
+| open from inside a block — ⌘-click a path in a terminal, follow a link in a preview, a search hit, a mention, a definition | **beside the opener**: in the column to the opener's right if that column's block was opened from this one (the `opened` edge says so), else in a new column there |
+
+Dragging a block onto a column shows it there; between columns, a new
+column. Dragging a column reorders. A new column takes a share of the
+width from its neighbor; the divider sets widths, kept per arrangement.
+Columns may be as many as fit; they never collapse to strips.
+
+The arrangement's log holds `Place{placement, column, at}`, `Show{column,
+placement}` (walking the past), `Move`, `Remove`, `Focus`, `Fractions`,
+`MoveColumn` and `Title`. That is all the layout there is.
+
+**Retired** (what was §3.1 until October 2026): the tiling and list
+lenses and their per-lens sizes, sheets beneath a stack and their
+strips, ⌘E filing through a stack, the foot dealt out under a sheet,
+columns collapsing. Each hid state, decided placement for you, or
+offered a second way to reach what the sidebar reaches. The list lens is
+the sidebar; the stack beneath is the column's past; the foot is Links.
+Tiling may return as a split within a column if it is missed, but it
+must earn its way back.
 
 ### 3.2 Names and the desk
 
@@ -157,9 +179,9 @@ arrangement of arrangements; nothing more is needed for folders.
 
 An **unnamed** arrangement is scratch: placements not seen for a while are
 collected out of it (§4), and it drifts off the desk when unused. Naming
-one makes it a place: its placements stay put however long they go unseen,
-though the blocks behind them may go dormant to free their resources and
-come back when the arrangement is recalled.
+one makes it a place: its columns and their pasts stay however long they
+go unseen, though the blocks behind them may go dormant to free their
+resources and come back when the arrangement is recalled.
 
 ### 3.4 Scrubbing
 
@@ -212,24 +234,26 @@ at the stamp.
 **Affordances.** The graph shows itself in the margins, never as a
 destination:
 
-1. **The foot of every block** carries its neighborhood, bunched by edge
-   kind: *opened from · 3*, *opened here · 5*, *placed in · 2*, *before ·
-   after*, *versions*. Hovered, a bunch deals out as cards with context
-   and age; clicked, the block is recalled beside; ⌘-clicked, into a
-   column of its own. One view, given an edge kind; an arrangement's
-   foot shows the same for its node — its blocks, the arrangements that
-   share blocks with it, the ones before and after it on the desk.
-2. **Back and forward in a column** (⌘[ ⌘]) walk `before / after` from
-   the placement, each step previewed as it was on hover, live with ⌥ —
-   Prism's stack, but derived from the trail, so it survives restarts and
-   crosses hosts.
+1. **Links, in the sidebar, follows focus** (§3.6): the focused block's
+   neighborhood, bunched by edge kind — *opened here*, *mentions*,
+   *also in*, *before · after* — each row with context and age, a card
+   on hover; clicked, the block is shown here; ⌘-clicked, beside. One
+   view, given an edge kind; an arrangement's row shows the same for its
+   node — its columns, the arrangements that share blocks with it, the
+   ones before and after it on the desk. (This was the foot under every
+   sheet until the surface was simplified, §3.1; the sidebar is where it
+   lives now, so there is one place to look.)
+2. **Back and forward in a column** (⌘[ ⌘]) walk the column's past
+   (§3.1); Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail across
+   columns and arrangements, each step previewed as it was on hover,
+   live with ⌥ — Prism's stack, but derived from the log, so it survives
+   restarts and crosses hosts.
 3. **The finder (⌘O) is ranked by the graph.** With nothing typed, the
    focused block's neighborhood, nearest first; typed, matches weighted
    by distance from where you are. Context is the ranking.
 4. **Cards** are how a node renders small, at any stamp: a hover panel
    (Prism's `LinkCard`, non-activating, kept while the pointer is on the
-   reference or the card), a dealt-out bunch, a row of the list lens, a
-   finder row. Text as a read-only `TextView`; a terminal as its last
+   reference or the card), a sidebar row, a finder row. Text as a read-only `TextView`; a terminal as its last
    screen, from the transcript the host keeps; a folder as a short
    listing; web as icon, title and address; a search as its count; a git
    block as its branch and changes; an arrangement as its diagram. Modes
@@ -245,14 +269,14 @@ destination:
    block, each an editor whose typing is an `.edit` entry on the block
    (Prism's `TaskEditor` writing a task back to its note). Same undo,
    same history.
-7. **Pictures.** A snapshot of each placement when it is covered or put
-   away, cached by placement id outside the logs (as Prism keeps them in
-   app state, never in the notes): what the previews, the dealt-out
-   stacks and the ⌘E cards show.
+7. **Pictures.** A snapshot of each placement when it leaves a column's
+   top, cached by placement id outside the logs (as Prism keeps them in
+   app state, never in the notes): what the cards show for a block in a
+   column's past, and what previewing a step back shows.
 
-Two touches to take as they are: **aging** — strips and cards yellow as
-a block goes unseen, the collection ladder (§4) made visible — and **⌥
-to peek live** against hover to peek the picture.
+Two touches to take as they are: **aging** — rows and cards yellow as a
+block goes unseen, the collection ladder (§4) made visible — and **⌥ to
+peek live** against hover to peek the picture.
 
 **What changes in the data** is small: a `context` on `Link`; a bounded
 `trail` in the registry state (the run of `seen` events, deduped), so
@@ -290,14 +314,19 @@ text block as it changes and brings its mention links to match — making
 a block for a file a link names before anyone opens it — so backlinks
 are whole without anyone having followed them, as a wiki's are.
 
-The sidebar is the one browser for all of them: a chooser (Desk · Files
-· Links · Time), a filter, and the same row — symbol, name, a count, a
-detail, fading with age — with the same gestures: click to recall beside
-what's focused, ⌘-click into a column of its own, a card on hover, Links
-Around This in the menu. The arrangement stays the working surface;
-organizations are how you reach blocks, never where they live. The foot
-(§3.5) keeps its job at the point of use; the neighborhood map stays as
-a picture of the Links organization; ⌘O stays the quick way in.
+The sidebar is the one browser for all of them, and the **spine** of the
+window: pinned beside the surface (it can still be set to slide out
+over it), a chooser (Desk · Files · Links · Time), a filter, and the same
+row — symbol, name, a count, a detail, fading with age — with the same
+gestures everywhere: click to show here, ⌘-click to show beside (§3.1), a
+card on hover, Links Around This in the menu. Under Desk, an arrangement
+expands to its columns, in order, the focused one marked, so the sidebar
+is the table of contents of the screen; clicking a column row focuses
+it, and a block dragged onto one is shown there. Links follows focus.
+The arrangement stays the working surface; organizations are how you
+reach blocks, never where they live. The neighborhood map stays in the
+palette as a picture of the Links organization; ⌘O stays the quick way
+in.
 
 ---
 
@@ -315,8 +344,10 @@ Every block is in one of four states, recorded in its host's registry:
 Collection moves blocks down the ladder and placements out of unnamed
 arrangements; it never deletes a block. Policy, per host:
 
-- A placement unseen for an hour (as now, configurable) leaves an unnamed
-  arrangement, unless its block is held.
+- A column's past is trimmed: a placement that has been off the top of
+  its column for an hour (configurable) leaves an unnamed arrangement,
+  unless its block is held. What a column shows is never collected, and a
+  named arrangement keeps its columns' pasts whole.
 - A block off screen goes from warm to dormant after a while depending on
   its kind; a terminal whose shell is idle goes dormant by keeping its
   transcript and cwd and ending the shell, and on recall starts a new shell
@@ -693,8 +724,25 @@ on their own:
 12. **Slices** edited in place: search hits and link context lines, then
     the new side of a diff.
 13. **The editor's scrubber** from document symbols; the desk's history
-    and the timeline lens; aging on strips and cards; a map lens, if it
+    and the timeline lens; aging on rows and cards; a map lens, if it
     earns its place.
+
+Then the surface, simplified (§3.1), which comes before the rest of
+these are built on it:
+
+14. **Columns of one.** `shown` per column in `ArrangementState` and
+    `Show` in the log; the stacks view draws one block per column and
+    nothing of the past; ⌘[ ⌘] and ⌘W walk it; tiling, the list lens,
+    strips, the stack list, ⌘E and the foot removed, their log entries
+    still decoded and ignored. Existing arrangements need no migration:
+    a stack's top is the shown entry.
+15. **The one open rule.** `show(here:)`, `show(beside:)` and
+    `show(besideOpener:)` as the only three ways anything is placed; the
+    palette, finder, sidebar, terminals, previews, search, git, diff,
+    LSP and the `manifold` command all through them.
+16. **The sidebar as spine.** Pinned by default; Desk rows expand to
+    columns and follow focus; drag onto a column; Links follows focus
+    with context lines; the history view's diagram draws columns.
 
 ---
 
