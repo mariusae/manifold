@@ -2005,19 +2005,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for es in n.inbound.values { for e in es { joinedAt[e.from] = max(joinedAt[e.from] ?? 0, e.at.wall) } }
             for t in n.before + n.after { joinedAt[t.block] = max(joinedAt[t.block] ?? 0, t.last.wall) }
         }
-        // What runs in each terminal (the process trees under the shells,
-        // §7.5), so a terminal is found by its program — "claude" — too.
-        var running: [BlockID: [String]] = [:]
-        for pb in hosts.blocks where pb.kind == .process {
-            var shells = Set<BlockID>()
-            for e in pb.processes?.entries ?? [] {
-                guard let under = e.block else { continue }
-                // The first process under a block is its shell; the rest run in it.
-                guard shells.contains(under) else { shells.insert(under); continue }
-                let name = (e.path ?? e.command.split(separator: " ").first.map(String.init) ?? "").lastPathComponent
-                if !name.isEmpty, !(running[under]?.contains(name) ?? false) { running[under, default: []].append(name) }
-            }
-        }
+        let running = runningPrograms()
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
@@ -2386,10 +2374,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
         // It begins where you are: the focused tile, and in a text, the
         // heading the caret is under, or the one at the top of a preview.
+        // What runs in each terminal is asked for afresh (the process
+        // lists are kept only while shown), and the items are made again
+        // for each query, so a program just started is found by its name.
+        for c in hosts.all where c.isConnected {
+            let pb = c.node.blocks.first { $0.kind == .process }?.id ?? BlockID(host: c.host)
+            hosts.propose(.processes(block: pb))
+        }
         let show = { [weak self] (line: Int?) in
             guard let self else { return }
-            let (outline, start) = self.workspaceOutline(a, currentLine: line)
-            self.finder.showOutline({ query in
+            let (_, start) = self.workspaceOutline(a, currentLine: line)
+            self.finder.showOutline({ [weak self] query in
+                guard let self else { return [] }
+                let (outline, _) = self.workspaceOutline(a, currentLine: line)
                 let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
                 return outline.filter { item in
                     words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
@@ -2409,9 +2406,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// it the heading at `currentLine` (a line from 1 in its editor; or,
     /// negative, minus one more than the index of the heading at the top
     /// of its preview).
+    /// What runs in each terminal (the process trees under the shells,
+    /// §7.5), so a terminal is found by its program — "claude" — too.
+    private func runningPrograms() -> [BlockID: [String]] {
+        var running: [BlockID: [String]] = [:]
+        for pb in hosts.blocks where pb.kind == .process {
+            var shells = Set<BlockID>()
+            for e in pb.processes?.entries ?? [] {
+                guard let under = e.block else { continue }
+                // The first process under a block is its shell; the rest run in it.
+                guard shells.contains(under) else { shells.insert(under); continue }
+                let name = (e.path ?? e.command.split(separator: " ").first.map(String.init) ?? "").lastPathComponent
+                if !name.isEmpty, !(running[under]?.contains(name) ?? false) { running[under, default: []].append(name) }
+            }
+        }
+        return running
+    }
+
     private func workspaceOutline(_ a: ArrangementState, currentLine: Int?) -> ([FinderItem], Int?) {
         var items: [FinderItem] = []
         var start: Int?
+        let running = runningPrograms()
         for (c, column) in a.columns.enumerated() {
             for p in column {
                 guard let b = hosts.block(p.block) else { continue }
@@ -2422,8 +2437,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if a.isStashed(p.id) { notes.append("stashed") }
                 if p.id == a.focused { notes.append("focused") }
                 let id = p.id
+                // Where it is; and for a terminal, what runs in it and what
+                // that reports — searched by too.
+                var detail = [b.place?.abbreviatingHome ?? ""]
+                detail += running[b.id] ?? []
+                if let r = b.statusRecord {
+                    if let app = r.app { detail.append(app) }
+                    if let msg = r.msg, !msg.isEmpty { detail.append(msg) }
+                }
                 items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
-                                        detail: b.place?.abbreviatingHome ?? "", note: notes.joined(separator: " · "),
+                                        detail: detail.filter { !$0.isEmpty }.joined(separator: " · "), note: notes.joined(separator: " · "),
                                         run: { [weak self] in self?.focus(id); self?.warpPointerToFocus() }))
                 // A text's headings, as Markdown has them, each gone to in
                 // its editor by line, in its preview by index.

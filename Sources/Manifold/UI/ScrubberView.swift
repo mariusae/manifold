@@ -238,6 +238,9 @@ final class ScrubberView: NSView {
 final class ScrubTip: NSView {
     private let label = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    /// Copies the command and its output.
+    private let copyButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
+    var onCopy: (() -> Void)?
     var onClick: (() -> Void)?
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
@@ -263,9 +266,15 @@ final class ScrubTip: NSView {
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
         detail.maximumNumberOfLines = 1
+        copyButton.target = self
+        copyButton.action = #selector(copyClicked)
+        copyButton.toolTip = "Copy the command and its output"
         addSubview(label)
         addSubview(detail)
+        addSubview(copyButton)
     }
+
+    @objc private func copyClicked() { onCopy?() }
 
     required init?(coder: NSCoder) { fatalError() }
 
@@ -284,15 +293,16 @@ final class ScrubTip: NSView {
     override var fittingSize: NSSize {
         let w = max(label.intrinsicContentSize.width, detail.isHidden ? 0 : detail.intrinsicContentSize.width)
         let h = label.intrinsicContentSize.height + (detail.isHidden ? 0 : detail.intrinsicContentSize.height + 1)
-        return NSSize(width: min(480, ceil(w) + 28), height: ceil(h) + 10)
+        return NSSize(width: min(480, ceil(w) + 28 + 26), height: ceil(h) + 10)
     }
 
     override func layout() {
         super.layout()
         let lh = label.intrinsicContentSize.height, dh = detail.isHidden ? 0 : detail.intrinsicContentSize.height + 1
         let top = (bounds.height - lh - dh) / 2
-        label.frame = NSRect(x: 11, y: bounds.height - top - lh, width: bounds.width - 22, height: lh)
-        detail.frame = NSRect(x: 11, y: bounds.height - top - lh - dh, width: bounds.width - 22, height: max(dh - 1, 0))
+        label.frame = NSRect(x: 11, y: bounds.height - top - lh, width: bounds.width - 22 - 26, height: lh)
+        detail.frame = NSRect(x: 11, y: bounds.height - top - lh - dh, width: bounds.width - 22 - 26, height: max(dh - 1, 0))
+        copyButton.frame = NSRect(x: bounds.width - 30, y: (bounds.height - 20) / 2, width: 20, height: 20)
     }
 
     override func updateTrackingAreas() {
@@ -306,6 +316,7 @@ final class ScrubTip: NSView {
     override func mouseExited(with event: NSEvent) { onExit?() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+        let p = convert(event.locationInWindow, from: nil)
+        if bounds.contains(p), !copyButton.frame.contains(p) { onClick?() }
     }
 }

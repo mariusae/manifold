@@ -131,6 +131,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             guard let self, let mark = self.tipMark else { return }
             self.open(mark)
         }
+        t.onCopy = { [weak self] in
+            guard let self, let mark = self.tipMark else { return }
+            self.copyTranscript(mark)
+        }
         return t
     }()
     private var tipMark: ScrubMark?
@@ -162,7 +166,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             let last = c.id == commands.last?.id
             var words: [String] = []
             if let st = c.status { words.append(st == 0 ? "ok" : "exit \(st)") } else if last { words.append("running") }
-            words.append(Age.short(c.at) + " ago")
+            let age = Age.short(c.at)
+            words.append(age == "now" ? age : age + " ago")
             return ScrubMark(id: c.id, at: Double(row), title: c.text, detail: words.joined(separator: " · "),
                              failed: c.failed, running: c.ended == nil && last)
         }
@@ -178,21 +183,36 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         perform("scroll_to_row:\(Int(mark.at))")
     }
 
-    /// The command and its output, as a block: the rows from its prompt
-    /// to the next command's (or the end), as shown.
-    private func open(_ mark: ScrubMark) {
-        guard let c = commands.first(where: { $0.id == mark.id }), let row = located[c.id] else { return }
-        hideTip(now: true)
+    /// A command and its output, as shown: the rows from its prompt to
+    /// the next command's (or the end).
+    private func transcript(of mark: ScrubMark) -> (ShellCommand, String)? {
+        guard let c = commands.first(where: { $0.id == mark.id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
         var output = text(rows: (row + 1)..<min(next, row + 20000))
         while output.hasSuffix("\n") || output.hasSuffix(" ") { output.removeLast() }
+        return (c, output)
+    }
+
+    /// The command and its output, as a block.
+    private func open(_ mark: ScrubMark) {
+        guard let (c, output) = transcript(of: mark) else { return }
+        hideTip(now: true)
         delegate?.terminal(self, show: c, output: output)
+    }
+
+    /// The command and its output, onto the clipboard.
+    private func copyTranscript(_ mark: ScrubMark) {
+        guard let (c, output) = transcript(of: mark) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("$ " + c.text + "\n" + output + "\n", forType: .string)
+        hideTip(now: true)
     }
 
     private func markMenu(_ mark: ScrubMark) -> NSMenu {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Go to Command", symbol: "arrow.right.circle") { [weak self] in self?.go(to: mark) })
         menu.addItem(ClosureMenuItem("Show Command and Output", symbol: "doc.text") { [weak self] in self?.open(mark) })
+        menu.addItem(ClosureMenuItem("Copy Command and Output", symbol: "doc.on.doc") { [weak self] in self?.copyTranscript(mark) })
         return menu
     }
 

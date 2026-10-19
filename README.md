@@ -34,7 +34,8 @@ and Mona Sans (bundled).
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: a few edges peek out
-  beside its pill, fan out when the pointer rests there, and one clicked
+  beside its pill, fan out from behind it when the pointer rests there
+  (packed, opaque, the edges gone while they're out), and one clicked
   comes back as that tile's lower half; ⇧-clicked (an edge or a
   fanned-out pill), it takes the top instead, whole, the tile that
   showed going behind it with the rest of the stack. A stack is one
@@ -146,7 +147,9 @@ when you find it again.
 - **⌘\ goes through the workspace as an outline**, as Prism's Move to
   Heading does: its tiles by column, and under a Markdown tile its
   headings, set in by level; type words to narrow them, ↩ to focus the
-  tile or go to the heading in its editor or preview.
+  tile or go to the heading in its editor or preview. A terminal's row
+  says where it is, what runs in it and what that reports, so "claude"
+  finds the terminal running it.
 - **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
   while leave nothing: nothing in a workspace is tidied away; an
   unnamed one emptied by hand leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)
@@ -244,7 +247,8 @@ when you find it again.
   scroll to it. Click the tip, double-click or ⌘-click the tick, or
   right-click it for **Show Command and Output**, and the command and
   what it printed, as the screen showed them, become a note beside the
-  terminal. Drag the knob or click the track to scroll as ever.
+  terminal; the tip's copy button (or **Copy Command and Output**) puts
+  the same on the clipboard. Drag the knob or click the track to scroll as ever.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

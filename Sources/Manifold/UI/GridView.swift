@@ -360,14 +360,39 @@ final class GridView: NSView, NSDraggingSource {
                 guard let topPill = pills[stack.top.shown.id] else { continue }
                 let band = topPill.frame
                 let open = fanned == stack.top.shown.id
-                topPill.behind = stack.behind.count
+                // Fanned out, the stack is on show: no edges behind the top.
+                topPill.behind = open ? 0 : stack.behind.count
                 for (i, tile) in stack.behind.enumerated() {
                     guard let pill = pills[tile.shown.id] else { continue }
-                    // Gathered, the top pill draws their edges; fanned, they come out below it.
-                    pill.isHidden = !open
-                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 6))
+                    // Gathered, the top pill draws their edges; fanned, they
+                    // come out from behind it, packed close, each a step
+                    // down — and go back in the same way.
+                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 2))
                     addSubview(pill, positioned: .above, relativeTo: topPill)
-                    pill.frame = open ? target : band
+                    pill.alphaValue = 1
+                    if open {
+                        if pill.isHidden {
+                            pill.frame = band
+                            pill.isHidden = false
+                            NSAnimationContext.runAnimationGroup { ctx in
+                                ctx.duration = 0.16
+                                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                                pill.animator().frame = target
+                            }
+                        } else if pill.frame != target, pill.layer?.animationKeys()?.isEmpty ?? true {
+                            pill.frame = target
+                        }
+                    } else if !pill.isHidden {
+                        let id = tile.shown.id
+                        NSAnimationContext.runAnimationGroup({ ctx in
+                            ctx.duration = 0.12
+                            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                            pill.animator().frame = band
+                        }, completionHandler: { [weak self, weak pill] in
+                            guard let self, let pill, self.fanned != stack.top.shown.id, self.isStashed(id) else { return }
+                            pill.isHidden = true
+                        })
+                    }
                 }
             }
         }
