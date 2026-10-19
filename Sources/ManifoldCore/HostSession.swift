@@ -79,7 +79,7 @@ public enum HostSession {
             let dst = logs.appendingPathComponent(renamed(shard, to: new).fileName + ".log")
             let tmp = logs.appendingPathComponent(renamed(shard, to: new).fileName + ".log.rewriting")
             if shard.host == old, fm.fileExists(atPath: dst.path) {
-                try? fm.moveItem(at: src, to: logs.appendingPathComponent(name + ".superseded"))
+                setAside(src, in: logs)
                 aside.insert(base)
                 continue
             }
@@ -100,7 +100,7 @@ public enum HostSession {
             let ext = (name as NSString).pathExtension
             guard let shard = ShardID(fileName: base), shard.host == old || shard.host == new else { continue }
             if aside.contains(base) {
-                try? fm.moveItem(at: logs.appendingPathComponent(name), to: logs.appendingPathComponent(name + ".superseded"))
+                setAside(logs.appendingPathComponent(name), in: logs)
                 continue
             }
             guard let data = try? Data(contentsOf: logs.appendingPathComponent(name)) else { continue }
@@ -114,6 +114,13 @@ public enum HostSession {
             try? out.write(to: logs.appendingPathComponent(renamed(shard, to: new).fileName + "." + ext), options: .atomic)
             if shard.host == old { try? fm.removeItem(at: logs.appendingPathComponent(name)) }
         }
+    }
+
+    /// Moves a stray file to `<name>.superseded`, over one set aside before.
+    private static func setAside(_ file: URL, in logs: URL) {
+        let to = logs.appendingPathComponent(file.lastPathComponent + ".superseded")
+        try? FileManager.default.removeItem(at: to)
+        try? FileManager.default.moveItem(at: file, to: to)
     }
 
     private static func snapshotOffset(_ snap: URL) -> UInt64? {

@@ -75,6 +75,18 @@ final class Hosts {
         }
     }
 
+    /// This machine's host was `local` before it had a session (§8): the
+    /// workspaces this client's state names under the old name follow it
+    /// to the id the server welcomed us with.
+    private func follow(_ old: HostID, to new: HostID) {
+        guard old != new else { return }
+        func moved(_ id: BlockID) -> BlockID { id.host == old ? BlockID(host: new, ulid: id.ulid) : id }
+        change { s in
+            s.selected = s.selected.map(moved)
+            s.settled = s.settled.map(moved)
+        }
+    }
+
     func setWindow(_ w: WindowState) { change { $0.window = w } }
     func setAppearance(_ a: Appearance) { change { $0.appearance = a } }
 
@@ -88,6 +100,7 @@ final class Hosts {
         }
         client.onConnected = { [weak self, weak client] in
             guard let self, let client else { return }
+            if !client.isRemote { self.follow(.local, to: client.host) }
             self.pushedLanguageServers.removeValue(forKey: client.host)
             self.pushLanguageServers()
             client.propose(.editing(self.editing.filter { $0.host == client.host }))
