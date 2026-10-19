@@ -83,6 +83,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.layoutTrafficLights()
         }
         sidebar.delegate = self
+        sidebar.organizationView.delegate = self
         for c in [content, outgoing] {
             c.stacks.delegate = self
             c.tiling.delegate = self
@@ -206,6 +207,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         checkOpenWaits()
         content.stacks.refreshFeet()
         noteTrailFocus()
+        refreshOrganization()
 
         if let jump = pendingJump,
            let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }), editor.isLoaded {
@@ -702,7 +704,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.showFileHistory(nil)
             })
         }
-        items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Show the Neighborhood", subtitle: "⌥⌘N") { [weak self] in
+        items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Show the Neighborhood Map", subtitle: "Action") { [weak self] in
             self?.showNeighborhood(nil)
         })
         items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
@@ -1207,12 +1209,175 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         appendToSelected([.focus(placement)])
     }
 
+    // MARK: Organizations (§3.6)
+
+    private var organizationWork: DispatchWorkItem?
+    /// The block the Links organization is centered on, when not the focused.
+    private var linksCenter: BlockID?
+
+    var organization: Organization {
+        Organization(rawValue: desk.window.organization ?? "") ?? .desk
+    }
+
+    @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
+    @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
+    @objc func organizeByLinks(_ sender: Any?) { setOrganization(.links) }
+    @objc func organizeByTime(_ sender: Any?) { setOrganization(.time) }
+
+    func setOrganization(_ org: Organization, show: Bool = true) {
+        var state = desk.window
+        state.organization = org.rawValue
+        if state != desk.window { host.setWindow(state) }
+        sidebar.setOrganization(org)
+        if show, !sidebarShown { showSidebar(animated: true) }
+        refreshOrganization(now: true)
+    }
+
+    /// The sidebar's tree again, a moment after the last change.
+    func refreshOrganization(now: Bool = false) {
+        let org = organization
+        if sidebar.organization != org { sidebar.setOrganization(org) }
+        guard org != .desk else { return }
+        organizationWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let filter = self.sidebar.filterText.lowercased()
+            let (nodes, open) = self.organizationTree(org, filter: filter)
+            self.sidebar.organizationView.show(nodes, openByDefault: open)
+        }
+        organizationWork = work
+        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work) }
+    }
+
+    private static func age(_ stamp: Stamp?) -> Double? {
+        guard let stamp else { return nil }
+        let hours = Date().timeIntervalSince(stamp.date) / 3600
+        return min(1, max(0, (hours - 1) / 167))
+    }
+
+    private func node(for block: Block, id: String? = nil, detail: String? = nil) -> OrgNode {
+        let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
+        return OrgNode(id: id ?? block.id.description, block: block.id, title: block.displayTitle,
+                       symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
+    }
+
+    private func matches(_ filter: String, _ texts: [String?]) -> Bool {
+        filter.isEmpty || texts.contains { $0?.lowercased().contains(filter) ?? false }
+    }
+
+    /// The tree for an organization, and which rows open by themselves.
+    func organizationTree(_ org: Organization, filter: String) -> ([OrgNode], Set<String>) {
+        switch org {
+        case .desk: return ([], [])
+        case .files: return filesTree(filter)
+        case .links: return linksTree(filter)
+        case .time: return timeTree(filter)
+        }
+    }
+
+    /// Files: each host's sparse tree, roots open.
+    private func filesTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        var open: Set<String> = []
+        func convert(_ f: FileNode) -> OrgNode? {
+            let children = f.children.compactMap(convert)
+            let block = f.block.flatMap { hosts.block($0) }
+            if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
+            let id = "file:\(f.host.raw):\(f.path)"
+            if f.isFolder {
+                if !filter.isEmpty { open.insert(id) }
+                return OrgNode(id: id, block: f.block, title: f.name, symbol: f.kind == .git ? "arrow.triangle.branch" : "folder",
+                               detail: "", count: children.isEmpty ? nil : f.count, age: Self.age(f.latest), isGroup: true, children: children)
+            }
+            let edited = block?.text?.isDirty == true ? "edited" : ""
+            return OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
+                           detail: edited, age: Self.age(f.latest))
+        }
+        var roots: [OrgNode] = []
+        let clients = hosts.all
+        for c in clients {
+            let home = c.transport.isLocal ? NSHomeDirectory() : nil
+            let tree = c.node.graph.fileTree(host: c.host, home: home).compactMap(convert)
+            if clients.count > 1 {
+                let id = "host:\(c.host.raw)"
+                open.insert(id)
+                roots.append(OrgNode(id: id, title: c.host == host.host ? "This Mac" : c.host.raw, symbol: "desktopcomputer",
+                                     count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree))
+            } else {
+                roots += tree
+                for r in tree { open.insert(r.id) }
+            }
+        }
+        return (roots, open)
+    }
+
+    /// Links: around the focused block (or the one looked at), by edge kind.
+    private func linksTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        guard let center = linksCenter ?? focusedShown?.placement.block, let b = hosts.block(center) else {
+            return ([OrgNode(id: "none", title: "Nothing focused", symbol: "circle.dashed")], [])
+        }
+        var open: Set<String> = ["center"]
+        func bunches(of block: BlockID, prefix: String) -> [OrgNode] {
+            footBunches(of: block).compactMap { bunch -> OrgNode? in
+                let cards = bunch.cards.filter { matches(filter, [$0.title, $0.detail]) }
+                guard !cards.isEmpty else { return nil }
+                let id = "\(prefix)/\(bunch.title)"
+                open.insert(id)
+                let children = cards.map { card -> OrgNode in
+                    let cid = "\(id)/\(card.block)"
+                    let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
+                                       detail: card.detail + (card.at.map { " · " + FootView.ago($0) } ?? ""), age: Self.age(card.at))
+                    node.loadChildren = { bunches(of: card.block, prefix: cid) }
+                    return node
+                }
+                return OrgNode(id: id, title: bunch.title, symbol: bunch.symbol, count: cards.count, isGroup: true, children: children)
+            }
+        }
+        let root = node(for: b, id: "center", detail: linksCenter != nil ? "looked at" : "focused")
+        let groups = bunches(of: center, prefix: "center")
+        return ([root] + groups, open)
+    }
+
+    /// Time: blocks by the day they were last seen, today first.
+    private func timeTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        var byDay: [Date: [(Block, Stamp)]] = [:]
+        let cal = Calendar.current
+        for c in hosts.all {
+            for b in c.node.blocks where b.kind != .arrangement || b.arrangement?.isNamed == true {
+                guard let seen = c.node.graph.seen(b.id) else { continue }
+                guard matches(filter, [b.displayTitle, b.path]) else { continue }
+                byDay[cal.startOfDay(for: seen.date), default: []].append((b, seen))
+            }
+        }
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        let today = cal.startOfDay(for: Date())
+        var open: Set<String> = []
+        let days = byDay.keys.sorted(by: >).prefix(60).map { day -> OrgNode in
+            let items = byDay[day]!.sorted { $0.1 > $1.1 }
+            let title: String
+            if day == today { title = "Today" } else if let y = cal.date(byAdding: .day, value: -1, to: today), day == y { title = "Yesterday" } else { title = f.string(from: day) }
+            let id = "day:\(day.timeIntervalSince1970)"
+            if day == today || !filter.isEmpty { open.insert(id) }
+            let children = items.map { block, seen in
+                node(for: block, id: id + "/" + block.id.description, detail: DateFormatter.localizedString(from: seen.date, dateStyle: .none, timeStyle: .short))
+            }
+            return OrgNode(id: id, title: title, symbol: "calendar", count: items.count, isGroup: true, children: children)
+        }
+        return (Array(days), open)
+    }
+
     // MARK: The neighborhood, in graph form
 
     private var neighborhoodView: NeighborhoodView?
 
-    /// ⌥⌘N: the focused block's neighborhood to distance 2, to look
-    /// around and walk; ⌘-click or ⏎ goes to a block.
+    /// ⌥⌘N: the sidebar on Links, around the focused block.
+    @objc func showLinks(_ sender: Any?) {
+        linksCenter = nil
+        setOrganization(.links)
+    }
+
+    /// The neighborhood map: the focused block's neighborhood to distance
+    /// 2 as a picture, to look around and walk; ⌘-click or ⏎ goes to a block.
     @objc func showNeighborhood(_ sender: Any?) {
         guard neighborhoodView == nil else { return hideNeighborhood() }
         guard let center = focusedShown?.placement.block ?? selected else { return }
@@ -2004,6 +2169,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
 extension MainWindowController: SidebarDelegate {
     func sidebarSelect(_ arrangement: BlockID) { host.select(arrangement) }
+
+    func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
+    func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     func sidebarNewTab() { showPalette() }
@@ -2493,5 +2661,56 @@ final class RootView: NSView {
     override func layout() {
         super.layout()
         onLayout?()
+    }
+}
+
+extension MainWindowController: OrganizationViewDelegate {
+    func organizationOpen(_ block: BlockID, newColumn: Bool) {
+        HoverCard.shared.hide()
+        guard let b = hosts.block(block) else { return }
+        if b.kind == .arrangement { return host.select(block) }
+        let lens = Lens.default(for: b.kind, path: b.path)
+        if newColumn, let a = arrangement {
+            let c = focusedShown.flatMap { a.columnIndex(of: $0.id) } ?? a.columns.count - 1
+            placeInNewColumn(block, lens: lens, at: c + 1)
+        } else {
+            place(block, lens: lens, beside: focusedShown?.id, context: "from the sidebar")
+        }
+        if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
+    }
+
+    func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
+        guard let node, let id = node.block, let b = hosts.block(id), let window else { return HoverCard.shared.hide() }
+        var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
+        if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + FootView.ago(seen) }
+        if id.host != host.host { detail += " · on \(id.host.raw)" }
+        var body = ""
+        var font: NSFont? = nil
+        switch b.kind {
+        case .text:
+            body = String(b.text?.text.string.prefix(600) ?? "").split(separator: "\n", omittingEmptySubsequences: false).prefix(8).joined(separator: "\n")
+            font = desk.appearance.theme.font(desk.appearance.editorFont, size: 12)
+        case .terminal, .agent:
+            body = b.terminal?.cwd?.abbreviatingHome ?? ""
+        case .search:
+            body = b.search.map { "\($0.hits.count) hits" } ?? ""
+        case .arrangement:
+            body = b.arrangement.map { a in a.placements.compactMap { self.hosts.block($0.block)?.displayTitle }.joined(separator: " · ") } ?? ""
+        default: break
+        }
+        HoverCard.shared.show(title: b.displayTitle, detail: detail, body: body, font: font, beside: rect, in: window)
+    }
+
+    func organizationMenu(for node: OrgNode) -> NSMenu? {
+        guard let id = node.block else { return nil }
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open Beside") { [weak self] in self?.organizationOpen(id, newColumn: false) })
+        menu.addItem(ClosureMenuItem("Open in a New Column") { [weak self] in self?.organizationOpen(id, newColumn: true) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Links Around This") { [weak self] in
+            self?.linksCenter = id
+            self?.setOrganization(.links)
+        })
+        return menu
     }
 }

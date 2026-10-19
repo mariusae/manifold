@@ -239,6 +239,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fontsItem = NSMenuItem(title: "Editor Font", action: nil, keyEquivalent: "")
         fontsItem.submenu = fonts
         view.addItem(fontsItem)
+        let organize = NSMenu(title: "Organize By")
+        for (title, sel, key) in [("Desk", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
+                                  ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4")] {
+            item(organize, title, sel, key, [.command, .option])
+        }
+        let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
+        organizeItem.submenu = organize
+        view.addItem(organizeItem)
+        view.addItem(.separator())
         let collect = NSMenu(title: "Tidy Unused Blocks Away")
         for (minutes, title) in [(15, "After 15 Minutes"), (60, "After an Hour"), (240, "After 4 Hours"),
                                  (1440, "After a Day"), (0, "Never")] {
@@ -297,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Focus Next Block", #selector(MainWindowController.nextPane(_:)), "]")
         item(window, "Focus Previous Block", #selector(MainWindowController.previousPane(_:)), "[")
         window.addItem(.separator())
-        item(window, "Show the Neighborhood", #selector(MainWindowController.showNeighborhood(_:)), "n", [.command, .option])
+        item(window, "Show Links", #selector(MainWindowController.showLinks(_:)), "n", [.command, .option])
         item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[", [.command, .control])
         item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]", [.command, .control])
         NSApp.windowsMenu = window

@@ -266,6 +266,39 @@ language server's document symbols) and the desk's own history (the desk
 shard scrubbed as an arrangement is; a timeline lens with empty days
 folded to "⋯ Sep 21–25 · 5 days") sit beside this rather than in it.
 
+### 3.6 Organizations: views over the graph
+
+The graph is the representation; how it is *organized* is a view over it,
+chosen as fits the task, and the organizations keep no state of their
+own. A folder being open or a day being shown is view state; nothing
+about the data changes when you look at it another way. The rule is that
+the graph has to capture everything any organization needs:
+
+| organization | a view of | roots |
+|---|---|---|
+| **Desk** | arrangements and what they place (§3) | named arrangements |
+| **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
+| **Links** | the neighborhood of a block by edge kind (§3.5), one more step on opening a row | the focused block, or one looked at |
+| **Time** | blocks by the day they were last seen or made | days |
+
+Two edges make the first two possible. **`contains`** (folder → file or
+folder) is read off the paths: every block with a path is under the
+folder blocks (listings, repositories) whose path is its parent, and the
+file tree is the trie of all paths on a host. **`mention`** is kept
+*complete*: the host parses `[[titles]]` and `[words](paths)` out of a
+text block as it changes and brings its mention links to match — making
+a block for a file a link names before anyone opens it — so backlinks
+are whole without anyone having followed them, as a wiki's are.
+
+The sidebar is the one browser for all of them: a chooser (Desk · Files
+· Links · Time), a filter, and the same row — symbol, name, a count, a
+detail, fading with age — with the same gestures: click to recall beside
+what's focused, ⌘-click into a column of its own, a card on hover, Links
+Around This in the menu. The arrangement stays the working surface;
+organizations are how you reach blocks, never where they live. The foot
+(§3.5) keeps its job at the point of use; the neighborhood map stays as
+a picture of the Links organization; ⌘O stays the quick way in.
+
 ---
 
 ## 4. Lifecycle and collection
@@ -581,6 +614,11 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   block; `neighborhood(of:at:)`, `distances(from:)`,
   `step(from:offset:)`; `Hosts` merges every host's. Rebuilt from states
   and kept entries after a snapshot.
+- Organizations (§3.6): `contains` edges and the file tree in `Graph`
+  (paths indexed per host; `fileTree(host:home:)`), mentions parsed in
+  the core (`Mention.find`) and kept as links by the host (`Mentions`);
+  the sidebar's chooser, filter and `OrganizationView` over `OrgNode`
+  trees built by the controller; `HoverCard`.
 - The foot of a block (§3.5): `FootView` under each sheet in the stacks
   lens, shown as the pointer nears the bottom, bunches per edge kind
   dealt out on hover; Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail;

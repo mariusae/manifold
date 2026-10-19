@@ -17,6 +17,9 @@ protocol SidebarDelegate: AnyObject {
     /// The resize handle was dragged to make the sidebar this wide.
     func sidebarResize(to width: CGFloat)
     func sidebarResizeEnded()
+    /// Another organization was chosen, or the filter typed in.
+    func sidebarOrganizationChanged(_ organization: Organization)
+    func sidebarFilterChanged(_ text: String)
 }
 
 /// Where a sheet dropped on the sidebar goes.
@@ -54,8 +57,16 @@ final class SidebarView: NSView {
     private var rows: [BlockID: TabRowView] = [:]
     private var order: [BlockID] = []
     var pinned = false { didSet { updateChrome() } }
+    /// The organizations to choose from, under the header; the filter,
+    /// over every organization but the desk; the tree, for those.
+    private let organizations = NSSegmentedControl(labels: Organization.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    private let filter = NSSearchField()
+    let organizationView = OrganizationView()
+    private(set) var organization: Organization = .desk
 
     static let headerHeight: CGFloat = 40
+    static let chooserHeight: CGFloat = 30
+    static let filterHeight: CGFloat = 30
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -91,6 +102,26 @@ final class SidebarView: NSView {
         scroll.contentView.drawsBackground = false
         card.addSubview(scroll)
 
+        organizations.segmentStyle = .capsule
+        organizations.controlSize = .small
+        organizations.font = .systemFont(ofSize: 11)
+        organizations.selectedSegment = 0
+        organizations.target = self
+        organizations.action = #selector(organizationChosen)
+        card.addSubview(organizations)
+        filter.placeholderString = "Filter"
+        filter.controlSize = .small
+        filter.font = .systemFont(ofSize: 11.5)
+        filter.focusRingType = .none
+        filter.target = self
+        filter.action = #selector(filterTyped)
+        filter.sendsSearchStringImmediately = true
+        filter.sendsWholeSearchString = false
+        filter.isHidden = true
+        card.addSubview(filter)
+        organizationView.isHidden = true
+        card.addSubview(organizationView)
+
         list.sidebar = self
         list.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement])
         newTabRow.onClick = { [weak self] in self?.delegate?.sidebarNewTab() }
@@ -115,10 +146,38 @@ final class SidebarView: NSView {
         card.frame = bounds
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
-        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight)
+        var top = bounds.height - Self.headerHeight
+        organizations.frame = NSRect(x: 10, y: top - Self.chooserHeight + 4, width: bounds.width - 20, height: 22)
+        top -= Self.chooserHeight
+        if organization != .desk {
+            filter.frame = NSRect(x: 10, y: top - Self.filterHeight + 5, width: bounds.width - 20, height: 22)
+            top -= Self.filterHeight
+        }
+        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: top)
+        organizationView.frame = NSRect(x: 4, y: 0, width: bounds.width - 8, height: top)
         resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
         layoutRows()
     }
+
+    /// Shows an organization: the desk's rows, or the tree of another.
+    func setOrganization(_ org: Organization) {
+        organization = org
+        organizations.selectedSegment = Organization.allCases.firstIndex(of: org) ?? 0
+        scroll.isHidden = org != .desk
+        organizationView.isHidden = org == .desk
+        filter.isHidden = org == .desk
+        needsLayout = true
+    }
+
+    var filterText: String { filter.stringValue }
+
+    @objc private func organizationChosen() {
+        let org = Organization.allCases[max(0, organizations.selectedSegment)]
+        setOrganization(org)
+        delegate?.sidebarOrganizationChanged(org)
+    }
+
+    @objc private func filterTyped() { delegate?.sidebarFilterChanged(filter.stringValue) }
 
     private func updateChrome() {
         layer?.shadowOpacity = pinned ? 0 : 0.16

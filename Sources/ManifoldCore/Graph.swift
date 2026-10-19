@@ -13,14 +13,37 @@ import Foundation
 public enum EdgeKind: Hashable, Sendable, CustomStringConvertible {
     /// An arrangement holds a placement of the block.
     case placed
+    /// A folder (a directory or repository block) holds a file or folder,
+    /// by its path: not stored, read off the paths when asked.
+    case contains
     case link(LinkKind)
 
     public var description: String {
         switch self {
         case .placed: "placed"
+        case .contains: "contains"
         case .link(let k): k.rawValue
         }
     }
+}
+
+/// A node of the sparse file tree (§3.6): a folder or a file, with the
+/// block standing for it if there is one, what's under it, and what the
+/// registry says of the blocks beneath.
+public struct FileNode: Equatable, Sendable {
+    public var path: String
+    public var host: HostID
+    /// The name shown: a file's; a folder's, or the run of single folders
+    /// it stands for ("Sources/Manifold/UI").
+    public var name: String
+    public var block: BlockID?
+    public var kind: BlockKind?
+    public var isFolder: Bool
+    public var children: [FileNode]
+    /// Blocks beneath (files, and folders with blocks).
+    public var count: Int
+    /// The latest a block here or beneath was seen or made.
+    public var latest: Stamp?
 }
 
 public struct Edge: Hashable, Sendable {
@@ -92,6 +115,12 @@ public final class Graph {
     private var liveOut: [BlockID: [EdgeKind: Int]] = [:]
     private var liveIn: [BlockID: [EdgeKind: Int]] = [:]
 
+    // Paths: for `contains`, and the file tree.
+    private var pathOf: [BlockID: (path: String, kind: BlockKind)] = [:]
+    private var atPath: [HostID: [String: [BlockID]]] = [:]
+    private var createdOf: [BlockID: Stamp] = [:]
+    private var lastSeen: [BlockID: Stamp] = [:]
+
     private var steps: [Step] = []
     /// Which registry shard each step came from, by position.
     private var stepShards: [ShardID] = []
@@ -105,11 +134,136 @@ public final class Graph {
     // MARK: Edges
 
     public func edges(from block: BlockID, kind: EdgeKind? = nil, at stamp: Stamp? = nil) -> [Edge] {
-        list(out[block], kind: kind, at: stamp)
+        if kind == .contains { return contained(by: block) }
+        return list(out[block], kind: kind, at: stamp) + (kind == nil ? contained(by: block) : [])
     }
 
     public func edges(to block: BlockID, kind: EdgeKind? = nil, at stamp: Stamp? = nil) -> [Edge] {
-        list(inbound[block], kind: kind, at: stamp)
+        if kind == .contains { return containers(of: block) }
+        return list(inbound[block], kind: kind, at: stamp) + (kind == nil ? containers(of: block) : [])
+    }
+
+    // MARK: Paths
+
+    public func path(of block: BlockID) -> String? { pathOf[block]?.path }
+
+    /// The blocks at a path on a host, if any.
+    public func blocks(at path: String, on host: HostID) -> [BlockID] { atPath[host]?[path] ?? [] }
+
+    /// When a block was last seen (or made), as the registry says.
+    public func seen(_ block: BlockID) -> Stamp? { lastSeen[block] ?? createdOf[block] }
+
+    private func setPath(_ block: BlockID, _ path: String?, kind: BlockKind) {
+        if let old = pathOf[block] {
+            atPath[block.host]?[old.path]?.removeAll { $0 == block }
+            pathOf.removeValue(forKey: block)
+        }
+        guard let path, !path.isEmpty else { return }
+        pathOf[block] = (path, kind)
+        atPath[block.host, default: [:]][path, default: []].append(block)
+    }
+
+    private static func isFolderKind(_ kind: BlockKind) -> Bool { kind == .directory || kind == .git }
+
+    /// The folder blocks holding a block, by its path's parent.
+    private func containers(of block: BlockID) -> [Edge] {
+        guard let (path, _) = pathOf[block], path.count > 1 else { return [] }
+        let parent = path.deletingLastPathComponent
+        return blocks(at: parent, on: block.host).filter { pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false }.map { folder in
+            Edge(kind: .contains, from: folder, to: block, at: createdOf[block] ?? Stamp(wall: 0, logical: 0, host: block.host),
+                 id: "contains:\(folder.ulid):\(block.ulid)", shard: .block(folder))
+        }
+    }
+
+    /// The blocks a folder block holds directly, by path.
+    private func contained(by folder: BlockID) -> [Edge] {
+        guard let (path, kind) = pathOf[folder], Self.isFolderKind(kind) else { return [] }
+        var out: [Edge] = []
+        for (p, blocks) in atPath[folder.host] ?? [:] where p != path && p.deletingLastPathComponent == path {
+            for b in blocks where b != folder {
+                out.append(Edge(kind: .contains, from: folder, to: b, at: createdOf[b] ?? Stamp(wall: 0, logical: 0, host: b.host),
+                                id: "contains:\(folder.ulid):\(b.ulid)", shard: .block(folder)))
+            }
+        }
+        return out.sorted { $0.at > $1.at }
+    }
+
+    /// The sparse file tree of a host (§3.6): every block with a path,
+    /// under its folders, under a root — a repository (a git block's root)
+    /// or the home folder, else `/`. Runs of single folders are one node;
+    /// folders that are blocks (a listing, a repository) keep their own.
+    public func fileTree(host: HostID, home: String? = nil) -> [FileNode] {
+        let paths = atPath[host] ?? [:]
+        guard !paths.isEmpty else { return [] }
+        let repos = Set(pathOf.filter { $0.key.host == host && $0.value.kind == .git }.map(\.value.path))
+        func root(of path: String) -> String {
+            if let r = repos.filter({ path == $0 || path.hasPrefix($0 + "/") }).max(by: { $0.count < $1.count }) { return r }
+            if let home, path == home || path.hasPrefix(home + "/") { return home }
+            return "/"
+        }
+        // A trie under each root.
+        final class Trie {
+            var children: [String: Trie] = [:]
+            var blocks: [BlockID] = []
+            var path: String
+            init(path: String) { self.path = path }
+        }
+        var roots: [String: Trie] = [:]
+        for (path, blocks) in paths {
+            let r = root(of: path)
+            let trie = roots[r] ?? { let t = Trie(path: r); roots[r] = t; return t }()
+            var node = trie
+            if path != r {
+                let rest = r == "/" ? String(path.dropFirst()) : String(path.dropFirst(r.count + 1))
+                for part in rest.split(separator: "/").map(String.init) {
+                    let child = node.children[part] ?? { let t = Trie(path: node.path == "/" ? "/" + part : node.path + "/" + part); node.children[part] = t; return t }()
+                    node = child
+                }
+            }
+            node.blocks += blocks
+        }
+        func build(_ t: Trie, name: String, root: Bool = false) -> FileNode {
+            // A single folder beneath with nothing of its own: folded into
+            // this one — but a root keeps its name, being what the tree
+            // hangs off.
+            var node = t, shown = name
+            while !root, node.blocks.isEmpty, node.children.count == 1, let (childName, child) = node.children.first,
+                  !child.children.isEmpty || child.blocks.contains(where: { pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false }) {
+                node = child
+                shown = shown.isEmpty ? childName : shown == "/" ? "/" + childName : shown + "/" + childName
+            }
+            let folderBlock = node.blocks.first { pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false }
+            let fileBlocks = node.blocks.filter { !(pathOf[$0].map { Self.isFolderKind($0.kind) } ?? false) }
+            let isFolder = !node.children.isEmpty || folderBlock != nil
+            // Under a root, single folders fold too ("/" shows "tmp/scratch").
+            var children = node.children.map { build($0.value, name: $0.key) }
+            // Files at this very path that aren't the folder itself (a file
+            // block and a listing can't share a path, but a note might).
+            for b in fileBlocks where isFolder {
+                children.append(FileNode(path: node.path, host: host, name: node.path.lastPathComponent, block: b, kind: pathOf[b]?.kind,
+                                         isFolder: false, children: [], count: 1, latest: seen(b)))
+            }
+            children.sort { a, b in
+                if a.isFolder != b.isFolder { return a.isFolder }
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+            let block = isFolder ? folderBlock : fileBlocks.first
+            let own = block == nil ? 0 : 1
+            let count = isFolder ? children.reduce(own) { $0 + $1.count } : 1
+            var latest = block.flatMap(seen)
+            for c in children { if let l = c.latest, latest.map({ l > $0 }) ?? true { latest = l } }
+            return FileNode(path: node.path, host: host, name: shown, block: block, kind: block.flatMap { pathOf[$0]?.kind },
+                            isFolder: isFolder, children: children, count: count, latest: latest)
+        }
+        return roots.map { r, t in
+            var n = build(t, name: r == home ? "~" : r.lastPathComponent.isEmpty ? r : r.lastPathComponent, root: true)
+            n.isFolder = true
+            if n.name.isEmpty { n.name = r }
+            return n
+        }.sorted { a, b in
+            if (a.path == home) != (b.path == home) { return a.path == home }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
     }
 
     private func list(_ byKind: [EdgeKind: [Edge]]?, kind: EdgeKind?, at stamp: Stamp?) -> [Edge] {
@@ -145,6 +299,9 @@ public final class Graph {
         }
         n.before = trailNeighbors(of: block, offset: -1, before: stamp)
         n.after = trailNeighbors(of: block, offset: 1, before: stamp)
+        let held = contained(by: block), holders = containers(of: block)
+        if !held.isEmpty { n.outbound[.contains] = held }
+        if !holders.isEmpty { n.inbound[.contains] = holders }
         return n
     }
 
@@ -304,6 +461,15 @@ public final class Graph {
     /// An entry applied to a shard, with the shard's state after it.
     public func apply(_ entry: Entry, to shard: ShardID, state: ShardState) {
         switch (shard, entry.event) {
+        case let (.block(id), .create(kind, _, path)):
+            createdOf[id] = entry.at
+            setPath(id, path, kind: kind)
+        case let (.block(id), .path(p)):
+            if let kind = pathOf[id]?.kind ?? state.block?.kind { setPath(id, p, kind: kind) }
+        case let (.registry, .seen(ids, at)):
+            for id in ids { lastSeen[id] = at }
+        case let (.registry, .register(e)):
+            if lastSeen[e.id] == nil { lastSeen[e.id] = e.lastSeen }
         case let (.block(arrangement), .place(p, _, _)):
             add(Edge(kind: .placed, from: arrangement, to: p.block, at: entry.at, id: p.id, shard: shard))
         case let (.block(arrangement), .adopt(cols, _)):
@@ -331,6 +497,10 @@ public final class Graph {
             if let e = byID[id] { removeEdge(e) }
         }
         byShard.removeValue(forKey: shard)
+        if case .block(let id) = shard {
+            if let (_, kind) = pathOf[id] { setPath(id, nil, kind: kind) }
+            createdOf.removeValue(forKey: id)
+        }
         if stepShards.contains(shard) {
             var kept: [Step] = [], keptShards: [ShardID] = []
             for (s, sh) in zip(steps, stepShards) where sh != shard {
@@ -351,11 +521,14 @@ public final class Graph {
         // The trail is in the registry's state whole: not again from its entries.
         if case .registry(let r) = state {
             for s in r.trail { addStep(s, from: shard) }
+            for (id, e) in r.blocks { lastSeen[id] = e.lastSeen }
             return
         }
         for e in entries { apply(e, to: shard, state: state) }
         switch state {
         case .block(let b):
+            createdOf[b.id] = b.created
+            setPath(b.id, b.path, kind: b.kind)
             if let a = b.arrangement {
                 for p in a.placements where byID[p.id] == nil {
                     add(Edge(kind: .placed, from: b.id, to: p.block, at: p.placedAt ?? b.created, id: p.id, shard: shard))
@@ -377,6 +550,7 @@ public final class Graph {
     /// Everything again, from a node.
     public func rebuild(from node: Node) {
         out = [:]; inbound = [:]; byID = [:]; byShard = [:]; liveOut = [:]; liveIn = [:]
+        pathOf = [:]; atPath = [:]; createdOf = [:]; lastSeen = [:]
         steps = []; stepShards = []; stepIndex = [:]; stepIndexValid = true
         for (shard, r) in node.shards { load(shard, state: r.state, entries: r.entries) }
     }

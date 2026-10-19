@@ -7,6 +7,8 @@ public struct WindowState: Codable, Equatable, Sendable {
     public var sidebarPinned = false
     /// The sidebar's width, once it's been resized.
     public var sidebarWidth: Double?
+    /// Which organization the sidebar shows (§3.6): desk, files, links, time.
+    public var organization: String?
 
     public init(frame: [Double]? = nil, sidebarPinned: Bool = false, sidebarWidth: Double? = nil) {
         self.frame = frame

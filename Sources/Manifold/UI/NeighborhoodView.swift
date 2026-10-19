@@ -23,6 +23,7 @@ struct GraphEdge: Equatable {
     var label: String {
         switch kind {
         case .placed?: "placed in"
+        case .contains?: "holds"
         case .link(let k)?: k.rawValue
         case nil: "then"
         }
@@ -279,7 +280,7 @@ final class GraphCanvas: NSView {
 
     static func color(_ kind: EdgeKind?) -> NSColor {
         switch kind {
-        case .placed?: Theme.secondaryText
+        case .placed?, .contains?: Theme.secondaryText
         case .link(.opened)?: Theme.accent
         case .link(.found)?: NSColor.systemOrange
         case .link(.source)?: NSColor.systemTeal

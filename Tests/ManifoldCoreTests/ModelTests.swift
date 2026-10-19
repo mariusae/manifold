@@ -554,3 +554,57 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     state.apply(.edit([TextEdit(TextRange(0, 0), "note")]))
     #expect(state.text.string == "note")
 }
+
+// MARK: Organizations over the graph
+
+@Test func containmentAndTheFileTree() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    let repo = BlockID(host: host), ui = BlockID(host: host), a = BlockID(host: host), b = BlockID(host: host), note = BlockID(host: host), home = BlockID(host: host)
+    _ = node.append(.create(kind: .git, title: nil, path: "/Users/me/src/app"), to: .block(repo), at: stamp(1))
+    _ = node.append(.create(kind: .directory, title: nil, path: "/Users/me/src/app/Sources/UI"), to: .block(ui), at: stamp(2))
+    _ = node.append(.create(kind: .text, title: nil, path: "/Users/me/src/app/Sources/UI/A.swift"), to: .block(a), at: stamp(3))
+    _ = node.append(.create(kind: .text, title: nil, path: "/Users/me/src/app/README.md"), to: .block(b), at: stamp(4))
+    _ = node.append(.create(kind: .text, title: nil, path: "/Users/me/notes/today.md"), to: .block(note), at: stamp(5))
+    _ = node.append(.create(kind: .text, title: nil, path: "/etc/hosts"), to: .block(home), at: stamp(6))
+    _ = node.append(.seen([a], at: stamp(50)), to: .registry(host), at: stamp(50))
+    let g = node.graph
+    // Containment comes from the paths: the listing holds the file, the repository the listing's folder's folder.
+    #expect(g.edges(to: a, kind: .contains).map(\.from) == [ui])
+    #expect(g.edges(from: ui, kind: .contains).map(\.to) == [a])
+    #expect(g.edges(from: repo, kind: .contains).map(\.to) == [b])
+    #expect(g.neighborhood(of: a).inbound[.contains]?.first?.from == ui)
+    // The tree: roots are the repository, home, and /; single folders fold together.
+    let tree = g.fileTree(host: host, home: "/Users/me")
+    #expect(Set(tree.map(\.name)) == ["~", "app", "/"])
+    let app = tree.first { $0.path == "/Users/me/src/app" }!
+    #expect(app.block == repo && app.count == 4)
+    #expect(app.children.map(\.name) == ["Sources/UI", "README.md"])
+    let sources = app.children[0]
+    #expect(sources.block == ui && sources.children.map(\.name) == ["A.swift"])
+    #expect(sources.latest == stamp(50))
+    let homeNode = tree.first { $0.path == "/Users/me" }!
+    #expect(homeNode.children.map(\.name) == ["notes"] && homeNode.children[0].children.first?.block == note)
+    // A path changed moves the block.
+    _ = node.append(.path("/Users/me/src/app/B.swift"), to: .block(a), at: stamp(60))
+    #expect(g.edges(from: ui, kind: .contains).isEmpty)
+    #expect(g.edges(from: repo, kind: .contains).map(\.to).contains(a))
+}
+
+@Test func mentionsAreFoundInText() {
+    let found = Mention.find(in: """
+        See [[Design Doc]] and [the readme](../README.md#usage), [web](https://x.org/a.md),
+        an image ![pic](assets/p.png "title") and [[Design Doc]] again, [[Other|alias]].
+        """)
+    #expect(found == [
+        Mention(target: .title("Design Doc"), text: "Design Doc"),
+        Mention(target: .path("../README.md"), text: "the readme"),
+        Mention(target: .path("assets/p.png"), text: "pic"),
+        Mention(target: .title("Other"), text: "Other|alias"),
+    ])
+    #expect(Mention.resolve("../README.md", from: "/a/b/c.md") == "/a/README.md")
+    #expect(Mention.resolve("/x/y", from: nil) == "/x/y")
+    #expect(Mention.resolve("y", from: nil) == nil)
+    #expect(BlockKind.forFile("a.png") == .image && BlockKind.forFile("a.pdf") == .pdf && BlockKind.forFile("a.md") == .text)
+}

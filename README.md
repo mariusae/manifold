@@ -153,6 +153,19 @@ when you find it again.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
+- **The sidebar organizes the same graph four ways** (View ▸ Organize
+  By, ⌥⌘1–4): **Desk** — the arrangements, as before; **Files** — every
+  block with a path under its folders, across hosts, as a sparse tree
+  (repositories, `~` and `/` at the top; runs of single folders one row;
+  counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
+  joined to the focused block by kind, each row opening one more step;
+  **Time** — blocks by the day they were last seen. A filter narrows any
+  of them. The rows work the same everywhere: click to recall beside
+  what's focused, ⌘-click for a column of its own, rest the pointer for a
+  card, right-click for Links Around This. Links written in a text —
+  `[[title]]`, `[words](file.md)` — become edges the moment they're
+  typed, so the Links view shows a note's backlinks whether or not
+  anyone followed them.
 - **The foot of a block** is its neighborhood in the graph of blocks
   (DESIGN.md §3.5): bring the pointer near the bottom of a sheet and
   capsules appear — *opened from · 3*, *opened here · 5*, *found by*,

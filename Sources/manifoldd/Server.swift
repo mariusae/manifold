@@ -50,6 +50,7 @@ final class Server {
     private var dirtyShards: Set<ShardID> = []
     private let languageServers: LanguageServers
     private let searches: Searches
+    private let mentions: Mentions
     private let git: Git
     /// Gutter marks pending for text blocks, a moment after their last change.
     private var gutterWork: [BlockID: DispatchWorkItem] = [:]
@@ -60,7 +61,20 @@ final class Server {
         store = LogStore(directory: Paths.logs)
         git = Git(queue: queue)
         searches = Searches(queue: queue)
+        mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
+        mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
+        mentions.mentions = { [weak self] block in self?.node.graph.edges(from: block, kind: .link(.mention)) ?? [] }
+        mentions.makeBlock = { [weak self] kind, path in
+            guard let self else { return BlockID(host: .local) }
+            let id = BlockID(host: self.host)
+            // A block for a file the text names, before anyone opens it: the
+            // app finds it by path when they do.
+            self.append(.create(kind: kind, title: nil, path: path), to: .block(id))
+            return id
+        }
+        mentions.link = { [weak self] link in self?.append(.link(link), to: .links(self!.host)) }
+        mentions.unlink = { [weak self] id in self?.append(.unlink(id), to: .links(self!.host)) }
         languageServers.textOf = { [weak self] block in
             guard let b = self?.node.block(block), let t = b.text else { return nil }
             return (t.text, b.path)
@@ -220,10 +234,13 @@ final class Server {
     /// Keeps the registry in step with a block's log, whoever appended.
     private func shardChanged(_ shard: ShardID, entries: [Entry] = []) {
         guard let id = shard.block, let block = node.block(id) else { return }
-        if block.kind == .text, block.path != nil,
+        if block.kind == .text,
            entries.contains(where: { if case .edit = $0.event { return true }; if case .content = $0.event { return true }; return false }) {
-            languageServers.textChanged(id)
-            scheduleGutter(id)
+            if block.path != nil {
+                languageServers.textChanged(id)
+                scheduleGutter(id)
+            }
+            mentions.textChanged(id)
         }
         let registry = node.registry(host)
         let current = registry.blocks[id]
