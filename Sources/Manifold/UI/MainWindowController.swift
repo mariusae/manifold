@@ -2010,21 +2010,52 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         languageServersWindow?.refresh()
     }
 
+    private var remotingWindow: RemotingWindow?
+
+    /// Remoting…: the providers that reach hosts (§8), kept in the hosts file.
+    @objc func showRemoting(_ sender: Any?) {
+        if remotingWindow == nil {
+            let wc = RemotingWindow()
+            wc.source = { HostsFile.load().providers }
+            wc.onChange = { providers in
+                var file = HostsFile.load()
+                file.providers = providers
+                file.save()
+            }
+            wc.onAttach = { [weak self] in self?.attachToHost(nil) }
+            remotingWindow = wc
+        }
+        remotingWindow?.showWindow(nil)
+        remotingWindow?.refresh()
+    }
+
     /// Attach to Host…: a destination, as ssh takes them, or
     /// `provider:name` for a `manifold-remote-<provider>` on the PATH.
     @objc func attachToHost(_ sender: Any?) {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Attach to a Host"
-        alert.informativeText = "A destination ssh understands (user@host), or provider:name for a manifold-remote-<provider> on your PATH. Manifold installs its server there, in ~/.manifold/bin, if it isn't already."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        alert.informativeText = "A provider (Remoting… configures them) and a destination it understands. Manifold installs its server there, in ~/.manifold/bin, if it isn't already."
+        let providers = HostsFile.load().providers
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 2, width: 110, height: 24), pullsDown: false)
+        popup.addItems(withTitles: providers.map(\.name))
+        popup.controlSize = .small
+        let field = NSTextField(frame: NSRect(x: 118, y: 2, width: 182, height: 24))
         field.placeholderString = "user@host"
-        alert.accessoryView = field
+        box.addSubview(popup)
+        box.addSubview(field)
+        alert.accessoryView = box
         alert.addButton(withTitle: "Attach")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn, let dest = Destination(field.stringValue) else { return }
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let target = field.stringValue.trimmingCharacters(in: .whitespaces)
+            let provider = popup.titleOfSelectedItem ?? "ssh"
+            // `provider:target` typed in the field says the provider itself.
+            let dest = Destination(target).flatMap { $0.provider != "ssh" || provider == "ssh" ? $0 : nil } ?? Destination(provider: provider, target: target)
+            guard !dest.target.isEmpty else { return }
             self.attach(dest)
         }
     }

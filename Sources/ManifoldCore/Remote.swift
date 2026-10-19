@@ -8,12 +8,14 @@ import Musl
 #endif
 
 /// How another machine is reached (DESIGN.md §8, after apex): a *provider*
-/// is an executable `manifold-remote-<provider>` on the PATH, called as
-/// `manifold-remote-<provider> DESTINATION COMMAND`, which runs COMMAND, one
-/// shell command line, on the destination with stdio connected and exits
-/// with its status. That is ssh's own convention, and `ssh` is the built-in
-/// provider, so `user@host` needs nothing. Other destinations are
-/// `provider:name`. The provider script is the whole configuration.
+/// is a command that runs a command line on a destination with stdio
+/// connected and exits with its status — ssh's own convention. Providers
+/// are configured in Remoting… as a name and a command template with `%h`
+/// for the destination and `%c` for the command (appended when there is
+/// no `%c`), kept in the hosts file; `ssh` is the built-in one, so
+/// `user@host` needs nothing. A provider not in the table is an executable
+/// `manifold-remote-<provider>` on the PATH, called with DESTINATION and
+/// COMMAND. Destinations are `user@host` or `provider:name`.
 public struct Destination: Hashable, Codable, Sendable, CustomStringConvertible {
     public var provider: String
     public var target: String
@@ -56,24 +58,61 @@ public struct Destination: Hashable, Codable, Sendable, CustomStringConvertible 
     public func invocation(_ command: String) -> [String] {
         let env = ProcessInfo.processInfo.environment
         let key = "MANIFOLD_PROVIDER_" + provider.uppercased().replacingOccurrences(of: "-", with: "_")
+        if let p = HostsFile.load().provider(named: provider) {
+            var argv = p.arguments(host: target, command: command)
+            if let program = env[key] ?? (provider == "ssh" ? env["MANIFOLD_SSH"] : nil), !argv.isEmpty { argv[0] = program }
+            return argv
+        }
         if provider == "ssh" {
-            let ssh = env["MANIFOLD_SSH"] ?? env[key] ?? "ssh"
-            return [ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", target, command]
+            return RemoteProvider.ssh.arguments(host: target, command: command)
         }
         let program = env[key] ?? "manifold-remote-\(provider)"
         return [program, target, command]
     }
 }
 
-/// Where each remote host attached from this machine is reached, kept in
-/// the local directory for the attach helper and the command.
+/// A way to reach hosts: a name, and a command template with `%h` for
+/// the destination and `%c` for the command to run there.
+public struct RemoteProvider: Codable, Equatable, Sendable, Identifiable {
+    public var name: String
+    public var command: String
+
+    public var id: String { name }
+
+    public init(name: String, command: String) {
+        self.name = name
+        self.command = command
+    }
+
+    public static let ssh = RemoteProvider(name: "ssh", command: "ssh -o BatchMode=yes -o ConnectTimeout=15 %h %c")
+    public static let defaults = [ssh]
+
+    /// The program and arguments for `command` on `host`: the template's
+    /// words, `%h` and `%c` filled in (the command one argument, appended
+    /// when the template has no `%c`).
+    public func arguments(host: String, command: String) -> [String] {
+        var out: [String] = []
+        var sawCommand = false
+        for word in self.command.split(separator: " ", omittingEmptySubsequences: true).map(String.init) {
+            if word == "%c" { out.append(command); sawCommand = true; continue }
+            out.append(word.replacingOccurrences(of: "%h", with: host))
+        }
+        if !sawCommand { out.append(command) }
+        return out
+    }
+}
+
+/// Where each remote host attached from this machine is reached, and the
+/// providers that reach them, kept in the local directory for the app,
+/// the attach helper and the command.
 public struct HostsFile: Codable {
     /// By session id.
     public var hosts: [String: HostEntry] = [:]
+    public var providers: [RemoteProvider] = RemoteProvider.defaults
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case hosts }
+    enum CodingKeys: String, CodingKey { case hosts, providers }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -83,7 +122,10 @@ public struct HostsFile: Codable {
             // Before sessions: keyed by the name the client gave the host.
             hosts = old.mapValues { HostEntry(destination: $0, label: nil) }
         }
+        providers = (try? c.decodeIfPresent([RemoteProvider].self, forKey: .providers)) ?? RemoteProvider.defaults
     }
+
+    public func provider(named name: String) -> RemoteProvider? { providers.first { $0.name == name } }
 
     public static var url: URL { Paths.directory.appendingPathComponent("hosts.json") }
 

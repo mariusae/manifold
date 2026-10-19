@@ -700,3 +700,11 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.block(moved)?.created.host == first.id)
     try? FileManager.default.removeItem(at: dir)
 }
+
+@Test func remoteProvidersFillInTheirTemplates() {
+    let p = RemoteProvider(name: "my", command: "my_special_script.sh --to %h %c")
+    #expect(p.arguments(host: "box", command: "manifoldd bridge") == ["my_special_script.sh", "--to", "box", "manifoldd bridge"])
+    let short = RemoteProvider(name: "s", command: "script.sh %h")
+    #expect(short.arguments(host: "box", command: "run") == ["script.sh", "box", "run"], "no %c: the command is appended")
+    #expect(RemoteProvider.ssh.arguments(host: "me@host", command: "x").first == "ssh")
+}

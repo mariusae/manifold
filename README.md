@@ -301,6 +301,13 @@ is migrated into logs on first run.
   stops the server; everything is kept, and terminals start fresh shells
   next time. Manifold ▸ Restart Server… restarts it (offered when the app
   finds a server from another version).
+- **Remoting** (Manifold ▸ Remoting…) is a table of providers: a name and
+  a command that runs a command line on a destination with stdio
+  connected, `%h` the destination and `%c` the command (appended when
+  there is no `%c`), such as `my_special_script.sh %h`; `ssh` is built
+  in. Attach to a host (⇧⌘K) with a provider and a destination it
+  understands, or type `provider:target`. A provider not in the table
+  is still looked for on your PATH as `manifold-remote-<provider>`.
 - **Remote hosts** (Manifold ▸ Attach to Host…, ⇧⌘K) work as apex's do: a
   destination ssh understands, or `provider:name` for a
   `manifold-remote-<provider>` command on the PATH that takes a destination

@@ -121,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(.separator())
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
         item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
+        item(app, "Remoting…", #selector(MainWindowController.showRemoting(_:)), "")
         item(app, "Language Servers…", #selector(MainWindowController.showLanguageServers(_:)), "")
         app.addItem(.separator())
         item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
