@@ -13,18 +13,13 @@ protocol WebViewDelegate: AnyObject {
 /// The web lens: an embedded browser on a web block, with an address bar,
 /// back and forward, and find. Where it is goes in the block's log, so its
 /// history is the pages it showed.
-final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, NSTextFieldDelegate {
+final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: WebViewDelegate?
     var source: () -> Block? = { nil }
     private let web: WKWebView
-    private let bar = NSView()
-    private let address = NSTextField()
-    private let back = NSButton(title: "‹", target: nil, action: nil)
-    private let forward = NSButton(title: "›", target: nil, action: nil)
-    private let reload = NSButton(title: "↻", target: nil, action: nil)
     private var shownURL: String?
 
     var focusView: NSView { web }
@@ -52,25 +47,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         web.navigationDelegate = self
         web.allowsBackForwardNavigationGestures = true
-        bar.wantsLayer = true
-        bar.themed { $0.layer?.backgroundColor = Theme.sheet(level: 0).cgColor }
-        address.placeholderString = "Address"
-        address.font = .systemFont(ofSize: 12.5)
-        address.bezelStyle = .roundedBezel
-        address.controlSize = .small
-        address.delegate = self
-        address.cell?.usesSingleLineMode = true
-        address.cell?.lineBreakMode = .byTruncatingTail
-        for b in [back, forward, reload] {
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            b.target = self
-        }
-        back.action = #selector(goBack)
-        forward.action = #selector(goForward)
-        reload.action = #selector(reloadPage)
-        for v in [back, forward, address, reload] { bar.addSubview(v) }
-        addSubview(bar)
         addSubview(web)
         documentChanged()
     }
@@ -86,16 +62,11 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         keeper.note(["interaction": data.base64EncodedString(), "interactionURL": web.url?.absoluteString ?? ""], after: 1)
     }
 
+    /// The page has the whole tile; the pill is its address (§3.1).
     override func layout() {
         super.layout()
-        let h: CGFloat = 34
-        bar.frame = NSRect(x: 0, y: bounds.height - h, width: bounds.width, height: h)
-        back.frame = NSRect(x: 8, y: 5, width: 28, height: 24)
-        forward.frame = NSRect(x: 38, y: 5, width: 28, height: 24)
-        address.frame = NSRect(x: 74, y: 6, width: bounds.width - 74 - 46, height: 22)
-        reload.frame = NSRect(x: bounds.width - 38, y: 5, width: 30, height: 24)
-        web.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - h)
-        finder.layout(in: NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - h))
+        web.frame = bounds
+        finder.layout(in: bounds)
     }
 
     // MARK: Find
@@ -109,7 +80,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
     func documentChanged() {
         guard let b = source(), let url = b.web?.url, url != shownURL else { return }
         shownURL = url
-        address.stringValue = url
         if !keeper.restored {
             keeper.restored = true
             // Back as it was, if what was kept is of this page.
@@ -131,9 +101,9 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         }
     }
 
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard (obj.userInfo?["NSTextMovement"] as? Int) == NSTextMovement.return.rawValue else { return }
-        var s = address.stringValue.trimmingCharacters(in: .whitespaces)
+    /// What was typed into the pill: an address, or words to search for.
+    private func go(_ typed: String) {
+        var s = typed.trimmingCharacters(in: .whitespaces)
         guard !s.isEmpty else { return }
         if !s.contains("://") {
             s = s.contains(" ") || !s.contains(".") ? "https://duckduckgo.com/?q=" + (s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s) : "https://" + s
@@ -142,30 +112,22 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         window?.makeFirstResponder(web)
     }
 
-    @objc private func goBack() { web.goBack() }
-    @objc private func goForward() { web.goForward() }
-    @objc private func reloadPage() { web.reload() }
+    @objc func goBack(_ sender: Any?) { web.goBack() }
+    @objc func goForward(_ sender: Any?) { web.goForward() }
+    @objc func reloadPage(_ sender: Any?) { web.reload() }
 
-    /// ⌘L: the address, to type over.
-    @objc func editAddress(_ sender: Any?) {
-        window?.makeFirstResponder(address)
-        address.currentEditor()?.selectAll(nil)
-    }
-
-    /// While the address is being typed, the pill is out of its way.
-    var caretRectInWindow: NSRect? {
-        guard address.currentEditor() != nil else { return nil }
-        return address.convert(address.bounds, to: nil)
+    /// The pill, clicked, is the address to type over (⌘L too).
+    var pillEdit: PillEdit? {
+        PillEdit(text: web.url?.absoluteString ?? shownURL ?? "", placeholder: "Address, or words to search for") { [weak self] in self?.go($0) }
     }
 
     var pillItems: [NSMenuItem] {
         var items: [NSMenuItem] = []
-        let b = ClosureMenuItem("Back", symbol: "chevron.left") { [weak self] in self?.goBack() }
+        let b = ClosureMenuItem("Back", symbol: "chevron.left") { [weak self] in self?.goBack(nil) }
         b.isEnabled = web.canGoBack
-        let f = ClosureMenuItem("Forward", symbol: "chevron.right") { [weak self] in self?.goForward() }
+        let f = ClosureMenuItem("Forward", symbol: "chevron.right") { [weak self] in self?.goForward(nil) }
         f.isEnabled = web.canGoForward
-        items += [b, f, ClosureMenuItem("Reload", symbol: "arrow.clockwise") { [weak self] in self?.reloadPage() }]
-        items.append(ClosureMenuItem("Edit Address", symbol: "link", key: "l") { [weak self] in self?.editAddress(nil) })
+        items += [b, f, ClosureMenuItem("Reload", symbol: "arrow.clockwise") { [weak self] in self?.reloadPage(nil) }]
         if let url = web.url?.absoluteString {
             items.append(ClosureMenuItem("Copy Address", symbol: "doc.on.doc") {
                 NSPasteboard.general.clearContents()
@@ -188,10 +150,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        back.isEnabled = web.canGoBack
-        forward.isEnabled = web.canGoForward
         let url = web.url?.absoluteString ?? ""
-        address.stringValue = url
         keepInteraction()
         var events: [Event] = []
         if url != shownURL {
@@ -202,9 +161,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         if !events.isEmpty { delegate?.webView(self, append: events) }
     }
 
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        if let url = web.url?.absoluteString { address.stringValue = url }
-    }
 }
 
 extension WebView: Searchable {

@@ -135,6 +135,13 @@ final class GridView: NSView, NSDraggingSource {
                         }
                         return
                     }
+                    // A pill with something to edit (a page's address) becomes
+                    // its field; the tile is focused, not grown.
+                    if let pill, !pill.isEditing, let edit = tile.view.pillEdit, !mods.contains(.command) {
+                        self.delegate?.gridFocus(id)
+                        pill.beginEditing(edit)
+                        return
+                    }
                     // Where in the capsule the click was: the pointer follows
                     // the pill there once the tile has grown and moved it.
                     let offset = pill.map { p -> NSPoint in
@@ -460,7 +467,7 @@ final class GridView: NSView, NSDraggingSource {
                 // Only the focused tile's pill dodges: nothing is being
                 // typed under the others, and their names are what you
                 // find them by.
-                if tile.shown.id != focused { pill.dodging = false; continue }
+                if tile.shown.id != focused || pill.isEditing { pill.dodging = false; continue }
                 guard !pill.isHidden else { continue }
                 var away = false
                 if let caret = tile.view.caretRectInWindow {
@@ -472,6 +479,14 @@ final class GridView: NSView, NSDraggingSource {
                 pill.dodging = away
             }
         }
+    }
+
+    /// ⌘L: the focused tile's pill edits what its view offers, if anything.
+    func editFocusedPill() -> Bool {
+        guard let focused, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }),
+              let edit = tile.view.pillEdit, let pill = pills[focused] else { return false }
+        pill.beginEditing(edit)
+        return true
     }
 
     // MARK: Hovering a stack
@@ -643,7 +658,7 @@ final class GridView: NSView, NSDraggingSource {
 /// through, with the block's symbol, its name (cut to fit) and its status
 /// glyph. Dragged, it moves the tile; clicked, the tile's menu. Only the
 /// capsule takes the mouse; around it, the tile does.
-final class TilePill: NSView {
+final class TilePill: NSView, NSTextFieldDelegate {
     /// Clicked, with where in the pill (its coordinates).
     /// Clicked: where, and with which modifiers held (the click's own,
     /// not whatever event the app last saw).
@@ -658,6 +673,11 @@ final class TilePill: NSView {
     private let glyph = StatusGlyph()
     private let dirty = NSView()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
+    /// A field in the name's place while the pill edits something (a
+    /// page's address): the pill widens to show it.
+    private let editor = NSTextField()
+    private var edit: PillEdit?
+    var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
     private var downAt: NSPoint?
     private var focused = false
@@ -709,8 +729,63 @@ final class TilePill: NSView {
         corner.target = self
         corner.action = #selector(cornerClicked)
         corner.toolTip = "Maximize"
-        for v in [icon, name, glyph, dirty, corner] { addSubview(v) }
+        editor.isBordered = false
+        editor.drawsBackground = false
+        editor.focusRingType = .none
+        editor.font = .systemFont(ofSize: 11.5)
+        editor.cell?.usesSingleLineMode = true
+        editor.cell?.lineBreakMode = .byTruncatingTail
+        editor.delegate = self
+        editor.isHidden = true
+        for v in [icon, name, glyph, dirty, corner, editor] { addSubview(v) }
         themed { $0.updateColors() }
+    }
+
+    // MARK: Editing in place
+
+    /// The pill becomes a field for `e`, as wide as the tile allows, the
+    /// text selected to type over.
+    func beginEditing(_ e: PillEdit) {
+        edit = e
+        editor.stringValue = e.text
+        editor.placeholderString = e.placeholder
+        editor.textColor = Theme.text
+        name.isHidden = true
+        editor.isHidden = false
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        window?.makeFirstResponder(editor)
+        editor.currentEditor()?.selectAll(nil)
+    }
+
+    func endEditing() {
+        guard edit != nil else { return }
+        edit = nil
+        if window?.firstResponder === editor.currentEditor() { window?.makeFirstResponder(nil) }
+        editor.isHidden = true
+        name.isHidden = false
+        needsLayout = true
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(insertNewline(_:)):
+            let text = editor.stringValue.trimmingCharacters(in: .whitespaces)
+            let commit = edit?.commit
+            endEditing()
+            if !text.isEmpty { commit?(text) }
+            return true
+        case #selector(cancelOperation(_:)):
+            endEditing()
+            return true
+        default:
+            return false
+        }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        // The keyboard went elsewhere: the pill is itself again.
+        DispatchQueue.main.async { [weak self] in self?.endEditing() }
     }
 
     @objc private func cornerClicked() { onToggleFull?() }
@@ -757,6 +832,8 @@ final class TilePill: NSView {
         if !dirty.isHidden { chrome += 12 }
         let wanted = ceil(name.intrinsicContentSize.width) + chrome
         let most = max(min(Self.width, bounds.width * 0.5), 110)
+        // Editing, it widens for what's typed: most of the tile.
+        if isEditing { return min(max(wanted, 560), bounds.width - 24) }
         return min(max(wanted, 110), most, bounds.width - 24)
     }
 
@@ -812,6 +889,8 @@ final class TilePill: NSView {
         }
         let th = ceil(name.intrinsicContentSize.height)
         name.frame = NSRect(x: x - 2, y: y + ((h - th) / 2).rounded() - 0.5, width: max(0, right - x + 4), height: th)
+        let eh = ceil(editor.intrinsicContentSize.height)
+        editor.frame = NSRect(x: x - 2, y: y + ((h - eh) / 2).rounded(), width: max(0, right - x + 4), height: eh)
     }
 
     override func resetCursorRects() { addCursorRect(glass.frame, cursor: .openHand) }

@@ -55,11 +55,23 @@ protocol PaneContent: NSView {
     /// The view's own verbs for its pill's menu (a page's back, forward
     /// and address), before the tile's.
     var pillItems: [NSMenuItem] { get }
+    /// What the pill edits in place when clicked (§3.1): a page's
+    /// address. The pill widens to show it; ⏎ commits, ⎋ leaves it.
+    var pillEdit: PillEdit? { get }
 }
 
 extension PaneContent {
     var caretRectInWindow: NSRect? { nil }
     var pillItems: [NSMenuItem] { [] }
+    var pillEdit: PillEdit? { nil }
+}
+
+/// Something a tile's pill can become a field for: the text to start
+/// from, what to say when there is none, and what to do with it entered.
+struct PillEdit {
+    var text: String
+    var placeholder: String
+    var commit: (String) -> Void
 }
 
 /// A lens's keeper of its state (DESIGN.md §3.5): what it notes is written

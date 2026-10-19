@@ -56,10 +56,13 @@ and Mona Sans (bundled).
   in use — the text cursor on its line in an editor or a terminal, a
   page's address or the process list's filter taking the keyboard — and
   comes back when that's done, or when the pointer rests where it would
-  be; the other tiles' pills stay, whatever is under them. The pill's
-  menu (its icon) carries the view's own verbs first: a page's Back,
-  Forward, Reload, Edit Address (⌘L) and Copy Address; the process
-  list's Refresh Now and Filter.
+  be; the other tiles' pills stay, whatever is under them. A pill can
+  also **become a field**: a web page has no address bar of its own —
+  click its pill (or ⌘L) and it widens into one, the address selected
+  to type over, or words to search for; ⏎ goes, ⎋ leaves it. ⌘[ and ⌘]
+  go back and forward, ⌘R reloads. The pill's menu (its icon) carries
+  the view's own verbs first: a page's Back, Forward, Reload and Copy
+  Address; the process list's Refresh Now and Filter.
   The focused tile has a ring around it. **⌘Z undoes** the workspace's
   last change at your hand (a tile placed, taken off, moved, stashed,
   resized, maximized), ⇧⌘Z redoes, a hundred deep per workspace, when
@@ -344,9 +347,10 @@ when you find it again.
   This File… (⌥⌘Y) scrubs the focused file through every change it's had
   in Manifold: Restore This Text puts a version back (one undoable edit);
   Compare with Now opens a diff block of then against now.
-- **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
-  terminal, typed in the finder, or asked for in the palette: an address
-  bar, back and forward, and its pages in its log.
+- **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
+  terminal, typed in the finder, or asked for in the palette: the page
+  has the whole tile, its pill is the address (click it, or ⌘L), ⌘[ and
+  ⌘] go back and forward, and its pages are in its log.
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
   for actual size), PDFs page in PDFKit.

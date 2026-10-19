@@ -953,6 +953,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(client.newNote(home: focusedCwd), lens: .editor, .here)
     }
 
+    /// ⌘L: the focused tile's pill edits what it offers (a page's address).
+    @objc func editAddress(_ sender: Any?) {
+        if !content.editFocusedPill() { NSSound.beep() }
+    }
+
     /// Open Folder…: a folder chosen, browsed beside the focused block.
     @objc func openFolder(_ sender: Any?) {
         guard let window else { return }

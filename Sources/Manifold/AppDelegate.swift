@@ -285,7 +285,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Scroll to Top", #selector(TerminalView.scrollToTop(_:)), String(UnicodeScalar(NSHomeFunctionKey)!), [.command])
         item(view, "Scroll to Bottom", #selector(TerminalView.scrollToBottom(_:)), String(UnicodeScalar(NSEndFunctionKey)!), [.command])
         view.addItem(.separator())
-        item(view, "Edit Address", #selector(WebView.editAddress(_:)), "l", [.command])
+        item(view, "Edit Address", #selector(MainWindowController.editAddress(_:)), "l", [.command])
+        item(view, "Back", #selector(WebView.goBack(_:)), "[", [.command])
+        item(view, "Forward", #selector(WebView.goForward(_:)), "]", [.command])
+        item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         let window = submenu(main, "Window")
