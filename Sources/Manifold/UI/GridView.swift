@@ -327,7 +327,8 @@ final class GridView: NSView, NSDraggingSource {
     /// The line between two tiles dragged: the two share their room by
     /// where it is. Pushed past a tile's least height, that tile goes into
     /// the stack (its room to the other side), and the line goes on
-    /// against the next, until all above or below are stashed.
+    /// against the next, until all above or below are stashed and the
+    /// tile that grew has the column, the others behind it.
     private func dragRowDivider(column c: Int, above a0: PlacementID, below b0: PlacementID, to y: CGFloat) {
         guard c < columns.count else { return }
         let column = columns[c]
@@ -342,13 +343,13 @@ final class GridView: NSView, NSDraggingSource {
         let top = frames[ra].maxY, bottom = frames[rb].minY
         let n = Double(max(shownTiles(c).count, 1))
         func share(_ id: PlacementID) -> Double { heights[id] ?? 1 / n }
-        if y > top - minHeight, aboves.count > 1 {
+        if y > top - minHeight {
             heights[b] = share(b) + share(a)
             heights[a] = 0
             needsLayout = true
             return dragRowDivider(column: c, above: a0, below: b0, to: y)
         }
-        if y < bottom + minHeight, belows.count > 1 {
+        if y < bottom + minHeight {
             heights[a] = share(a) + share(b)
             heights[b] = 0
             needsLayout = true
