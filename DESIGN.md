@@ -2,7 +2,7 @@
 
 Manifold is a desk, not a set of windows. Terminals, files, notes, folders,
 web pages and searches are **blocks**; you arrange blocks to work, and an
-arrangement is itself a block you can name and come back to. Nothing is
+workspace is itself a block you can name and come back to. Nothing is
 closed. What isn't in use is collected out of the way, and anything can be
 found and recalled from history. Blocks live on hosts — this Mac, a dev
 box, a server — and one window shows blocks from several at once.
@@ -14,7 +14,7 @@ themselves away, state on a server, the UI only a renderer.
 It borrows heavily from apex (~/src/apex/DESIGN.md, sections cited as
 apex §n): its replicated logs, leases, exec entries and wire protocol. What
 differs is the shape of the thing: apex is one session per host with acme's
-windows; Manifold is blocks from many hosts, linked, in arrangements.
+windows; Manifold is blocks from many hosts, linked, in workspaces.
 
 ---
 
@@ -48,14 +48,14 @@ windows; Manifold is blocks from many hosts, linked, in arrangements.
 | **Block** | a thing with identity: an id, a kind, and a deterministic `apply` from its log to its state |
 | **Exec** | an entry that asks for an effect, naming who performs it; the outcome returns as entries |
 | **Link** | a typed edge from one block to another, possibly across hosts |
-| **Arrangement** | a block whose content is placements of other blocks, laid out |
+| **Workspace** | a block whose content is placements of other blocks, laid out |
 | **Lens** | a way of rendering a block (an editor or a preview of one text block) |
 | **Host** | a server owning blocks: their logs, files and processes |
 | **Attachment** | a client's standing with a host, holding leases on the shards it leads |
 
-A **placement** is one appearance of a block in an arrangement: its own id,
+A **placement** is one appearance of a block in a workspace: its own id,
 the block it shows, the lens, and where it sits. A block may be placed in
-many arrangements, and more than once in one; an edit shows in all of them.
+many workspaces, and more than once in one; an edit shows in all of them.
 
 ### 2.2 Identity
 
@@ -104,7 +104,7 @@ and lease. Here the unit is simply the block, plus a few per host.
 
 Selections and scroll positions live in the block's own log, keyed by
 placement: an edit must adjust every selection on the text in one order on
-every replica (apex §3.2). An arrangement records where a placement is; the
+every replica (apex §3.2). A workspace records where a placement is; the
 block records what the placement has selected.
 
 `apply` is pure: no clock reads, no randomness, no I/O. Anything with an
@@ -112,16 +112,16 @@ effect is an exec (§5).
 
 ---
 
-## 3. Arrangements
+## 3. Workspaces
 
 ### 3.1 The surface
 
-An arrangement is **human-constructed**: what is in it is what you put
+A workspace is **human-constructed**: what is in it is what you put
 there, and it stays until you take it off. Nothing in it is tidied
 away, nothing hides beneath anything, and nothing is placed for you by
 a heuristic except where in the grid a new tile lands.
 
-An arrangement is a **grid**, apex's tiling (apex §11, *Tiling, as
+A workspace is a **grid**, apex's tiling (apex §11, *Tiling, as
 built*), which is acme's: columns, each a stack of **tiles** top to
 bottom, every tile a block, all of them visible. A new tile lands in
 the biggest empty space, else takes the lower half of the biggest tile
@@ -137,8 +137,8 @@ Two verbs, and no others, put a block in front of you:
 
 | verb | what it does |
 |---|---|
-| **Go to** | the block where it already is: the arrangement it is in (this one if it is here, else the one most recently settled on) is selected and the tile focused |
-| **Bring here** | a tile of it in this arrangement, by the grid's rule; if it is here already, that tile is focused |
+| **Go to** | the block where it already is: the workspace it is in (this one if it is here, else the one most recently settled on) is selected and the tile focused |
+| **Bring here** | a tile of it in this workspace, by the grid's rule; if it is here already, that tile is focused |
 
 A row clicked in the sidebar, or chosen in the finder, *goes to* the
 block if it is placed anywhere, else *brings it here*; ⌘-click and a
@@ -147,44 +147,44 @@ drag onto the surface always bring. Anything opened from inside a block
 change in a git block, a definition — is brought here, into the opener's
 column (acme's `activecol`), and linked to the opener. New things (a
 terminal, a note, a search) are brought here. Go Back and Go Forward
-(⌘[ ⌘]) walk the trail across tiles and arrangements.
+(⌘[ ⌘]) walk the trail across tiles and workspaces.
 
-The arrangement's log holds `Place{placement, column, at}`, `Move`,
+The workspace's log holds `Place{placement, column, at}`, `Move`,
 `Remove`, `Focus`, `Fractions`, `Heights`, `MoveColumn` and `Title`.
 
 **Retired:** the stacks (sheets beneath a column's top, strips, ⌘E, the
 foot), tiling as a second lens, the list lens, and, since October 2026,
 the column's past of §3.1's first simplification: a column of one with
 a hidden history was still something hidden. Collection of placements
-(§4) is retired with it: an arrangement is what you made it.
+(§4) is retired with it: a workspace is what you made it.
 
 ### 3.2 Names and the desk
 
-An arrangement has a title and nothing else to find it by: recall is by
+A workspace has a title and nothing else to find it by: recall is by
 search (§6), not a path. The **desk** is what's in the sidebar: the
-arrangements in use, most recently settled on first, the named ones that
-you've kept there. Taking an arrangement off the desk doesn't end it.
+workspaces in use, most recently settled on first, the named ones that
+you've kept there. Taking a workspace off the desk doesn't end it.
 
-An arrangement can be shown in a window of its own or as one of the desk's
+A workspace can be shown in a window of its own or as one of the desk's
 tabs in a window, as Safari has both: drag a tab out for a window, a window
 in for a tab. Several windows may show the desk; each OS window shows one
-arrangement at a time.
+workspace at a time.
 
-Arrangements nest: a placement may show another arrangement, as a card (its
+Workspaces nest: a placement may show another workspace, as a card (its
 title and a small live picture of it) or opened in place. A project is an
-arrangement of arrangements; nothing more is needed for folders.
+workspace of workspaces; nothing more is needed for folders.
 
 ### 3.3 Naming is keeping
 
-An **unnamed** arrangement is scratch: placements not seen for a while are
+An **unnamed** workspace is scratch: placements not seen for a while are
 collected out of it (§4), and it drifts off the desk when unused. Naming
 one makes it a place: its columns and their pasts stay however long they
 go unseen, though the blocks behind them may go dormant to free their
-resources and come back when the arrangement is recalled.
+resources and come back when the workspace is recalled.
 
 ### 3.4 Scrubbing
 
-Every arrangement can be scrubbed through its history, in two ways:
+Every workspace can be scrubbed through its history, in two ways:
 
 - **The layout then, the contents now** — what was on this desk last
   Tuesday, shown live. Cheap: one log.
@@ -192,7 +192,7 @@ Every arrangement can be scrubbed through its history, in two ways:
   by clock (§2.2). Exact within a host, within clock skew across hosts.
 
 Either is read-only. *Restore* appends a new version that makes the
-arrangement so; nothing is reverted destructively. A single block can be
+workspace so; nothing is reverted destructively. A single block can be
 scrubbed the same way, and two points of it compared in a `diff` block.
 
 ### 3.5 Navigation is contextual: the graph
@@ -206,7 +206,7 @@ while the pointer passes and live while ⌥ is held. Those are two edge
 kinds — spatial and temporal — of one graph, surfaced at the point of use
 rather than drawn as a map. Manifold's version is that graph, in whole.
 
-**Nodes** are blocks. Arrangements are blocks already (§2.3), so they are
+**Nodes** are blocks. Workspaces are blocks already (§2.3), so they are
 nodes with nothing special about them; that is what makes the graph
 worth having. A node *at a time* is a block and a stamp, and every
 block's log is what makes that real.
@@ -216,16 +216,16 @@ are in the data now and only want indexing:
 
 | edge | from → to | where it comes from |
 |---|---|---|
-| **placed in** (spatial, present) | arrangement → block | the arrangement's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
+| **placed in** (spatial, present) | workspace → block | the workspace's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
-| **before / after** (temporal, across blocks) | block → block | the registry's `seen` entries, kept as a bounded *trail* per host; the desk's `settled` order, for arrangements |
-| **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log; for an arrangement, "everything as it was" (§3.4) |
+| **before / after** (temporal, across blocks) | block → block | the registry's `seen` entries, kept as a bounded *trail* per host; the desk's `settled` order, for workspaces |
+| **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log; for a workspace, "everything as it was" (§3.4) |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
 Prism's backlinks are `opened` in-edges; its sheet stack is `before /
 after` within one column; a `[[link]]` is an `opened` out-edge; a note in
-many views is `placed in` in-edges. Arrangements as nodes give the two-hop
+many views is `placed in` in-edges. Workspaces as nodes give the two-hop
 questions that matter most — *the other times I had this file open, and
 what was beside it then* — as `placed in` in-edges, their neighbors, cut
 at the stamp.
@@ -237,14 +237,14 @@ destination:
    neighborhood, bunched by edge kind — *opened here*, *mentions*,
    *also in*, *before · after* — each row with context and age, a card
    on hover; clicked, the block is shown here; ⌘-clicked, beside. One
-   view, given an edge kind; an arrangement's row shows the same for its
-   node — its columns, the arrangements that share blocks with it, the
+   view, given an edge kind; a workspace's row shows the same for its
+   node — its columns, the workspaces that share blocks with it, the
    ones before and after it on the desk. (This was the foot under every
    sheet until the surface was simplified, §3.1; the sidebar is where it
    lives now, so there is one place to look.)
 2. **Back and forward in a column** (⌘[ ⌘]) walk the column's past
    (§3.1); Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail across
-   columns and arrangements, each step previewed as it was on hover,
+   columns and workspaces, each step previewed as it was on hover,
    live with ⌥ — Prism's stack, but derived from the log, so it survives
    restarts and crosses hosts.
 3. **The finder (⌘O) is ranked by the graph.** With nothing typed, the
@@ -255,12 +255,12 @@ destination:
    reference or the card), a sidebar row, a finder row. Text as a read-only `TextView`; a terminal as its last
    screen, from the transcript the host keeps; a folder as a short
    listing; web as icon, title and address; a search as its count; a git
-   block as its branch and changes; an arrangement as its diagram. Modes
+   block as its branch and changes; a workspace as its diagram. Modes
    as Prism's note cards have them — collapsed, summary, full —
    remembered per block. With a stamp, the card shows the node *as it was
    then*, which Prism cannot.
 5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
-   takes a stamp; the slider that scrubs an arrangement (§3.4) scrubs a
+   takes a stamp; the slider that scrubs a workspace (§3.4) scrubs a
    block's foot the same way — who opened it *then*. A map lens of nodes
    and edges is possible and comes last.
 6. **Slices edited where they are.** A search hit's line, a link's
@@ -282,11 +282,11 @@ peek live** against hover to peek the picture.
 temporal edges need no replay; `derived` links written by the host when
 it makes a diff, search or git block; and a `Graph` query layer in
 `ManifoldCore` over the replica — the app mirrors every host's registry,
-links and arrangement shards already, so neighborhoods are computed
+links and workspace shards already, so neighborhoods are computed
 locally, and asked of the host only for a stamp its logs must be
 replayed for. A scrubber down the editor (Prism's `ScrubMark`s, from the
 language server's document symbols) and the desk's own history (the desk
-shard scrubbed as an arrangement is; a timeline lens with empty days
+shard scrubbed as a workspace is; a timeline lens with empty days
 folded to "⋯ Sep 21–25 · 5 days") sit beside this rather than in it.
 
 ### 3.7 Status: what every block is doing
@@ -339,7 +339,7 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Desk** | arrangements and what they place (§3) | named arrangements |
+| **Desk** | workspaces and what they place (§3) | named workspaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 | **Links** | the neighborhood of a block by edge kind (§3.5), one more step on opening a row | the focused block, or one looked at |
 | **Time** | blocks by the day they were last seen or made | days |
@@ -359,11 +359,11 @@ window: pinned beside the surface (it can still be set to slide out
 over it), a chooser (Desk · Files · Links · Time), a filter, and the same
 row — symbol, name, a count, a detail, fading with age — with the same
 gestures everywhere: click to show here, ⌘-click to show beside (§3.1), a
-card on hover, Links Around This in the menu. Under Desk, an arrangement
+card on hover, Links Around This in the menu. Under Desk, a workspace
 expands to its columns, in order, the focused one marked, so the sidebar
 is the table of contents of the screen; clicking a column row focuses
 it, and a block dragged onto one is shown there. Links follows focus.
-The arrangement stays the working surface; organizations are how you
+The workspace stays the working surface; organizations are how you
 reach blocks, never where they live. One exception is on purpose: a
 **state view** shows a status group's blocks themselves in the surface,
 live, in one of two ways — a **list**, the blocks stacked down one
@@ -371,8 +371,8 @@ scrolling column as Prism's column of notes is, each under its pill; or
 an **overview**, all of them laid out in one grid at once, as Mission
 Control lays out windows — so what is blocked, or done, can be looked at
 without placing any of it. A block clicked in a state view is gone to;
-⌘-clicked, brought to the arrangement last shown. A state view is not
-an arrangement: nothing is placed, nothing is logged. The neighborhood map stays in the
+⌘-clicked, brought to the workspace last shown. A state view is not
+a workspace: nothing is placed, nothing is logged. The neighborhood map stays in the
 palette as a picture of the Links organization; ⌘O stays the quick way
 in.
 
@@ -384,18 +384,18 @@ Every block is in one of four states, recorded in its host's registry:
 
 | state | meaning |
 |---|---|
-| **live** | placed in an arrangement on screen |
+| **live** | placed in a workspace on screen |
 | **warm** | off screen, its resources kept: a process running, a file watched, text in memory |
 | **dormant** | only its log and last snapshot; resources rebuilt on recall |
 | **held** | not reconstructible (§2.3, *held when*); never collected, whatever else |
 
 Collection moves blocks down the ladder and placements out of unnamed
-arrangements; it never deletes a block. Policy, per host:
+workspaces; it never deletes a block. Policy, per host:
 
 - A column's past is trimmed: a placement that has been off the top of
-  its column for an hour (configurable) leaves an unnamed arrangement,
+  its column for an hour (configurable) leaves an unnamed workspace,
   unless its block is held. What a column shows is never collected, and a
-  named arrangement keeps its columns' pasts whole.
+  named workspace keeps its columns' pasts whole.
 - A block off screen goes from warm to dormant after a while depending on
   its kind; a terminal whose shell is idle goes dormant by keeping its
   transcript and cwd and ending the shell, and on recall starts a new shell
@@ -409,7 +409,7 @@ arrangements; it never deletes a block. Policy, per host:
 - Logs are compacted to snapshots at intervals. How far back history is
   kept at full resolution, how coarse it gets after, and how much undo a
   block keeps are retention settings, per block kind, overridable per block
-  and per arrangement (a named arrangement may keep its blocks' history
+  and per workspace (a named workspace may keep its blocks' history
   longer). The defaults are a starting point to be tuned with use: text
   logs kept in full (they are small), terminal rows thinned after a while
   (they add up), undo as deep as the text's history.
@@ -433,7 +433,7 @@ writes and proposes `Clean{version}`.
 
 Cross-host operations are ordinary execs: ⌘-clicking `main.go` in a
 terminal on `devbox` asks devbox to resolve it, and the answer is a
-proposal to the arrangement (which may live on `local`) to place
+proposal to the workspace (which may live on `local`) to place
 `devbox/<id>` beside the terminal, plus a `Link` on devbox.
 
 ---
@@ -453,7 +453,7 @@ A link is `Link{from, to, kind, at}` in the `links` shard of the host the
 | `cwd` | a terminal's working directory (to the directory block) |
 | `source` | a preview, a diff side |
 | `mention` | `[[title]]` or a block URL in text |
-| `placed` | placed next to each other in an arrangement, by you |
+| `placed` | placed next to each other in a workspace, by you |
 
 Each host indexes the links pointing at its blocks; a client merges the
 indexes of every host it is attached to, so backlinks cross hosts.
@@ -461,13 +461,13 @@ indexes of every host it is attached to, so backlinks cross hosts.
 ### 6.2 Recall
 
 One finder (⌘O, ⌘P) over everything every attached host knows: block
-titles and paths, note and transcript text, arrangement titles, recent
+titles and paths, note and transcript text, workspace titles, recent
 searches. It ranks by frecency and text, and shows each result's state,
 host, and where it was last placed. Alongside it:
 
-- **Back and forward** through what you settled on, across arrangements.
+- **Back and forward** through what you settled on, across workspaces.
 - **Related** — a panel for the focused block: its links both ways, the
-  arrangements it appears in, what was placed beside it.
+  workspaces it appears in, what was placed beside it.
 - **Timeline** — what you settled on, across everything, by time; the
   long version of ⌃⇥'s order.
 
@@ -604,7 +604,7 @@ until they're taken off.
 ### 8.2 Leadership
 
 *As built.* One host (the local one) and one attachment: the app leads
-text, web, arrangement and desk shards, the host the rest; the host
+text, web, workspace and desk shards, the host the rest; the host
 checks that an append continues its log and, if not, sends the shard back
 whole. Epochs, fencing and resuming an attachment are not implemented;
 `manifoldd attach --stdio` and several hosts in one window are the next
@@ -675,7 +675,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   links kept in step; proposals for terminals, files, folders, `seen`,
   links and history; file watching; terminal dormancy with the seam.
 - The app: `HostClient` (the replica, leading and proposing),
-  `MainWindowController` over arrangements and placements, the surface
+  `MainWindowController` over workspaces and placements, the surface
   (`ColumnsView`), the sidebar, the finder, collection, the history
   view, and the lenses: terminal, editor (`TextView`), preview,
   directory, web.
@@ -694,7 +694,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
 - The graph (§3.5): `Graph` in the core, kept in step by `Node` with every
-  entry — `placed` intervals from arrangement logs, the link kinds from
+  entry — `placed` intervals from workspace logs, the link kinds from
   the links shards (with `context`), the trail from `focus` and `select` —
   indexed by block and kind both ways with live counts, every edge
   stamped (a placement keeps its stamp in the state, so a snapshot keeps
@@ -720,7 +720,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `growing(_:step:whole:)` for colgrow, a removed tile's height to its
   neighbor; a share of 0 is a stashed tile, bunched as a pill under
   the column's top pill and fanned out on hover (`stashing`,
-  `unstashing`); `full` a tile maximized over the arrangement;
+  `unstashing`); `full` a tile maximized over the workspace;
   `GridView` with `TilePill` (one width, opaque; symbol, name, status
   glyph, a maximize corner; drag to move, click for the menu),
   dividers, drops between tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
@@ -740,8 +740,8 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `state:` placement ids, kept while it's up; ⎋ leaves it.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
-  arrangements, "everything as it was" rewinds each placed file by its own
-  log to the arrangement's moment, and a diff block can compare a text
+  workspaces, "everything as it was" rewinds each placed file by its own
+  log to the workspace's moment, and a diff block can compare a text
   block at two moments (`DiffSubject.versions`).
 
 - The image, PDF, process and agent lenses (§7.5): bytes read on the
@@ -760,7 +760,7 @@ Today's pieces map directly:
 |---|---|
 | `Pane` | a placement |
 | `PaneKind` | a block kind and a lens |
-| `Tab` | an unnamed arrangement on the desk |
+| `Tab` | an unnamed workspace on the desk |
 | `Column` (a stack) | a column, shown by the stacks lens |
 | put-away timer | collection (§4) |
 | ⌃⇥'s settled order | the timeline |
@@ -770,12 +770,12 @@ Today's pieces map directly:
 Milestones, each usable on its own:
 
 1. **The model under the current UI.** Logs, blocks, placements and
-   arrangements in `ManifoldCore`, shared by server and app; `manifoldd`
+   workspaces in `ManifoldCore`, shared by server and app; `manifoldd`
    keeps logs instead of `state.json`; the app mirrors and leads. Local
    only, stacks lens only. Collection as §4.
 2. **The text engine and editor** (§7.1), replacing the TextKit editor.
 3. **Recall:** the registry and links indexes, the finder over everything,
-   back and forward, the related panel; naming arrangements; the desk.
+   back and forward, the related panel; naming workspaces; the desk.
 4. **Remote hosts:** `--stdio` attach, several hosts in one window, leases
    and fencing, the offline state.
 5. **Tiling and list lenses; scrubbing** and restore; the timeline.
@@ -786,7 +786,7 @@ All six are in (§8.5). What comes next is §3.5, in steps that each stand
 on their own:
 
 7. **The graph index.** `Graph` in `ManifoldCore` over the replica:
-   `placed in` from arrangement logs, `opened` and `derived` from links,
+   `placed in` from workspace logs, `opened` and `derived` from links,
    `before / after` from a new bounded `trail` in the registry state,
    `same as` from paths; `neighbors(of:kinds:at:)`. `context` on `Link`,
    recorded from now on by terminals, editors and search hits; `derived`
@@ -794,7 +794,7 @@ on their own:
    a made-up replica.
 8. **The foot of a block.** The `Neighborhood` view bunched per edge
    kind, dealt out on hover with context and age, click to recall beside;
-   first on text blocks and terminals, then on arrangements (their foot
+   first on text blocks and terminals, then on workspaces (their foot
    in the sidebar row and the ⌘E card).
 9. **Pictures and the card panel.** Placement snapshots cached by id; the
    `BlockCard` panel and its renderings, with *as it was then*; shown
@@ -817,7 +817,7 @@ these are built on it:
     by `Focus`; `ColumnsView` draws one block per column and nothing of
     the past; ⌘[ ⌘] and ⌘W walk it; tiling, the list lens, strips, the
     stack list, ⌘E and the foot removed, their log entries still decoded
-    and ignored. Existing arrangements need no migration: a stack's top
+    and ignored. Existing workspaces need no migration: a stack's top
     is the shown entry.
 15. **The one open rule.** `show(here:)`, `show(beside:)` and
     `show(besideOpener:)` as the only three ways anything is placed; the
@@ -849,6 +849,6 @@ Then, putting the model to use (§3.7, §3.1 as a grid, state views):
 - **Language servers** run per host now (§7.1); what's open is whether
   their diagnostics and edits should also be entries, so they scrub.
 - **Tuning.** The defaults of §4 — when a placement leaves an unnamed
-  arrangement, when a terminal goes dormant, how long history stays at full
+  workspace, when a terminal goes dormant, how long history stays at full
   resolution — are guesses until used.
 - **Sharing**, when it comes (§8.2).

@@ -9,11 +9,21 @@ enum Organization: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .desk: "Desk"
+        case .desk: "Workspaces"
         case .files: "Files"
         case .links: "Links"
         case .time: "Time"
         case .status: "Status"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .desk: "rectangle.3.group"
+        case .files: "folder"
+        case .links: "link"
+        case .time: "clock"
+        case .status: "checkmark.circle"
         }
     }
 }

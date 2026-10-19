@@ -36,7 +36,7 @@ final class SidebarView: NSView {
     var pinned = false { didSet { updateChrome() } }
     /// The organizations to choose from, under the header; the filter
     /// over any of them; the tree.
-    private let organizations = NSSegmentedControl(labels: Organization.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    private let organizations = NSSegmentedControl(images: Organization.allCases.map { Theme.symbol($0.symbol, size: 12)! }, trackingMode: .selectOne, target: nil, action: nil)
     private let filter = NSSearchField()
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
@@ -82,7 +82,7 @@ final class SidebarView: NSView {
 
         organizations.segmentStyle = .capsule
         organizations.controlSize = .small
-        organizations.font = .systemFont(ofSize: 11)
+        for (i, org) in Organization.allCases.enumerated() { organizations.setToolTip(org.title, forSegment: i) }
         organizations.selectedSegment = 0
         organizations.target = self
         organizations.action = #selector(organizationChosen)

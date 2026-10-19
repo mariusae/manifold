@@ -596,6 +596,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugFocusedPlacement: Shown? { focusedShown }
     var debugOrganization: OrganizationView { sidebar.organizationView }
+    /// Runs the first palette item whose title starts with `prefix`.
+    func debugRunPaletteItem(_ prefix: String) -> String {
+        guard let item = paletteItems().first(where: { $0.title.hasPrefix(prefix) }) else { return "no item" }
+        item.run()
+        return "ran \(item.title)"
+    }
     /// A pointer move, handed to the surface as its tracking area would.
     func debugHover(_ event: NSEvent) { content.mouseMoved(with: event) }
 
@@ -649,17 +655,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.newTerminalBeside(nil)
             })
         }
-        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Arrangement", subtitle: "⌥⌘T") { [weak self] in
+        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Workspace", subtitle: "⌥⌘T") { [weak self] in
             self?.newTerminal(nil)
         })
         items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
             self?.newNote(nil)
         })
         if arrangement != nil {
-            items.append(PaletteItem(symbol: "pencil", title: "Name This Arrangement…", subtitle: "⇧⌘R") { [weak self] in
+            items.append(PaletteItem(symbol: "pencil", title: "Name This Workspace…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
             })
-            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This Arrangement", subtitle: "⌘Y") { [weak self] in
+            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This Workspace", subtitle: "⌘Y") { [weak self] in
                 self?.showHistory(nil)
             })
         }
@@ -669,11 +675,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for client in hosts.all where client.isRemote {
             let h = client.host
             let state = client.isConnected ? "connected" : "offline"
-            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Arrangement", subtitle: state) { [weak self] in
+            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Workspace", subtitle: state) { [weak self] in
                 guard let self else { return }
-                let a = self.host.newArrangement(after: self.selected)
+                // The workspace lives on that host, as its terminal does.
+                guard let client = self.hosts.client(h) else { return }
+                let a = client.newArrangement(select: false)
                 let t = self.hosts.newTerminal(on: h, cwd: nil)
                 self.hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
+                self.host.select(a)
             })
             items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))", subtitle: state) { [weak self] in
                 self?.hosts.detach(h)
@@ -1243,26 +1252,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Desk: the arrangements, each expanding to its tiles in order (by
-    /// column, top to bottom), the selected one open and the focused tile
-    /// marked (§3.6): the table of contents of the screen. New… at the end.
+    /// Workspaces (§3.6): every attached host's, under its host when there
+    /// is more than one, each expanding to its tiles in order (by column,
+    /// top to bottom), the selected one open and the focused tile marked:
+    /// the table of contents of the screen.
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        var nodes: [OrgNode] = []
         var open: Set<String> = []
-        for id in desk.order {
-            guard let a = hosts.arrangement(id) else { continue }
+        func workspace(_ id: BlockID) -> OrgNode? {
+            guard let a = hosts.arrangement(id) else { return nil }
             let aid = "arr/\(id)"
             var tiles: [OrgNode] = []
             for (c, column) in a.columns.enumerated() {
                 for p in column {
-                    guard let b = hosts.block(p.block), matches(filter, [b.displayTitle, b.path]) else { continue }
+                    let b = hosts.block(p.block)
+                    let title = b?.displayTitle ?? "On \(hosts.label(of: p.block.host))"
+                    guard matches(filter, [title, b?.path]) else { continue }
                     var notes: [String] = []
-                    if b.text?.isDirty == true { notes.append("edited") }
+                    if b == nil { notes.append("not attached") }
+                    if b?.text?.isDirty == true { notes.append("edited") }
                     if a.isStashed(p.id) { notes.append("stashed") }
                     if a.full == p.id { notes.append("maximized") }
                     if a.columns.count > 1 { notes.append("column \(c + 1)") }
-                    let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: b.displayTitle,
-                                    symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
+                    let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
+                                    symbol: b.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "questionmark.square.dashed",
+                                    detail: notes.joined(separator: " · "))
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
                     n.arrangement = id
                     n.column = c
@@ -1272,17 +1285,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
             let titleMatches = matches(filter, [title(of: a)])
-            guard filter.isEmpty || titleMatches || !tiles.isEmpty else { continue }
+            guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let n = OrgNode(id: aid, block: id, title: title(of: a),
                             symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
                             detail: a.isNamed ? "kept" : "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
             n.emphasis = id == selected
-            nodes.append(n)
             if id == selected || !filter.isEmpty { open.insert(aid) }
+            return n
         }
-        return (nodes, open)
+        // Each host's workspaces, in its desk's order, with any of its that
+        // this desk has taken up.
+        var byHost: [(HostClient, [OrgNode])] = []
+        for c in hosts.all {
+            var ids = c.desk.order.filter { $0.host == c.host }
+            for id in desk.order where id.host == c.host && !ids.contains(id) { ids.append(id) }
+            let nodes = ids.compactMap(workspace)
+            byHost.append((c, nodes))
+        }
+        guard byHost.count > 1 else { return (byHost.first?.1 ?? [], open) }
+        let roots = byHost.map { c, nodes -> OrgNode in
+            let id = "host:\(c.host.raw)"
+            open.insert(id)
+            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer", count: nodes.count, isGroup: true, children: nodes)
+            n.detail = c.isConnected ? "" : "offline"
+            return n
+        }
+        return (roots, open)
     }
 
     /// Files: each host's sparse tree, roots open.
@@ -1432,7 +1462,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         func node(_ id: BlockID, distance: Int) -> GraphNode? {
             guard let b = hosts.block(id) else { return nil }
             let detail: String = switch b.kind {
-            case .arrangement: "Arrangement"
+            case .arrangement: "Workspace"
             case .terminal: b.terminal?.cwd?.abbreviatingHome ?? "Terminal"
             default: b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
             }
@@ -1588,7 +1618,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .arrangement:
                 guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
                 hay = title + " " + a.placements.compactMap { hosts.block($0.block)?.displayTitle }.joined(separator: " ")
-                detail = a.isNamed ? "Arrangement · \(a.placements.count) blocks" : "Arrangement, unnamed · \(a.placements.count) blocks"
+                detail = a.isNamed ? "Workspace · \(a.placements.count) blocks" : "Workspace, unnamed · \(a.placements.count) blocks"
                 note = desk.order.contains(block.id) ? "on the desk" : ""
             case .text:
                 hay = (block.path ?? title) + " " + title
@@ -2004,9 +2034,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             switch result {
             case .success(let h):
-                let a = self.host.newArrangement(after: self.selected)
+                // The workspace lives on that host, as its terminal does.
+                guard let client = self.hosts.client(h) else { return }
+                let a = client.newArrangement(select: false)
                 let t = self.hosts.newTerminal(on: h, cwd: nil)
                 self.hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
+                self.host.select(a)
             case .failure(let error):
                 let failed = NSAlert()
                 failed.messageText = "Couldn't attach to \(dest)"
@@ -2093,8 +2126,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func rename(_ id: BlockID) {
         guard let window, let a = hosts.arrangement(id) else { return }
         let alert = NSAlert()
-        alert.messageText = "Name This Arrangement"
-        alert.informativeText = "A named arrangement is kept as it is until you change it; an unnamed one is tidied away as its blocks go unused."
+        alert.messageText = "Name This Workspace"
+        alert.informativeText = "A named workspace is kept on the desk until you take it off; an unnamed one leaves when it empties."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.stringValue = a.title ?? ""
         field.placeholderString = title(of: a)
@@ -2394,7 +2427,7 @@ extension MainWindowController: GridDelegate {
             }
         }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Take Off This Arrangement", symbol: "xmark") { [weak self] in
+        menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
             self?.hosts.append(.remove(placement), to: .block(id))
         })
         return menu
@@ -2756,7 +2789,7 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, let p = node.placement {
-            menu.addItem(ClosureMenuItem("Take Off This Arrangement", symbol: "xmark") { [weak self] in
+            menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
                 guard let self else { return }
                 self.hosts.append(.remove(p), to: .block(arr))
                 if self.hosts.arrangement(arr)?.isEmpty == true, self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
@@ -2797,7 +2830,7 @@ extension MainWindowController: OrganizationViewDelegate {
             // Reordered among the top-level rows.
             return node == nil && index >= 0
         case .block, .placement:
-            if let node { return node.arrangement != nil }
+            if let node { return node.arrangement != nil || node.id.hasPrefix("host:") }
             return index >= 0
         }
     }

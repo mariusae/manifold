@@ -142,7 +142,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     private func updateHint() {
         let folder = root.abbreviatingHome
-        hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, arrangements, and files in \(folder)    ↩ Open    ⎋ Close"
+        hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, workspaces, and files in \(folder)    ↩ Open    ⎋ Close"
     }
 
     /// Sizes the panel to its results, keeping its top where it is.

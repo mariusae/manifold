@@ -836,7 +836,7 @@ final class Server {
     func describe() -> String {
         var out = "host \(host)\n"
         let desk = node.desk(host)
-        out += "desk: \(desk.order.count) arrangements, selected \(desk.selected.map(\.description) ?? "none")\n"
+        out += "desk: \(desk.order.count) workspaces, selected \(desk.selected.map(\.description) ?? "none")\n"
         for b in node.blocks.sorted(by: { $0.created < $1.created }) {
             out += "\(b.id) \(b.kind) \"\(b.displayTitle)\""
             if let p = b.path { out += " \(p)" }

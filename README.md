@@ -3,7 +3,7 @@
 A Mac app that is a desk rather than a set of windows. Terminals (drawn by
 [libghostty](https://github.com/ghostty-org/ghostty)), files, notes,
 folders and web pages are **blocks**; you arrange blocks to work, and an
-arrangement is itself a block you can name and come back to. Nothing is
+workspace is itself a block you can name and come back to. Nothing is
 closed: what isn't in use is tidied out of the way, and anything can be
 found and recalled, with its history. Light or dark, in SF Pro and Menlo
 as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
@@ -18,34 +18,34 @@ and Mona Sans (bundled).
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Under **Desk**, each arrangement expands to
+  top to move the window. Under **Desk**, each workspace expands to
   its tiles in order, the selected one open and the focused tile
   highlighted, so the sidebar is the table of contents of the screen:
-  click a tile to focus it, an arrangement to go to it, double-click
+  click a tile to focus it, a workspace to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
-  to bring it in beside, onto an arrangement for its active column, or
-  between arrangements for one of its own, and drag arrangements to
+  to bring it in beside, onto a workspace for its active column, or
+  between workspaces for one of its own, and drag workspaces to
   reorder them.
-- An **arrangement** is a grid (DESIGN.md §3.1): columns of tiles,
+- An **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
-  An arrangement is what you made it: a block brought in stays until
+  A workspace is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
   below the biggest tile of the active column, taking its lower half;
-  Arrangement ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
+  Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others: their pills bunch in a small stack under its pill, fan out
   when the pointer rests on it, and one clicked comes back (Stash, in a
   pill's menu, puts a tile away the same way). Maximize Tile (⇧⌘↩, or
-  the ⤢ at the right of a pill) puts a tile over the whole arrangement
+  the ⤢ at the right of a pill) puts a tile over the whole workspace
   until it is restored. Drag the lines between tiles and columns to
   resize them. Each tile wears a **pill** floating over its top, one
   width for all, with its symbol, name and status glyph: drag it to
   move the tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the
   focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
-  already is: the arrangement it is in (this one if it is here, else
+  already is: the workspace it is in (this one if it is here, else
   the one most recently settled on) is selected and the tile focused.
-  **Bring here** makes a tile of it in this arrangement; if it is here
+  **Bring here** makes a tile of it in this workspace; if it is here
   already, that tile is focused. A row clicked in the sidebar, or
   chosen in the finder (⌘O), goes to the block if it is placed anywhere,
   else brings it here; ⌘-click, Bring Here in the menu, and a drag onto
@@ -55,20 +55,20 @@ and Mona Sans (bundled).
   it below the opener, taking its lower half, and links the two; a
   preview going page to page and a listing going into a folder change
   in place. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
-  are brought here; ⌥⌘T starts a new arrangement with a terminal.
+  are brought here; ⌥⌘T starts a new workspace with a terminal.
   **Go Back** and **Go Forward** (⌘[ ⌘]) walk the trail across tiles
-  and arrangements.
-- **⌃⇥** walks the arrangements most recently settled on first, each
+  and workspaces.
+- **⌃⇥** walks the workspaces most recently settled on first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
-  arrangements too.
+  workspaces too.
 - Drag a tile by its pill: between two tiles to put it there, near a
-  column's side for a new column there, onto an arrangement in the
-  sidebar for its active column, or between arrangements for one of
-  its own. Arrangements drag from the sidebar onto the grid the same
+  column's side for a new column there, onto a workspace in the
+  sidebar for its active column, or between workspaces for one of
+  its own. Workspaces drag from the sidebar onto the grid the same
   way, their columns coming over.
-- **⌘W** takes the focused tile off its arrangement; **⇧⌘W** takes the
-  arrangement off the desk. Neither loses anything: the block, with its
+- **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
+  workspace off the desk. Neither loses anything: the block, with its
   history, is a ⌘O away. There is no Close.
 
 ## Nothing is closed
@@ -82,15 +82,15 @@ when you find it again.
   against it) comes first, nearest first and the most recently joined
   first among them, with nothing typed; a match near it outranks one far
   from it. Then blocks by title and path, named
-  arrangements, terminals by where they are, and the files under the
+  workspaces, terminals by where they are, and the files under the
   focused block's folder, ranked by how well they match and how recently
   they were seen. Choosing a block shows it here, in the focused column;
-  choosing an arrangement puts it on the desk.
+  choosing a workspace puts it on the desk.
   A typed URL opens as a web page.
-- **Naming keeps.** An unnamed arrangement is scratch: blocks unseen for a
-  while leave nothing: nothing in an arrangement is tidied away; an
+- **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
+  while leave nothing: nothing in a workspace is tidied away; an
   unnamed one emptied by hand leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)
-  and it's kept as it is until you change it. Named arrangements wear a
+  and it's kept as it is until you change it. Named workspaces wear a
   bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
   shell for eight hours (View ▸ End Idle Shells) has its shell ended and
@@ -98,8 +98,8 @@ when you find it again.
   transcript, with a line across it saying when the last one ended and
   after how long idle, so it's never a surprise. The finder says
   *dormant* before you go to one.
-- **⌘Y** shows an arrangement's history: a slider through every change,
-  the arrangement drawn as it was, and Restore, which appends what makes it
+- **⌘Y** shows a workspace's history: a slider through every change,
+  the workspace drawn as it was, and Restore, which appends what makes it
   so again (a new version, never a revert).
 - Blocks are linked by what you do: ⌘-clicking a file in a terminal links
   the two, and the palette lists what's linked to the focused block.
@@ -183,7 +183,7 @@ when you find it again.
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
 - **The sidebar organizes the same graph five ways** (View ▸ Organize
-  By, ⌥⌘1–5): **Desk** — the arrangements, as before; **Files** — every
+  By, ⌥⌘1–5): **Desk** — the workspaces, as before; **Files** — every
   block with a path under its folders, across hosts, as a sparse tree
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
@@ -199,11 +199,11 @@ when you find it again.
   anyone followed them.
 - **Links is a block's neighborhood** in the graph of blocks (DESIGN.md
   §3.5), in the sidebar, following the focus: *opened here*, *found by*,
-  *compared*, *mentions*, *also in* (other arrangements holding it),
+  *compared*, *mentions*, *also in* (other workspaces holding it),
   *before* and *after* (what you went to around it, from the trail), each
   row with what made the link (the ⌘-clicked line, the search hit, the
   editor line that named a definition) and when. Window ▸ Go Back and Go
-  Forward (⌃⌘[, ⌃⌘]) walk the trail across columns and arrangements:
+  Forward (⌃⌘[, ⌃⌘]) walk the trail across columns and workspaces:
   back to the block you were at before, wherever it was, and forward
   again. Show the Neighborhood Map, in the palette, draws the focused
   block's surroundings in graph form, two steps out — what it's joined
@@ -235,7 +235,7 @@ when you find it again.
   scrolling column as Prism's notes are, each under its pill; or an
   overview, all of them in one grid at once, as Mission Control lays out
   windows. Nothing is placed: click a pill to go to the block, ⌘-click
-  to bring it to the arrangement you were in, ⎋ (or ×) to go back.
+  to bring it to the workspace you were in, ⎋ (or ×) to go back.
   From a shell:
 
   ```sh
@@ -249,7 +249,7 @@ when you find it again.
   scroll and whether it was unfolded, an image's zoom, a PDF's page, the
   process list's filter and sort — so a restart, a move between lenses or
   a reload shows exactly what you left.
-- **History** (Arrangement ▸ History…, ⌘Y) scrubs the arrangement through
+- **History** (Workspace ▸ History…, ⌘Y) scrubs the workspace through
   its log: the layout then, the blocks as they are now; with **Everything
   as it was** checked, each placed file is read as of that moment too, and
   Restore brings both back — as new entries, never a revert. History of
@@ -290,7 +290,7 @@ when it isn't running and that outlives it. Every block is a shard with
 its own append-only log, kept in `~/Library/Application Support/Manifold/
 logs` with snapshots beside, plus a registry of the host's blocks (kind,
 title, last seen, held or dormant), their links, and the desk. The app
-mirrors the host's shards and **leads** the ones it edits — arrangements,
+mirrors the host's shards and **leads** the ones it edits — workspaces,
 text, the desk — appending entries locally first, so nothing waits on a
 round trip; the host leads terminals and folders and does the file system
 work (reading, writing, watching) on proposal. Both apply the same entries

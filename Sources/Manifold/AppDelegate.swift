@@ -131,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New…", #selector(MainWindowController.newTab(_:)), "t")
         file.addItem(.separator())
         item(file, "New Terminal Beside", #selector(MainWindowController.newTerminalBeside(_:)), "n")
-        item(file, "New Terminal in a New Arrangement", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
+        item(file, "New Terminal in a New Workspace", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
         item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
@@ -144,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
         item(file, "Take Off This Column", #selector(MainWindowController.closePaneOrTab(_:)), "w")
-        item(file, "Take Arrangement Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
+        item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")
@@ -188,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(.separator())
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
-        let arrangement = submenu(main, "Arrangement")
+        let arrangement = submenu(main, "Workspace")
         item(arrangement, "Name…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         arrangement.addItem(.separator())
         item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
@@ -236,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fontsItem.submenu = fonts
         view.addItem(fontsItem)
         let organize = NSMenu(title: "Organize By")
-        for (title, sel, key) in [("Desk", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
+        for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
                                   ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4"),
                                   ("Status", #selector(MainWindowController.organizeByStatus(_:)), "5")] {
             item(organize, title, sel, key, [.command, .option])
@@ -282,12 +282,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())
-        item(window, "Show Next Arrangement", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
-        item(window, "Show Previous Arrangement", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        item(window, "Switch to Recent Arrangement", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
-        item(window, "Switch to Recent Arrangement, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
+        item(window, "Show Next Workspace", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
+        item(window, "Show Previous Workspace", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
+        item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
+        item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
-            item(window, n == 9 ? "Select Last Arrangement" : "Select Arrangement \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
+            item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         window.addItem(.separator())
         item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[")

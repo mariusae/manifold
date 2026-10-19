@@ -199,6 +199,9 @@ enum DebugControl {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
             return "usage: org rows | org click <row> [cmd|double]"
+        case "run":
+            // "run <title prefix>": a palette item, by its title.
+            return wc?.debugRunPaletteItem(arg) ?? "no window"
         case "sv":
             // "sv list|overview|leave": the state view's mode, or leaving it.
             guard let wc else { return "no window" }
