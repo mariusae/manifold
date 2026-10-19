@@ -449,8 +449,13 @@ final class GridView: NSView, NSDraggingSource {
     private func dodgeCarets() {
         guard window != nil, full == nil else { return }
         for column in columns {
-            for tile in column where !isStashed(tile.shown.id) {
-                guard let pill = pills[tile.shown.id], !pill.isHidden else { continue }
+            for tile in column {
+                guard let pill = pills[tile.shown.id] else { continue }
+                // A stashed tile's pill never dodges (its cursor is out of
+                // sight): one that was dodging when stashed comes back,
+                // or it would be lost — unseen in the fan, taking no clicks.
+                if isStashed(tile.shown.id) { pill.dodging = false; continue }
+                guard !pill.isHidden else { continue }
                 var away = false
                 if let caret = tile.view.caretRectInWindow {
                     let capsule = pill.convert(pill.capsule(in: pill), to: nil)
