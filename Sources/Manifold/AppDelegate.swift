@@ -166,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
             ("Find Next", .nextMatch, "g", .command),
             ("Find Previous", .previousMatch, "g", [.command, .shift]),
+            ("Find Word at Hand", .setSearchString, "e", .command),
         ] {
             item(find, title, #selector(NSTextView.performTextFinderAction(_:)), key, mods).tag = action.rawValue
         }

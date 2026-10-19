@@ -37,7 +37,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     let scroll = NSScrollView()
     let textView = TextView()
     private var banner: EditorBanner?
-    private var findBar: FindBar?
+    private lazy var finder = FindHost(view: self, target: self)
+    private var matches: [TextRange] = []
     private var isEdited = false
     private var stateWork: DispatchWorkItem?
     private var restored = false
@@ -106,10 +107,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             banner.frame = NSRect(x: 0, y: top - 34, width: bounds.width, height: 34)
             top -= 34
         }
-        if let findBar {
-            findBar.frame = NSRect(x: 0, y: top - findBar.height, width: bounds.width, height: findBar.height)
-            top -= findBar.height
-        }
         var bottom: CGFloat = 0
         if !statusBox.isHidden {
             statusBox.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Self.statusHeight)
@@ -118,6 +115,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: top - bottom)
         textView.frame.size.width = scroll.contentSize.width
+        finder.layout(in: bounds)
     }
 
     static let statusHeight: CGFloat = 24
@@ -167,7 +165,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             isEdited = doc.isDirty
             delegate?.editorEditedChanged(self)
         }
-        findBar?.refresh()
+        finder.refresh()
         diagnosticsChanged()
         gutterChanged()
     }
@@ -215,7 +213,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             delegate?.editor(self, append: [.clean(version: doc.version, fingerprint: nil)])
         }
         scheduleStateSave()
-        findBar?.refresh()
+        finder.refresh()
         completionTextChanged()
     }
 
@@ -320,39 +318,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: Find
 
-    @objc override func performTextFinderAction(_ sender: Any?) {
-        let tag = (sender as? NSMenuItem)?.tag ?? NSTextFinder.Action.showFindInterface.rawValue
-        switch NSTextFinder.Action(rawValue: tag) {
-        case .showFindInterface?: showFind(replace: false)
-        case .showReplaceInterface?: showFind(replace: true)
-        case .nextMatch?: findBar == nil ? showFind(replace: false) : findBar?.find(forward: true)
-        case .previousMatch?: findBar == nil ? showFind(replace: false) : findBar?.find(forward: false)
-        case .hideFindInterface?: hideFind()
-        default: showFind(replace: false)
-        }
-    }
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
-    private func showFind(replace: Bool) {
-        if findBar == nil {
-            let bar = FindBar(text: textView)
-            bar.onClose = { [weak self] in self?.hideFind() }
-            addSubview(bar)
-            findBar = bar
-        }
-        findBar?.showsReplace = replace
-        if !textView.selectedText.isEmpty, !textView.selectedText.contains("\n") { findBar?.query = textView.selectedText }
-        needsLayout = true
-        layoutSubtreeIfNeeded()
-        findBar?.focus()
-    }
-
-    private func hideFind() {
-        findBar?.removeFromSuperview()
-        findBar = nil
-        textView.highlights = []
-        needsLayout = true
-        window?.makeFirstResponder(textView)
-    }
+    private func hideFind() { finder.hide() }
 
     // MARK: Go to line
 
@@ -411,154 +379,58 @@ extension TextView: NSMenuItemValidation {
 
 /// The find bar: a field, the next and previous matches, and, shown with
 /// ⌥⌘F, a field to replace them with.
-final class FindBar: NSView, NSTextFieldDelegate {
-    var onClose: (() -> Void)?
-    private weak var textView: TextView?
-    private let field = NSTextField()
-    private let replaceField = NSTextField()
-    private let count = NSTextField(labelWithString: "")
-    private let previous = NSButton(title: "‹", target: nil, action: nil)
-    private let next = NSButton(title: "›", target: nil, action: nil)
-    private let caseButton = NSButton(title: "Aa", target: nil, action: nil)
-    private let replaceButton = NSButton(title: "Replace", target: nil, action: nil)
-    private let replaceAllButton = NSButton(title: "All", target: nil, action: nil)
-    private let done = NSButton(title: "Done", target: nil, action: nil)
-    private var matches: [TextRange] = []
-    var showsReplace = false { didSet { needsLayout = true; superview?.needsLayout = true } }
-    var height: CGFloat { showsReplace ? 66 : 36 }
-
-    var query: String {
-        get { field.stringValue }
-        set { field.stringValue = newValue; refresh() }
-    }
-
-    init(text: TextView) {
-        self.textView = text
-        super.init(frame: .zero)
-        wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.sheet(level: 0).cgColor }
-        field.placeholderString = "Find"
-        field.delegate = self
-        field.font = .systemFont(ofSize: 12.5)
-        field.controlSize = .small
-        field.bezelStyle = .roundedBezel
-        replaceField.placeholderString = "Replace"
-        replaceField.delegate = self
-        replaceField.font = .systemFont(ofSize: 12.5)
-        replaceField.controlSize = .small
-        replaceField.bezelStyle = .roundedBezel
-        count.font = .systemFont(ofSize: 11)
-        count.textColor = Theme.secondaryText
-        count.alignment = .right
-        for b in [previous, next, caseButton, replaceButton, replaceAllButton, done] {
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            b.font = .systemFont(ofSize: 11.5)
-            b.target = self
-        }
-        caseButton.setButtonType(.pushOnPushOff)
-        caseButton.toolTip = "Match Case"
-        previous.action = #selector(previousClicked)
-        next.action = #selector(nextClicked)
-        caseButton.action = #selector(optionChanged)
-        replaceButton.action = #selector(replaceClicked)
-        replaceAllButton.action = #selector(replaceAllClicked)
-        done.action = #selector(doneClicked)
-        done.keyEquivalent = "\u{1b}"
-        for v in [field, previous, next, caseButton, count, done, replaceField, replaceButton, replaceAllButton] { addSubview(v) }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    func focus() {
-        window?.makeFirstResponder(field)
-        field.selectText(nil)
-    }
-
-    override func layout() {
-        super.layout()
-        let y = height - 30
-        field.frame = NSRect(x: 12, y: y, width: max(120, bounds.width - 330), height: 22)
-        previous.frame = NSRect(x: field.frame.maxX + 6, y: y - 1, width: 28, height: 24)
-        next.frame = NSRect(x: previous.frame.maxX + 2, y: y - 1, width: 28, height: 24)
-        caseButton.frame = NSRect(x: next.frame.maxX + 8, y: y - 1, width: 36, height: 24)
-        count.frame = NSRect(x: caseButton.frame.maxX + 6, y: y + 2, width: 70, height: 16)
-        done.frame = NSRect(x: bounds.width - 70, y: y - 1, width: 58, height: 24)
-        let shown = showsReplace
-        replaceField.isHidden = !shown
-        replaceButton.isHidden = !shown
-        replaceAllButton.isHidden = !shown
-        if shown {
-            replaceField.frame = NSRect(x: 12, y: 6, width: field.frame.width, height: 22)
-            replaceButton.frame = NSRect(x: replaceField.frame.maxX + 6, y: 5, width: 74, height: 24)
-            replaceAllButton.frame = NSRect(x: replaceButton.frame.maxX + 2, y: 5, width: 44, height: 24)
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        Theme.divider.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 0.5).fill()
-    }
-
-    func controlTextDidChange(_ obj: Notification) {
-        if (obj.object as? NSTextField) === field { refresh(); find(forward: true, fromSelection: false) }
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-        switch selector {
-        case #selector(NSResponder.insertNewline(_:)):
-            if control === replaceField { replaceClicked() } else { find(forward: !NSEvent.modifierFlags.contains(.shift)) }
-        case #selector(NSResponder.cancelOperation(_:)):
-            onClose?()
-        default:
-            return false
-        }
-        return true
-    }
-
-    /// The matches, highlighted, and counted.
-    func refresh() {
-        guard let textView else { return }
-        let q = field.stringValue
-        matches = q.isEmpty ? [] : textView.text.findAll(q, caseInsensitive: caseButton.state != .on, limit: 20_000)
+extension EditorView: Replaceable {
+    /// Every match highlighted, the first from the selection's start
+    /// selected.
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        matches = query.isEmpty ? [] : textView.text.findAll(query, caseInsensitive: !caseSensitive, limit: 20_000)
         textView.highlights = matches
-        count.stringValue = q.isEmpty ? "" : (matches.isEmpty ? "No matches" : "\(matches.count)")
+        if !matches.isEmpty {
+            let from = textView.primarySelection.min
+            if let m = matches.first(where: { $0.start >= from }) ?? matches.first { textView.setSelections([Selection(m.start, m.end)]) }
+        }
+        done(query.isEmpty ? nil : matches.count)
     }
 
-    /// Selects the next (or previous) match from the selection.
-    func find(forward: Bool, fromSelection: Bool = true) {
-        guard let textView, !matches.isEmpty else { return }
+    /// The next (or previous) match from the selection, around the ends.
+    func findNext(forward: Bool) {
+        guard !matches.isEmpty else { return }
         let sel = textView.primarySelection
         let match: TextRange?
         if forward {
-            let from = fromSelection ? sel.max : sel.min
-            match = matches.first { $0.start >= from && !(fromSelection && $0.start == sel.min && $0.end == sel.max) } ?? matches.first
+            match = matches.first { $0.start >= sel.max && !($0.start == sel.min && $0.end == sel.max) } ?? matches.first
         } else {
             match = matches.last { $0.start < sel.min } ?? matches.last
         }
         if let match { textView.setSelections([Selection(match.start, match.end)]) }
     }
 
-    @objc private func nextClicked() { find(forward: true) }
-    @objc private func previousClicked() { find(forward: false) }
-    @objc private func optionChanged() { refresh() }
-    @objc private func doneClicked() { onClose?() }
-
-    @objc private func replaceClicked() {
-        guard let textView else { return }
-        let sel = textView.primarySelection
-        if matches.contains(where: { $0.start == sel.min && $0.end == sel.max }) {
-            textView.replace([(sel.range, replaceField.stringValue)])
-            refresh()
-        }
-        find(forward: true)
+    func endSearch() {
+        matches = []
+        textView.highlights = []
+        needsLayout = true
+        window?.makeFirstResponder(textView)
     }
 
-    @objc private func replaceAllClicked() {
-        guard let textView, !matches.isEmpty else { return }
-        let r = replaceField.stringValue
-        textView.replace(matches.map { ($0, r) })
-        refresh()
+    /// The selection, or the word at the caret.
+    func textForFind(_ done: @escaping (String?) -> Void) {
+        let sel = textView.selectedText
+        if !sel.isEmpty { return done(sel) }
+        let r = textView.wordRange(at: textView.primarySelection.min)
+        done(r.end > r.start ? textView.text[r] : nil)
+    }
+
+    func replaceCurrent(with text: String) {
+        let sel = textView.primarySelection
+        if matches.contains(where: { $0.start == sel.min && $0.end == sel.max }) {
+            textView.replace([(sel.range, text)])
+        }
+        findNext(forward: true)
+    }
+
+    func replaceAll(with text: String) {
+        guard !matches.isEmpty else { return }
+        textView.replace(matches.map { ($0, text) })
     }
 }
 

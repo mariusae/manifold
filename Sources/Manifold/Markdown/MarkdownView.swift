@@ -80,7 +80,15 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     override func layout() {
         super.layout()
         web.frame = bounds
+        finder.layout(in: bounds)
     }
+
+    // MARK: Find
+
+    private lazy var finder = FindHost(view: self, target: self)
+    private var findQuery = (text: "", caseSensitive: false)
+
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
     /// Moved between lenses: the page is drawn again, as WebKit lets a view
     /// taken out of its window go blank.
@@ -188,5 +196,26 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
             values["selEnd"] = e < 0 ? "" : "\(e)"
         }
         if !values.isEmpty { onState?(values) }
+    }
+}
+
+extension MarkdownView: Searchable {
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        findQuery = (query, caseSensitive)
+        web.evaluateJavaScript(PageFind.search(query, caseSensitive: caseSensitive)) { n, _ in done(query.isEmpty ? nil : (n as? Int) ?? (n as? Double).map(Int.init)) }
+    }
+
+    func findNext(forward: Bool) {
+        guard !findQuery.text.isEmpty else { return }
+        web.evaluateJavaScript(PageFind.next(findQuery.text, caseSensitive: findQuery.caseSensitive, forward: forward))
+    }
+
+    func endSearch() {
+        web.evaluateJavaScript(PageFind.end)
+        window?.makeFirstResponder(web)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) {
+        web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 }

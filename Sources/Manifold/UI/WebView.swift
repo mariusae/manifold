@@ -91,7 +91,15 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
         address.frame = NSRect(x: 74, y: 6, width: bounds.width - 74 - 46, height: 22)
         reload.frame = NSRect(x: bounds.width - 38, y: 5, width: 30, height: 24)
         web.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - h)
+        finder.layout(in: NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - h))
     }
+
+    // MARK: Find
+
+    private lazy var finder = FindHost(view: self, target: self)
+    private var findQuery = (text: "", caseSensitive: false)
+
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
     /// The block's log moved: a URL set there (from elsewhere) is loaded.
     func documentChanged() {
@@ -151,5 +159,26 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         if let url = web.url?.absoluteString { address.stringValue = url }
+    }
+}
+
+extension WebView: Searchable {
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        findQuery = (query, caseSensitive)
+        web.evaluateJavaScript(PageFind.search(query, caseSensitive: caseSensitive)) { n, _ in done(query.isEmpty ? nil : (n as? Int) ?? (n as? Double).map(Int.init)) }
+    }
+
+    func findNext(forward: Bool) {
+        guard !findQuery.text.isEmpty else { return }
+        web.evaluateJavaScript(PageFind.next(findQuery.text, caseSensitive: findQuery.caseSensitive, forward: forward))
+    }
+
+    func endSearch() {
+        web.evaluateJavaScript(PageFind.end)
+        window?.makeFirstResponder(web)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) {
+        web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 }

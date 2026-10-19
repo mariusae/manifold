@@ -29,6 +29,14 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     var focusView: NSView { rowsView }
     var isDead: Bool { false }
 
+    // MARK: Find
+
+    private lazy var finder = FindHost(view: self, target: self)
+    private var foundRows: [Int] = []
+    private var foundAt: Int?
+
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
+
     init(placement: PlacementID, block: BlockID, theme: FontTheme) {
         self.placement = placement
         self.block = block
@@ -92,6 +100,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - 32)
         rowsView.minWidth = scroll.contentSize.width
         rowsView.relayout()
+        finder.layout(in: bounds)
     }
 
     override func viewDidMoveToWindow() {
@@ -132,7 +141,15 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 /// The rows, drawn: two line-number gutters, then the text; colored by
 /// kind.
 final class DiffRowsView: NSView {
-    var rows: [DiffRow] = [] { didSet { pairs = Self.pair(rows) } }
+    var rows: [DiffRow] = [] { didSet { (pairs, rowLines) = Self.pair(rows) } }
+    /// Rows found (⌘F), by index into `rows`, and the one gone to.
+    var found: Set<Int> = [] { didSet { foundLines = Dictionary(found.map { ($0 < rowLines.count ? rowLines[$0] : $0, $0) }, uniquingKeysWith: { a, _ in a }); needsDisplay = true } }
+    var current: Int? { didSet { currentLine = current.map { $0 < rowLines.count ? rowLines[$0] : $0 }; needsDisplay = true } }
+    /// The same, by line on screen, side by side.
+    private var foundLines: [Int: Int] = [:]
+    private var currentLine: Int?
+    /// Each row's line on screen, side by side.
+    private var rowLines: [Int] = []
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) { didSet { relayout() } }
     var minWidth: CGFloat = 0
     var onFold: (() -> Void)?
@@ -149,26 +166,39 @@ final class DiffRowsView: NSView {
     /// Side by side when there's room for two columns of the widest line.
     private(set) var sideBySide = false
 
-    private static func pair(_ rows: [DiffRow]) -> [(left: DiffRow?, right: DiffRow?, span: DiffRow?)] {
+    private static func pair(_ rows: [DiffRow]) -> ([(left: DiffRow?, right: DiffRow?, span: DiffRow?)], [Int]) {
         var out: [(left: DiffRow?, right: DiffRow?, span: DiffRow?)] = []
+        var lines = [Int](repeating: 0, count: rows.count)
         var i = 0
         while i < rows.count {
             let r = rows[i]
             switch r.kind {
             case .removed, .added:
-                var removed: [DiffRow] = [], added: [DiffRow] = []
-                while i < rows.count, case .removed = rows[i].kind { removed.append(rows[i]); i += 1 }
-                while i < rows.count, case .added = rows[i].kind { added.append(rows[i]); i += 1 }
+                var removed: [Int] = [], added: [Int] = []
+                while i < rows.count, case .removed = rows[i].kind { removed.append(i); i += 1 }
+                while i < rows.count, case .added = rows[i].kind { added.append(i); i += 1 }
                 for j in 0..<max(removed.count, added.count) {
-                    out.append((j < removed.count ? removed[j] : nil, j < added.count ? added[j] : nil, nil))
+                    if j < removed.count { lines[removed[j]] = out.count }
+                    if j < added.count { lines[added[j]] = out.count }
+                    out.append((j < removed.count ? rows[removed[j]] : nil, j < added.count ? rows[added[j]] : nil, nil))
                 }
             default:
+                lines[i] = out.count
                 out.append((nil, nil, r))
                 i += 1
             }
         }
-        return out
+        return (out, lines)
     }
+
+    /// Where a row is on screen, to scroll it into view.
+    func rect(ofRow i: Int) -> NSRect {
+        let line = sideBySide ? (i < rowLines.count ? rowLines[i] : 0) : i
+        return NSRect(x: 0, y: CGFloat(line) * rowHeight, width: bounds.width, height: rowHeight)
+    }
+
+    static let foundBackground = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.6, alpha: 1), NSColor(srgbRed: 0.45, green: 0.4, blue: 0.1, alpha: 1))
+    static let currentBackground = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.85, blue: 0.3, alpha: 1), NSColor(srgbRed: 0.7, green: 0.55, blue: 0.1, alpha: 1))
 
     private var lineCount: Int { sideBySide ? pairs.count : rows.count }
 
@@ -224,6 +254,10 @@ final class DiffRowsView: NSView {
             case .fold: attrs[.foregroundColor] = Theme.secondaryText
             case .context: break
             }
+            if found.contains(i) {
+                (i == current ? Self.currentBackground : Self.foundBackground).setFill()
+                NSRect(x: gutter - 4, y: y, width: bounds.width - gutter + 4, height: rowHeight).fill()
+            }
             let textY = y + (rowHeight - font.pointSize * 1.2) / 2 - 1
             switch r.kind {
             case let .file(name):
@@ -274,6 +308,10 @@ final class DiffRowsView: NSView {
             NSGraphicsContext.current?.restoreGraphicsState()
         }
         for i in first...last {
+            if let line = foundLines[i] {
+                (line == currentLine ? Self.currentBackground : Self.foundBackground).setFill()
+                NSRect(x: 0, y: CGFloat(i) * rowHeight, width: bounds.width, height: rowHeight).fill()
+            }
             let pair = pairs[i]
             let y = CGFloat(i) * rowHeight
             if let r = pair.span {
@@ -321,4 +359,49 @@ final class DiffRowsView: NSView {
         if case .fold = row.kind { onFold?(); return }
         if event.clickCount == 2 { onOpen?(row) }
     }
+}
+
+extension DiffView: Searchable {
+    /// Rows holding the query, highlighted; the first from the one gone to
+    /// (or the top) scrolled to.
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        guard !query.isEmpty else {
+            foundRows = []
+            foundAt = nil
+            rowsView.found = []
+            rowsView.current = nil
+            return done(nil)
+        }
+        let options: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+        foundRows = rowsView.rows.indices.filter { rowsView.rows[$0].text.range(of: query, options: options) != nil }
+        rowsView.found = Set(foundRows)
+        let from = foundAt == nil ? 0 : (rowsView.current ?? 0)
+        foundAt = foundRows.firstIndex { $0 >= from } ?? (foundRows.isEmpty ? nil : 0)
+        goToFound()
+        done(foundRows.count)
+    }
+
+    func findNext(forward: Bool) {
+        guard !foundRows.isEmpty else { return }
+        let n = foundRows.count
+        foundAt = ((foundAt ?? (forward ? -1 : 0)) + (forward ? 1 : n - 1)) % n
+        goToFound()
+    }
+
+    private func goToFound() {
+        guard let at = foundAt, at < foundRows.count else { rowsView.current = nil; return }
+        let row = foundRows[at]
+        rowsView.current = row
+        rowsView.scrollToVisible(rowsView.rect(ofRow: row).insetBy(dx: 0, dy: -60))
+    }
+
+    func endSearch() {
+        foundRows = []
+        foundAt = nil
+        rowsView.found = []
+        rowsView.current = nil
+        window?.makeFirstResponder(rowsView)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) { done(nil) }
 }
