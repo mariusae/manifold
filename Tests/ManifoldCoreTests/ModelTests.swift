@@ -666,10 +666,21 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     b.apply(.status(id: "", StatusRecord(state: .done, msg: "Photos synced", at: at)), at: at)
     b.apply(.shell(.ended(status: 0)), at: at)
     #expect(b.statusRecord?.msg == "Photos synced", "done survives the process ending")
-    // A busy terminal that says nothing is working, indeterminate.
+    // A busy terminal that says nothing has no status: only the program says.
     var t = Block(id: BlockID(), kind: .terminal, created: at)
     t.apply(.shell(.busy(true)), at: at)
-    #expect(t.statusState == .working && t.statusRecord?.progress == nil)
+    #expect(t.statusState == .idle && t.statusRecord == nil)
+}
+
+@Test func aProgramAskingAfter7501IsHeard() {
+    var scanner = StatusScanner()
+    let signals = scanner.feed(Data("\u{1B}]7501;?\u{1B}\\".utf8))
+    #expect(signals == [.query])
+    #expect(!scanner.sawReports, "a query is no report: 9;4 still counts")
+    #expect(StatusSignal.queryReply.hasPrefix("\u{1B}]7501;?:states=idle,working,done,blocked,error"))
+    // A report after it: heard, and 9;4 ignored from then on.
+    _ = scanner.feed(Data("\u{1B}]7501;state=working:app=claude-code\u{1B}\\".utf8))
+    #expect(scanner.sawReports)
 }
 
 @Test func aHostBecomesASessionAndItsLogsFollow() throws {

@@ -760,6 +760,8 @@ final class Server {
                 append(.status(id: id, StatusRecord(state: state, kind: kind, progress: progress, app: app, title: title, msg: msg, at: clock.now())), to: .block(block))
             case let .clear(id):
                 append(.status(id: id ?? rootStatusID, nil), to: .block(block))
+            case .query:
+                break // answered by the session, on the program's input
             case .prompt:
                 for (k, r) in node.block(block)?.status ?? [:] where r.state == .working || r.state == .blocked {
                     append(.status(id: k, nil), to: .block(block))

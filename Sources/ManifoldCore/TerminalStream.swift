@@ -154,8 +154,16 @@ public enum StatusSignal: Equatable, Sendable {
     case progress(ProgressState, percent: Int?)
     /// OSC 133 A: a new shell prompt.
     case prompt
+    /// `OSC 7501 ; ? ST`: the program asks whether the terminal speaks
+    /// 7501; it expects `queryReply` back on its input before anything
+    /// else answers (a device-attributes reply it sent to race it).
+    case query
 
     public enum ProgressState: Sendable { case remove, set, error, indeterminate, pause }
+
+    /// What a terminal that speaks 7501 answers a query with: `?`, and
+    /// the states and kinds it takes.
+    public static let queryReply = "\u{1B}]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\u{1B}\\"
 }
 
 /// Finds status signals in a terminal's output, between the bytes the
@@ -214,6 +222,7 @@ public struct StatusScanner: Sendable {
         switch code {
         case "7501":
             guard let s = Self.parseReport(body) else { return nil }
+            if case .query = s { return s }
             sawReports = true
             return s
         case "133":
@@ -244,7 +253,7 @@ public struct StatusScanner: Sendable {
     static func parseReport(_ body: ArraySlice<UInt8>) -> StatusSignal? {
         guard body.count <= 4096 else { return nil }
         let text = String(decoding: body, as: UTF8.self)
-        if text.trimmingCharacters(in: .whitespaces) == "?" { return nil } // feature detection: no reply yet
+        if text.trimmingCharacters(in: .whitespaces) == "?" { return .query }
         var pairs: [String: String] = [:]
         for pair in text.split(separator: ":", omittingEmptySubsequences: false) {
             guard let eq = pair.firstIndex(of: "=") else { continue }

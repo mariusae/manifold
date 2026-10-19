@@ -315,8 +315,12 @@ Where it comes from:
   and every client agrees). OSC 9;4 progress maps to the root record
   until a 7501 report arrives. A new prompt (OSC 133 A) or the process
   ending drops `working` and `blocked` records; `done` and `error`
-  survive them. A terminal that is busy (something in the foreground)
-  and says nothing is `working`, indeterminate.
+  survive them. Nothing is inferred: a terminal that is busy and says
+  nothing has no status — the program is the source of truth, not the
+  process tree. A program that asks whether 7501 is spoken
+  (`OSC 7501 ; ? ST`) is answered by the host at once, on its input,
+  with the states and kinds taken, ahead of any device-attributes reply
+  it raced against it.
 - **Searches, git and diff blocks**: the host reports as it works —
   `working` while looking, `done` when the hits or the changes arrive,
   `error` when it fails.

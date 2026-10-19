@@ -197,6 +197,13 @@ final class Session {
         unsaved = true
         if let title = titles.feed(data) { onTitle?(title) }
         let signals = statuses.feed(data)
+        // A program asking whether 7501 is spoken is answered at once,
+        // here, on its own input — ahead of the client's reply to any
+        // device-attributes query it sent to race ours.
+        if signals.contains(where: { if case .query = $0 { return true } else { return false } }) {
+            input.append(Data(StatusSignal.queryReply.utf8))
+            writeInput()
+        }
         if !signals.isEmpty { onStatus?(signals) }
         let frame = Frame(.data, data)
         for conn in attachments { conn.send(frame) }

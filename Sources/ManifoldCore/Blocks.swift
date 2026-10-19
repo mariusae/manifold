@@ -622,11 +622,9 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// The block's own status (§3.7): its root record; else, for a
     /// terminal with something in the foreground that says nothing,
     /// working without saying how far; else idle.
-    public var statusRecord: StatusRecord? {
-        if let r = status?[rootStatusID] { return r }
-        if let t = terminal, t.busy { return StatusRecord(state: .working, at: created) }
-        return nil
-    }
+    /// The root status record (§3.7), as the program reported it: nothing
+    /// is made up from a terminal being busy.
+    public var statusRecord: StatusRecord? { status?[rootStatusID] }
 
     public var statusState: StatusState { statusRecord?.state ?? .idle }
 
