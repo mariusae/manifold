@@ -36,8 +36,9 @@ and Mona Sans (bundled).
   others. A stash is a stack behind any tile: a few edges peek out
   beside its pill, fan out when the pointer rests there, and one clicked
   comes back as that tile's lower half. Drop a pill on another's to
-  stash it there; Stash, in a pill's menu, puts a tile behind its
-  neighbor above. Dragging the line between two tiles past one's least
+  stash it there; Stash Tile (⌘M, or Stash in a pill's menu) puts the
+  focused tile behind its nearest tile — the one above it, else the
+  column's first — and focuses that one. Dragging the line between two tiles past one's least
   height stashes it and goes on against the next, until all above or
   below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
   pill) puts a tile over the whole workspace until it is restored, or

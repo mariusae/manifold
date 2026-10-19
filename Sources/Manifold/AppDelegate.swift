@@ -201,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(arrangement, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
         item(arrangement, "Maximize Tile", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
+        item(arrangement, "Stash Tile", #selector(MainWindowController.stashTile(_:)), "m")
         item(arrangement, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         arrangement.addItem(.separator())
         item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
@@ -287,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         let window = submenu(main, "Window")
-        item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
+        item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m", [.command, .option])
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())
         item(window, "Show Next Workspace", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])

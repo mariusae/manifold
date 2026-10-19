@@ -2875,6 +2875,16 @@ extension MainWindowController: GridDelegate {
         appendToSelected([.full(a.full == placement ? nil : placement)])
     }
 
+    /// ⌘M: the focused tile into the stack behind its nearest tile — the
+    /// shown one above it in the column, else the column's first — as
+    /// Stash in a pill's menu does; the focus goes to that tile.
+    @objc func stashTile(_ sender: Any?) {
+        guard let a = arrangement, let f = a.focused, let (c, i) = a.locate(f), !a.isStashed(f) else { return NSSound.beep() }
+        let others = a.columns[c].enumerated().filter { $0.element.id != f && !a.isStashed($0.element.id) }
+        guard let heir = others.last(where: { $0.offset < i })?.element ?? others.first?.element else { return NSSound.beep() }
+        appendToSelected(a.stashing(f) + [.focus(heir.id)])
+    }
+
     /// ⇧⌘↩: the focused tile over the whole arrangement, or back.
     @objc func toggleMaximize(_ sender: Any?) {
         guard let a = arrangement, let f = a.focused else { return }
@@ -2932,7 +2942,11 @@ extension MainWindowController: GridDelegate {
         menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
-            menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down") { [weak self] in self?.appendToSelected(a.stashing(placement)) })
+            menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down", key: "m") { [weak self] in
+                guard let self else { return }
+                self.focus(placement)
+                self.stashTile(nil)
+            })
         }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
