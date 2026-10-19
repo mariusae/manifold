@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 11
+public let protocolVersion = 12
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -105,6 +105,10 @@ public enum Proposal: Codable, Sendable {
     /// Makes (or finds) the directory block for a path, and lists it.
     case directory(block: BlockID, path: String)
     case listDirectory(BlockID)
+    /// The host's workspaces, in order (§8.2): one added, taken off, or moved.
+    case workspaces(order: [BlockID])
+    /// The host's settings, as the client sets them.
+    case settings(Settings)
     case seen([BlockID])
     /// The user attended to a block (focused it): its done or error
     /// status is dismissed (§3.7).

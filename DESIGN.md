@@ -603,12 +603,16 @@ until they're taken off.
 
 ### 8.2 Leadership
 
-*As built.* One host (the local one) and one attachment: the app leads
-text, web, workspace and desk shards, the host the rest; the host
-checks that an append continues its log and, if not, sends the shard back
-whole. Epochs, fencing and resuming an attachment are not implemented;
-`manifoldd attach --stdio` and several hosts in one window are the next
-milestone.
+*As built.* Every host-side shard but the blocks a client edits has one
+writer, the host: the registry, the links, and the **desk**, a host's
+metalog of its workspaces — which exist, in order — and its settings;
+clients propose (`workspaces`, `settings`). What is a client's alone —
+the workspace it shows, the order it settled on them, its window, its
+appearance — is `ClientState`, in a file beside its hosts file, so two
+machines attached to one host see the same workspaces and each its own
+selection. The app leads text, web and workspace blocks; the host checks
+that an append continues its log and, if not, sends the shard back whole.
+Epochs, fencing and resuming an attachment are not implemented.
 
 Apex §4 as is: attachments are explicit and survive reconnects; leases are
 per shard and granted to attachments; fencing by epoch; a new attachment

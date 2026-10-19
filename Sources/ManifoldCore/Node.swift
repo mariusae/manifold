@@ -98,8 +98,7 @@ public final class Node {
     /// Which side appends to a shard.
     public func leader(of shard: ShardID) -> Leader {
         switch shard {
-        case .desk: return .client
-        case .registry, .links: return .host
+        case .desk, .registry, .links: return .host
         case .block(let id):
             switch block(id)?.kind {
             case .terminal?, .directory?, .search?, .git?, .process?, .agent?: return .host

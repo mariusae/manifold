@@ -179,7 +179,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     node.append(.register(RegistryEntry(id: a, kind: .arrangement, created: now, lastSeen: now)), to: .registry(host), at: now)
     node.append(.seen([a], at: Stamp(wall: now.wall + 5)), to: .registry(host), at: now)
     #expect(node.registry(host).blocks[a]?.lastSeen.wall == now.wall + 5)
-    #expect(node.leader(of: .desk(host)) == .client)
+    #expect(node.leader(of: .desk(host)) == .host, "the desk is the host's metalog (§8.2)")
     #expect(node.leader(of: .registry(host)) == .host)
 }
 

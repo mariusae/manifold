@@ -93,7 +93,6 @@ final class HostClient {
     var links: Links { node.links(host) }
     func block(_ id: BlockID) -> Block? { node.block(id) }
     func arrangement(_ id: BlockID?) -> ArrangementState? { id.flatMap { node.block($0)?.arrangement } }
-    var selectedArrangement: BlockID? { desk.selected }
 
     /// The text block for a file on this host, if there is one.
     func textBlock(path: String) -> Block? { block(kind: .text, path: path) }
@@ -158,15 +157,31 @@ final class HostClient {
 
     /// A new, empty arrangement on the desk, selected.
     @discardableResult
-    func newArrangement(title: String? = nil, select: Bool = true, after: BlockID? = nil) -> BlockID {
+    /// A new workspace on this host, after `after` in its desk's order (the
+    /// host keeps the order; the client proposes).
+    func newArrangement(title: String? = nil, after: BlockID? = nil) -> BlockID {
         let id = BlockID(host: host)
         append(.create(kind: .arrangement, title: title, path: nil), to: .block(id))
         var order = desk.order
         let index = after.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? order.count
         order.insert(id, at: index)
-        append(.order(order), to: .desk(host))
-        if select { append(.select(id), to: .desk(host)) }
+        setWorkspaceOrder(order)
         return id
+    }
+
+    func setWorkspaceOrder(_ order: [BlockID]) {
+        guard order != desk.order else { return }
+        propose(.workspaces(order: order))
+    }
+
+    /// A workspace of this host that this desk doesn't list yet: listed.
+    func adoptWorkspace(_ id: BlockID) {
+        guard id.host == host, !desk.order.contains(id), block(id)?.kind == .arrangement else { return }
+        setWorkspaceOrder(desk.order + [id])
+    }
+
+    func removeWorkspace(_ id: BlockID) {
+        setWorkspaceOrder(desk.order.filter { $0 != id })
     }
 
     /// A new terminal block on the host, in `cwd`.
@@ -279,17 +294,7 @@ final class HostClient {
         propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context)))
     }
 
-    func select(_ arrangement: BlockID?) {
-        guard desk.selected != arrangement else { return }
-        if let arrangement, !desk.order.contains(arrangement) {
-            append(.order(desk.order + [arrangement]), to: .desk(host))
-        }
-        append(.select(arrangement), to: .desk(host))
-    }
-
-    func setAppearance(_ a: Appearance) { append(.appearance(a), to: .desk(host)) }
-    func setSettings(_ s: Settings) { append(.settings(s), to: .desk(host)) }
-    func setWindow(_ w: WindowState) { append(.window(w), to: .desk(host)) }
+    func setSettings(_ s: Settings) { propose(.settings(s)) }
 
     // MARK: Connection
 

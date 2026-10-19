@@ -19,6 +19,29 @@ public struct WindowState: Codable, Equatable, Sendable {
     }
 }
 
+/// What is this client's alone (§8.2): which workspace it shows, the
+/// order it settled on them, its window, and how things look. Kept in a
+/// file beside the hosts file, not in any host's log.
+public struct ClientState: Codable, Equatable, Sendable {
+    public var selected: BlockID?
+    /// Workspaces most recently settled on first (⌃⇥'s order).
+    public var settled: [BlockID] = []
+    public var window = WindowState()
+    public var appearance = Appearance()
+
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        selected = try? c.decodeIfPresent(BlockID.self, forKey: .selected)
+        settled = (try? c.decodeIfPresent([BlockID].self, forKey: .settled)) ?? []
+        window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
+        appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
+    }
+
+    enum CodingKeys: String, CodingKey { case selected, settled, window, appearance }
+}
+
 /// How things look: the theme's fonts, and how terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
     public var theme: FontTheme = .notes

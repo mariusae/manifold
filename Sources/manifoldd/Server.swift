@@ -340,6 +340,12 @@ final class Server {
         case let .listDirectory(block):
             list(block)
             done()
+        case let .workspaces(order):
+            if order != node.desk(host).order { append(.order(order), to: .desk(host)) }
+            done()
+        case let .settings(s):
+            if s != node.desk(host).settings { append(.settings(s), to: .desk(host)) }
+            done()
         case let .seen(ids):
             let known = ids.filter { node.registry(host).blocks[$0] != nil }
             if !known.isEmpty { append(.seen(known, at: clock.now()), to: .registry(host)) }

@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
             [weak self] _ in
             guard let self else { return }
-            GhosttyRuntime.shared.apply(self.host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
+            GhosttyRuntime.shared.apply(self.hosts.state.appearance, dark: NSApp.effectiveAppearance.isDark)
         }
 
         hosts.onChange = { [weak self] in self?.stateChanged() }
@@ -28,15 +28,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func stateChanged() {
         guard host.hasState else { return }
         hosts.pushLanguageServers()
-        let scheme = host.desk.appearance.colorScheme.appearance
+        let scheme = hosts.state.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
-        GhosttyRuntime.shared.apply(host.desk.appearance, dark: NSApp.effectiveAppearance.isDark)
+        GhosttyRuntime.shared.apply(hosts.state.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
             let wc = MainWindowController(hosts: hosts)
             windowController = wc
             // The very first time, start with a terminal rather than an empty
             // window.
-            if host.desk.order.isEmpty && !createdFirst && host.node.blocks.isEmpty {
+            if hosts.all.allSatisfy({ $0.desk.order.isEmpty }) && !createdFirst && host.node.blocks.isEmpty {
                 createdFirst = true
                 wc.newTerminal(nil)
             }

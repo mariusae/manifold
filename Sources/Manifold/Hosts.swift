@@ -7,6 +7,10 @@ import ManifoldCore
 final class Hosts {
     let local: HostClient
     private(set) var remotes: [HostID: HostClient] = [:]
+    /// What is this client's alone (§8.2): the workspace shown, the settled
+    /// order, the window, the appearance; in a file beside the hosts file.
+    private(set) var state = ClientState()
+    private static var stateURL: URL { Paths.directory.appendingPathComponent("client.json") }
     /// Hosts being attached to, by destination, until they say their name.
     private(set) var attaching: Set<String> = []
     private var connecting: [String: HostClient] = [:]
@@ -26,7 +30,53 @@ final class Hosts {
     init() {
         local = HostClient(transport: .local)
         wire(local)
+        if let data = try? Data(contentsOf: Self.stateURL), let s = try? JSONDecoder().decode(ClientState.self, from: data) {
+            state = s
+        } else {
+            // Before the split (§8.2) this lived in the local desk: taken
+            // from there once, when the host first says what it has.
+            local.onWelcome = { [weak self] in
+                guard let self, !FileManager.default.fileExists(atPath: Self.stateURL.path) else { return }
+                let d = self.local.desk
+                self.state.selected = d.selected
+                self.state.settled = d.settled
+                self.state.window = d.window
+                self.state.appearance = d.appearance
+                self.saveState()
+            }
+        }
     }
+
+    private func saveState() {
+        if let data = try? JSONEncoder().encode(state) { try? data.write(to: Self.stateURL, options: .atomic) }
+    }
+
+    private func change(_ f: (inout ClientState) -> Void) {
+        var s = state
+        f(&s)
+        guard s != state else { return }
+        state = s
+        saveState()
+        onChange?()
+    }
+
+    /// Shows a workspace: it is this client's selection, and its host's
+    /// desk has it.
+    func select(_ workspace: BlockID?) {
+        if let workspace { client(of: workspace)?.adoptWorkspace(workspace) }
+        change { $0.selected = workspace }
+    }
+
+    func settle(_ workspace: BlockID) {
+        change { s in
+            s.settled.removeAll { $0 == workspace }
+            s.settled.insert(workspace, at: 0)
+            if s.settled.count > 50 { s.settled.removeLast(s.settled.count - 50) }
+        }
+    }
+
+    func setWindow(_ w: WindowState) { change { $0.window = w } }
+    func setAppearance(_ a: Appearance) { change { $0.appearance = a } }
 
     private func wire(_ client: HostClient) {
         client.onChange = { [weak self] in self?.onChange?() }
@@ -170,6 +220,8 @@ final class Hosts {
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block),
              let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
             (client(of: block) ?? local).propose(proposal, done: done)
+        case .workspaces, .settings:
+            local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {
                 client(host)?.propose(.seen(group))

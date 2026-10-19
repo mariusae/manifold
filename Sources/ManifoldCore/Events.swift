@@ -129,10 +129,12 @@ public struct Links: Codable, Equatable, Sendable {
     public func to(_ id: BlockID) -> [Link] { links.filter { $0.to == id } }
 }
 
-/// The desk: what the sidebar shows and the window keeps (one per host; the
-/// local host's is the one in use).
+/// The desk, a host's metalog of its workspaces (§8.2): which exist, in
+/// order, and the host's settings. Host-written; clients propose. (The
+/// selection, the settled order, the window and the appearance are each
+/// client's own, `ClientState`; older logs' entries for them still apply.)
 public struct DeskState: Codable, Equatable, Sendable {
-    /// Arrangements on the desk, in the sidebar's order.
+    /// Workspaces on this host, in the sidebar's order.
     public var order: [BlockID] = []
     public var selected: BlockID?
     /// Arrangements most recently settled on first (⌃⇥'s order, the timeline).
