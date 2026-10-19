@@ -233,7 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(fontsItem)
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Desk", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
-                                  ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4")] {
+                                  ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4"),
+                                  ("Status", #selector(MainWindowController.organizeByStatus(_:)), "5")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")

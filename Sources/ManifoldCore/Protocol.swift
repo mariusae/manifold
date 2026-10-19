@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 8
+public let protocolVersion = 9
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -106,6 +106,9 @@ public enum Proposal: Codable, Sendable {
     case directory(block: BlockID, path: String)
     case listDirectory(BlockID)
     case seen([BlockID])
+    /// The user attended to a block (focused it): its done or error
+    /// status is dismissed (§3.7).
+    case attend(BlockID)
     case link(Link)
     case unlink(String)
     /// The whole history of a shard, for scrubbing.

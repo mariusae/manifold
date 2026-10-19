@@ -5,7 +5,7 @@ import ManifoldCore
 /// arrangements and their columns; files under folders under roots,
 /// across hosts; what's linked to the focused block; blocks by day.
 enum Organization: String, CaseIterable {
-    case desk, files, links, time
+    case desk, files, links, time, status
 
     var title: String {
         switch self {
@@ -13,6 +13,7 @@ enum Organization: String, CaseIterable {
         case .files: "Files"
         case .links: "Links"
         case .time: "Time"
+        case .status: "Status"
         }
     }
 }
@@ -32,6 +33,8 @@ final class OrgNode {
     var isGroup: Bool
     /// Set off from the rest: the selected arrangement, the focused column.
     var emphasis = false
+    /// What the block is doing (§3.7), shown as a glyph.
+    var status: StatusRecord?
     /// On the desk: the arrangement this row is, or is a column of.
     var arrangement: BlockID?
     /// On the desk: which column of its arrangement, and the placement shown.
@@ -332,6 +335,7 @@ final class OrgRowView: NSTableCellView {
     private let name = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private let glyph = StatusGlyph()
     private var symbol = ""
 
     override init(frame: NSRect) {
@@ -350,12 +354,14 @@ final class OrgRowView: NSTableCellView {
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
-        for v in [icon, name, count, detail] { addSubview(v) }
+        for v in [icon, name, count, detail, glyph] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ node: OrgNode) {
+        glyph.record = node.status
+        glyph.isHidden = !StatusGlyph.shows(node.status)
         if node.symbol != symbol {
             symbol = node.symbol
             icon.image = Theme.symbol(node.symbol, size: 12)
@@ -381,6 +387,10 @@ final class OrgRowView: NSTableCellView {
             let w = max(20, ceil((count.stringValue as NSString).size(withAttributes: [.font: count.font!]).width) + 10)
             count.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
             right -= w + 6
+        }
+        if !glyph.isHidden {
+            glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+            right -= StatusGlyph.size + 8
         }
         let nameWidth = max(0, right - 22)
         if detail.isHidden {

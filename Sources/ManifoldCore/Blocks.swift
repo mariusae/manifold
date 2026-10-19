@@ -131,6 +131,48 @@ public struct TerminalState: Codable, Equatable, Sendable {
     public init() {}
 }
 
+// MARK: Status (§3.7)
+
+/// What a block is doing, in OSC 7501's states.
+public enum StatusState: String, Codable, Sendable, CaseIterable {
+    case idle, working, done, blocked, error
+}
+
+/// What a blocked program needs.
+public enum BlockedKind: String, Codable, Sendable {
+    case permission, question, auth
+}
+
+/// One status record: a report, replacing the last for its id whole.
+public struct StatusRecord: Codable, Equatable, Sendable {
+    public var state: StatusState
+    public var kind: BlockedKind?
+    /// 0–100 while working (or blocked); nil for indeterminate.
+    public var progress: Int?
+    public var app: String?
+    public var title: String?
+    public var msg: String?
+    /// When it was reported.
+    public var at: Stamp
+
+    public init(state: StatusState, kind: BlockedKind? = nil, progress: Int? = nil, app: String? = nil,
+                title: String? = nil, msg: String? = nil, at: Stamp) {
+        self.state = state
+        self.kind = kind
+        self.progress = progress
+        self.app = app
+        self.title = title
+        self.msg = msg
+        self.at = at
+    }
+
+    /// Needs attending to: finished, failed, or waiting on you.
+    public var wantsAttention: Bool { state == .done || state == .error || state == .blocked }
+}
+
+/// The root record's id.
+public let rootStatusID = ""
+
 // MARK: Directory
 
 public struct DirectoryEntry: Codable, Equatable, Sendable {
@@ -476,6 +518,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var diff: DiffState?
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
+    /// Status records by id (§3.7); the root record under `rootStatusID`.
+    public var status: [String: StatusRecord]?
     /// What each placement's lens needs to come back as it was — scroll
     /// position, selection, zoom, a filter — by placement, as the lens
     /// keeps it (§3.5): in the log, so it survives a restart and a move
@@ -532,6 +576,22 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
             return "Untitled"
         }
         return kind.defaultTitle
+    }
+
+    /// The block's own status (§3.7): its root record; else, for a
+    /// terminal with something in the foreground that says nothing,
+    /// working without saying how far; else idle.
+    public var statusRecord: StatusRecord? {
+        if let r = status?[rootStatusID] { return r }
+        if let t = terminal, t.busy { return StatusRecord(state: .working, at: created) }
+        return nil
+    }
+
+    public var statusState: StatusState { statusRecord?.state ?? .idle }
+
+    /// The records under an id, the id itself included.
+    public func statusRecords(under id: String) -> [String] {
+        (status ?? [:]).keys.filter { $0 == id || id.isEmpty || $0.hasPrefix(id + "/") }
     }
 
     /// Not reconstructible from the log: never collected (§2.3).

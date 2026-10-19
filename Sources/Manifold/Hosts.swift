@@ -164,6 +164,8 @@ final class Hosts {
                 client(host)?.propose(.seen(group))
             }
             done?(nil)
+        case let .attend(block):
+            (client(of: block) ?? local).propose(proposal, done: done)
         case let .link(link):
             (client(of: link.from) ?? local).propose(proposal, done: done)
         case .unlink:

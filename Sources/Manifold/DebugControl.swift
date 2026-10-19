@@ -200,6 +200,12 @@ enum DebugControl {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
             return "usage: org rows | org click <row> [cmd|double]"
+        case "attend":
+            // As focusing the block with the window key does: dismisses
+            // its done or failed status.
+            guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
+            wc.hosts.propose(.attend(b))
+            return "ok"
         case "column":
             // "column back|forward": the focused column's past, walked.
             if arg == "back" { wc?.columnBack(nil) } else if arg == "forward" { wc?.columnForward(nil) } else { return "usage: column back|forward" }

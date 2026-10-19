@@ -35,6 +35,9 @@ final class Session {
 
     var onExit: ((Int32) -> Void)?
     var onTitle: ((String) -> Void)?
+    /// What the program says of its status (§3.7), as it says it.
+    var onStatus: (([StatusSignal]) -> Void)?
+    private var statuses = StatusScanner()
 
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           command: String? = nil, queue: DispatchQueue) {
@@ -171,6 +174,8 @@ final class Session {
         replay.append(data)
         unsaved = true
         if let title = titles.feed(data) { onTitle?(title) }
+        let signals = statuses.feed(data)
+        if !signals.isEmpty { onStatus?(signals) }
         let frame = Frame(.data, data)
         for conn in attachments { conn.send(frame) }
     }

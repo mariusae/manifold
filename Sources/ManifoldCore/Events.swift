@@ -222,6 +222,10 @@ public enum Event: Codable, Equatable, Sendable {
     /// A whole column moved to another index.
     case moveColumn(from: Int, to: Int)
 
+    // Status (§3.7): a record reported (replacing the last for its id),
+    // or, with nil, cleared with everything under it.
+    case status(id: String, StatusRecord?)
+
     // Desk.
     case order([BlockID])
     case select(BlockID?)
@@ -293,6 +297,19 @@ extension Block {
             }
             if views == nil { views = [:] }
             views![placement] = v
+        case let .status(id, record):
+            if let record {
+                if status == nil { status = [:] }
+                status![id] = record
+            } else {
+                for k in statusRecords(under: id) { status?.removeValue(forKey: k) }
+                if status?.isEmpty == true { status = nil }
+            }
+        case .shell(.ended), .shell(.dormant):
+            // The process gone: what was working or blocked is no more;
+            // done and error stay to be attended to.
+            for (k, r) in status ?? [:] where r.state == .working || r.state == .blocked { status?.removeValue(forKey: k) }
+            if status?.isEmpty == true { status = nil }
         default:
             break
         }

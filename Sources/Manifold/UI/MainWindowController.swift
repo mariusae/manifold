@@ -200,6 +200,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteEditing()
         checkOpenWaits()
         noteTrailFocus()
+        attend()
         refreshOrganization()
 
         if let jump = pendingJump,
@@ -340,6 +341,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sliding { outgoing.frame = content.frame }
         palette?.frame = b
         history?.frame = b
+    }
+
+    // MARK: Status (§3.7)
+
+    private var attended: BlockID?
+
+    /// The focused block, while the window is key, is attended to: what
+    /// it had done, or failed at, is dismissed. The Dock badge counts
+    /// the blocks waiting on you, or done.
+    private func attend() {
+        if window?.isKeyWindow == true, let b = focusedShown?.placement.block, b != attended {
+            attended = b
+            if let r = hosts.block(b)?.statusRecord, r.state == .done || r.state == .error { hosts.propose(.attend(b)) }
+        }
+        let waiting = hosts.blocks.filter { b in b.statusRecord.map { $0.state == .blocked || $0.state == .done } ?? false }.count
+        let badge = waiting == 0 ? "" : "\(waiting)"
+        if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
 
     // MARK: Seen, and collection
@@ -1057,6 +1075,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
     @objc func organizeByLinks(_ sender: Any?) { setOrganization(.links) }
     @objc func organizeByTime(_ sender: Any?) { setOrganization(.time) }
+    @objc func organizeByStatus(_ sender: Any?) { setOrganization(.status) }
 
     func setOrganization(_ org: Organization, show: Bool = true) {
         var state = desk.window
@@ -1099,8 +1118,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func node(for block: Block, id: String? = nil, detail: String? = nil) -> OrgNode {
         let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
-        return OrgNode(id: id ?? block.id.description, block: block.id, title: block.displayTitle,
-                       symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
+        let n = OrgNode(id: id ?? block.id.description, block: block.id, title: block.displayTitle,
+                        symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
+        n.status = block.statusRecord
+        return n
+    }
+
+    /// Status (§3.7): blocks by what they are doing, those that want
+    /// attention first — blocked, done, error — then working; nothing
+    /// idle, there being nothing to say of it.
+    private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        var groups: [StatusState: [(Block, StatusRecord)]] = [:]
+        for c in hosts.all {
+            for b in c.node.blocks {
+                guard let r = b.statusRecord, r.state != .idle, matches(filter, [b.displayTitle, b.path, r.msg, r.app]) else { continue }
+                groups[r.state, default: []].append((b, r))
+            }
+        }
+        let order: [(StatusState, String, String)] = [
+            (.blocked, "Waiting on you", "hand.raised"), (.done, "Done", "checkmark.circle"),
+            (.error, "Failed", "exclamationmark.circle"), (.working, "Working", "circle.dotted"),
+        ]
+        var open: Set<String> = []
+        let nodes = order.compactMap { state, title, symbol -> OrgNode? in
+            guard let items = groups[state]?.sorted(by: { $0.1.at > $1.1.at }) else { return nil }
+            let id = "status:\(state.rawValue)"
+            open.insert(id)
+            let children = items.map { block, r -> OrgNode in
+                var words: [String] = []
+                if let app = r.app { words.append(app) }
+                if let msg = r.msg, !msg.isEmpty { words.append(msg) } else if let t = r.title, !t.isEmpty { words.append(t) }
+                words.append(Age.ago(r.at))
+                return node(for: block, id: id + "/" + block.id.description, detail: words.joined(separator: " · "))
+            }
+            return OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
+        }
+        if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing is doing anything", symbol: "circle.dashed")], []) }
+        return (nodes, open)
     }
 
     private func matches(_ filter: String, _ texts: [String?]) -> Bool {
@@ -1114,6 +1168,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .files: return filesTree(filter)
         case .links: return linksTree(filter)
         case .time: return timeTree(filter)
+        case .status: return statusTree(filter)
         }
     }
 
@@ -1136,6 +1191,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if i < a.columns[c].count - 1 { notes.append("\(a.columns[c].count - 1 - i) after") }
                 let n = OrgNode(id: "\(aid)/col/\(c)", block: p.block, title: b.displayTitle,
                                 symbol: Theme.symbolName(for: b.kind, path: b.path), detail: notes.joined(separator: " · "))
+                n.status = b.statusRecord
                 n.arrangement = id
                 n.column = c
                 n.placement = p.id
@@ -1207,6 +1263,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     let cid = "\(id)/\(card.block)"
                     let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
                                        detail: card.detail + (card.at.map { " · " + Age.ago($0) } ?? ""), age: Self.age(card.at))
+                    node.status = hosts.block(card.block)?.statusRecord
                     node.loadChildren = { bunches(of: card.block, prefix: cid) }
                     return node
                 }
@@ -1498,6 +1555,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             var score = query.isEmpty ? 1 : (Finder.score(query, hay + " " + block.id.host.raw))
             guard score > 0 else { continue }
+            if let r = block.statusRecord, r.wantsAttention {
+                note = r.state == .blocked ? "waiting on you" : r.state == .done ? "done" : "failed"
+            }
             if let d = near[block.id], d > 0 {
                 score = query.isEmpty ? 1 + (4 - d) : score * (5 - d) / 2
                 if note.isEmpty { note = d == 1 ? "linked" : "near" }

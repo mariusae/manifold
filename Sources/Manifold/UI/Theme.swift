@@ -13,6 +13,8 @@ enum Theme {
     static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
     static let divider = NSColor.dynamic(NSColor(white: 0, alpha: 0.1), NSColor(white: 1, alpha: 0.1))
     static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
+    /// A block that failed (§3.7).
+    static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
     /// Floating panels: the palette, a stack's list.
     static let panel = NSColor.dynamic(NSColor(white: 0.995, alpha: 1), NSColor(white: 0.17, alpha: 1))

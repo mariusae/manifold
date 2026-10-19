@@ -82,6 +82,12 @@ final class Server {
         searches.onHits = { [weak self] block, hits, done, truncated, error in
             guard let self, self.node.block(block)?.kind == .search else { return }
             self.append(.hits(hits, done: done, truncated: truncated, error: error), to: .block(block))
+            if let error {
+                self.report(block, .error, msg: error)
+            } else if done {
+                let n = self.node.block(block)?.search?.hits.count ?? 0
+                self.report(block, .done, msg: "\(n) hit\(n == 1 ? "" : "s")" + (truncated ? ", stopped" : ""))
+            }
         }
         languageServers.onDiagnostics = { [weak self] block, items in
             let frame = Frame.message(ServerMessage.diagnostics(block, items))
@@ -336,6 +342,12 @@ final class Server {
             let known = ids.filter { node.registry(host).blocks[$0] != nil }
             if !known.isEmpty { append(.seen(known, at: clock.now()), to: .registry(host)) }
             done()
+        case let .attend(block):
+            // Attended to: what was done or failed is dismissed (§3.7).
+            if let r = node.block(block)?.status?[rootStatusID], r.state == .done || r.state == .error {
+                append(.status(id: rootStatusID, nil), to: .block(block))
+            }
+            done()
         case let .link(link):
             append(.link(link), to: .links(host))
             done()
@@ -393,6 +405,7 @@ final class Server {
                 append(.create(kind: .search, title: nil, path: nil), to: .block(block))
             }
             append(.search(q, at: clock.now()), to: .block(block))
+            report(block, .working, msg: "Looking for “\(q.text)”")
             searches.run(block, q)
             done()
         case let .cancelSearch(block):
@@ -491,6 +504,7 @@ final class Server {
     private func refreshGit(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
         let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
+        report(block, .working, msg: "Refreshing")
         var commands = [vcs.statusArguments, vcs.logArguments(limit: 200)]
         if let w = vcs.whereArguments { commands.append(w) }
         if let a = vcs.aheadArguments { commands.append(a) }
@@ -506,6 +520,7 @@ final class Server {
             if vcs.whereArguments != nil, case .success(let out) = results[2] { branch = VCS.parseSaplingWhere(out) }
             if vcs.aheadArguments != nil, case .success(let out) = results[3] { ahead = out.split(separator: "\n").count }
             self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
+            if let error { self.report(block, .error, msg: error) } else { self.report(block, .done, msg: "\(status.count) change\(status.count == 1 ? "" : "s")") }
         }
     }
 
@@ -525,6 +540,7 @@ final class Server {
 
     private func loadDiff(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .diff, let subject = b.diff?.subject else { return }
+        report(block, .working, msg: "Comparing")
         switch subject {
         case let .sides(old, new):
             func side(_ s: DiffSide, _ done: @escaping (String?) -> Void) {
@@ -534,6 +550,7 @@ final class Server {
                 side(new) { newText in
                     guard let self, self.node.block(block) != nil else { return }
                     self.append(.diffLoaded(oldText: oldText ?? "", newText: newText ?? "", patch: nil, error: nil, at: self.clock.now()), to: .block(block))
+                    self.report(block, .done, msg: "Compared")
                 }
             }
         case let .versions(id, from, to):
@@ -541,6 +558,7 @@ final class Server {
             let old = Block.replaying(entries, id: id, upTo: from)?.text?.text.string ?? ""
             let new = to.map { Block.replaying(entries, id: id, upTo: $0)?.text?.text.string ?? "" } ?? (node.block(id)?.text?.text.string ?? "")
             append(.diffLoaded(oldText: old, newText: new, patch: nil, error: nil, at: clock.now()), to: .block(block))
+            report(block, .done, msg: "Compared")
         case let .commit(repo, sha):
             let vcs = git.repository(of: repo)?.vcs ?? .git
             git.run(vcs, vcs.showArguments(sha), in: repo) { [weak self] result in
@@ -548,8 +566,10 @@ final class Server {
                 switch result {
                 case .success(let patch):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                    self.report(block, .done, msg: "Compared")
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
+                    self.report(block, .error, msg: e.message)
                 }
             }
         }
@@ -612,6 +632,7 @@ final class Server {
                 guard self?.node.block(id)?.terminal?.title != title else { return }
                 self?.append(.title(title), to: .block(id))
             }
+            s.onStatus = { [weak self] signals in self?.status(id, signals) }
             sessions[id] = s
             session = s
             append(.shell(.started(pid: s.pid)), to: .block(id))
@@ -619,6 +640,53 @@ final class Server {
         conn.onFrame = { [weak session] frame in session?.handle(frame) }
         conn.onClose = { [weak session, unowned conn] in session?.detach(conn) }
         session.attach(conn, cols: req.cols, rows: req.rows)
+    }
+
+    // MARK: Status (§3.7)
+
+    /// The host's own report on a block it works for: its root record.
+    private func report(_ block: BlockID, _ state: StatusState, msg: String? = nil) {
+        append(.status(id: rootStatusID, StatusRecord(state: state, msg: msg, at: clock.now())), to: .block(block))
+    }
+
+    /// What a terminal's program said, applied to its block's records.
+    private func status(_ block: BlockID, _ signals: [StatusSignal]) {
+        guard let b = node.block(block) else { return }
+        for signal in signals {
+            switch signal {
+            case let .report(id, state, kind, progress, app, title, msg):
+                // A record without an app inherits its nearest ancestor's.
+                var app = app
+                if app == nil {
+                    var parent = id
+                    while app == nil, let slash = parent.lastIndex(of: "/") {
+                        parent = String(parent[..<slash])
+                        app = node.block(block)?.status?[parent]?.app
+                    }
+                    if app == nil, !id.isEmpty { app = node.block(block)?.status?[rootStatusID]?.app }
+                }
+                append(.status(id: id, StatusRecord(state: state, kind: kind, progress: progress, app: app, title: title, msg: msg, at: clock.now())), to: .block(block))
+            case let .clear(id):
+                append(.status(id: id ?? rootStatusID, nil), to: .block(block))
+            case .prompt:
+                for (k, r) in node.block(block)?.status ?? [:] where r.state == .working || r.state == .blocked {
+                    append(.status(id: k, nil), to: .block(block))
+                }
+            case let .progress(p, percent):
+                switch p {
+                case .remove:
+                    if b.status?[rootStatusID] != nil { append(.status(id: rootStatusID, nil), to: .block(block)) }
+                case .set: report(block, .working, progress: percent)
+                case .indeterminate: report(block, .working)
+                case .error: report(block, .error)
+                case .pause: report(block, .working, progress: percent, msg: "Paused")
+                }
+            }
+        }
+    }
+
+    private func report(_ block: BlockID, _ state: StatusState, progress: Int?, msg: String? = nil) {
+        append(.status(id: rootStatusID, StatusRecord(state: state, progress: progress, msg: msg, at: clock.now())), to: .block(block))
     }
 
     private func sessionExited(_ id: BlockID, status: Int32) {

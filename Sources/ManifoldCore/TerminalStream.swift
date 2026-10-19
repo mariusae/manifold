@@ -140,3 +140,141 @@ public struct TitleScanner: Sendable {
         return String(decoding: osc[(semi + 1)...], as: UTF8.self)
     }
 }
+
+// MARK: Program status (§3.7)
+
+/// What a terminal's output says about its program's status: OSC 7501
+/// reports, OSC 9;4 progress, and OSC 133 prompt marks.
+public enum StatusSignal: Equatable, Sendable {
+    /// A 7501 report for a record (the root when `id` is empty).
+    case report(id: String, state: StatusState, kind: BlockedKind?, progress: Int?, app: String?, title: String?, msg: String?)
+    /// `state=clear`: the record and its children, or everything with no id.
+    case clear(id: String?)
+    /// OSC 9;4: ConEmu progress, as other terminals draw it.
+    case progress(ProgressState, percent: Int?)
+    /// OSC 133 A: a new shell prompt.
+    case prompt
+
+    public enum ProgressState: Sendable { case remove, set, error, indeterminate, pause }
+}
+
+/// Finds status signals in a terminal's output, between the bytes the
+/// terminal itself draws. The same state machine as `TitleScanner`'s;
+/// the two look at the same stream for different sequences.
+public struct StatusScanner: Sendable {
+    private enum State { case ground, esc, osc, oscEsc }
+    private var state = State.ground
+    private var osc = [UInt8]()
+    /// Whether a 7501 report has ever come: then OSC 9;4 is ignored, as
+    /// the spec asks.
+    public private(set) var sawReports = false
+
+    public init() {}
+
+    /// Feeds output; returns the signals in it, in order.
+    public mutating func feed(_ data: Data) -> [StatusSignal] {
+        var out: [StatusSignal] = []
+        for b in data {
+            switch state {
+            case .ground:
+                if b == 0x1B { state = .esc }
+            case .esc:
+                if b == 0x5D {
+                    state = .osc
+                    osc.removeAll(keepingCapacity: true)
+                } else {
+                    state = b == 0x1B ? .esc : .ground
+                }
+            case .osc:
+                if b == 0x07 {
+                    if let s = finish() { out.append(s) }
+                    state = .ground
+                } else if b == 0x1B {
+                    state = .oscEsc
+                } else if osc.count < 4096 {
+                    osc.append(b)
+                }
+            case .oscEsc:
+                if b == 0x5C {
+                    if let s = finish() { out.append(s) }
+                    state = .ground
+                } else {
+                    state = b == 0x5D ? .osc : .ground
+                    osc.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+        return out
+    }
+
+    private mutating func finish() -> StatusSignal? {
+        guard let semi = osc.firstIndex(of: 0x3B) else { return nil }
+        let code = String(decoding: osc[..<semi], as: UTF8.self)
+        let body = osc[(semi + 1)...]
+        switch code {
+        case "7501":
+            guard let s = Self.parseReport(body) else { return nil }
+            sawReports = true
+            return s
+        case "133":
+            return body.first == UInt8(ascii: "A") ? .prompt : nil
+        case "9":
+            guard !sawReports else { return nil }
+            // 9;4;st;pct
+            let parts = String(decoding: body, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false)
+            guard parts.first == "4", parts.count >= 2, let st = Int(parts[1]) else { return nil }
+            let pct = parts.count > 2 ? Int(parts[2]) : nil
+            switch st {
+            case 0: return .progress(.remove, percent: nil)
+            case 1: return .progress(.set, percent: pct.map { min(max($0, 0), 100) })
+            case 2: return .progress(.error, percent: pct)
+            case 3: return .progress(.indeterminate, percent: nil)
+            case 4: return .progress(.pause, percent: pct)
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// A 7501 report's body: `key=value(:key=value)*`, as the spec reads
+    /// it — malformed pairs skipped, unknown keys ignored, the last of a
+    /// repeated key kept, and the whole report dropped for a bad state,
+    /// id, or text.
+    static func parseReport(_ body: ArraySlice<UInt8>) -> StatusSignal? {
+        guard body.count <= 4096 else { return nil }
+        let text = String(decoding: body, as: UTF8.self)
+        if text.trimmingCharacters(in: .whitespaces) == "?" { return nil } // feature detection: no reply yet
+        var pairs: [String: String] = [:]
+        for pair in text.split(separator: ":", omittingEmptySubsequences: false) {
+            guard let eq = pair.firstIndex(of: "=") else { continue }
+            let key = pair[..<eq].trimmingCharacters(in: .whitespaces)
+            let value = pair[pair.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty, key.count <= 16, key.allSatisfy({ $0.isASCII && $0.isLowercase }),
+                  value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "_.,+/=-".contains($0)) }) else { continue }
+            pairs[key] = value
+        }
+        guard let stateValue = pairs["state"] else { return nil }
+        let id = pairs["id"] ?? ""
+        if !id.isEmpty {
+            let segments = id.split(separator: "/", omittingEmptySubsequences: false)
+            guard id.count <= 128, segments.count <= 8, segments.allSatisfy({ !$0.isEmpty && $0.count <= 32 && $0.allSatisfy { $0.isLetter || $0.isNumber || "_.+-".contains($0) } }) else { return nil }
+        }
+        if stateValue == "clear" { return .clear(id: pairs["id"] == nil ? nil : id) }
+        guard let state = StatusState(rawValue: stateValue) else { return nil }
+        func decoded(_ key: String, encodedLimit: Int, limit: Int) -> String?? {
+            guard let v = pairs[key] else { return .some(nil) }
+            guard v.count <= encodedLimit, let data = Data(base64Encoded: v.count % 4 == 0 ? v : v + String(repeating: "=", count: 4 - v.count % 4)),
+                  data.count <= limit, let s = String(data: data, encoding: .utf8),
+                  !s.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F || (0x80...0x9F).contains($0.value) })
+            else { return nil }
+            return .some(s)
+        }
+        guard let msg = decoded("msg", encodedLimit: 2732, limit: 2048), let title = decoded("title", encodedLimit: 256, limit: 192) else { return nil }
+        let kind = state == .blocked ? pairs["kind"].flatMap(BlockedKind.init(rawValue:)) : nil
+        let progress = (state == .working || state == .blocked) ? pairs["progress"].flatMap { Int($0) }.flatMap { (0...100).contains($0) ? $0 : nil } : nil
+        var app = pairs["app"]
+        if let a = app, a.isEmpty || a.count > 32 || !a.allSatisfy({ $0.isLetter || $0.isNumber || "_.+-".contains($0) }) { app = nil }
+        return .report(id: id, state: state, kind: kind, progress: progress, app: app, title: title, msg: msg)
+    }
+}

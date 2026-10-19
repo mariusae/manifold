@@ -168,13 +168,14 @@ when you find it again.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
-- **The sidebar organizes the same graph four ways** (View ▸ Organize
-  By, ⌥⌘1–4): **Desk** — the arrangements, as before; **Files** — every
+- **The sidebar organizes the same graph five ways** (View ▸ Organize
+  By, ⌥⌘1–5): **Desk** — the arrangements, as before; **Files** — every
   block with a path under its folders, across hosts, as a sparse tree
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;
-  **Time** — blocks by the day they were last seen. A filter narrows any
+  **Time** — blocks by the day they were last seen; **Status** — by
+  what they are doing (below). A filter narrows any
   of them. The rows work the same everywhere: click to show here, in the
   focused column, ⌘-click for a column beside it, rest the pointer for a
   card, right-click for Links Around This. Links written in a text —
@@ -195,6 +196,27 @@ when you find it again.
   kind, with what made each shown when a block is pointed at. Click a
   block to look around *it* instead (Back returns), double-click or ⏎ to
   go there, arrow keys move, Space re-centers, ⎋ closes.
+- **Every block has a status** (DESIGN.md §3.7), in the schema of
+  [OSC 7501](https://mitchellh.com/writing/program-status-osc7501):
+  idle, working (with progress, or without), done, blocked (waiting for
+  permission, an answer, or a sign-in), or failed, with the program's
+  name and a line about it. Terminals and agents get theirs from the
+  program — the host reads OSC 7501 out of the byte stream it owns, so
+  remote hosts work the same; OSC 9;4 progress counts until a 7501
+  report arrives; a new prompt or the process ending clears working
+  and blocked; done and failed stay until you attend to the block by
+  focusing it. A busy terminal that says nothing is working. Searches,
+  git and diff blocks report as the host works for them. One glyph
+  says it wherever a block is named — a ring turning or filling for
+  working, pulsing for blocked, a dot for done, a red dot for failed —
+  in the sidebar's rows and the finder; the Dock badge counts the
+  blocks waiting on you or done. **Status** in the sidebar (⌥⌘5) lists
+  blocks by it: waiting on you, done, failed, working. From a shell:
+
+  ```sh
+  status() { printf '\e]7501;state=%s:msg=%s\e\\' "$1" "$(printf '%s' "$2" | base64 | tr -d '\n')"; }
+  status working "Syncing photos"; rsync -a ~/Photos backup:/photos && status done "Photos synced" || status error "rsync failed"
+  ```
 - **Every lens comes back as it was.** Each placement keeps its lens's
   state in the block's log — the editor's selection and scroll, a
   preview's scroll and selection, a web page's history and scroll, a

@@ -625,3 +625,40 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(Mention.resolve("y", from: nil) == nil)
     #expect(BlockKind.forFile("a.png") == .image && BlockKind.forFile("a.pdf") == .pdf && BlockKind.forFile("a.md") == .text)
 }
+
+@Test func programStatusIsScannedAndKept() {
+    var scanner = StatusScanner()
+    let msg = Data("Apply 3 to add".utf8).base64EncodedString()
+    // A 7501 report with a message, in the middle of other output.
+    var signals = scanner.feed(Data("hello\u{1b}]7501;state=blocked:kind=permission:app=terraform:msg=\(msg)\u{1b}\\world".utf8))
+    #expect(signals == [.report(id: "", state: .blocked, kind: .permission, progress: nil, app: "terraform", title: nil, msg: "Apply 3 to add")])
+    // A child record with progress, ended by BEL; a bad state is dropped whole.
+    signals = scanner.feed(Data("\u{1b}]7501;id=deploy/us:state=working:progress=40\u{07}\u{1b}]7501;state=bogus\u{07}".utf8))
+    #expect(signals == [.report(id: "deploy/us", state: .working, kind: nil, progress: 40, app: nil, title: nil, msg: nil)])
+    // Once 7501 has spoken, OSC 9;4 is ignored; a prompt mark is seen.
+    signals = scanner.feed(Data("\u{1b}]9;4;1;50\u{07}\u{1b}]133;A\u{07}\u{1b}]7501;state=clear\u{07}".utf8))
+    #expect(signals == [.prompt, .clear(id: nil)])
+    var fresh = StatusScanner()
+    #expect(fresh.feed(Data("\u{1b}]9;4;1;50\u{07}".utf8)) == [.progress(.set, percent: 50)])
+
+    // Records on a block: replaced whole, cleared with their children,
+    // and working ones dropped when the shell ends.
+    var b = Block(id: BlockID(), kind: .terminal, created: Stamp(wall: 1, host: HostID("h")))
+    let at = Stamp(wall: 2, host: HostID("h"))
+    b.apply(.status(id: "", StatusRecord(state: .working, progress: 10, at: at)), at: at)
+    b.apply(.status(id: "build/test", StatusRecord(state: .blocked, kind: .question, at: at)), at: at)
+    b.apply(.status(id: "build", StatusRecord(state: .done, at: at)), at: at)
+    #expect(b.statusState == .working)
+    #expect(b.status?.count == 3)
+    b.apply(.status(id: "build", nil), at: at)
+    #expect(b.status?.keys.sorted() == [""])
+    b.apply(.shell(.ended(status: 0)), at: at)
+    #expect(b.status == nil)
+    b.apply(.status(id: "", StatusRecord(state: .done, msg: "Photos synced", at: at)), at: at)
+    b.apply(.shell(.ended(status: 0)), at: at)
+    #expect(b.statusRecord?.msg == "Photos synced", "done survives the process ending")
+    // A busy terminal that says nothing is working, indeterminate.
+    var t = Block(id: BlockID(), kind: .terminal, created: at)
+    t.apply(.shell(.busy(true)), at: at)
+    #expect(t.statusState == .working && t.statusRecord?.progress == nil)
+}
