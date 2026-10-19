@@ -154,6 +154,11 @@ public enum StatusSignal: Equatable, Sendable {
     case progress(ProgressState, percent: Int?)
     /// OSC 133 A: a new shell prompt.
     case prompt
+    /// `OSC 7502 ; <line> ST`: the shell is about to run a command, as
+    /// Manifold's shell hooks say (§3.8).
+    case command(String)
+    /// OSC 133 D: the command ended, with its status if the shell says.
+    case commandEnded(status: Int32?)
     /// `OSC 7501 ; ? ST`: the program asks whether the terminal speaks
     /// 7501; it expects `queryReply` back on its input before anything
     /// else answers (a device-attributes reply it sent to race it).
@@ -226,7 +231,19 @@ public struct StatusScanner: Sendable {
             sawReports = true
             return s
         case "133":
-            return body.first == UInt8(ascii: "A") ? .prompt : nil
+            switch body.first {
+            case UInt8(ascii: "A"): return .prompt
+            case UInt8(ascii: "D"):
+                let rest = String(decoding: body.dropFirst(), as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false)
+                return .commandEnded(status: rest.count > 1 ? Int32(rest[1]) : nil)
+            default: return nil
+            }
+        case "7502":
+            // Control characters can't be in it (the hooks blank them);
+            // anything that isn't text is dropped.
+            guard body.count <= 4096, let text = String(bytes: body, encoding: .utf8) else { return nil }
+            let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return line.isEmpty ? nil : .command(line)
         case "9":
             guard !sawReports else { return nil }
             // 9;4;st;pct

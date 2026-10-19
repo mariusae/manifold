@@ -127,8 +127,35 @@ public struct TerminalState: Codable, Equatable, Sendable {
     public var command: String?
     /// How long the last shell had been idle when it was ended, in seconds.
     public var dormantAfter: Int?
+    /// The commands the shell ran (§3.8), the last `commandLimit` of them:
+    /// what the scrubber marks.
+    public var commands: [ShellCommand]?
+
+    public static let commandLimit = 1000
 
     public init() {}
+}
+
+/// A command the shell ran, as its integration reported it: the line, when
+/// it started, and how it ended.
+public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
+    public var id: Int
+    public var text: String
+    public var at: Stamp
+    /// The exit status, once it has ended.
+    public var status: Int32?
+    public var ended: Stamp?
+
+    public init(id: Int, text: String, at: Stamp, status: Int32? = nil, ended: Stamp? = nil) {
+        self.id = id
+        self.text = text
+        self.at = at
+        self.status = status
+        self.ended = ended
+    }
+
+    public var isRunning: Bool { ended == nil }
+    public var failed: Bool { (status ?? 0) != 0 }
 }
 
 // MARK: Status (§3.7)

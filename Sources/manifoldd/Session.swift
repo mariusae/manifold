@@ -285,7 +285,10 @@ final class Session {
             env.removeValue(forKey: key)
         }
         let pw = getpwuid(getuid())
-        let shell = pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        // Your login shell, unless $MANIFOLD_SHELL (in the server's
+        // environment) names another.
+        let shell = env["MANIFOLD_SHELL"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
         if let pw {
             env["HOME"] = String(cString: pw.pointee.pw_dir)
             env["USER"] = String(cString: pw.pointee.pw_name)
@@ -355,15 +358,23 @@ final class Session {
             [[ ! -r "$_manifold_file" ]] || 'builtin' 'source' '--' "$_manifold_file"
             'builtin' 'unset' '_manifold_file'
         fi
-        if [[ -o 'interactive' && -n "$MANIFOLD_BIN" ]]; then
-            __manifold_path() {
-                'builtin' 'typeset' -gU path
-                path=("${(s/:/)MANIFOLD_BIN}" $path)
-                precmd_functions=(${precmd_functions:#__manifold_path})
-                'builtin' 'unfunction' '--' __manifold_path
-            }
+        if [[ -o 'interactive' ]]; then
             'builtin' 'autoload' '-Uz' add-zsh-hook
-            add-zsh-hook precmd __manifold_path
+            # Each command the shell runs, told to Manifold (OSC 7502) for
+            # the terminal's scrubber: control characters blanked.
+            __manifold_cmd() {
+                'builtin' 'print' -rn -- $'\\e]7502;'"${1//[[:cntrl:]]/ }"$'\\a'
+            }
+            add-zsh-hook preexec __manifold_cmd
+            if [[ -n "$MANIFOLD_BIN" ]]; then
+                __manifold_path() {
+                    'builtin' 'typeset' -gU path
+                    path=("${(s/:/)MANIFOLD_BIN}" $path)
+                    precmd_functions=(${precmd_functions:#__manifold_path})
+                    'builtin' 'unfunction' '--' __manifold_path
+                }
+                add-zsh-hook precmd __manifold_path
+            fi
         fi
 
         """
@@ -378,7 +389,8 @@ final class Session {
 
     /// What fish runs after its configuration: $MANIFOLD_BIN's folders
     /// first on the PATH, in their order.
-    static let fishStartup = "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end"
+    static let fishStartup = "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end; "
+        + "function __manifold_cmd --on-event fish_preexec; printf '\\e]7502;%s\\a' (string replace -ra '[\\x00-\\x1f\\x7f]' ' ' -- \"$argv\"); end"
 
     /// The startup arguments Manifold gives a shell, as `ps` shows them,
     /// so a listing can leave them out: they are Manifold's, not yours.
@@ -399,6 +411,28 @@ final class Session {
         elif [ -r "$HOME/.profile" ]; then . "$HOME/.profile"
         fi
         [ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+        # Prompt marks (OSC 133) and each command run (OSC 7502), for the
+        # terminal's status and scrubber.
+        __manifold_precmd() {
+            local status=$?
+            [ -n "$__manifold_ran" ] && printf '\\033]133;D;%s\\a' "$status"
+            __manifold_ran=
+            printf '\\033]133;A\\a'
+        }
+        __manifold_preexec() {
+            [ -n "$COMP_LINE" ] && return
+            [ -n "$__manifold_ran" ] && return
+            case "$BASH_COMMAND" in __manifold_precmd*) return;; esac
+            __manifold_ran=1
+            local line
+            line=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+            line=${line#*[0-9]  }
+            [ -z "$line" ] && line=$BASH_COMMAND
+            printf '\\033]7502;%s\\a' "${line//[[:cntrl:]]/ }"
+            printf '\\033]133;C\\a'
+        }
+        PROMPT_COMMAND="__manifold_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+        trap '__manifold_preexec' DEBUG
         if [ -n "$MANIFOLD_BIN" ]; then
             __manifold_rest=$(printf '%s' "$PATH" | tr ':' '\\n' | grep -vxF -e "$(printf '%s' "$MANIFOLD_BIN" | tr ':' '\\n')" | paste -sd: -)
             export PATH="$MANIFOLD_BIN${__manifold_rest:+:$__manifold_rest}"

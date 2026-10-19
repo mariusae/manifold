@@ -205,6 +205,15 @@ when you find it again.
   web pages, diffs and terminals are searched this way; in a terminal,
   Ghostty itself finds through the screen and its history and marks
   every match.
+- **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
+  the tile's right edge, the knob where you are, and a tick for each
+  command the shell ran (the shells Manifold starts say so; red for one
+  that failed, pulsing for one still running). Rest the pointer on a
+  tick and a tip names the command and how it ended; click the tick to
+  scroll to it. Click the tip, double-click or ⌘-click the tick, or
+  right-click it for **Show Command and Output**, and the command and
+  what it printed, as the screen showed them, become a note beside the
+  terminal. Drag the knob or click the track to scroll as ever.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the
@@ -400,7 +409,10 @@ is migrated into logs on first run.
   through a .zshenv layer of Manifold's own that hands over to Ghostty's
   integration and then yours; fish through a command run after its
   configuration; bash through an rc file of Manifold's that sources the
-  profile files and .bashrc.
+  profile files and .bashrc. The same hooks tell Manifold each command
+  the shell runs, for the terminal's scrubber. Manifold starts your
+  login shell; `MANIFOLD_SHELL` in the server's environment names
+  another.
 - **Retention** is tunable, in View ▸ Keep History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long

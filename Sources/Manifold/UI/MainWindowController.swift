@@ -307,6 +307,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.undoLimit = desk.settings.undoDepth
             }
             if let d = v as? DiffView { d.theme = hosts.state.appearance.theme }
+            if let t = v as? TerminalView { t.commands = hosts.block(p.block)?.terminal?.commands ?? [] }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
@@ -317,6 +318,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .terminal, .agent:
             let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
+            t.commands = hosts.block(p.block)?.terminal?.commands ?? []
             v = t
         case .image, .pdf:
             let m = MediaView(placement: p.id, block: p.block, kind: p.lens)
@@ -3273,6 +3275,17 @@ extension MainWindowController: SearchViewDelegate {
 extension MainWindowController: TerminalViewDelegate {
     func terminal(_ view: TerminalView, open target: String) {
         open(target, from: view.placement)
+    }
+
+    /// A command from a terminal's scrubber (§3.8): a note of it and its
+    /// output, as the screen showed it, opened from the terminal.
+    func terminal(_ view: TerminalView, show command: ShellCommand, output: String) {
+        let client = hosts.client(view.block.host) ?? host
+        let note = client.newNote(home: hosts.block(view.block)?.terminal?.cwd)
+        client.append(.title(command.text), to: .block(note))
+        client.append(.content("$ " + command.text + "\n" + output + "\n", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(note))
+        hosts.link(from: view.block, to: note, kind: .opened, context: "command output")
+        show(note, lens: .editor, .here, kind: .opened)
     }
 
     func terminalDidFocus(_ view: TerminalView) {

@@ -26,15 +26,23 @@ if [ ! -d vendor/ghostty ]; then
 fi
 
 # Zig 0.15 can't read the arm64e-only .tbd stubs in the macOS 26+ SDKs, so
-# point its SDK lookups at the 15.4 SDK from the Command Line Tools.
+# point its SDK lookups at an older SDK where one is installed (the 15.x
+# SDK from the Command Line Tools); else at whatever xcrun names, and hope.
+sdk=""
+for candidate in /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk \
+                 /Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk; do
+  if [ -d "$candidate" ]; then sdk=$candidate; break; fi
+done
+[ -n "$sdk" ] || sdk=$(/usr/bin/xcrun --show-sdk-path)
+echo "SDK: $sdk"
 shim=vendor/xcrun-shim
 mkdir -p "$shim"
-cat > "$shim/xcrun" <<'EOF'
+cat > "$shim/xcrun" <<EOF
 #!/bin/sh
-for a in "$@"; do
-  if [ "$a" = --show-sdk-path ]; then echo /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk; exit 0; fi
+for a in "\$@"; do
+  if [ "\$a" = --show-sdk-path ]; then echo $sdk; exit 0; fi
 done
-exec /usr/bin/xcrun "$@"
+exec /usr/bin/xcrun "\$@"
 EOF
 chmod +x "$shim/xcrun"
 

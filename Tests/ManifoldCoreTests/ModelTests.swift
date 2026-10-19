@@ -660,6 +660,10 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(signals == [.prompt, .clear(id: nil)])
     var fresh = StatusScanner()
     #expect(fresh.feed(Data("\u{1b}]9;4;1;50\u{07}".utf8)) == [.progress(.set, percent: 50)])
+    // A command the shell is about to run (OSC 7502), and its end (133 D).
+    signals = scanner.feed(Data("\u{1b}]7502;  make -j8 \u{07}output\u{1b}]133;D;2\u{07}\u{1b}]133;D\u{1b}\\".utf8))
+    #expect(signals == [.command("make -j8"), .commandEnded(status: 2), .commandEnded(status: nil)])
+    #expect(scanner.feed(Data("\u{1b}]7502;\u{07}".utf8)).isEmpty)
 
     // Records on a block: replaced whole, cleared with their children,
     // and working ones dropped when the shell ends.

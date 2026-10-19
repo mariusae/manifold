@@ -87,8 +87,15 @@ enum DebugControl {
                 ev.mods = GHOSTTY_MODS_NONE
                 ev.consumed_mods = GHOSTTY_MODS_NONE
                 if ch == "\r" || ch == "\n" {
-                    // Return, as typed text.
-                    ghostty_surface_text(s, "\r", 1)
+                    // Return, as the key (a shell under the kitty keyboard
+                    // protocol wants the key, not the character).
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: t.window?.windowNumber ?? 0, context: nil, characters: "\r",
+                                                    charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                            if type == .keyDown { t.keyDown(with: e) } else { t.keyUp(with: e) }
+                        }
+                    }
                 } else {
                     ev.keycode = 0xFFFF
                     ev.unshifted_codepoint = ch.unicodeScalars.first!.value
@@ -200,6 +207,14 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
+        case "focused":
+            return wc?.debugFocusedBlock?.description ?? "nothing focused"
+        case "scrub":
+            // "scrub": the focused terminal's scrubber; "scrub hover <f>",
+            // "scrub go|open <id>", "scrub locate", "scrub row <n>".
+            guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            return t.debugScrub(a.first ?? "", a.count > 1 ? a[1] : "")
         case "org":
             // "org rows": the sidebar's rows; "org click <row> [cmd|double]".
             let a = arg.split(separator: " ").map(String.init)

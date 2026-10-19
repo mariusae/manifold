@@ -792,6 +792,15 @@ final class Server {
                 for (k, r) in node.block(block)?.status ?? [:] where r.state == .working || r.state == .blocked {
                     append(.status(id: k, nil), to: .block(block))
                 }
+            case let .command(text):
+                // A command the shell is about to run (§3.8), after the ones
+                // before it.
+                let list = node.block(block)?.terminal?.commands ?? []
+                append(.ran(id: (list.last?.id ?? 0) + 1, text, at: clock.now()), to: .block(block))
+            case let .commandEnded(status):
+                if let open = node.block(block)?.terminal?.commands?.last(where: { $0.ended == nil }) {
+                    append(.exited(id: open.id, status: status ?? 0, at: clock.now()), to: .block(block))
+                }
             case let .progress(p, percent):
                 switch p {
                 case .remove:

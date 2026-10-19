@@ -340,6 +340,25 @@ the kind and the message; `done` a filled dot in the accent; `error` a
 filled dot in red; `idle` nothing. The Dock badge counts the blocks
 blocked and done.
 
+### 3.8 The scrubber: a terminal's outline
+
+A terminal's scroll bar is a scrubber (§3.1, as Prism's): the strip's
+length is the screen and its history, the knob the viewport, and the
+ticks the shell's commands — its outline. The shells Manifold starts
+carry a hook (zsh's `preexec`, fish's `fish_preexec`, bash's DEBUG trap)
+that writes the command line as `OSC 7502 ; line ST` before running it;
+the host's status scanner (§3.7) sees it beside the OSC 133 marks and
+appends `ran` to the block, then `exited` with the status at `133 D`.
+The block keeps the last thousand. Where each is on the screen is the
+app's to find: Ghostty is asked for the rows' text (screen coordinates,
+through a patch that lets `read_text` reach the history) and each
+command is matched, in order, to the first row after the one before
+that ends in its line (or begins with it, wrapped). A row found stays
+found until the screen is cleared or trimmed under it, when all are
+found again. A tick clicked scrolls to its row (`scroll_to_row`); opened,
+the rows from it to the next command's become a note, titled with the
+command, linked from the terminal as `opened`.
+
 ### 3.6 Organizations: views over the graph
 
 The graph is the representation; how it is *organized* is a view over it,

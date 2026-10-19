@@ -183,6 +183,10 @@ public enum Event: Codable, Equatable, Sendable {
     case shell(ShellEvent)
     /// An agent's command, run in place of the login shell.
     case command(String?)
+    /// The shell ran a command (§3.8): its line, as it started.
+    case ran(id: Int, String, at: Stamp)
+    /// A command the shell ran ended, with its status.
+    case exited(id: Int, status: Int32, at: Stamp)
 
     // Processes.
     case processes([ProcessEntry], at: Stamp)
@@ -453,6 +457,16 @@ extension TerminalState {
         switch event {
         case let .cwd(c): cwd = c
         case let .command(c): command = c
+        case let .ran(id, text, at):
+            var list = commands ?? []
+            list.append(ShellCommand(id: id, text: text, at: at))
+            if list.count > Self.commandLimit { list.removeFirst(list.count - Self.commandLimit) }
+            commands = list
+        case let .exited(id, status, at):
+            if let i = commands?.lastIndex(where: { $0.id == id }) {
+                commands![i].status = status
+                commands![i].ended = at
+            }
         case let .title(t): title = t
         case let .shell(s):
             switch s {

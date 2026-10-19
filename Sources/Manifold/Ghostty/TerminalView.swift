@@ -7,6 +7,8 @@ protocol TerminalViewDelegate: AnyObject {
     func terminalDidClose(_ view: TerminalView)
     /// A link in the terminal was opened (command-clicked): a URL, or a path.
     func terminal(_ view: TerminalView, open target: String)
+    /// A command on the scrubber was opened: it and its output, as a block.
+    func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
@@ -61,7 +63,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// itself lives on in the server.
     func destroy() {
         finder.hide()
-        scroller.removeFromSuperview()
+        scrubber.removeFromSuperview()
+        tip.removeFromSuperview()
+        locateWork?.cancel()
         guard let surface else { return }
         self.surface = nil
         ghostty_surface_free(surface)
@@ -102,57 +106,254 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         layoutScroller()
     }
 
-    // MARK: The scroller (§3.1)
+    // MARK: The scrubber (§3.1)
 
-    static let scrollerWidth: CGFloat = 15
+    static let scrollerWidth: CGFloat = ScrubberView.width
     /// In the superview, over the tile's right edge, as the find pill is:
     /// Ghostty's layer is this view's, under which a subview wouldn't show.
-    private lazy var scroller: NSScroller = {
-        let s = NSScroller(frame: NSRect(x: 0, y: 0, width: Self.scrollerWidth, height: 100))
-        s.scrollerStyle = .legacy
-        s.controlSize = .regular
-        s.target = self
-        s.action = #selector(scrolled)
-        s.wantsLayer = true
+    private lazy var scrubber: ScrubberView = {
+        let s = ScrubberView(frame: NSRect(x: 0, y: 0, width: Self.scrollerWidth, height: 100))
         s.layer?.zPosition = 5
+        s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
+        s.onPick = { [weak self] mark in self?.go(to: mark) }
+        s.onOpen = { [weak self] mark in self?.open(mark) }
+        s.onHover = { [weak self] mark, y in self?.hover(mark, at: y) }
+        s.markMenu = { [weak self] mark in self?.markMenu(mark) }
         return s
     }()
+    private lazy var tip: ScrubTip = {
+        let t = ScrubTip(frame: .zero)
+        t.isHidden = true
+        t.onEnter = { [weak self] in self?.tipHideWork?.cancel() }
+        t.onExit = { [weak self] in self?.hideTip() }
+        t.onClick = { [weak self] in
+            guard let self, let mark = self.tipMark else { return }
+            self.open(mark)
+        }
+        return t
+    }()
+    private var tipMark: ScrubMark?
+    private var tipHideWork: DispatchWorkItem?
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
     /// What the core says of the screen and its history: how many rows,
     /// which the top one is, how many show.
     func scrollbarChanged(total: Int, offset: Int, len: Int) {
+        let grew = total != scrollbar.total
         scrollbar = (total, offset, len)
-        guard total > len, len > 0 else { scroller.isHidden = true; return }
-        scroller.isHidden = isHidden
-        scroller.knobProportion = CGFloat(len) / CGFloat(total)
-        scroller.doubleValue = Double(offset) / Double(total - len)
         layoutScroller()
+        updateMarks()
+        if grew { scheduleLocate() }
     }
 
     private func layoutScroller() {
         guard let parent = superview else { return }
-        if scroller.superview !== parent { parent.addSubview(scroller) }
-        scroller.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
-        scroller.isHidden = isHidden || scrollbar.total <= scrollbar.len
+        if scrubber.superview !== parent { parent.addSubview(scrubber) }
+        if tip.superview !== parent { parent.addSubview(tip) }
+        scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
+        scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len && commands.isEmpty
+        if isHidden { hideTip(now: true) }
     }
 
-    @objc private func scrolled() {
-        guard let surface, scrollbar.total > scrollbar.len else { return }
-        let span = Double(scrollbar.total - scrollbar.len)
-        var target = Double(scrollbar.offset)
-        switch scroller.hitPart {
-        case .knob, .knobSlot: target = scroller.doubleValue * span
-        case .decrementPage: target -= Double(scrollbar.len)
-        case .incrementPage: target += Double(scrollbar.len)
-        case .decrementLine: target -= 1
-        case .incrementLine: target += 1
-        default: return
+    private func updateMarks() {
+        let marks = commands.compactMap { c -> ScrubMark? in
+            guard let row = located[c.id] else { return nil }
+            let last = c.id == commands.last?.id
+            var words: [String] = []
+            if let st = c.status { words.append(st == 0 ? "ok" : "exit \(st)") } else if last { words.append("running") }
+            words.append(Age.short(c.at) + " ago")
+            return ScrubMark(id: c.id, at: Double(row), title: c.text, detail: words.joined(separator: " · "),
+                             failed: c.failed, running: c.ended == nil && last)
         }
-        let delta = min(max(target, 0), span) - Double(scrollbar.offset)
-        guard delta != 0 else { return }
-        // Rows up are a positive wheel.
-        ghostty_surface_mouse_scroll(surface, 0, -delta, 0)
+        scrubber.update(marks: marks, total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
+    }
+
+    private func scroll(toFraction fraction: Double) {
+        let span = max(scrollbar.total - scrollbar.len, 0)
+        perform("scroll_to_row:\(Int((fraction * Double(span)).rounded()))")
+    }
+
+    private func go(to mark: ScrubMark) {
+        perform("scroll_to_row:\(Int(mark.at))")
+    }
+
+    /// The command and its output, as a block: the rows from its prompt
+    /// to the next command's (or the end), as shown.
+    private func open(_ mark: ScrubMark) {
+        guard let c = commands.first(where: { $0.id == mark.id }), let row = located[c.id] else { return }
+        hideTip(now: true)
+        let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
+        var output = text(rows: (row + 1)..<min(next, row + 20000))
+        while output.hasSuffix("\n") || output.hasSuffix(" ") { output.removeLast() }
+        delegate?.terminal(self, show: c, output: output)
+    }
+
+    private func markMenu(_ mark: ScrubMark) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Go to Command", symbol: "arrow.right.circle") { [weak self] in self?.go(to: mark) })
+        menu.addItem(ClosureMenuItem("Show Command and Output", symbol: "doc.text") { [weak self] in self?.open(mark) })
+        return menu
+    }
+
+    private func hover(_ mark: ScrubMark?, at y: CGFloat) {
+        tipHideWork?.cancel()
+        guard let mark, let parent = superview else { hideTip(); return }
+        tipMark = mark
+        tip.show(mark)
+        let size = tip.fittingSize
+        let point = parent.convert(NSPoint(x: 0, y: y), from: scrubber)
+        let top = min(max(point.y - size.height / 2, frame.minY), frame.maxY - size.height)
+        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
+        tip.isHidden = false
+    }
+
+    /// Gone, after a moment: time to move onto it from the strip.
+    private func hideTip(now: Bool = false) {
+        tipHideWork?.cancel()
+        if now { tip.isHidden = true; tipMark = nil; return }
+        let work = DispatchWorkItem { [weak self] in self?.tip.isHidden = true; self?.tipMark = nil }
+        tipHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    // MARK: Commands on the scrubber (§3.8)
+
+    /// The shell's commands, from the block; each is found on the screen
+    /// by its line, and marked there.
+    var commands: [ShellCommand] = [] {
+        didSet {
+            guard commands != oldValue else { return }
+            scheduleLocate()
+            updateMarks()
+        }
+    }
+    /// Each command's row on the screen, once found.
+    private(set) var located: [Int: Int] = [:]
+    private var locateWork: DispatchWorkItem?
+
+    private func scheduleLocate() {
+        locateWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.locate() }
+        locateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    /// The screen's text, its history and all: each logical line, and the
+    /// row it starts on. Ghostty joins soft-wrapped rows (and reaches the
+    /// history only for the whole screen), so a line's rows are counted
+    /// from its width.
+    private func screenLines() -> [(row: Int, text: Substring)]? {
+        guard let surface else { return nil }
+        let cols = max(Int(ghostty_surface_size(surface).columns), 1)
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0)
+        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0)
+        sel.rectangle = false
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &out) else { return nil }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text else { return [] }
+        let all = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
+        var lines: [(row: Int, text: Substring)] = []
+        var row = 0
+        for line in all.split(separator: "\n", omittingEmptySubsequences: false) {
+            lines.append((row, line))
+            row += max(1, (Self.cells(line) + cols - 1) / cols)
+        }
+        return lines
+    }
+
+    /// How many cells a line takes: wide characters two.
+    static func cells(_ s: Substring) -> Int {
+        var n = 0
+        for u in s.unicodeScalars {
+            let v = u.value
+            if v < 0x20 || (0x7F...0x9F).contains(v) || (0x300...0x36F).contains(v) || v == 0x200B || v == 0xFE0F { continue }
+            n += (0x1100...0x115F).contains(v) || (0x2E80...0xA4CF).contains(v) || (0xAC00...0xD7A3).contains(v)
+                || (0xF900...0xFAFF).contains(v) || (0xFE30...0xFE4F).contains(v) || (0xFF00...0xFF60).contains(v)
+                || (0xFFE0...0xFFE6).contains(v) || (0x1F300...0x1F64F).contains(v) || (0x1F900...0x1F9FF).contains(v)
+                || (0x20000...0x3FFFD).contains(v) ? 2 : 1
+        }
+        return n
+    }
+
+    /// Whether a line is the one a command was typed on: the prompt, then
+    /// the command — with nothing after it, or a gap and a prompt's right
+    /// side; or, the command longer than the line shows (continued on
+    /// lines of its own), the start of it.
+    static func lineShows(_ command: String, in line: Substring) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return false }
+        if let r = t.range(of: command) {
+            let rest = t[r.upperBound...]
+            if rest.isEmpty || rest.hasPrefix("  ") { return true }
+        }
+        if command.count > 16, t.count >= 16 {
+            let tail = t.suffix(min(t.count, command.count - 1))
+            for k in stride(from: tail.count, through: 16, by: -1) where command.hasPrefix(tail.suffix(k)) { return true }
+        }
+        return false
+    }
+
+    /// Finds the commands on the screen, in order: each on the first line
+    /// after the one before that shows it. A line showing a later command
+    /// leaves the ones between unmarked; they are all looked for again
+    /// each time, so a screen cleared or trimmed is simply read anew.
+    func locate() {
+        guard scrollbar.total > 0, !commands.isEmpty else {
+            if !located.isEmpty { located = [:]; updateMarks() }
+            return
+        }
+        guard let lines = screenLines() else { return }
+        var found: [Int: Int] = [:]
+        var i = commands.startIndex
+        for (row, line) in lines where i < commands.endIndex {
+            for j in i..<min(i + 3, commands.endIndex) where Self.lineShows(commands[j].text, in: line) {
+                found[commands[j].id] = row
+                i = j + 1
+                break
+            }
+        }
+        if found != located {
+            located = found
+            updateMarks()
+        }
+    }
+
+    /// The text shown from one row up to another: for a command's output.
+    private func text(rows range: Range<Int>) -> String {
+        guard let lines = screenLines() else { return "" }
+        return lines.filter { range.contains($0.row) }.map { $0.text.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
+    }
+
+    // MARK: Debugging
+
+    var debugScrubber: String {
+        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count)\n" + scrubber.debugMarks
+    }
+
+    func debugScrub(_ what: String, _ arg: String) -> String {
+        switch what {
+        case "hover":
+            guard let f = Double(arg) else { return "usage: scrub hover <fraction>" }
+            let mark = scrubber.debugHover(fraction: f)
+            return mark.map { "\($0.id) \($0.title) tip \(tip.isHidden ? "hidden" : "shown")" } ?? "nothing"
+        case "go", "open":
+            guard let id = Int(arg), let c = commands.first(where: { $0.id == id }), let row = located[id] else { return "no such command" }
+            let mark = ScrubMark(id: id, at: Double(row), title: c.text)
+            if what == "go" { go(to: mark) } else { open(mark) }
+            return "ok"
+        case "locate":
+            locate()
+            return debugScrubber
+        case "row":
+            guard let r = Int(arg) else { return "usage: scrub row <n>" }
+            return screenLines()?.last(where: { $0.row <= r }).map { "\($0.row): \($0.text)" } ?? "none"
+        case "lines":
+            return (screenLines() ?? []).suffix(Int(arg) ?? 20).map { "\($0.row): \($0.text)" }.joined(separator: "\n")
+        default:
+            return debugScrubber
+        }
     }
 
     override func viewDidChangeBackingProperties() {
@@ -186,7 +387,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.viewDidMoveToSuperview()
         syncFocus()
         finder.layout(in: bounds)
-        if superview == nil { scroller.removeFromSuperview() } else { layoutScroller() }
+        if superview == nil { scrubber.removeFromSuperview(); tip.removeFromSuperview() } else { layoutScroller() }
     }
 
     override func becomeFirstResponder() -> Bool {
