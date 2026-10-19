@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds Manifold.app into build/. `scripts/build-app.sh run` also launches it.
+# Builds Manifold.app into build/ (or $APP). `scripts/build-app.sh run` also
+# launches it.
 # Needs Frameworks/ from scripts/build-ghostty.sh.
 set -e
 cd "$(dirname "$0")/.."
@@ -10,7 +11,7 @@ for d in monaspace monasans recursive gofont; do [ -d Frameworks/$d ] || { scrip
 config=${CONFIG:-release}
 swift build -c "$config"
 bin=$(swift build -c "$config" --show-bin-path)
-app=build/Manifold.app
+app=${APP:-build/Manifold.app}
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/Manifold" "$bin/manifoldd" "$app/Contents/MacOS/"

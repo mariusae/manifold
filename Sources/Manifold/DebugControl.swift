@@ -387,6 +387,9 @@ enum DebugControl {
             var out: [String] = []
             while let x = r { out.append("\(type(of: x))"); r = x.nextResponder }
             return out.joined(separator: " → ")
+        case "remoting":
+            // "remoting add" presses +; "remoting" lists the rows.
+            return wc?.debugRemoting(arg) ?? "no window"
         case "picker":
             // "picker" opens it; "picker <query>" says what it lists for one.
             // "picker go" chooses the selected row; "picker down"/"up" move it.

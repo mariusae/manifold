@@ -78,7 +78,9 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
             note.topAnchor.constraint(equalTo: add.bottomAnchor, constant: 10),
             note.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
             note.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
-            note.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -16),
+            // The note sits at the foot; the table takes the rest.
+            note.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
+            scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 110),
         ])
     }
 
@@ -94,6 +96,10 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
         onChange?(providers)
         table.reloadData()
     }
+
+    /// For DebugControl: adds a row; what the table and the source list.
+    func debugAdd() { addRow() }
+    var debugRows: String { "table: \(providers.map(\.name)) source: \((source?() ?? []).map(\.name)) editing: \(table.editedRow)" }
 
     @objc private func addRow() {
         providers.append(RemoteProvider(name: "name", command: "my-remote %h %c"))

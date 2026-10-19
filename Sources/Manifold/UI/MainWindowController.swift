@@ -2083,6 +2083,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var remotingWindow: RemotingWindow?
 
     /// Remoting…: the providers that reach hosts (§8), kept in the hosts file.
+    func debugRemoting(_ arg: String) -> String {
+        if arg == "add" { remotingWindow?.debugAdd() }
+        return remotingWindow?.debugRows ?? "no remoting window"
+    }
+
     @objc func showRemoting(_ sender: Any?) {
         if remotingWindow == nil {
             let wc = RemotingWindow()
