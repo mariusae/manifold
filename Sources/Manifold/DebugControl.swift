@@ -103,6 +103,11 @@ enum DebugControl {
             }
             wc?.debugSidebar(show: arg == "show")
             return "ok"
+        case "mouse":
+            // Where the pointer is, in window coordinates from the top-left.
+            guard let window = wc?.window else { return "no window" }
+            let p = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+            return "\(Int(p.x)) \(Int(window.contentView!.bounds.height - p.y))"
         case "hittest":
             // x y in window coordinates from the top-left.
             let xy = arg.split(separator: " ").compactMap { Double($0) }

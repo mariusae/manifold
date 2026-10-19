@@ -6,6 +6,8 @@ import WebKit
 protocol MarkdownViewDelegate: AnyObject {
     /// A link to another Markdown file was followed.
     func markdownView(_ view: MarkdownView, follow url: URL)
+    /// A heading was gone to and is at the top (the pointer may follow).
+    func markdownViewDidReveal(_ view: MarkdownView)
 }
 
 /// The preview lens on a text block: its Markdown rendered by cmark-gfm into
@@ -34,7 +36,10 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     /// Scrolls to the page's `index`th heading (⌘\).
     func scroll(toHeading index: Int) {
-        web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()")
+        web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()") { [weak self] _, _ in
+            guard let self else { return }
+            self.delegate?.markdownViewDidReveal(self)
+        }
     }
     private var loaded = false
     /// The text as last rendered, to skip renders that would show the same.

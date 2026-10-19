@@ -246,13 +246,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         attend()
         refreshOrganization()
 
+        layoutViews()
+
+        // A line to go to in a file just opened: once its editor has
+        // loaded and is laid out, so the line can be scrolled into view.
         if let jump = pendingJump,
            let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }), editor.isLoaded {
             pendingJump = nil
             editor.select(line: jump.line, column: jump.column)
         }
-
-        layoutViews()
 
         if allWorkspaces.isEmpty && host.hasState {
             showPalette(dismissable: false)
@@ -1930,7 +1932,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// middle — a moment later, once it is laid out.
     func warpPointerToFocus() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-            guard let self, let window = self.window, let a = self.arrangement, let f = a.focused, let view = self.views[f], view.window === window else { return }
+            guard let self, let a = self.arrangement, let f = a.focused, let view = self.views[f] else { return }
+            self.warpPointer(to: view)
+        }
+    }
+
+    /// The pointer to a view's text cursor, or its middle, now.
+    func warpPointer(to view: PaneContent) {
+        do {
+            guard let window, view.window === window else { return }
             var rect = view.caretRectInWindow ?? view.convert(view.bounds, to: nil)
             if rect.width > 40 || rect.height > 40 { rect = NSRect(x: rect.midX - 1, y: rect.midY - 1, width: 2, height: 2) }
             let screen = window.convertToScreen(rect)
@@ -1940,6 +1950,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             CGWarpMouseCursorPosition(point)
             CGAssociateMouseAndMouseCursorPosition(1)
         }
+    }
+
+    /// An editor's line, or a preview's heading, is in view: the pointer
+    /// goes there (a go-to that had to wait for a load or a layout).
+    func editorDidReveal(_ view: EditorView) {
+        DispatchQueue.main.async { [weak self] in self?.warpPointer(to: view) }
+    }
+
+    func markdownViewDidReveal(_ view: MarkdownView) {
+        DispatchQueue.main.async { [weak self] in self?.warpPointer(to: view) }
     }
 
     /// **Go to** (§3.1): the block where it already is — a tile here is

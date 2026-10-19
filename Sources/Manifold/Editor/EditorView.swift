@@ -4,6 +4,8 @@ import ManifoldCore
 protocol EditorViewDelegate: AnyObject {
     /// The editor appends to its block's log.
     func editor(_ view: EditorView, append events: [Event])
+    /// A line was gone to and is in view (the pointer may follow).
+    func editorDidReveal(_ view: EditorView)
     /// The editor asks the host for something (a save, a reload).
     func editor(_ view: EditorView, propose proposal: Proposal)
     /// The block's text, as the replica has it.
@@ -116,6 +118,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: top - bottom)
         textView.frame.size.width = scroll.contentSize.width
         finder.layout(in: bounds)
+        if let reveal = pendingReveal, window != nil, scroll.contentSize.height >= 1 {
+            pendingReveal = nil
+            DispatchQueue.main.async { [weak self] in self?.select(line: reveal.line, column: reveal.column) }
+        }
     }
 
     static let statusHeight: CGFloat = 24
@@ -352,12 +358,22 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// Goes to a line (from 1): selects it, or, given a column (from 1),
     /// puts the caret there.
+    /// A line gone to, selected and scrolled into view; before the editor
+    /// is laid out, kept until it is.
     func select(line: Int, column: Int? = nil) {
         let r = textView.offset(line: line, column: column)
         textView.setSelections([Selection(r.start, r.end)])
         textView.highlightedLine = line - 1
         window?.makeFirstResponder(textView)
+        if window == nil || scroll.contentSize.height < 1 {
+            pendingReveal = (line, column)
+        } else {
+            pendingReveal = nil
+            delegate?.editorDidReveal(self)
+        }
     }
+
+    private var pendingReveal: (line: Int, column: Int?)?
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {

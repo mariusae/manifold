@@ -55,8 +55,20 @@ final class Session {
 
         var master: Int32 = -1
         // An agent runs its command in a login shell, so the PATH is the
-        // user's.
-        let args = command.map { [argv0, "-c", $0] } ?? [argv0]
+        // user's. An interactive shell gets Manifold's tools first on the
+        // PATH once its rc files have run: zsh through the .zshenv layer
+        // (in the environment), fish through a command run after its
+        // configuration, bash through an rc file that sources yours.
+        var args = command.map { [argv0, "-c", $0] } ?? [argv0]
+        if command == nil {
+            switch shell.lastPathComponent {
+            case "fish":
+                args.append(contentsOf: ["-C", "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end"])
+            case "bash":
+                if let rc = Session.bashLayer() { args = [shell.lastPathComponent, "--rcfile", rc] }
+            default: break
+            }
+        }
         let pid = withCStrings(args) { argv in
             withCStrings(environment.map { "\($0.key)=\($0.value)" }) { envp in
                 mf_pty_spawn(shell, argv, envp, dir, cols, rows, &master)
@@ -280,12 +292,18 @@ final class Session {
         env["TERM_PROGRAM"] = "Manifold"
         env.removeValue(forKey: "TERM_PROGRAM_VERSION")
 
+        env["MANIFOLD_BIN"] = toolDirectories.joined(separator: ":")
+        // fish finds Ghostty's integration (working directory, titles) among
+        // its vendor configuration.
+        if shell.lastPathComponent == "fish", let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/fish") {
+            env["XDG_DATA_DIRS"] = res + "/shell-integration" + (env["XDG_DATA_DIRS"].map { ":" + $0 } ?? ":/usr/local/share:/usr/share")
+            env["GHOSTTY_SHELL_FEATURES"] = "title"
+        }
         // zsh starts through Manifold's own layer (a .zshenv in the data
         // folder), which hands over to Ghostty's integration (working
         // directory, titles), which hands over to yours — and then, once
         // your rc files have run, puts `manifold` first on the PATH.
         if shell.lastPathComponent == "zsh", let layer = zshLayer() {
-            env["MANIFOLD_BIN"] = toolDirectories.joined(separator: ":")
             if let old = env["ZDOTDIR"] { env["MANIFOLD_ZSH_ZDOTDIR"] = old }
             if let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/zsh") {
                 env["MANIFOLD_GHOSTTY_ZDOTDIR"] = res + "/shell-integration/zsh"
@@ -339,6 +357,35 @@ final class Session {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             if (try? String(contentsOf: file, encoding: .utf8)) != script { try script.write(to: file, atomically: true, encoding: .utf8) }
             return dir.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// bash's rc file, written fresh: it sources the profile files a login
+    /// shell would, and .bashrc, then puts $MANIFOLD_BIN first on the PATH.
+    static func bashLayer() -> String? {
+        let dir = Paths.directory.appendingPathComponent("bash")
+        let file = dir.appendingPathComponent("rc")
+        let script = """
+        # Manifold's bash rc. Written by manifoldd; edits are lost.
+        [ -r /etc/profile ] && . /etc/profile
+        if [ -r "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"
+        elif [ -r "$HOME/.bash_login" ]; then . "$HOME/.bash_login"
+        elif [ -r "$HOME/.profile" ]; then . "$HOME/.profile"
+        fi
+        [ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+        if [ -n "$MANIFOLD_BIN" ]; then
+            __manifold_rest=$(printf '%s' "$PATH" | tr ':' '\\n' | grep -vxF -e "$(printf '%s' "$MANIFOLD_BIN" | tr ':' '\\n')" | paste -sd: -)
+            export PATH="$MANIFOLD_BIN${__manifold_rest:+:$__manifold_rest}"
+            unset __manifold_rest
+        fi
+
+        """
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if (try? String(contentsOf: file, encoding: .utf8)) != script { try script.write(to: file, atomically: true, encoding: .utf8) }
+            return file.path
         } catch {
             return nil
         }
