@@ -96,8 +96,14 @@ when you find it again.
   from it. Then blocks by title and path, named
   workspaces, terminals by where they are, and the files under the
   focused block's folder, ranked by how well they match and how recently
-  they were seen. Choosing a block shows it here, in the focused column;
-  choosing a workspace puts it on the desk.
+  they were seen, and the processes under the host's terminals and
+  agents, by command or path, each going to its block. Choosing a block
+  shows it here, in the focused column; choosing a workspace puts it on
+  the desk. ⇥ goes round the finder's scopes: **In Files** has the host
+  look for the words in the files under the project (as Find in Files
+  does; ↩ opens the file at the line, and the last row makes it a search
+  block); **In Blocks** finds lines in the texts of the workspace's
+  blocks and goes to them.
   A typed URL opens as a web page.
 - **⌘\ goes through the workspace as an outline**, as Prism's Move to
   Heading does: its tiles by column, and under a Markdown tile its

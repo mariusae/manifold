@@ -411,6 +411,10 @@ enum DebugControl {
                 wc?.debugFinderChoose()
                 return "ok"
             }
+            if arg.hasPrefix("scope "), let n = Int(arg.dropFirst(6)) {
+                wc?.debugFinderScope(n)
+                return "ok"
+            }
             if arg == "down" || arg == "up" {
                 wc?.debugFinderMove(arg == "down" ? 1 : -1)
                 return "ok"

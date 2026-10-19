@@ -14,12 +14,32 @@ struct FinderItem {
     var run: () -> Void
 }
 
-/// ⌘O: one field that finds anything the attached hosts know — blocks by
-/// title and path, arrangements by name, files under the focused folder by
-/// name — ranked by how well the query matches, and goes to it.
+/// ⌘O: one field that finds anything the attached hosts know, in one of
+/// three scopes (⇥ goes round them): **names** — blocks by title and
+/// path, workspaces by name, processes, files under the focused folder
+/// by name — ranked by how well the query matches; **in files** — lines
+/// in the files under the project, as the host finds them; **in blocks**
+/// — lines in the texts of the workspace's blocks. ↩ goes there.
 final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    /// Items for a query, given the files under the folder listed so far.
-    var search: ((String, [String]) -> [FinderItem])?
+    enum Scope: Int, CaseIterable {
+        case names, contents, blocks
+        var title: String {
+            switch self {
+            case .names: "Names"
+            case .contents: "In Files"
+            case .blocks: "In Blocks"
+            }
+        }
+    }
+
+    /// Items for a query in a scope, given the files under the folder
+    /// listed so far.
+    var search: ((String, [String], Scope) -> [FinderItem])?
+    /// The scope or query changed: what's asked of a host can start.
+    var onQueryChanged: ((String, Scope) -> Void)?
+    private(set) var scope: Scope = .names
+    private let scopes = NSSegmentedControl(labels: Scope.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    var isShowing: Bool { panel.isVisible }
     /// ⌘\: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
     /// The row the outline begins at (where you are), while nothing is typed.
@@ -104,6 +124,36 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         hint.textColor = .tertiaryLabelColor
         hint.alignment = .right
         background.addSubview(hint)
+        scopes.segmentStyle = .capsule
+        scopes.controlSize = .mini
+        scopes.font = .systemFont(ofSize: 10)
+        scopes.selectedSegment = 0
+        scopes.target = self
+        scopes.action = #selector(scopeChosen)
+        background.addSubview(scopes)
+    }
+
+    @objc private func scopeChosen() {
+        scope = Scope(rawValue: scopes.selectedSegment) ?? .names
+        queryChanged()
+        panel.makeFirstResponder(field)
+    }
+
+    private func cycleScope() {
+        scope = Scope(rawValue: (scope.rawValue + 1) % Scope.allCases.count) ?? .names
+        scopes.selectedSegment = scope.rawValue
+        queryChanged()
+    }
+
+    private func queryChanged() {
+        onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope)
+        refresh()
+    }
+
+    /// Results came in (a host's search): listed again.
+    func refreshResults() {
+        guard panel.isVisible else { return }
+        refresh()
     }
 
     // MARK: Showing
@@ -112,6 +162,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func show(root: String, over window: NSWindow?) {
         self.root = root
         outline = nil
+        scopes.isHidden = false
         field.placeholderString = "Find anything…"
         field.stringValue = ""
         files = []
@@ -141,6 +192,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil, over window: NSWindow?) {
         outline = provider
         outlineStart = start
+        scopes.isHidden = true
         field.stringValue = ""
         field.placeholderString = "Go to a tile, or a heading in one…"
         files = []
@@ -158,12 +210,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Types a query and says what's listed (for DebugControl).
     func debugQuery(_ query: String) -> [String] {
         field.stringValue = query
+        if outline == nil { onQueryChanged?(query, scope) }
         refresh()
         return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") }
     }
 
     /// Chooses the selected row, or moves the selection (for DebugControl).
     func debugChoose() { openSelected() }
+    func debugScope(_ n: Int) {
+        scope = Scope(rawValue: n) ?? .names
+        scopes.selectedSegment = scope.rawValue
+        queryChanged()
+    }
     func debugMove(_ by: Int) { move(by) }
 
     func close() {
@@ -177,7 +235,11 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             return
         }
         let folder = root.abbreviatingHome
-        hint.stringValue = files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, workspaces, and files in \(folder)    ↩ Open    ⎋ Close"
+        hint.stringValue = switch scope {
+        case .names: files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, workspaces, processes, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
+        case .contents: "Lines in the files under the project    ⇥ Scope    ↩ Open    ⎋ Close"
+        case .blocks: "Lines in the workspace's texts    ⇥ Scope    ↩ Go    ⎋ Close"
+        }
     }
 
     /// Sizes the panel to its results, keeping its top where it is.
@@ -192,17 +254,17 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         panel.setFrame(frame, display: true)
         field.frame = NSRect(x: 52, y: height - Self.fieldHeight + 13, width: Self.width - 70, height: 30)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
-        hint.frame = NSRect(x: 16, y: 4, width: Self.width - 32, height: 16)
+        scopes.sizeToFit()
+        scopes.frame = NSRect(x: 14, y: 3, width: scopes.frame.width, height: 18)
+        hint.frame = NSRect(x: scopes.frame.maxX + 8, y: 4, width: Self.width - scopes.frame.maxX - 24, height: 16)
         panel.contentView?.subviews.first { $0 is NSImageView }?.frame.origin.y = height - Self.fieldHeight
     }
 
     // MARK: Finding
 
-    func controlTextDidChange(_ notification: Notification) { refresh() }
-
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        shown = outline.map { $0(query) } ?? search?(query, files.map { absolute($0) }) ?? []
+        shown = outline.map { $0(query) } ?? search?(query, files.map { absolute($0) }, scope) ?? []
         table.reloadData()
         if !shown.isEmpty {
             let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
@@ -225,9 +287,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         case #selector(NSResponder.moveDown(_:)): move(1)
         case #selector(NSResponder.insertNewline(_:)): openSelected()
         case #selector(NSResponder.cancelOperation(_:)): close()
+        case #selector(NSResponder.insertTab(_:)) where outline == nil: cycleScope()
         default: return false
         }
         return true
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if outline == nil { onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope) }
+        refresh()
     }
 
     private func move(_ by: Int) {

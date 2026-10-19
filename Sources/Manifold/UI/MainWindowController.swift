@@ -150,6 +150,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     func render() {
         guard let window else { return }
+        if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
@@ -1686,13 +1687,112 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     func debugFinder(_ query: String) -> [String] { finder.debugQuery(query) }
     func debugFinderChoose() { finder.debugChoose() }
+    func debugFinderScope(_ n: Int) { finder.debugScope(n) }
     func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
     private lazy var finder: Finder = {
         let f = Finder()
-        f.search = { [weak self] query, files in self?.finderItems(query, files: files) ?? [] }
+        f.search = { [weak self] query, files, scope in
+            guard let self else { return [] }
+            switch scope {
+            case .names: return self.finderItems(query, files: files)
+            case .contents: return self.finderContentItems(query)
+            case .blocks: return self.finderBlockItems(query)
+            }
+        }
+        f.onQueryChanged = { [weak self] query, scope in self?.finderQueryChanged(query, scope) }
         return f
     }()
+
+    /// The search block ⌘O's "In Files" scope asks the host through: one,
+    /// kept, asked again as the query changes.
+    private var finderSearch: BlockID?
+    private var finderSearchWork: DispatchWorkItem?
+
+    /// The project the focused block is in: the nearest folder up with
+    /// `.git`, else its own folder.
+    private func projectRoot(from cwd: String?, on: HostID) -> String {
+        var root = cwd ?? NSHomeDirectory()
+        if on == host.host {
+            var dir = root
+            while dir.count > 1 {
+                if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git")) { root = dir; break }
+                dir = dir.deletingLastPathComponent
+            }
+        }
+        return root
+    }
+
+    /// "In Files": the host looks, a moment after the typing pauses.
+    private func finderQueryChanged(_ query: String, _ scope: Finder.Scope) {
+        finderSearchWork?.cancel()
+        guard scope == .contents, query.count >= 2 else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let client = self.hosts.client(self.focusedHost) else { return }
+            let q = SearchQuery(text: query, root: self.projectRoot(from: self.focusedCwd, on: self.focusedHost))
+            if let id = self.finderSearch, self.hosts.block(id) != nil, id.host == client.host {
+                client.propose(.search(block: id, query: q))
+            } else {
+                self.finderSearch = client.newSearch(q)
+            }
+        }
+        finderSearchWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    /// "In Files": what the host has found so far, each line going to its
+    /// place in the file.
+    private func finderContentItems(_ query: String) -> [FinderItem] {
+        guard query.count >= 2, let id = finderSearch, let s = hosts.block(id)?.search, s.query?.text == query else { return [] }
+        let on = id.host
+        var items: [FinderItem] = s.hits.prefix(200).map { hit in
+            FinderItem(symbol: Finder.symbol(forFile: hit.path.lastPathComponent), title: hit.text.trimmingCharacters(in: .whitespaces),
+                       detail: "\(hit.path.abbreviatingHome):\(hit.line)", note: "",
+                       run: { [weak self] in
+                           guard let self else { return }
+                           self.open(path: hit.path, line: hit.line, column: hit.column, on: on, from: self.focusedShown?.placement.id, kind: .found, context: query)
+                       })
+        }
+        if s.running || s.truncated || s.error != nil || !s.hits.isEmpty {
+            items.append(FinderItem(symbol: "magnifyingglass", title: s.running ? "Looking…" : s.error ?? "\(s.hits.count)\(s.truncated ? "+" : "") lines", detail: "As a search block", note: "",
+                                    run: { [weak self] in self?.show(id, lens: .search, .here) }))
+        }
+        return items
+    }
+
+    /// "In Blocks": lines holding the query in the texts of the selected
+    /// workspace's blocks, each going to the block and the line.
+    private func finderBlockItems(_ query: String) -> [FinderItem] {
+        guard !query.isEmpty, let a = arrangement else { return [] }
+        let q = query.lowercased()
+        var items: [FinderItem] = []
+        var seen = Set<BlockID>()
+        for p in a.placements where seen.insert(p.block).inserted {
+            guard let b = hosts.block(p.block), let text = b.text?.text.string else { continue }
+            var line = 0
+            for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                line += 1
+                guard raw.lowercased().contains(q) else { continue }
+                let at = line, id = p.id, block = b.id
+                items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: raw.trimmingCharacters(in: .whitespaces),
+                                        detail: "\(b.displayTitle):\(at)", note: "",
+                                        run: { [weak self] in
+                                            guard let self else { return }
+                                            if self.arrangement?.placement(id) != nil, self.hosts.block(block)?.kind == .text {
+                                                if let e = self.views[id] as? EditorView {
+                                                    self.focus(id)
+                                                    e.select(line: at)
+                                                    return
+                                                }
+                                            }
+                                            self.pendingJump = (b.path ?? "", at, nil)
+                                            self.show(block, lens: .editor, .here)
+                                        }))
+                if items.count >= 300 { return items }
+            }
+        }
+        return items
+    }
 
     /// ⌘O: the finder, over everything, and the files where the focused
     /// placement is.
