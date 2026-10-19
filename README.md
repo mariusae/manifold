@@ -222,7 +222,14 @@ when you find it again.
   terminal gone inactive — in each tile's pill, the sidebar's rows and
   the finder; the Dock badge counts the blocks that need you or are
   done and unread. **Status** in the sidebar (⌥⌘5) lists blocks by it,
-  the unread first and how long ago at the right. From a shell:
+  the unread first and how long ago at the right. Click a group's row —
+  Needs you, Done, Failed, Working, Inactive — and the surface shows its
+  blocks themselves, live, as a **state view**: a list, stacked down one
+  scrolling column as Prism's notes are, each under its pill; or an
+  overview, all of them in one grid at once, as Mission Control lays out
+  windows. Nothing is placed: click a pill to go to the block, ⌘-click
+  to bring it to the arrangement you were in, ⎋ (or ×) to go back.
+  From a shell:
 
   ```sh
   status() { printf '\e]7501;state=%s:msg=%s\e\\' "$1" "$(printf '%s' "$2" | base64 | tr -d '\n')"; }

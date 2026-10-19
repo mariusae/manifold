@@ -142,6 +142,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for a in desk.order.compactMap({ hosts.arrangement($0) }) {
             if let p = a.placement(id) { return Shown(placement: p, block: hosts.block(p.block)) }
         }
+        if id.hasPrefix("state:"), let b = BlockID(string: String(id.dropFirst(6))), let block = hosts.block(b) {
+            return Shown(placement: Placement(id: id, block: b, lens: Lens.default(for: block.kind, path: block.path)), block: block)
+        }
         return nil
     }
 
@@ -150,8 +153,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
-        // Views for placements no longer on the desk go.
-        let onDesk = Set(desk.order.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
+        // Views for placements no longer on the desk go (a state view's stay
+        // while it's up: its blocks are settled before any view is made,
+        // since making one can render again).
+        let stateBlocks = stateGroup.map { statusGroups("")[$0] ?? [] } ?? []
+        var onDesk = Set(desk.order.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
+        onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
             view.removeFromSuperview()
             view.destroy()
@@ -177,7 +184,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused)
             window.title = title(of: a)
-            if palette == nil, let focused = a.focused, let view = views[focused],
+            if palette == nil, stateView == nil, let focused = a.focused, let view = views[focused],
                !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
                 // Not while something is over the window with the keyboard.
                 if history == nil, neighborhoodView == nil { window.makeFirstResponder(view.focusView) }
@@ -195,6 +202,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } else {
             content.clear()
             window.title = "Manifold"
+        }
+        if let stateView, let group = stateGroup {
+            let items = stateBlocks.map { block, _, _ -> StateView.Item in
+                let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: Lens.default(for: block.kind, path: block.path))
+                let shown = Shown(placement: p, block: block)
+                return StateView.Item(shown: shown, view: view(for: shown))
+            }
+            stateView.show(items, title: group.title, mode: stateMode)
+            window.title = group.title
         }
         noteSeen(force: false)
         noteEditing()
@@ -338,6 +354,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + 2 * inset : 0
         content.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
+        stateView?.frame = content.frame
         if sliding { outgoing.frame = content.frame }
         palette?.frame = b
         history?.frame = b
@@ -1101,36 +1118,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// failed, working, inactive — the unread first in each, each row
     /// with how long ago at the right. Nothing idle, there being nothing
     /// to say of it.
-    private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        enum Group: Int, CaseIterable { case needsYou, done, failed, working, inactive }
-        var groups: [Group: [(Block, StatusRecord?, Stamp)]] = [:]
+    /// Every block with something to say, by status group, the unread
+    /// first and the newest next.
+    private func statusGroups(_ filter: String) -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
+        var groups: [StatusGroup: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
             for b in c.node.blocks {
                 guard let look = StatusGlyph.look(of: b) else { continue }
                 let r = b.statusRecord
                 guard matches(filter, [b.displayTitle, b.path, r?.msg, r?.app]) else { continue }
-                let group: Group = switch look {
-                case .needsYou: .needsYou
-                case .done: .done
-                case .failed: .failed
-                case .working: .working
-                case .inactive: .inactive
-                }
                 let at = r?.at ?? b.terminal?.dormantSince ?? b.created
-                groups[group, default: []].append((b, r, at))
+                groups[StatusGroup(look), default: []].append((b, r, at))
             }
         }
-        let titles: [Group: (String, String)] = [
-            .needsYou: ("Needs you", "hand.raised"), .done: ("Done", "checkmark.circle"), .failed: ("Failed", "exclamationmark.circle"),
-            .working: ("Working", "circle.dotted"), .inactive: ("Inactive", "moon"),
-        ]
-        var open: Set<String> = []
-        let nodes = Group.allCases.compactMap { group -> OrgNode? in
-            guard let items = groups[group]?.sorted(by: { a, b in
+        return groups.mapValues { items in
+            items.sorted { a, b in
                 let ua = a.1?.wantsAttention ?? false, ub = b.1?.wantsAttention ?? false
                 return ua != ub ? ua : a.2 > b.2
-            }) else { return nil }
-            let (title, symbol) = titles[group]!
+            }
+        }
+    }
+
+    private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        let groups = statusGroups(filter)
+        var open: Set<String> = []
+        let nodes = StatusGroup.allCases.compactMap { group -> OrgNode? in
+            guard let items = groups[group] else { return nil }
+            let (title, symbol) = (group.title, group.symbol)
             let id = "status:\(group)"
             if group != .inactive { open.insert(id) }
             let children = items.map { block, r, at -> OrgNode in
@@ -1143,11 +1157,61 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 n.age = group == .inactive ? 0.6 : nil
                 return n
             }
-            return OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
+            let n = OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
+            // The group's row opens it in the surface as a state view (§3.6).
+            n.action = { [weak self] in self?.showStateView(group) }
+            n.emphasis = stateGroup == group
+            return n
         }
         if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing is doing anything", symbol: "circle.dashed")], []) }
         return (nodes, open)
     }
+
+    // MARK: State views (§3.6)
+
+    private var stateView: StateView?
+    private var stateGroup: StatusGroup?
+    private var stateMode: StateView.Mode = .list
+
+    /// The surface shows a status group's blocks themselves, live.
+    func showStateView(_ group: StatusGroup) {
+        if stateView == nil {
+            let v = StateView()
+            v.onGoTo = { [weak self] b in self?.goTo(b) }
+            v.onBring = { [weak self] b in
+                guard let self, let block = self.hosts.block(b) else { return }
+                self.hideStateView()
+                self.show(b, lens: Lens.default(for: block.kind, path: block.path), .here)
+            }
+            v.onLeave = { [weak self] in self?.hideStateView() }
+            v.onModeChanged = { [weak self] m in self?.stateMode = m }
+            root.addSubview(v, positioned: .above, relativeTo: content)
+            stateView = v
+        }
+        stateGroup = group
+        content.isHidden = true
+        layoutViews()
+        render()
+        window?.makeFirstResponder(stateView)
+    }
+
+    func hideStateView() {
+        guard let v = stateView else { return }
+        v.clear()
+        v.removeFromSuperview()
+        stateView = nil
+        stateGroup = nil
+        content.isHidden = false
+        render()
+    }
+
+    func debugStateView(mode: StateView.Mode) {
+        stateMode = mode
+        render()
+    }
+
+    /// The state view's placement ids: a block's, not an arrangement's.
+    private static func statePlacement(_ block: BlockID) -> PlacementID { "state:\(block)" }
 
     private func matches(_ filter: String, _ texts: [String?]) -> Bool {
         filter.isEmpty || texts.contains { $0?.lowercased().contains(filter) ?? false }
@@ -1589,6 +1653,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// nowhere, it is brought here.
     func goTo(_ id: BlockID) {
         guard let block = hosts.block(id) else { return }
+        hideStateView()
         if block.kind == .arrangement { return host.select(id) }
         if let a = arrangement, let t = a.placements(of: id).first { return focus(t.id) }
         let order = desk.settled + desk.order.filter { !desk.settled.contains($0) }
@@ -1627,6 +1692,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Brings a block into the selected arrangement (or `arrangement`): a
     /// tile of it already there is focused instead.
     func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil) {
+        hideStateView()
         let id = arrangement ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
         let fresh = { ULID.make() }
@@ -2599,6 +2665,7 @@ extension MainWindowController: OrganizationViewDelegate {
     func organizationOpen(_ node: OrgNode, newColumn bring: Bool) {
         HoverCard.shared.hide()
         if let arr = node.arrangement, !bring {
+            hideStateView()
             if arr != selected { host.select(arr) }
             if let p = node.placement, hosts.arrangement(arr)?.placement(p) != nil {
                 hosts.append(.focus(p), to: .block(arr))
@@ -2728,4 +2795,40 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+}
+
+
+/// The groups of the Status organization and the state views (§3.6).
+enum StatusGroup: Int, CaseIterable {
+    case needsYou, done, failed, working, inactive
+
+    init(_ look: StatusGlyph.Look) {
+        switch look {
+        case .needsYou: self = .needsYou
+        case .done: self = .done
+        case .failed: self = .failed
+        case .working: self = .working
+        case .inactive: self = .inactive
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .needsYou: "Needs you"
+        case .done: "Done"
+        case .failed: "Failed"
+        case .working: "Working"
+        case .inactive: "Inactive"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .needsYou: "hand.raised"
+        case .done: "checkmark.circle"
+        case .failed: "exclamationmark.circle"
+        case .working: "circle.dotted"
+        case .inactive: "moon"
+        }
+    }
 }

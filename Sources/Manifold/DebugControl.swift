@@ -199,6 +199,16 @@ enum DebugControl {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
             return "usage: org rows | org click <row> [cmd|double]"
+        case "sv":
+            // "sv list|overview|leave": the state view's mode, or leaving it.
+            guard let wc else { return "no window" }
+            switch arg {
+            case "list": wc.debugStateView(mode: .list)
+            case "overview": wc.debugStateView(mode: .overview)
+            case "leave": wc.hideStateView()
+            default: return "usage: sv list|overview|leave"
+            }
+            return "ok"
         case "attend":
             // As focusing the block with the window key does: dismisses
             // its done or failed status.

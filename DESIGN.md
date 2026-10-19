@@ -719,6 +719,10 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   each session on the host, the host reporting for searches, git and
   diffs, `attend` marking done and error read; `StatusGlyph` in pills,
   rows and the finder; the Status organization; the Dock badge.
+- State views (§3.6, milestone 19): `StateView` over the surface for a
+  status group's blocks, live, as a list or an overview, from the
+  group's row in the Status organization; the blocks' views under
+  `state:` placement ids, kept while it's up; ⎋ leaves it.
 - Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
   log at a moment; the history view scrubs text blocks as well as
   arrangements, "everything as it was" rewinds each placed file by its own
