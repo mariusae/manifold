@@ -38,6 +38,8 @@ final class Session {
     /// What the program says of its status (§3.7), as it says it.
     var onStatus: (([StatusSignal]) -> Void)?
     private var statuses = StatusScanner()
+    /// The shell has said where it is (OSC 7): its directory isn't polled.
+    var reportsDirectory = false
 
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           command: String? = nil, queue: DispatchQueue) {
@@ -417,6 +419,7 @@ final class Session {
             local status=$?
             [ -n "$__manifold_ran" ] && printf '\\033]133;D;%s\\a' "$status"
             __manifold_ran=
+            printf '\\033]7;kitty-shell-cwd://%s%s\\a' "$HOSTNAME" "$PWD"
             printf '\\033]133;A\\a'
         }
         __manifold_preexec() {

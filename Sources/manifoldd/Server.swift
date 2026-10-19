@@ -803,6 +803,13 @@ final class Server {
                 if let open = node.block(block)?.terminal?.commands?.last(where: { $0.ended == nil }) {
                     append(.exited(id: open.id, status: status ?? 0, at: clock.now()), to: .block(block))
                 }
+            case let .directory(host, path):
+                // The shell says where it is (OSC 7): taken when it's on
+                // this host — a shell on another machine, through ssh in
+                // the terminal, is left to say so without moving the block.
+                guard Self.isThisHost(host) else { break }
+                sessions[block]?.reportsDirectory = true
+                if b.terminal?.cwd != path { append(.cwd(path), to: .block(block)) }
             case let .progress(p, percent):
                 switch p {
                 case .remove:
@@ -830,10 +837,23 @@ final class Server {
         }
     }
 
+    /// Whether a host a shell names is this one: none, localhost, or this
+    /// machine's name, short or long, however the case.
+    static func isThisHost(_ name: String) -> Bool {
+        let h = name.lowercased()
+        if h.isEmpty || h == "localhost" { return true }
+        var buf = [CChar](repeating: 0, count: 256)
+        guard gethostname(&buf, buf.count) == 0 else { return false }
+        let mine = String(cString: buf).lowercased()
+        return h == mine || h.split(separator: ".").first == mine.split(separator: ".").first
+    }
+
     private func pollSessions() {
         for (id, session) in sessions {
             guard let t = node.block(id)?.terminal else { continue }
-            if let cwd = session.cwd, t.cwd != cwd {
+            // A shell that reports its directory itself (OSC 7) is believed;
+            // the rest are asked, through the process, every so often.
+            if !session.reportsDirectory, let cwd = session.cwd, t.cwd != cwd {
                 append(.cwd(cwd), to: .block(id))
             }
             let busy = session.isBusy

@@ -664,6 +664,9 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     signals = scanner.feed(Data("\u{1b}]7502;  make -j8 \u{07}output\u{1b}]133;D;2\u{07}\u{1b}]133;D\u{1b}\\".utf8))
     #expect(signals == [.command("make -j8"), .commandEnded(status: 2), .commandEnded(status: nil)])
     #expect(scanner.feed(Data("\u{1b}]7502;\u{07}".utf8)).isEmpty)
+    // Where the shell is (OSC 7): a file URL percent-decoded, kitty's raw.
+    signals = scanner.feed(Data("\u{1b}]7;file://airy.local/Users/m/My%20Stuff\u{07}\u{1b}]7;kitty-shell-cwd://box/tmp/a b\u{1b}\\\u{1b}]7;ftp://x/y\u{07}".utf8))
+    #expect(signals == [.directory(host: "airy.local", path: "/Users/m/My Stuff"), .directory(host: "box", path: "/tmp/a b")])
 
     // Records on a block: replaced whole, cleared with their children,
     // and working ones dropped when the shell ends.

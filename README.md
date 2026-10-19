@@ -444,7 +444,12 @@ is migrated into logs on first run.
   integration and then yours; fish through a command run after its
   configuration; bash through an rc file of Manifold's that sources the
   profile files and .bashrc. The same hooks tell Manifold each command
-  the shell runs, for the terminal's scrubber. Manifold starts your
+  the shell runs, for the terminal's scrubber; and the shell says where
+  it is (OSC 7, as zsh and fish do through Ghostty's integration and
+  bash through Manifold's rc), so a terminal's folder follows a `cd` at
+  once — a shell that doesn't say is asked through its process every
+  couple of seconds. A shell on another machine, through ssh in the
+  terminal, names that host and is left alone. Manifold starts your
   login shell; `MANIFOLD_SHELL` in the server's environment names
   another.
 - **Retention** is tunable, in View ▸ Keep History: how many days of text

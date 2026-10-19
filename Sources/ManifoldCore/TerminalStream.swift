@@ -159,6 +159,10 @@ public enum StatusSignal: Equatable, Sendable {
     case command(String)
     /// OSC 133 D: the command ended, with its status if the shell says.
     case commandEnded(status: Int32?)
+    /// OSC 7: the shell's working directory, and the host it says it's
+    /// on (empty for none): `file://host/path`, percent-encoded, or
+    /// kitty's `kitty-shell-cwd://host/path`, raw.
+    case directory(host: String, path: String)
     /// `OSC 7501 ; ? ST`: the program asks whether the terminal speaks
     /// 7501; it expects `queryReply` back on its input before anything
     /// else answers (a device-attributes reply it sent to race it).
@@ -238,6 +242,8 @@ public struct StatusScanner: Sendable {
                 return .commandEnded(status: rest.count > 1 ? Int32(rest[1]) : nil)
             default: return nil
             }
+        case "7":
+            return Self.parseDirectory(body)
         case "7502":
             // Control characters can't be in it (the hooks blank them);
             // anything that isn't text is dropped.
@@ -261,6 +267,26 @@ public struct StatusScanner: Sendable {
         default:
             return nil
         }
+    }
+
+    /// OSC 7's body: a URL whose host is where the shell is and whose
+    /// path is its directory — `file://` with percent-encoding, or
+    /// kitty's scheme with the path as it is.
+    static func parseDirectory(_ body: ArraySlice<UInt8>) -> StatusSignal? {
+        guard body.count <= 4096, let text = String(bytes: body, encoding: .utf8) else { return nil }
+        let (scheme, rest): (String, Substring)
+        if let r = text.range(of: "://") {
+            scheme = String(text[..<r.lowerBound]).lowercased()
+            rest = text[r.upperBound...]
+        } else {
+            return nil
+        }
+        guard scheme == "file" || scheme == "kitty-shell-cwd" else { return nil }
+        let host = String(rest.prefix { $0 != "/" })
+        var path = String(rest.dropFirst(host.count))
+        if scheme == "file" { path = path.removingPercentEncoding ?? path }
+        guard path.hasPrefix("/"), !path.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return nil }
+        return .directory(host: host, path: path)
     }
 
     /// A 7501 report's body: `key=value(:key=value)*`, as the spec reads
