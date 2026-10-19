@@ -84,7 +84,9 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     self.delegate?.gridFocus(id)
                     if let menu = self.delegate?.gridPillMenu(for: id), let pill = self.pills[id] {
-                        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: pill)
+                        // Under the pointer, as a menu is.
+                        let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
+                        menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
                 pill.onDragStart = { [weak self, weak pill] event in
