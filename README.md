@@ -41,7 +41,9 @@ and Mona Sans (bundled).
   height stashes it and goes on against the next, until all above or
   below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
   pill) puts a tile over the whole workspace until it is restored, or
-  until you go to another tile. Overview (⌘') shows every block in the
+  until you go to another tile. A pill fades out while the text cursor
+  is on the line under it, in an editor or a terminal, and comes back
+  when the cursor moves on. Overview (⌘') shows every block in the
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile wears a **pill** floating over its top, one

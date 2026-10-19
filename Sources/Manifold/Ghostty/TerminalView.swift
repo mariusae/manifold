@@ -433,6 +433,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     func characterIndex(for point: NSPoint) -> Int { 0 }
 
+    /// The terminal's cursor cell, in the window.
+    var caretRectInWindow: NSRect? {
+        guard let surface else { return nil }
+        var x = 0.0, y = 0.0, w = Double(cellSize.width), h = Double(cellSize.height)
+        ghostty_surface_ime_point(surface, &x, &y, &w, &h)
+        let rect = NSRect(x: x, y: frame.height - y - h, width: max(w, cellSize.width), height: max(h, cellSize.height))
+        return convert(rect, to: nil)
+    }
+
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         guard let surface else { return .zero }
         var x = 0.0, y = 0.0, w = Double(cellSize.width), h = Double(cellSize.height)

@@ -45,6 +45,13 @@ protocol PaneContent: NSView {
     /// Whether the view failed and should be made again.
     var isDead: Bool { get }
     func destroy()
+    /// Where the text cursor is, in the window, if the view has one that
+    /// shows: the tile's pill gets out of its way (§3.1).
+    var caretRectInWindow: NSRect? { get }
+}
+
+extension PaneContent {
+    var caretRectInWindow: NSRect? { nil }
 }
 
 /// A lens's keeper of its state (DESIGN.md §3.5): what it notes is written

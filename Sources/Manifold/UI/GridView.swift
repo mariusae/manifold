@@ -362,6 +362,37 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
     }
 
+    // MARK: The pill out of the cursor's way
+
+    private var caretTimer: Timer?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        caretTimer?.invalidate()
+        caretTimer = nil
+        guard window != nil else { return }
+        let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.dodgeCarets() }
+        RunLoop.main.add(t, forMode: .common)
+        caretTimer = t
+    }
+
+    /// A pill over the line the text cursor is on fades out, so what is
+    /// typed there can be seen; it comes back when the cursor moves on.
+    private func dodgeCarets() {
+        guard window != nil, full == nil else { return }
+        for column in columns {
+            for tile in column where !isStashed(tile.shown.id) {
+                guard let pill = pills[tile.shown.id], !pill.isHidden else { continue }
+                var away = false
+                if let caret = tile.view.caretRectInWindow {
+                    let capsule = pill.convert(pill.capsule(in: pill), to: nil)
+                    away = caret.minY < capsule.maxY && caret.maxY > capsule.minY
+                }
+                pill.dodging = away
+            }
+        }
+    }
+
     // MARK: Hovering a stack
 
     override func updateTrackingAreas() {
@@ -610,7 +641,8 @@ final class TilePill: NSView {
         name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
         name.textColor = focused ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
-        alphaValue = focused ? 1 : 0.88
+        restingAlpha = focused ? 1 : 0.88
+        if !dodging { alphaValue = restingAlpha }
     }
 
     /// One width for every pill, within the tile.
@@ -618,7 +650,22 @@ final class TilePill: NSView {
 
     /// Only the capsule is the pill (its corner button included); the
     /// rest is the tile beneath.
+    /// How it shows when the text cursor isn't under it: the focused
+    /// tile's plain, the others' a little lighter.
+    private var restingAlpha: CGFloat = 0.88
+    /// Out of the text cursor's way: faded, and taking no clicks.
+    var dodging = false {
+        didSet {
+            guard dodging != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                animator().alphaValue = dodging ? 0 : restingAlpha
+            }
+        }
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !dodging else { return nil }
         let p = convert(point, from: superview)
         guard glass.frame.contains(p) else { return nil }
         return super.hitTest(point) ?? self
