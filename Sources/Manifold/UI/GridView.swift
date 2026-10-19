@@ -19,6 +19,9 @@ protocol GridDelegate: AnyObject {
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
     /// A stashed tile's pill was clicked: it comes back (§3.1).
     func gridUnstash(_ placement: PlacementID)
+    /// ⇧-clicked: it takes the top of its stack, the tile that showed
+    /// going behind it.
+    func gridSwap(_ placement: PlacementID)
     func gridStash(_ placement: PlacementID, behind: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
@@ -125,7 +128,11 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        self.delegate?.gridUnstash(id)
+                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                            self.delegate?.gridSwap(id)
+                        } else {
+                            self.delegate?.gridUnstash(id)
+                        }
                         return
                     }
                     // Where in the capsule the click was: the pointer follows
@@ -162,7 +169,11 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        self.delegate?.gridUnstash(id)
+                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                            self.delegate?.gridSwap(id)
+                        } else {
+                            self.delegate?.gridUnstash(id)
+                        }
                         return
                     }
                     self.delegate?.gridFocus(id)
@@ -484,9 +495,20 @@ final class GridView: NSView, NSDraggingSource {
 
     private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView) {
         let item = NSPasteboardItem()
-        item.setString(placement, forType: .manifoldPlacement)
-        let dragItem = NSDraggingItem(pasteboardWriter: item)
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
+        if event.modifierFlags.contains(.shift) {
+            // ⇧-drag: not the tile but what it stands for — its path (a
+            // terminal's folder, a page's address) — for wherever text or
+            // files are taken: a terminal types it, an editor inserts it.
+            guard let text = shown?.block.flatMap({ $0.path ?? $0.web?.url ?? $0.terminal?.cwd ?? $0.place }) else { return }
+            item.setString(text, forType: .string)
+            if text.hasPrefix("/") { item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL) }
+            pathDrag = true
+        } else {
+            item.setString(placement, forType: .manifoldPlacement)
+            pathDrag = false
+        }
+        let dragItem = NSDraggingItem(pasteboardWriter: item)
         let image = BlockDragImage.make(for: shown)
         let p = view.convert(event.locationInWindow, from: nil)
         dragItem.setDraggingFrame(NSRect(x: p.x - 24, y: p.y - image.size.height / 2, width: image.size.width,
@@ -495,8 +517,12 @@ final class GridView: NSView, NSDraggingSource {
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
+    /// Whether the drag under way is a ⇧-drag of a block's path.
+    private var pathDrag = false
+
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .withinApplication ? .move : []
+        if pathDrag { return .copy }
+        return context == .withinApplication ? .move : []
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {

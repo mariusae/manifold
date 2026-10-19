@@ -42,6 +42,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         self.block = block
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
+        registerForDraggedTypes([.fileURL, .string])
 
         var config = ghostty_surface_config_new()
         config.platform_tag = GHOSTTY_PLATFORM_MACOS
@@ -728,6 +729,38 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     override func doCommand(by selector: Selector) {
         // Keys that map to editing commands are encoded by ghostty in keyDown.
+    }
+
+    // MARK: Drops
+
+    /// Files or text dropped on the terminal are typed into it, paths
+    /// quoted for the shell, as a terminal takes them.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.dropText(sender.draggingPasteboard) == nil ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let surface, let text = Self.dropText(sender.draggingPasteboard) else { return false }
+        window?.makeFirstResponder(self)
+        text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+        return true
+    }
+
+    /// What a drop types: each file's path, quoted if the shell would
+    /// need it, a space between; else the text as it is.
+    static func dropText(_ pb: NSPasteboard) -> String? {
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            return urls.map { shellQuoted($0.path) }.joined(separator: " ")
+        }
+        if let s = pb.string(forType: .string), !s.isEmpty { return s }
+        return nil
+    }
+
+    static func shellQuoted(_ path: String) -> String {
+        let plain = path.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || "/._-+:@%,=~".unicodeScalars.contains($0) }
+        return plain ? path : "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: Actions

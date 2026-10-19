@@ -677,6 +677,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
     }
 
+    func debugStack(swap: Bool) -> String {
+        guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
+        if swap, let s = a.columns[c].first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) { gridSwap(s.id) }
+        guard let b = arrangement else { return "gone" }
+        return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?") \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
+    }
+
     func debugDescribe() -> String {
         var out = "selected \(selected.map(\.description) ?? "none") theme \(hosts.state.appearance.theme.rawValue)\n"
         if let a = arrangement {
@@ -2098,9 +2105,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// gone to — the text cursor if the tile has one, else the tile's
     /// middle — a moment later, once it is laid out.
     func warpPointerToFocus() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-            guard let self, let a = self.arrangement, let f = a.focused, let view = self.views[f] else { return }
-            self.warpPointer(to: view)
+        // Once laid out; and again once the layout's animation (a tile
+        // coming out of a stack, a column resettling) has ended.
+        for delay in [0.08, 0.32] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, let a = self.arrangement, let f = a.focused, let view = self.views[f] else { return }
+                self.warpPointer(to: view)
+            }
         }
     }
 
@@ -2138,7 +2149,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hideStateView()
         warpPointerToFocus()
         if block.kind == .arrangement { return hosts.select(id) }
-        if let a = arrangement, let t = a.placements(of: id).first { return focus(t.id) }
+        if let a = arrangement, let t = a.placements(of: id).first, let here = selected {
+            // Here already: out of its stack, from behind a maximized
+            // tile, and focused.
+            return hosts.append(revealing(t.id, in: a), to: .block(here))
+        }
         let order = hosts.state.settled + allWorkspaces.filter { !hosts.state.settled.contains($0) }
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
@@ -3003,6 +3018,13 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.unstashing(placement))
     }
 
+    /// ⇧-click on a stashed pill: that tile shows where the stack's top
+    /// did, and the top goes behind it.
+    func gridSwap(_ placement: PlacementID) {
+        guard let a = arrangement, a.isStashed(placement), let top = a.tile(behind: placement) else { return gridUnstash(placement) }
+        appendToSelected(a.unstashing(placement) + [.stash(top.id, behind: placement), .focus(placement)])
+    }
+
     /// A pill clicked: its tile grows a step, as acme's does.
     func gridGrow(_ placement: PlacementID) {
         guard let a = arrangement else { return }
@@ -3454,8 +3476,11 @@ extension MainWindowController: OrganizationViewDelegate {
         if let arr = node.arrangement, !bring {
             hideStateView()
             if arr != selected { hosts.select(arr) }
-            if let p = node.placement, hosts.arrangement(arr)?.placement(p) != nil {
-                hosts.append(.focus(p), to: .block(arr))
+            if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
+                // Out of its stack, from behind a maximized tile, focused,
+                // and the pointer on it.
+                hosts.append(revealing(p, in: a), to: .block(arr))
+                warpPointerToFocus()
             }
             return
         }

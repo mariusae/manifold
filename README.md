@@ -35,8 +35,15 @@ and Mona Sans (bundled).
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: a few edges peek out
   beside its pill, fan out when the pointer rests there, and one clicked
-  comes back as that tile's lower half. Drop a pill on another's to
-  stash it there; Stash Tile (⌘M, or Stash in a pill's menu) puts the
+  comes back as that tile's lower half; ⇧-clicked (an edge or a
+  fanned-out pill), it takes the top instead, the tile that showed
+  going behind it. Going to a stashed block from the sidebar or the
+  finder brings it out too, and the pointer follows. Drop a pill on
+  another's to stash it there; ⇧-drag a pill and it's not the tile you
+  carry but its path (a terminal's folder, a page's address): dropped on
+  a terminal it's typed there, quoted for the shell; on an editor,
+  inserted where the pointer is; on another app, as a file or text.
+  Stash Tile (⌘M, or Stash in a pill's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
   height stashes it and goes on against the next, until all above or

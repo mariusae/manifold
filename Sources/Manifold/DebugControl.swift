@@ -207,6 +207,12 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
+        case "stack":
+            // "stack": the focused tile's column, each tile with its share
+            // (0: stashed); "stack swap": the first stashed tile behind the
+            // focused one takes the top, as ⇧-click on its pill does.
+            guard let wc else { return "no window" }
+            return wc.debugStack(swap: arg == "swap")
         case "focused":
             return wc?.debugFocusedBlock?.description ?? "nothing focused"
         case "scrub":

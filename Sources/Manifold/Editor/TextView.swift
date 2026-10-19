@@ -119,6 +119,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        registerForDraggedTypes([.string, .fileURL])
         wantsLayer = true
         fontChanged()
     }
@@ -1214,6 +1215,36 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     // MARK: Mouse
+
+    // MARK: Drops
+
+    /// Text (or files, as their paths) dropped on the text goes in where
+    /// the pointer is.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard isEditable, Self.droppedText(sender.draggingPasteboard) != nil else { return [] }
+        let p = convert(sender.draggingLocation, from: nil)
+        setSelections([Selection(at: offset(at: p))], scroll: false)
+        return .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard isEditable, let text = Self.droppedText(sender.draggingPasteboard) else { return false }
+        window?.makeFirstResponder(self)
+        let p = convert(sender.draggingLocation, from: nil)
+        setSelections([Selection(at: offset(at: p))], scroll: false)
+        insert(text)
+        return true
+    }
+
+    static func droppedText(_ pb: NSPasteboard) -> String? {
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            return urls.map(\.path).joined(separator: "\n")
+        }
+        if let s = pb.string(forType: .string), !s.isEmpty { return s }
+        return nil
+    }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
