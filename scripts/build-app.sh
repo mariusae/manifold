@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
-for d in monaspace monasans recursive gofont; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
+for d in monaspace monasans recursive gofont firacode; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -42,6 +42,8 @@ cp Frameworks/monasans/OFL.txt "$app/Contents/Resources/Fonts/MonaSans-OFL.txt"
 cp Frameworks/recursive/*.otf Frameworks/gofont/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/recursive/OFL.txt "$app/Contents/Resources/Fonts/Recursive-OFL.txt"
 cp Frameworks/gofont/LICENSE "$app/Contents/Resources/Fonts/Go-LICENSE"
+cp Frameworks/firacode/*.ttf "$app/Contents/Resources/Fonts/"
+cp Frameworks/firacode/LICENSE "$app/Contents/Resources/Fonts/FiraCode-LICENSE"
 # Tiempos Text and Berkeley Mono are licensed: bundled when
 # scripts/fetch-fonts.sh found them.
 [ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"

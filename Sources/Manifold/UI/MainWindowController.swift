@@ -1996,20 +1996,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ↩ goes to a tile, or to a heading in its editor or preview.
     @objc func goToTile(_ sender: Any?) {
         guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
-        let outline = workspaceOutline(a)
-        finder.showOutline({ query in
-            let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-            return outline.filter { item in
-                words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
-            }
-        }, over: window)
+        // It begins where you are: the focused tile, and in a text, the
+        // heading the caret is under, or the one at the top of a preview.
+        let show = { [weak self] (line: Int?) in
+            guard let self else { return }
+            let (outline, start) = self.workspaceOutline(a, currentLine: line)
+            self.finder.showOutline({ query in
+                let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+                return outline.filter { item in
+                    words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
+                }
+            }, startingAt: start, over: self.window)
+        }
+        if let f = a.focused, let m = views[f] as? MarkdownView {
+            m.headingAtTop { index in show(index.map { -($0 + 1) }) }
+        } else if let f = a.focused, let e = views[f] as? EditorView {
+            show(e.caretLine)
+        } else {
+            show(nil)
+        }
     }
 
-    private func workspaceOutline(_ a: ArrangementState) -> [FinderItem] {
+    /// The outline, and the row to begin at: the focused tile's, or under
+    /// it the heading at `currentLine` (a line from 1 in its editor; or,
+    /// negative, minus one more than the index of the heading at the top
+    /// of its preview).
+    private func workspaceOutline(_ a: ArrangementState, currentLine: Int?) -> ([FinderItem], Int?) {
         var items: [FinderItem] = []
+        var start: Int?
         for (c, column) in a.columns.enumerated() {
             for p in column {
                 guard let b = hosts.block(p.block) else { continue }
+                let focused = p.id == a.focused
+                if focused { start = items.count }
                 var notes: [String] = []
                 if a.columns.count > 1 { notes.append("column \(c + 1)") }
                 if a.isStashed(p.id) { notes.append("stashed") }
@@ -2032,6 +2051,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     guard level <= 6, raw.dropFirst(level).first == " " else { continue }
                     let heading = raw.dropFirst(level).trimmingCharacters(in: .whitespaces)
                     let at = line, nth = index
+                    if focused, let current = currentLine, current >= 0 ? at <= current : nth <= -current - 1 { start = items.count }
                     items.append(FinderItem(symbol: "number", title: heading, detail: b.displayTitle, note: "", level: level,
                                             run: { [weak self] in
                         guard let self else { return }
@@ -2043,7 +2063,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
         }
-        return items
+        return (items, start)
     }
 
     @objc func toggleEditPreview(_ sender: Any?) {
@@ -2273,8 +2293,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on)
                 : html ? host.webBlock(forFile: path)
                 : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
+            // With --wait ($EDITOR), a file is for editing, Markdown too.
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
-                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) ? .preview : .editor)
+                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) && !wait ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
             show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
@@ -2587,6 +2608,12 @@ extension MainWindowController: GridDelegate {
     func gridUnstash(_ placement: PlacementID) {
         guard let a = arrangement else { return }
         appendToSelected(a.unstashing(placement))
+    }
+
+    /// A pill clicked: its tile grows a step, as acme's does.
+    func gridGrow(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected(a.growing(placement))
     }
 
     func gridStash(_ placement: PlacementID, behind: PlacementID) {

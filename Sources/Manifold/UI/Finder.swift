@@ -22,6 +22,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     var search: ((String, [String]) -> [FinderItem])?
     /// ⌘\: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
+    /// The row the outline begins at (where you are), while nothing is typed.
+    private var outlineStart: Int?
 
     private let panel: PickerPanel
     private let field = NSTextField()
@@ -136,8 +138,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Shows the workspace's outline (⌘\): tiles by column, and what is in
     /// them, as `provider` lists them for a query.
-    func showOutline(_ provider: @escaping (String) -> [FinderItem], over window: NSWindow?) {
+    func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil, over window: NSWindow?) {
         outline = provider
+        outlineStart = start
         field.stringValue = ""
         field.placeholderString = "Go to a tile, or a heading in one…"
         files = []
@@ -202,8 +205,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         shown = outline.map { $0(query) } ?? search?(query, files.map { absolute($0) }) ?? []
         table.reloadData()
         if !shown.isEmpty {
-            table.selectRowIndexes([0], byExtendingSelection: false)
-            table.scrollRowToVisible(0)
+            let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
+            table.selectRowIndexes([row], byExtendingSelection: false)
+            table.scrollRowToVisible(row)
         }
         updateHint()
         layout()

@@ -20,6 +20,7 @@ protocol GridDelegate: AnyObject {
     /// A stashed tile's pill was clicked: it comes back (§3.1).
     func gridUnstash(_ placement: PlacementID)
     func gridStash(_ placement: PlacementID, behind: PlacementID)
+    func gridGrow(_ placement: PlacementID)
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -112,7 +113,19 @@ final class GridView: NSView, NSDraggingSource {
                 let stashed = isStashed(id)
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
+                // The capsule clicked grows the tile (a stashed one comes
+                // back); the symbol clicked is the tile's menu.
                 pill.onClick = { [weak self] in
+                    guard let self else { return }
+                    if stashed {
+                        self.fanned = nil
+                        self.delegate?.gridUnstash(id)
+                        return
+                    }
+                    self.delegate?.gridFocus(id)
+                    self.delegate?.gridGrow(id)
+                }
+                pill.onIconClick = { [weak self] in
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
@@ -550,6 +563,7 @@ final class GridView: NSView, NSDraggingSource {
 /// capsule takes the mouse; around it, the tile does.
 final class TilePill: NSView {
     var onClick: (() -> Void)?
+    var onIconClick: (() -> Void)?
     var onDragStart: ((NSEvent) -> Void)?
     private let glass = NSView()
     private let icon = NSImageView()
@@ -713,7 +727,10 @@ final class TilePill: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if downAt != nil { onClick?() }
+        if downAt != nil {
+            let p = convert(event.locationInWindow, from: nil)
+            if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?() } else { onClick?() }
+        }
         downAt = nil
     }
 

@@ -108,7 +108,7 @@ public struct Settings: Codable, Equatable, Sendable {
 /// Monaspace; Recursive Sans and Mono; Go and Go Mono; or SF and SF Mono.
 /// Fixed, not configurable.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
-    case notes, tiempos, mona, recursive, go, system
+    case notes, tiempos, tiemposFira, mona, recursive, go, system
 }
 
 /// Light or dark: as the system is, or always one.

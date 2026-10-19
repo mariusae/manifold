@@ -23,6 +23,15 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     weak var delegate: MarkdownViewDelegate?
     private let web: WKWebView
 
+    /// The index of the heading at the top of the page now (the last one
+    /// at or above the viewport's top), for ⌘\ to begin there.
+    func headingAtTop(_ done: @escaping (Int?) -> Void) {
+        web.evaluateJavaScript("(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var at=-1;for(var i=0;i<hs.length;i++){if(hs[i].getBoundingClientRect().top<=24)at=i;}return at;})()") { r, _ in
+            let i = (r as? Int) ?? (r as? Double).map(Int.init) ?? -1
+            done(i >= 0 ? i : nil)
+        }
+    }
+
     /// Scrolls to the page's `index`th heading (⌘\).
     func scroll(toHeading index: Int) {
         web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()")

@@ -64,6 +64,18 @@ done
 github_file golang/image $go LICENSE "$out/LICENSE"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
 
+# Fira Code (OFL), for the Tiempos/Fira theme.
+fira=6.2
+out=Frameworks/firacode
+mkdir -p "$out"
+zip=vendor/Fira_Code_v$fira.zip
+[ -f "$zip" ] || curl -sSfL -o "$zip" "https://github.com/tonsky/FiraCode/releases/download/$fira/Fira_Code_v$fira.zip"
+for face in Light Regular Retina Medium SemiBold Bold; do
+  [ -s "$out/FiraCode-$face.ttf" ] || unzip -qjo "$zip" "ttf/FiraCode-$face.ttf" -d "$out"
+done
+github_file tonsky/FiraCode $fira LICENSE "$out/LICENSE"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+
 # Tiempos Text and Berkeley Mono, for the Tiempos theme: copied, not fetched.
 tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
 out=Frameworks/tiempos

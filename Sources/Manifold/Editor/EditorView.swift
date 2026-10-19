@@ -255,6 +255,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// Where the block lives (its folder): where a note is saved by default.
     var home: String?
 
+    /// The line the caret is on, from 1.
+    var caretLine: Int { textView.text.line(at: textView.primarySelection.head) + 1 }
+
     /// The caret, while the editor has the keyboard.
     var caretRectInWindow: NSRect? {
         guard window?.firstResponder === textView else { return nil }
