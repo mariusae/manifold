@@ -217,6 +217,10 @@ public enum Event: Codable, Equatable, Sendable {
     /// A tile into the stack behind another (§3.1): placed right after it
     /// in its column, taking no room.
     case stash(PlacementID, behind: PlacementID)
+    /// The workspace as it was (undo, §3.1): its tiles, shares, focus and
+    /// maximized tile put back, in one entry — the log stays as it is,
+    /// and the history keeps what was undone.
+    case restore(ArrangementState)
     case remove(PlacementID)
     case focus(PlacementID?)
     case fractions([Double])
@@ -534,6 +538,13 @@ extension ArrangementState {
                 columns[c].insert(p, at: i)
             }
             focused = p.id
+            normalize()
+        case let .restore(state):
+            columns = state.columns
+            fractions = state.fractions
+            heights = state.heights
+            focused = state.focused
+            full = state.full
             normalize()
         case let .stash(id, behind):
             guard id != behind, let (c, i) = locate(id), locate(behind) != nil, !isStashed(behind) else { return }

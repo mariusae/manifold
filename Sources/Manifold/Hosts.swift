@@ -219,7 +219,14 @@ final class Hosts {
 
     // MARK: Writing
 
+    /// Before a workspace changes at this client's hand: its state, for
+    /// undo (§3.1). Not for changes that only move the focus.
+    var onWorkspaceChange: ((BlockID, ArrangementState, [Event]) -> Void)?
+
     func append(_ events: [Event], to shard: ShardID) {
+        if case let .block(id) = shard, let a = arrangement(id), events.contains(where: { if case .focus = $0 { return false } else { return true } }) {
+            onWorkspaceChange?(id, a, events)
+        }
         (client(shard.host) ?? local).append(events, to: shard)
     }
 

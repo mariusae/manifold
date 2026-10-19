@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if windowController == nil {
             let wc = MainWindowController(hosts: hosts)
             windowController = wc
+            hosts.onWorkspaceChange = { [weak wc] id, before, events in wc?.noteWorkspaceChange(id, before: before, events: events) }
             // The very first time, start with a terminal rather than an empty
             // window.
             if hosts.all.allSatisfy({ $0.desk.order.isEmpty }) && !createdFirst && host.node.blocks.isEmpty {

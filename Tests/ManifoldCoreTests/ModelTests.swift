@@ -794,6 +794,23 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(b.tile(behind: x.id)?.id == y.id)
 }
 
+@Test func aWorkspaceRestoredIsAsItWas() {
+    var a = ArrangementState()
+    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .editor)
+    a.apply(.place(x, column: 0, at: 0))
+    a.apply(.place(y, column: 0, at: 1))
+    let before = a
+    a.apply(.stash(y.id, behind: x.id))
+    a.apply(.full(x.id))
+    #expect(a.isStashed(y.id) && a.full == x.id)
+    // Undo: the state before, in one entry; the log went on.
+    a.apply(.restore(before))
+    #expect(!a.isStashed(y.id))
+    #expect(a.full == nil)
+    #expect(a.columns[0].map(\.id) == [x.id, y.id])
+    #expect(abs(a.height(of: x.id) + a.height(of: y.id) - 1) < 0.001)
+}
+
 @Test func aFoldedLogIsEmptyAndLoadsAsItWas() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-fold-\(ULID.make())")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

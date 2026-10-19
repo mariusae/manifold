@@ -44,7 +44,13 @@ and Mona Sans (bundled).
   until you go to another tile. A pill fades out while the text cursor
   is on the line under it, in an editor or a terminal, and comes back
   when the cursor moves on, or when the pointer rests where it would be.
-  The focused tile has a ring around it. Every lens shows its scroll
+  The focused tile has a ring around it. **⌘Z undoes** the workspace's
+  last change at your hand (a tile placed, taken off, moved, stashed,
+  resized, maximized), ⇧⌘Z redoes, a hundred deep per workspace, when
+  nothing else takes the key (an editor undoes its own text). Undo
+  doesn't rewind the log, which only grows: it appends the earlier state
+  as one entry, so the history keeps what was undone. In the sidebar,
+  ⇧-click (or ⌥-click) a chevron to open or close the whole subtree. Every lens shows its scroll
   bar; a terminal's comes from Ghostty's own account of the screen and
   its history. Going somewhere (⌘O, ⌘\, a found line) brings the pointer
   along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the

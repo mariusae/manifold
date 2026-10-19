@@ -838,6 +838,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.append(events, to: .block(id))
     }
 
+    // MARK: Undo (§3.1)
+
+    /// Each workspace's states before this client's changes to it, the
+    /// latest last; and what undoing put aside, for redo.
+    private var undone: [BlockID: [ArrangementState]] = [:]
+    private var redone: [BlockID: [ArrangementState]] = [:]
+    private var restoring = false
+
+    /// A workspace is about to change: its state kept (a hundred deep),
+    /// what was set aside for redo let go.
+    func noteWorkspaceChange(_ id: BlockID, before: ArrangementState, events: [Event]) {
+        guard !restoring else { return }
+        undone[id, default: []].append(before)
+        if undone[id]!.count > 100 { undone[id]!.removeFirst() }
+        redone[id] = []
+    }
+
+    /// ⌘Z, when nothing else takes it (an editor undoes its own text):
+    /// the selected workspace as it was before its last change, put back
+    /// in one entry; ⇧⌘Z the other way.
+    @objc func undo(_ sender: Any?) { restore(from: &undone, to: &redone) }
+    @objc func redo(_ sender: Any?) { restore(from: &redone, to: &undone) }
+
+    private func restore(from: inout [BlockID: [ArrangementState]], to: inout [BlockID: [ArrangementState]]) {
+        guard let id = selected, let now = hosts.arrangement(id), var stack = from[id], let state = stack.popLast() else { return NSSound.beep() }
+        from[id] = stack
+        to[id, default: []].append(now)
+        restoring = true
+        hosts.append([.restore(state)], to: .block(id))
+        restoring = false
+    }
+
     /// An arrangement to put things in: the selected one, or a new one.
     private func arrangementForPlacing() -> BlockID {
         if let id = selected, hosts.arrangement(id) != nil { return id }
@@ -3090,6 +3122,12 @@ extension MainWindowController: TerminalViewDelegate {
 final class MainWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // ⌘Z and ⇧⌘Z that no view took (an editor takes its own): the
+    // workspace's undo (§3.1). The window would otherwise answer them
+    // with its own, empty, undo manager.
+    @objc func undo(_ sender: Any?) { (windowController as? MainWindowController)?.undo(sender) }
+    @objc func redo(_ sender: Any?) { (windowController as? MainWindowController)?.redo(sender) }
 
     // The title bar is hidden, but AppKit still treats the strip above the
     // content layout rect as one: a click there moves the window with any

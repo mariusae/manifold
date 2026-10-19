@@ -120,10 +120,18 @@ protocol OrganizationViewDelegate: AnyObject {
 /// opens it. Expansion is remembered by row id across refreshes. Rows
 /// drag (a block, and an arrangement or placement where the row is one)
 /// and take drops.
+/// An outline whose chevron, clicked with ⇧ (or ⌥, as outlines have it),
+/// opens or closes the whole subtree.
+final class DeepOutlineView: NSOutlineView {
+    private var deep: Bool { NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false }
+    override func expandItem(_ item: Any?, expandChildren: Bool) { super.expandItem(item, expandChildren: expandChildren || deep) }
+    override func collapseItem(_ item: Any?, collapseChildren: Bool) { super.collapseItem(item, collapseChildren: collapseChildren || deep) }
+}
+
 final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     weak var delegate: OrganizationViewDelegate?
     private let scroll = NSScrollView()
-    private let outline = NSOutlineView()
+    private let outline = DeepOutlineView()
     private var roots: [OrgNode] = []
     private var expanded: Set<String> = []
     private var expandedByDefault: Set<String> = []

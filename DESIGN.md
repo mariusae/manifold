@@ -158,7 +158,14 @@ the column's past of §3.1's first simplification: a column of one with
 a hidden history was still something hidden. Collection of placements
 (§4) is retired with it: a workspace is what you made it.
 
-### 3.2 Names and the desk
+#**Undo** is the workspace put back as it was. Logs only grow (§2), so
+nothing is rewound: before each change a client makes to a workspace,
+it keeps the state; ⌘Z appends that state as one `restore` entry, ⇧⌘Z
+the state before the undo. History keeps both the change and its undoing.
+An editor's text has its own undo; the workspace's takes ⌘Z when no view
+does.
+
+## 3.2 Names and the desk
 
 A workspace has a title and nothing else to find it by: recall is by
 search (§6), not a path. The **desk** is what's in the sidebar: the
