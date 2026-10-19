@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 10
+public let protocolVersion = 11
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -186,7 +186,8 @@ public struct AttachRequest: Codable, Sendable {
 }
 
 public enum ServerMessage: Codable, Sendable {
-    case welcome(version: Int, pid: Int32, host: HostID, attachment: Int, snapshots: [ShardSnapshot])
+    /// `host` is the session id (§8); `label` what the host calls itself.
+    case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, snapshots: [ShardSnapshot])
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)
     /// The client's append didn't continue the log; a snapshot follows.

@@ -244,6 +244,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func view(for shown: Shown) -> PaneContent {
         let p = shown.placement
+        if shown.block == nil {
+            // On a host we aren't attached to (§8): a placeholder that says
+            // so, until the host is, when it is made again.
+            if let v = views[p.id] as? PlaceholderView { return v }
+            views[p.id]?.removeFromSuperview()
+            let v = PlaceholderView(placement: p.id, block: p.block, label: hosts.label(of: p.block.host))
+            v.known = { [weak self] in self?.hosts.block(p.block) != nil }
+            v.onAttach = { [weak self] in
+                guard let self, let dest = HostsFile.load().destination(of: p.block.host) else { return }
+                self.attach(dest)
+            }
+            views[p.id] = v
+            return v
+        }
         if let v = views[p.id] {
             if let m = v as? MarkdownView {
                 m.theme = desk.appearance.theme
@@ -655,13 +669,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for client in hosts.all where client.isRemote {
             let h = client.host
             let state = client.isConnected ? "connected" : "offline"
-            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(h) in a New Arrangement", subtitle: state) { [weak self] in
+            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Arrangement", subtitle: state) { [weak self] in
                 guard let self else { return }
                 let a = self.host.newArrangement(after: self.selected)
                 let t = self.hosts.newTerminal(on: h, cwd: nil)
                 self.hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
             })
-            items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(h)", subtitle: state) { [weak self] in
+            items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))", subtitle: state) { [weak self] in
                 self?.hosts.detach(h)
             })
         }
@@ -687,7 +701,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
             self?.newAgent(nil)
         })
-        items.append(PaletteItem(symbol: "cpu", title: "Processes on \(focusedHost == host.host ? "This Mac" : focusedHost.raw)", subtitle: "Action") { [weak self] in
+        items.append(PaletteItem(symbol: "cpu", title: "Processes on \(hosts.label(of: focusedHost))", subtitle: "Action") { [weak self] in
             self?.showProcesses(nil)
         })
         items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Source Control for This Project", subtitle: "⌥⌘G") { [weak self] in
@@ -1296,7 +1310,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if clients.count > 1 {
                 let id = "host:\(c.host.raw)"
                 open.insert(id)
-                roots.append(OrgNode(id: id, title: c.host == host.host ? "This Mac" : c.host.raw, symbol: "desktopcomputer",
+                roots.append(OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer",
                                      count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree))
             } else {
                 roots += tree
@@ -1565,7 +1579,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
-            let remote = block.id.host != host.host ? " on \(block.id.host)" : ""
+            let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
             let title = block.displayTitle
             let hay: String
             let detail: String
@@ -1950,7 +1964,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let self else { return [:] }
                 var out: [String: String] = [:]
                 for c in self.hosts.all {
-                    for (key, state) in c.languageServerStates { out[c.host.raw + ": " + key] = state }
+                    for (key, state) in c.languageServerStates { out[hosts.label(of: c.host) + ": " + key] = state }
                 }
                 return out
             }
@@ -2714,7 +2728,7 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let node, let id = node.block, let b = hosts.block(id), let window else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
         if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }
-        if id.host != host.host { detail += " · on \(id.host.raw)" }
+        if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }
         var body = ""
         var font: NSFont? = nil
         switch b.kind {

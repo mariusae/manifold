@@ -13,13 +13,13 @@ import Musl
 /// socket, starting the server if there isn't one. A client on another
 /// machine runs this over ssh (or any provider) and speaks frames to it
 /// exactly as to the socket; the bridge knows nothing of them. `--name`
-/// names the host, the first time.
+/// gives the host a label, the first time; its identity is its own (§8).
 enum Bridge {
     static func run(name: String?) -> Never {
         signal(SIGPIPE, SIG_IGN)
         Paths.ensureDirectory()
-        if let name, !FileManager.default.fileExists(atPath: Paths.hostName.path) {
-            try? Data(name.utf8).write(to: Paths.hostName)
+        if let name, !FileManager.default.fileExists(atPath: Paths.label.path) {
+            try? Data(name.utf8).write(to: Paths.label)
         }
         var fd = try? UnixSocket.connect(path: Paths.socket)
         if fd == nil {

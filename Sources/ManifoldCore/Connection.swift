@@ -204,8 +204,12 @@ public enum Paths {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".manifold/bin/manifoldd")
     }
 
-    /// The host's name, as its first client named it.
+    /// The host's name, as its first client named it (before sessions).
     public static var hostName: URL { directory.appendingPathComponent("host") }
+    /// The host's session id (§8), minted once.
+    public static var session: URL { directory.appendingPathComponent("session") }
+    /// What the host calls itself, for clients to show.
+    public static var label: URL { directory.appendingPathComponent("label") }
 
     public static var socket: String { directory.appendingPathComponent("manifoldd.sock").path }
     public static var state: URL { directory.appendingPathComponent("state.json") }

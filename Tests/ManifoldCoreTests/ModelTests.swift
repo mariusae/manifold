@@ -119,10 +119,26 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     // Growing takes from the neighbors, nearest first; filling leaves slivers.
     for ev in a.growing(n.id, step: 0.1) { a.apply(ev) }
     #expect(abs(a.heights[n.id]! - 0.35) < 1e-9 && abs(a.heights[e.id]! - 0.4) < 1e-9)
+    // Filling the column stashes the others (a share of 0); unstashing one
+    // gives it the lower half of the biggest shown tile.
     for ev in a.growing(n.id, whole: true) { a.apply(ev) }
-    #expect(a.heights[t2.id]! < 0.05 && a.heights[n.id]! > 0.9)
+    #expect(a.heights[n.id] == 1 && a.isStashed(t2.id) && a.isStashed(e.id))
+    #expect(a.stashedTiles(inColumn: 1).map(\.id) == [t2.id, e.id])
+    for ev in a.unstashing(e.id) { a.apply(ev) }
+    #expect(a.heights[n.id] == 0.5 && a.heights[e.id] == 0.5 && a.isStashed(t2.id))
+    #expect(a.focused == e.id)
+    for ev in a.stashing(e.id) { a.apply(ev) }
+    #expect(a.heights[n.id] == 1 && a.isStashed(e.id))
+    for ev in a.unstashing(e.id) { a.apply(ev) }
+    // Maximized over the whole arrangement, until restored or gone.
+    a.apply(.full(n.id))
+    #expect(a.full == n.id && a.focused == n.id)
+    a.apply(.full(nil))
+    #expect(a.full == nil)
+    a.apply(.full(n.id))
     // A tile removed gives its height to the one below, else above.
     a.apply(.remove(n.id))
+    #expect(a.full == nil)
     #expect(a.columns[1].map(\.id) == [t2.id, e.id])
     #expect(abs(a.heights[t2.id]! + a.heights[e.id]! - 1) < 1e-9 && a.heights[e.id]! > 0.9)
     #expect(a.focused == e.id)
@@ -654,4 +670,33 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     var t = Block(id: BlockID(), kind: .terminal, created: at)
     t.apply(.shell(.busy(true)), at: at)
     #expect(t.statusState == .working && t.statusRecord?.progress == nil)
+}
+
+@Test func aHostBecomesASessionAndItsLogsFollow() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
+    let logs = dir.appendingPathComponent("logs")
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+    // A host named "local" with a block and a registry, as before sessions.
+    let store = LogStore(directory: logs)
+    let old = HostID.local
+    let block = BlockID(host: old)
+    let at = Stamp(wall: 1, host: old)
+    store.append([Entry(seq: 1, at: at, event: .create(kind: .text, title: "note", path: nil))], to: .block(block))
+    store.append([Entry(seq: 1, at: at, event: .register(RegistryEntry(id: block, kind: .text, created: at, lastSeen: at)))], to: .registry(old))
+    store.closeAll()
+    let first = HostSession.identify(directory: dir, logs: logs)
+    #expect(first.id != old && first.id.raw.hasPrefix("h") && first.id.raw.count == 11)
+    #expect(first.label == nil, "“local” is no one's label")
+    // The same id next time; the logs under the new id, their contents rewritten.
+    #expect(HostSession.identify(directory: dir, logs: logs).id == first.id)
+    let node = Node()
+    let reloaded = LogStore(directory: logs)
+    let shards = reloaded.shards()
+    #expect(shards.allSatisfy { $0.host == first.id })
+    for s in shards { reloaded.load(s, into: node) }
+    let moved = BlockID(host: first.id, ulid: block.ulid)
+    #expect(node.block(moved)?.title == "note")
+    #expect(node.registry(first.id).blocks[moved]?.id == moved)
+    #expect(node.block(moved)?.created.host == first.id)
+    try? FileManager.default.removeItem(at: dir)
 }

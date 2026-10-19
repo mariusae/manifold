@@ -93,6 +93,17 @@ final class Hosts {
 
     func client(of block: BlockID) -> HostClient? { client(block.host) }
 
+    /// What to call a host: This Mac; what it calls itself; what it was
+    /// called when attached; else its session id.
+    func label(of host: HostID) -> String {
+        if host == local.host || host == .local { return "This Mac" }
+        if let c = remotes[host], let l = c.label ?? HostsFile.load().label(of: host) { return l }
+        return HostsFile.load().label(of: host) ?? host.raw
+    }
+
+    /// Whether a block's host is one we're attached to.
+    func isAttached(_ host: HostID) -> Bool { client(host) != nil }
+
     // MARK: Reading, across hosts
 
     var desk: DeskState { local.desk }
@@ -239,10 +250,13 @@ final class Hosts {
                     client.onWelcome = { [weak self, weak client] in
                         guard let self, let client else { return }
                         self.connecting.removeValue(forKey: key)
-                        // The host may have a name already, from another client.
+                        // The host names itself (§8): its session id is its key.
                         self.remotes[client.host] = client
                         var file = HostsFile.load()
-                        file.hosts[client.host.raw] = dest
+                        // The same destination under an older key (its name,
+                        // before sessions) goes.
+                        file.hosts = file.hosts.filter { $0.key == client.host.raw || $0.value.destination != dest }
+                        file.hosts[client.host.raw] = HostEntry(destination: dest, label: client.label ?? name)
                         file.save()
                         self.onChange?()
                         completion(.success(client.host))
@@ -255,8 +269,8 @@ final class Hosts {
 
     /// Attaches again to every host remembered.
     func reattachRemembered() {
-        for (name, dest) in HostsFile.load().hosts where remotes[HostID(name)] == nil {
-            attach(dest) { _ in }
+        for (id, entry) in HostsFile.load().hosts where remotes[HostID(id)] == nil {
+            attach(entry.destination) { _ in }
         }
     }
 
@@ -272,7 +286,7 @@ final class Hosts {
     private func uniqueName(_ base: String) -> String {
         var name = base
         var n = 2
-        while name == local.host.raw || remotes[HostID(name)] != nil {
+        while name == local.host.raw || remotes.values.contains(where: { $0.label == name }) {
             name = "\(base)-\(n)"
             n += 1
         }

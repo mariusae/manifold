@@ -21,18 +21,15 @@ private func sysExit(_ code: Int32) -> Never { exit(code) }
 /// text, the desk) and asks for the rest by proposal. Everything runs on one
 /// serial queue.
 final class Server {
-    /// The host's name: as its first client named it (a remote host), or
-    /// `local`.
-    let host: HostID = {
-        if let data = try? Data(contentsOf: Paths.hostName), case let name = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-            return HostID(name)
-        }
-        return .local
-    }()
+    /// The host's session id (§8), minted the first time; logs from before
+    /// sessions are rewritten to it.
+    let host: HostID
+    /// What the host calls itself, for clients to show.
+    let label: String?
     private let queue = DispatchQueue(label: "manifoldd")
     private let node = Node()
     private let store: LogStore
-    private let clock = Clock(host: .local)
+    private let clock: Clock
     private var clients: [Connection] = []
     /// Each client's attachment number, and the app among them (named so).
     private var clientIDs: [ObjectIdentifier: Int] = [:]
@@ -58,6 +55,11 @@ final class Server {
     private var repoWatchers: [String: FileWatcher] = [:]
 
     init() {
+        Paths.ensureDirectory()
+        let session = HostSession.identify(directory: Paths.directory, logs: Paths.logs)
+        host = session.id
+        label = session.label
+        clock = Clock(host: session.id)
         store = LogStore(directory: Paths.logs)
         git = Git(queue: queue)
         searches = Searches(queue: queue)
@@ -66,7 +68,7 @@ final class Server {
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
         mentions.mentions = { [weak self] block in self?.node.graph.edges(from: block, kind: .link(.mention)) ?? [] }
         mentions.makeBlock = { [weak self] kind, path in
-            guard let self else { return BlockID(host: .local) }
+            guard let self else { return BlockID(host: HostID("none")) }
             let id = BlockID(host: self.host)
             // A block for a file the text names, before anyone opens it: the
             // app finds it by path when they do.
@@ -173,7 +175,7 @@ final class Server {
                 self?.appClients.remove(ObjectIdentifier(conn))
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
-            conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host,
+            conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
                                                      attachment: attachments, snapshots: snapshots)))
         case .attach(let req)?:
             attach(conn, req)

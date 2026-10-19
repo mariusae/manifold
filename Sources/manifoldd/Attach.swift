@@ -11,9 +11,9 @@ enum Attach {
 
     static func run(block: BlockID) -> Never {
         signal(SIGPIPE, SIG_IGN)
-        let local = (try? Data(contentsOf: Paths.hostName)).map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "local"
+        let local = HostSession.read(Paths.session) ?? .local
         let conn: Connection
-        if block.host.raw != local, block.host != .local {
+        if block.host != local, block.host != .local {
             // Another host's: through its provider, to a bridge there.
             guard let dest = HostsFile.load().destination(of: block.host) else {
                 FileHandle.standardError.write(Data("manifold: no way to reach \(block.host)\r\n".utf8))

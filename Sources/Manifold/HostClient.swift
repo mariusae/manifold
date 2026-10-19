@@ -20,6 +20,8 @@ final class HostClient {
     let transport: Transport
     private(set) var clock = Clock(host: .local)
     private(set) var host = HostID.local
+    /// What the host calls itself (§8), once it has said.
+    private(set) var label: String?
     private var conn: Connection?
     private var child: Child?
     private(set) var hasState = false
@@ -420,13 +422,14 @@ final class HostClient {
 
     private func handle(_ message: ServerMessage) {
         switch message {
-        case let .welcome(version, _, host, _, snapshots):
+        case let .welcome(version, _, host, label, _, snapshots):
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 onVersionMismatch?(version)
             }
             let first = !hasState
             self.host = host
+            self.label = label
             clock = Clock(host: host)
             for s in snapshots { node.load(s) }
             // Shards we had that the host no longer has (a fresh host).

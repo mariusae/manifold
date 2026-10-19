@@ -68,7 +68,22 @@ public struct Destination: Hashable, Codable, Sendable, CustomStringConvertible 
 /// Where each remote host attached from this machine is reached, kept in
 /// the local directory for the attach helper and the command.
 public struct HostsFile: Codable {
-    public var hosts: [String: Destination] = [:]
+    /// By session id.
+    public var hosts: [String: HostEntry] = [:]
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey { case hosts }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let entries = try? c.decode([String: HostEntry].self, forKey: .hosts) {
+            hosts = entries
+        } else if let old = try? c.decode([String: Destination].self, forKey: .hosts) {
+            // Before sessions: keyed by the name the client gave the host.
+            hosts = old.mapValues { HostEntry(destination: $0, label: nil) }
+        }
+    }
 
     public static var url: URL { Paths.directory.appendingPathComponent("hosts.json") }
 
@@ -81,7 +96,8 @@ public struct HostsFile: Codable {
         if let data = try? JSONEncoder().encode(self) { try? data.write(to: Self.url, options: .atomic) }
     }
 
-    public func destination(of host: HostID) -> Destination? { hosts[host.raw] }
+    public func destination(of host: HostID) -> Destination? { hosts[host.raw]?.destination }
+    public func label(of host: HostID) -> String? { hosts[host.raw]?.label }
 }
 
 /// A child process with pipes to its stdin and stdout.

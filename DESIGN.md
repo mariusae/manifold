@@ -578,6 +578,18 @@ block's history is its log; scrubbing it walks the pages it showed.
 - **Tools**: the `manifold` command and scripts, speaking the control side
   of the same protocol (open, find, place, link, read a block).
 
+A host's server is a **session**, and it names itself: an id minted once
+(`h` and ten characters of base32), kept in its data directory, that every
+block made there carries (`session/ulid`). So a block's id means the same
+thing from every machine, and an edge whose other end is on a session a
+client is not attached to is just an edge it cannot follow yet: the tile
+is a placeholder with the host's label and a way to attach. What people
+call a host is a **label**: what the host says of itself (given with
+`bridge --name` the first time), kept by each client in its hosts file
+beside the destination, keyed by session. A server from before sessions,
+named `local` or by its first client, mints its id on first start and
+rewrites its logs to it, the old name becoming its label.
+
 The local host's server starts with the app, as now. A remote one is
 reached through a provider, as apex does it: `ssh` built in, or a
 `manifold-remote-<provider>` command given a destination and a command to

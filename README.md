@@ -310,7 +310,12 @@ is migrated into logs on first run.
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
-  Hosts are remembered in `hosts.json` and attached again at start. Linux
+  A host names itself: a session id minted once, which every block made
+  there carries, so a block means the same thing from every Mac; what
+  you see is its label. Hosts are remembered in `hosts.json` by session,
+  with their destination and label, and attached again at start. A tile
+  whose block is on a host you aren't attached to is a placeholder that
+  says so, with Attach. Linux
   servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
   host, `manifoldd open --wait`): `git commit` and friends edit beside
