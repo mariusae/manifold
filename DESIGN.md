@@ -340,6 +340,18 @@ the kind and the message; `done` a filled dot in the accent; `error` a
 filled dot in red; `idle` nothing. The Dock badge counts the blocks
 blocked and done.
 
+### 3.9 Hosts that come and go
+
+A remote host is a client the app keeps whether or not it can reach it
+(§8): `HostClient.link` is connecting, connected, or unreachable with a
+reason. A remembered host is made at launch in the connecting state,
+bootstrapped in the background, and tried again every thirty seconds
+while unreachable; a connected bridge is pinged every fifteen seconds
+and dropped (to be made again) when a pong doesn't come. The mirrored
+node stays as last seen: tiles of its blocks wear the offline glyph,
+editors there take no edits, appends go nowhere. The sidebar's host row
+shows the state and opens the host's home (the welcome carries it).
+
 ### 3.8 The scrubber: a terminal's outline
 
 A terminal's scroll bar is a scrubber (§3.1, as Prism's): the strip's

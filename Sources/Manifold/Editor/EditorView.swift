@@ -8,6 +8,8 @@ protocol EditorViewDelegate: AnyObject {
     func editorDidReveal(_ view: EditorView)
     /// The editor asks the host for something (a save, a reload).
     func editor(_ view: EditorView, propose proposal: Proposal)
+    /// A web address was ⌘-clicked.
+    func editor(_ view: EditorView, open url: URL)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
@@ -164,7 +166,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             }
         }
         if external { textView.savedUndoDepth = textView.undoDepth }
-        textView.isEditable = !doc.unreadable
+        textView.isEditable = !doc.unreadable && !offline
         if doc.stale, banner == nil { showBanner() }
         if !doc.stale, banner != nil { hideBanner() }
         if doc.isDirty != isEdited {
@@ -191,6 +193,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     var isDirty: Bool { document?.isDirty == true }
     /// The caret's line, trimmed: what a link made from here was made on.
+    /// The block's host can't be reached (§8): read, not written.
+    var offline = false {
+        didSet { if offline != oldValue { textView.isEditable = !offline && document?.unreadable != true } }
+    }
+
     var lineAtCaret: String {
         let text = textView.text
         guard text.lineCount > 0 else { return "" }

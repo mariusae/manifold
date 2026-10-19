@@ -197,7 +197,15 @@ when you find it again.
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open in a listing (name, date, size); double-click an entry
-  to open it, ⌘↑ for the folder above.
+  to open it, ⌘↑ for the folder above — on the folder's own host, remote
+  or not.
+- **Links** go by the click: ⌘-click a web address — in a terminal, an
+  editor, a preview or a web page — and the system's browser opens it;
+  ⇧⌘-click and it opens in Manifold's own web lens beside (a plain click
+  in a preview or a page does the same). File links in a Markdown
+  preview go where the file leads: another Markdown file is previewed
+  in the same tile, a folder is listed, an image or PDF shown, anything
+  else edited.
 - **Find** is a pill at a tile's upper right (⌘F): the query, how many
   matches, ↑ ↓ for the previous and next (↩ and ⇧↩, ⌘G and ⇧⌘G too), Aa
   for case, and ×; ⌥⌘F adds a row to replace with. ⌘E finds the word at
@@ -382,9 +390,20 @@ is migrated into logs on first run.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
-  with their destination and label, and attached again at start. A tile
-  whose block is on a host you aren't attached to is a placeholder that
-  says so, with Attach. Two Manifolds may attach to one host and share
+  with their destination and label, and attached again at start. A
+  remembered host stands in the sidebar from the start: a spinner and
+  "connecting…" while it's being reached, a slashed ring and
+  "unreachable" (dimmed) when it can't be — tried again every half
+  minute, and, once connected, pinged every fifteen seconds so a bridge
+  that hangs is noticed and made again. While a host is unreachable its
+  blocks stay as last seen: each tile's pill wears the slashed ring, an
+  editor there takes no edits, and nothing new reaches it until it's
+  back. Click a host's row in Files (or Desk) and its home folder opens
+  as a listing on that host; a folder row with no listing yet opens one
+  when clicked (the disclosure, or a double-click, unfolds it); a host
+  with nothing of it yet shows just its `~`. A tile whose block is on a
+  host you aren't attached to at all is a placeholder that says so,
+  with Attach. Two Manifolds may attach to one host and share
   it: each block a client can edit (a note, a file, a web page, a
   workspace) has one owner at a time, whichever focused it last; the
   other mirrors until it focuses the block again. Linux servers (x86_64

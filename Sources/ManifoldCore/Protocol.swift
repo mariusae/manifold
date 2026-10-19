@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 19
+public let protocolVersion = 20
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -165,6 +165,9 @@ public enum HostProposal: Codable, Sendable {
 
 public enum ClientMessage: Codable, Sendable {
     case hello(version: Int, name: String)
+    /// Is the host there? Answered with `pong` at once (§8): a client
+    /// over a pipe that hangs learns so.
+    case ping
     /// Entries the client appended as a shard's owner.
     case append(shard: ShardID, entries: [Entry])
     /// The client wants the pen for a shard it may lead (§8.2): it focused
@@ -199,8 +202,10 @@ public struct AttachRequest: Codable, Sendable {
 }
 
 public enum ServerMessage: Codable, Sendable {
-    /// `host` is the session id (§8); `label` what the host calls itself.
-    case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, snapshots: [ShardSnapshot])
+    /// `host` is the session id (§8); `label` what the host calls itself;
+    /// `home` the user's folder there.
+    case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot])
+    case pong
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)
     /// The client's append didn't continue the log, or it doesn't own the

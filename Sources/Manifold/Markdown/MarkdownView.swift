@@ -5,7 +5,7 @@ import WebKit
 
 protocol MarkdownViewDelegate: AnyObject {
     /// A link to another Markdown file was followed.
-    func markdownView(_ view: MarkdownView, follow url: URL)
+    func markdownView(_ view: MarkdownView, follow url: URL, modifiers: NSEvent.ModifierFlags)
     /// A heading was gone to and is at the top (the pointer may follow).
     func markdownViewDidReveal(_ view: MarkdownView)
 }
@@ -195,7 +195,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             web.evaluateJavaScript("manifoldScrollTo(\(json(fragment)));")
             return
         }
-        delegate?.markdownView(self, follow: url)
+        delegate?.markdownView(self, follow: url, modifiers: action.modifierFlags)
     }
 }
 

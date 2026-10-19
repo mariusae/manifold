@@ -302,13 +302,23 @@ final class Hosts {
     /// Attaches to a destination: on a background thread, asks it what it
     /// is, installs our server there if it isn't already, and bridges to it;
     /// then the host is one of ours, remembered for next time.
-    func attach(_ dest: Destination, completion: @escaping (Result<HostID, Error>) -> Void) {
+    /// `known`: a remembered host's id and label, so it stands in the
+    /// app at once — connecting, then there, or unreachable with what
+    /// was last seen — and is tried again every so often.
+    func attach(_ dest: Destination, known: HostID? = nil, label: String? = nil, completion: @escaping (Result<HostID, Error>) -> Void) {
         let key = dest.description
         guard !attaching.contains(key) else { return }
         attaching.insert(key)
         errors.removeValue(forKey: key)
+        let name = label ?? uniqueName(dest.suggestedHostName)
+        let standing: HostClient? = known.map { id in
+            if let c = remotes[id] { return c }
+            let c = HostClient(transport: .remote(dest, name: name), known: id)
+            wire(c)
+            remotes[id] = c
+            return c
+        }
         onChange?()
-        let name = uniqueName(dest.suggestedHostName)
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
             do {
@@ -321,16 +331,27 @@ final class Hosts {
                 switch result {
                 case .failure(let error):
                     self.errors[key] = "\(error)"
+                    standing?.markUnreachable("\(error)")
                     self.onChange?()
                     completion(.failure(error))
+                    if let known, let standing {
+                        // Again in a while, as long as it's still wanted.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                            guard let self, self.remotes[known] === standing, standing.link != .connected else { return }
+                            self.attach(dest, known: known, label: name) { _ in }
+                        }
+                    }
                 case .success(let child):
-                    let client = HostClient(transport: .remote(dest, name: name))
-                    self.wire(client)
-                    self.connecting[key] = client
+                    let client = standing ?? HostClient(transport: .remote(dest, name: name))
+                    if standing == nil {
+                        self.wire(client)
+                        self.connecting[key] = client
+                    }
                     client.onWelcome = { [weak self, weak client] in
                         guard let self, let client else { return }
                         self.connecting.removeValue(forKey: key)
                         // The host names itself (§8): its session id is its key.
+                        if let known, known != client.host, self.remotes[known] === client { self.remotes.removeValue(forKey: known) }
                         self.remotes[client.host] = client
                         var file = HostsFile.load()
                         // The same destination under an older key (its name,
@@ -350,9 +371,17 @@ final class Hosts {
     /// Attaches again to every host remembered.
     func reattachRemembered() {
         for (id, entry) in HostsFile.load().hosts where remotes[HostID(id)] == nil {
-            attach(entry.destination) { _ in }
+            attach(entry.destination, known: HostID(id), label: entry.label) { _ in }
         }
     }
+
+    /// How a host stands: this Mac's is always there.
+    func link(of host: HostID) -> HostClient.Standing {
+        client(host)?.link ?? .unreachable(nil)
+    }
+
+    /// Whether blocks on the host can be worked on now.
+    func isReachable(_ host: HostID) -> Bool { link(of: host) == .connected }
 
     func detach(_ host: HostID) {
         guard let client = remotes.removeValue(forKey: host) else { return }

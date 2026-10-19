@@ -6,6 +6,9 @@ import ManifoldCore
 struct Shown: Equatable {
     var placement: Placement
     var block: Block?
+    /// The block's host can't be reached now (§8): the view is what was
+    /// last seen, and takes no edits.
+    var offline = false
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

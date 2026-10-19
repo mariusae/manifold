@@ -6,6 +6,8 @@ protocol WebViewDelegate: AnyObject {
     /// The page moved on (a link followed, an address typed): the block's
     /// log records where it is.
     func webView(_ view: WebView, append events: [Event])
+    /// A link was ⇧⌘-clicked: opened as a block of its own, beside.
+    func webView(_ view: WebView, open url: URL)
 }
 
 /// The web lens: an embedded browser on a web block, with an address bar,
@@ -143,6 +145,18 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
     @objc private func goBack() { web.goBack() }
     @objc private func goForward() { web.goForward() }
     @objc private func reloadPage() { web.reload() }
+
+    /// ⌘-click on a link: the system's handler; ⇧⌘-click: a web block
+    /// beside this one; a plain click follows it here.
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard action.navigationType == .linkActivated, let url = action.request.url, action.modifierFlags.contains(.command) else {
+            decisionHandler(.allow)
+            return
+        }
+        decisionHandler(.cancel)
+        if action.modifierFlags.contains(.shift) { delegate?.webView(self, open: url) } else { NSWorkspace.shared.open(url) }
+    }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         back.isEnabled = web.canGoBack

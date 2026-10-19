@@ -27,6 +27,23 @@ final class HostClient {
     private(set) var hasState = false
     private(set) var isConnected = false
     private var disconnected = false
+    /// The user's folder on the host, once it has said.
+    private(set) var home: String?
+
+    /// How the host stands (§8): being reached, there, or not reachable
+    /// now — then what is mirrored of it is what was last seen.
+    enum Standing: Equatable {
+        case connecting
+        case connected
+        case unreachable(String?)
+    }
+    private(set) var link: Standing = .connecting {
+        didSet { if link != oldValue { scheduleChange() } }
+    }
+    /// The last time the host answered.
+    private(set) var lastHeard: Date?
+    private var pingTimer: Timer?
+    private var pingSent: Date?
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
@@ -52,10 +69,13 @@ final class HostClient {
     /// appended to, until the block is focused here again.
     private(set) var fenced: Set<ShardID> = []
 
-    init(transport: Transport) {
+    /// `known`: the host's id from the hosts file, for one remembered,
+    /// so it stands in the app (unreachable, as last seen) before it says
+    /// its name again.
+    init(transport: Transport, known: HostID? = nil) {
         self.transport = transport
         if case let .remote(_, name) = transport {
-            host = HostID(name)
+            host = known ?? HostID(name)
             clock = Clock(host: host)
         }
         node.onChange = { [weak self] _ in self?.scheduleChange() }
@@ -391,23 +411,55 @@ final class HostClient {
 
     private func reconnectRemote() {
         guard case let .remote(dest, name) = transport, !disconnected else { return }
+        link = .connecting
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let child = try? Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
+            let child: Child?
+            var why: String? = nil
+            do { child = try Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name))) } catch { child = nil; why = "\(error)" }
             DispatchQueue.main.async {
                 guard let self, !self.disconnected else { return }
                 if let child {
                     self.adopt(child)
                 } else {
+                    self.link = .unreachable(why)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.reconnectRemote() }
                 }
             }
         }
     }
 
+    /// Reaching the host failed before a bridge could be spawned (its
+    /// bootstrap): said so, until the next try.
+    func markUnreachable(_ why: String?) {
+        link = .unreachable(why)
+    }
+
     func disconnect() {
         disconnected = true
+        pingTimer?.invalidate()
         conn?.close()
         if let child { kill(child.pid, SIGTERM) }
+    }
+
+    /// Every so often, a ping over a remote bridge; no pong in time, and
+    /// the connection is given up on, to be made again.
+    private func startPinging() {
+        pingTimer?.invalidate()
+        guard isRemote else { return }
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let conn = self.conn else { return }
+                if let sent = self.pingSent, Date().timeIntervalSince(sent) > 12 {
+                    NSLog("host %@: no answer to a ping; dropping the connection", self.host.raw)
+                    self.pingSent = nil
+                    self.link = .unreachable("not answering")
+                    conn.close()
+                    return
+                }
+                self.pingSent = Date()
+                conn.send(.message(ClientMessage.ping))
+            }
+        }
     }
 
     private func attach(_ conn: Connection) {
@@ -427,6 +479,9 @@ final class HostClient {
             NSLog("host %@: connection closed", self.host.raw)
             self.conn = nil
             self.isConnected = false
+            self.pingTimer?.invalidate()
+            self.pingSent = nil
+            if case .connected = self.link { self.link = .unreachable(nil) }
             if let child = self.child {
                 var status: Int32 = 0
                 waitpid(child.pid, &status, WNOHANG)
@@ -443,11 +498,12 @@ final class HostClient {
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
         self.conn = conn
         isConnected = true
+        link = .connecting
     }
 
     private func handle(_ message: ServerMessage) {
         switch message {
-        case let .welcome(version, _, host, label, _, snapshots):
+        case let .welcome(version, _, host, label, _, home, snapshots):
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 onVersionMismatch?(version)
@@ -455,6 +511,10 @@ final class HostClient {
             let first = !hasState
             self.host = host
             self.label = label
+            self.home = home
+            lastHeard = Date()
+            link = .connected
+            startPinging()
             fenced = []
             clock = Clock(host: host)
             for s in snapshots { node.load(s) }
@@ -465,6 +525,9 @@ final class HostClient {
             if first { onWelcome?() }
             onConnected?()
             scheduleChange()
+        case .pong:
+            pingSent = nil
+            lastHeard = Date()
         case let .entries(shard, entries):
             for e in entries { clock.observe(e.at) }
             if !node.apply(entries, to: shard) {

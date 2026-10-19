@@ -276,7 +276,32 @@ extension EditorView {
 
 extension EditorView {
     func textView(_ view: TextView, handle event: NSEvent) -> Bool { handleCompletionKey(event) }
-    func textView(_ view: TextView, commandClickAt offset: Int) { definition(at: offset) }
+    func textView(_ view: TextView, commandClickAt offset: Int) {
+        if let url = urlAt(offset) { delegate?.editor(self, open: url); return }
+        definition(at: offset)
+    }
+
+    /// A web address under an offset, if the line has one there.
+    private func urlAt(_ offset: Int) -> URL? {
+        let text = textView.text
+        guard text.lineCount > 0 else { return nil }
+        let n = text.line(at: offset)
+        let range = text.lineRange(n)
+        let line = text.lineText(n)
+        let col = offset - range.start
+        guard let re = try? NSRegularExpression(pattern: #"https?://[^\s<>"'`)\]]+"#) else { return nil }
+        let ns = line as NSString
+        for m in re.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
+            // Offsets are in UTF-16 units either way for ASCII-only lines;
+            // near enough for a click.
+            if m.range.location <= col, col <= m.range.location + m.range.length {
+                var s = ns.substring(with: m.range)
+                while let last = s.last, ".,;:!?".contains(last) { s.removeLast() }
+                return URL(string: s)
+            }
+        }
+        return nil
+    }
     func textViewRequestsCompletion(_ view: TextView) { completeSymbol(nil) }
 }
 

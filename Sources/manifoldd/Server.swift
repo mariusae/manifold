@@ -187,7 +187,7 @@ final class Server {
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
-                                                     attachment: attachments, snapshots: snapshots)))
+                                                     attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots)))
         case .attach(let req)?:
             attach(conn, req)
         case .shutdown?:
@@ -199,6 +199,8 @@ final class Server {
 
     private func clientFrame(_ frame: Frame, from conn: Connection) {
         switch frame.decode(ClientMessage.self) {
+        case .ping?:
+            conn.send(.message(ServerMessage.pong))
         case let .append(shard, entries)?:
             clientAppended(shard, entries, from: conn)
         case let .own(shard)?:

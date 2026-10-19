@@ -2,7 +2,7 @@ import AppKit
 import ManifoldCore
 
 protocol DirectoryViewDelegate: AnyObject {
-    func directoryView(_ view: DirectoryView, open path: String)
+    func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool)
     func directoryViewRefresh(_ view: DirectoryView)
 }
 
@@ -104,14 +104,14 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTableViewDataS
 
     @objc private func doubleClicked() {
         guard table.clickedRow >= 0, table.clickedRow < entries.count else { return }
-        delegate?.directoryView(self, open: (path as NSString).appendingPathComponent(entries[table.clickedRow].name))
+        delegate?.directoryView(self, open: (path as NSString).appendingPathComponent(entries[table.clickedRow].name), isDirectory: entries[table.clickedRow].isDirectory)
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36, table.selectedRow >= 0 { // return
-            delegate?.directoryView(self, open: (path as NSString).appendingPathComponent(entries[table.selectedRow].name))
+            delegate?.directoryView(self, open: (path as NSString).appendingPathComponent(entries[table.selectedRow].name), isDirectory: entries[table.selectedRow].isDirectory)
         } else if event.keyCode == 126, event.modifierFlags.contains(.command) { // ⌘↑: up a folder
-            delegate?.directoryView(self, open: (path as NSString).deletingLastPathComponent)
+            delegate?.directoryView(self, open: (path as NSString).deletingLastPathComponent, isDirectory: true)
         } else {
             super.keyDown(with: event)
         }

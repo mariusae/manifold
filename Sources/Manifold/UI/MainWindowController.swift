@@ -143,7 +143,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// What's known of a placement on the desk.
     private func shown(_ id: PlacementID) -> Shown? {
         for a in allWorkspaces.compactMap({ hosts.arrangement($0) }) {
-            if let p = a.placement(id) { return Shown(placement: p, block: hosts.block(p.block)) }
+            if let p = a.placement(id) { return shown(p) }
         }
         if id.hasPrefix("state:"), let b = BlockID(string: String(id.dropFirst(6))), let block = hosts.block(b) {
             return Shown(placement: Placement(id: id, block: b, lens: Lens.default(for: block.kind, path: block.path)), block: block)
@@ -206,7 +206,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // The grid (§3.1): every tile, in its column, top to bottom.
             let tiles = a.columns.map { column in
                 column.filter { !recentlyClosed.contains($0.block) }.map { p -> GridView.Tile in
-                    let shown = Shown(placement: p, block: hosts.block(p.block))
+                    let shown = self.shown(p)
                     return GridView.Tile(shown: shown, view: view(for: shown))
                 }
             }.filter { !$0.isEmpty }
@@ -274,14 +274,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "Untitled"
     }
 
+    /// What to say of a host whose block can't be shown: being reached,
+    /// unreachable (and why), or not attached at all; and whether a
+    /// button to attach makes sense.
+    private func hostStanding(_ host: HostID) -> (String, Bool) {
+        let known = HostsFile.load().destination(of: host) != nil
+        guard let c = hosts.client(host) else { return ("Not attached to that host.", known) }
+        switch c.link {
+        case .connecting: return ("Connecting…", false)
+        case .connected: return ("Waiting for its blocks…", false)
+        case .unreachable(let why): return ("Can't be reached now" + (why.map { ": " + $0.prefix(120) } ?? "") + ". Tried again every so often.", known)
+        }
+    }
+
+    /// A placement's block as seen from here: offline when its host is
+    /// attached but can't be reached now.
+    private func shown(_ p: Placement) -> Shown {
+        Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
+    }
+
     private func view(for shown: Shown) -> PaneContent {
         let p = shown.placement
         if shown.block == nil {
             // On a host we aren't attached to (§8): a placeholder that says
             // so, until the host is, when it is made again.
-            if let v = views[p.id] as? PlaceholderView { return v }
+            let (note, canAttach) = hostStanding(p.block.host)
+            if let v = views[p.id] as? PlaceholderView { v.set(note: note, canAttach: canAttach); return v }
             views[p.id]?.removeFromSuperview()
             let v = PlaceholderView(placement: p.id, block: p.block, label: hosts.label(of: p.block.host))
+            v.set(note: note, canAttach: canAttach)
             v.known = { [weak self] in self?.hosts.block(p.block) != nil }
             v.onAttach = { [weak self] in
                 guard let self, let dest = HostsFile.load().destination(of: p.block.host) else { return }
@@ -301,6 +322,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 m.show(block: p.block, path: shown.path ?? "")
             }
             if let e = v as? EditorView {
+                e.offline = shown.offline
                 e.home = hosts.block(p.block)?.place
                 e.font = hosts.state.appearance.editorFont
                 e.theme = hosts.state.appearance.theme
@@ -1465,7 +1487,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let id = "host:\(c.host.raw)"
             open.insert(id)
             let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer", count: nodes.count, isGroup: true, children: nodes)
-            n.detail = c.isConnected ? "" : "offline"
+            hostStanding(n, c)
             return n
         }
         return (roots, open)
@@ -1500,6 +1522,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if !filter.isEmpty { open.insert(id) }
                 let node = OrgNode(id: id, block: f.block, title: f.name, symbol: f.kind == .git ? "arrow.triangle.branch" : "folder",
                                detail: "", count: children.isEmpty ? nil : f.count, age: Self.age(f.latest), isGroup: true, children: children)
+                if f.block == nil {
+                    // A folder with no listing yet: clicked, it's listed on
+                    // its host (the disclosure, or a double-click, opens it).
+                    let path = f.path, on = f.host
+                    node.action = { [weak self] in self?.openDirectory(path, on: on) }
+                }
                 node.dimmed = !isActive
                 active[ObjectIdentifier(node)] = isActive
                 return node
@@ -1528,18 +1556,57 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let clients = hosts.all
         for c in clients {
             let home = c.transport.isLocal ? NSHomeDirectory() : nil
-            let tree = c.node.graph.fileTree(host: c.host, home: home).compactMap(convert)
+            var tree = c.node.graph.fileTree(host: c.host, home: home ?? c.home).compactMap(convert)
+            if tree.isEmpty, let home = home ?? c.home, filter.isEmpty {
+                // Nothing of the host yet: its home folder, to start from.
+                let n = OrgNode(id: "file:\(c.host.raw):\(home)", title: "~", symbol: "house", isGroup: false)
+                n.action = { [weak self] in self?.openDirectory(home, on: c.host) }
+                tree = [n]
+            }
             if clients.count > 1 {
                 let id = "host:\(c.host.raw)"
                 open.insert(id)
-                roots.append(OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer",
-                                     count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree))
+                let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer",
+                                count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree)
+                hostStanding(n, c)
+                roots.append(n)
             } else {
                 roots += tree
                 for r in tree { open.insert(r.id) }
             }
         }
         return (roots, open)
+    }
+
+    /// A host's row says how it stands (§8): a spinner while being
+    /// reached, a slashed ring when it can't be, dimmed; clicked, its
+    /// home folder opens there.
+    private func hostStanding(_ n: OrgNode, _ c: HostClient) {
+        switch c.link {
+        case .connected:
+            break
+        case .connecting:
+            n.look = .connecting
+            n.detail = "connecting…"
+            n.dimmed = true
+        case .unreachable(let why):
+            n.look = .offline
+            n.detail = "unreachable"
+            n.tooltip = why.map { "Can't be reached: \($0)" } ?? "Can't be reached now; tried again every so often"
+            n.dimmed = true
+        }
+        if c.isRemote || c.home != nil {
+            let host = c.host
+            n.action = { [weak self] in
+                guard let self, let home = self.hosts.client(host)?.home ?? (host == self.host.host ? NSHomeDirectory() : nil) else { return }
+                self.openDirectory(home, on: host)
+            }
+        }
+    }
+
+    /// A folder listed on its host, beside what's focused.
+    func openDirectory(_ path: String, on host: HostID) {
+        show(hosts.directoryBlock(for: path, on: host), lens: .directory, .here)
     }
 
     /// Links: around the focused block (or the one looked at), by edge kind.
@@ -2384,9 +2451,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Opens what a link in a placement points at: Markdown files in a
     /// preview beside it, folders in a listing, text to edit, anything else
     /// with the system.
-    func open(_ target: String, from placement: PlacementID?) {
+    /// Whether a link just clicked is for Manifold's own web lens: ⌘-click
+    /// goes to the system's handler, ⇧⌘-click (or a plain click, or an
+    /// opening that isn't a click) stays here.
+    static func opensHere(_ flags: NSEvent.ModifierFlags) -> Bool {
+        !(flags.contains(.command) && !flags.contains(.shift))
+    }
+
+    private static var clickModifiers: NSEvent.ModifierFlags? {
+        guard let e = NSApp.currentEvent, [.leftMouseUp, .leftMouseDown, .otherMouseUp, .rightMouseUp].contains(e.type) else { return nil }
+        return e.modifierFlags
+    }
+
+    func open(_ target: String, from placement: PlacementID?, here: Bool? = nil) {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
-            if scheme == "http" || scheme == "https" {
+            if scheme == "http" || scheme == "https", here ?? Self.clickModifiers.map(Self.opensHere) ?? true {
                 show(host.newWeb(url: url.absoluteString), lens: .web, opener(placement), context: target)
             } else {
                 NSWorkspace.shared.open(url)
@@ -3125,6 +3204,10 @@ extension MainWindowController: EditorViewDelegate {
         hosts.lsp(request, done: done)
     }
 
+    func editor(_ view: EditorView, open url: URL) {
+        open(url.absoluteString, from: view.placement)
+    }
+
     func editor(_ view: EditorView, open path: String, line: Int, column: Int) {
         let on = view.block.host
         pendingJump = (path, line, column)
@@ -3155,11 +3238,11 @@ extension MainWindowController: MarkdownViewDelegate {
     /// preview on top of the same stack (the one it was followed from
     /// stays beneath, to go back to); a web address as a web block beside;
     /// any other file as what it is, beside; other schemes with the system.
-    func markdownView(_ view: MarkdownView, follow url: URL) {
+    func markdownView(_ view: MarkdownView, follow url: URL, modifiers: NSEvent.ModifierFlags) {
         guard let a = arrangement, let p = a.placement(view.placement) else { return }
         if url.isFileURL {
             let path = url.standardizedFileURL.path
-            if Lens.isMarkdown(path) {
+            if Lens.isMarkdown(path), !modifiers.contains(.command) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
                 hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
                 // Page to page in the same tile, as a browser goes.
@@ -3168,7 +3251,7 @@ extension MainWindowController: MarkdownViewDelegate {
                 open(path, from: view.placement)
             }
         } else {
-            open(url.absoluteString, from: view.placement)
+            open(url.absoluteString, from: view.placement, here: Self.opensHere(modifiers))
         }
     }
 }
@@ -3177,15 +3260,17 @@ extension MainWindowController: WebViewDelegate {
     func webView(_ view: WebView, append events: [Event]) {
         hosts.append(events, to: .block(view.block))
     }
+
+    func webView(_ view: WebView, open url: URL) {
+        open(url.absoluteString, from: view.placement, here: true)
+    }
 }
 
 extension MainWindowController: DirectoryViewDelegate {
-    func directoryView(_ view: DirectoryView, open path: String) {
-        var isDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
-        if isDir.boolValue {
+    func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool) {
+        if isDirectory {
             // A folder takes the listing's place, in the same tile.
-            replace(view.placement, with: host.directoryBlock(for: path), lens: .directory)
+            replace(view.placement, with: hosts.directoryBlock(for: path, on: view.block.host), lens: .directory)
         } else {
             open(path, from: view.placement)
         }
@@ -3521,7 +3606,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: self = .done
         case .failed: self = .failed
         case .working: self = .working
-        case .inactive: self = .inactive
+        case .inactive, .connecting, .offline: self = .inactive
         }
     }
 

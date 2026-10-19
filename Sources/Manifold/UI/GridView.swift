@@ -689,9 +689,9 @@ final class TilePill: NSView {
         icon.image = Theme.symbol(shown.symbol, size: 11)
         name.stringValue = shown.title + (shown.isDormant ? "  (dormant)" : "")
         dirty.isHidden = !shown.isDirty
-        glyph.look = StatusGlyph.look(of: shown.block)
+        glyph.look = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         glyph.isHidden = glyph.look == nil
-        glyph.toolTip = StatusGlyph.tooltip(shown.block)
+        glyph.toolTip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
         self.focused = focused
         updateColors()
         needsLayout = true

@@ -14,6 +14,10 @@ final class StatusGlyph: NSView {
         case done(read: Bool)
         case failed(read: Bool)
         case inactive
+        /// A host being reached (§8).
+        case connecting
+        /// A host that can't be reached now: what's shown is as last seen.
+        case offline
     }
 
     var look: Look? {
@@ -53,6 +57,8 @@ final class StatusGlyph: NSView {
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
         case .inactive: words = ["Inactive: the shell ended while idle"]
+        case .connecting: words = ["Connecting to its host"]
+        case .offline: words = ["Its host can't be reached: as last seen"]
         case .needsYou:
             switch r?.kind {
             case .permission?: words = ["Needs you: permission"]
@@ -73,6 +79,7 @@ final class StatusGlyph: NSView {
     private var animates: Bool {
         guard !isHidden, window != nil, let look else { return false }
         if case .working(nil) = look { return true }
+        if case .connecting = look { return true }
         return false
     }
 
@@ -108,11 +115,12 @@ final class StatusGlyph: NSView {
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
-        case .working(let p):
+        case .working, .connecting:
+            let p: Int? = if case .working(let p) = look { p } else { nil }
             let arc = NSBezierPath()
             arc.lineWidth = 1.6
             arc.lineCapStyle = .round
-            Theme.text.withAlphaComponent(0.85).setStroke()
+            (look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.85)).setStroke()
             if let p {
                 let faint = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
                 faint.lineWidth = 1.6
@@ -156,6 +164,18 @@ final class StatusGlyph: NSView {
                 check.lineWidth = 1.5
                 check.stroke()
             }
+        case .offline:
+            // A ring with a slash through it.
+            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+            ring.lineWidth = 1.4
+            Theme.statusError.withAlphaComponent(0.8).setStroke()
+            ring.stroke()
+            let slash = NSBezierPath()
+            slash.lineWidth = 1.4
+            slash.lineCapStyle = .round
+            slash.move(to: NSPoint(x: center.x - radius * 0.6, y: center.y - radius * 0.6))
+            slash.line(to: NSPoint(x: center.x + radius * 0.6, y: center.y + radius * 0.6))
+            slash.stroke()
         case .inactive:
             // A crescent: the disc less a disc shifted up and right.
             let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))

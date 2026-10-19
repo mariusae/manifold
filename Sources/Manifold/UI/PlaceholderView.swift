@@ -42,6 +42,12 @@ final class PlaceholderView: NSView, PaneContent {
 
     @objc private func attachClicked() { onAttach?() }
 
+    /// What's said under the host's name, as its standing changes.
+    func set(note text: String, canAttach: Bool) {
+        if note.stringValue != text { note.stringValue = text; needsLayout = true }
+        button.isHidden = !canAttach
+    }
+
     override func layout() {
         super.layout()
         let mid = bounds.midY
