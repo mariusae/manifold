@@ -322,7 +322,10 @@ is migrated into logs on first run.
   you see is its label. Hosts are remembered in `hosts.json` by session,
   with their destination and label, and attached again at start. A tile
   whose block is on a host you aren't attached to is a placeholder that
-  says so, with Attach. Linux
+  says so, with Attach. Two Manifolds may attach to one host and share
+  it: each block a client can edit (a note, a file, a web page, a
+  workspace) has one owner at a time, whichever focused it last; the
+  other mirrors until it focuses the block again. Linux
   servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
   host, `manifoldd open --wait`): `git commit` and friends edit beside

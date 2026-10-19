@@ -48,6 +48,9 @@ final class HostClient {
 
     /// The first welcome arrived: the host's name is known.
     var onWelcome: (() -> Void)?
+    /// Shards another attachment took the pen for (§8.2): mirrored, not
+    /// appended to, until the block is focused here again.
+    private(set) var fenced: Set<ShardID> = []
 
     init(transport: Transport) {
         self.transport = transport
@@ -117,7 +120,7 @@ final class HostClient {
     /// Appends events to a shard the app leads: applied here at once, and
     /// sent to the host to keep and pass on.
     func append(_ events: [Event], to shard: ShardID) {
-        guard !events.isEmpty else { return }
+        guard !events.isEmpty, !fenced.contains(shard) else { return }
         var entries: [Entry] = []
         for e in events {
             if let entry = node.append(e, to: shard, at: clock.now()) { entries.append(entry) }
@@ -126,6 +129,14 @@ final class HostClient {
     }
 
     func append(_ event: Event, to shard: ShardID) { append([event], to: shard) }
+
+    /// Takes the pen for a shard this client may lead (§8.2): on focusing
+    /// its block. The host fences whoever held it.
+    func own(_ shard: ShardID) {
+        guard node.leader(of: shard) == .client else { return }
+        fenced.remove(shard)
+        conn?.send(.message(ClientMessage.own(shard: shard)))
+    }
 
     /// Asks the host to do something only it can.
     func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
@@ -435,6 +446,7 @@ final class HostClient {
             let first = !hasState
             self.host = host
             self.label = label
+            fenced = []
             clock = Clock(host: host)
             for s in snapshots { node.load(s) }
             // Shards we had that the host no longer has (a fresh host).
@@ -458,6 +470,11 @@ final class HostClient {
             node.load(snap)
         case let .rejected(shard):
             NSLog("append to %@ was refused", shard.description)
+        case let .fenced(shard):
+            // Another attachment has the pen: what this one appended since
+            // is gone; the snapshot that follows is the truth.
+            NSLog("fenced on %@: another attachment took the pen", shard.description)
+            fenced.insert(shard)
         case let .propose(shard, proposal):
             lower(proposal, into: shard)
         case let .done(id, error):

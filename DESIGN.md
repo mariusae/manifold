@@ -610,9 +610,14 @@ clients propose (`workspaces`, `settings`). What is a client's alone —
 the workspace it shows, the order it settled on them, its window, its
 appearance — is `ClientState`, in a file beside its hosts file, so two
 machines attached to one host see the same workspaces and each its own
-selection. The app leads text, web and workspace blocks; the host checks
-that an append continues its log and, if not, sends the shard back whole.
-Epochs, fencing and resuming an attachment are not implemented.
+selection. The blocks a client may lead — text, web, workspaces — have **one owner
+at a time**, by focus: the host hands a block's pen to whichever
+attachment last focused it (`own`), tells the one that held it it is
+fenced (`fenced`), and refuses appends from any other, sending the shard
+back whole; a shard no one owns goes to the first to append. One user on
+two machines never contends; two people on one note get last-focus-wins,
+honest and visible. That is apex §4 cut down to the one event that
+matters; epochs and leases are not needed.
 
 Apex §4 as is: attachments are explicit and survive reconnects; leases are
 per shard and granted to attachments; fencing by epoch; a new attachment

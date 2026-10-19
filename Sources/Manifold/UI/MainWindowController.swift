@@ -1538,6 +1538,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if f != lastTrailFocus {
             lastTrailFocus = f
             if !navigatingTrail { trailPosition = nil; trailAnchor = nil }
+            // Focusing takes the pen (§8.2): for the block, and the
+            // workspace it sits in.
+            if let b = focusedShown?.placement.block { hosts.own(b) }
+            if let w = selected { hosts.own(w) }
         }
     }
 

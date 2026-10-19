@@ -34,6 +34,9 @@ final class Server {
     /// Each client's attachment number, and the app among them (named so).
     private var clientIDs: [ObjectIdentifier: Int] = [:]
     private var appClients: Set<ObjectIdentifier> = []
+    /// Which attachment holds the pen for each shard a client may lead
+    /// (§8.2): the last to focus its block, or the first to append.
+    private var owners: [ShardID: ObjectIdentifier] = [:]
     /// Connections that haven't said what they are yet.
     private var pending: [Connection] = []
     private var attachments = 0
@@ -173,6 +176,7 @@ final class Server {
                 self?.clients.removeAll { $0 === conn }
                 self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
                 self?.appClients.remove(ObjectIdentifier(conn))
+                self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
@@ -190,6 +194,8 @@ final class Server {
         switch frame.decode(ClientMessage.self) {
         case let .append(shard, entries)?:
             clientAppended(shard, entries, from: conn)
+        case let .own(shard)?:
+            own(shard, by: conn)
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
         case let .open(id, paths, beside, wait)?:
@@ -208,10 +214,31 @@ final class Server {
 
     // MARK: Entries
 
-    /// The client, leading a shard, appended to it: kept and passed on, if
-    /// it continues the log; else the client is sent the log as it is.
+    /// The pen for a shard goes to `conn` (§8.2): whoever held it is told
+    /// it's fenced, and mirrors from here on.
+    private func own(_ shard: ShardID, by conn: Connection) {
+        let me = ObjectIdentifier(conn)
+        if let holder = owners[shard], holder != me, let other = clients.first(where: { ObjectIdentifier($0) == holder }) {
+            other.send(.message(ServerMessage.fenced(shard: shard)))
+        }
+        owners[shard] = me
+    }
+
+    /// The client, owning a shard, appended to it: kept and passed on, if
+    /// it continues the log; else the client is sent the log as it is. A
+    /// shard no one owns is taken by the first to append; one another
+    /// attachment owns is refused.
     private func clientAppended(_ shard: ShardID, _ entries: [Entry], from conn: Connection) {
         guard let first = entries.first else { return }
+        let me = ObjectIdentifier(conn)
+        if let holder = owners[shard], holder != me, clients.contains(where: { ObjectIdentifier($0) == holder }) {
+            log("append to \(shard) refused: another attachment owns it")
+            conn.send(.message(ServerMessage.fenced(shard: shard)))
+            conn.send(.message(ServerMessage.rejected(shard: shard)))
+            if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
+            return
+        }
+        owners[shard] = me
         guard first.seq == node.seq(shard) + 1, node.apply(entries, to: shard) else {
             log("append to \(shard) at \(first.seq) doesn't follow \(node.seq(shard)); resending")
             conn.send(.message(ServerMessage.rejected(shard: shard)))

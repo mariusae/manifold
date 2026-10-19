@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 12
+public let protocolVersion = 13
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -162,8 +162,11 @@ public enum HostProposal: Codable, Sendable {
 
 public enum ClientMessage: Codable, Sendable {
     case hello(version: Int, name: String)
-    /// Entries the client appended as a shard's leader.
+    /// Entries the client appended as a shard's owner.
     case append(shard: ShardID, entries: [Entry])
+    /// The client wants the pen for a shard it may lead (§8.2): it focused
+    /// the block. The host hands it over, fencing the last owner.
+    case own(shard: ShardID)
     case propose(id: Int, Proposal)
     case attach(AttachRequest)
     /// Asks the server to exit, ending every session.
@@ -194,8 +197,12 @@ public enum ServerMessage: Codable, Sendable {
     case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, snapshots: [ShardSnapshot])
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)
-    /// The client's append didn't continue the log; a snapshot follows.
+    /// The client's append didn't continue the log, or it doesn't own the
+    /// shard; a snapshot follows.
     case rejected(shard: ShardID)
+    /// Another attachment took the pen for a shard (§8.2): this client
+    /// stops appending to it and mirrors, until it focuses the block again.
+    case fenced(shard: ShardID)
     case propose(shard: ShardID, HostProposal)
     case done(id: Int, error: String?)
     /// A shard's history: the state its (compacted) log starts from, if

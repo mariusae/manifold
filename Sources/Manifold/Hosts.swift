@@ -265,6 +265,9 @@ final class Hosts {
         (client(host) ?? local).directoryBlock(for: path)
     }
 
+    /// The pen for a block this client may lead, on focusing it (§8.2).
+    func own(_ block: BlockID) { client(of: block)?.own(.block(block)) }
+
     func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
         (client(of: from) ?? local).link(from: from, to: to, kind: kind, context: context)
     }
