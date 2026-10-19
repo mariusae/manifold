@@ -59,21 +59,30 @@ public enum HostSession {
 
     /// Every file in `logs` with `old` in its name is renamed, and every
     /// string in it that is `old`, or a block id under it, is rewritten;
-    /// a snapshot's offset into its log is moved with the log. Logs are
-    /// streamed, frame by frame, so one of any size takes little memory;
-    /// each is replaced whole, so a rewrite cut short leaves every file
-    /// either as it was or done.
+    /// a snapshot's offset into its log is moved with the log. Files
+    /// already under `new` are gone through too, for what a rewrite cut
+    /// short, or an older one, left in them. Logs are streamed, frame by
+    /// frame, so one of any size takes little memory; each is replaced
+    /// whole, so a rewrite cut short leaves every file either as it was
+    /// or done. A log under the old name whose counterpart under the new
+    /// one already exists is set aside (`.superseded`), never written over.
     public static func rewriteHost(in logs: URL, from old: HostID, to new: HostID) {
         let fm = FileManager.default
         let names = (try? fm.contentsOfDirectory(atPath: logs.path)) ?? []
         var landed: [String: UInt64] = [:]
+        var aside: Set<String> = []
         // Logs first, remembering where each snapshot's offset landed.
         for name in names where name.hasSuffix(".log") {
             let base = (name as NSString).deletingPathExtension
-            guard let shard = ShardID(fileName: base), shard.host == old else { continue }
+            guard let shard = ShardID(fileName: base), shard.host == old || shard.host == new else { continue }
             let src = logs.appendingPathComponent(name)
             let dst = logs.appendingPathComponent(renamed(shard, to: new).fileName + ".log")
             let tmp = logs.appendingPathComponent(renamed(shard, to: new).fileName + ".log.rewriting")
+            if shard.host == old, fm.fileExists(atPath: dst.path) {
+                try? fm.moveItem(at: src, to: logs.appendingPathComponent(name + ".superseded"))
+                aside.insert(base)
+                continue
+            }
             let wanted = snapshotOffset(logs.appendingPathComponent(base + ".snap"))
             let size = (try? fm.attributesOfItem(atPath: src.path))?[.size] as? UInt64 ?? 0
             FileHandle.standardError.write(Data("rewriting \(name) (\(size) bytes) for \(new.raw)\n".utf8))
@@ -81,22 +90,29 @@ public enum HostSession {
                 try? fm.removeItem(at: tmp)
                 continue
             }
-            try? fm.removeItem(at: dst)
-            guard (try? fm.moveItem(at: tmp, to: dst)) != nil else { continue }
-            try? fm.removeItem(at: src)
+            if src != dst { try? fm.removeItem(at: dst) }
+            guard (try? fm.replaceItemAt(dst, withItemAt: tmp)) != nil || (try? fm.moveItem(at: tmp, to: dst)) != nil else { continue }
+            if src != dst { try? fm.removeItem(at: src) }
             if let at { landed[base] = at }
         }
         for name in names where name.hasSuffix(".snap") || name.hasSuffix(".base") {
             let base = (name as NSString).deletingPathExtension
             let ext = (name as NSString).pathExtension
-            guard let shard = ShardID(fileName: base), shard.host == old, let data = try? Data(contentsOf: logs.appendingPathComponent(name)) else { continue }
+            guard let shard = ShardID(fileName: base), shard.host == old || shard.host == new else { continue }
+            if aside.contains(base) {
+                try? fm.moveItem(at: logs.appendingPathComponent(name), to: logs.appendingPathComponent(name + ".superseded"))
+                continue
+            }
+            guard let data = try? Data(contentsOf: logs.appendingPathComponent(name)) else { continue }
             var out = rewritePlist(data, from: old, to: new) ?? data
             if ext == "snap", var object = try? PropertyListSerialization.propertyList(from: out, format: nil) as? [String: Any] {
-                object["logOffset"] = NSNumber(value: landed[base] ?? 0)
+                // Unless its log was found again just now, the snapshot's
+                // offset is lost with the log's shape: the whole is replayed.
+                object["logOffset"] = NSNumber(value: landed[base] ?? (shard.host == new ? (object["logOffset"] as? NSNumber)?.uint64Value ?? 0 : 0))
                 if let data = try? PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0) { out = data }
             }
             try? out.write(to: logs.appendingPathComponent(renamed(shard, to: new).fileName + "." + ext), options: .atomic)
-            try? fm.removeItem(at: logs.appendingPathComponent(name))
+            if shard.host == old { try? fm.removeItem(at: logs.appendingPathComponent(name)) }
         }
     }
 
@@ -187,8 +203,9 @@ public enum HostSession {
         if s == old { return new }
         let prefix = old + "/"
         if s.hasPrefix(prefix) {
+            // A block id: a ULID, or a UUID from before them.
             let rest = s.dropFirst(prefix.count)
-            if rest.count == 26, rest.allSatisfy({ $0.isNumber || ($0.isLetter && $0.isUppercase) }) { return new + "/" + rest }
+            if !rest.isEmpty, rest.allSatisfy({ $0.isNumber || $0.isLetter || $0 == "-" }) { return new + "/" + rest }
         }
         return s
     }

@@ -734,6 +734,40 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     try? FileManager.default.removeItem(at: dir)
 }
 
+@Test func blocksFromBeforeULIDsFollowTooAndAFileAlreadyRenamedIsFinished() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
+    let logs = dir.appendingPathComponent("logs")
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+    let store = LogStore(directory: logs)
+    let old = HostID.local
+    let uuid = BlockID(host: old, ulid: "125CB03F-19D2-4890-A260-6227E7E1AE54")
+    let at = Stamp(wall: 1, host: old)
+    store.append([Entry(seq: 1, at: at, event: .create(kind: .terminal, title: "sh", path: nil))], to: .block(uuid))
+    store.append([Entry(seq: 1, at: at, event: .register(RegistryEntry(id: uuid, kind: .terminal, created: at, lastSeen: at)))], to: .registry(old))
+    store.closeAll()
+    // A rewrite that renamed the block's file but left the old names in it
+    // (as one from before UUIDs were known did), the session minted.
+    let minted = HostSession.mint()
+    try Data(minted.raw.utf8).write(to: dir.appendingPathComponent("session"))
+    let moved = BlockID(host: minted, ulid: uuid.ulid)
+    try FileManager.default.moveItem(at: logs.appendingPathComponent(ShardID.block(uuid).fileName + ".log"),
+                                     to: logs.appendingPathComponent(ShardID.block(moved).fileName + ".log"))
+    // And a stray log under the old name, made since: set aside, not written over.
+    store.append([Entry(seq: 1, at: at, event: .create(kind: .terminal, title: "stray", path: nil))], to: .block(uuid))
+    store.closeAll()
+    #expect(HostSession.identify(directory: dir, logs: logs).id == minted)
+    let node = Node()
+    let reloaded = LogStore(directory: logs)
+    #expect(Set(reloaded.shards()) == [.block(moved), .registry(minted)])
+    for s in reloaded.shards() { reloaded.load(s, into: node) }
+    #expect(node.block(moved)?.title == "sh")
+    #expect(node.block(moved)?.created.host == minted)
+    #expect(node.registry(minted).blocks[moved]?.id == moved)
+    let names = try FileManager.default.contentsOfDirectory(atPath: logs.path)
+    #expect(names.contains(ShardID.block(uuid).fileName + ".log.superseded"))
+    try? FileManager.default.removeItem(at: dir)
+}
+
 @Test func aFoldedLogIsEmptyAndLoadsAsItWas() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-fold-\(ULID.make())")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
