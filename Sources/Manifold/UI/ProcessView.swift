@@ -103,14 +103,30 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
     }
 
+    /// The controls go under the pill's band, not beside it: the filter
+    /// at the left and the buttons at the right while there's room for
+    /// both; in a narrow tile the buttons take a row of their own under
+    /// the filter, and the status gives way.
     override func layout() {
         super.layout()
-        let w = bounds.width, top = bounds.height - 12
-        field.frame = NSRect(x: 12, y: top - 25, width: min(260, w * 0.4), height: 24)
-        kill.frame = NSRect(x: w - 12 - 84, y: top - 24, width: 84, height: 22)
-        end.frame = NSRect(x: kill.frame.minX - 6 - 56, y: top - 24, width: 56, height: 22)
-        status.frame = NSRect(x: field.frame.maxX + 12, y: top - 22, width: max(0, end.frame.minX - field.frame.maxX - 24), height: 16)
-        scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, top - 36))
+        let w = bounds.width, top = bounds.height - GridView.band - 4
+        let buttons: CGFloat = 84 + 6 + 56
+        let wide = w >= 12 + 140 + 12 + buttons + 12
+        let fieldWidth = wide ? min(260, w - buttons - 36) : w - 24
+        field.frame = NSRect(x: 12, y: top - 24, width: max(fieldWidth, 60), height: 24)
+        let buttonY = wide ? top - 23 : top - 24 - 6 - 22
+        kill.frame = NSRect(x: max(w - 12 - 84, 12), y: buttonY, width: 84, height: 22)
+        if wide || w >= 12 + 56 + 6 + 84 + 12 {
+            end.frame = NSRect(x: kill.frame.minX - 6 - 56, y: buttonY, width: 56, height: 22)
+        } else {
+            // Too narrow for both side by side: End on a row of its own.
+            end.frame = NSRect(x: 12, y: buttonY - 6 - 22, width: 56, height: 22)
+        }
+        let statusWidth = wide ? end.frame.minX - field.frame.maxX - 24 : 0
+        status.isHidden = statusWidth < 80
+        status.frame = NSRect(x: field.frame.maxX + 12, y: top - 21, width: max(0, statusWidth), height: 16)
+        let bottom = (wide ? field.frame.minY : end.frame.minY) - 8
+        scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
     }
 
     override func viewDidMoveToWindow() {

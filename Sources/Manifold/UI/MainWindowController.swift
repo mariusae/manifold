@@ -1486,7 +1486,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for c in hosts.all {
             var ids = c.desk.order.filter { $0.host == c.host }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
-            let nodes = ids.compactMap(workspace)
+            var nodes = ids.compactMap(workspace)
+            // Workspaces off the desk — kept by name, or just taken off —
+            // under Recent, the last seen first, opened by hovering (or
+            // outright with a filter); one chosen comes back onto the desk.
+            let onDesk = Set(ids)
+            let far = Stamp(wall: 0, logical: 0, host: c.host)
+            let off = c.node.blocks.filter { $0.kind == .arrangement && !onDesk.contains($0.id) && !($0.arrangement?.isEmpty ?? true) }
+                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
+                .prefix(40)
+            let recent = off.compactMap { workspace($0.id) }
+            if !recent.isEmpty {
+                let rid = "recent:desk:\(c.host.raw)"
+                for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
+                let group = OrgNode(id: rid, title: "Recent", symbol: "clock", count: recent.count, isGroup: true, children: recent)
+                group.dimmed = true
+                if !filter.isEmpty { open.insert(rid) }
+                nodes.append(group)
+            }
             byHost.append((c, nodes))
         }
         guard byHost.count > 1 else { return (byHost.first?.1 ?? [], open) }

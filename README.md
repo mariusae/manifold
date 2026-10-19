@@ -103,7 +103,10 @@ and Mona Sans (bundled).
   way, their columns coming over.
 - **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
   workspace off the desk. Neither loses anything: the block, with its
-  history, is a ⌘O away. There is no Close.
+  history, is a ⌘O away, and a workspace taken off sits under
+  **Recent** at the foot of the sidebar's Desk, dimmed, opened by
+  hovering (as Files' Recent is), the last seen first; click it and it
+  is back on the desk. There is no Close.
 
 ## Nothing is closed
 
@@ -345,7 +348,8 @@ when you find it again.
   terminal's, and they come back after a restart the same way.
 - **Processes** (File ▸ Processes) is a block per host listing what `ps`
   sees, again every few seconds while shown: filter, sort by column, End
-  (SIGTERM) or Force End (SIGKILL) the selected one.
+  (SIGTERM) or Force End (SIGKILL) the selected one. Its controls sit
+  under the pill, and stack as the tile narrows.
 
 ## Contrast correction
 
