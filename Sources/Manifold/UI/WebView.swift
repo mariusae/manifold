@@ -146,6 +146,35 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate, 
     @objc private func goForward() { web.goForward() }
     @objc private func reloadPage() { web.reload() }
 
+    /// ⌘L: the address, to type over.
+    @objc func editAddress(_ sender: Any?) {
+        window?.makeFirstResponder(address)
+        address.currentEditor()?.selectAll(nil)
+    }
+
+    /// While the address is being typed, the pill is out of its way.
+    var caretRectInWindow: NSRect? {
+        guard address.currentEditor() != nil else { return nil }
+        return address.convert(address.bounds, to: nil)
+    }
+
+    var pillItems: [NSMenuItem] {
+        var items: [NSMenuItem] = []
+        let b = ClosureMenuItem("Back", symbol: "chevron.left") { [weak self] in self?.goBack() }
+        b.isEnabled = web.canGoBack
+        let f = ClosureMenuItem("Forward", symbol: "chevron.right") { [weak self] in self?.goForward() }
+        f.isEnabled = web.canGoForward
+        items += [b, f, ClosureMenuItem("Reload", symbol: "arrow.clockwise") { [weak self] in self?.reloadPage() }]
+        items.append(ClosureMenuItem("Edit Address", symbol: "link", key: "l") { [weak self] in self?.editAddress(nil) })
+        if let url = web.url?.absoluteString {
+            items.append(ClosureMenuItem("Copy Address", symbol: "doc.on.doc") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url, forType: .string)
+            })
+        }
+        return items
+    }
+
     /// ⌘-click on a link: the system's handler; ⇧⌘-click: a web block
     /// beside this one; a plain click follows it here.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

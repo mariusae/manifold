@@ -141,6 +141,22 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         }
     }
 
+    /// While the filter is being typed, the pill is out of its way.
+    var caretRectInWindow: NSRect? {
+        guard field.currentEditor() != nil else { return nil }
+        return field.convert(field.bounds, to: nil)
+    }
+
+    var pillItems: [NSMenuItem] {
+        [ClosureMenuItem("Refresh Now", symbol: "arrow.clockwise") { [weak self] in
+            guard let self else { return }
+            self.delegate?.processViewRefresh(self)
+        }, ClosureMenuItem("Filter…", symbol: "line.3.horizontal.decrease.circle") { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self.field)
+        }]
+    }
+
     func documentChanged() {
         guard let b = source(), let p = b.processes else { return }
         guard p.listedAt != listedAt else { return }

@@ -3138,6 +3138,10 @@ extension MainWindowController: GridDelegate {
             })
         }
         menu.addItem(.separator())
+        if let own = views[placement]?.pillItems, !own.isEmpty {
+            for item in own { menu.addItem(item) }
+            menu.addItem(.separator())
+        }
         if hosts.block(block)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
         }

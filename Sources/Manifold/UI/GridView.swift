@@ -447,9 +447,11 @@ final class GridView: NSView, NSDraggingSource {
     /// A pill over the line the text cursor is on fades out, so what is
     /// typed there can be seen; it comes back when the cursor moves on.
     private func dodgeCarets() {
-        guard window != nil, full == nil else { return }
+        guard window != nil else { return }
         for column in columns {
             for tile in column {
+                // Maximized, only that tile's pill is there to dodge.
+                if let full, tile.shown.id != full { continue }
                 guard let pill = pills[tile.shown.id] else { continue }
                 // A stashed tile's pill never dodges (its cursor is out of
                 // sight): one that was dodging when stashed comes back,
@@ -737,12 +739,22 @@ final class TilePill: NSView {
         name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
         name.textColor = focused ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
-        restingAlpha = focused ? 1 : 0.88
+        restingAlpha = focused ? 1 : 0.72
         if !dodging { alphaValue = restingAlpha }
     }
 
-    /// One width for every pill, within the tile.
-    private var pillWidth: CGFloat { min(Self.width, bounds.width - 24) }
+    /// As wide as its title needs, within bounds: never past half the
+    /// tile (so what's under the band stays reachable at the sides), nor
+    /// wider than `width`, nor narrower than fits an icon and a few words.
+    private var pillWidth: CGFloat {
+        var chrome: CGFloat = 10 + 22 + 12 + 8
+        if !stashed { chrome += 18 }
+        if !glyph.isHidden { chrome += StatusGlyph.size + 6 }
+        if !dirty.isHidden { chrome += 12 }
+        let wanted = ceil(name.intrinsicContentSize.width) + chrome
+        let most = max(min(Self.width, bounds.width * 0.5), 110)
+        return min(max(wanted, 110), most, bounds.width - 24)
+    }
 
     /// Only the capsule is the pill (its corner button included); the
     /// rest is the tile beneath.

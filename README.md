@@ -49,9 +49,16 @@ and Mona Sans (bundled).
   height stashes it and goes on against the next, until all above or
   below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
   pill) puts a tile over the whole workspace until it is restored, or
-  until you go to another tile. A pill fades out while the text cursor
-  is on the line under it, in an editor or a terminal, and comes back
-  when the cursor moves on, or when the pointer rests where it would be.
+  until you go to another tile. A pill is as wide as its title needs
+  and never more than half its tile, so what's under the band stays
+  reachable at the sides; the focused tile's is plain, the others'
+  quieter. It fades out while what's under it is in use — the text
+  cursor on its line in an editor or a terminal, a page's address or
+  the process list's filter taking the keyboard — and comes back when
+  that's done, or when the pointer rests where it would be. The pill's
+  menu (its icon) carries the view's own verbs first: a page's Back,
+  Forward, Reload, Edit Address (⌘L) and Copy Address; the process
+  list's Refresh Now and Filter.
   The focused tile has a ring around it. **⌘Z undoes** the workspace's
   last change at your hand (a tile placed, taken off, moved, stashed,
   resized, maximized), ⇧⌘Z redoes, a hundred deep per workspace, when
