@@ -178,7 +178,9 @@ when you find it again.
   matches, ↑ ↓ for the previous and next (↩ and ⇧↩, ⌘G and ⇧⌘G too), Aa
   for case, and ×; ⌥⌘F adds a row to replace with. ⌘E finds the word at
   hand and goes on to its next occurrence. Editors, Markdown previews,
-  web pages and diffs are searched this way (terminals not yet).
+  web pages, diffs and terminals are searched this way; in a terminal,
+  Ghostty itself finds through the screen and its history and marks
+  every match.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

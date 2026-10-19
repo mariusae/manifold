@@ -250,6 +250,25 @@ final class GhosttyRuntime {
         case GHOSTTY_ACTION_RING_BELL:
             NSSound.beep()
             return true
+        // Search (§3.1 Find): the core finds and highlights; it tells us how
+        // many and which is selected, and asks for the pill when a binding
+        // of its own starts or ends a search.
+        case GHOSTTY_ACTION_START_SEARCH:
+            let s = action.action.start_search
+            let needle = s.needle.map { String(cString: $0) } ?? ""
+            DispatchQueue.main.async { view?.searchStarted(needle: needle) }
+            return true
+        case GHOSTTY_ACTION_END_SEARCH:
+            DispatchQueue.main.async { view?.searchEnded() }
+            return true
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            let total = action.action.search_total.total
+            DispatchQueue.main.async { view?.searchTotal(total >= 0 ? Int(total) : nil) }
+            return true
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            let selected = action.action.search_selected.selected
+            DispatchQueue.main.async { view?.searchSelected(selected >= 0 ? Int(selected) : nil) }
+            return true
         case GHOSTTY_ACTION_RENDER, GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_PWD,
              GHOSTTY_ACTION_COLOR_CHANGE, GHOSTTY_ACTION_RENDERER_HEALTH, GHOSTTY_ACTION_SCROLLBAR,
              GHOSTTY_ACTION_MOUSE_OVER_LINK, GHOSTTY_ACTION_CONFIG_CHANGE, GHOSTTY_ACTION_SIZE_LIMIT,

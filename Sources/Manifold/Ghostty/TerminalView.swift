@@ -60,6 +60,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// Frees the surface, which hangs up on the attach helper; the session
     /// itself lives on in the server.
     func destroy() {
+        finder.hide()
         guard let surface else { return }
         self.surface = nil
         ghostty_surface_free(surface)
@@ -80,7 +81,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         sizeDidChange(newSize)
+        finder.layout(in: NSRect(origin: .zero, size: newSize))
     }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        finder.layout(in: bounds)
+    }
+
+    override var isHidden: Bool { didSet { finder.layout(in: bounds) } }
 
     private func sizeDidChange(_ size: NSSize) {
         contentSize = size
@@ -119,6 +128,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         syncFocus()
+        finder.layout(in: bounds)
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -459,6 +469,47 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         _ = ghostty_surface_binding_action(surface, action, UInt(action.utf8.count))
     }
 
+    // MARK: Find (§3.1)
+
+    private lazy var finder: FindHost = {
+        let f = FindHost(view: self, target: self)
+        f.inSuperview = true
+        return f
+    }()
+    private var searchCount: ((Int?) -> Void)?
+    private var endingFromCore = false
+
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
+
+    /// The core began a search (a binding of its own): the pill shows,
+    /// with the needle it has.
+    func searchStarted(needle: String) {
+        finder.show(query: needle.isEmpty ? nil : needle, fromSelection: needle.isEmpty)
+    }
+
+    func searchEnded() {
+        endingFromCore = true
+        finder.hide()
+        endingFromCore = false
+    }
+
+    func searchTotal(_ total: Int?) {
+        searchCount?(total)
+        searchCount = nil
+    }
+
+    func searchSelected(_ selected: Int?) {}
+
+    /// The selected text, if any.
+    private var selectedText: String? {
+        guard let surface, ghostty_surface_has_selection(surface) else { return nil }
+        var t = ghostty_text_s()
+        guard ghostty_surface_read_selection(surface, &t) else { return nil }
+        defer { ghostty_surface_free_text(surface, &t) }
+        guard let p = t.text else { return nil }
+        return String(decoding: UnsafeRawBufferPointer(start: p, count: Int(t.text_len)), as: UTF8.self)
+    }
+
     @objc func copy(_ sender: Any?) { perform("copy_to_clipboard") }
     @objc func paste(_ sender: Any?) { perform("paste_from_clipboard") }
     @objc override func selectAll(_ sender: Any?) { perform("select_all") }
@@ -514,4 +565,29 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         return characters
     }
+}
+
+extension TerminalView: Searchable {
+    /// The core searches the screen and its history, highlighting every
+    /// match and selecting the nearest; it says how many when it has
+    /// looked (case as the core takes it).
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        guard !query.isEmpty else {
+            searchCount = nil
+            perform("search:")
+            return done(nil)
+        }
+        searchCount = done
+        perform("search:" + query)
+    }
+
+    func findNext(forward: Bool) { perform(forward ? "navigate_search:next" : "navigate_search:previous") }
+
+    func endSearch() {
+        searchCount = nil
+        if !endingFromCore { perform("end_search") }
+        window?.makeFirstResponder(self)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) { done(selectedText) }
 }

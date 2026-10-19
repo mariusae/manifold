@@ -54,6 +54,8 @@ final class FindPill: NSView, NSTextFieldDelegate {
         wantsLayer = true
         layer?.cornerRadius = Self.rowHeight / 2
         layer?.masksToBounds = true
+        // Above a terminal's Metal layer, which sits over its subviews.
+        layer?.zPosition = 10
         for f in [field, replaceField] {
             f.delegate = self
             f.font = .systemFont(ofSize: 12.5)
@@ -229,6 +231,10 @@ final class FindHost {
     private(set) var pill: FindPill?
     private weak var view: NSView?
     private weak var target: Searchable?
+    /// The pill in the view's superview, over the view, for a view whose
+    /// own layer is not its own (a terminal's is Metal's): a subview of it
+    /// would not show.
+    var inSuperview = false
 
     init(view: NSView, target: Searchable) {
         self.view = view
@@ -265,7 +271,7 @@ final class FindHost {
             let p = FindPill()
             p.target = target
             p.onClose = { [weak self] in self?.hide() }
-            view.addSubview(p)
+            (inSuperview ? view.superview ?? view : view).addSubview(p)
             pill = p
         }
         pill?.showsReplace = replace
@@ -278,6 +284,7 @@ final class FindHost {
         }
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
+        layout(in: view.bounds)
         if query == nil { pill?.focus() }
     }
 
@@ -300,6 +307,13 @@ final class FindHost {
         let w = min(FindPill.width, bounds.width - 20), h = pill.height
         let inBand = bounds.width >= 860
         let y = bounds.height - (inBand ? 4 : GridView.band + 6) - h
-        pill.frame = NSRect(x: bounds.width - 10 - w, y: y, width: w, height: h)
+        var frame = NSRect(x: bounds.width - 10 - w, y: y, width: w, height: h)
+        if inSuperview, let view {
+            // Over the view, in its superview; along when the view moves.
+            if let parent = view.superview, pill.superview !== parent { parent.addSubview(pill) }
+            frame = frame.offsetBy(dx: view.frame.minX, dy: view.frame.minY)
+            pill.isHidden = view.isHidden
+        }
+        pill.frame = frame
     }
 }
