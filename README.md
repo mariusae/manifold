@@ -58,7 +58,8 @@ and Mona Sans (bundled).
   lines between tiles and columns to
   resize them. Each tile wears a **pill** floating over its top, one
   width for all, with its symbol, name and status glyph: drag it to
-  move the tile, click it for the tile's menu. ⌥⌘[ and ⌥⌘] move the
+  move the tile; click it to grow the tile a step, ⌘-click to fill the
+  column; click its symbol for the tile's menu. ⌥⌘[ and ⌥⌘] move the
   focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the workspace it is in (this one if it is here, else
@@ -155,10 +156,11 @@ when you find it again.
   changed on disk reloads if clean, or shows a banner over unsaved
   changes. The **preview** lens renders Markdown (cmark-gfm) and follows
   the text as it's edited in an editor on the same block, or saved by
-  another program. Edit ▸ Edit or Preview (⌥⌘P) turns the focused
-  preview into an editor in place, or a Markdown editor back into a
-  preview; ⌥⇧⌘P puts the other beside it, so you can type on the left
-  and read on the right. A link followed in a preview opens another
+  another program. Edit ▸ Edit or Preview (⌥⌘P) puts an editor over
+  the focused preview, or a preview over a Markdown editor — the one
+  beneath stashed behind it until the one on top is taken off (⌘W), or
+  ⌥⌘P again; ⌥⇧⌘P puts the other beside it, so you can type on the
+  left and read on the right. A link followed in a preview opens another
   Markdown file in the same tile (Go Back returns to the one it came
   from), a web address as a web block below it, any other file as what
   it is, below; `#anchors` scroll.
@@ -368,8 +370,10 @@ is migrated into logs on first run.
   other mirrors until it focuses the block again. Linux
   servers (x86_64 and aarch64, static) come from `scripts/build-linux.sh`.
 - **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
-  host, `manifoldd open --wait`): `git commit` and friends edit in the
-  editor beside the terminal and return when it's taken off (⌘W).
+  host, `manifoldd open --wait`): `git commit` and friends edit in an
+  editor over the terminal that ran them, the terminal stashed behind
+  it, and return when the editor is taken off (⌘W) and the terminal
+  comes back.
 - **`manifold` is first on the PATH** in Manifold's shells, once your rc
   files have run: the app's Helpers folder here, the server's folder on
   a remote host (with a `manifold` script standing in). zsh gets it

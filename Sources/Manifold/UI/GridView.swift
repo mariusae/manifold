@@ -21,6 +21,7 @@ protocol GridDelegate: AnyObject {
     func gridUnstash(_ placement: PlacementID)
     func gridStash(_ placement: PlacementID, behind: PlacementID)
     func gridGrow(_ placement: PlacementID)
+    func gridFill(_ placement: PlacementID)
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -115,8 +116,9 @@ final class GridView: NSView, NSDraggingSource {
                 let stashed = isStashed(id)
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
-                // The capsule clicked grows the tile (a stashed one comes
-                // back); the symbol clicked is the tile's menu.
+                // The capsule clicked grows the tile, ⌘-clicked fills the
+                // column (a stashed one comes back); the symbol clicked is
+                // the tile's menu.
                 pill.onClick = { [weak self] in
                     guard let self else { return }
                     if stashed {
@@ -125,7 +127,11 @@ final class GridView: NSView, NSDraggingSource {
                         return
                     }
                     self.delegate?.gridFocus(id)
-                    self.delegate?.gridGrow(id)
+                    if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                        self.delegate?.gridFill(id)
+                    } else {
+                        self.delegate?.gridGrow(id)
+                    }
                 }
                 pill.onIconClick = { [weak self] in
                     guard let self else { return }
@@ -793,10 +799,17 @@ final class FocusRingView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    // Drawn afresh at each size (the sidebar coming or going resizes
+    // every tile), not stretched from the last.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
-        path.lineWidth = 2
-        Theme.accent.withAlphaComponent(0.55).setStroke()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 3, yRadius: 3)
+        path.lineWidth = 1.5
+        Theme.accent.withAlphaComponent(0.3).setStroke()
         path.stroke()
     }
 }

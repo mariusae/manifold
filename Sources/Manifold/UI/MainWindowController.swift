@@ -947,7 +947,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
         if let f = a.focused {
-            hosts.append(.remove(f), to: .block(id))
+            // Taken off, a tile's room goes to the next in its column —
+            // the first of the stack behind it, if there is one, which
+            // thus comes back where it was, and takes the focus.
+            var events: [Event] = [.remove(f)]
+            if let (c, i) = a.locate(f), i + 1 < a.columns[c].count, a.isStashed(a.columns[c][i + 1].id) {
+                events.append(.focus(a.columns[c][i + 1].id))
+            }
+            hosts.append(events, to: .block(id))
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
@@ -2064,6 +2071,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.append(events, to: .block(id))
     }
 
+    /// A block **over** a tile (§3.1): placed where the tile is, with the
+    /// tile stashed behind it, so it takes the tile's room until it is
+    /// taken off (⌘W), when the tile comes back — `$EDITOR` over the
+    /// terminal that ran it, a preview over its editor. A tile of the
+    /// block already there is focused instead, unless `again`: then the
+    /// block gets a second tile, over the opener (an `$EDITOR` that must
+    /// end when its own tile is taken off).
+    @discardableResult
+    func showOver(_ block: BlockID, lens: Lens, over opener: PlacementID, again: Bool = false, kind: LinkKind = .opened, context: String? = nil) -> PlacementID? {
+        hideStateView()
+        guard let a = arrangement, let (c, i) = a.locate(opener), let from = a.placement(opener)?.block else {
+            show(block, lens: lens, .here, kind: kind, context: context)
+            return arrangement?.tile(of: block, lens: lens)?.id
+        }
+        if !again, let t = a.tile(of: block, lens: lens) {
+            focus(t.id)
+            return t.id
+        }
+        let p = Placement(block: block, lens: lens)
+        appendToSelected([.place(p, column: c, at: i + 1), .stash(opener, behind: p.id), .focus(p.id)])
+        if from != block { hosts.link(from: from, to: block, kind: kind, context: context) }
+        return p.id
+    }
+
     /// A tile's block replaced in place — a listing gone into a folder, a
     /// preview gone to another page: the same tile, as a browser's window
     /// is; Go Back comes back along the trail.
@@ -2260,14 +2291,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func toggleEditPreview(_ sender: Any?) {
-        guard let f = focusedShown, let path = f.path, let a = arrangement, let (c, i) = a.locate(f.id) else { return }
+        guard let f = focusedShown, let path = f.path, let a = arrangement, a.locate(f.id) != nil else { return }
         let other: Lens
         switch f.lens {
         case .preview: other = .editor
         case .editor where Lens.isMarkdown(path): other = .preview
         default: return
         }
-        appendToSelected([.remove(f.id), .place(Placement(block: f.placement.block, lens: other), column: c, at: i)])
+        // The other lens over this one, this one behind it until the
+        // other is taken off (⌘W) — or, if this one is behind the other
+        // already (toggled back), simply that one again.
+        if let (c, i) = a.locate(f.id), i + 1 < a.columns[c].count, a.columns[c][i + 1].block == f.placement.block, a.isStashed(a.columns[c][i + 1].id) {
+            let behind = a.columns[c][i + 1].id
+            appendToSelected([.remove(f.id), .focus(behind)])
+            return
+        }
+        showOver(f.placement.block, lens: other, over: f.id)
     }
 
     /// ⌥⇧⌘P: the other lens beside this one, both in view.
@@ -2490,7 +2529,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
                 : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) && !wait ? .preview : .editor)
             let before = Set(arrangement?.placements.map(\.id) ?? [])
-            show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
+            if wait, placed.isEmpty, let opener = besidePlacement {
+                // $EDITOR: over the terminal that ran it, which comes back
+                // when the editing is done.
+                showOver(block, lens: lens, over: opener.id, again: true, context: "\(path.lastPathComponent)")
+            } else {
+                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
+            }
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
                 placed.append(p.id)
             }
@@ -2807,6 +2852,12 @@ extension MainWindowController: GridDelegate {
     func gridGrow(_ placement: PlacementID) {
         guard let a = arrangement else { return }
         appendToSelected(a.growing(placement))
+    }
+
+    /// A pill ⌘-clicked: its tile fills the column, the others stashed.
+    func gridFill(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected(a.growing(placement, whole: true))
     }
 
     func gridStash(_ placement: PlacementID, behind: PlacementID) {
