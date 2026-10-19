@@ -84,6 +84,7 @@ final class HistoryView: NSView {
         textView.autoresizingMask = [.width]
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.automaticallyAdjustsContentInsets = false

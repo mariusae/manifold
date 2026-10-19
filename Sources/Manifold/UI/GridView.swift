@@ -67,6 +67,8 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
     private let dragCatcher = DragCatcherView()
+    /// A ring around the focused tile.
+    private let focusRing = FocusRingView()
     /// The column whose stack of stashed pills is fanned out, under the pointer.
     /// The shown tile whose stack is fanned out under its pill.
     private var fanned: PlacementID? { didSet { if fanned != oldValue { needsLayout = true } } }
@@ -266,6 +268,7 @@ final class GridView: NSView, NSDraggingSource {
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
             tile.view.frame = bounds
+            focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
                 pill.behind = 0
@@ -320,6 +323,14 @@ final class GridView: NSView, NSDraggingSource {
             }
         }
         if dragging { dragCatcher.frame = bounds }
+        // The focus ring: around the focused tile, over everything.
+        if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
+            focusRing.isHidden = false
+            focusRing.frame = t.view.frame
+            addSubview(focusRing, positioned: .above, relativeTo: pills[focused])
+        } else {
+            focusRing.isHidden = true
+        }
         for (i, d) in columnDividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX - 3, y: 0, width: Self.gap + 6, height: bounds.height)
         }
@@ -401,6 +412,8 @@ final class GridView: NSView, NSDraggingSource {
                 if let caret = tile.view.caretRectInWindow {
                     let capsule = pill.convert(pill.capsule(in: pill), to: nil)
                     away = caret.minY < capsule.maxY && caret.maxY > capsule.minY
+                    // Unless the pointer is where the pill would be: then it shows.
+                    if away, let window, capsule.insetBy(dx: -8, dy: -6).contains(window.mouseLocationOutsideOfEventStream) { away = false }
                 }
                 pill.dodging = away
             }
@@ -680,7 +693,10 @@ final class TilePill: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !dodging else { return nil }
+        // Hidden (another tile maximized over this one) or out of the
+        // cursor's way: nothing here. An override doesn't get AppKit's
+        // own check for hidden views.
+        guard !isHidden, !dodging else { return nil }
         let p = convert(point, from: superview)
         guard glass.frame.contains(p) else { return nil }
         return super.hitTest(point) ?? self
@@ -764,6 +780,25 @@ final class RowDividerView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { onEnd?() }
+}
+
+/// A ring around the focused tile (§3.1): drawn, taking no clicks.
+final class FocusRingView: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
+        path.lineWidth = 2
+        Theme.accent.withAlphaComponent(0.55).setStroke()
+        path.stroke()
+    }
 }
 
 /// Over the whole grid while something is dragged: takes the drag for

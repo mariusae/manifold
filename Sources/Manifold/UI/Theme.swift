@@ -68,9 +68,27 @@ enum Theme {
         symbolName(for: Lens.default(for: kind, path: path))
     }
 
+    /// Older names for symbols a macOS before this one's may not have,
+    /// tried in turn; last, a dot, so nothing is ever blank.
+    static let symbolFallbacks: [String: [String]] = [
+        "rectangle.expand.vertical": ["arrow.up.and.down.square", "arrow.up.and.down"],
+        "point.3.connected.trianglepath.dotted": ["link", "circle.hexagongrid"],
+        "tray.and.arrow.down": ["tray", "square.and.arrow.down"],
+        "arrow.up.left.and.arrow.down.right": ["arrow.up.left.and.down.right.magnifyingglass", "arrow.up.and.down"],
+        "arrow.down.right.and.arrow.up.left": ["arrow.down.right.and.arrow.up.left.circle", "arrow.up.and.down"],
+        "cpu": ["cpu.fill", "memorychip"],
+        "number": ["number.square", "textformat"],
+        "apple.terminal": ["terminal"],
+        "arrow.left.arrow.right": ["arrow.right.arrow.left", "arrow.left.and.right"],
+    ]
+
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: size, weight: weight))
+        for candidate in [name] + (symbolFallbacks[name] ?? []) + ["circle.fill"] {
+            if let image = NSImage(systemSymbolName: candidate, accessibilityDescription: nil) {
+                return image.withSymbolConfiguration(.init(pointSize: size, weight: weight))
+            }
+        }
+        return nil
     }
 }
 

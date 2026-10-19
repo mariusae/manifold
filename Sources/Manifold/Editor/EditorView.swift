@@ -75,7 +75,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scroll.contentInsets = NSEdgeInsetsZero
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
+        scroll.scrollerStyle = .legacy
         scroll.documentView = textView
         addSubview(scroll)
         textView.document = self

@@ -50,6 +50,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTableViewDataS
         table.allowsMultipleSelection = false
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

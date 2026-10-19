@@ -59,6 +59,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         let handler = StateMessages()
         config.userContentController.add(handler, name: "manifoldState")
+        // A scrollbar that shows (§3.1), as the lenses' do.
+        config.userContentController.addUserScript(WKUserScript(source: "(function(){var s=document.createElement('style');s.textContent='::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:rgba(127,127,127,.5);border-radius:7px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:rgba(127,127,127,.8);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}';(document.head||document.documentElement).appendChild(s);})();", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
         handler.onState = { [weak self] values in self?.keeper.note(values) }

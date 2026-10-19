@@ -43,7 +43,11 @@ and Mona Sans (bundled).
   pill) puts a tile over the whole workspace until it is restored, or
   until you go to another tile. A pill fades out while the text cursor
   is on the line under it, in an editor or a terminal, and comes back
-  when the cursor moves on. Overview (⌘') shows every block in the
+  when the cursor moves on, or when the pointer rests where it would be.
+  The focused tile has a ring around it. Every lens shows its scroll
+  bar; a terminal's comes from Ghostty's own account of the screen and
+  its history. Going somewhere (⌘O, ⌘\, a found line) brings the pointer
+  along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile wears a **pill** floating over its top, one

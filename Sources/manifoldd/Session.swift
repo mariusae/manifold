@@ -280,17 +280,68 @@ final class Session {
         env["TERM_PROGRAM"] = "Manifold"
         env.removeValue(forKey: "TERM_PROGRAM_VERSION")
 
-        // Ghostty's zsh integration reports the working directory and sets
-        // titles; it's loaded by pointing ZDOTDIR at it.
-        if shell.lastPathComponent == "zsh", let res = env["GHOSTTY_RESOURCES_DIR"] {
-            let dir = res + "/shell-integration/zsh"
-            if FileManager.default.fileExists(atPath: dir) {
-                if let old = env["ZDOTDIR"] { env["GHOSTTY_ZSH_ZDOTDIR"] = old }
-                env["ZDOTDIR"] = dir
+        // zsh starts through Manifold's own layer (a .zshenv in the data
+        // folder), which hands over to Ghostty's integration (working
+        // directory, titles), which hands over to yours — and then, once
+        // your rc files have run, puts `manifold` first on the PATH.
+        if shell.lastPathComponent == "zsh", let layer = zshLayer() {
+            env["MANIFOLD_BIN"] = toolDirectories.joined(separator: ":")
+            if let old = env["ZDOTDIR"] { env["MANIFOLD_ZSH_ZDOTDIR"] = old }
+            if let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/zsh") {
+                env["MANIFOLD_GHOSTTY_ZDOTDIR"] = res + "/shell-integration/zsh"
                 env["GHOSTTY_SHELL_FEATURES"] = "title"
             }
+            env["ZDOTDIR"] = layer
         }
         return (shell, env)
+    }
+
+    /// The folder with Manifold's `.zshenv`, written fresh: it restores
+    /// your ZDOTDIR, sources Ghostty's integration (which sources your
+    /// .zshenv), and in an interactive shell adds a hook that runs once,
+    /// before the first prompt, putting $MANIFOLD_BIN first on the PATH —
+    /// after .zprofile and .zshrc, so nothing there comes before it.
+    static func zshLayer() -> String? {
+        let dir = Paths.directory.appendingPathComponent("zsh")
+        let file = dir.appendingPathComponent(".zshenv")
+        let script = """
+        # Manifold's zsh layer. Written by manifoldd; edits are lost.
+        if [[ -n "${MANIFOLD_ZSH_ZDOTDIR+X}" ]]; then
+            'builtin' 'export' ZDOTDIR="$MANIFOLD_ZSH_ZDOTDIR"
+            'builtin' 'unset' 'MANIFOLD_ZSH_ZDOTDIR'
+        else
+            'builtin' 'unset' 'ZDOTDIR'
+        fi
+        if [[ -n "${MANIFOLD_GHOSTTY_ZDOTDIR+X}" && -r "$MANIFOLD_GHOSTTY_ZDOTDIR/.zshenv" ]]; then
+            [[ -z "${ZDOTDIR+X}" ]] || 'builtin' 'export' GHOSTTY_ZSH_ZDOTDIR="$ZDOTDIR"
+            'builtin' 'typeset' _manifold_file="$MANIFOLD_GHOSTTY_ZDOTDIR/.zshenv"
+            'builtin' 'unset' 'MANIFOLD_GHOSTTY_ZDOTDIR'
+            'builtin' 'source' '--' "$_manifold_file"
+            'builtin' 'unset' '_manifold_file'
+        else
+            'builtin' 'typeset' _manifold_file=${ZDOTDIR-$HOME}"/.zshenv"
+            [[ ! -r "$_manifold_file" ]] || 'builtin' 'source' '--' "$_manifold_file"
+            'builtin' 'unset' '_manifold_file'
+        fi
+        if [[ -o 'interactive' && -n "$MANIFOLD_BIN" ]]; then
+            __manifold_path() {
+                'builtin' 'typeset' -gU path
+                path=("${(s/:/)MANIFOLD_BIN}" $path)
+                precmd_functions=(${precmd_functions:#__manifold_path})
+                'builtin' 'unfunction' '--' __manifold_path
+            }
+            'builtin' 'autoload' '-Uz' add-zsh-hook
+            add-zsh-hook precmd __manifold_path
+        fi
+
+        """
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if (try? String(contentsOf: file, encoding: .utf8)) != script { try script.write(to: file, atomically: true, encoding: .utf8) }
+            return dir.path
+        } catch {
+            return nil
+        }
     }
 
     /// Folders with the `manifold` command: Helpers/ beside this server in

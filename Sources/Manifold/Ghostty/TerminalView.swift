@@ -61,6 +61,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// itself lives on in the server.
     func destroy() {
         finder.hide()
+        scroller.removeFromSuperview()
         guard let surface else { return }
         self.surface = nil
         ghostty_surface_free(surface)
@@ -87,15 +88,71 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func setFrameOrigin(_ newOrigin: NSPoint) {
         super.setFrameOrigin(newOrigin)
         finder.layout(in: bounds)
+        layoutScroller()
     }
 
-    override var isHidden: Bool { didSet { finder.layout(in: bounds) } }
+    override var isHidden: Bool { didSet { finder.layout(in: bounds); layoutScroller() } }
 
     private func sizeDidChange(_ size: NSSize) {
         contentSize = size
         guard let surface, size.width > 0, size.height > 0 else { return }
-        let scaled = convertToBacking(size)
+        // The scroller's column at the right is not the terminal's.
+        let scaled = convertToBacking(NSSize(width: max(size.width - Self.scrollerWidth, 1), height: size.height))
         ghostty_surface_set_size(surface, UInt32(scaled.width), UInt32(scaled.height))
+        layoutScroller()
+    }
+
+    // MARK: The scroller (§3.1)
+
+    static let scrollerWidth: CGFloat = 15
+    /// In the superview, over the tile's right edge, as the find pill is:
+    /// Ghostty's layer is this view's, under which a subview wouldn't show.
+    private lazy var scroller: NSScroller = {
+        let s = NSScroller(frame: NSRect(x: 0, y: 0, width: Self.scrollerWidth, height: 100))
+        s.scrollerStyle = .legacy
+        s.controlSize = .regular
+        s.target = self
+        s.action = #selector(scrolled)
+        s.wantsLayer = true
+        s.layer?.zPosition = 5
+        return s
+    }()
+    private var scrollbar = (total: 0, offset: 0, len: 0)
+
+    /// What the core says of the screen and its history: how many rows,
+    /// which the top one is, how many show.
+    func scrollbarChanged(total: Int, offset: Int, len: Int) {
+        scrollbar = (total, offset, len)
+        guard total > len, len > 0 else { scroller.isHidden = true; return }
+        scroller.isHidden = isHidden
+        scroller.knobProportion = CGFloat(len) / CGFloat(total)
+        scroller.doubleValue = Double(offset) / Double(total - len)
+        layoutScroller()
+    }
+
+    private func layoutScroller() {
+        guard let parent = superview else { return }
+        if scroller.superview !== parent { parent.addSubview(scroller) }
+        scroller.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
+        scroller.isHidden = isHidden || scrollbar.total <= scrollbar.len
+    }
+
+    @objc private func scrolled() {
+        guard let surface, scrollbar.total > scrollbar.len else { return }
+        let span = Double(scrollbar.total - scrollbar.len)
+        var target = Double(scrollbar.offset)
+        switch scroller.hitPart {
+        case .knob, .knobSlot: target = scroller.doubleValue * span
+        case .decrementPage: target -= Double(scrollbar.len)
+        case .incrementPage: target += Double(scrollbar.len)
+        case .decrementLine: target -= 1
+        case .incrementLine: target += 1
+        default: return
+        }
+        let delta = min(max(target, 0), span) - Double(scrollbar.offset)
+        guard delta != 0 else { return }
+        // Rows up are a positive wheel.
+        ghostty_surface_mouse_scroll(surface, 0, -delta, 0)
     }
 
     override func viewDidChangeBackingProperties() {
@@ -129,6 +186,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.viewDidMoveToSuperview()
         syncFocus()
         finder.layout(in: bounds)
+        if superview == nil { scroller.removeFromSuperview() } else { layoutScroller() }
     }
 
     override func becomeFirstResponder() -> Bool {

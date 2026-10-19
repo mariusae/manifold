@@ -93,6 +93,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

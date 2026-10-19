@@ -61,8 +61,9 @@ final class StateView: NSView {
         for v in [title, count, modes, leave] { header.addSubview(v) }
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
+        scroll.scrollerStyle = .legacy
         scroll.documentView = document
         scroll.contentView.drawsBackground = false
         addSubview(scroll)

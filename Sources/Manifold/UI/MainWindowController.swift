@@ -1782,11 +1782,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                                 if let e = self.views[id] as? EditorView {
                                                     self.focus(id)
                                                     e.select(line: at)
+                                                    self.warpPointerToFocus()
                                                     return
                                                 }
                                             }
                                             self.pendingJump = (b.path ?? "", at, nil)
                                             self.show(block, lens: .editor, .here)
+                                            self.warpPointerToFocus()
                                         }))
                 if items.count >= 300 { return items }
             }
@@ -1923,6 +1925,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// any other block gone to.
     func recall(_ id: BlockID) { goTo(id) }
 
+    /// After a go-to (⌘O, ⌘\, a found line): the pointer moves to what was
+    /// gone to — the text cursor if the tile has one, else the tile's
+    /// middle — a moment later, once it is laid out.
+    func warpPointerToFocus() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self, let window = self.window, let a = self.arrangement, let f = a.focused, let view = self.views[f], view.window === window else { return }
+            var rect = view.caretRectInWindow ?? view.convert(view.bounds, to: nil)
+            if rect.width > 40 || rect.height > 40 { rect = NSRect(x: rect.midX - 1, y: rect.midY - 1, width: 2, height: 2) }
+            let screen = window.convertToScreen(rect)
+            // Core Graphics counts from the main display's top left.
+            guard let main = NSScreen.screens.first else { return }
+            let point = CGPoint(x: screen.midX + 2, y: main.frame.maxY - screen.midY)
+            CGWarpMouseCursorPosition(point)
+            CGAssociateMouseAndMouseCursorPosition(1)
+        }
+    }
+
     /// **Go to** (§3.1): the block where it already is — a tile here is
     /// focused; else the arrangement it is in, the one most recently
     /// settled on first, is selected and its tile focused; else, placed
@@ -1930,6 +1949,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func goTo(_ id: BlockID) {
         guard let block = hosts.block(id) else { return }
         hideStateView()
+        warpPointerToFocus()
         if block.kind == .arrangement { return hosts.select(id) }
         if let a = arrangement, let t = a.placements(of: id).first { return focus(t.id) }
         let order = hosts.state.settled + allWorkspaces.filter { !hosts.state.settled.contains($0) }
@@ -2078,6 +2098,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         show(block, lens: .editor, opener(from), kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
+        warpPointerToFocus()
     }
 
     func openDirectory(_ path: String, from: PlacementID?, context: String? = nil) {
@@ -2155,7 +2176,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let id = p.id
                 items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
                                         detail: b.place?.abbreviatingHome ?? "", note: notes.joined(separator: " · "),
-                                        run: { [weak self] in self?.focus(id) }))
+                                        run: { [weak self] in self?.focus(id); self?.warpPointerToFocus() }))
                 // A text's headings, as Markdown has them, each gone to in
                 // its editor by line, in its preview by index.
                 guard b.kind == .text, let text = b.text?.text.string, Lens.isMarkdown(b.path ?? ".md") || p.lens == .preview else { continue }
@@ -2177,6 +2198,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                         self.focus(id)
                         if let e = self.views[id] as? EditorView { e.select(line: at) }
                         else if let m = self.views[id] as? MarkdownView { m.scroll(toHeading: nth) }
+                        self.warpPointerToFocus()
                     }))
                     index += 1
                 }

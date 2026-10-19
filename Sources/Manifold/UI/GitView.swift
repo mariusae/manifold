@@ -73,6 +73,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

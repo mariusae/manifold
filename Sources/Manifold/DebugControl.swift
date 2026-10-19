@@ -82,8 +82,8 @@ enum DebugControl {
                 ev.mods = GHOSTTY_MODS_NONE
                 ev.consumed_mods = GHOSTTY_MODS_NONE
                 if ch == "\r" || ch == "\n" {
-                    ev.keycode = 36
-                    _ = ghostty_surface_key(s, ev)
+                    // Return, as typed text.
+                    ghostty_surface_text(s, "\r", 1)
                 } else {
                     ev.keycode = 0xFFFF
                     ev.unshifted_codepoint = ch.unicodeScalars.first!.value

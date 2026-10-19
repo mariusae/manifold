@@ -269,8 +269,12 @@ final class GhosttyRuntime {
             let selected = action.action.search_selected.selected
             DispatchQueue.main.async { view?.searchSelected(selected >= 0 ? Int(selected) : nil) }
             return true
+        case GHOSTTY_ACTION_SCROLLBAR:
+            let s = action.action.scrollbar
+            DispatchQueue.main.async { view?.scrollbarChanged(total: Int(s.total), offset: Int(s.offset), len: Int(s.len)) }
+            return true
         case GHOSTTY_ACTION_RENDER, GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_PWD,
-             GHOSTTY_ACTION_COLOR_CHANGE, GHOSTTY_ACTION_RENDERER_HEALTH, GHOSTTY_ACTION_SCROLLBAR,
+             GHOSTTY_ACTION_COLOR_CHANGE, GHOSTTY_ACTION_RENDERER_HEALTH,
              GHOSTTY_ACTION_MOUSE_OVER_LINK, GHOSTTY_ACTION_CONFIG_CHANGE, GHOSTTY_ACTION_SIZE_LIMIT,
              GHOSTTY_ACTION_INITIAL_SIZE, GHOSTTY_ACTION_SHOW_CHILD_EXITED, GHOSTTY_ACTION_COMMAND_FINISHED,
              GHOSTTY_ACTION_PROGRESS_REPORT, GHOSTTY_ACTION_KEY_SEQUENCE, GHOSTTY_ACTION_KEY_TABLE:

@@ -75,6 +75,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         table.allowsMultipleSelection = false
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

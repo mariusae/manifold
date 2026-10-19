@@ -147,6 +147,7 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
     override func rightMouseDown(with event: NSEvent) {}
     override func scrollWheel(with event: NSEvent) {}
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden else { return nil }
         let v = super.hitTest(point)
         return v ?? (frame.contains(point) ? self : nil)
     }
