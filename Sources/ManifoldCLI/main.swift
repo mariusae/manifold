@@ -2,13 +2,15 @@ import AppKit
 import ManifoldCore
 
 // manifold [--wait] [file ...]
+// manifold diff [--title name] < patch
 //
 // Opens files in Manifold: Markdown in a live preview, folders in a listing,
 // anything else in an editor. Run in one of Manifold's terminals, they open
 // beside it; anywhere else, in the selected arrangement, with Manifold
 // brought forward (and started if need be). With --wait (what Manifold's
 // shells have as $EDITOR), returns when they've been put away again. With
-// no files, just brings Manifold forward.
+// no files, just brings Manifold forward. `diff` reads a patch from its
+// input (git diff | manifold diff) and shows it as a diff block.
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("manifold: \(message)\n".utf8))
@@ -19,12 +21,27 @@ var args = Array(CommandLine.arguments.dropFirst())
 if args.contains(where: { $0 == "-h" || $0 == "--help" }) {
     print("""
         usage: manifold [--wait] [file ...]
+               manifold diff [--title name] < patch
 
         Opens files in Manifold: Markdown in a live preview, folders in a
         listing, text in an editor; beside this terminal when run in one of
         Manifold's. With --wait, returns once they've been put away.
+        diff shows a patch from its input (git diff | manifold diff) as a
+        diff block; double-click a line to open the file there.
         """)
     exit(0)
+}
+let isDiff = args.first == "diff"
+var diffTitle: String?
+if isDiff {
+    args.removeFirst()
+    if let i = args.firstIndex(of: "--title"), i + 1 < args.count {
+        diffTitle = args[i + 1]
+        args.removeSubrange(i...(i + 1))
+    } else if let t = args.first, !t.hasPrefix("-") {
+        diffTitle = t
+        args.removeFirst()
+    }
 }
 let wait = args.contains("--wait") || args.contains("-w")
 args.removeAll { $0 == "--wait" || $0 == "-w" }
@@ -72,6 +89,24 @@ func connect() -> Int32 {
 }
 
 signal(SIGPIPE, SIG_IGN)
+if isDiff {
+    let patch: String
+    switch OpenCommand.readPatch() {
+    case .success(let p): patch = p
+    case .failure(let error): fail(error.message)
+    }
+    var fd = connect()
+    if besideBlock == nil { launchApp(activate: true) }
+    let root = FileManager.default.currentDirectoryPath
+    var status = OpenCommand.runPatch(fd: fd, patch: patch, root: root, title: diffTitle, beside: besideBlock)
+    if status != 0, besideBlock == nil {
+        close(fd)
+        sleep(2)
+        fd = connect()
+        status = OpenCommand.runPatch(fd: fd, patch: patch, root: root, title: diffTitle, beside: besideBlock)
+    }
+    exit(status)
+}
 if paths.isEmpty {
     launchApp(activate: true)
     exit(0)

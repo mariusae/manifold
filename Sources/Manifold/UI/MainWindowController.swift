@@ -108,6 +108,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onOpen = { [weak self] host, id, client, paths, beside, wait in
             self?.openRequest(on: host, id: id, client: client, paths: paths, beside: beside, wait: wait)
         }
+        hosts.onShow = { [weak self] host, id, client, block, beside in
+            self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
+        }
         hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.languageServersWindow?.refresh() }
         hosts.onGutter = { [weak self] block in
             guard let self else { return }
@@ -2553,6 +2556,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate()
     }
 
+    /// A block the host made for a command (`manifold diff`): shown beside
+    /// the block the command ran in, else here, and the command answered.
+    private func showRequest(on: HostID, id: Int, client: Int, block: BlockID, beside: BlockID?) {
+        let besidePlacement = beside.flatMap { b in
+            allWorkspaces.lazy.compactMap { self.hosts.arrangement($0)?.placements.first { $0.block == b } }.first
+        }
+        if let besidePlacement, let aid = allWorkspaces.first(where: { hosts.arrangement($0)?.placement(besidePlacement.id) != nil }), aid != selected {
+            hosts.select(aid)
+        }
+        let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
+        show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
+        hosts.propose(.openDone(id: id, client: client), on: on)
+        NSApp.activate()
+    }
+
     /// Answers `open --wait` commands whose placements have all gone.
     private func checkOpenWaits() {
         guard !openWaits.isEmpty else { return }
@@ -3156,7 +3174,7 @@ extension MainWindowController: GitViewDelegate {
             }
             context = new.path.lastPathComponent
         case let .commit(_, sha): context = String(sha.prefix(7))
-        case .versions: break
+        case .versions, .patch: break
         }
         show(block, lens: .diff, .besideOpener(view.placement), context: context)
     }

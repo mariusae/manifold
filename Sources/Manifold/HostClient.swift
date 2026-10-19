@@ -495,6 +495,8 @@ final class HostClient {
             node.remove(shard)
         case let .open(id, client, paths, beside, wait):
             onOpen?(id, client, paths, beside, wait)
+        case let .show(id, client, block, beside):
+            onShow?(id, client, block, beside)
         case let .diagnostics(block, items):
             diagnostics[block] = items
             onDiagnostics?(block)
@@ -522,6 +524,7 @@ final class HostClient {
     var onTerminalEnded: ((BlockID) -> Void)?
     /// A `manifold` command on this host asked for paths to be opened.
     var onOpen: ((Int, Int, [String], BlockID?, Bool) -> Void)?
+    var onShow: ((Int, Int, BlockID, BlockID?) -> Void)?
 
     /// The host asked us, as the leader, to append something.
     private func lower(_ proposal: HostProposal, into shard: ShardID) {

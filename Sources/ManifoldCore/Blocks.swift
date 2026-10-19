@@ -355,6 +355,8 @@ public enum DiffSubject: Codable, Equatable, Sendable {
     case commit(repo: String, sha: String)
     /// A text block at two moments of its log (`to` nil: as it is now).
     case versions(block: BlockID, from: Stamp, to: Stamp?)
+    /// A patch given to `manifold diff`, its paths against `root`.
+    case patch(root: String, title: String?)
 }
 
 /// A diff block: the subject, and the texts (or the patch) the host read
@@ -610,6 +612,10 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
                 f.timeStyle = .short
                 let name = path?.lastPathComponent ?? "Note"
                 return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
+            case let .patch(_, title):
+                if let title, !title.isEmpty { return title }
+                let files = diff?.patch?.split(separator: "\n").filter { $0.hasPrefix("+++ ") }.count ?? 0
+                return files == 1 ? "Patch, 1 file" : "Patch, \(files) files"
             }
         }
         if let path { return path.lastPathComponent }

@@ -21,6 +21,7 @@ final class Hosts {
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
     /// A `manifold` command on `host` asks for paths to be opened.
     var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
+    var onShow: ((HostID, Int, Int, BlockID, BlockID?) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
     var onLanguageServer: ((HostID, String, String, String) -> Void)?
@@ -94,6 +95,10 @@ final class Hosts {
         client.onChange = { [weak self] in self?.onChange?() }
         client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
         client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
+        client.onShow = { [weak self, weak client] id, who, block, beside in
+            guard let self, let client else { return }
+            self.onShow?(client.host, id, who, block, beside)
+        }
         client.onOpen = { [weak self, weak client] id, who, paths, beside, wait in
             guard let self, let client else { return }
             self.onOpen?(client.host, id, who, paths, beside, wait)

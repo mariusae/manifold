@@ -16,6 +16,24 @@ public enum OpenCommand {
     /// Returns the exit status: 0 when done, 1 when the host or app
     /// couldn't do it.
     public static func run(fd: Int32, paths: [String], beside: BlockID?, wait: Bool, name: String = "manifold") -> Int32 {
+        run(fd: fd, wait: wait, name: name) { .open(id: $0, paths: paths, beside: beside, wait: wait) }
+    }
+
+    /// `manifold diff`: a patch, read from the input, shown as a diff block.
+    public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "manifold") -> Int32 {
+        run(fd: fd, wait: false, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
+    }
+
+    /// The patch on standard input, or why there is none.
+    public static func readPatch() -> Result<String, ResolveError> {
+        guard isatty(0) == 0 else { return .failure(ResolveError(message: "diff reads a patch from its input: git diff | manifold diff")) }
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8) else { return .failure(ResolveError(message: "the patch isn't UTF-8")) }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failure(ResolveError(message: "the patch is empty")) }
+        return .success(text)
+    }
+
+    private static func run(fd: Int32, wait: Bool, name: String, request: (Int) -> ClientMessage) -> Int32 {
         func send(_ message: ClientMessage) -> Bool {
             let data = Frame.message(message).encoded
             return data.withUnsafeBytes { raw in
@@ -49,7 +67,7 @@ public enum OpenCommand {
                         return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
                     }
                     welcomed = true
-                    guard send(.open(id: 1, paths: paths, beside: beside, wait: wait)) else { return fail("lost the connection to Manifold") }
+                    guard send(request(1)) else { return fail("lost the connection to Manifold") }
                     deadline = Date().addingTimeInterval(15)
                 case let .done(id, error)?:
                     guard id == 1 else { continue }

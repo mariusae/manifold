@@ -25,6 +25,30 @@ case "bridge":
 case "open":
     var wait = false
     var files: [String] = []
+    // `manifold diff` on a host where the `manifold` script runs us.
+    if args.dropFirst().first == "diff" {
+        var rest = Array(args.dropFirst(2))
+        var title: String?
+        if let i = rest.firstIndex(of: "--title"), i + 1 < rest.count {
+            title = rest[i + 1]
+            rest.removeSubrange(i...(i + 1))
+        } else if let t = rest.first, !t.hasPrefix("-") {
+            title = t
+        }
+        let patch: String
+        switch OpenCommand.readPatch() {
+        case .success(let p): patch = p
+        case .failure(let error):
+            FileHandle.standardError.write(Data("manifold: \(error.message)\n".utf8))
+            exit(1)
+        }
+        guard let fd = try? UnixSocket.connect(path: Paths.socket) else {
+            FileHandle.standardError.write(Data("manifold: the server isn't running here\n".utf8))
+            exit(1)
+        }
+        let beside = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:))
+        exit(OpenCommand.runPatch(fd: fd, patch: patch, root: FileManager.default.currentDirectoryPath, title: title, beside: beside, name: "manifoldd open"))
+    }
     for a in args.dropFirst() {
         if a == "--wait" || a == "-w" { wait = true } else { files.append(a) }
     }

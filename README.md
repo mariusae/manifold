@@ -382,6 +382,11 @@ is migrated into logs on first run.
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
   comes back.
+- **`git diff | manifold diff`** shows a patch as a diff block, beside the
+  terminal it ran in (`manifold diff "before lunch"`, or `--title`, names
+  it; else it is "Patch, n files"). Double-click a line to open the file
+  there, against the directory the command ran in. On a remote host the
+  same, through its `manifold` script.
 - **`manifold` is first on the PATH** in Manifold's shells, once your rc
   files have run: the app's Helpers folder here, the server's folder on
   a remote host (with a `manifold` script standing in). zsh gets it

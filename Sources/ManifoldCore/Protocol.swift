@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 16
+public let protocolVersion = 17
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -174,6 +174,9 @@ public enum ClientMessage: Codable, Sendable {
     /// The `manifold` command: open these, beside a block if run in one
     /// of Manifold's terminals; with `wait`, answered when they're put away.
     case open(id: Int, paths: [String], beside: BlockID?, wait: Bool)
+    /// `manifold diff`: a patch read from its input, shown as a diff block
+    /// (its files opened against `root`, the command's directory).
+    case openPatch(id: Int, patch: String, root: String, title: String?, beside: BlockID?)
 }
 
 public struct AttachRequest: Codable, Sendable {
@@ -212,6 +215,9 @@ public enum ServerMessage: Codable, Sendable {
     case removed(shard: ShardID)
     /// The command asked for these to be opened (the app places them).
     case open(id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool)
+    /// A block the host made at a command's asking (a patch): the app
+    /// places it and answers the command.
+    case show(id: Int, client: Int, block: BlockID, beside: BlockID?)
     /// A language server's diagnostics for a block, as they stand.
     case diagnostics(BlockID, [Diagnostic])
     /// The answer to a `lsp` proposal.

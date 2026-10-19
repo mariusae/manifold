@@ -212,6 +212,22 @@ final class Server {
                 return
             }
             app.send(.message(ServerMessage.open(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, paths: paths, beside: beside, wait: wait)))
+        case let .openPatch(id, patch, root, title, beside)?:
+            // `manifold diff`: the patch becomes a diff block here, and the
+            // app, if attached, places it and answers the command.
+            guard let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) }) else {
+                conn.send(.message(ServerMessage.done(id: id, error: "Manifold isn't attached to this host")))
+                return
+            }
+            guard patch.utf8.count <= 64 << 20 else {
+                conn.send(.message(ServerMessage.done(id: id, error: "that patch is over 64 MB")))
+                return
+            }
+            let block = BlockID(host: host)
+            append(.create(kind: .diff, title: nil, path: root), to: .block(block))
+            append(.diffSubject(.patch(root: root, title: title)), to: .block(block))
+            append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: clock.now()), to: .block(block))
+            app.send(.message(ServerMessage.show(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, block: block, beside: beside)))
         case .shutdown?:
             exit(endSessions: true)
         default:
@@ -432,6 +448,7 @@ final class Server {
                 case let .sides(_, new): path = new.path
                 case let .commit(repo, _): path = repo
                 case let .versions(id, _, _): path = node.block(id)?.path
+                case let .patch(root, _): path = root
                 }
                 append(.create(kind: .diff, title: nil, path: path), to: .block(block))
             }
@@ -641,6 +658,8 @@ final class Server {
                     self.report(block, .done, msg: "Compared")
                 }
             }
+        case .patch:
+            break // given whole; nothing to read again
         case let .versions(id, from, to):
             let entries = store.entries(.block(id))
             let old = Block.replaying(entries, id: id, upTo: from)?.text?.text.string ?? ""
