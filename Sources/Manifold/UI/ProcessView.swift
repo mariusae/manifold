@@ -4,12 +4,14 @@ import ManifoldCore
 protocol ProcessViewDelegate: AnyObject {
     func processViewRefresh(_ view: ProcessView)
     func processView(_ view: ProcessView, signal pid: Int32, _ signal: Int32)
+    func processView(_ view: ProcessView, goTo block: BlockID)
 }
 
-/// The process lens (DESIGN.md §7.5): the host's processes as `ps` lists
-/// them, listed again every few seconds while shown; a field narrows them,
-/// the columns sort, and the selected one can be ended (SIGTERM) or
-/// killed (SIGKILL).
+/// The process lens (DESIGN.md §7.5): the trees of processes under the
+/// host's terminals and agents, by block, each with its executable's
+/// path, listed again every few seconds while shown; a field narrows
+/// them, the selected one can be ended (SIGTERM) or killed (SIGKILL), and
+/// a double-click (or ↩) goes to the block a process runs under.
 final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
@@ -24,11 +26,13 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private let scroll = NSScrollView()
     private let table = NSTableView()
     private var all: [ProcessEntry] = []
-    private var shown: [ProcessEntry] = []
+    /// A block's heading, or a process at a depth under it.
+    enum Row { case group(BlockID), process(ProcessEntry, depth: Int) }
+    private var shown: [Row] = []
     private var listedAt: Stamp?
     private var timer: Timer?
-    private var sortKey = "cpu"
-    private var ascending = false
+    /// What to call a block (the host's blocks are the controller's to know).
+    var blockTitle: (BlockID) -> String? = { _ in nil }
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -55,20 +59,20 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             b.isEnabled = false
         }
         for v in [field, status, end, kill] { addSubview(v) }
-        for (id, title, width) in [("pid", "PID", 60.0), ("cpu", "CPU", 55.0), ("memory", "Memory", 75.0), ("user", "User", 80.0), ("command", "Command", 400.0)] {
+        for (id, title, width) in [("pid", "PID", 60.0), ("cpu", "CPU", 55.0), ("memory", "Memory", 75.0), ("command", "Command", 360.0), ("path", "Path", 300.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
             c.width = width
-            c.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: id == "command" || id == "user" || id == "pid")
             table.addTableColumn(c)
         }
+        table.target = self
+        table.doubleAction = #selector(rowOpened)
         table.dataSource = self
         table.delegate = self
         table.rowHeight = 20
         table.style = .plain
         table.usesAlternatingRowBackgroundColors = true
         table.allowsMultipleSelection = false
-        table.sortDescriptors = [NSSortDescriptor(key: "cpu", ascending: false)]
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -88,15 +92,11 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private func restoreState() {
         guard !keeper.restored, !all.isEmpty else { return }
         keeper.restored = true
-        var again = false
-        if let f = keeper.value("filter"), f != field.stringValue { field.stringValue = f; again = true }
-        if let k = keeper.value("sort"), k != sortKey { sortKey = k; again = true }
-        if let a = keeper.value("asc") { ascending = a == "1"; again = true }
-        if again {
-            table.sortDescriptors = [NSSortDescriptor(key: sortKey, ascending: ascending)]
+        if let f = keeper.value("filter"), f != field.stringValue {
+            field.stringValue = f
             refilter()
         }
-        if let pid = keeper.int("selected"), let i = shown.firstIndex(where: { Int($0.pid) == pid }) {
+        if let pid = keeper.int("selected"), let i = shown.firstIndex(where: { if case let .process(e, _) = $0 { return Int(e.pid) == pid } else { return false } }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
         if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
@@ -132,30 +132,58 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         refilter()
     }
 
+    /// The rows: each block's heading, then its tree, parents before
+    /// children, children set in; with a filter, only the processes that
+    /// match, under their blocks.
     private func refilter() {
         let q = field.stringValue.lowercased()
-        var rows = q.isEmpty ? all : all.filter { $0.command.lowercased().contains(q) || $0.user.lowercased().contains(q) || String($0.pid) == q }
-        rows.sort { a, b in
-            let less: Bool
-            switch sortKey {
-            case "pid": less = a.pid < b.pid
-            case "memory": less = a.memory < b.memory
-            case "user": less = a.user < b.user
-            case "command": less = a.command.lowercased() < b.command.lowercased()
-            default: less = a.cpu < b.cpu
+        let matching = q.isEmpty ? all : all.filter { $0.command.lowercased().contains(q) || ($0.path?.lowercased().contains(q) ?? false) || String($0.pid) == q }
+        var rows: [Row] = []
+        var seen: [BlockID] = []
+        for e in all { if let b = e.block, !seen.contains(b) { seen.append(b) } }
+        var count = 0
+        for b in seen {
+            let mine = matching.filter { $0.block == b }
+            guard !mine.isEmpty else { continue }
+            rows.append(.group(b))
+            if q.isEmpty {
+                let pids = Set(mine.map(\.pid))
+                func walk(_ parent: Int32?, depth: Int) {
+                    for e in mine where (parent == nil ? !pids.contains(e.parent) : e.parent == parent) {
+                        rows.append(.process(e, depth: depth))
+                        count += 1
+                        walk(e.pid, depth: depth + 1)
+                    }
+                }
+                walk(nil, depth: 0)
+            } else {
+                for e in mine { rows.append(.process(e, depth: 0)); count += 1 }
             }
-            return ascending ? less : !less
         }
-        let selectedPID = table.selectedRow >= 0 && table.selectedRow < shown.count ? shown[table.selectedRow].pid : nil
+        let selectedPID = self.selectedPID
         shown = rows
         table.reloadData()
-        if let selectedPID, let i = shown.firstIndex(where: { $0.pid == selectedPID }) {
+        if let selectedPID, let i = shown.firstIndex(where: { if case let .process(e, _) = $0 { return e.pid == selectedPID } else { return false } }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
-        status.stringValue = q.isEmpty ? "\(all.count) processes" : "\(shown.count) of \(all.count)"
-        end.isEnabled = table.selectedRow >= 0
-        kill.isEnabled = table.selectedRow >= 0
+        status.stringValue = q.isEmpty ? "\(all.count) processes under \(seen.count) block\(seen.count == 1 ? "" : "s")" : "\(count) of \(all.count)"
+        end.isEnabled = selectedPID != nil
+        kill.isEnabled = selectedPID != nil
         restoreState()
+    }
+
+    /// Double-clicked, or ↩: the block the row's process runs under.
+    @objc private func rowOpened() {
+        let row = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        guard row >= 0, row < shown.count else { return }
+        switch shown[row] {
+        case let .group(b): delegate?.processView(self, goTo: b)
+        case let .process(e, _): if let b = e.block { delegate?.processView(self, goTo: b) }
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 { rowOpened() } else { super.keyDown(with: event) }
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -163,23 +191,16 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         keeper.note(["filter": field.stringValue])
     }
 
-    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let d = tableView.sortDescriptors.first, let key = d.key else { return }
-        sortKey = key
-        ascending = d.ascending
-        refilter()
-        keeper.note(["sort": key, "asc": d.ascending ? "1" : "0"])
-    }
-
     func tableViewSelectionDidChange(_ notification: Notification) {
-        end.isEnabled = table.selectedRow >= 0
-        kill.isEnabled = table.selectedRow >= 0
+        end.isEnabled = selectedPID != nil
+        kill.isEnabled = selectedPID != nil
         keeper.note(["selected": selectedPID.map { "\($0)" } ?? ""])
     }
 
     private var selectedPID: Int32? {
         let row = table.selectedRow
-        return row >= 0 && row < shown.count ? shown[row].pid : nil
+        guard row >= 0, row < shown.count, case let .process(e, _) = shown[row] else { return nil }
+        return e.pid
     }
 
     @objc private func endClicked() {
@@ -208,8 +229,8 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             let c = NSTableCellView()
             c.identifier = .init("cell-" + id)
             let f = NSTextField(labelWithString: "")
-            f.font = id == "command" || id == "user" ? .systemFont(ofSize: 12) : .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-            f.alignment = id == "command" || id == "user" ? .left : .right
+            f.font = id == "command" || id == "path" ? .systemFont(ofSize: 12) : .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            f.alignment = id == "command" || id == "path" ? .left : .right
             f.lineBreakMode = .byTruncatingTail
             f.translatesAutoresizingMaskIntoConstraints = false
             c.addSubview(f)
@@ -221,13 +242,22 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             ])
             return c
         }()
-        let e = shown[row]
-        switch id {
-        case "pid": cell.textField?.stringValue = "\(e.pid)"
-        case "cpu": cell.textField?.stringValue = String(format: "%.1f", e.cpu)
-        case "memory": cell.textField?.stringValue = e.memory >= 1_048_576 ? String(format: "%.1f GB", Double(e.memory) / 1_048_576) : e.memory >= 1024 ? "\(e.memory / 1024) MB" : "\(e.memory) KB"
-        case "user": cell.textField?.stringValue = e.user
-        default: cell.textField?.stringValue = e.command
+        cell.textField?.font = .systemFont(ofSize: 12)
+        cell.textField?.textColor = Theme.text
+        switch shown[row] {
+        case let .group(b):
+            cell.textField?.stringValue = id == "command" ? (blockTitle(b) ?? b.description) : ""
+            cell.textField?.font = .systemFont(ofSize: 12, weight: .semibold)
+        case let .process(e, depth):
+            switch id {
+            case "pid": cell.textField?.stringValue = "\(e.pid)"
+            case "cpu": cell.textField?.stringValue = String(format: "%.1f", e.cpu)
+            case "memory": cell.textField?.stringValue = e.memory >= 1_048_576 ? String(format: "%.1f GB", Double(e.memory) / 1_048_576) : e.memory >= 1024 ? "\(e.memory / 1024) MB" : "\(e.memory) KB"
+            case "path":
+                cell.textField?.stringValue = e.path?.abbreviatingHome ?? ""
+                cell.textField?.textColor = Theme.secondaryText
+            default: cell.textField?.stringValue = String(repeating: "   ", count: depth) + (depth > 0 ? "└ " : "") + e.command
+            }
         }
         return cell
     }

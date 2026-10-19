@@ -321,6 +321,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let pv = ProcessView(placement: p.id, block: p.block)
             pv.delegate = self
             pv.source = { [weak self] in self?.hosts.block(p.block) }
+            pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             v = pv
         case .preview:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
@@ -1697,6 +1698,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// placement is.
     @objc func openDocument(_ sender: Any?) {
         let root = focusedCwd ?? NSHomeDirectory()
+        // The hosts' process trees, listed afresh, so they can be found too.
+        for c in hosts.all where c.isConnected { _ = c.processBlock() }
         finder.show(root: root, over: window)
     }
 
@@ -1778,6 +1781,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             scored.append((score, max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), FinderItem(
                 symbol: Theme.symbolName(for: kind, path: path), title: title, detail: detail + remote, note: note,
                 run: { [weak self] in self?.recall(id) })))
+        }
+        // The processes under a terminal's or agent's shell (§7.5): found by
+        // command or path, each going to its block.
+        if !query.isEmpty {
+            for block in hosts.blocks where block.kind == .process {
+                let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
+                for e in block.processes?.entries ?? [] {
+                    guard let under = e.block else { continue }
+                    let s = Finder.score(query, e.command + " " + (e.path ?? ""))
+                    guard s > 0 else { continue }
+                    let command = e.command.count > 100 ? String(e.command.prefix(100)) + "…" : e.command
+                    scored.append((s, block.processes?.listedAt?.wall ?? 0, FinderItem(
+                        symbol: "cpu", title: command, detail: (e.path?.abbreviatingHome ?? "pid \(e.pid)") + remote,
+                        note: hosts.block(under)?.displayTitle ?? "", run: { [weak self] in self?.goTo(under) })))
+                }
+            }
         }
         for file in files where !known.contains(file) {
             let name = (file as NSString).lastPathComponent
@@ -2838,6 +2857,8 @@ extension MainWindowController: ProcessViewDelegate {
     func processViewRefresh(_ view: ProcessView) {
         hosts.propose(.processes(block: view.block))
     }
+
+    func processView(_ view: ProcessView, goTo block: BlockID) { goTo(block) }
 
     func processView(_ view: ProcessView, signal pid: Int32, _ signal: Int32) {
         hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in

@@ -135,6 +135,20 @@ int mf_proc_cwd(pid_t pid, char *buf, int len) {
 #endif
 }
 
+int mf_proc_path(pid_t pid, char *buf, int len) {
+#ifdef __APPLE__
+    if (proc_pidpath(pid, buf, (uint32_t)len) <= 0) return -1;
+    return 0;
+#else
+    char link[64];
+    snprintf(link, sizeof link, "/proc/%d/exe", (int)pid);
+    ssize_t n = readlink(link, buf, len - 1);
+    if (n < 0) return -1;
+    buf[n] = 0;
+    return 0;
+#endif
+}
+
 int mf_pty_foreground_name(int master, char *buf, int len) {
     pid_t pg = tcgetpgrp(master);
     if (pg <= 0) return -1;

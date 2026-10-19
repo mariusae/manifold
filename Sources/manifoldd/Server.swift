@@ -483,15 +483,36 @@ final class Server {
 
     // MARK: Processes
 
-    /// `ps`, parsed: pid, parent, user, cpu, resident kilobytes, command.
+    /// The process trees under this host's shells (§7.5): `ps`, parsed —
+    /// pid, parent, user, cpu, resident kilobytes, command, the
+    /// executable's path — kept to what descends from a terminal's or
+    /// agent's shell, each tagged with its block, shells first.
     private func listProcesses(_ block: BlockID) {
+        let shells = sessions.map { ($0.key, $0.value.pid) }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
-            let entries: [ProcessEntry] = String(decoding: out, as: UTF8.self).split(separator: "\n").compactMap { line in
+            var all: [Int32: ProcessEntry] = [:]
+            for line in String(decoding: out, as: UTF8.self).split(separator: "\n") {
                 let f = line.split(separator: " ", maxSplits: 5, omittingEmptySubsequences: true)
-                guard f.count >= 6, let pid = Int32(f[0]), let ppid = Int32(f[1]) else { return nil }
-                return ProcessEntry(pid: pid, parent: ppid, user: String(f[2]), cpu: Double(f[3]) ?? 0,
-                                    memory: Int64(f[4]) ?? 0, command: String(f[5]))
+                guard f.count >= 6, let pid = Int32(f[0]), let ppid = Int32(f[1]) else { continue }
+                all[pid] = ProcessEntry(pid: pid, parent: ppid, user: String(f[2]), cpu: Double(f[3]) ?? 0,
+                                        memory: Int64(f[4]) ?? 0, command: String(f[5]))
+            }
+            var children: [Int32: [Int32]] = [:]
+            for e in all.values { children[e.parent, default: []].append(e.pid) }
+            var entries: [ProcessEntry] = []
+            for (id, shell) in shells.sorted(by: { $0.1 < $1.1 }) {
+                var queue = [shell]
+                while let pid = queue.first {
+                    queue.removeFirst()
+                    guard var e = all[pid] else { continue }
+                    e.block = id
+                    // The executable's path, from the kernel.
+                    var buf = [CChar](repeating: 0, count: 4096)
+                    if mf_proc_path(pid, &buf, Int32(buf.count)) == 0 { e.path = String(cString: buf) }
+                    entries.append(e)
+                    queue.append(contentsOf: (children[pid] ?? []).sorted())
+                }
             }
             self?.queue.async {
                 guard let self, self.node.block(block)?.kind == .process else { return }
@@ -871,9 +892,9 @@ final class Server {
                 store.compact(.block(b.id), before: cutoff, node: node)
             }
         }
-        // A git block's refreshes replace one another: its log is folded
-        // into its base whole, every time.
-        for b in node.blocks(of: .git) { store.fold(.block(b.id), node: node) }
+        // A git block's refreshes, and a process block's listings, replace
+        // one another: their logs are folded into their bases whole.
+        for b in node.blocks(of: .git) + node.blocks(of: .process) { store.fold(.block(b.id), node: node) }
         if settings.terminalHistoryDays > 0 {
             let cutoff = Int64(Date().addingTimeInterval(-Double(settings.terminalHistoryDays) * 86400).timeIntervalSince1970 * 1000)
             for b in node.blocks(of: .terminal) + node.blocks(of: .agent) {

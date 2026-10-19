@@ -260,11 +260,18 @@ public struct ProcessEntry: Codable, Equatable, Sendable {
     /// Resident memory, in kilobytes.
     public var memory: Int64
     public var command: String
+    /// The executable's path.
+    public var path: String?
+    /// The terminal or agent block whose shell it runs under (§7.5): the
+    /// host lists the trees under its blocks' shells, nothing else.
+    public var block: BlockID?
 
-    public init(pid: Int32, parent: Int32, user: String, cpu: Double, memory: Int64, command: String) {
+    public init(pid: Int32, parent: Int32, user: String, cpu: Double, memory: Int64, command: String, path: String? = nil, block: BlockID? = nil) {
         self.pid = pid
         self.parent = parent
         self.user = user
+        self.path = path
+        self.block = block
         self.cpu = cpu
         self.memory = memory
         self.command = command
