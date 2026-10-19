@@ -43,6 +43,9 @@ final class OrgNode {
     var isGroup: Bool
     /// Set off from the rest: the selected arrangement, the focused column.
     var emphasis = false
+    /// Not on any workspace now (Files): after the ones that are, in a
+    /// dimmer face.
+    var dimmed = false
     /// What the block is doing (§3.7), shown as a glyph.
     var look: StatusGlyph.Look?
     /// A word at the right, before the glyph: how long ago.
@@ -297,7 +300,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")"
         }.joined(separator: "\n")
     }
 
@@ -402,7 +405,9 @@ final class OrgRowView: NSTableCellView {
         }
         name.stringValue = node.title
         name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
+        name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
+        icon.alphaValue = node.dimmed ? 0.6 : 1
         count.stringValue = node.count.map { "\($0)" } ?? ""
         count.isHidden = node.count == nil
         detail.stringValue = node.detail

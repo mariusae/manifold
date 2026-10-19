@@ -1472,15 +1472,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Files: each host's sparse tree, roots open.
     private func filesTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
+        // What is on a workspace now comes first in every folder; the rest
+        // after, dimmed — a folder with something active among its blocks
+        // counts as active.
+        let placed = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
+        var active: [ObjectIdentifier: Bool] = [:]
         func convert(_ f: FileNode) -> OrgNode? {
-            let children = f.children.compactMap(convert)
+            let made = f.children.compactMap(convert)
+            let children = made.filter { active[ObjectIdentifier($0)] == true } + made.filter { active[ObjectIdentifier($0)] != true }
             let block = f.block.flatMap { hosts.block($0) }
             if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
             let id = "file:\(f.host.raw):\(f.path)"
+            let isActive = f.block.map { placed.contains($0) } ?? false || children.contains { active[ObjectIdentifier($0)] == true }
             if f.isFolder {
                 if !filter.isEmpty { open.insert(id) }
-                return OrgNode(id: id, block: f.block, title: f.name, symbol: f.kind == .git ? "arrow.triangle.branch" : "folder",
+                let node = OrgNode(id: id, block: f.block, title: f.name, symbol: f.kind == .git ? "arrow.triangle.branch" : "folder",
                                detail: "", count: children.isEmpty ? nil : f.count, age: Self.age(f.latest), isGroup: true, children: children)
+                node.dimmed = !isActive
+                active[ObjectIdentifier(node)] = isActive
+                return node
             }
             let edited = block?.text?.isDirty == true ? "edited" : ""
             if f.isPlace, let block {
@@ -1492,10 +1502,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block.kind, path: block.path),
                                    detail: edited, age: Self.age(f.latest))
                 node.look = StatusGlyph.look(of: block)
+                node.dimmed = !isActive
+                active[ObjectIdentifier(node)] = isActive
                 return node
             }
-            return OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
-                           detail: edited, age: Self.age(f.latest))
+            let node = OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
+                               detail: edited, age: Self.age(f.latest))
+            node.dimmed = !isActive
+            active[ObjectIdentifier(node)] = isActive
+            return node
         }
         var roots: [OrgNode] = []
         let clients = hosts.all

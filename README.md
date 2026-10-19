@@ -233,7 +233,8 @@ when you find it again.
   block with a path under its folders — and every block that is *at* a
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
-  across hosts, as a sparse tree
+  across hosts, as a sparse tree; in every folder, what is on a
+  workspace now comes first, and the rest after, dimmed
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;
