@@ -164,7 +164,7 @@ public enum HostSession {
                 guard i + 4 + n <= buffer.endIndex else { break }
                 // Each frame's property list objects released as we go:
                 // nothing else drains them before the server's loop runs.
-                let count: Int = autoreleasepool {
+                let count: Int = pooled {
                     let frame = buffer.subdata(in: i + 4..<i + 4 + n)
                     let rewritten = rewritePlist(frame, from: old, to: new) ?? frame
                     var len = UInt32(rewritten.count).littleEndian
@@ -227,4 +227,15 @@ public struct HostEntry: Codable, Equatable, Sendable {
         self.destination = destination
         self.label = label
     }
+}
+
+/// Runs `body` in an autorelease pool where there is one (Darwin), so a
+/// long loop over property lists doesn't hold them all; plainly elsewhere.
+@inline(__always)
+func pooled<T>(_ body: () -> T) -> T {
+    #if canImport(ObjectiveC)
+    return autoreleasepool(invoking: body)
+    #else
+    return body()
+    #endif
 }

@@ -700,7 +700,7 @@ final class Server {
             session = s
             append(.shell(.started(pid: s.pid)), to: .block(id))
         }
-        conn.onFrame = { [weak session] frame in session?.handle(frame) }
+        conn.onFrame = { [weak session, unowned conn] frame in session?.handle(frame, from: conn) }
         conn.onClose = { [weak session, unowned conn] in session?.detach(conn) }
         session.attach(conn, cols: req.cols, rows: req.rows)
     }
@@ -708,7 +708,15 @@ final class Server {
     // MARK: Status (§3.7)
 
     /// The host's own report on a block it works for: its root record.
+    /// Only a terminal's program says what its status is (§3.7), for now:
+    /// the host keeps quiet about the blocks it works for itself.
+    private func reportsStatus(_ block: BlockID) -> Bool {
+        guard let k = node.block(block)?.kind else { return false }
+        return k == .terminal || k == .agent
+    }
+
     private func report(_ block: BlockID, _ state: StatusState, msg: String? = nil) {
+        guard reportsStatus(block) else { return }
         append(.status(id: rootStatusID, StatusRecord(state: state, msg: msg, at: clock.now())), to: .block(block))
     }
 
@@ -749,6 +757,7 @@ final class Server {
     }
 
     private func report(_ block: BlockID, _ state: StatusState, progress: Int?, msg: String? = nil) {
+        guard reportsStatus(block) else { return }
         append(.status(id: rootStatusID, StatusRecord(state: state, progress: progress, msg: msg, at: clock.now())), to: .block(block))
     }
 

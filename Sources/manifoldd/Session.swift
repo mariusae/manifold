@@ -111,8 +111,14 @@ final class Session {
         terminate()
     }
 
+    /// Each attachment's last size: when one leaves (an overview closed),
+    /// the pty goes back to the size of the one that remains, so the
+    /// program isn't left drawing for a pane that is gone.
+    private var sizes: [ObjectIdentifier: (cols: UInt16, rows: UInt16)] = [:]
+
     func attach(_ conn: Connection, cols: UInt16, rows: UInt16) {
         attachments.append(conn)
+        sizes[ObjectIdentifier(conn)] = (cols, rows)
         conn.send(Frame(.data, replay.replay))
         conn.send(Frame(.replayDone))
         resize(cols: cols, rows: rows)
@@ -120,17 +126,21 @@ final class Session {
 
     func detach(_ conn: Connection) {
         attachments.removeAll { $0 === conn }
+        sizes.removeValue(forKey: ObjectIdentifier(conn))
+        if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
     }
 
     var isAttached: Bool { !attachments.isEmpty }
 
-    func handle(_ frame: Frame) {
+    func handle(_ frame: Frame, from conn: Connection? = nil) {
         switch frame.kind {
         case .data:
             input.append(frame.payload)
             writeInput()
         case .resize:
-            if let s = frame.size { resize(cols: s.cols, rows: s.rows) }
+            guard let s = frame.size else { break }
+            if let conn { sizes[ObjectIdentifier(conn)] = (s.cols, s.rows) }
+            resize(cols: s.cols, rows: s.rows)
         default:
             break
         }

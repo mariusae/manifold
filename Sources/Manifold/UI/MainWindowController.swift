@@ -157,7 +157,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // while it's up: its blocks are settled before any view is made,
         // since making one can render again).
         var stateBlocks = stateGroup.map { statusGroups("")[$0] ?? [] } ?? []
-        if stateGroup != nil {
+        var stateLenses: [BlockID: Lens] = [:]
+        if stateGroup == nil, let w = stateWorkspace, let a = hosts.arrangement(w) {
+            // ⌘': the workspace's blocks, each as its tile shows it.
+            for p in a.placements where stateLenses[p.block] == nil {
+                guard let b = hosts.block(p.block) else { continue }
+                stateLenses[p.block] = p.lens
+                stateBlocks.append((b, b.statusRecord, b.statusRecord?.at ?? b.created))
+            }
+        }
+        if stateGroup != nil || stateWorkspace != nil {
             // Membership sticks while the view is up: a block that leaves
             // the state for a moment (a diff reloading, a repository
             // refreshing) keeps its place rather than its view being torn
@@ -218,14 +227,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.clear()
             window.title = "Manifold"
         }
-        if let stateView, let group = stateGroup {
+        if let stateView, stateGroup != nil || stateWorkspace != nil {
             let items = stateBlocks.map { block, _, _ -> StateView.Item in
-                let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: Lens.default(for: block.kind, path: block.path))
+                let lens = stateLenses[block.id] ?? Lens.default(for: block.kind, path: block.path)
+                let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: lens)
                 let shown = Shown(placement: p, block: block)
                 return StateView.Item(shown: shown, view: view(for: shown))
             }
-            stateView.show(items, title: group.title, mode: stateMode)
-            window.title = group.title
+            let title = stateGroup?.title ?? "Overview"
+            stateView.show(items, title: title, mode: stateMode)
+            window.title = title
         }
         noteSeen(force: false)
         noteEditing()
@@ -843,7 +854,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// ⌘N: a new terminal beside the focused block, in a new column
     /// (§3.1), where the focused block is.
+    /// ⌘N: a new terminal in the active column, as acme and apex place a
+    /// window — below the column's biggest tile, taking its lower half.
     @objc func newTerminalBeside(_ sender: Any?) {
+        guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
+        let t = hosts.newTerminal(on: focusedHost, cwd: focusedCwd)
+        show(t, lens: .terminal, .here)
+    }
+
+    /// ⌥⌘N: a new terminal in a new column beside the focused one.
+    @objc func newTerminalInNewColumn(_ sender: Any?) {
         guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
         let t = hosts.newTerminal(on: focusedHost, cwd: focusedCwd)
         show(t, lens: .terminal, .beside)
@@ -1089,7 +1109,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Focuses a tile of the selected arrangement.
     func focus(_ placement: PlacementID) {
         guard let a = arrangement, a.placement(placement) != nil, a.focused != placement else { return }
-        appendToSelected([.focus(placement)])
+        // Gone to while another tile is maximized: that gives way, so the
+        // tile gone to shows.
+        var events: [Event] = [.focus(placement)]
+        if let full = a.full, full != placement { events.insert(.full(nil), at: 0) }
+        appendToSelected(events)
     }
 
     /// Grow (acme's colgrow): the focused tile takes a step from its
@@ -1228,7 +1252,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var stateMode: StateView.Mode = .list
 
     /// The surface shows a status group's blocks themselves, live.
+    /// ⌘': every block in the workspace at once, as Mission Control shows
+    /// windows; again, or ⎋, back to the workspace.
+    @objc func showWorkspaceOverview(_ sender: Any?) {
+        guard let id = selected, hosts.arrangement(id) != nil else { return NSSound.beep() }
+        if stateWorkspace == id { return hideStateView() }
+        stateGroup = nil
+        stateWorkspace = id
+        stateMode = .overview
+        presentStateView()
+    }
+
+    /// The workspace shown as an overview (⌘'), if one is.
+    private var stateWorkspace: BlockID?
+
     func showStateView(_ group: StatusGroup) {
+        stateGroup = group
+        stateWorkspace = nil
+        presentStateView()
+    }
+
+    private func presentStateView() {
         if stateView == nil {
             let v = StateView()
             v.onGoTo = { [weak self] b in self?.goTo(b) }
@@ -1242,7 +1286,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             root.addSubview(v, positioned: .above, relativeTo: content)
             stateView = v
         }
-        stateGroup = group
         stateMembers = []
         content.isHidden = true
         layoutViews()
@@ -1256,6 +1299,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         v.removeFromSuperview()
         stateView = nil
         stateGroup = nil
+        stateWorkspace = nil
         content.isHidden = false
         render()
     }
