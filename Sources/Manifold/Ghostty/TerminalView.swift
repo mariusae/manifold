@@ -704,7 +704,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let mine = entries.filter { parent == nil ? !pids.contains($0.parent) : $0.parent == parent }
         return mine.map { e in
             let item = NSMenuItem(title: "\(e.command)  ·  \(e.pid)", action: nil, keyEquivalent: "")
-            item.image = Theme.symbol(parent == nil ? "terminal" : "circle.fill", size: parent == nil ? 11 : 5)
+            item.setSymbol(parent == nil ? "terminal" : "circle.fill", size: parent == nil ? 11 : 5)
             if let path = e.path { item.toolTip = path }
             let sub = NSMenu()
             sub.addItem(ClosureMenuItem("End \(e.command)", symbol: "stop.circle") { [weak self] in

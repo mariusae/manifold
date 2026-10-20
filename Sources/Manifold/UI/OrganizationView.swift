@@ -55,6 +55,9 @@ final class OrgNode {
     /// A word at the right, before the glyph: how long ago.
     var trailing: String?
     var tooltip: String?
+    /// A tooltip made as it's about to show, over the whole row, for
+    /// what changes by the second (how long a host has been connecting).
+    var liveTooltip: (() -> String)?
     /// How the row is set: a host's heading, a section's label (a
     /// workspace, a group), or a block's row.
     enum Style { case host, section, row }
@@ -480,6 +483,15 @@ extension OrganizationView: NSMenuDelegate {
     }
 }
 
+/// Says a row's live tooltip when AppKit asks, as it's about to show.
+private final class LiveTip: NSObject, NSViewToolTipOwner {
+    var text: (() -> String)?
+
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
+        text?() ?? ""
+    }
+}
+
 /// A row: symbol, name, a count in a pill, a detail in grey; faded by age.
 final class OrgRowView: NSTableCellView {
     private let icon = NSImageView()
@@ -494,6 +506,8 @@ final class OrgRowView: NSTableCellView {
     private var node: OrgNode?
     /// Set by the outline: flat rows have two lines when there's a detail.
     var flat = false
+    private let tipOwner = LiveTip()
+    private var liveTipTag: NSView.ToolTipTag?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -525,7 +539,7 @@ final class OrgRowView: NSTableCellView {
         self.node = node
         glyph.look = node.look
         glyph.isHidden = node.look == nil
-        glyph.toolTip = node.tooltip
+        glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
         trailing.stringValue = node.trailing ?? ""
         trailing.isHidden = node.trailing == nil
         trailing.textColor = Theme.secondaryText
@@ -558,8 +572,21 @@ final class OrgRowView: NSTableCellView {
         }
         detailIcon.isHidden = detailSymbol.isEmpty
         alphaValue = 1 - 0.45 * (node.age ?? 0)
-        toolTip = node.detail.isEmpty ? node.title : node.title + " — " + node.detail
+        tipOwner.text = node.liveTooltip
+        toolTip = node.liveTooltip != nil ? nil : node.detail.isEmpty ? node.title : node.title + " — " + node.detail
+        placeLiveTip()
         needsLayout = true
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        placeLiveTip()
+    }
+
+    /// The live tooltip's rect is the row's, kept so as it resizes.
+    private func placeLiveTip() {
+        if let liveTipTag { removeToolTip(liveTipTag) }
+        liveTipTag = tipOwner.text == nil ? nil : addToolTip(bounds, owner: tipOwner, userData: nil)
     }
 
     override func layout() {

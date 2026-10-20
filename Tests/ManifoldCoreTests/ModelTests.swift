@@ -1061,3 +1061,17 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(weak > 0 && weak < 200)
     #expect(FileFinder.nameMatch("zzz", title: "Claude Code", secondary: "") == 0)
 }
+
+@Test func aHostsPreferencesAreKeptInItsDeskAndOlderDesksStillRead() throws {
+    // Saved before preferences: everything else as it was, the shell unset.
+    let old = try JSONDecoder().decode(DeskState.self, from: Data(#"{"order":[],"settled":[],"settings":{"agentCommand":"codex"}}"#.utf8))
+    #expect(old.settings.agentCommand == "codex")
+    #expect(old.preferences.shell == nil)
+    var d = old
+    d.apply(.preferences(HostPreferences(shell: "fish")))
+    #expect(d.preferences.shell == "fish")
+    let back = try JSONDecoder().decode(DeskState.self, from: JSONEncoder().encode(d))
+    #expect(back == d)
+    d.apply(.preferences(HostPreferences()))
+    #expect(d.preferences.shell == nil)
+}

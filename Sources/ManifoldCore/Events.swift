@@ -156,8 +156,24 @@ public struct DeskState: Codable, Equatable, Sendable {
     public var window = WindowState()
     public var appearance = Appearance()
     public var settings = Settings()
+    /// What this host is set to do, whichever Mac set it.
+    public var preferences = HostPreferences()
 
     public init() {}
+
+    enum CodingKeys: String, CodingKey { case order, selected, settled, window, appearance, settings, preferences }
+
+    // A desk saved before a field existed gets its default.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        order = (try? c.decodeIfPresent([BlockID].self, forKey: .order)) ?? []
+        selected = try? c.decodeIfPresent(BlockID.self, forKey: .selected)
+        settled = (try? c.decodeIfPresent([BlockID].self, forKey: .settled)) ?? []
+        window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
+        appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
+        settings = (try? c.decodeIfPresent(Settings.self, forKey: .settings)) ?? Settings()
+        preferences = (try? c.decodeIfPresent(HostPreferences.self, forKey: .preferences)) ?? HostPreferences()
+    }
 }
 
 public enum ShellEvent: Codable, Equatable, Sendable {
@@ -268,6 +284,7 @@ public enum Event: Codable, Equatable, Sendable {
     case window(WindowState)
     case appearance(Appearance)
     case settings(Settings)
+    case preferences(HostPreferences)
 
     // Registry.
     /// A block gone to: the trail's next step.
@@ -720,6 +737,7 @@ extension DeskState {
         case let .window(w): window = w
         case let .appearance(a): appearance = a
         case let .settings(s): settings = s
+        case let .preferences(p): preferences = p
         default: break
         }
     }

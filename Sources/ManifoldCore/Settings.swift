@@ -106,6 +106,25 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 }
 
+/// A host's own preferences, kept in its desk: every Mac attached to it
+/// sees and sets the same ones, and its server acts on them.
+public struct HostPreferences: Codable, Equatable, Sendable {
+    /// The shell new terminals start (a name on the host's PATH, or a
+    /// path); nil for the user's login shell.
+    public var shell: String?
+
+    public init(shell: String? = nil) {
+        self.shell = shell
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        shell = try? c.decodeIfPresent(String.self, forKey: .shell)
+    }
+
+    enum CodingKeys: String, CodingKey { case shell }
+}
+
 /// The fonts everything is set in, a proportional one and a fixed-width
 /// one, chosen together: SF Pro (with its single-story a, as Notes sets
 /// it) and Menlo; Tiempos Text and Menlo, or Fira Code; Mona Sans and

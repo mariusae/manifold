@@ -288,6 +288,16 @@ final class WindowDragView: NSView {
 }
 
 /// A menu item that runs a closure.
+extension NSMenuItem {
+    /// A symbol before the title. macOS 27 hides a menu item's symbol
+    /// image unless the item asks for it: `preferredImageVisibility`, not
+    /// in the SDK we build with (1 is visible; 0, the default, hides it).
+    func setSymbol(_ name: String, size: CGFloat) {
+        image = Theme.symbol(name, size: size)
+        if responds(to: Selector(("setPreferredImageVisibility:"))) { setValue(1, forKey: "preferredImageVisibility") }
+    }
+}
+
 final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
@@ -295,7 +305,7 @@ final class ClosureMenuItem: NSMenuItem {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: key)
         target = self
-        if let symbol { image = Theme.symbol(symbol, size: 12) }
+        if let symbol { setSymbol(symbol, size: 12) }
     }
 
     required init(coder: NSCoder) { fatalError() }

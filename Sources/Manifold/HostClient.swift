@@ -38,7 +38,38 @@ final class HostClient {
         case unreachable(String?)
     }
     private(set) var link: Standing = .connecting {
-        didSet { if link != oldValue { scheduleChange() } }
+        didSet {
+            if link != .connecting { step = nil; reachingSince = nil; received = 0 }
+            if link != oldValue { scheduleChange() }
+        }
+    }
+    /// While the host is being reached: the step under way and when it
+    /// began, so a slow attach says what it's waiting on.
+    private(set) var step: (what: String, since: Date)?
+    /// When this try at reaching the host began, its first step.
+    private var reachingSince: Date?
+    /// Bytes from the host on the connection being made, before it has
+    /// answered in full.
+    private var received = 0
+
+    /// A step in reaching the host begins: it's connecting, at that.
+    func begin(_ what: String) {
+        if link != .connecting || reachingSince == nil { reachingSince = Date() }
+        step = (what, Date())
+        link = .connecting
+        scheduleChange()
+    }
+
+    /// What reaching the host is at and how long it has taken, as of now;
+    /// nil once it's there or given up on.
+    var stepDescription: String? {
+        guard link == .connecting, let step else { return nil }
+        func seconds(_ since: Date) -> String { String(format: "%.1f s", Date().timeIntervalSince(since)) }
+        var what = step.what
+        if received > 0 { what += " (\(ByteCountFormatter.string(fromByteCount: Int64(received), countStyle: .file)))" }
+        var lines = ["\(what): \(seconds(step.since))"]
+        if let reachingSince, reachingSince < step.since { lines.append("Connecting for \(seconds(reachingSince))") }
+        return lines.joined(separator: "\n")
     }
     /// The last time the host answered.
     private(set) var lastHeard: Date?
@@ -397,6 +428,7 @@ final class HostClient {
             attach(Connection(fd: fd, queue: .main))
             return
         }
+        begin("Starting the server")
         let pid = launchServer()
         var attempts = 0
         func retry() {
@@ -442,7 +474,9 @@ final class HostClient {
     /// Readies a remote host: asks what it is, installs our server if the
     /// one there isn't ours, and starts the bridge. Slow; not on the main
     /// thread.
-    static func bootstrap(_ dest: Destination, name: String) throws -> Child {
+    /// `step` is told each step as it begins, on this thread.
+    static func bootstrap(_ dest: Destination, name: String, step: (String) -> Void = { _ in }) throws -> Child {
+        step("Asking the host what it is (\(dest.provider))")
         let probe = try Bootstrap.probe(dest)
         let binaryName = Bootstrap.binaryName(os: probe.os, arch: probe.arch)
         // Servers for other systems under Resources/servers; this Mac's own kind beside it in Helpers.
@@ -457,6 +491,7 @@ final class HostClient {
         }
         if probe.hash != Bootstrap.sha256(data) {
             NSLog("installing manifoldd on %@ (%@)", dest.description, binaryName)
+            step("Installing the server there (\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)))")
             try Bootstrap.upload(dest, binary: data)
         }
         return try Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
@@ -470,7 +505,7 @@ final class HostClient {
 
     private func reconnectRemote() {
         guard case let .remote(dest, name) = transport, !disconnected else { return }
-        link = .connecting
+        begin("Starting the bridge (\(dest.provider))")
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let child: Child?
             var why: String? = nil
@@ -567,11 +602,18 @@ final class HostClient {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.connect() }
             }
         }
+        // Until the host has answered: what of its answer has come.
+        received = 0
+        conn.onRead = { [weak self] n in
+            guard let self, self.link == .connecting else { return }
+            if self.received == 0 { self.begin("Receiving the host's state") }
+            self.received += n
+        }
         conn.start()
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
         self.conn = conn
         isConnected = true
-        link = .connecting
+        begin(isRemote ? "Waiting for the host to answer (the bridge, its server)" : "Waiting for the server to answer")
     }
 
     private func handle(_ message: ServerMessage) {

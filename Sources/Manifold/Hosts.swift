@@ -245,7 +245,7 @@ final class Hosts {
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block),
              let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
             (client(of: block) ?? local).propose(proposal, done: done)
-        case .workspaces, .settings:
+        case .workspaces, .settings, .preferences:
             local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {
@@ -276,6 +276,13 @@ final class Hosts {
 
     func propose(_ proposal: Proposal, on host: HostID) {
         client(host)?.propose(proposal)
+    }
+
+    /// Sets a host's own preferences; `done` says why not, if the host
+    /// refused them.
+    func setPreferences(_ preferences: HostPreferences, on host: HostID, done: @escaping (String?) -> Void) {
+        guard let c = client(host), c.isConnected else { return done("The host isn't connected.") }
+        c.propose(.preferences(preferences), done: done)
     }
 
     func newTerminal(on host: HostID, cwd: String?) -> BlockID {
@@ -326,11 +333,19 @@ final class Hosts {
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
             do {
-                result = .success(try HostClient.bootstrap(dest, name: name))
+                result = .success(try HostClient.bootstrap(dest, name: name) { what in
+                    DispatchQueue.main.async { standing?.begin(what) }
+                })
             } catch {
                 result = .failure(error)
             }
             DispatchQueue.main.async {
+                // Detached while being reached: what came of it goes, and
+                // the destination is free to attach to again.
+                if let known, self.remotes[known] !== standing {
+                    if case .success(let child) = result { Self.discard(child) }
+                    return
+                }
                 self.attaching.remove(key)
                 switch result {
                 case .failure(let error):
@@ -388,13 +403,32 @@ final class Hosts {
     /// Whether blocks on the host can be worked on now.
     func isReachable(_ host: HostID) -> Bool { link(of: host) == .connected }
 
+    /// Detaches from a host and forgets it, so it isn't attached again at
+    /// start; its server and blocks stay there. A host still being
+    /// reached is given up on.
     func detach(_ host: HostID) {
         guard let client = remotes.removeValue(forKey: host) else { return }
         client.disconnect()
         var file = HostsFile.load()
         file.hosts.removeValue(forKey: host.raw)
+        if let dest = client.destination {
+            file.hosts = file.hosts.filter { $0.value.destination != dest }
+            attaching.remove(dest.description)
+            errors.removeValue(forKey: dest.description)
+        }
         file.save()
         onChange?()
+    }
+
+    /// A bridge no longer wanted: ended, and reaped.
+    private static func discard(_ child: Child) {
+        close(child.input)
+        close(child.output)
+        kill(child.pid, SIGTERM)
+        DispatchQueue.global(qos: .utility).async {
+            var status: Int32 = 0
+            waitpid(child.pid, &status, 0)
+        }
     }
 
     private func uniqueName(_ base: String) -> String {

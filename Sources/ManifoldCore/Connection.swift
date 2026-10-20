@@ -29,6 +29,9 @@ public final class Connection {
 
     public var onFrame: ((Frame) -> Void)?
     public var onClose: (() -> Void)?
+    /// Bytes as they arrive, before they make whole frames: a large
+    /// frame on its way.
+    public var onRead: ((Int) -> Void)?
 
     /// Takes ownership of the descriptors. Call `start` once the handlers
     /// are set.
@@ -77,6 +80,7 @@ public final class Connection {
         onClose?()
         onClose = nil
         onFrame = nil
+        onRead = nil
     }
 
     private func readAvailable() {
@@ -87,6 +91,7 @@ public final class Connection {
             close()
             return
         }
+        onRead?(n)
         decoder.append(Data(buf[0..<n]))
         do {
             while !isClosed, let frame = try decoder.next() {

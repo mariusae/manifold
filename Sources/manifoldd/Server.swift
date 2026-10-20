@@ -398,6 +398,13 @@ final class Server {
         case let .settings(s):
             if s != node.desk(host).settings { append(.settings(s), to: .desk(host)) }
             done()
+        case var .preferences(p):
+            p.shell = p.shell.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
+            if let shell = p.shell, Session.resolveShell(shell) == nil {
+                return done("There's no shell \(shell) here that can be run.")
+            }
+            if p != node.desk(host).preferences { append(.preferences(p), to: .desk(host)) }
+            done()
         case let .seen(ids):
             let known = ids.filter { node.registry(host).blocks[$0] != nil }
             if !known.isEmpty { append(.seen(known, at: clock.now()), to: .registry(host)) }
@@ -771,7 +778,8 @@ final class Server {
                 history.append(Session.seam(idle: state.dormantAfter ?? 0, since: since.date))
             }
             guard let s = Session(id: id, cwd: state.cwd, cols: req.cols, rows: req.rows,
-                                  env: req.env, history: history, command: state.command, queue: queue) else {
+                                  env: req.env, history: history, command: state.command,
+                                  shell: node.desk(host).preferences.shell, queue: queue) else {
                 conn.close()
                 return
             }

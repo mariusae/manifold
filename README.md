@@ -552,7 +552,10 @@ is migrated into logs on first run.
   seconds, then four, eight, up to two minutes between tries (the
   tooltip says when the next is; **Try Again Now** in the row's menu
   hurries it), and once connected, pinged every fifteen seconds so a
-  bridge that hangs is noticed and made again. A bridge that keeps
+  bridge that hangs is noticed and made again. **Detach from *host*…**
+  (in the row's menu, or New…, ⌘T) forgets it here, even while it's still
+  being reached: it isn't attached again at start, and its server,
+  shells and blocks stay there for attaching again. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an
@@ -596,9 +599,12 @@ is migrated into logs on first run.
   bash through Manifold's rc), so a terminal's folder follows a `cd` at
   once — a shell that doesn't say is asked through its process every
   couple of seconds. A shell on another machine, through ssh in the
-  terminal, names that host and is left alone. Manifold starts your
-  login shell; `MANIFOLD_SHELL` in the server's environment names
-  another.
+  terminal, names that host and is left alone. Manifold starts the
+  shell a host's preferences name (Preferences for *host*… in its
+  row's menu, or New…, ⌘T: a name on its PATH or a path, kept on the
+  host, so every Mac attached shares it, and refused if the host can't
+  run it); else `MANIFOLD_SHELL` in the server's environment; else your
+  login shell. Shells already running keep theirs.
 - **A memory watchdog** keeps an eye on the app's own footprint from a
   thread of its own: past 6 GB it has the system sample the process
   (every thread's stack) into `logs/memory-sample.txt` in the data

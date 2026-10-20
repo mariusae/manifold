@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 23
+public let protocolVersion = 24
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -109,6 +109,9 @@ public enum Proposal: Codable, Sendable {
     case workspaces(order: [BlockID])
     /// The host's settings, as the client sets them.
     case settings(Settings)
+    /// The host's own preferences; refused (and not kept) when the host
+    /// can't do as they say.
+    case preferences(HostPreferences)
     case seen([BlockID])
     /// The user attended to a block (focused it): its done or error
     /// status is dismissed (§3.7).

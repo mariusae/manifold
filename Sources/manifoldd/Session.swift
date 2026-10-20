@@ -42,8 +42,8 @@ final class Session {
     var reportsDirectory = false
 
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
-          command: String? = nil, queue: DispatchQueue) {
-        var (shell, environment) = Session.shellAndEnvironment(clientEnv: env)
+          command: String? = nil, shell preferred: String? = nil, queue: DispatchQueue) {
+        var (shell, environment) = Session.shellAndEnvironment(clientEnv: env, preferred: preferred)
         // So `manifold` run in this shell knows where it is, and `$EDITOR`
         // edits in Manifold, beside it.
         environment["MANIFOLD_BLOCK"] = id.description
@@ -275,9 +275,28 @@ final class Session {
         onExit?(status)
     }
 
-    /// The user's login shell, and the environment to start it with: ours,
+    /// A shell named in the host's preferences, as a path to run: the
+    /// path given, or the name found on the PATH; nil if it can't be run.
+    static func resolveShell(_ name: String) -> String? {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        func runnable(_ path: String) -> Bool {
+            var dir: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &dir) && !dir.boolValue && access(path, X_OK) == 0
+        }
+        if name.contains("/") {
+            let path = (name as NSString).expandingTildeInPath
+            return runnable(path) ? path : nil
+        }
+        let dirs = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin").split(separator: ":")
+        return dirs.map { "\($0)/\(name)" }.first(where: runnable)
+    }
+
+    /// The shell to start, and the environment to start it with: ours,
     /// less what belongs to the app that started us, plus the terminal's.
-    private static func shellAndEnvironment(clientEnv: [String: String]) -> (String, [String: String]) {
+    /// The shell is the host's preference (`preferred`), else
+    /// $MANIFOLD_SHELL, else the user's login shell.
+    private static func shellAndEnvironment(clientEnv: [String: String], preferred: String? = nil) -> (String, [String: String]) {
         var env = ProcessInfo.processInfo.environment
         for key in ["__CFBundleIdentifier", "XPC_SERVICE_NAME", "XPC_FLAGS", "PWD", "OLDPWD", "SHLVL",
                     "MANIFOLD_PANE", "MANIFOLD_BLOCK", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {
@@ -287,10 +306,12 @@ final class Session {
             env.removeValue(forKey: key)
         }
         let pw = getpwuid(getuid())
-        // Your login shell, unless $MANIFOLD_SHELL (in the server's
-        // environment) names another.
-        let shell = env["MANIFOLD_SHELL"].flatMap { $0.isEmpty ? nil : $0 }
-            ?? pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        let chosen = preferred.flatMap(resolveShell)
+        if let preferred, chosen == nil { log("the preferred shell \(preferred) can't be run here; the login shell instead") }
+        // The host's preference; else your login shell, unless
+        // $MANIFOLD_SHELL (in the server's environment) names another.
+        let login: String = pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        let shell: String = chosen ?? env["MANIFOLD_SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? login
         if let pw {
             env["HOME"] = String(cString: pw.pointee.pw_dir)
             env["USER"] = String(cString: pw.pointee.pw_name)

@@ -878,8 +878,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // The workspace lives on that host, as its terminal does.
                 self?.newWorkspace(on: h, cwd: nil)
             })
-            items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))", subtitle: state) { [weak self] in
-                self?.hosts.detach(h)
+            if client.link == .connected {
+                items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: h))…", subtitle: "shell") { [weak self] in
+                    self?.editPreferences(h)
+                })
+            }
+            items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))…", subtitle: state) { [weak self] in
+                self?.detach(h)
             })
         }
         for (dest, error) in hosts.errors {
@@ -1239,6 +1244,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let rest = all.filter { $0 != id }
             hosts.select(rest.isEmpty ? nil : rest[min(i, rest.count - 1)])
         }
+    }
+
+    /// Detaches from a host, once asked: it's forgotten here, and a
+    /// workspace of its shown gives way to one elsewhere.
+    private func detach(_ host: HostID) {
+        let alert = NSAlert()
+        alert.messageText = "Detach from \(hosts.label(of: host))?"
+        alert.informativeText = "Manifold forgets the host and won't attach to it again at start. Its server, shells and blocks stay there; attach to it again to have them back."
+        alert.addButton(withTitle: "Detach")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if let id = selected, id.host == host {
+            let all = allWorkspaces
+            let rest = all.filter { $0.host != host }
+            let i = all.firstIndex(of: id) ?? 0
+            hosts.select(rest.isEmpty ? nil : rest[min(i, rest.count - 1)])
+        }
+        hosts.detach(host)
     }
 
     @objc func renameTab(_ sender: Any?) {
@@ -1989,6 +2012,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .connecting:
             n.look = .connecting
             n.detail = "connecting…"
+            // The step under way and how long so far, as of the hover.
+            n.liveTooltip = { [weak c] in c?.stepDescription ?? "Connecting…" }
             n.dimmed = true
         case .unreachable(let why):
             n.look = .offline
@@ -3159,6 +3184,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// A host's own preferences (its shell, for now), as every Mac
+    /// attached to it shares them; the host says if it can't do as asked.
+    func editPreferences(_ host: HostID) {
+        guard let window, let c = hosts.client(host) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Preferences for \(hosts.label(of: host))"
+        alert.informativeText = "The shell new terminals there start: a name on the host's PATH, or a path; empty for your login shell. Shells already running keep theirs. Every Mac attached to the host shares these."
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        let label = NSTextField(labelWithString: "Shell")
+        label.frame = NSRect(x: 0, y: 6, width: 44, height: 17)
+        let field = NSTextField(frame: NSRect(x: 50, y: 2, width: 250, height: 24))
+        field.placeholderString = "Login shell"
+        field.stringValue = c.desk.preferences.shell ?? ""
+        box.addSubview(label)
+        box.addSubview(field)
+        alert.accessoryView = box
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            var p = c.desk.preferences
+            let shell = field.stringValue.trimmingCharacters(in: .whitespaces)
+            p.shell = shell.isEmpty ? nil : shell
+            self.hosts.setPreferences(p, on: host) { [weak self] error in
+                guard let self, let error, let window = self.window else { return }
+                let failed = NSAlert()
+                failed.messageText = "\(self.hosts.label(of: host)) kept its preferences"
+                failed.informativeText = error
+                failed.beginSheetModal(for: window)
+            }
+        }
+    }
+
     func attach(_ dest: Destination) {
         hosts.attach(dest) { [weak self] result in
             guard let self else { return }
@@ -4224,6 +4283,15 @@ extension MainWindowController: OrganizationViewDelegate {
             }
             there.isEnabled = c.link == .connected
             menu.addItem(there)
+            let preferences = ClosureMenuItem("Preferences for \(hosts.label(of: c.host))…", symbol: "gearshape") { [weak self] in
+                self?.editPreferences(c.host)
+            }
+            preferences.isEnabled = c.link == .connected
+            menu.addItem(preferences)
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Detach from \(hosts.label(of: c.host))…", symbol: "xmark") { [weak self] in
+                self?.detach(c.host)
+            })
             return menu
         }
         if let arr = node.arrangement, node.column == nil {
