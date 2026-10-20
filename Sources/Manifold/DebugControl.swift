@@ -248,7 +248,9 @@ enum DebugControl {
             // "badge break n": the nth link's × clicked.
             return wc?.debugBadge(arg) ?? "no window"
         case "focused":
-            return wc?.debugFocusedBlock?.description ?? "nothing focused"
+            // The focused block, and whether the window is key (status is
+            // attended to only while it is).
+            return (wc?.debugFocusedBlock?.description ?? "nothing focused") + (wc?.window?.isKeyWindow == true ? " key" : " not key")
         case "scrub":
             // "scrub": the focused terminal's scrubber; "scrub hover <f>",
             // "scrub go|open <id>", "scrub locate", "scrub row <n>".

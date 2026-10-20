@@ -421,7 +421,7 @@ when you find it again.
   remote hosts work the same; OSC 9;4 progress counts until a 7501
   report arrives; a new prompt or the process ending clears working
   and blocked; done and failed stay, read once you attend to the block
-  by focusing it. A busy terminal that says nothing is working.
+  by focusing it — or at once, when it finishes while you're looking. A busy terminal that says nothing is working.
   Searches, git and diff blocks report as the host works for them. One
   glyph says it wherever a block is named — an open ring turning for
   working (filling clockwise from the top when the program says how

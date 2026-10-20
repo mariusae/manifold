@@ -503,15 +503,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Status (§3.7)
 
-    private var attended: BlockID?
+    /// The last done or failed record attended to: which block, and the
+    /// record's stamp, so one isn't proposed twice while the host answers.
+    private var attended: (BlockID, Stamp)?
 
     /// The focused block, while the window is key, is attended to: what
-    /// it had done, or failed at, is dismissed. The Dock badge counts
-    /// the blocks waiting on you, or done.
+    /// it had done, or failed at, is read — whether you came to it done
+    /// or it finished while you were looking. The Dock badge counts the
+    /// blocks waiting on you, or done.
     private func attend() {
-        if window?.isKeyWindow == true, let b = focusedShown?.placement.block, b != attended {
-            attended = b
-            if let r = hosts.block(b)?.statusRecord, (r.state == .done || r.state == .error), r.read != true { hosts.propose(.attend(b)) }
+        if window?.isKeyWindow == true, let b = focusedShown?.placement.block,
+           let r = hosts.block(b)?.statusRecord, r.state == .done || r.state == .error, r.read != true,
+           attended.map({ $0.0 != b || $0.1 != r.at }) ?? true {
+            attended = (b, r.at)
+            hosts.propose(.attend(b))
         }
         let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count
         let badge = waiting == 0 ? "" : "\(waiting)"

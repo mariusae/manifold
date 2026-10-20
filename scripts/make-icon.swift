@@ -1,7 +1,7 @@
-// Draws the app icon: a manifold — a Klein bottle in its figure-eight
-// immersion — as a shaded wire mesh of pale paper on a slate squircle,
-// the surface lit from the upper left, its far side showing through
-// where the mesh opens.
+// Draws the app icon: a manifold, abstracted — a Möbius band as a sheet
+// of pale glass, its threads drawn along it in ink — over the wash the
+// desk wears (§3.1): lavender to rose to peach to cream across a
+// squircle, with a pool of light.
 import AppKit
 
 let size: CGFloat = 1024
@@ -9,111 +9,136 @@ let out = CommandLine.arguments[1]
 
 struct V3 { var x, y, z: Double }
 
-/// The figure-eight Klein bottle: a circle swept around a ring, turning
-/// over once as it goes, so the surface closes on itself with no inside.
-func surface(_ u: Double, _ v: Double) -> V3 {
-    let r = 2.4
-    let a = r + cos(u / 2) * sin(v) - sin(u / 2) * sin(2 * v)
-    return V3(x: a * cos(u), y: a * sin(u), z: sin(u / 2) * sin(v) + cos(u / 2) * sin(2 * v))
+/// The band: a segment swept around a ring, turning over half a time
+/// as it goes, so the sheet comes back to itself with the other face up.
+func surface(_ u: Double, _ w: Double) -> V3 {
+    let r = 1.9, half = 1.25
+    let a = r + half * w * cos(u / 2)
+    return V3(x: a * cos(u), y: a * sin(u), z: half * w * sin(u / 2))
 }
 
-/// Turned to show its twist: tipped toward the viewer, and a little around.
+/// Tipped toward the viewer and turned a little, to show the twist.
 func rotate(_ p: V3) -> V3 {
-    let tilt = -1.05, turn = 0.55
+    let tilt = -0.7, turn = 1.3
     var x = p.x, y = p.y, z = p.z
-    // Around z.
     (x, y) = (x * cos(turn) - y * sin(turn), x * sin(turn) + y * cos(turn))
-    // Around x.
     (y, z) = (y * cos(tilt) - z * sin(tilt), y * sin(tilt) + z * cos(tilt))
     return V3(x: x, y: y, z: z)
 }
 
-struct Quad {
-    var points: [CGPoint]
+/// A strip across the band at one turn of it: the sheet there, and the
+/// threads' points along its width.
+struct Strip {
+    var quad: [CGPoint]
+    var threads: [[CGPoint]]
     var depth: Double
-    var shade: Double
-    var front: Bool
+    var lit: Double
 }
 
-let nu = 72, nv = 28
-var quads: [Quad] = []
+let nu = 180, nw = 5
 let center = CGPoint(x: size / 2, y: size / 2 + 10)
-let scale: Double = 106
-let eye: Double = 14
+let scale: Double = 128
+let eye: Double = 15
 func project(_ p: V3) -> CGPoint {
     let k = eye / (eye - p.z)
     return CGPoint(x: center.x + CGFloat(p.x * scale * k), y: center.y + CGFloat(p.y * scale * k))
 }
-let light = V3(x: -0.45, y: 0.6, z: 0.66)
+let light = V3(x: -0.4, y: 0.55, z: 0.73)
+
+var strips: [Strip] = []
 for i in 0..<nu {
-    for j in 0..<nv {
-        let u0 = Double(i) / Double(nu) * 2 * .pi, u1 = Double(i + 1) / Double(nu) * 2 * .pi
-        let v0 = Double(j) / Double(nv) * 2 * .pi, v1 = Double(j + 1) / Double(nv) * 2 * .pi
-        let corners = [surface(u0, v0), surface(u1, v0), surface(u1, v1), surface(u0, v1)].map(rotate)
-        // The normal, from two edges; lit by how much it faces the light.
-        let e1 = V3(x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y, z: corners[1].z - corners[0].z)
-        let e2 = V3(x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y, z: corners[3].z - corners[0].z)
-        var n = V3(x: e1.y * e2.z - e1.z * e2.y, y: e1.z * e2.x - e1.x * e2.z, z: e1.x * e2.y - e1.y * e2.x)
-        let len = max(sqrt(n.x * n.x + n.y * n.y + n.z * n.z), 1e-9)
-        n = V3(x: n.x / len, y: n.y / len, z: n.z / len)
-        // A one-sided surface has no outside: the normal is taken toward the viewer.
-        let front = n.z >= 0
-        if !front { n = V3(x: -n.x, y: -n.y, z: -n.z) }
-        let lit = max(0, n.x * light.x + n.y * light.y + n.z * light.z)
-        quads.append(Quad(points: corners.map(project), depth: corners.map(\.z).reduce(0, +) / 4, shade: 0.35 + 0.65 * lit, front: front))
+    let u0 = Double(i) / Double(nu) * 2 * .pi, u1 = (Double(i) + 1.02) / Double(nu) * 2 * .pi
+    let corners = [surface(u0, -1), surface(u1, -1), surface(u1, 1), surface(u0, 1)].map(rotate)
+    let e1 = V3(x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y, z: corners[1].z - corners[0].z)
+    let e2 = V3(x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y, z: corners[3].z - corners[0].z)
+    var n = V3(x: e1.y * e2.z - e1.z * e2.y, y: e1.z * e2.x - e1.x * e2.z, z: e1.x * e2.y - e1.y * e2.x)
+    let len = max(sqrt(n.x * n.x + n.y * n.y + n.z * n.z), 1e-9)
+    n = V3(x: n.x / len, y: n.y / len, z: n.z / len)
+    if n.z < 0 { n = V3(x: -n.x, y: -n.y, z: -n.z) }
+    let lit = max(0, n.x * light.x + n.y * light.y + n.z * light.z)
+    var threads: [[CGPoint]] = []
+    for j in 0...nw {
+        let w = -1 + 2 * Double(j) / Double(nw)
+        threads.append([rotate(surface(u0, w)), rotate(surface(u1, w))].map(project))
     }
+    strips.append(Strip(quad: corners.map(project), threads: threads, depth: corners.map(\.z).reduce(0, +) / 4, lit: lit))
 }
-quads.sort { $0.depth < $1.depth }
+strips.sort { $0.depth < $1.depth }
+
+let ink = NSColor(calibratedRed: 0.2, green: 0.16, blue: 0.3, alpha: 1)
 
 let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
+    guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
     let tile = NSRect(x: 100, y: 100, width: 824, height: 824)
     let squircle = NSBezierPath(roundedRect: tile, xRadius: 185, yRadius: 185)
+
+    // The wash, as the desk's: lavender, rose, peach, cream, from the
+    // upper left; a pool of light toward the lower right.
     NSGraphicsContext.current?.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
     shadow.shadowBlurRadius = 24
     shadow.shadowOffset = NSSize(width: 0, height: -10)
     shadow.set()
-    NSGradient(starting: NSColor(calibratedRed: 0.33, green: 0.39, blue: 0.5, alpha: 1),
-               ending: NSColor(calibratedRed: 0.14, green: 0.17, blue: 0.24, alpha: 1))!
-        .draw(in: squircle, angle: -90)
+    NSColor.white.setFill()
+    squircle.fill()
     NSGraphicsContext.current?.restoreGraphicsState()
 
     NSGraphicsContext.current?.saveGraphicsState()
     squircle.addClip()
-    // The surface's shadow on the slate.
+    let space = CGColorSpaceCreateDeviceRGB()
+    let stops: [(CGFloat, CGFloat, CGFloat)] = [(0.72, 0.30, 0.96), (0.95, 0.26, 0.99), (0.07, 0.30, 1.0), (0.12, 0.14, 1.0)]
+    let colors = stops.map { h, s, b in NSColor(calibratedHue: h, saturation: s, brightness: b, alpha: 1).cgColor }
+    if let g = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 0.4, 0.75, 1]) {
+        ctx.drawLinearGradient(g, start: CGPoint(x: tile.minX, y: tile.maxY), end: CGPoint(x: tile.maxX, y: tile.minY), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    }
+    if let pool = NSColor(calibratedHue: 0.1, saturation: 0.16, brightness: 1, alpha: 1).usingColorSpace(.deviceRGB),
+       let g = CGGradient(colorsSpace: space, colors: [pool.withAlphaComponent(0.7).cgColor, pool.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1]) {
+        let c = CGPoint(x: tile.midX + 170, y: tile.midY - 200)
+        ctx.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: 520, options: [])
+    }
+
+    // The band's shadow on the wash.
     let s2 = NSShadow()
-    s2.shadowColor = NSColor.black.withAlphaComponent(0.35)
-    s2.shadowBlurRadius = 40
-    s2.shadowOffset = NSSize(width: 0, height: -18)
+    s2.shadowColor = ink.withAlphaComponent(0.3)
+    s2.shadowBlurRadius = 48
+    s2.shadowOffset = NSSize(width: 0, height: -26)
     s2.set()
     let whole = NSBezierPath()
-    for q in quads {
-        whole.move(to: q.points[0])
-        for p in q.points.dropFirst() { whole.line(to: p) }
+    for st in strips {
+        whole.move(to: st.quad[0])
+        for p in st.quad.dropFirst() { whole.line(to: p) }
         whole.close()
     }
-    NSColor(calibratedWhite: 0.9, alpha: 1).setFill()
+    whole.windingRule = .nonZero
+    NSColor.white.withAlphaComponent(0.01).setFill()
     whole.fill()
     NSShadow().set()
 
-    // Each cell of the mesh, far to near: paper lit by its facing, the
-    // far side a touch cooler; the mesh lines in slate.
-    for q in quads {
+    // The sheet, far to near, a strip at a time: pale glass, whiter
+    // where it faces the light, with its threads laid on it in ink —
+    // fainter and finer the farther, the edges heavier than the rest.
+    for st in strips {
+        let near = max(0, min(1, (st.depth + 2.6) / 5.2))
         let path = NSBezierPath()
-        path.move(to: q.points[0])
-        for p in q.points.dropFirst() { path.line(to: p) }
+        path.move(to: st.quad[0])
+        for p in st.quad.dropFirst() { path.line(to: p) }
         path.close()
-        let s = CGFloat(q.shade)
-        let paper = q.front
-            ? NSColor(calibratedRed: 0.55 + 0.44 * s, green: 0.53 + 0.44 * s, blue: 0.47 + 0.44 * s, alpha: 1)
-            : NSColor(calibratedRed: 0.5 + 0.38 * s, green: 0.52 + 0.38 * s, blue: 0.55 + 0.38 * s, alpha: 1)
-        paper.setFill()
+        NSColor(calibratedWhite: 1, alpha: 0.5 + 0.35 * CGFloat(st.lit) * (0.5 + 0.5 * CGFloat(near))).setFill()
+        // Filled without antialiasing, so strips meet without a seam.
+        ctx.setShouldAntialias(false)
         path.fill()
-        NSColor(calibratedRed: 0.16, green: 0.2, blue: 0.28, alpha: q.front ? 0.75 : 0.5).setStroke()
-        path.lineWidth = q.front ? 2.2 : 1.6
-        path.lineJoinStyle = .round
-        path.stroke()
+        ctx.setShouldAntialias(true)
+        for (j, t) in st.threads.enumerated() {
+            let edge = j == 0 || j == nw
+            let line = NSBezierPath()
+            line.move(to: t[0])
+            line.line(to: t[1])
+            line.lineWidth = (edge ? 5 : 2.5) + (edge ? 7 : 4) * CGFloat(near)
+            line.lineCapStyle = .round
+            ink.withAlphaComponent((edge ? 0.5 : 0.3) + 0.5 * CGFloat(near)).setStroke()
+            line.stroke()
+        }
     }
     NSGraphicsContext.current?.restoreGraphicsState()
     return true
