@@ -668,8 +668,10 @@ final class GridView: NSView, NSDraggingSource {
         badge.fansDown = true
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
-        let h = min(size.height, r.height - Self.band - 12)
-        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: r.maxY - Self.band - 6 - h, width: w, height: h)
+        let h = min(size.height, r.height - 12)
+        // Its capsule on the pill's line: both centred in the band.
+        let capsuleTop = r.maxY - (Self.band - TilePill.height) / 2 - (TilePill.height - LinkBadge.capsuleHeight) / 2
+        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: capsuleTop - h, width: w, height: h)
     }
 
     /// Whether the drag under way is a ⇧-drag of a block's path.

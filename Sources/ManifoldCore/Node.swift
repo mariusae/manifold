@@ -199,7 +199,7 @@ extension ArrangementState {
     /// (or below `below`, when given); a column past the end is a new
     /// one. A tile of the block here already is focused instead.
     public func bringing(_ block: BlockID, lens: Lens, inColumn column: Int, below: PlacementID? = nil, newPlacement: () -> PlacementID) -> [Event] {
-        if let t = tile(of: block, lens: lens) { return [.focus(t.id)] }
+        if let t = tile(of: block, lens: lens) { return revealing(t.id) }
         let c = max(column, 0)
         guard c < columns.count else {
             return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
@@ -212,7 +212,7 @@ extension ArrangementState {
 
     /// Events that bring `block` into a new column at `index`.
     public func bringing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, newPlacement: () -> PlacementID) -> [Event] {
-        if let t = tile(of: block, lens: lens) { return [.focus(t.id)] }
+        if let t = tile(of: block, lens: lens) { return revealing(t.id) }
         var events: [Event] = [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
         if index < columns.count { events.append(.moveColumn(from: columns.count, to: max(index, 0))) }
         return events
@@ -261,6 +261,15 @@ extension ArrangementState {
 
     /// Heights after a stashed tile comes back: the lower half of the tile
     /// it was behind.
+    /// Events that bring a tile into view and focus: a maximized other
+    /// tile gives way, a stashed one comes back (as its tile's lower
+    /// half), and it is focused.
+    public func revealing(_ id: PlacementID) -> [Event] {
+        var events: [Event] = isStashed(id) ? unstashing(id) : [.focus(id)]
+        if let full, full != id { events.insert(.full(nil), at: 0) }
+        return events
+    }
+
     public func unstashing(_ id: PlacementID) -> [Event] {
         guard let (c, i) = locate(id), isStashed(id) else { return [] }
         guard let top = tile(behind: id) else { return [.heights([id: 1])] }

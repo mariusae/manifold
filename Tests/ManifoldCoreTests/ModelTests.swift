@@ -969,3 +969,18 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     let kind = try JSONDecoder().decode([LinkKind].self, from: Data(#"["about","linked","mention"]"#.utf8))
     #expect(kind == [.linked, .linked, .mention])
 }
+
+@Test func bringingAStashedTileRevealsIt() {
+    // ⌥⌘G with the project's git tile stashed behind another: it comes back, not just "focused" out of sight.
+    var a = ArrangementState()
+    let x = Placement(id: "x", block: BlockID(host: .local), lens: .terminal)
+    let g = Placement(id: "g", block: BlockID(host: .local), lens: .git)
+    a.apply(.place(x, column: 0, at: 0))
+    a.apply(.place(g, column: 0, at: 1))
+    a.apply(.heights(["x": 1, "g": 0]))
+    a.apply(.focus("x"))
+    #expect(a.isStashed("g"))
+    for e in a.bringing(g.block, lens: .git, inColumn: 0, newPlacement: { "new" }) { a.apply(e) }
+    #expect(!a.isStashed("g"))
+    #expect(a.focused == "g")
+}

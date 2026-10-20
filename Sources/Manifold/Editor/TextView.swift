@@ -59,7 +59,7 @@ final class TextView: NSView, NSTextInputClient {
     var font: NSFont = .systemFont(ofSize: 14) { didSet { fontChanged() } }
     var lineHeightMultiple: CGFloat = 1.2 { didSet { fontChanged() } }
     var textColor = Theme.text
-    var showsLineNumbers = true { didSet { invalidateAll() } }
+    var showsLineNumbers = true { didSet { if showsLineNumbers != oldValue { invalidateAll() } } }
     var wraps = true { didSet { invalidateAll() } }
     /// Markdown shown richly (MarkdownStyle): the attributes of a line say
     /// what it means; the caret's line shows as written.

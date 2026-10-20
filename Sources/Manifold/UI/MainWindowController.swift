@@ -212,10 +212,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             window.title = title(of: a)
-            if palette == nil, stateView == nil, let focused = a.focused, let view = views[focused],
-               !((window.firstResponder as? NSView)?.isDescendant(of: view) ?? false), view.superview != nil {
+            if palette == nil, stateView == nil, history == nil, neighborhoodView == nil,
+               let focused = a.focused, let view = views[focused], view.superview != nil,
+               let responder = window.firstResponder as? NSView, !responder.isDescendant(of: view) {
                 // Not while something is over the window with the keyboard.
-                if history == nil, neighborhoodView == nil { window.makeFirstResponder(view.focusView) }
+                if let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
+                   a.placement(typing) != nil, !a.isStashed(typing) {
+                    // The keyboard is in another tile (typing went on through
+                    // a change of focus): the tile focus follows it, rather
+                    // than the keyboard being taken from under the typing.
+                    focus(typing)
+                } else {
+                    window.makeFirstResponder(view.focusView)
+                }
             }
             for case let t as TerminalView in views.values { t.syncFocus() }
             for case let m as MarkdownView in views.values { m.textChanged() }
@@ -428,7 +437,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return event
             }
             let p = self.content.convert(event.locationInWindow, from: nil)
-            if let v = self.content.views.first(where: { $0.frame.contains(p) }), !(v is TerminalView),
+            if let v = self.content.views.first(where: { !$0.isHidden && $0.superview != nil && $0.frame.contains(p) }), !(v is TerminalView),
                self.arrangement?.focused != v.placement {
                 self.focus(v.placement)
             }
@@ -1336,11 +1345,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// What brings a tile into view and focus: a maximized other tile
     /// gives way, a stashed one comes back (as its tile's lower half),
     /// and it is focused.
-    private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] {
-        var events: [Event] = a.isStashed(placement) ? a.unstashing(placement) : [.focus(placement)]
-        if let full = a.full, full != placement { events.insert(.full(nil), at: 0) }
-        return events
-    }
+    private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] { a.revealing(placement) }
 
     /// Grow (acme's colgrow): the focused tile takes a step from its
     /// neighbors; with ⇧, as much of its column as can be.
