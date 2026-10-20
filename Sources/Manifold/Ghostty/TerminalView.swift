@@ -14,6 +14,11 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
     /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID)
+    /// What runs under the terminal's shell, as last listed (and listed
+    /// again, for next time): the tree its menu shows.
+    func terminalProcesses(_ view: TerminalView) -> [ProcessEntry]
+    /// A process in the menu's tree is to be ended or killed.
+    func terminal(_ view: TerminalView, signal pid: Int32, _ signal: Int32)
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
@@ -652,7 +657,46 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: "")
+        // The processes under the shell, the shell first, each a submenu
+        // of what to do with it and what runs under it.
+        let entries = delegate?.terminalProcesses(self) ?? []
+        menu.addItem(.separator())
+        if entries.isEmpty {
+            let none = NSMenuItem(title: "No processes listed yet", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        } else {
+            let pids = Set(entries.map(\.pid))
+            for item in processItems(entries, under: nil, pids: pids) { menu.addItem(item) }
+        }
         return menu
+    }
+
+    /// The items for the processes whose parent is `parent` (nil: the
+    /// roots, whose parents aren't listed), each with its submenu.
+    private func processItems(_ entries: [ProcessEntry], under parent: Int32?, pids: Set<Int32>) -> [NSMenuItem] {
+        let mine = entries.filter { parent == nil ? !pids.contains($0.parent) : $0.parent == parent }
+        return mine.map { e in
+            let item = NSMenuItem(title: "\(e.command)  ·  \(e.pid)", action: nil, keyEquivalent: "")
+            item.image = Theme.symbol(parent == nil ? "terminal" : "circle.fill", size: parent == nil ? 11 : 5)
+            if let path = e.path { item.toolTip = path }
+            let sub = NSMenu()
+            sub.addItem(ClosureMenuItem("End \(e.command)", symbol: "stop.circle") { [weak self] in
+                guard let self else { return }
+                self.delegate?.terminal(self, signal: e.pid, SIGTERM)
+            })
+            sub.addItem(ClosureMenuItem("Force End \(e.command)", symbol: "xmark.octagon") { [weak self] in
+                guard let self else { return }
+                self.delegate?.terminal(self, signal: e.pid, SIGKILL)
+            })
+            let children = processItems(entries, under: e.pid, pids: pids)
+            if !children.isEmpty {
+                sub.addItem(.separator())
+                for c in children { sub.addItem(c) }
+            }
+            item.submenu = sub
+            return item
+        }
     }
 
     // MARK: Keyboard

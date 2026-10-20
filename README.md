@@ -35,7 +35,8 @@ and Mona Sans (bundled).
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: a few edges peek out
   beside its pill, fan out from behind it when the pointer rests there
-  (packed, opaque, the edges gone while they're out), and one clicked
+  (packed, opaque, the edges gone while they're out, the one under
+  the pointer ringed in the accent), and one clicked
   comes back on its own as that tile's lower half, the rest staying
   behind the tile that showed; ⌥-clicked (an edge or a
   fanned-out pill), it takes the top instead, whole, the tile that
@@ -214,7 +215,10 @@ when you find it again.
 
 - **Terminals** run `manifoldd attach <block>`, which connects them to a
   shell the server owns, so quitting and reopening the app brings every
-  terminal back with the same processes still running.
+  terminal back with the same processes still running. A terminal's
+  menu (right-click) has, under Copy, Paste and Clear, the tree of what
+  runs under its shell, the shell first, each process a submenu of End,
+  Force End and what runs under it.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). The **editor** lens is Manifold's own
   text view (the pill's menu switches a tile between the fixed-width

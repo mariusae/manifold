@@ -3536,6 +3536,21 @@ extension MainWindowController: EditorViewDelegate {
     /// A block ⇧-dragged onto a terminal: its path typed, and linked.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }
 
+    /// The host's last process listing, those under this terminal's shell;
+    /// and a fresh listing asked for, so the next menu is current.
+    func terminalProcesses(_ view: TerminalView) -> [ProcessEntry] {
+        guard let client = hosts.client(view.block.host) else { return [] }
+        let pb = client.node.blocks.first { $0.kind == .process }
+        hosts.propose(.processes(block: pb?.id ?? BlockID(host: client.host)))
+        return pb?.processes?.entries.filter { $0.block == view.block } ?? []
+    }
+
+    func terminal(_ view: TerminalView, signal pid: Int32, _ signal: Int32) {
+        hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
+            if let error { self?.window?.title = error }
+        }
+    }
+
     /// A link in the text clicked: a block's gone to; an address opened.
     func editor(_ view: EditorView, follow target: String, over: Bool) { open(target, from: view.placement, over: over) }
 

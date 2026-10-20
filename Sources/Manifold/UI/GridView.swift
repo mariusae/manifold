@@ -411,10 +411,14 @@ final class GridView: NSView, NSDraggingSource {
             return
         }
         for t in columns.flatMap({ $0 }) {
-            t.view.isHidden = isStashed(t.shown.id)
-            pills[t.shown.id]?.isHidden = false
+            let stashed = isStashed(t.shown.id)
+            t.view.isHidden = stashed
+            // A stashed tile's pill stays as it is — hidden behind the
+            // top's, or out in the fan: shown here, it would be drawn over
+            // the top pill for a frame, until the gather hid it again.
+            if !stashed { pills[t.shown.id]?.isHidden = false }
             pills[t.shown.id]?.behind = 0
-            badges[t.shown.id]?.isHidden = isStashed(t.shown.id)
+            badges[t.shown.id]?.isHidden = stashed
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -626,9 +630,28 @@ final class GridView: NSView, NSDraggingSource {
             }
         }
         fanned = over
+        // In a fan, the pill under the pointer is marked: the one a click takes.
+        var under: PlacementID?
+        if let over, let stack = columns.indices.lazy.flatMap({ self.stacks($0) }).first(where: { $0.top.shown.id == over }) {
+            for t in [stack.top] + stack.behind {
+                if let pill = pills[t.shown.id], !pill.isHidden, pill.capsule(in: self).contains(p) { under = t.shown.id; break }
+            }
+        }
+        if hoveredPill != under {
+            if let h = hoveredPill { pills[h]?.hovered = false }
+            hoveredPill = under
+            if let under { pills[under]?.hovered = true }
+        }
     }
 
-    override func mouseExited(with event: NSEvent) { fanned = nil }
+    /// The fanned pill the pointer is on, if any.
+    private var hoveredPill: PlacementID?
+
+    override func mouseExited(with event: NSEvent) {
+        fanned = nil
+        if let h = hoveredPill { pills[h]?.hovered = false }
+        hoveredPill = nil
+    }
 
     // MARK: Dragging tiles
 
@@ -1008,13 +1031,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
         needsLayout = true
     }
 
+    /// Under the pointer in a fan: the one a click would take, marked
+    /// with the accent around it.
+    var hovered = false { didSet { if hovered != oldValue { updateColors() } } }
+
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.5) : Theme.cardBorder).cgColor
+            glass.layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : focused ? Theme.accent.withAlphaComponent(0.5) : Theme.cardBorder).cgColor
         }
-        name.font = .systemFont(ofSize: 11.5, weight: focused ? .semibold : .medium)
-        name.textColor = focused ? Theme.text : Theme.secondaryText
-        icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
+        glass.layer?.borderWidth = hovered ? 1.5 : 0.5
+        name.font = .systemFont(ofSize: 11.5, weight: focused || hovered ? .semibold : .medium)
+        name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
         restingAlpha = focused ? 1 : 0.72
         if !dodging { alphaValue = restingAlpha }
     }
