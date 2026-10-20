@@ -85,7 +85,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         glass.blendingMode = .behindWindow
         glass.state = .active
         root.addSubview(glass)
-        backdrop.alphaValue = 0.9
+        backdrop.alphaValue = 0.96
         root.addSubview(backdrop)
         root.addSubview(content)
         root.addSubview(sidebar)
@@ -768,8 +768,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip || view is LinkBadge { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackBadge { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
+            if let badge = view.superview as? StackBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
     }
@@ -782,6 +783,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugPills: String { content.debugPills }
+    func debugStackBadge() -> String {
+        guard let f = arrangement?.focused else { return "nothing focused" }
+        return content.debugStackBadge(f)
+    }
+
     func debugBadge(_ arg: String) -> String {
         guard let f = arrangement?.focused else { return "nothing focused" }
         return content.debugBadge(f, arg)
@@ -1813,6 +1819,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.arrangement = id
             n.style = .section
             n.emphasis = id == selected
+            let needing = a.placements.filter { StatusGlyph.look(of: hosts.block($0.block)) == .needsYou }.count
+            if needing > 0 { n.trailing = needing == 1 ? "1 needs you" : "\(needing) need you" }
             if !tiles.isEmpty { open.insert(aid) }
             return n
         }

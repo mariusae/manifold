@@ -175,6 +175,9 @@ final class LinkBadge: NSView {
     final class Capsule: NSView {
         /// Clicked: whether ⌥ was held.
         var onClick: ((Bool) -> Void)?
+        /// Dragged a little: what to do with the drag (a stack's pill comes out).
+        var onDragStart: ((NSEvent) -> Void)?
+        private var downAt: NSPoint?
         /// With this set, an × at the right end, to call.
         var onBreak: (() -> Void)? { didSet { close.isHidden = onBreak == nil; needsLayout = true } }
         private let arrow = NSImageView()
@@ -254,8 +257,17 @@ final class LinkBadge: NSView {
         private var closeRect: NSRect { NSRect(x: bounds.width - 10 - closeWidth, y: 0, width: closeWidth + 10, height: bounds.height) }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-        override func mouseDown(with event: NSEvent) {}
+        override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+        override func mouseDragged(with event: NSEvent) {
+            guard let start = downAt, onDragStart != nil else { return }
+            let p = event.locationInWindow
+            guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+            downAt = nil
+            onDragStart?(event)
+        }
         override func mouseUp(with event: NSEvent) {
+            defer { downAt = nil }
+            guard downAt != nil else { return }
             let p = convert(event.locationInWindow, from: nil)
             guard bounds.contains(p) else { return }
             if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags.contains(.option)) }

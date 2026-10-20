@@ -61,6 +61,8 @@ final class GridView: NSView, NSDraggingSource {
         var links: [LinkCard] = []
     }
     private var badges: [PlacementID: LinkBadge] = [:]
+    /// The stack behind a shown tile, as a badge in its bar.
+    private var stackBadges: [PlacementID: StackBadge] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -97,7 +99,7 @@ final class GridView: NSView, NSDraggingSource {
     private let focusRing = FocusRingView()
     /// The column whose stack of stashed pills is fanned out, under the pointer.
     /// The shown tile whose stack is fanned out under its pill.
-    private var fanned: PlacementID? { didSet { if fanned != oldValue { needsLayout = true } } }
+    private var fanned: PlacementID? = nil
 
     /// What a tile's content leaves at its top: nothing — the bar is above
     /// it, not over it (kept for the views that asked).
@@ -132,6 +134,10 @@ final class GridView: NSView, NSDraggingSource {
         for (id, b) in badges where !incoming.contains(id) {
             b.removeFromSuperview()
             badges.removeValue(forKey: id)
+        }
+        for (id, b) in stackBadges where !incoming.contains(id) {
+            b.removeFromSuperview()
+            stackBadges.removeValue(forKey: id)
         }
         self.columns = columns
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
@@ -309,6 +315,13 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
+    func debugStackBadge(_ placement: PlacementID) -> String {
+        guard let b = stackBadges[placement] else { return "no stack badge" }
+        b.debugFan(true)
+        b.layoutSubtreeIfNeeded()
+        return b.debugTitles.joined(separator: " | ")
+    }
+
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
         guard let b = badges[placement] else { return "no badge" }
         b.debugFan(true)
@@ -399,6 +412,7 @@ final class GridView: NSView, NSDraggingSource {
                 t.view.isHidden = true
                 pills[t.shown.id]?.isHidden = true
                 badges[t.shown.id]?.isHidden = true
+                stackBadges[t.shown.id]?.isHidden = true
             }
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
@@ -450,47 +464,38 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 shownIndex += 1
             }
-            // Each stack's pills: a few edges peeking out beside the pill of
-            // the tile they're behind, or fanned out below it.
+            // Each stack: its sheets' edges above the top's card, and its
+            // badge in the top's bar, whose fan is the stashed tiles as pills.
             _ = top
-            for stack in stacks(c) where !stack.behind.isEmpty {
+            let stacked = Set(stacks(c).filter { !$0.behind.isEmpty }.map { $0.top.shown.id })
+            for stack in stacks(c) {
                 guard let topPill = pills[stack.top.shown.id] else { continue }
-                let band = topPill.frame
-                let open = fanned == stack.top.shown.id
-                // Fanned out, the stack is on show: no edges behind the top.
-                topPill.behind = open ? 0 : stack.behind.count
-                for (i, tile) in stack.behind.enumerated() {
-                    guard let pill = pills[tile.shown.id] else { continue }
-                    // Gathered, the top pill draws their edges; fanned, they
-                    // come out from behind it, packed close, each a step
-                    // down — and go back in the same way.
-                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (Self.barHeight + 2))
-                    keep(pill, above: topPill)
-                    pill.alphaValue = 1
-                    if open {
-                        if pill.isHidden {
-                            pill.frame = band
-                            pill.isHidden = false
-                            NSAnimationContext.runAnimationGroup { ctx in
-                                ctx.duration = 0.16
-                                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                                pill.animator().frame = target
-                            }
-                        } else if pill.frame != target, pill.layer?.animationKeys()?.isEmpty ?? true {
-                            pill.frame = target
-                        }
-                    } else if !pill.isHidden {
-                        let id = tile.shown.id
-                        NSAnimationContext.runAnimationGroup({ ctx in
-                            ctx.duration = 0.12
-                            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                            pill.animator().frame = band
-                        }, completionHandler: { [weak self, weak pill] in
-                            guard let self, let pill, self.fanned != stack.top.shown.id, self.isStashed(id) else { return }
-                            pill.isHidden = true
-                        })
-                    }
+                topPill.behind = stack.behind.count
+                for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
+                let id = stack.top.shown.id
+                if stack.behind.isEmpty {
+                    stackBadges[id]?.removeFromSuperview()
+                    stackBadges.removeValue(forKey: id)
+                    continue
                 }
+                let badge = stackBadges[id] ?? {
+                    let b = StackBadge()
+                    b.layer?.zPosition = 6
+                    b.onPick = { [weak self] picked, mods in
+                        guard let self else { return }
+                        if mods.contains(.option) { self.delegate?.gridSwap(picked) } else { self.delegate?.gridUnstash(picked) }
+                    }
+                    b.onDrag = { [weak self] picked, event, from in self?.beginDrag(of: picked, event: event, from: from) }
+                    stackBadges[id] = b
+                    return b
+                }()
+                badge.cards = stack.behind.map { StackCard(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol) }
+                if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: topPill) }
+                placeStackBadge(badge, in: tiles[columns[c].firstIndex { $0.shown.id == id } ?? 0], beside: badges[id])
+            }
+            for (id, b) in stackBadges where !stacked.contains(id) && columns[c].contains(where: { $0.shown.id == id }) {
+                b.removeFromSuperview()
+                stackBadges.removeValue(forKey: id)
             }
         }
         if dragging { dragCatcher.frame = bounds }
@@ -626,44 +631,9 @@ final class GridView: NSView, NSDraggingSource {
         super.updateTrackingAreas()
     }
 
-    /// The pointer over a stack (the pill of the tile it's behind, or the
-    /// fanned-out pills) fans it out; elsewhere gathers it in.
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        var over: PlacementID?
-        search: for c in columns.indices {
-            for stack in stacks(c) where !stack.behind.isEmpty {
-                guard let topPill = pills[stack.top.shown.id] else { continue }
-                var zone = topPill.capsule(in: self).insetBy(dx: -8, dy: -4)
-                if fanned == stack.top.shown.id {
-                    for t in stack.behind { if let pill = pills[t.shown.id] { zone = zone.union(pill.capsule(in: self).insetBy(dx: -8, dy: -4)) } }
-                }
-                if zone.contains(p) { over = stack.top.shown.id; break search }
-            }
-        }
-        fanned = over
-        // In a fan, the pill under the pointer is marked: the one a click takes.
-        var under: PlacementID?
-        if let over, let stack = columns.indices.lazy.flatMap({ self.stacks($0) }).first(where: { $0.top.shown.id == over }) {
-            for t in [stack.top] + stack.behind {
-                if let pill = pills[t.shown.id], !pill.isHidden, pill.capsule(in: self).contains(p) { under = t.shown.id; break }
-            }
-        }
-        if hoveredPill != under {
-            if let h = hoveredPill { pills[h]?.hovered = false }
-            hoveredPill = under
-            if let under { pills[under]?.hovered = true }
-        }
-    }
-
-    /// The fanned pill the pointer is on, if any.
-    private var hoveredPill: PlacementID?
-
-    override func mouseExited(with event: NSEvent) {
-        fanned = nil
-        if let h = hoveredPill { pills[h]?.hovered = false }
-        hoveredPill = nil
-    }
+    /// The stack's fan is its badge's (StackBadge); the pointer over the
+    /// grid itself does nothing.
+    override func mouseMoved(with event: NSEvent) {}
 
     // MARK: Dragging tiles
 
@@ -711,6 +681,18 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile's note badge: at its lower right, in from the scroll bar's
     /// column and the edge, with room above for its fan.
+    /// The stack badge in the bar, left of the links badge if there is one.
+    private func placeStackBadge(_ badge: StackBadge, in r: NSRect, beside links: LinkBadge?) {
+        badge.isHidden = false
+        let size = badge.wantedSize
+        let w = min(size.width, max(r.width - 40, 60))
+        let h = min(size.height, r.height - 12)
+        let capsuleTop = r.maxY - (Self.barHeight - StackBadge.capsuleHeight) / 2
+        let taken = pills.values.first { $0.frame.maxY == r.maxY && $0.frame.minX == r.minX }?.rightTaken ?? TilePill.rightChrome
+        let right = (links.map { $0.frame.minX } ?? (r.maxX - taken - 8)) - 6
+        badge.frame = NSRect(x: right - w, y: capsuleTop - h, width: w, height: h)
+    }
+
     private func placeBadge(_ badge: LinkBadge, in r: NSRect) {
         badge.isHidden = false
         badge.fansDown = true
@@ -719,7 +701,8 @@ final class GridView: NSView, NSDraggingSource {
         let h = min(size.height, r.height - 12)
         // Its capsule in the bar, before the bar's buttons.
         let capsuleTop = r.maxY - (Self.barHeight - LinkBadge.capsuleHeight) / 2
-        badge.frame = NSRect(x: r.maxX - TilePill.rightChrome - 8 - w, y: capsuleTop - h, width: w, height: h)
+        let taken = pills.values.first { $0.frame.maxY == r.maxY && $0.frame.minX == r.minX }?.rightTaken ?? TilePill.rightChrome
+        badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 
     /// Whether the drag under way is a ⇧-drag of a block's path.
@@ -998,11 +981,23 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsLayout = true } } }
     private let subtitle = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
+    /// The program at work in the tile, as its status names it, in a grey capsule.
+    private let program = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
 
     static let height: CGFloat = GridView.barHeight
     /// What the bar's right end takes: close, maximize, and room.
     static let rightChrome: CGFloat = 54
+    /// What the bar's right end takes now, its status, tag and dot included.
+    var rightTaken: CGFloat {
+        var w: CGFloat = 10
+        if !close.isHidden { w += 22 }
+        if !corner.isHidden { w += 22 }
+        if !glyph.isHidden { w += StatusGlyph.size + 8 }
+        if !program.isHidden { w += ceil(program.intrinsicContentSize.width) + 14 + 8 }
+        if !dirty.isHidden { w += 14 }
+        return w
+    }
 
     /// The bar's frame in `view`'s coordinates (what a drop on it stashes behind).
     func capsule(in view: NSView) -> NSRect { convert(bounds, to: view) }
@@ -1014,8 +1009,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.cornerRadius = GridView.corner
         glass.layer?.cornerCurve = .continuous
         glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        glass.layer?.borderWidth = 0.5
+        glass.layer?.borderWidth = 0
         glass.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
+        program.font = .systemFont(ofSize: 11, weight: .medium)
+        program.textColor = Theme.secondaryText
+        program.alignment = .center
+        program.wantsLayer = true
+        program.layer?.cornerRadius = 8
+        program.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
+        program.isHidden = true
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
         name.font = .systemFont(ofSize: 12.5, weight: .semibold)
@@ -1050,7 +1052,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, dirty, corner, close, editor] { addSubview(v) }
+        for v in [icon, name, subtitle, count, program, glyph, dirty, corner, close, editor] { addSubview(v) }
         themed { $0.updateColors() }
     }
 
@@ -1136,6 +1138,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let where_ = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail)) ? "" : place
         if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
         if close.isHidden != stashed { close.isHidden = stashed }
+        let app = shown.block?.statusRecord?.app ?? ""
+        if program.stringValue != app { program.stringValue = app }
+        program.isHidden = app.isEmpty
         if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
@@ -1157,7 +1162,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             glass.layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : Theme.cardBorder).cgColor
         }
-        glass.layer?.borderWidth = hovered ? 1.5 : 0.5
+        glass.layer?.borderWidth = hovered ? 1.5 : 0
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
     }
@@ -1195,12 +1200,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
         }
+        if !program.isHidden {
+            let tw = ceil(program.intrinsicContentSize.width) + 14
+            program.frame = NSRect(x: right - tw, y: (h - 17) / 2, width: tw, height: 17)
+            right -= tw + 8
+        }
         if !dirty.isHidden {
             dirty.frame = NSRect(x: right - 6, y: (h - 6) / 2, width: 6, height: 6)
             right -= 14
         }
-        // Room for the links badge the grid lays over the bar.
-        right -= stashed ? 0 : 0
         let th = ceil(name.intrinsicContentSize.height)
         if isEditing {
             name.isHidden = true
@@ -1210,16 +1218,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let wanted = ceil(name.intrinsicContentSize.width) + 4
             let nw = min(wanted, max(0, right - x))
             name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-            var sx = x - 2 + nw + 8
-            if behind > 0 {
-                count.stringValue = "+\(behind)"
-                count.isHidden = false
-                let cw = max(22, ceil(count.intrinsicContentSize.width) + 10)
-                count.frame = NSRect(x: sx, y: (h - 15) / 2, width: cw, height: 15)
-                sx += cw + 8
-            } else {
-                count.isHidden = true
-            }
+            let sx = x - 2 + nw + 8
+            count.isHidden = true
             subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
             let sh = ceil(subtitle.intrinsicContentSize.height)
             subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)

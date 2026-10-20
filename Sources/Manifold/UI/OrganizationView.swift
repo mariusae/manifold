@@ -526,6 +526,7 @@ final class OrgRowView: NSTableCellView {
         glyph.toolTip = node.tooltip
         trailing.stringValue = node.trailing ?? ""
         trailing.isHidden = node.trailing == nil
+        trailing.textColor = Theme.secondaryText
         if node.symbol != symbol {
             symbol = node.symbol
             icon.image = Theme.symbol(node.symbol, size: 12)
@@ -571,13 +572,19 @@ final class OrgRowView: NSTableCellView {
                 right -= w + 6
             }
             glyph.isHidden = true
+            // "1 needs you", in amber, at the right.
+            if !trailing.isHidden {
+                let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
+                trailing.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
+                trailing.textColor = StatusGlyph.amber
+                right -= w + 8
+            }
             let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width) + 4
             let nw = min(wanted, max(0, right - 4))
             name.frame = NSRect(x: 4, y: (h - 15) / 2, width: nw, height: 15)
             detail.frame = NSRect(x: 4 + nw + 6, y: (h - 15) / 2, width: max(0, right - nw - 10), height: 15)
             detail.alphaValue = 1
             detailIcon.isHidden = true
-            trailing.isHidden = true
             return
         }
         if let node, flat, node.style == .row, !detail.isHidden {

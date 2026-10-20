@@ -240,6 +240,9 @@ enum DebugControl {
             guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
             wc.showOutline(of: f.placement.block, beside: f.id)
             return "ok"
+        case "stackbadge":
+            // The focused tile's stack badge fanned, its pills listed.
+            return wc?.debugStackBadge() ?? "no window"
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.

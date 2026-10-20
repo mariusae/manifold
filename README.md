@@ -46,10 +46,9 @@ and Mona Sans (bundled).
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
-  out above its card, as a stack of paper, and the bar counts them
-  (+N); they fan out from behind it when the pointer rests there
-  (packed, opaque, the edges gone while they're out, the one under
-  the pointer ringed in the accent), and one clicked
+  out above its card, as a stack of paper, and the bar wears a stack
+  badge with how many; the pointer on the badge fans them out below as
+  rounded pills (the one under the pointer ringed in the accent), and one clicked
   comes back on its own as that tile's lower half, the rest staying
   behind the tile that showed; ⌥-clicked (an edge or a
   fanned-out pill), it takes the top instead, whole, the tile that
@@ -114,9 +113,9 @@ and Mona Sans (bundled).
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile is a **card** with a bar across its top:
-  its symbol and name, where it is in grey, a +N for the stack behind
-  it, its links, its status glyph, and maximize and close (×) at the
-  right. The bar is always there; the content runs beneath it, rounded,
+  its symbol and name, where it is in grey, its stack badge and links
+  badge, the program its status names in a grey capsule, its status
+  glyph, and maximize and close (×) at the right. The bar is always there; the content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to focus the tile, ⌘-click to
   fill the column, double-click to maximize; click its symbol for the
