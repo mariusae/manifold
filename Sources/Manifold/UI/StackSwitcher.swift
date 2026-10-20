@@ -3,9 +3,9 @@ import ManifoldCore
 
 /// ⌘E, or a right-click on a tile's title (§3.1): a stack's tiles as
 /// cards hanging in the air over the stack's tile, its own bar put away.
-/// Each hangs a title bar lower than the one behind it, leaning back a
-/// little; the cards in front of the chosen one are let down part of the
-/// way, so it peeks out between them, hanging straight. Each E moves the
+/// Each hangs a title bar lower than the one behind it, all leaning back
+/// a little alike; the cards in front of the chosen one are let down part
+/// of the way, so more of it shows between them. Each E moves the
 /// choice a card down; with the pointer, the card under it is chosen.
 /// The cards hold the tiles' own views, scaled, so they stay live.
 final class StackSwitcherView: NSView {
@@ -185,8 +185,10 @@ final class StackSwitcherView: NSView {
         let slot = CGFloat(max(0, i - back))
         let r = CGFloat(i) - place
         let letDown = max(0, min(1, r))
+        // Every card hangs at the same lean, the chosen one too: it only
+        // shows more of itself.
         return Pose(top: Self.topMargin + slot * Self.hangStep + letDown * reveal,
-                    tilt: Self.lean * min(1, abs(r)),
+                    tilt: Self.lean,
                     fog: r < 0 ? 0.06 + min(1, -r) * 0.3 : 0.12 * min(1, r))
     }
 
@@ -272,7 +274,7 @@ final class StackSwitcherView: NSView {
         place = CGFloat(selection)
         openness = targetOpenness
         layoutCards()
-        return "chose \(selection): " + cards.map { "\(Int(bounds.height - $0.frame.maxY))" }.joined(separator: " ")
+        return "chose \(selection): " + cards.map { "\(Int(bounds.height - $0.frame.maxY))\($0.debugPaneHidden ? " (content hidden)" : "")" }.joined(separator: " ")
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -361,6 +363,8 @@ final class SwitcherCard: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    var debugPaneHidden: Bool { paneView.isHidden }
 
     /// Takes the pane's view back out.
     func release() {

@@ -50,9 +50,9 @@ and Mona Sans (bundled).
   out above its card, as a stack of paper. **Right-click the tile's
   title** (or press ⌘E) and the stack's tiles hang over it as cards,
   live, the tile's own bar put away: each a title bar lower than the
-  one behind it, leaning back a little, and the one chosen hanging
-  straight, peeking out between the rest, those in front of it let
-  down part of the way. Right-clicked, the card under the pointer is
+  one behind it, all leaning back a little alike, and the one chosen
+  peeking out between the rest, those in front of it let down part of
+  the way. Right-clicked, the card under the pointer is
   the one chosen (scrolling works too): clicked, it comes back on its
   own as that tile's lower half, the rest staying behind the tile that
   showed; ⌥-clicked, it takes the top instead, whole, the tile that

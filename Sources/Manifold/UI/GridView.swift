@@ -264,7 +264,8 @@ final class GridView: NSView, NSDraggingSource {
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
-                tile.view.isHidden = stashed
+                // Not a view the switcher holds: it shows in its card.
+                if !switching.contains(id) { tile.view.isHidden = stashed }
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
