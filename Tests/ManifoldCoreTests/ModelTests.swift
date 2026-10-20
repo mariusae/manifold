@@ -984,3 +984,38 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(!a.isStashed("g"))
     #expect(a.focused == "g")
 }
+
+@Test func removingAStacksTopRevealsTheNextBehindIt() {
+    // ⌘W on an $EDITOR over a terminal: the terminal comes back in its place, its own stack still behind it.
+    var a = ArrangementState()
+    let w = Placement(id: "w", block: BlockID(host: .local), lens: .process)
+    let x = Placement(id: "x", block: BlockID(host: .local), lens: .editor)
+    let y = Placement(id: "y", block: BlockID(host: .local), lens: .terminal)
+    let z = Placement(id: "z", block: BlockID(host: .local), lens: .git)
+    for (i, p) in [w, x, y, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.heights(["w": 0.5, "x": 0.5, "y": 0, "z": 0]))
+    a.apply(.focus("x"))
+    a.apply(.remove("x"))
+    #expect(!a.isStashed("y"))
+    #expect(a.isStashed("z"))
+    #expect(a.tile(behind: "z")?.id == "y")
+    #expect(abs(a.height(of: "w") - 0.5) < 0.001 && abs(a.height(of: "y") - 0.5) < 0.001)
+    #expect(a.focused == "y")
+}
+
+@Test func aTopLeavingAloneLeavesItsStackWhereItWas() {
+    // ⌘-drag of a stack's top to another column: the next behind comes out in its place; the rest stay behind that.
+    var a = ArrangementState()
+    let x = Placement(id: "x", block: BlockID(host: .local), lens: .editor)
+    let y = Placement(id: "y", block: BlockID(host: .local), lens: .terminal)
+    let z = Placement(id: "z", block: BlockID(host: .local), lens: .git)
+    let o = Placement(id: "o", block: BlockID(host: .local), lens: .terminal)
+    for (i, p) in [x, y, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.place(o, column: 1, at: 0))
+    a.apply(.heights(["x": 1, "y": 0, "z": 0]))
+    for e in a.leavingAlone("x") + [.move("x", column: 1, at: 1)] { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == ["y", "z"])
+    #expect(!a.isStashed("y") && a.isStashed("z"))
+    #expect(a.columns[1].map(\.id) == ["o", "x"])
+    #expect(!a.isStashed("x"))
+}

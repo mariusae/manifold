@@ -1125,14 +1125,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
         if let f = a.focused {
-            // Taken off, a tile's room goes to the next in its column —
-            // the first of the stack behind it, if there is one, which
-            // thus comes back where it was, and takes the focus.
-            var events: [Event] = [.remove(f)]
-            if let (c, i) = a.locate(f), i + 1 < a.columns[c].count, a.isStashed(a.columns[c][i + 1].id) {
-                events.append(.focus(a.columns[c][i + 1].id))
-            }
-            hosts.append(events, to: .block(id))
+            // Taken off, a tile's room goes to the first of the stack
+            // behind it, if there is one, which comes back where it was
+            // and takes the focus (the model's doing); else to the next.
+            hosts.append([.remove(f)], to: .block(id))
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
@@ -2356,9 +2352,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A tile over another (⌥-drag, ⌥-click): moved to just after it, the
     /// other stashed behind it, and focused; out of its own stack first.
-    func cover(_ tile: PlacementID, over target: PlacementID) {
+    func cover(_ tile: PlacementID, over target: PlacementID, alone: Bool = false) {
         guard let a = arrangement, tile != target, let (c, _) = a.locate(target) else { return }
-        var events: [Event] = a.isStashed(tile) ? a.unstashing(tile) : []
+        var events: [Event] = a.isStashed(tile) ? a.unstashing(tile) : alone ? a.leavingAlone(tile) : []
         var column = a.columns[c]
         column.removeAll { $0.id == tile }
         guard let i = column.firstIndex(where: { $0.id == target }) else { return }
@@ -3231,12 +3227,12 @@ extension MainWindowController: GridDelegate {
         hosts.select(id)
     }
 
-    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool) {
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool) {
         guard let a = arrangement else { return }
         if newColumn || column >= a.columns.count {
-            movePlacement(placement, toNewColumn: column, in: a)
+            movePlacement(placement, toNewColumn: column, in: a, alone: alone)
         } else {
-            appendToSelected([.move(placement, column: column, at: at)])
+            appendToSelected((alone ? a.leavingAlone(placement) : []) + [.move(placement, column: column, at: at)])
         }
     }
 
@@ -3270,7 +3266,7 @@ extension MainWindowController: GridDelegate {
 
     /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
     /// stack going behind it.
-    func gridCover(_ placement: PlacementID, over target: PlacementID) { cover(placement, over: target) }
+    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool) { cover(placement, over: target, alone: alone) }
 
     /// Close Stack: this tile and every one behind it are taken off the
     /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
@@ -3315,9 +3311,9 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement, whole: true))
     }
 
-    func gridStash(_ placement: PlacementID, behind: PlacementID) {
+    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool) {
         guard let a = arrangement else { return }
-        appendToSelected(a.stashing(placement, behind: behind))
+        appendToSelected((alone ? a.leavingAlone(placement) : []) + a.stashing(placement, behind: behind))
     }
 
     func gridToggleFull(_ placement: PlacementID) {
@@ -3474,16 +3470,16 @@ extension MainWindowController: GridDelegate {
     }
 
     /// Moves a placement into a new column at `index`.
-    private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState) {
+    private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState, alone: Bool = false) {
         guard let (sc, _) = a.locate(placement) else { return }
-        let alone = a.columns[sc].count == 1
-        if alone, index == sc || index == sc + 1 { return }
+        let only = a.columns[sc].count == 1
+        if only, index == sc || index == sc + 1 { return }
         // Past the end makes a new column; then it's moved into place.
-        appendToSelected([.move(placement, column: a.columns.count, at: 0)])
+        appendToSelected((alone ? a.leavingAlone(placement) : []) + [.move(placement, column: a.columns.count, at: 0)])
         guard let now = arrangement else { return }
         let from = now.columns.count - 1
         var to = index
-        if alone, sc < index { to -= 1 }
+        if only, sc < index { to -= 1 }
         reorderColumn(from: from, to: min(to, from))
     }
 

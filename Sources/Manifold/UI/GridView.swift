@@ -5,7 +5,7 @@ protocol GridDelegate: AnyObject {
     func gridFocus(_ placement: PlacementID)
     /// A tile dropped at a place in the grid: into column `column` at
     /// index `at`, or a new column at `column`.
-    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool)
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
     /// A block from the sidebar dropped at a place in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
     /// Another arrangement dropped: its columns come over at `column`.
@@ -25,8 +25,9 @@ protocol GridDelegate: AnyObject {
     /// ⌥-click on a shown tile's pill: the first tile behind it takes its place.
     func gridSwapNext(_ placement: PlacementID)
     /// ⌥-drag: the dragged tile over another, which goes into the stack behind it.
-    func gridCover(_ placement: PlacementID, over target: PlacementID)
-    func gridStash(_ placement: PlacementID, behind: PlacementID)
+    /// `alone`: ⌘-drag, or a fanned pill's drag — the tile without its stack.
+    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool)
+    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
     /// ⌥-click: the block's path, folder by folder, each going there.
@@ -216,7 +217,9 @@ final class GridView: NSView, NSDraggingSource {
                         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
-                pill.onDragStart = stashed ? nil : { [weak self, weak pill] event in
+                // A fanned pill drags its tile out alone; the top's takes
+                // the stack along, unless ⌘ is held.
+                pill.onDragStart = { [weak self, weak pill] event in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill)
                 }
@@ -658,11 +661,15 @@ final class GridView: NSView, NSDraggingSource {
     /// Whether the tile drag under way began with ⌥ (or ⌥ is held now):
     /// dropped on a tile, it covers it, the tile going behind it.
     private var coverDrag = false
+    /// Whether the tile drag under way began with ⌘: the tile leaves its
+    /// stack behind (a fanned pill's tile has none to bring).
+    private var aloneDrag = false
 
     private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView) {
         let item = NSPasteboardItem()
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
         coverDrag = event.modifierFlags.contains(.option)
+        aloneDrag = event.modifierFlags.contains(.command)
         if event.modifierFlags.contains(.shift) {
             // ⇧-drag: not the tile but what it stands for — its path (a
             // terminal's folder, a page's address) — for wherever text or
@@ -717,6 +724,7 @@ final class GridView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         if !pathDrag { delegate?.gridDragChanged(false) }
         pathDrag = false
+        aloneDrag = false
         coverDrag = false
     }
 
@@ -826,9 +834,9 @@ final class GridView: NSView, NSDraggingSource {
         }
         if let placement = pb.string(forType: .manifoldPlacement) {
             if let onto = target.onto {
-                if dropCovers { delegate?.gridCover(placement, over: onto) } else { delegate?.gridStash(placement, behind: onto) }
+                if dropCovers { delegate?.gridCover(placement, over: onto, alone: aloneDrag) } else { delegate?.gridStash(placement, behind: onto, alone: aloneDrag) }
             } else {
-                delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
+                delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn, alone: aloneDrag)
             }
             return true
         }

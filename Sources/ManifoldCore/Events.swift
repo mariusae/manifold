@@ -545,7 +545,7 @@ extension ArrangementState {
 
     /// The stashed tiles right under a tile in its column: the stack
     /// behind it, which goes where it goes.
-    private func followers(of id: PlacementID) -> [Placement] {
+    func followers(of id: PlacementID) -> [Placement] {
         guard let (c, i) = locate(id) else { return [] }
         return Array(columns[c][(i + 1)...].prefix { isStashed($0.id) })
     }
@@ -638,9 +638,17 @@ extension ArrangementState {
             normalize()
         case let .remove(id):
             guard let (c, i) = locate(id) else { return }
+            // The first of the stack behind a shown tile takes its place
+            // and its room: what was behind comes back, as a $EDITOR's
+            // terminal does when the editor is taken off.
+            let heir = isStashed(id) ? nil : followers(of: id).first
             columns[c].remove(at: i)
-            giveBack(id, inColumn: c, wasAt: i)
-            var next: PlacementID? = columns[c].isEmpty ? nil : columns[c][min(i, columns[c].count - 1)].id
+            if let heir {
+                heights[heir.id] = heights.removeValue(forKey: id) ?? 0
+            } else {
+                giveBack(id, inColumn: c, wasAt: i)
+            }
+            var next: PlacementID? = heir?.id ?? (columns[c].isEmpty ? nil : columns[c][min(i, columns[c].count - 1)].id)
             if columns[c].isEmpty {
                 columns.remove(at: c)
                 fractions = Self.equalFractions(columns.count)

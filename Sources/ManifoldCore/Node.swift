@@ -283,6 +283,14 @@ extension ArrangementState {
         return [.move(id, column: c, at: j), .heights([id: h, top.id: h]), .focus(id)]
     }
 
+    /// Events before a shown tile leaves its stack alone (⌘-drag): the
+    /// first behind it takes its place and room, so the rest stay there;
+    /// the tile, stashed for the moment, then moves with no followers.
+    public func leavingAlone(_ id: PlacementID) -> [Event] {
+        guard !isStashed(id), let first = followers(of: id).first else { return [] }
+        return [.heights([first.id: height(of: id), id: 0])]
+    }
+
     /// A tile dropped on another's pill: into the stack behind it.
     public func stashing(_ id: PlacementID, behind target: PlacementID) -> [Event] {
         guard id != target, locate(id) != nil, locate(target) != nil, !isStashed(target) else { return [] }

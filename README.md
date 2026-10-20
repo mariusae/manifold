@@ -128,7 +128,10 @@ and Mona Sans (bundled).
 - Drag a tile by its pill: between two tiles to put it there, near a
   column's side for a new column there, onto a workspace in the
   sidebar for its active column, or between workspaces for one of
-  its own. Workspaces drag from the sidebar onto the grid the same
+  its own. A stack's top takes the stack along; ⌘-drag it to take it
+  alone, the next behind coming out in its place — a fanned-out pill
+  drags its tile out alone the same way. ⌘W on a stack's top takes it
+  off and the next comes out. Workspaces drag from the sidebar onto the grid the same
   way, their columns coming over.
 - **Links by hand**: ⇧-drag any block's pill onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
