@@ -60,6 +60,8 @@ final class Mentions {
                 }
             }
             return nil
+        case .block(let id):
+            return id
         case .path(let p):
             guard let path = Mention.resolve(p, from: b.path) else { return nil }
             var isDir: ObjCBool = false

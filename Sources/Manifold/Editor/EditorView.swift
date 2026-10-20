@@ -158,9 +158,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     @objc private func scrolled() { updateScrubber() }
 
+    func debugType(_ text: String) { textView.insert(text) }
+    func debugDrop(_ pb: NSPasteboard) -> Bool { textView.drop(pb, at: textView.caretRectInWindow(textView.primarySelection.head).origin) }
+
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
         case "pick": return scrubber.debugPick(Int(arg) ?? 0)
+        case "text": return String(textView.text.string.suffix(300))
         default: return "marks \(headings.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))\n" + scrubber.debugMarks
         }
     }

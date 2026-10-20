@@ -216,7 +216,7 @@ final class GridView: NSView, NSDraggingSource {
                     }()
                     badge.cards = tile.notes
                     badge.onOpen = { [weak self] note in self?.delegate?.gridOpenNote(note, from: id) }
-                    addSubview(badge, positioned: .above, relativeTo: pill)
+                    if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
                 tile.view.isHidden = stashed
             }
@@ -582,8 +582,8 @@ final class GridView: NSView, NSDraggingSource {
             guard let block = shown?.block, let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
             item.setString(text, forType: .string)
             if text.hasPrefix("/") { item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL) }
-            // And the block itself, as a link a note takes: [title](manifold:id).
-            item.setString(block.id.description, forType: .manifoldBlock)
+            // And the block as a link a note takes: [title](manifold:id).
+            // Not as a block: the grid takes no ⇧-drag, the views under it do.
             let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
             item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
             pathDrag = true
@@ -596,7 +596,7 @@ final class GridView: NSView, NSDraggingSource {
         let p = view.convert(event.locationInWindow, from: nil)
         dragItem.setDraggingFrame(NSRect(x: p.x - 24, y: p.y - image.size.height / 2, width: image.size.width,
                                          height: image.size.height), contents: image)
-        delegate?.gridDragChanged(true)
+        if !pathDrag { delegate?.gridDragChanged(true) }
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
@@ -618,7 +618,8 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        delegate?.gridDragChanged(false)
+        if !pathDrag { delegate?.gridDragChanged(false) }
+        pathDrag = false
     }
 
     /// On a tile's pill: into the stack behind it (a placement, not the

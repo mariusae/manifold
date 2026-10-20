@@ -14,7 +14,17 @@ struct NoteCard: Equatable {
 final class NoteBadge: NSView {
     var onOpen: ((BlockID) -> Void)?
     var cards: [NoteCard] = [] {
-        didSet { if cards != oldValue { rebuild() } }
+        didSet {
+            guard cards != oldValue else { return }
+            if cards.map(\.id) == oldValue.map(\.id) {
+                // The same notes, named afresh (a first line typed): in place.
+                for (p, c) in zip(pills, cards) where p.title != c.title { p.title = c.title }
+                badge.toolTip = cards.count == 1 ? cards[0].title : "\(cards.count) notes"
+                needsLayout = true
+            } else {
+                rebuild()
+            }
+        }
     }
 
     static let capsuleHeight: CGFloat = 22

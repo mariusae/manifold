@@ -977,12 +977,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The notes about a block: the `about` edges into it, each by the
     /// note's title, else its first words.
     private func notes(about block: BlockID) -> [NoteCard] {
-        let edges = hosts.neighborhood(of: block).inbound[.link(.about)] ?? []
+        // Straight from the graphs' inbound edges: this runs for every
+        // tile on every render.
         var seen = Set<BlockID>()
-        return edges.compactMap { e -> NoteCard? in
-            guard seen.insert(e.from).inserted, let n = hosts.block(e.from) else { return nil }
-            return NoteCard(id: e.from, title: Self.noteTitle(n))
+        var cards: [NoteCard] = []
+        for c in hosts.all {
+            for e in c.node.graph.edges(to: block, kind: .link(.about)) where e.isLive {
+                guard seen.insert(e.from).inserted, let n = hosts.block(e.from) else { continue }
+                cards.append(NoteCard(id: e.from, title: Self.noteTitle(n)))
+            }
         }
+        return cards
+    }
+
+    /// Debugging: typed into the focused editor, as keys would be.
+    func debugType(_ text: String) -> String {
+        guard let e = debugFocusedEditor else { return "no editor focused" }
+        e.debugType(text)
+        return "typed \(text.count)"
+    }
+
+    /// Debugging: a block ⇧-dragged into the focused editor, dropped at its caret.
+    func debugDrop(_ block: BlockID) -> String {
+        guard let e = debugFocusedEditor, let b = hosts.block(block) else { return "no editor focused, or no such block" }
+        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
+        pb.clearContents()
+        pb.setString("[\(b.displayTitle)](manifold:\(block.description))", forType: .manifoldBlockLink)
+        pb.setString(b.path ?? b.terminal?.cwd ?? "", forType: .string)
+        return e.debugDrop(pb) ? "dropped" : "refused"
     }
 
     /// What to call a note: its title, else its first line, else "Note".
@@ -3335,6 +3357,9 @@ extension MainWindowController: EditorViewDelegate {
         open(url.absoluteString, from: view.placement)
     }
 
+    /// A block dropped into a note as a link: the host's mention scan sees
+    /// the link in the text and makes the edge; this is just the edge at
+    /// once, for the badge and Links not to wait.
     func editor(_ view: EditorView, mention block: BlockID) {
         hosts.link(from: view.block, to: block, kind: .mention, context: hosts.block(block)?.displayTitle)
     }

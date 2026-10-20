@@ -214,6 +214,13 @@ enum DebugControl {
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
             return wc.debugStack(swap: a.first == "swap", index: a.count > 1 ? Int(a[1]) ?? 0 : 0)
+        case "type":
+            // "type <text>": into the focused editor.
+            return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
+        case "drop":
+            // "drop <block>": a block ⇧-dragged into the focused editor.
+            guard let id = BlockID(string: arg) else { return "usage: drop <host/ulid>" }
+            return wc?.debugDrop(id) ?? "no window"
         case "focused":
             return wc?.debugFocusedBlock?.description ?? "nothing focused"
         case "scrub":

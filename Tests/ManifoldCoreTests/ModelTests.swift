@@ -908,3 +908,14 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns.count == 1)
     #expect(a.columns[0].count == 5)
 }
+
+
+@Test func aBlockLinkInATextIsAMention() {
+    let id = BlockID(host: HostID("h4z3gpme3et"))
+    let found = Mention.find(in: "See [the terminal](manifold:\(id.description)) and [a file](notes/plan.md) and [[Ideas]].")
+    #expect(found.count == 3)
+    #expect(found[0].target == .block(id))
+    #expect(found[0].text == "the terminal")
+    #expect(found[1].target == .path("notes/plan.md"))
+    #expect(found[2].target == .title("Ideas"))
+}

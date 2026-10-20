@@ -10,6 +10,9 @@ public struct Mention: Equatable, Sendable {
         case title(String)
         /// A path, as written: relative to the file's folder unless absolute.
         case path(String)
+        /// `[words](manifold:host/ulid)`: a block by its id, as a ⇧-dragged
+        /// pill lands in a note.
+        case block(BlockID)
     }
     public var target: Target
     /// The words of the link.
@@ -43,7 +46,9 @@ public struct Mention: Equatable, Sendable {
                 var target = String(s[s.index(closeBracket, offsetBy: 2)..<closeParen])
                 if let space = target.firstIndex(of: " ") { target = String(target[..<space]) }
                 if let hash = target.firstIndex(of: "#") { target = String(target[..<hash]) }
-                if !target.isEmpty, !target.contains("://"), !target.hasPrefix("mailto:"), !words.contains("\n") {
+                if target.hasPrefix("manifold:"), let id = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+                    add(Mention(target: .block(id), text: words))
+                } else if !target.isEmpty, !target.contains("://"), !target.hasPrefix("mailto:"), !words.contains("\n") {
                     add(Mention(target: .path(target.removingPercentEncoding ?? target), text: words))
                 }
                 i = s.index(after: closeParen)

@@ -1228,7 +1228,11 @@ final class TextView: NSView, NSTextInputClient {
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
-        setSelections([Selection(at: offset(at: p))], scroll: false)
+        let at = offset(at: p)
+        // The caret follows the pointer; only moved when it would move.
+        if selections.count != 1 || selections[0].anchor != at || selections[0].head != at {
+            setSelections([Selection(at: at)], scroll: false)
+        }
         return .copy
     }
 
@@ -1237,16 +1241,26 @@ final class TextView: NSView, NSTextInputClient {
     var acceptsBlockLinks = false
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let pb = sender.draggingPasteboard
+        drop(sender.draggingPasteboard, at: convert(sender.draggingLocation, from: nil))
+    }
+
+    /// What a drop does: the text in where the point is; a block's link
+    /// noted as a mention.
+    func drop(_ pb: NSPasteboard, at p: NSPoint) -> Bool {
         guard isEditable, let text = Self.droppedText(pb, links: acceptsBlockLinks) else { return false }
         window?.makeFirstResponder(self)
-        let p = convert(sender.draggingLocation, from: nil)
         setSelections([Selection(at: offset(at: p))], scroll: false)
         insert(text)
-        if acceptsBlockLinks, pb.string(forType: .manifoldBlockLink) != nil, let id = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) {
+        if acceptsBlockLinks, let link = pb.string(forType: .manifoldBlockLink), let id = Self.blockID(inLink: link) {
             delegate?.textView(self, mentioned: id)
         }
         return true
+    }
+
+    /// The block a `[title](manifold:host/ulid)` link names.
+    static func blockID(inLink link: String) -> BlockID? {
+        guard let r = link.range(of: "](manifold:"), let end = link[r.upperBound...].firstIndex(of: ")") else { return nil }
+        return BlockID(string: String(link[r.upperBound..<end]))
     }
 
     static func droppedText(_ pb: NSPasteboard, links: Bool = false) -> String? {
