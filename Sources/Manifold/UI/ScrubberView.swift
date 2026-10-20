@@ -44,6 +44,32 @@ final class ScrubberView: NSView {
     private var dragging: (grab: CGFloat, start: Double)?
     private var dragged = false
     private var pulse: Timer?
+    /// Shown as macOS shows its overlay scroll bars: while the content
+    /// scrolls or grows, while the pointer is on it, and a moment after;
+    /// faded away otherwise. Always, when the system's scroll bars are
+    /// the kind that stay.
+    private var fade: Timer?
+    private var pointerIn = false
+
+    private func reveal() {
+        fade?.invalidate()
+        fade = nil
+        if alphaValue != 1 {
+            layer?.removeAllAnimations()
+            alphaValue = 1
+        }
+        guard NSScroller.preferredScrollerStyle == .overlay, !pointerIn, dragging == nil else { return }
+        fade = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.fade = nil
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.3
+                    self.animator().alphaValue = 0
+                }
+            }
+        }
+    }
 
     override var isFlipped: Bool { true }
 
@@ -56,6 +82,7 @@ final class ScrubberView: NSView {
 
     func update(marks: [ScrubMark], total: Double, offset: Double, shown: Double) {
         let changed = marks != self.marks || total != self.total
+        if total != self.total || offset != self.offset || shown != self.shown { reveal() }
         self.marks = marks.sorted { $0.at < $1.at }
         self.total = max(total, 1)
         self.offset = offset
@@ -79,7 +106,12 @@ final class ScrubberView: NSView {
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        if superview == nil { pulse?.invalidate(); pulse = nil }
+        if superview == nil { pulse?.invalidate(); pulse = nil; fade?.invalidate(); fade = nil } else { reveal() }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        pointerIn = true
+        reveal()
     }
 
     private static let pad: CGFloat = 4
@@ -163,6 +195,8 @@ final class ScrubberView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
+        pointerIn = false
+        reveal()
         guard dragging == nil else { return }
         hovered = nil
         needsDisplay = true
@@ -201,6 +235,7 @@ final class ScrubberView: NSView {
         let wasDragging = dragging != nil
         dragging = nil
         needsDisplay = true
+        reveal()
         if dragged || wasDragging { return }
         if let i = nearest(p.y) {
             onPick?(placed[i].mark)

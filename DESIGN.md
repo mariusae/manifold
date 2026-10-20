@@ -408,7 +408,10 @@ workspace.
 
 A terminal's scroll bar is a scrubber (§3.1, as Prism's): the strip's
 length is the screen and its history, the knob the viewport, and the
-ticks the shell's commands — its outline. The shells Manifold starts
+ticks the shell's commands — its outline. It comes and goes as an
+overlay scroll bar does — shown while the content scrolls or grows and
+while the pointer is on it, fading a second after — unless the system's
+scroll bars are set to stay. The shells Manifold starts
 carry a hook (zsh's `preexec`, fish's `fish_preexec`, bash's DEBUG trap)
 that writes the command line as `OSC 7502 ; line ST` before running it;
 the host's status scanner (§3.7) sees it beside the OSC 133 marks and

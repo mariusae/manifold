@@ -356,6 +356,9 @@ when you find it again.
   the same on the clipboard. An editor's and a preview's scroll bars
   are scrubbers too, their ticks the headings of a Markdown text (or a
   note): hover for the heading, click to go to it. Drag the knob or click the track to scroll as ever.
+  A scrubber shows as macOS shows its scroll bars: while you scroll,
+  while the pointer rests on it, and a moment after, fading otherwise
+  (and staying, if your scroll bars are set to always show).
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

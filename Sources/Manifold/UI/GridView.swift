@@ -943,7 +943,6 @@ final class GridView: NSView, NSDraggingSource {
         while sheetLayers.count < wanted.count {
             let l = CAShapeLayer()
             l.lineWidth = 0.5
-            l.zPosition = -1
             layer?.insertSublayer(l, at: 0)
             sheetLayers.append(l)
         }
@@ -951,6 +950,9 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.setDisableActions(true)
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (l, (rect, level)) in zip(sheetLayers, wanted) {
+                // Under the cards, and the nearer sheet (the wider) over the
+                // farther, whichever layer each got.
+                l.zPosition = -CGFloat(level)
                 l.path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
                 l.fillColor = Theme.sheet(level: level).cgColor
                 l.strokeColor = Theme.text.withAlphaComponent(0.18).cgColor
