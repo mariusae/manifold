@@ -257,8 +257,15 @@ final class ArrangementDiagram: NSView {
     var symbolOf: (Lens) -> String = { _ in "doc" }
 
     override func draw(_ dirtyRect: NSRect) {
-        Theme.sheet(level: 2).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+        // The workspace as the window shows it: cards on a wash.
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let stops = dark
+            ? [NSColor(calibratedHue: 0.70, saturation: 0.35, brightness: 0.22, alpha: 1), NSColor(calibratedHue: 0.06, saturation: 0.3, brightness: 0.2, alpha: 1)]
+            : [NSColor(calibratedHue: 0.72, saturation: 0.18, brightness: 0.98, alpha: 1), NSColor(calibratedHue: 0.07, saturation: 0.18, brightness: 1, alpha: 1)]
+        NSGraphicsContext.current?.saveGraphicsState()
+        NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).addClip()
+        NSGradient(starting: stops[0], ending: stops[1])?.draw(in: bounds, angle: -35)
+        NSGraphicsContext.current?.restoreGraphicsState()
         let n = state.columns.count
         guard n > 0 else {
             let s = NSAttributedString(string: state.isNamed ? "“\(state.title!)”, empty" : "Empty",
@@ -289,11 +296,16 @@ final class ArrangementDiagram: NSView {
         for p in column {
             let h = max(20, usable * CGFloat(state.height(of: p.id)))
             let r = NSRect(x: rect.minX, y: y - h, width: rect.width, height: h)
-            let path = NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5)
-            Theme.windowBackground.setFill()
+            // A card as the grid draws one: rounded, borderless, the
+            // focused one ringed in the accent.
+            let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
+            Theme.panel.setFill()
             path.fill()
-            Theme.sheetEdge(hovered: p.id == state.focused).setStroke()
-            path.stroke()
+            if p.id == state.focused {
+                Theme.accent.withAlphaComponent(0.45).setStroke()
+                path.lineWidth = 1.5
+                path.stroke()
+            }
             drawTitle(p, in: r, font: font)
             y -= h + gap
         }

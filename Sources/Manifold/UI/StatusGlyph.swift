@@ -180,13 +180,12 @@ final class StatusGlyph: NSView {
                 (failed ? Theme.statusError.withAlphaComponent(0.6) : Theme.secondaryText.withAlphaComponent(0.8)).setStroke()
                 check.stroke()
             } else {
-                // Not yet read: the check within a faint ring, a little darker.
-                let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-                ring.lineWidth = 1.2
-                (failed ? Theme.statusError : Theme.text).withAlphaComponent(0.3).setStroke()
-                ring.stroke()
-                (failed ? Theme.statusError : Theme.text.withAlphaComponent(0.85)).setStroke()
-                check.lineWidth = 1.5
+                // Not yet read: a filled disc with the check cut in it.
+                let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+                (failed ? Theme.statusError : Theme.text.withAlphaComponent(0.88)).setFill()
+                disc.fill()
+                Theme.panel.setStroke()
+                check.lineWidth = 1.6
                 check.stroke()
             }
         case .offline:

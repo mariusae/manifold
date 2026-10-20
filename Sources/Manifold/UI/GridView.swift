@@ -114,6 +114,16 @@ final class GridView: NSView, NSDraggingSource {
 
     var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
 
+    /// A card's body: the content view rounded at the bottom, as every
+    /// place that shows a tile (the grid, the overview) has it.
+    static func styleBody(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = corner
+        view.layer?.cornerCurve = .continuous
+        view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        view.layer?.masksToBounds = true
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -147,11 +157,7 @@ final class GridView: NSView, NSDraggingSource {
         for column in columns {
             for tile in column {
                 if tile.view.superview !== self, !switching.contains(tile.shown.id) {
-                    tile.view.wantsLayer = true
-                    tile.view.layer?.cornerRadius = Self.corner
-                    tile.view.layer?.cornerCurve = .continuous
-                    tile.view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-                    tile.view.layer?.masksToBounds = true
+                    Self.styleBody(tile.view)
                     addSubview(tile.view)
                 }
                 let pill = pills[tile.shown.id] ?? {
@@ -974,6 +980,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
     var onClose: (() -> Void)?
+    /// Maximize and close shown; off where the bar only names the tile.
+    var showsButtons = true { didSet { if showsButtons != oldValue { needsLayout = true } } }
     private var downAt: NSPoint?
     private var focused = false
     private var maximized = false
@@ -1187,12 +1195,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         x += 22
         var right = bounds.width - 10
-        close.isHidden = stashed
+        close.isHidden = stashed || !showsButtons
         if !close.isHidden {
             close.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
         }
-        corner.isHidden = stashed
+        corner.isHidden = stashed || !showsButtons
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22

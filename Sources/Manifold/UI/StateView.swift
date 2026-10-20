@@ -39,10 +39,11 @@ final class StateView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        // Over the window's wash, as the grid is: the cards as the grid has them.
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
+        layer?.backgroundColor = .clear
         header.wantsLayer = true
-        header.themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        header.layer?.backgroundColor = .clear
         addSubview(header)
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = Theme.text
@@ -86,10 +87,14 @@ final class StateView: NSView {
         self.title.stringValue = title
         count.stringValue = items.isEmpty ? "nothing here" : "\(items.count) block\(items.count == 1 ? "" : "s")"
         for item in items {
-            if item.view.superview !== document { document.addSubview(item.view) }
+            if item.view.superview !== document {
+                GridView.styleBody(item.view)
+                document.addSubview(item.view)
+            }
             let block = item.shown.placement.block
             let pill = pills[block] ?? {
                 let p = TilePill()
+                p.showsButtons = false
                 pills[block] = p
                 document.addSubview(p)
                 return p
@@ -128,9 +133,10 @@ final class StateView: NSView {
         case .list:
             for item in items {
                 let block = item.shown.placement.block
-                item.view.frame = NSRect(x: m, y: y, width: width - 2 * m, height: Self.listHeight)
+                // A card as the grid lays one out: the bar at the top, the content beneath.
+                item.view.frame = NSRect(x: m, y: y + GridView.barHeight, width: width - 2 * m, height: Self.listHeight - GridView.barHeight)
                 if let pill = pills[block] {
-                    pill.frame = NSRect(x: m, y: y, width: width - 2 * m, height: GridView.band)
+                    pill.frame = NSRect(x: m, y: y, width: width - 2 * m, height: GridView.barHeight)
                     document.addSubview(pill, positioned: .above, relativeTo: item.view)
                 }
                 y += Self.listHeight + m
@@ -142,9 +148,9 @@ final class StateView: NSView {
                 let block = item.shown.placement.block
                 let x = m + CGFloat(i % columns) * (cw + m)
                 let top = m + CGFloat(i / columns) * (Self.cellHeight + m)
-                item.view.frame = NSRect(x: x, y: top, width: cw, height: Self.cellHeight)
+                item.view.frame = NSRect(x: x, y: top + GridView.barHeight, width: cw, height: Self.cellHeight - GridView.barHeight)
                 if let pill = pills[block] {
-                    pill.frame = NSRect(x: x, y: top, width: cw, height: GridView.band)
+                    pill.frame = NSRect(x: x, y: top, width: cw, height: GridView.barHeight)
                     document.addSubview(pill, positioned: .above, relativeTo: item.view)
                 }
                 y = max(y, top + Self.cellHeight + m)
@@ -167,8 +173,4 @@ final class StateView: NSView {
         if event.keyCode == 53 { onLeave?() } else { super.keyDown(with: event) }
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        Theme.divider.setFill()
-        bounds.fill()
-    }
 }

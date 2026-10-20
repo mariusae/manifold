@@ -334,7 +334,7 @@ final class StatusCountsView: NSView {
     }
 
     var wantedWidth: CGFloat {
-        values.enumerated().reduce(0) { w, e in e.element == 0 ? w : w + StatusGlyph.size + 3 + ceil(labels[e.offset].intrinsicContentSize.width) + 10 }
+        values.enumerated().reduce(0) { w, e in e.element == 0 ? w : w + StatusGlyph.size + 5 + ceil(labels[e.offset].intrinsicContentSize.width) + 14 }
     }
 
     override func layout() {
@@ -347,10 +347,10 @@ final class StatusCountsView: NSView {
             labels[i].isHidden = !shown
             guard shown else { continue }
             glyphs[i].frame = NSRect(x: x, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
-            x += StatusGlyph.size + 3
+            x += StatusGlyph.size + 5
             let lw = ceil(labels[i].intrinsicContentSize.width)
             labels[i].frame = NSRect(x: x, y: (h - 15) / 2, width: lw, height: 15)
-            x += lw + 10
+            x += lw + 14
         }
     }
 
