@@ -77,6 +77,9 @@ final class TextView: NSView, NSTextInputClient {
     private var pillLines: [Int: [(BlockID, PillLook)]] = [:]
     /// The lines that are code fences, found once per text.
     private var fenceLines: Set<Int>?
+    /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
+    private var pillPhase: Double = 0
+    private var pillTimer: Timer?
     var tabWidth = 4
     var isEditable = true
     static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
@@ -146,6 +149,8 @@ final class TextView: NSView, NSTextInputClient {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    deinit { pillTimer?.invalidate() }
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     /// A click in a window not yet key counts: it places the caret, or follows a link.
@@ -191,6 +196,7 @@ final class TextView: NSView, NSTextInputClient {
     /// The blocks' pills, as their looks are now: lines drawn with a
     /// look since changed are laid out again.
     func refreshPills() {
+        updatePillTimer()
         guard markdown, let pillLook, !pillLines.isEmpty else { return }
         let stale = pillLines.filter { $0.value.contains { pillLook($0.0) != $0.1 } }.map(\.key)
         guard !stale.isEmpty else { return }
@@ -199,6 +205,25 @@ final class TextView: NSView, NSTextInputClient {
             pillLines.removeValue(forKey: n)
         }
         needsDisplay = true
+    }
+
+    /// A pill running (three travelling dots) keeps its lines redrawn.
+    private func updatePillTimer() {
+        let running = markdown && pillLines.values.contains { $0.contains { if case .working(nil) = $0.1.status { return true } else { return false } } }
+        if running, pillTimer == nil {
+            let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.pillPhase += 0.4
+                for n in self.pillLines.keys where n < self.text.lineCount {
+                    self.setNeedsDisplay(NSRect(x: 0, y: self.top(ofLine: n), width: self.bounds.width, height: CGFloat(self.layout(line: n).rows.count) * self.lineHeight))
+                }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            pillTimer = t
+        } else if !running, let t = pillTimer {
+            t.invalidate()
+            pillTimer = nil
+        }
     }
 
     private func invalidateAll() {
@@ -274,6 +299,7 @@ final class TextView: NSView, NSTextInputClient {
                 return look
             }
             if drawn.isEmpty { pillLines.removeValue(forKey: n) } else { pillLines[n] = drawn }
+            updatePillTimer()
         }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var rows: [CTLine] = []
@@ -473,7 +499,7 @@ final class TextView: NSView, NSTextInputClient {
                 ctx.saveGState()
                 ctx.translateBy(x: 0, y: g.minY + g.maxY)
                 ctx.scaleBy(x: 1, y: -1)
-                StatusGlyph.draw(status, in: g, phase: 0)
+                StatusGlyph.draw(status, in: g, phase: pillPhase)
                 ctx.restoreGState()
             }
         }
