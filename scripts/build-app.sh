@@ -60,6 +60,10 @@ if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.ic
   iconutil -c icns "$iconset" -o build/AppIcon.icns
 fi
 cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# The Finder and the Dock cache a bundle's icon by its path: the bundle
+# is touched and registered again so a new icon shows at the next launch.
+touch "$app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
 
 codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/manifold" >/dev/null 2>&1
