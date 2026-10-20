@@ -10,8 +10,10 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, propose proposal: Proposal)
     /// A web address was ⌘-clicked.
     func editor(_ view: EditorView, open url: URL)
-    /// A block was dropped in as a link: the text mentions it.
-    func editor(_ view: EditorView, mention block: BlockID)
+    /// A block was ⇧-dragged in as a link: linked to this one.
+    func editor(_ view: EditorView, linkedFrom block: BlockID)
+    /// A link in the text was clicked: a block's pill, or an address.
+    func editor(_ view: EditorView, follow target: String)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
@@ -104,6 +106,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
         textView.markdown = hasOutline
+        textView.showsLineNumbers = !hasOutline
+        textView.pillLook = { [weak self] id in self?.blockLook?(id) }
         status.font = .systemFont(ofSize: 11.5)
         status.textColor = Theme.text
         status.lineBreakMode = .byTruncatingTail
@@ -279,8 +283,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// Markdown shown richly (notes, .md files) — or as written, as the
     /// pill's menu chooses; kept with the placement's view state.
     var richMarkdown = true {
-        didSet { textView.markdown = hasOutline && richMarkdown }
+        didSet {
+            textView.markdown = hasOutline && richMarkdown
+            // Rich, a note has no line numbers: it's prose.
+            textView.showsLineNumbers = !(hasOutline && richMarkdown)
+        }
     }
+    /// A block's look for its pill in the text, from whoever knows blocks.
+    var blockLook: ((BlockID) -> PillLook?)?
+    /// The blocks' looks may have changed: pills drawn with old ones are redrawn.
+    func refreshPills() { textView.refreshPills() }
     var onToggleMarkdown: ((_ rich: Bool) -> Void)?
 
     var pillItems: [NSMenuItem] {

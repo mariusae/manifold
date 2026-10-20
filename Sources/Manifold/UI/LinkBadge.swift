@@ -1,25 +1,36 @@
 import AppKit
 import ManifoldCore
 
-/// A note about a block, as its tile's badge names it.
-struct NoteCard: Equatable {
-    var id: BlockID
+/// A link a block has by hand, as its tile's badge names it: to a block
+/// (outbound, →) or from one (inbound, ←).
+struct LinkCard: Equatable {
+    /// The edge's id, to break it by.
+    var link: String
+    var block: BlockID
     var title: String
+    var symbol: String
+    var outbound: Bool
 }
 
-/// The notes about a block (§3.5): a small capsule at the tile's lower
-/// right with a note's symbol and how many there are. The pointer on it
-/// fans the notes out above it, each a capsule with its first words, to
-/// click and go to; one note alone opens on a click.
-final class NoteBadge: NSView {
+/// A block's links by hand (§3.5): a small capsule at the tile's upper
+/// right with a link's symbol and how many there are. The pointer on it
+/// fans the links out below, each a capsule with an arrow for its
+/// direction, the block's symbol and name, to click and go to, and an ×
+/// that breaks the link — one edge, so in both readings at once. One link
+/// alone opens on a click.
+final class LinkBadge: NSView {
     var onOpen: ((BlockID) -> Void)?
-    var cards: [NoteCard] = [] {
+    var onBreak: ((String) -> Void)?
+    var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
-            if cards.map(\.id) == oldValue.map(\.id) {
-                // The same notes, named afresh (a first line typed): in place.
-                for (p, c) in zip(pills, cards) where p.title != c.title { p.title = c.title }
-                badge.toolTip = cards.count == 1 ? cards[0].title : "\(cards.count) notes"
+            if cards.map(\.link) == oldValue.map(\.link) {
+                // The same links, named afresh (a first line typed): in place.
+                for (p, c) in zip(pills, cards) {
+                    if p.title != c.title { p.title = c.title }
+                    if p.symbol != c.symbol { p.symbol = c.symbol }
+                }
+                badge.toolTip = tooltip
                 needsLayout = true
             } else {
                 rebuild()
@@ -29,7 +40,7 @@ final class NoteBadge: NSView {
 
     static let capsuleHeight: CGFloat = 22
     static let step: CGFloat = 26
-    static let mostWidth: CGFloat = 240
+    static let mostWidth: CGFloat = 260
 
     /// At a tile's upper right the fan opens downward.
     var fansDown = false { didSet { if fansDown != oldValue { needsLayout = true } } }
@@ -40,18 +51,22 @@ final class NoteBadge: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        badge.symbol = "note.text"
+        badge.symbol = "link"
         badge.onClick = { [weak self] in
             guard let self else { return }
-            if self.cards.count == 1, let c = self.cards.first { self.onOpen?(c.id) } else { self.fanned.toggle() }
+            if self.cards.count == 1, let c = self.cards.first { self.onOpen?(c.block) } else { self.fanned.toggle() }
         }
         addSubview(badge)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// How much of the tile it needs: the capsule, and room above for
-    /// the fan.
+    private var tooltip: String {
+        if cards.count == 1, let c = cards.first { return (c.outbound ? "Links to " : "Linked from ") + c.title }
+        return "\(cards.count) links"
+    }
+
+    /// How much of the tile it needs: the capsule, and room for the fan.
     var wantedSize: NSSize {
         let widest = max(badge.wantedWidth, pills.map(\.wantedWidth).max() ?? 0)
         return NSSize(width: min(widest, Self.mostWidth), height: Self.capsuleHeight + CGFloat(cards.count) * Self.step + 4)
@@ -61,16 +76,19 @@ final class NoteBadge: NSView {
         for p in pills { p.removeFromSuperview() }
         pills = cards.map { card in
             let p = Capsule()
-            p.symbol = "note.text"
+            p.direction = card.outbound ? "arrow.right" : "arrow.left"
+            p.symbol = card.symbol
             p.title = card.title
+            p.toolTip = card.outbound ? "Links to it" : "Linked from it"
             p.isHidden = true
-            let id = card.id
-            p.onClick = { [weak self] in self?.onOpen?(id) }
+            let block = card.block, link = card.link
+            p.onClick = { [weak self] in self?.onOpen?(block) }
+            p.onBreak = { [weak self] in self?.onBreak?(link) }
             addSubview(p)
             return p
         }
         badge.title = cards.count == 1 ? "" : "\(cards.count)"
-        badge.toolTip = cards.count == 1 ? cards[0].title : "\(cards.count) notes"
+        badge.toolTip = tooltip
         needsLayout = true
     }
 
@@ -131,56 +149,92 @@ final class NoteBadge: NSView {
 
     /// Debugging: the fan, as the pointer resting on the badge would open it.
     func debugFan(_ open: Bool) { fanned = open }
-    var debugTitles: [String] { pills.map(\.title) }
+    var debugTitles: [String] { pills.map { ($0.direction == "arrow.right" ? "→ " : "← ") + $0.title } }
+    /// Debugging: the × of the nth fanned link, as clicked.
+    func debugBreak(_ n: Int) -> Bool {
+        guard n < pills.count else { return false }
+        pills[n].onBreak?()
+        return true
+    }
 
-    /// A small opaque capsule: a symbol and a few words.
+    /// A small opaque capsule: an arrow for the direction, a symbol, a
+    /// few words, and an × to break the link.
     final class Capsule: NSView {
         var onClick: (() -> Void)?
+        /// With this set, an × at the right end, to call.
+        var onBreak: (() -> Void)? { didSet { close.isHidden = onBreak == nil; needsLayout = true } }
+        private let arrow = NSImageView()
         private let icon = NSImageView()
         private let label = NSTextField(labelWithString: "")
-        var symbol = "note.text" { didSet { icon.image = Theme.symbol(symbol, size: 10) } }
+        private let close = NSImageView()
+        var direction: String? { didSet { arrow.image = direction.flatMap { Theme.symbol($0, size: 9, weight: .semibold) }; arrow.isHidden = direction == nil; needsLayout = true } }
+        var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 10) } }
         var title = "" { didSet { label.stringValue = title; needsLayout = true } }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
-            layer?.cornerRadius = NoteBadge.capsuleHeight / 2
+            layer?.cornerRadius = LinkBadge.capsuleHeight / 2
             layer?.cornerCurve = .continuous
             layer?.borderWidth = 0.5
             themed {
                 $0.layer?.backgroundColor = Theme.panel.cgColor
                 $0.layer?.borderColor = Theme.panelBorder.cgColor
             }
+            arrow.contentTintColor = Theme.secondaryText
+            arrow.isHidden = true
             icon.image = Theme.symbol(symbol, size: 10)
             icon.contentTintColor = Theme.secondaryText
             label.font = .systemFont(ofSize: 11, weight: .medium)
             label.textColor = Theme.text
             label.lineBreakMode = .byTruncatingTail
             label.maximumNumberOfLines = 1
+            close.image = Theme.symbol("xmark", size: 8, weight: .bold)
+            close.contentTintColor = Theme.secondaryText
+            close.isHidden = true
+            close.toolTip = "Break the link"
+            addSubview(arrow)
             addSubview(icon)
             addSubview(label)
+            addSubview(close)
         }
 
         required init?(coder: NSCoder) { fatalError() }
 
+        private var arrowWidth: CGFloat { direction == nil ? 0 : 14 }
+        private var closeWidth: CGFloat { onBreak == nil ? 0 : 18 }
+
         var wantedWidth: CGFloat {
             let text = title.isEmpty ? 0 : ceil(label.intrinsicContentSize.width) + 12
-            return 10 + 14 + text + 10
+            return 10 + arrowWidth + 14 + text + closeWidth + 10
         }
 
         override func layout() {
             super.layout()
             let h = bounds.height
-            icon.frame = NSRect(x: 9, y: (h - 12) / 2, width: 14, height: 12)
+            var x: CGFloat = 9
+            if !arrow.isHidden {
+                arrow.frame = NSRect(x: x, y: (h - 10) / 2, width: 10, height: 10)
+                x += arrowWidth
+            }
+            icon.frame = NSRect(x: x, y: (h - 12) / 2, width: 14, height: 12)
+            x += 20
+            let right = bounds.width - 10 - closeWidth
+            if !close.isHidden { close.frame = NSRect(x: bounds.width - 10 - 12, y: (h - 12) / 2, width: 12, height: 12) }
             let lh = ceil(label.intrinsicContentSize.height)
-            label.frame = NSRect(x: 29, y: ((h - lh) / 2).rounded(), width: max(bounds.width - 39, 0), height: lh)
+            label.frame = NSRect(x: x, y: ((h - lh) / 2).rounded(), width: max(right - x, 0), height: lh)
             label.isHidden = title.isEmpty
         }
+
+        /// Where the × takes a click: its end of the capsule.
+        private var closeRect: NSRect { NSRect(x: bounds.width - 10 - closeWidth, y: 0, width: closeWidth + 10, height: bounds.height) }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
         override func mouseDown(with event: NSEvent) {}
         override func mouseUp(with event: NSEvent) {
-            if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+            let p = convert(event.locationInWindow, from: nil)
+            guard bounds.contains(p) else { return }
+            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?() }
         }
     }
 }

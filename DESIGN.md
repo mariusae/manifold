@@ -340,17 +340,23 @@ the kind and the message; `done` a filled dot in the accent; `error` a
 filled dot in red; `idle` nothing. The Dock badge counts the blocks
 blocked and done.
 
-### 3.10 Notes about blocks
+### 3.10 Links by hand, and notes about blocks
 
-A note made with a block focused (⇧⌘N) is *about* it: an `about` edge
-from the note to the block (§3.5), one more link kind. The block's
-tile wears its notes as a badge at the upper right, fanning down when
-hovered; Links lists them under *notes* (inbound) and *about*
-(outbound). A block ⇧-dragged into a note lands as a Markdown link to
-it, `[title](manifold:host/ulid)`, and a `mention` edge; the preview
-styles such links as pills and the editor ⌘-clicks them, both going
-to the block. Annotation is thus the graph again: nothing new is
-stored but edges and the note's own text.
+A block ⇧-dragged onto any tile is *linked* to the tile's block: one
+`linked` edge (§3.5), from the dragged block to the target, read both
+ways — the source *links*, the target is *linked from*. Both tiles
+wear a badge at the upper right, fanning down when hovered: each link
+with an arrow for its direction, clicked to go to, and an × that ends
+the edge (`unlink`), so in both readings at once. Links lists them
+under *links* (outbound) and *linked from* (inbound). A note made
+with a block focused (⇧⌘N) is the same edge, from the block to the
+note, as if the block had been ⇧-dragged into it. Into a note the
+block also lands as a Markdown link, `[title](manifold:host/ulid)`,
+hence a `mention` edge too; the editor draws such a link as the
+block's pill — symbol, name and status as the tile's pill has them,
+redrawn as they change — and the preview as a small pill, either
+clicked to go to the block. Annotation is thus the graph again:
+nothing new is stored but edges and the note's own text.
 
 ### 3.9 Hosts that come and go
 
@@ -513,6 +519,7 @@ A link is `Link{from, to, kind, at}` in the `links` shard of the host the
 | `cwd` | a terminal's working directory (to the directory block) |
 | `source` | a preview, a diff side |
 | `mention` | `[[title]]` or a block URL in text |
+| `linked` | a block ⇧-dragged onto a tile; a note made about a block (block → note) |
 | `placed` | placed next to each other in a workspace, by you |
 
 Each host indexes the links pointing at its blocks; a client merges the

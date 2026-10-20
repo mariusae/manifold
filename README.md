@@ -122,25 +122,35 @@ and Mona Sans (bundled).
   sidebar for its active column, or between workspaces for one of
   its own. Workspaces drag from the sidebar onto the grid the same
   way, their columns coming over.
-- **Notes about blocks** (⇧⌘N with a block focused) are an edge from
-  the note to the block: the block's tile wears a badge at its upper
-  right, a note's symbol and how many, which fans the notes out below
-  it when the pointer rests there — click one to open it beside — and
-  in Links the note is under *about*, the block's notes under *notes*.
-  ⇧-drag a block's pill into a note (or any Markdown text) and it lands
-  as a link, `[title](manifold:…)`, shown as a chip of the title in
-  the editor and a small pill in the preview, ⌘-clicked in the editor,
-  either going to the block; the note then *mentions* the block, which
-  Links shows both ways. So a web of annotations grows: notes about
-  blocks, blocks in notes.
-- **Notes are Markdown, shown richly** as you write: headings bold,
-  `**bold**` and `*italic*` in their faces, `` `code` `` in its font on
-  a tint, list markers and quotes set off, links underlined with their
-  addresses dimmed, a block's link collapsed to a chip of its name. Every
-  character stays where it is — the line the caret is on shows as
-  written, markers and all — and the file is plain Markdown. The pill's
-  menu has Show Raw Markdown, kept per tile. Markdown files get the
-  same.
+- **Links by hand**: ⇧-drag any block's pill onto any tile and the
+  dragged block *links* to the tile's block — one edge, read both
+  ways. Both tiles wear a badge at the upper right, a link's symbol
+  and how many; the pointer resting there fans the links out below,
+  each with an arrow for its direction (→ links to, ← linked from),
+  the block's symbol and name, to click and go to, and an × that
+  breaks the link, both ways at once. Links lists them under *links*
+  and *linked from*. A note made with a block focused (⇧⌘N) is linked
+  the same way, from the block to the note, as if the block had been
+  ⇧-dragged into it. Dropped into a note (or any Markdown text) the
+  block also lands in the text, `[title](manifold:…)`, shown as its
+  pill — the block's symbol, name and status, live, as its tile's
+  pill shows them — in the editor and as a small pill in the preview,
+  clicked to go to the block; the note then *mentions* it too. So a
+  web of annotations grows: notes about blocks, blocks in notes,
+  blocks linked to blocks.
+- **Notes are Markdown, shown richly** as you write, the markers out
+  of sight as in Prism: headings bold, `**bold**` and `*italic*` in
+  their faces, `` `code` `` in its font on a tint, fenced code blocks
+  in the code font edge to edge, list markers and quotes set off,
+  links as their words, clicked to follow; a block's link is its pill,
+  live. Every character stays where it is — the line the caret is on
+  shows as written, markers dimmed — and the file is plain Markdown; a
+  note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌘⇧C wrap the selection
+  in bold, italic, strikethrough and code marks, or take them off.
+  Return in a list carries it on — the next marker or number, an empty
+  box in a task list — a quote with its mark, and on an empty item ends
+  it. The pill's menu has Show Raw Markdown, kept per tile. Markdown
+  files get the same.
 - **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
   workspace off the desk. Neither loses anything: the block, with its
   history, is a ⌘O away, and a workspace taken off sits under
@@ -266,9 +276,9 @@ when you find it again.
   Ghostty itself finds through the screen and its history and marks
   every match.
 - **Copy on Select**: text selected with the mouse in a terminal is on
-  the clipboard at once (not in full screen, where selecting is for
-  reading); off and on from the terminal's pill menu, for every
-  terminal.
+  the clipboard at once, the selection pulsing once to say so (not in
+  full screen, where selecting is for reading); off and on from the
+  terminal's pill menu, for every terminal.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

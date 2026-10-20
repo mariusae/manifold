@@ -11,6 +11,8 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
     /// Copy on Select was switched from the pill's menu: a setting.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
+    /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
+    func terminal(_ view: TerminalView, linkedFrom block: BlockID)
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
@@ -507,7 +509,55 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if Self.copyOnSelect, !(window?.styleMask.contains(.fullScreen) ?? false), let text = selectedText, !text.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+            pulseSelection(text)
         }
+    }
+
+    /// The selection just copied, pulsed once: its cells lit for a moment
+    /// and fading, so the copy is seen to happen (§3.8).
+    private func pulseSelection(_ text: String) {
+        guard let surface, let layer else { return }
+        var t = ghostty_text_s()
+        guard ghostty_surface_read_selection(surface, &t) else { return }
+        ghostty_surface_free_text(surface, &t)
+        let size = ghostty_surface_size(surface)
+        guard size.cell_width_px > 0, size.cell_height_px > 0, size.columns > 0, t.offset_len > 0 else { return }
+        let scale = window?.backingScaleFactor ?? 2
+        let cw = CGFloat(size.cell_width_px) / scale, ch = CGFloat(size.cell_height_px) / scale
+        let cols = Int(size.columns)
+        // The offsets count cells of the viewport; the point is the first
+        // cell's left and baseline, in points from the surface's top left.
+        let start = Int(t.offset_start), end = start + Int(t.offset_len)
+        let r0 = start / cols, c0 = start % cols
+        let r1 = end / cols, c1 = end % cols
+        let left = CGFloat(t.tl_px_x) - CGFloat(c0) * cw
+        let firstTop = CGFloat(t.tl_px_y) - ch * 0.8
+        func rowRect(_ r: Int, from: Int, to: Int) -> NSRect {
+            NSRect(x: left + CGFloat(from) * cw, y: bounds.height - firstTop - CGFloat(r - r0 + 1) * ch, width: CGFloat(max(to - from, 1)) * cw, height: ch)
+        }
+        let path = CGMutablePath()
+        if r1 == r0 {
+            path.addRect(rowRect(r0, from: c0, to: c1))
+        } else {
+            path.addRect(rowRect(r0, from: c0, to: cols))
+            for r in (r0 + 1)..<r1 { path.addRect(rowRect(r, from: 0, to: cols)) }
+            if c1 > 0 { path.addRect(rowRect(r1, from: 0, to: c1)) }
+        }
+        let pulse = CAShapeLayer()
+        pulse.path = path
+        pulse.fillColor = Theme.accent.withAlphaComponent(0.45).cgColor
+        pulse.opacity = 0
+        pulse.frame = bounds
+        layer.addSublayer(pulse)
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0, 1, 0]
+        fade.keyTimes = [0, 0.25, 1]
+        fade.duration = 0.5
+        fade.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeIn)]
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { pulse.removeFromSuperlayer() }
+        pulse.add(fade, forKey: "pulse")
+        CATransaction.commit()
     }
 
     var pillItems: [NSMenuItem] {
@@ -782,9 +832,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let surface, let text = Self.dropText(sender.draggingPasteboard) else { return false }
+        let pb = sender.draggingPasteboard
+        guard let surface, let text = Self.dropText(pb) else { return false }
         window?.makeFirstResponder(self)
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
+            delegate?.terminal(self, linkedFrom: block)
+        }
         return true
     }
 

@@ -223,6 +223,10 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "badge":
+            // "badge": the focused tile's link badge fanned, its links listed;
+            // "badge break n": the nth link's × clicked.
+            return wc?.debugBadge(arg) ?? "no window"
         case "focused":
             return wc?.debugFocusedBlock?.description ?? "nothing focused"
         case "scrub":
@@ -368,6 +372,16 @@ enum DebugControl {
         case "key":
             // "key <selector>": a standard key command to the focused text view.
             guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
+            if arg.hasPrefix("cmd+") || arg.hasPrefix("cmd+shift+") {
+                // "key cmd+b", "key cmd+shift+x": a shortcut, as a key press.
+                let shift = arg.contains("shift+")
+                let ch = String(arg.split(separator: "+").last ?? "")
+                var flags: NSEvent.ModifierFlags = [.command]
+                if shift { flags.insert(.shift) }
+                guard let window = wc?.window, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: ch, charactersIgnoringModifiers: ch, isARepeat: false, keyCode: 0) else { return "no event" }
+                tv.keyDown(with: e)
+                return "ok"
+            }
             tv.doCommand(by: Selector(arg))
             return "ok"
         case "editor":

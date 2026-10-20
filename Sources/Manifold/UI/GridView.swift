@@ -34,8 +34,12 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
-    /// A note from a tile's badge: opened beside the tile.
-    func gridOpenNote(_ note: BlockID, from placement: PlacementID)
+    /// A linked block from a tile's badge: gone to.
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID)
+    /// × on a badge's link: the edge ends.
+    func gridBreakLink(_ link: String)
+    /// A block ⇧-dragged onto a tile: linked to its block.
+    func gridLink(_ block: BlockID, to target: PlacementID)
 }
 
 /// The surface (DESIGN.md §3.1): the arrangement as a grid, columns side
@@ -50,10 +54,10 @@ final class GridView: NSView, NSDraggingSource {
     struct Tile {
         var shown: Shown
         var view: PaneContent
-        /// The notes about the block (§3.5), for the badge at its lower right.
-        var notes: [NoteCard] = []
+        /// The block's links by hand (§3.5), for the badge at its upper right.
+        var links: [LinkCard] = []
     }
-    private var badges: [PlacementID: NoteBadge] = [:]
+    private var badges: [PlacementID: LinkBadge] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -68,6 +72,8 @@ final class GridView: NSView, NSDraggingSource {
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
     /// The drop under way covers the tile it's on (⌥-drag).
     private var dropCovers = false
+    /// The drag is a block's link (⇧): dropped, it links to the tile's block.
+    private var dropLinks = false
     /// While a block is dragged anywhere: a catcher over every tile takes
     /// the drag, since a web view would otherwise keep it to itself.
     var dragging = false {
@@ -102,7 +108,7 @@ final class GridView: NSView, NSDraggingSource {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink])
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -214,19 +220,20 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill)
                 }
-                // The notes about the block, as a badge at the lower right.
-                if tile.notes.isEmpty {
+                // The block's links, as a badge at the upper right.
+                if tile.links.isEmpty {
                     badges[id]?.removeFromSuperview()
                     badges.removeValue(forKey: id)
                 } else {
                     let badge = badges[id] ?? {
-                        let b = NoteBadge()
+                        let b = LinkBadge()
                         b.layer?.zPosition = 6
                         badges[id] = b
                         return b
                     }()
-                    badge.cards = tile.notes
-                    badge.onOpen = { [weak self] note in self?.delegate?.gridOpenNote(note, from: id) }
+                    badge.cards = tile.links
+                    badge.onOpen = { [weak self] block in self?.delegate?.gridOpenLink(block, from: id) }
+                    badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
                 tile.view.isHidden = stashed
@@ -292,6 +299,17 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
+    func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
+        guard let b = badges[placement] else { return "no badge" }
+        b.debugFan(true)
+        b.layoutSubtreeIfNeeded()
+        let words = arg.split(separator: " ")
+        if words.first == "break", let n = words.dropFirst().first.flatMap({ Int($0) }) {
+            return b.debugBreak(n) ? "broke \(n)" : "no such link"
+        }
+        return b.debugTitles.joined(separator: " | ")
+    }
+
     var debugPills: String {
         columns.flatMap { $0 }.map { t in
             let p = pills[t.shown.id]
@@ -645,7 +663,7 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile's note badge: at its lower right, in from the scroll bar's
     /// column and the edge, with room above for its fan.
-    private func placeBadge(_ badge: NoteBadge, in r: NSRect) {
+    private func placeBadge(_ badge: LinkBadge, in r: NSRect) {
         badge.isHidden = false
         badge.fansDown = true
         let size = badge.wantedSize
@@ -718,6 +736,17 @@ final class GridView: NSView, NSDraggingSource {
         let point = convert(sender.draggingLocation, from: nil)
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
+        if pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil,
+           let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
+            // ⇧-drag: a block's link, over a tile whose view didn't take it
+            // (one that types or inserts it takes it first): linked to the
+            // tile's block, its whole shape the sign.
+            guard let t = tile(at: point), t.shown.block?.id != block else { hideDrop(); return [] }
+            showDrop(t.view.frame)
+            drop = (0, 0, t.view.frame, false, t.shown.id)
+            dropLinks = true
+            return .link
+        }
         let isBlock = pb.string(forType: .manifoldPlacement) != nil || pb.string(forType: .manifoldBlock) != nil
         let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
         guard isBlock || (arrangement != nil && delegate?.gridCanDrop(arrangement!) == true),
@@ -725,13 +754,7 @@ final class GridView: NSView, NSDraggingSource {
             hideDrop()
             return []
         }
-        if drop?.rect != target.rect || dropOverlay.isHidden {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = dropOverlay.isHidden ? 0 : 0.12
-                dropOverlay.animator().frame = target.rect
-            }
-            dropOverlay.isHidden = false
-        }
+        showDrop(target.rect)
         drop = target
         dropCovers = target.onto != nil && (coverDrag || NSEvent.modifierFlags.contains(.option))
         return .move
@@ -740,10 +763,33 @@ final class GridView: NSView, NSDraggingSource {
     override func draggingExited(_ sender: NSDraggingInfo?) { hideDrop() }
     override func draggingEnded(_ sender: NSDraggingInfo) { hideDrop() }
 
+    private func showDrop(_ rect: NSRect) {
+        if drop?.rect != rect || dropOverlay.isHidden {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = dropOverlay.isHidden ? 0 : 0.12
+                dropOverlay.animator().frame = rect
+            }
+            dropOverlay.isHidden = false
+        }
+    }
+
+    /// The shown tile under a point.
+    private func tile(at point: NSPoint) -> Tile? {
+        for c in columns.indices {
+            for t in columns[c] where !isStashed(t.shown.id) && !t.view.isHidden && t.view.frame.contains(point) { return t }
+        }
+        return nil
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { hideDrop() }
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
+        if dropLinks {
+            guard let onto = target.onto, let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) else { return false }
+            delegate?.gridLink(block, to: onto)
+            return true
+        }
         if let placement = pb.string(forType: .manifoldPlacement) {
             if let onto = target.onto {
                 if dropCovers { delegate?.gridCover(placement, over: onto) } else { delegate?.gridStash(placement, behind: onto) }
@@ -767,6 +813,7 @@ final class GridView: NSView, NSDraggingSource {
         dropOverlay.isHidden = true
         drop = nil
         dropCovers = false
+        dropLinks = false
     }
 
     override func draw(_ dirtyRect: NSRect) {

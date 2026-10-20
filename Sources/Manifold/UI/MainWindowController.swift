@@ -207,7 +207,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let tiles = a.columns.map { column in
                 column.filter { !recentlyClosed.contains($0.block) }.map { p -> GridView.Tile in
                     let shown = self.shown(p)
-                    return GridView.Tile(shown: shown, view: view(for: shown), notes: notes(about: p.block))
+                    return GridView.Tile(shown: shown, view: view(for: shown), links: links(of: p.block))
                 }
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
@@ -219,7 +219,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             for case let t as TerminalView in views.values { t.syncFocus() }
             for case let m as MarkdownView in views.values { m.textChanged() }
-            for case let e as EditorView in views.values { e.documentChanged() }
+            for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
@@ -392,6 +392,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "", font: hosts.state.appearance.editorFont,
                                theme: hosts.state.appearance.theme)
             e.delegate = self
+            e.blockLook = { [weak self] id in
+                guard let b = self?.hosts.block(id) else { return nil }
+                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b))
+            }
             e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
             let pid = p.id, bid = p.block
             e.onToggleMarkdown = { [weak self] rich in
@@ -683,8 +687,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip || view is NoteBadge { view.mouseMoved(with: event); break }
-            if let badge = view.superview as? NoteBadge { badge.mouseMoved(with: event); break }
+            if view is ScrubberView || view is ScrubTip || view is LinkBadge { view.mouseMoved(with: event); break }
+            if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
     }
@@ -697,6 +701,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugPills: String { content.debugPills }
+    func debugBadge(_ arg: String) -> String {
+        guard let f = arrangement?.focused else { return "nothing focused" }
+        return content.debugBadge(f, arg)
+    }
 
     func debugStack(swap: Bool, index: Int = 0) -> String {
         guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
@@ -972,31 +980,47 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// ⇧⌘N: a new note beside the focused block.
     /// ⇧⌘N: a note on the focused block's host, at home in its folder.
-    /// ⇧⌘N: a note — about the focused block (§3.5), an edge from the
-    /// note to it, so the block wears it and the note knows its subject.
+    /// ⇧⌘N: a note — about the focused block (§3.5): the block linked to
+    /// the note, as if ⇧-dragged into it, so the block wears it and the
+    /// note knows its subject.
     @objc func newNote(_ sender: Any?) {
         let client = hosts.client(focusedHost) ?? host
         let note = client.newNote(home: focusedCwd)
         if let f = focusedShown, let b = f.block, b.kind != .arrangement {
-            hosts.link(from: note, to: b.id, kind: .about, context: b.displayTitle)
+            hosts.link(from: b.id, to: note, kind: .linked, context: b.displayTitle)
         }
         show(note, lens: .editor, .here)
     }
 
-    /// The notes about a block: the `about` edges into it, each by the
-    /// note's title, else its first words.
-    private func notes(about block: BlockID) -> [NoteCard] {
-        // Straight from the graphs' inbound edges: this runs for every
-        // tile on every render.
+    /// The links a block has by hand (§3.5), for its badge: what it links
+    /// to (→) and what links to it (←), each by its title.
+    private func links(of block: BlockID) -> [LinkCard] {
+        // Straight from the graphs' edges: this runs for every tile on
+        // every render.
         var seen = Set<BlockID>()
-        var cards: [NoteCard] = []
+        var cards: [LinkCard] = []
         for c in hosts.all {
-            for e in c.node.graph.edges(to: block, kind: .link(.about)) where e.isLive {
-                guard seen.insert(e.from).inserted, let n = hosts.block(e.from) else { continue }
-                cards.append(NoteCard(id: e.from, title: Self.noteTitle(n)))
+            for e in c.node.graph.edges(from: block, kind: .link(.linked)) where e.isLive {
+                guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
+                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true))
+            }
+        }
+        for c in hosts.all {
+            for e in c.node.graph.edges(to: block, kind: .link(.linked)) where e.isLive {
+                guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
+                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false))
             }
         }
         return cards
+    }
+
+    /// A linked block's name on a badge: a note by its title or first words.
+    private static func linkTitle(_ b: Block) -> String { b.kind == .text && b.path == nil ? noteTitle(b) : b.displayTitle }
+
+    /// A block ⇧-dragged onto another: linked, from it to the target.
+    func link(_ block: BlockID, to target: BlockID) {
+        guard block != target else { return }
+        hosts.link(from: block, to: target, kind: .linked, context: hosts.block(block)?.displayTitle)
     }
 
     /// Debugging: typed into the focused editor, as keys would be.
@@ -1025,8 +1049,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return b.displayTitle
     }
 
-    func gridOpenNote(_ note: BlockID, from placement: PlacementID) {
-        show(note, lens: .editor, .besideOpener(placement), kind: .opened)
+    /// A linked block from a tile's badge: gone to where it is; placed
+    /// nowhere, opened beside the tile.
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID) {
+        let placed = allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
+        if placed, let b = hosts.block(block) {
+            goTo(b.id)
+        } else if let b = hosts.block(block) {
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened)
+        }
+    }
+
+    /// × on a badge's link: the edge ends, in both readings at once.
+    func gridBreakLink(_ link: String) { hosts.propose(.unlink(link)) }
+
+    func gridLink(_ block: BlockID, to target: PlacementID) {
+        guard let t = shown(target)?.block else { return }
+        link(block, to: t.id)
     }
 
     /// ⌘L: the focused tile's pill edits what it offers (a page's address).
@@ -3335,8 +3374,8 @@ extension MainWindowController: GridDelegate {
         bunch(.found, "found", "magnifyingglass", n.outbound[.link(.found)] ?? [], toward: \.to, fallback: "a hit")
         bunch(.derived, "compared", "arrow.left.arrow.right", n.inbound[.link(.source)] ?? [], toward: \.from, fallback: "a diff of this")
         bunch(.sources, "sources", "doc.text", n.outbound[.link(.source)] ?? [], toward: \.to, fallback: "compared here")
-        bunch(.notes, "notes", "note.text", n.inbound[.link(.about)] ?? [], toward: \.from, fallback: "a note about this")
-        bunch(.notes, "about", "note.text", n.outbound[.link(.about)] ?? [], toward: \.to, fallback: "what this is about")
+        bunch(.linked, "links", "arrow.right", n.outbound[.link(.linked)] ?? [], toward: \.to, fallback: "linked by hand")
+        bunch(.linked, "linked from", "arrow.left", n.inbound[.link(.linked)] ?? [], toward: \.from, fallback: "linked by hand")
         bunch(.mentions, "mentioned in", "link", n.inbound[.link(.mention)] ?? [], toward: \.from, fallback: "a link")
         bunch(.mentions, "mentions", "link", n.outbound[.link(.mention)] ?? [], toward: \.to, fallback: "a link")
         // Other arrangements holding the block: not the one it's shown in.
@@ -3403,9 +3442,6 @@ extension MainWindowController: EditorViewDelegate {
         open(url.absoluteString, from: view.placement)
     }
 
-    /// A block dropped into a note as a link: the host's mention scan sees
-    /// the link in the text and makes the edge; this is just the edge at
-    /// once, for the badge and Links not to wait.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool) {
         var s = desk.settings
         s.copyOnSelect = on
@@ -3413,9 +3449,15 @@ extension MainWindowController: EditorViewDelegate {
         host.setSettings(s)
     }
 
-    func editor(_ view: EditorView, mention block: BlockID) {
-        hosts.link(from: view.block, to: block, kind: .mention, context: hosts.block(block)?.displayTitle)
-    }
+    /// A block ⇧-dragged into the editor: linked to the note (the host's
+    /// mention scan sees the link in the text too, as a mention).
+    func editor(_ view: EditorView, linkedFrom block: BlockID) { link(block, to: view.block) }
+
+    /// A block ⇧-dragged onto a terminal: its path typed, and linked.
+    func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }
+
+    /// A link in the text clicked: a block's gone to; an address opened.
+    func editor(_ view: EditorView, follow target: String) { open(target, from: view.placement) }
 
     func editor(_ view: EditorView, open path: String, line: Int, column: Int) {
         let on = view.block.host

@@ -959,3 +959,13 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(abs(a.height(of: x.id) - 0.5) < 0.001 && abs(a.height(of: z.id) - 0.5) < 0.001)
     #expect(a.focused == z.id)
 }
+
+@Test func anOldAboutLinkDecodesAsLinked() throws {
+    // Logs written before links by hand had `about` edges, from a note to its subject.
+    let json = #"{"id":"L1","from":"h/01ABC","to":"h/01DEF","kind":"about","at":{"wall":1,"seq":0}}"#
+    var decoded: Link?
+    do { decoded = try JSONDecoder().decode(Link.self, from: Data(json.utf8)) } catch {}
+    if let decoded { #expect(decoded.kind == .linked) }
+    let kind = try JSONDecoder().decode([LinkKind].self, from: Data(#"["about","linked","mention"]"#.utf8))
+    #expect(kind == [.linked, .linked, .mention])
+}

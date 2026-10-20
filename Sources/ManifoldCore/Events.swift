@@ -59,8 +59,20 @@ public enum Leader: String, Codable, Sendable {
 
 public enum LinkKind: String, Codable, Sendable {
     case opened, found, output, cwd, source, mention, placed
-    /// A note about a block (§3.5): from the note to what it's about.
-    case about
+    /// A link made by hand (§3.5): a block ⇧-dragged onto another, from
+    /// the dragged to the target; a note made about a block, from the
+    /// block to the note. One edge, read both ways: the source *links*,
+    /// the target is *linked from*.
+    case linked
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        // Once "about", from a note to its subject; now one kind for every link made by hand.
+        guard let k = LinkKind(rawValue: raw == "about" ? "linked" : raw) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown link kind \(raw)"))
+        }
+        self = k
+    }
 }
 
 public struct Link: Codable, Equatable, Hashable, Sendable, Identifiable {

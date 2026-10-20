@@ -111,7 +111,13 @@ final class StatusGlyph: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let look else { return }
         let s = Self.size
-        let rect = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
+        Self.draw(look, in: NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s), phase: phase)
+    }
+
+    /// The glyph drawn anywhere (a pill in a note): in a square, at a
+    /// phase of its turning.
+    static func draw(_ look: Look, in rect: NSRect, phase: Double) {
+        let s = rect.width
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
@@ -136,9 +142,9 @@ final class StatusGlyph: NSView {
         case .needsYou:
             let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
             ring.lineWidth = 1.6
-            Self.amber.setStroke()
+            amber.setStroke()
             ring.stroke()
-            Self.amber.setFill()
+            amber.setFill()
             let r = radius * 0.42
             NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
         case .done(let read), .failed(let read):

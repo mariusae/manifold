@@ -20,6 +20,8 @@ protocol TextViewDelegate: AnyObject {
     func textView(_ view: TextView, mentioned block: BlockID)
     /// ⌘-click on a place in the text.
     func textView(_ view: TextView, commandClickAt offset: Int)
+    /// A link in Markdown clicked: a block's pill (manifold:id), or an address.
+    func textView(_ view: TextView, follow target: String)
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
 }
@@ -67,6 +69,13 @@ final class TextView: NSView, NSTextInputClient {
                                                 codeTint: Theme.hover, chipTint: Theme.accent.withAlphaComponent(0.16))
     /// The line the caret is on, whose Markdown shows raw.
     private var rawLine: Int?
+    /// A block's look for its pill in the text, from whoever knows blocks.
+    var pillLook: ((BlockID) -> PillLook?)?
+    /// The pills each laid-out line drew, with the looks they were drawn
+    /// with: when a look changes, the line is laid out again.
+    private var pillLines: [Int: [(BlockID, PillLook)]] = [:]
+    /// The lines that are code fences, found once per text.
+    private var fenceLines: Set<Int>?
     var tabWidth = 4
     var isEditable = true
     static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
@@ -138,6 +147,8 @@ final class TextView: NSView, NSTextInputClient {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    /// A click in a window not yet key counts: it places the caret, or follows a link.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var isOpaque: Bool { false }
 
     var text: Rope { document?.rope ?? Rope() }
@@ -165,8 +176,34 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
 
+    /// Whether a line is inside a fenced code block: an odd number of
+    /// fences before it.
+    private func inCodeBlock(_ n: Int) -> Bool {
+        if fenceLines == nil {
+            var f = Set<Int>()
+            for i in 0..<text.lineCount where MarkdownStyle.isFence(text.lineText(i)) { f.insert(i) }
+            fenceLines = f
+        }
+        return fenceLines!.filter { $0 < n }.count % 2 == 1
+    }
+
+    /// The blocks' pills, as their looks are now: lines drawn with a
+    /// look since changed are laid out again.
+    func refreshPills() {
+        guard markdown, let pillLook, !pillLines.isEmpty else { return }
+        let stale = pillLines.filter { $0.value.contains { pillLook($0.0) != $0.1 } }.map(\.key)
+        guard !stale.isEmpty else { return }
+        for n in stale {
+            layouts.removeValue(forKey: n)
+            pillLines.removeValue(forKey: n)
+        }
+        needsDisplay = true
+    }
+
     private func invalidateAll() {
         layouts = [:]
+        pillLines = [:]
+        fenceLines = nil
         rowCounts = Array(repeating: 1, count: text.lineCount)
         rowStartsValid = false
         resizeToFit()
@@ -229,7 +266,13 @@ final class TextView: NSView, NSTextInputClient {
         let string = text.lineText(n)
         let attributed = NSMutableAttributedString(string: string.isEmpty ? " " : string, attributes: attributes())
         if markdown, !string.isEmpty {
-            MarkdownStyle.apply(to: attributed, base: font, code: codeFont, palette: markdownPalette, collapseLinks: rawLine != n)
+            var drawn: [(BlockID, PillLook)] = []
+            MarkdownStyle.apply(to: attributed, base: font, code: codeFont, palette: markdownPalette, reveal: rawLine == n, inCodeBlock: inCodeBlock(n)) { [weak self] id in
+                guard let look = self?.pillLook?(id) else { return nil }
+                drawn.append((id, look))
+                return look
+            }
+            if drawn.isEmpty { pillLines.removeValue(forKey: n) } else { pillLines[n] = drawn }
         }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var rows: [CTLine] = []
@@ -280,6 +323,13 @@ final class TextView: NSView, NSTextInputClient {
             }
             x0 = nil
             color = nil
+        }
+        if let first = runs.first, (CTRunGetAttributes(first) as NSDictionary)[MarkdownStyle.codeBlock] != nil {
+            markdownPalette.codeTint.setFill()
+            NSRect(x: textLeft - 6, y: rowTop, width: max(0, bounds.width - Self.insets.right - textLeft + 12), height: lineHeight).fill()
+            ctx.saveGState()
+            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+            return
         }
         for run in runs {
             let attrs = CTRunGetAttributes(run) as NSDictionary
@@ -389,6 +439,86 @@ final class TextView: NSView, NSTextInputClient {
     static let matchColor = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.9, blue: 0.5, alpha: 0.7),
                                             NSColor(srgbRed: 0.5, green: 0.42, blue: 0.1, alpha: 0.8))
 
+    /// A block's pill over its link's run (§7): the symbol, name and
+    /// status its tile's pill shows, at the row's height.
+    private func drawPills(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
+        guard let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return }
+        var drew = false
+        for run in runs {
+            let attrs = CTRunGetAttributes(run) as NSDictionary
+            guard let look = attrs[MarkdownStyle.pill] as? PillLook else { continue }
+            if !drew { ctx.restoreGState(); drew = true }
+            let range = CTRunGetStringRange(run)
+            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
+            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
+            let r = NSRect(x: textLeft + start, y: rowTop + 1.5, width: width, height: lineHeight - 3)
+            let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+            Theme.panel.setFill()
+            capsule.fill()
+            Theme.cardBorder.setStroke()
+            capsule.lineWidth = 1
+            capsule.stroke()
+            var x = r.minX + 8
+            if let image = Self.tinted(look.symbol, size: 10, color: Theme.secondaryText) {
+                image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            x += 18
+            let title = NSAttributedString(string: look.title, attributes: [.font: MarkdownStyle.pillFont, .foregroundColor: Theme.text])
+            let size = title.size()
+            title.draw(at: NSPoint(x: x, y: r.midY - size.height / 2))
+            if let status = look.status {
+                let g = NSRect(x: r.maxX - 8 - 11, y: r.midY - 5.5, width: 11, height: 11)
+                // The glyph is drawn y up: the square flipped back for it.
+                ctx.saveGState()
+                ctx.translateBy(x: 0, y: g.minY + g.maxY)
+                ctx.scaleBy(x: 1, y: -1)
+                StatusGlyph.draw(status, in: g, phase: 0)
+                ctx.restoreGState()
+            }
+        }
+        if drew {
+            ctx.saveGState()
+            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        }
+    }
+
+    private static var tintedSymbols: [String: NSImage] = [:]
+    /// A symbol in a colour, for drawing by hand.
+    private static func tinted(_ name: String, size: CGFloat, color: NSColor) -> NSImage? {
+        let key = "\(name)/\(size)/\(color.description)"
+        if let i = tintedSymbols[key] { return i }
+        guard let symbol = Theme.symbol(name, size: size) else { return nil }
+        let image = NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tintedSymbols[key] = image
+        return image
+    }
+
+    /// What a link under a point goes to, if the point is on one.
+    private func linkTarget(at p: NSPoint) -> String? {
+        guard markdown, text.lineCount > 0 else { return nil }
+        let n = line(atY: p.y)
+        guard n < text.lineCount else { return nil }
+        let l = layout(line: n)
+        let r = min(max(Int((p.y - top(ofLine: n)) / lineHeight), 0), l.rows.count - 1)
+        let row = l.rows[r]
+        let x = p.x - textLeft
+        guard x >= 0, let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return nil }
+        for run in runs {
+            let attrs = CTRunGetAttributes(run) as NSDictionary
+            guard let target = attrs[MarkdownStyle.target] as? String else { continue }
+            let range = CTRunGetStringRange(run)
+            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
+            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
+            if x >= start, x <= start + width { return target }
+        }
+        return nil
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let text = self.text
@@ -436,6 +566,7 @@ final class TextView: NSView, NSTextInputClient {
                 if markdown { drawChips(in: row, at: rowTop, ctx) }
                 ctx.textPosition = CGPoint(x: textLeft, y: rowTop + ascent)
                 CTLineDraw(row, ctx)
+                if markdown { drawPills(in: row, at: rowTop, ctx) }
             }
         }
         ctx.restoreGState()
@@ -753,9 +884,15 @@ final class TextView: NSView, NSTextInputClient {
             }
             rowStartsValid = false
             knownLineCount = newCount
+            fenceLines = nil
         } else if let e = edits.first {
             let n = text.line(at: e.start)
             layouts.removeValue(forKey: n)
+            if markdown, let f = fenceLines, f.contains(n) != MarkdownStyle.isFence(text.lineText(n)) {
+                // A fence came or went: every line after it is in or out of a block.
+                for k in layouts.keys where k > n { layouts.removeValue(forKey: k) }
+                fenceLines = nil
+            }
         }
         resizeToFit()
         needsDisplay = true
@@ -816,6 +953,10 @@ final class TextView: NSView, NSTextInputClient {
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let chars = event.charactersIgnoringModifiers ?? ""
         switch (flags, chars) {
+        case ([.command], "b") where acceptsBlockLinks: toggleWrap("**"); return true
+        case ([.command], "i") where acceptsBlockLinks: toggleWrap("_"); return true
+        case ([.command, .shift], "x") where acceptsBlockLinks: toggleWrap("~~"); return true
+        case ([.command, .shift], "c") where acceptsBlockLinks: toggleWrap("`"); return true
         case ([.command], "d"): selectNextOccurrence(); return true
         case ([.command, .shift], "d"): duplicateLines(); return true
         case ([.control, .shift], "k"): deleteLines(); return true
@@ -1008,6 +1149,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     private func insertNewline() {
+        if markdown, markdownNewline() { return }
         // Indented as the line before, and a step more after an opening bracket.
         let strings = selections.map { s -> String in
             let n = text.line(at: s.min)
@@ -1037,6 +1179,98 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     private var indentUnit: String { String(repeating: " ", count: tabWidth) }
+
+    // MARK: Markdown
+
+    /// Return in a list or a quote carries it on (§7): the next item's
+    /// marker (the next number, an empty box), the quote's mark; on an
+    /// empty item, it ends instead, the marker taken away.
+    private func markdownNewline() -> Bool {
+        var inserts: [String] = []
+        var clears: [(TextRange, String)] = []
+        for s in selections {
+            guard s.isCaret else { return false }
+            let n = text.line(at: s.head)
+            let start = text.offset(ofLine: n)
+            guard let c = Self.continuation(of: text.lineText(n), caretAt: s.head - start) else { return false }
+            switch c {
+            case .insert(let str): inserts.append(str)
+            case .clear(let length): clears.append((TextRange(start, start + length), ""))
+            }
+        }
+        if !clears.isEmpty {
+            guard inserts.isEmpty else { return false }
+            replace(clears)
+        } else {
+            insert(inserts, typing: false)
+        }
+        return true
+    }
+
+    enum Continuation: Equatable {
+        case insert(String)
+        /// The line's marker, this many bytes from its start, goes.
+        case clear(Int)
+    }
+
+    private static let listHead = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|(\d+)([.)]))(\s+)(\[[ xX]\]\s*)?"#)
+    private static let quoteHead = try! NSRegularExpression(pattern: #"^(\s*>\s?)+"#)
+
+    /// What Return does at a caret on a line, if the line is a list item
+    /// or a quote: nil for a plain newline.
+    static func continuation(of line: String, caretAt col: Int) -> Continuation? {
+        let ns = line as NSString
+        let all = NSRange(location: 0, length: ns.length)
+        if let m = listHead.firstMatch(in: line, range: all) {
+            // The head is ASCII: its UTF-16 length is its byte length.
+            guard col >= m.range.length else { return nil }
+            let rest = ns.substring(from: m.range.length).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty { return col == ns.length ? .clear(m.range.length) : nil }
+            var marker = ns.substring(with: m.range(at: 2))
+            if m.range(at: 3).location != NSNotFound, let number = Int(ns.substring(with: m.range(at: 3))) {
+                marker = "\(number + 1)" + ns.substring(with: m.range(at: 4))
+            }
+            let box = m.range(at: 6).location == NSNotFound ? "" : "[ ] "
+            return .insert("\n" + ns.substring(with: m.range(at: 1)) + marker + " " + box)
+        }
+        if let m = quoteHead.firstMatch(in: line, range: all) {
+            guard col >= m.range.length else { return nil }
+            let rest = ns.substring(from: m.range.length).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty { return col == ns.length ? .clear(m.range.length) : nil }
+            return .insert("\n" + ns.substring(with: m.range))
+        }
+        return nil
+    }
+
+    /// ⌘B, ⌘I, ⌘⇧X, ⌘⇧C: the selection wrapped in a marker — or, wrapped
+    /// already, unwrapped; a caret gets the pair to type into.
+    private func toggleWrap(_ m: String) {
+        guard isEditable else { return }
+        let ml = m.utf8.count
+        var reps: [(TextRange, String)] = []
+        var after: [Selection] = []
+        var shift = 0
+        for s in selections.sorted(by: { $0.min < $1.min }) {
+            let inner = text[TextRange(s.min, s.max)]
+            let before = s.min >= ml ? text[TextRange(s.min - ml, s.min)] : ""
+            let following = s.max + ml <= text.count ? text[TextRange(s.max, s.max + ml)] : ""
+            if before == m, following == m {
+                reps.append((TextRange(s.min - ml, s.max + ml), inner))
+                after.append(Selection(s.min - ml + shift, s.max - ml + shift))
+                shift -= 2 * ml
+            } else if inner.hasPrefix(m), inner.hasSuffix(m), inner.utf8.count >= 2 * ml {
+                let stripped = String(inner.dropFirst(m.count).dropLast(m.count))
+                reps.append((s.range, stripped))
+                after.append(Selection(s.min + shift, s.min + shift + stripped.utf8.count))
+                shift -= 2 * ml
+            } else {
+                reps.append((s.range, m + inner + m))
+                after.append(Selection(s.min + ml + shift, s.max + ml + shift))
+                shift += 2 * ml
+            }
+        }
+        replace(reps, selectAfter: after)
+    }
 
     private func insertTab() {
         if selections.contains(where: { !$0.isCaret && text.line(at: $0.min) != text.line(at: $0.max) }) {
@@ -1332,6 +1566,12 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
+        if event.clickCount == 1, flags.isDisjoint(with: [.command, .shift, .option]), let target = linkTarget(at: p) {
+            // A link, clicked: followed — the caret stays, so the pill does.
+            dragAnchor = nil
+            delegate?.textView(self, follow: target)
+            return
+        }
         if flags.contains(.command), event.clickCount == 1 {
             setSelections([Selection(at: offset)])
             dragAnchor = nil
