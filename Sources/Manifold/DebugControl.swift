@@ -223,6 +223,18 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "termmenu":
+            // The focused terminal's right-click menu, its items and submenus listed.
+            guard let t = wc?.debugFocusedTerminal, let window = wc?.window else { return "no terminal focused" }
+            let p = t.convert(NSPoint(x: 20, y: 20), to: nil)
+            guard let e = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let menu = t.menu(for: e) else { return "no menu" }
+            func list(_ m: NSMenu, _ depth: Int) -> [String] {
+                m.items.flatMap { i -> [String] in
+                    [String(repeating: "  ", count: depth) + (i.isSeparatorItem ? "—" : i.title)] + (i.submenu.map { list($0, depth + 1) } ?? [])
+                }
+            }
+            return list(menu, 0).joined(separator: "\n")
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.

@@ -238,7 +238,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
             lastFocused = a.focused
-            for case let t as TerminalView in views.values { t.syncFocus() }
+            for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
@@ -3537,10 +3537,10 @@ extension MainWindowController: EditorViewDelegate {
 
     /// The host's last process listing, those under this terminal's shell;
     /// and a fresh listing asked for, so the next menu is current.
-    func terminalProcesses(_ view: TerminalView) -> [ProcessEntry] {
+    func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry] {
         guard let client = hosts.client(view.block.host) else { return [] }
         let pb = client.node.blocks.first { $0.kind == .process }
-        hosts.propose(.processes(block: pb?.id ?? BlockID(host: client.host)))
+        if refresh { hosts.propose(.processes(block: pb?.id ?? BlockID(host: client.host))) }
         return pb?.processes?.entries.filter { $0.block == view.block } ?? []
     }
 

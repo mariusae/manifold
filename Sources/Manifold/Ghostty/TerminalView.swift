@@ -14,16 +14,16 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
     /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID)
-    /// What runs under the terminal's shell, as last listed (and listed
-    /// again, for next time): the tree its menu shows.
-    func terminalProcesses(_ view: TerminalView) -> [ProcessEntry]
+    /// What runs under the terminal's shell, as last listed: the tree its
+    /// menu shows. `refresh`: a fresh listing is asked for too.
+    func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry]
     /// A process in the menu's tree is to be ended or killed.
     func terminal(_ view: TerminalView, signal pid: Int32, _ signal: Int32)
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
 /// <block>`, which connects it to the block's shell in the server.
-final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemValidation {
+final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemValidation, NSMenuDelegate {
     let placement: PlacementID
     let block: BlockID
     private(set) var surface: ghostty_surface_t?
@@ -658,19 +658,40 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         menu.addItem(.separator())
         menu.addItem(withTitle: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: "")
         // The processes under the shell, the shell first, each a submenu
-        // of what to do with it and what runs under it.
-        let entries = delegate?.terminalProcesses(self) ?? []
+        // of what to do with it and what runs under it. The host's
+        // listing is asked for afresh; the menu, still open when it
+        // comes, is filled in then.
         menu.addItem(.separator())
+        processItemsStart = menu.items.count
+        menu.delegate = self
+        openMenu = menu
+        fillProcesses(menu, with: delegate?.terminalProcesses(self, refresh: true) ?? [], listing: true)
+        return menu
+    }
+
+    /// The menu open now, to fill in when the listing comes.
+    private weak var openMenu: NSMenu?
+    private var processItemsStart = 0
+
+    private func fillProcesses(_ menu: NSMenu, with entries: [ProcessEntry], listing: Bool) {
+        while menu.items.count > processItemsStart { menu.removeItem(at: menu.items.count - 1) }
         if entries.isEmpty {
-            let none = NSMenuItem(title: "No processes listed yet", action: nil, keyEquivalent: "")
+            let none = NSMenuItem(title: listing ? "Listing processes…" : "No processes under the shell", action: nil, keyEquivalent: "")
             none.isEnabled = false
             menu.addItem(none)
         } else {
             let pids = Set(entries.map(\.pid))
             for item in processItems(entries, under: nil, pids: pids) { menu.addItem(item) }
         }
-        return menu
     }
+
+    /// The host listed its processes: a menu open now shows them.
+    func processesChanged() {
+        guard let menu = openMenu else { return }
+        fillProcesses(menu, with: delegate?.terminalProcesses(self, refresh: false) ?? [], listing: false)
+    }
+
+    func menuDidClose(_ menu: NSMenu) { if openMenu === menu { openMenu = nil } }
 
     /// The items for the processes whose parent is `parent` (nil: the
     /// roots, whose parents aren't listed), each with its submenu.
