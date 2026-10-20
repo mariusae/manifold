@@ -533,7 +533,10 @@ is migrated into logs on first run.
   `manifold-remote-<provider>` command on the PATH that takes a destination
   and a command to run there. Manifold asks the host what it is, installs
   the bundled `manifoldd` for it in `~/.manifold/bin` if the one there
-  differs, and runs `manifoldd bridge`, which pumps the same frames between
+  differs (stripped, gzipped on the way when the host has gunzip, into a
+  file of that upload's own and put in place only if it hashes as what
+  was sent; given up on only once nothing has moved for a minute, its
+  progress in the host's tooltip), and runs `manifoldd bridge`, which pumps the same frames between
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.

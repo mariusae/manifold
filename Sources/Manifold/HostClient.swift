@@ -51,13 +51,22 @@ final class HostClient {
     /// Bytes from the host on the connection being made, before it has
     /// answered in full.
     private var received = 0
+    /// How far the step has got, of how much, where it can say.
+    private var stepProgress: (done: Int, total: Int)?
 
     /// A step in reaching the host begins: it's connecting, at that.
     func begin(_ what: String) {
         if link != .connecting || reachingSince == nil { reachingSince = Date() }
         step = (what, Date())
+        stepProgress = nil
         link = .connecting
         scheduleChange()
+    }
+
+    /// How far the step under way has got: said with it, as of the hover.
+    func progress(_ done: Int, of total: Int) {
+        guard step != nil else { return }
+        stepProgress = (done, total)
     }
 
     /// What reaching the host is at and how long it has taken, as of now;
@@ -66,6 +75,8 @@ final class HostClient {
         guard link == .connecting, let step else { return nil }
         func seconds(_ since: Date) -> String { String(format: "%.1f s", Date().timeIntervalSince(since)) }
         var what = step.what
+        func mb(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }
+        if let p = stepProgress { what += " (\(mb(p.done)) of \(mb(p.total)))" }
         if received > 0 { what += " (\(ByteCountFormatter.string(fromByteCount: Int64(received), countStyle: .file)))" }
         var lines = ["\(what): \(seconds(step.since))"]
         if let reachingSince, reachingSince < step.since { lines.append("Connecting for \(seconds(reachingSince))") }
@@ -475,7 +486,10 @@ final class HostClient {
     /// one there isn't ours, and starts the bridge. Slow; not on the main
     /// thread.
     /// `step` is told each step as it begins, on this thread.
-    static func bootstrap(_ dest: Destination, name: String, step: (String) -> Void = { _ in }) throws -> Child {
+    /// `progress`, how much of the server has gone of how much, from
+    /// another thread.
+    static func bootstrap(_ dest: Destination, name: String, step: (String) -> Void = { _ in },
+                          progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in }) throws -> Child {
         step("Asking the host what it is (\(dest.provider))")
         let probe = try Bootstrap.probe(dest)
         let binaryName = Bootstrap.binaryName(os: probe.os, arch: probe.arch)
@@ -491,8 +505,9 @@ final class HostClient {
         }
         if probe.hash != Bootstrap.sha256(data) {
             NSLog("installing manifoldd on %@ (%@)", dest.description, binaryName)
-            step("Installing the server there (\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)))")
-            try Bootstrap.upload(dest, binary: data)
+            step("Installing the server there" + (probe.gunzip ? ", compressed" : ""))
+            let total = data.count
+            try Bootstrap.upload(dest, binary: data, compressed: probe.gunzip) { progress($0, total) }
         }
         return try Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
     }

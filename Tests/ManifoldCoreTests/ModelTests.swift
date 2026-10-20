@@ -1075,3 +1075,80 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     d.apply(.preferences(HostPreferences()))
     #expect(d.preferences.shell == nil)
 }
+
+// MARK: Reaching hosts
+
+/// A destination that runs its commands here, with HOME a fresh folder:
+/// a provider on the PATH under a name of its own.
+/// `filter`, what the provider puts its input through on the way.
+private func scratchDestination(_ name: String, filter: String? = nil) throws -> (Destination, URL) {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-\(name)-\(UUID().uuidString)")
+    let home = root.appendingPathComponent("home"), bin = root.appendingPathComponent("bin")
+    try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+    let provider = bin.appendingPathComponent("provider")
+    let run = filter.map { "\($0) | /bin/sh -c \"$2\"" } ?? "exec /bin/sh -c \"$2\""
+    try "#!/bin/sh\nexport HOME='\(home.path)'\n\(run)\n".write(to: provider, atomically: true, encoding: .utf8)
+    chmod(provider.path, 0o755)
+    setenv("MANIFOLD_PROVIDER_\(name.uppercased())", provider.path, 1)
+    return (Destination(provider: name, target: "here"), root)
+}
+
+@Test func aScriptForAProviderRunsInShWhateverItsQuotes() throws {
+    let (out, status) = try Child.run(["/bin/sh", "-c", Bootstrap.posix(#"echo 'it''s' "$((1 + 1))"; printf '%s\n' "a b""#)])
+    #expect(status == 0)
+    #expect(String(decoding: out, as: UTF8.self) == "its 2\na b\n")
+}
+
+@Test func theServerGoesCompressedOrNotAndIsCheckedBeforeItsPutInPlace() throws {
+    let (dest, root) = try scratchDestination("uploadtest")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let bin = root.appendingPathComponent("home/.manifold/bin")
+    let before = try Bootstrap.probe(dest)
+    #expect(!before.os.isEmpty && !before.arch.isEmpty)
+    #expect(before.hash == nil)
+    #expect(before.gunzip)
+    // A leftover from an upload that never finished is taken away.
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+    try Data("stale".utf8).write(to: bin.appendingPathComponent("manifoldd.new.1234"))
+    let binary = Data((0..<300_000).map { UInt8(truncatingIfNeeded: $0 &* 7919) })
+    let seen = Seen()
+    for compressed in [true, false] {
+        try Bootstrap.upload(dest, binary: binary, compressed: compressed) { seen.last = $0 }
+        #expect(try Data(contentsOf: bin.appendingPathComponent("manifoldd")) == binary)
+        #expect(seen.last == binary.count)
+        #expect(try Bootstrap.probe(dest).hash == Bootstrap.sha256(binary))
+    }
+    let left = try FileManager.default.contentsOfDirectory(atPath: bin.path).sorted()
+    #expect(left == ["manifold", "manifoldd"])
+    #expect(FileManager.default.isExecutableFile(atPath: bin.appendingPathComponent("manifold").path))
+}
+
+private final class Seen: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    var last: Int {
+        get { lock.lock(); defer { lock.unlock() }; return value }
+        set { lock.lock(); value = newValue; lock.unlock() }
+    }
+}
+
+@Test func aChildThatStopsMovingIsGivenUpOnButNotOneThatKeepsGoing() throws {
+    let start = Date()
+    let (_, stalled) = try Child.run(["/bin/sh", "-c", "sleep 30"], timeout: 60, stall: 1)
+    #expect(stalled == 128 + SIGKILL)
+    #expect(Date().timeIntervalSince(start) < 5)
+    // Longer in all than the stall, but never still for that long.
+    let (out, status) = try Child.run(["/bin/sh", "-c", "for i in 1 2 3 4; do echo $i; sleep 0.5; done"], timeout: 60, stall: 1)
+    #expect(status == 0)
+    #expect(String(decoding: out, as: UTF8.self) == "1\n2\n3\n4\n")
+}
+
+@Test func aServerThatArrivesCutShortIsNotPutInPlace() throws {
+    let (dest, root) = try scratchDestination("truncatingtest", filter: "head -c 1000")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let binary = Data(repeating: 7, count: 100_000)
+    #expect(throws: RemoteError.self) { try Bootstrap.upload(dest, binary: binary, compressed: false) }
+    let bin = root.appendingPathComponent("home/.manifold/bin")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: bin.path).isEmpty)
+}

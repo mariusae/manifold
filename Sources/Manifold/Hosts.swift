@@ -333,9 +333,11 @@ final class Hosts {
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
             do {
-                result = .success(try HostClient.bootstrap(dest, name: name) { what in
+                result = .success(try HostClient.bootstrap(dest, name: name, step: { what in
                     DispatchQueue.main.async { standing?.begin(what) }
-                })
+                }, progress: { done, total in
+                    DispatchQueue.main.async { standing?.progress(done, of: total) }
+                }))
             } catch {
                 result = .failure(error)
             }

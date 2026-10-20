@@ -53,7 +53,10 @@ fi
 # to the same triple.
 sdk=$("$SWIFTLY" run +"$V" swift sdk list 2>/dev/null | grep "^swift-$V-RELEASE_static-linux" | head -1)
 # The products land where the toolchain puts them (newer ones build into
-# .build/out/Products/…), and are copied to a fixed place for build-app.sh.
+# .build/out/Products/…), and are copied to a fixed place for build-app.sh,
+# stripped: the symbols and debug info are most of the binary (148 MB of
+# it, 58 without), and every host it's installed on gets it over the wire.
+# The unstripped one stays where it was built, for symbolicating.
 for t in x86_64 aarch64; do
   log=$(mktemp)
   if ! "$SWIFTLY" run +"$V" swift build -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd > "$log" 2>&1; then
@@ -65,6 +68,6 @@ for t in x86_64 aarch64; do
   rm -f "$log"
   bin=$("$SWIFTLY" run +"$V" swift build -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd --show-bin-path 2>/dev/null)
   mkdir -p ".build/$t-swift-linux-musl/release"
-  cp "$bin/manifoldd" ".build/$t-swift-linux-musl/release/manifoldd"
+  "$SWIFTLY" run +"$V" llvm-objcopy --strip-all "$bin/manifoldd" ".build/$t-swift-linux-musl/release/manifoldd"
   ls -la ".build/$t-swift-linux-musl/release/manifoldd"
 done

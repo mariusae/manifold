@@ -185,15 +185,24 @@ public struct Child {
     }
 
     /// Runs `argv` to completion with `input` on its stdin; its output and
-    /// status.
-    public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, quiet: Bool = false) throws -> (output: Data, status: Int32) {
+    /// status. With `stall`, it's ended once nothing has moved (no input
+    /// taken, no output given) for that long, `timeout` being the most it
+    /// gets in all; `progress` is told how much of the input has been
+    /// taken as it goes, from another thread.
+    public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, stall: TimeInterval? = nil,
+                           progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false) throws -> (output: Data, status: Int32) {
         let child = try spawn(argv, stderrToNull: quiet)
+        let moved = Moved()
         let writer = Thread {
             input.withUnsafeBytes { raw in
                 var off = 0
                 while off < raw.count {
                     let n = write(child.input, raw.baseAddress! + off, min(raw.count - off, 1 << 16))
-                    if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { break }
+                    if n > 0 {
+                        off += n
+                        moved.touch()
+                        progress?(off)
+                    } else if n < 0 && errno == EINTR { continue } else { break }
                 }
             }
             close(child.input)
@@ -201,14 +210,19 @@ public struct Child {
         writer.start()
         var out = Data()
         var buf = [UInt8](repeating: 0, count: 1 << 16)
-        let deadline = Date().addingTimeInterval(timeout)
+        let end = Date().addingTimeInterval(timeout)
         while true {
+            let deadline = stall.map { min(end, moved.last.addingTimeInterval($0)) } ?? end
+            // A second at most between looks, to see whether input moved.
+            let left = Int32(min(max(0, deadline.timeIntervalSinceNow), stall == nil ? .infinity : 1) * 1000)
+            guard deadline.timeIntervalSinceNow > 0 else { kill(child.pid, SIGKILL); break }
             var pfd = pollfd(fd: child.output, events: Int16(POLLIN), revents: 0)
-            let left = Int32(max(0, deadline.timeIntervalSinceNow) * 1000)
-            guard left > 0 else { kill(child.pid, SIGKILL); break }
             guard poll(&pfd, 1, left) > 0 else { continue }
             let n = read(child.output, &buf, buf.count)
-            if n > 0 { out.append(contentsOf: buf[0..<n]) } else if n == 0 || errno != EINTR { break }
+            if n > 0 {
+                out.append(contentsOf: buf[0..<n])
+                moved.touch()
+            } else if n == 0 || errno != EINTR { break }
         }
         close(child.output)
         var status: Int32 = 0
@@ -218,31 +232,95 @@ public struct Child {
     }
 }
 
+/// When bytes last moved through a child's pipes, as its threads see it.
+private final class Moved: @unchecked Sendable {
+    private let lock = NSLock()
+    private var at = Date()
+
+    var last: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return at
+    }
+
+    func touch() {
+        lock.lock()
+        at = Date()
+        lock.unlock()
+    }
+}
+
 /// What a client asks of a host before attaching: which `manifoldd` to
 /// carry there, and whether the one there is it.
 public enum Bootstrap {
-    /// Asks the destination its OS and architecture, and the hash of the
-    /// server installed there, if any.
-    public static func probe(_ dest: Destination) throws -> (os: String, arch: String, hash: String?) {
-        let cmd = "uname -sm; if [ -x ~/.manifold/bin/manifoldd ]; then (sha256sum ~/.manifold/bin/manifoldd 2>/dev/null || shasum -a 256 ~/.manifold/bin/manifoldd) | cut -d' ' -f1; fi"
-        let (out, status) = try Child.run(dest.invocation(cmd), timeout: 60)
-        let lines = String(decoding: out, as: UTF8.self).split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-        guard status == 0, let first = lines.first else {
-            throw RemoteError.unreachable(String(decoding: out, as: UTF8.self))
-        }
-        let parts = first.split(separator: " ")
-        guard parts.count == 2 else { throw RemoteError.unreachable(first) }
-        return (String(parts[0]).lowercased(), String(parts[1]).lowercased(), lines.count > 1 ? lines[1] : nil)
+    /// What a destination says of itself before a server is carried there.
+    public struct Probe: Sendable {
+        public var os: String
+        public var arch: String
+        /// The hash of the server installed there, if any.
+        public var hash: String?
+        /// Whether it can take the server compressed.
+        public var gunzip: Bool
+    }
+
+    /// Asks the destination its OS and architecture, whether it has
+    /// gunzip, and the hash of the server installed there, if any. Each
+    /// answer on a line of its own, tagged, so what a login shell prints
+    /// on its way in is passed over.
+    public static func probe(_ dest: Destination) throws -> Probe {
+        let script = """
+            echo "os $(uname -sm)"
+            if command -v gunzip >/dev/null 2>&1; then echo gunzip; fi
+            if [ -x ~/.manifold/bin/manifoldd ]; then
+              echo "hash $( (sha256sum ~/.manifold/bin/manifoldd 2>/dev/null || shasum -a 256 ~/.manifold/bin/manifoldd) | cut -d' ' -f1)"
+            fi
+            """
+        let (out, status) = try Child.run(dest.invocation(posix(script)), timeout: 60)
+        let text = String(decoding: out, as: UTF8.self)
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        func tagged(_ tag: String) -> String? { lines.first { $0.hasPrefix(tag + " ") }.map { String($0.dropFirst(tag.count + 1)) } }
+        guard status == 0, let os = tagged("os") else { throw RemoteError.unreachable(text) }
+        let parts = os.split(separator: " ")
+        guard parts.count == 2 else { throw RemoteError.unreachable(os) }
+        return Probe(os: String(parts[0]).lowercased(), arch: String(parts[1]).lowercased(),
+                     hash: tagged("hash"), gunzip: lines.contains("gunzip"))
     }
 
     /// Installs `binary` as the destination's server, with a `manifold`
     /// script beside it that runs `manifoldd open`, so terminals there
-    /// have the command on their PATH as terminals here do.
-    public static func upload(_ dest: Destination, binary: Data) throws {
-        let cmd = "mkdir -p ~/.manifold/bin && cat > ~/.manifold/bin/manifoldd.new && chmod +x ~/.manifold/bin/manifoldd.new && mv ~/.manifold/bin/manifoldd.new ~/.manifold/bin/manifoldd"
-            + " && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/manifoldd\" open \"$@\"' > ~/.manifold/bin/manifold && chmod +x ~/.manifold/bin/manifold"
-        let (out, status) = try Child.run(dest.invocation(cmd), input: binary, timeout: 600)
-        guard status == 0 else { throw RemoteError.uploadFailed(String(decoding: out, as: UTF8.self)) }
+    /// have the command on their PATH as terminals here do. Compressed
+    /// on the way if the destination has gunzip; into a file of this
+    /// upload's own, any left by earlier ones taken away first (one that
+    /// was still going then has nothing to put in place), and put in
+    /// place only if it hashes as what was sent. It gives up once nothing
+    /// has moved for a minute, however long it has gone on; `progress` is
+    /// told how much of the binary has gone, from another thread.
+    public static func upload(_ dest: Destination, binary: Data, compressed: Bool, progress: (@Sendable (Int) -> Void)? = nil) throws {
+        let script = """
+            cd ~/.manifold/bin 2>/dev/null || { mkdir -p ~/.manifold/bin && cd ~/.manifold/bin; } || exit 1
+            rm -f manifoldd.new.*
+            new=manifoldd.new.$$
+            \(compressed ? "gunzip -c" : "cat") > "$new" || { rm -f "$new"; exit 1; }
+            got=$( (sha256sum "$new" 2>/dev/null || shasum -a 256 "$new") | cut -d' ' -f1)
+            if [ "$got" != \(sha256(binary)) ]; then size=$(wc -c < "$new"); rm -f "$new"; echo "what arrived isn't what was sent ($size of \(binary.count) bytes)"; exit 1; fi
+            chmod +x "$new" && mv "$new" manifoldd || exit 1
+            printf '%s\\n' '#!/bin/sh' 'exec "$(dirname "$0")/manifoldd" open "$@"' > manifold && chmod +x manifold
+            """
+        var argv = dest.invocation(posix(script))
+        // Compressed here as it goes: gzip takes the binary, the provider
+        // takes what gzip makes.
+        if compressed { argv = ["/bin/sh", "-c", "gzip -c | \"$@\"", "sh"] + argv }
+        let (out, status) = try Child.run(argv, input: binary, timeout: 6 * 3600, stall: 60, progress: progress)
+        guard status == 0 else {
+            let said = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw RemoteError.uploadFailed(said.isEmpty ? "it stopped (status \(status))" : said)
+        }
+    }
+
+    /// A POSIX shell script as one command for a provider: whatever shell
+    /// the destination logs in with, sh runs it.
+    static func posix(_ script: String) -> String {
+        "sh -c '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// The command that bridges stdio to the destination's server.
