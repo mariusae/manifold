@@ -3214,6 +3214,19 @@ extension MainWindowController: GridDelegate {
         appendToSelected([.move(placement, column: c, at: i + 1), .stash(target, behind: placement), .focus(placement)])
     }
 
+    /// Close Stack: this tile and every one behind it are taken off the
+    /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
+    /// is its whole column, which goes.
+    func gridCloseStack(_ placement: PlacementID) {
+        guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
+        let stack = a.full == placement
+            ? a.columns[c]
+            : a.columns[c].filter { $0.id == placement || (a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement) }
+        var events: [Event] = a.full == placement ? [.full(nil)] : []
+        events += stack.map { .remove($0.id) }
+        appendToSelected(events)
+    }
+
     /// Unstack: every tile behind this one shows, sharing its room.
     func gridUnstackAll(_ placement: PlacementID) {
         guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
@@ -3321,6 +3334,10 @@ extension MainWindowController: GridDelegate {
         menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
         if let c = a.columnIndex(of: placement), a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }) {
             menu.addItem(ClosureMenuItem("Unstack", symbol: "square.stack.3d.up.slash") { [weak self] in self?.gridUnstackAll(placement) })
+            menu.addItem(ClosureMenuItem("Close Stack", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
+        } else if maximized, let c = a.columnIndex(of: placement), a.columns[c].count > 1 {
+            // Maximized, the column behind it is its stack: closed with it.
+            menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {

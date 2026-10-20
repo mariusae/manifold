@@ -240,26 +240,33 @@ final class GridView: NSView, NSDraggingSource {
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
-        columnDividers.forEach { $0.removeFromSuperview() }
-        columnDividers = (0..<max(0, columns.count - 1)).map { i in
+        // The dividers are kept from one render to the next (every
+        // keystroke in a note renders): only the count changes views.
+        let columnCount = max(0, columns.count - 1)
+        while columnDividers.count > columnCount { columnDividers.removeLast().removeFromSuperview() }
+        while columnDividers.count < columnCount {
             let d = DividerView()
+            addSubview(d)
+            columnDividers.append(d)
+        }
+        for (i, d) in columnDividers.enumerated() {
             d.onDrag = { [weak self] x in self?.dragColumnDivider(i, to: x) }
             d.onEnd = { [weak self] in self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
-            addSubview(d)
-            return d
         }
-        rowDividers.forEach { $0.removeFromSuperview() }
-        rowDividers = []
-        for (c, column) in columns.enumerated() where shownTiles(c).count > 1 {
+        var rows: [(Int, PlacementID, PlacementID)] = []
+        for c in columns.indices where shownTiles(c).count > 1 {
             let shown = shownTiles(c)
-            for r in 0..<(shown.count - 1) {
-                let d = RowDividerView()
-                let above = shown[r].shown.id, below = shown[r + 1].shown.id
-                d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, above: above, below: below, to: y) }
-                d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
-                addSubview(d)
-                rowDividers.append(d)
-            }
+            for r in 0..<(shown.count - 1) { rows.append((c, shown[r].shown.id, shown[r + 1].shown.id)) }
+        }
+        while rowDividers.count > rows.count { rowDividers.removeLast().removeFromSuperview() }
+        while rowDividers.count < rows.count {
+            let d = RowDividerView()
+            addSubview(d)
+            rowDividers.append(d)
+        }
+        for (d, (c, above, below)) in zip(rowDividers, rows) {
+            d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, above: above, below: below, to: y) }
+            d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
         }
         addSubview(dropOverlay)
         if dragging { addSubview(dragCatcher) }
@@ -479,8 +486,10 @@ final class GridView: NSView, NSDraggingSource {
         // The focus ring: around the focused tile, over everything.
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
             focusRing.isHidden = false
-            focusRing.frame = t.view.frame
-            focusRing.needsDisplay = true
+            if focusRing.frame != t.view.frame {
+                focusRing.frame = t.view.frame
+                focusRing.needsDisplay = true
+            }
             if let p = pills[focused] { keep(focusRing, above: p) }
         } else {
             focusRing.isHidden = true
@@ -966,18 +975,32 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private var stashed = false
 
+    /// The symbol the icon shows, so it's set only when it changes.
+    private var symbolName = ""
+
+    /// Shown afresh on every render (each keystroke in a note is one):
+    /// only what differs is touched, or the images and labels would be
+    /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false, stashed: Bool = false) {
-        self.maximized = maximized
+        if self.maximized != maximized || corner.image == nil {
+            self.maximized = maximized
+            corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
+            corner.toolTip = maximized ? "Restore (⇧⌘↩)" : "Maximize (⇧⌘↩)"
+        }
         self.stashed = stashed
-        corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
-        corner.toolTip = maximized ? "Restore (⇧⌘↩)" : "Maximize (⇧⌘↩)"
-        corner.isHidden = stashed
-        icon.image = Theme.symbol(shown.symbol, size: 11)
-        name.stringValue = shown.title + (shown.isDormant ? "  (dormant)" : "")
-        dirty.isHidden = !shown.isDirty
-        glyph.look = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
-        glyph.isHidden = glyph.look == nil
-        glyph.toolTip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
+        if corner.isHidden != stashed { corner.isHidden = stashed }
+        if symbolName != shown.symbol {
+            symbolName = shown.symbol
+            icon.image = Theme.symbol(shown.symbol, size: 11)
+        }
+        let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
+        if name.stringValue != title { name.stringValue = title }
+        if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
+        let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
+        if glyph.look != look { glyph.look = look }
+        if glyph.isHidden != (look == nil) { glyph.isHidden = look == nil }
+        let tip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
+        if glyph.toolTip != tip { glyph.toolTip = tip }
         if self.focused != focused {
             self.focused = focused
             updateColors()

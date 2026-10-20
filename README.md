@@ -43,7 +43,9 @@ and Mona Sans (bundled).
   tile's own pill and it swaps with the next behind it. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it;
-  Unstack in the pill's menu lays the whole stack out in the column.
+  Unstack in the pill's menu lays the whole stack out in the column;
+  Close Stack takes the tile and its stack off the workspace (from a
+  maximized tile, Close Column takes the column).
   Going to a stashed block from the sidebar or the
   finder brings it out too, and the pointer follows. Drop a pill on
   another's to stash it there; ⌥-drag it instead and it goes on top,
