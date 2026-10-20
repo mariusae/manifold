@@ -74,6 +74,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         }
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
+        web.unregisterDraggedTypes()
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)

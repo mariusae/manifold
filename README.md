@@ -36,7 +36,8 @@ and Mona Sans (bundled).
   others. A stash is a stack behind any tile: a few edges peek out
   beside its pill, fan out from behind it when the pointer rests there
   (packed, opaque, the edges gone while they're out), and one clicked
-  comes back as that tile's lower half; ⇧-clicked (an edge or a
+  comes back on its own as that tile's lower half, the rest staying
+  behind the tile that showed; ⇧-clicked (an edge or a
   fanned-out pill), it takes the top instead, whole, the tile that
   showed going behind it with the rest of the stack. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes

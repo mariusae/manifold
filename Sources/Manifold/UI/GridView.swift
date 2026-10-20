@@ -581,7 +581,12 @@ final class GridView: NSView, NSDraggingSource {
             // files are taken: a terminal types it, an editor inserts it.
             guard let block = shown?.block, let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
             item.setString(text, forType: .string)
-            if text.hasPrefix("/") { item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL) }
+            // A file's URL too — not a folder's: a web view in the drag's
+            // way takes a dragged folder for a file list and reads it.
+            var isDir: ObjCBool = false
+            if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
+                item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
+            }
             // And the block as a link a note takes: [title](manifold:id).
             // Not as a block: the grid takes no ⇧-drag, the views under it do.
             let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")

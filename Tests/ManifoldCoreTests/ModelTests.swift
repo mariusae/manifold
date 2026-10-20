@@ -919,3 +919,21 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(found[1].target == .path("notes/plan.md"))
     #expect(found[2].target == .title("Ideas"))
 }
+
+
+@Test func aTileClickedOutOfAStackComesOutAloneUnderIt() {
+    var a = ArrangementState()
+    let top = Placement(block: BlockID(), lens: .editor)
+    let t1 = Placement(block: BlockID(), lens: .terminal), t2 = Placement(block: BlockID(), lens: .terminal), t3 = Placement(block: BlockID(), lens: .terminal)
+    a.apply(.place(top, column: 0, at: 0))
+    for (i, t) in [t1, t2, t3].enumerated() { a.apply(.place(t, column: 0, at: i + 1)) }
+    for t in [t1, t2, t3] { a.apply(.stash(t.id, behind: top.id)) }
+    // The stack is [t3, t2, t1] behind top; t2 clicked comes out under
+    // the stack, which stays behind top.
+    for e in a.unstashing(t2.id) { a.apply(e) }
+    #expect(a.shownTiles(inColumn: 0).map(\.id) == [top.id, t2.id])
+    #expect(a.columns[0].map(\.id) == [top.id, t3.id, t1.id, t2.id])
+    #expect(a.tile(behind: t3.id)?.id == top.id && a.tile(behind: t1.id)?.id == top.id)
+    #expect(abs(a.height(of: top.id) - a.height(of: t2.id)) < 0.001)
+    #expect(a.focused == t2.id)
+}

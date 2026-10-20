@@ -262,10 +262,16 @@ extension ArrangementState {
     /// Heights after a stashed tile comes back: the lower half of the tile
     /// it was behind.
     public func unstashing(_ id: PlacementID) -> [Event] {
-        guard locate(id) != nil, isStashed(id) else { return [] }
+        guard let (c, i) = locate(id), isStashed(id) else { return [] }
         guard let top = tile(behind: id) else { return [.heights([id: 1])] }
+        // Out on its own, under the stack it was in: the rest stay behind
+        // the tile that showed, not behind the one that came out.
+        var rest = columns[c]
+        rest.remove(at: i)
+        var j = (rest.firstIndex { $0.id == top.id } ?? 0) + 1
+        while j < rest.count, isStashed(rest[j].id) { j += 1 }
         let h = height(of: top.id) / 2
-        return [.heights([id: h, top.id: h]), .focus(id)]
+        return [.move(id, column: c, at: j), .heights([id: h, top.id: h]), .focus(id)]
     }
 
     /// A tile dropped on another's pill: into the stack behind it.

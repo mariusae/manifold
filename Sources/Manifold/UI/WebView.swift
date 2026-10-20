@@ -47,6 +47,8 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         web.navigationDelegate = self
         web.allowsBackForwardNavigationGestures = true
+        // Nothing is dropped on a page: WebKit takes no part in drags.
+        web.unregisterDraggedTypes()
         addSubview(web)
         documentChanged()
     }
