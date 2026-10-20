@@ -1243,9 +1243,23 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let sh = ceil(subtitle.intrinsicContentSize.height)
             subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
         }
+        window?.invalidateCursorRects(for: self)
     }
 
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
+    /// The open hand over the bar, which drags; the pointing hand over
+    /// what's clicked on it — the symbol (the menu), maximize and close.
+    override func resetCursorRects() {
+        var hands = [icon.frame.insetBy(dx: -8, dy: -6)]
+        for b in [corner, close] where !b.isHidden { hands.append(b.frame) }
+        hands.sort { $0.minX < $1.minX }
+        var x: CGFloat = 0
+        for r in hands {
+            if r.minX > x { addCursorRect(NSRect(x: x, y: 0, width: r.minX - x, height: bounds.height), cursor: .openHand) }
+            addCursorRect(r.intersection(bounds), cursor: .pointingHand)
+            x = max(x, r.maxX)
+        }
+        if x < bounds.width { addCursorRect(NSRect(x: x, y: 0, width: bounds.width - x, height: bounds.height), cursor: .openHand) }
+    }
 
     override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
 
