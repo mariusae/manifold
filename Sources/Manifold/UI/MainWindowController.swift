@@ -360,6 +360,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.offline = shown.offline
                 e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
+                e.isRemote = p.block.host != host.host
                 e.font = (hosts.block(p.block)?.views?[p.id]?["font"]).flatMap(EditorFont.init(rawValue:)) ?? hosts.state.appearance.editorFont
                 e.theme = hosts.state.appearance.theme
                 e.undoLimit = desk.settings.undoDepth
@@ -389,6 +390,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.delegate = self
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
+            pv.blockArchived = { [weak self] in self?.hosts.block($0)?.isArchived == true }
             v = pv
         case .outline:
             // An outline block shows its subject's commands or headings;

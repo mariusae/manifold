@@ -83,7 +83,17 @@ final class TextView: NSView, NSTextInputClient {
     var tabWidth = 4
     var isEditable = true
     static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
-    var gutterWidth: CGFloat { showsLineNumbers ? 52 : 0 }
+    /// The gutter: room for the line count's digits, the numbers set at
+    /// its left, so the text has the rest.
+    var gutterWidth: CGFloat {
+        guard showsLineNumbers else { return 0 }
+        let digits = max(2, String(max(text.lineCount, 1)).count)
+        return CGFloat(digits) * gutterDigitWidth + 18
+    }
+    private var gutterDigitWidth: CGFloat {
+        let f = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize * 0.78), weight: .regular)
+        return ceil(("0" as NSString).size(withAttributes: [.font: f]).width)
+    }
 
     // Selection.
     private(set) var selections: [Selection] = [Selection(at: 0)]
@@ -586,7 +596,7 @@ final class TextView: NSView, NSTextInputClient {
                 let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: Self.gutterText])
                 let size = s.size()
                 ctx.restoreGState()
-                s.draw(at: NSPoint(x: textLeft - 14 - size.width, y: lineTop + (lineHeight - size.height) / 2))
+                s.draw(at: NSPoint(x: Self.insets.left + 2, y: lineTop + (lineHeight - size.height) / 2))
                 ctx.saveGState()
                 ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }

@@ -535,7 +535,9 @@ final class Server {
     /// executable's path — kept to what descends from a terminal's or
     /// agent's shell, each tagged with its block, shells first.
     private func listProcesses(_ block: BlockID) {
-        let shells = sessions.map { ($0.key, $0.value.pid) }
+        // Under the live shells of blocks that aren't put away: an archived
+        // block's shell was told to go, and whatever lingers isn't yours to see here.
+        let shells = sessions.filter { node.block($0.key)?.isArchived != true }.map { ($0.key, $0.value.pid) }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
             var all: [Int32: ProcessEntry] = [:]

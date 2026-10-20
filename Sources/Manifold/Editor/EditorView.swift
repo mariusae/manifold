@@ -394,6 +394,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// Where the block lives (its folder): where a note is saved by default.
     var home: String?
+    /// On another host: the Mac's save panel can't browse there, so a
+    /// note is saved by naming a path on the host.
+    var isRemote = false
 
     /// The line the caret is on, from 1.
     var caretLine: Int { textView.text.line(at: textView.primarySelection.head) + 1 }
@@ -407,6 +410,27 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// A note, saved: it becomes a file.
     private func saveAs() {
         guard let window else { return }
+        if isRemote {
+            let alert = NSAlert()
+            alert.messageText = "Save the note on its host"
+            alert.informativeText = "The path to save it at, on the host it's on."
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+            field.stringValue = (home ?? "~").appendingPathComponent("Note.md")
+            alert.accessoryView = field
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            alert.window.initialFirstResponder = field
+            alert.beginSheetModal(for: window) { [weak self] response in
+                guard let self, response == .alertFirstButtonReturn, let doc = self.document else { return }
+                let path = field.stringValue.trimmingCharacters(in: .whitespaces)
+                guard !path.isEmpty else { return }
+                self.path = path
+                self.textView.commentLeader = Self.commentLeader(for: path)
+                self.delegate?.editor(self, append: [.path(path)])
+                self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
+            }
+            return
+        }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Note.md"
         if let home { panel.directoryURL = URL(fileURLWithPath: home) }
