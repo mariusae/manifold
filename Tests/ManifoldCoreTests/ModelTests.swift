@@ -1019,3 +1019,14 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns[1].map(\.id) == ["o", "x"])
     #expect(!a.isStashed("x"))
 }
+
+@Test func aFolderBlocksPlaceIsItsOwnFolder() {
+    // A listing or a repository is where it lists: a terminal made from it starts there, not in its parent.
+    let at = Stamp(wall: 1, host: .local)
+    let listing = Block(id: BlockID(), kind: .directory, created: at, path: "/Users/x/src/manifold")
+    #expect(listing.place == "/Users/x/src/manifold")
+    let repo = Block(id: BlockID(), kind: .git, created: at, path: "/Users/x/src/manifold")
+    #expect(repo.place == "/Users/x/src/manifold")
+    let file = Block(id: BlockID(), kind: .text, created: at, path: "/Users/x/src/manifold/README.md")
+    #expect(file.place == "/Users/x/src/manifold")
+}

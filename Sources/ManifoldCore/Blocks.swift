@@ -673,10 +673,16 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         return false
     }
 
-    /// Where it is, for finding it: a folder, a working directory, or the
-    /// folder a note was made in.
+    /// Where it is, for finding it, and where a new terminal from it
+    /// starts: a file's folder; a listing's or a repository's own folder;
+    /// a terminal's working directory; the folder a note was made in.
     public var place: String? {
-        if let path { return path.deletingLastPathComponent }
+        if let path {
+            switch kind {
+            case .directory, .git: return path
+            default: return path.deletingLastPathComponent
+            }
+        }
         return terminal?.cwd ?? home
     }
 }
