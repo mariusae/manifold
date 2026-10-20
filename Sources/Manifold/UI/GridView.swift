@@ -1285,6 +1285,22 @@ final class RowDividerView: NSView {
     override func mouseUp(with event: NSEvent) { onEnd?() }
 }
 
+extension NSView {
+    /// Whether the pointer is over this view with nothing over it there
+    /// (the sidebar floating out, say): tracking areas don't know what
+    /// covers them, so a view sets the cursor only when it's really the
+    /// one under the pointer.
+    var isUnderPointer: Bool {
+        guard let window, let content = window.contentView else { return false }
+        var v = content.hitTest(content.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        while let x = v {
+            if x === self { return true }
+            v = x.superview
+        }
+        return false
+    }
+}
+
 /// The pointer, moved by us: to a point in screen coordinates (AppKit's,
 /// from the bottom left of the main screen).
 enum Pointer {

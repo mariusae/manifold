@@ -221,7 +221,10 @@ when you find it again.
   in, then one with its letters in order; a match only in what's
   around a block (its folder, its program) counts for less, and never
   rises above the rest for being here. The most recently seen comes
-  first among equals; with nothing typed, that is the order. A
+  first among equals; with nothing typed, that is the order. Each row
+  says at the right where the block is — here, linked, near, archived,
+  or *recent* for one on no workspace, which choosing brings back
+  rather than goes to — and how long since it was last seen. A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host

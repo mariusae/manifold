@@ -1675,6 +1675,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard isUnderPointer else { return }
         let over = linkTarget(at: convert(event.locationInWindow, from: nil)) != nil
         if over != overLink {
             overLink = over
@@ -1683,6 +1684,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        guard isUnderPointer else { return }
         (overLink ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 

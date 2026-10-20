@@ -26,6 +26,10 @@ class FlippedView: NSView {
 /// organized four ways, beside the surface (or sliding out over it when
 /// not pinned). Its top row carries the window buttons, New, and ⋯.
 final class SidebarView: NSView {
+    /// Over the sidebar the pointer is the arrow, whatever is beneath it
+    /// when it floats out.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+
     weak var delegate: SidebarDelegate?
     /// Clear over the window's wash when pinned, as Kero's is; a pale sheet when floating over the cards.
     private let card = NSView()

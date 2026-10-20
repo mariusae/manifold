@@ -2463,8 +2463,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if onDesk.contains(block.id) {
                 tier = 4
             } else {
+                // On no workspace: chosen, it is brought back rather than
+                // gone to.
                 tier = 3
+                if note.isEmpty, block.kind != .arrangement { note = "recent" }
             }
+            // How long since it was last seen, after the note.
+            let seen = Age.short(entry.lastSeen)
+            note = note.isEmpty ? seen : note + " · " + seen
             // A weak match — the query's letters in order in the title, or
             // only in what's around the block — gets no tier above
             // elsewhere: being here doesn't make it what you meant.

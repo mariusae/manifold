@@ -472,7 +472,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.updateTrackingAreas()
     }
 
-    override func cursorUpdate(with event: NSEvent) { cursor.set() }
+    override func cursorUpdate(with event: NSEvent) { if isUnderPointer { cursor.set() } }
 
     func setCursor(_ shape: ghostty_action_mouse_shape_e) {
         switch shape {
@@ -486,10 +486,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         case GHOSTTY_MOUSE_SHAPE_GRABBING: cursor = .closedHand
         default: cursor = .arrow
         }
-        if let window, window.isKeyWindow, let loc = window.mouseLocationOutsideOfEventStream as NSPoint?,
-           bounds.contains(convert(loc, from: nil)) {
-            cursor.set()
-        }
+        if let window, window.isKeyWindow, isUnderPointer { cursor.set() }
     }
 
     private func mods(_ flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e { Self.ghosttyMods(flags) }
@@ -616,7 +613,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_MIDDLE, mods(event.modifierFlags))
     }
 
-    override func mouseMoved(with event: NSEvent) { sendMousePos(event) }
+    /// Moved over the terminal — not over something covering it (the
+    /// sidebar floating out), which would have it show a link's hand.
+    override func mouseMoved(with event: NSEvent) { if isUnderPointer { sendMousePos(event) } }
     override func mouseDragged(with event: NSEvent) { sendMousePos(event) }
     override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
     override func otherMouseDragged(with event: NSEvent) { sendMousePos(event) }
