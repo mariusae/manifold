@@ -441,7 +441,11 @@ is migrated into logs on first run.
 - **End All Sessions and Quit** (in the app menu or the sidebar's ⋯ menu)
   stops the server; everything is kept, and terminals start fresh shells
   next time. Manifold ▸ Restart Server… restarts it (offered when the app
-  finds a server from another version).
+  finds a server from another version). A remote host's server from
+  another version is restarted on its own: the app has installed its
+  own there already, so it stops the old one and comes back through a
+  bridge that starts the new; its shells start again, each in its
+  directory, under their recent output.
 - **Remoting** (Manifold ▸ Remoting…) is a table of providers: a name and
   a command that runs a command line on a destination with stdio
   connected, `%h` the destination and `%c` the command (appended when

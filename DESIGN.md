@@ -368,7 +368,11 @@ the wait doubling from two seconds to two minutes (reset once it
 answers; Try Again Now hurries it); a connected bridge is pinged every
 fifteen seconds and dropped (to be made again) when a pong doesn't
 come, and three bridges in a row that close before the welcome mean the
-server there is gone: the host is bootstrapped again. The mirrored
+server there is gone: the host is bootstrapped again. A welcome in
+another protocol version means the server still running is the old
+one (the bootstrap installed ours beside it, by hash): it is sent
+`shutdown`, once per version seen, and the bridge the client comes
+back through a second later starts the installed one. The mirrored
 node stays as last seen: tiles of its blocks wear the offline glyph,
 editors there take no edits, appends go nowhere. The sidebar's host row
 shows the state and opens the host's home (the welcome carries it).

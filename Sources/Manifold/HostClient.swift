@@ -107,6 +107,12 @@ final class HostClient {
     /// The server speaks another version of the protocol (it's from an older
     /// or newer build, still running).
     var onVersionMismatch: ((Int) -> Void)?
+    /// A remote server of another version was told to stop, so the bridge
+    /// starts the one just installed (§8.1): the version it spoke, so it's
+    /// told once, not again and again should the install not take.
+    private var restartedServerSpeaking: Int?
+    /// The connection about to close is the server stopping for that: come back soon.
+    private var serverRestarting = false
 
     /// The first welcome arrived: the host's name is known.
     var onWelcome: (() -> Void)?
@@ -543,7 +549,9 @@ final class HostClient {
             // remote one after a while, longer each time it can't be.
             if self.isRemote {
                 let again = self.closedUnanswered >= 3 && self.onNeedsBootstrap != nil
-                self.scheduleRetry(after: self.nextRetryDelay()) { [weak self] in
+                let delay = self.serverRestarting ? 1 : self.nextRetryDelay()
+                self.serverRestarting = false
+                self.scheduleRetry(after: delay) { [weak self] in
                     guard let self else { return }
                     if again { self.closedUnanswered = 0; self.onNeedsBootstrap?() } else { self.connect() }
                 }
@@ -563,7 +571,23 @@ final class HostClient {
         case let .welcome(version, _, host, label, _, home, snapshots):
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
-                onVersionMismatch?(version)
+                if isRemote {
+                    // The host's server is from before our build; the binary
+                    // there is ours now (bootstrap put it there), but the
+                    // old one kept running. Stopped, it goes; the bridge we
+                    // come back through finds no socket and starts the new
+                    // one. Its shells start again, each in its directory.
+                    if restartedServerSpeaking != version {
+                        restartedServerSpeaking = version
+                        NSLog("restarting the server on %@ for protocol %d", label ?? host.description, protocolVersion)
+                        conn?.send(.message(ClientMessage.shutdown))
+                        serverRestarting = true
+                    } else {
+                        NSLog("the server on %@ still speaks protocol %d after a restart; left as it is", label ?? host.description, version)
+                    }
+                } else {
+                    onVersionMismatch?(version)
+                }
             }
             let first = !hasState
             self.host = host
