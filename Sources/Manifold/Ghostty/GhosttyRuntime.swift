@@ -240,7 +240,7 @@ final class GhosttyRuntime {
             guard let ptr = u.url else { return false }
             let str = String(decoding: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), as: UTF8.self)
             if let view, let delegate = view.delegate {
-                delegate.terminal(view, open: str)
+                delegate.terminal(view, open: str, over: view.openOver)
             } else if let url = URL(string: str), url.scheme != nil {
                 NSWorkspace.shared.open(url)
             } else {

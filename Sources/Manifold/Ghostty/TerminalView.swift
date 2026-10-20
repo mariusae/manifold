@@ -5,8 +5,9 @@ import ManifoldCore
 protocol TerminalViewDelegate: AnyObject {
     func terminalDidFocus(_ view: TerminalView)
     func terminalDidClose(_ view: TerminalView)
-    /// A link in the terminal was opened (command-clicked): a URL, or a path.
-    func terminal(_ view: TerminalView, open target: String)
+    /// A link in the terminal was opened (⌘-clicked): a URL, or a path;
+    /// `over`: ⌥ was held too, for what opens to go over the terminal.
+    func terminal(_ view: TerminalView, open target: String, over: Bool)
     /// A command on the scrubber was opened: it and its output, as a block.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
     /// Copy on Select was switched from the pill's menu: a setting.
@@ -494,7 +495,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         guard let surface else { return }
         sendMousePos(event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods(event.modifierFlags))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, clickMods(event))
     }
 
     /// Whether a selection made with the mouse goes to the clipboard at
@@ -502,9 +503,22 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// where selecting is for reading.
     static var copyOnSelect = true
 
+    /// ⌘⌥-click: ghostty opens a link on ⌘-click alone (its modifiers must
+    /// match), so ⌥ is kept from it and remembered here, for the open that
+    /// follows to put what it opens over the terminal.
+    private(set) var openOver = false
+
+    /// The click's modifiers for ghostty, ⌥ taken off a ⌘⌥-click and noted.
+    private func clickMods(_ event: NSEvent) -> ghostty_input_mods_e {
+        var flags = event.modifierFlags
+        openOver = flags.contains(.command) && flags.contains(.option)
+        if openOver { flags.remove(.option) }
+        return mods(flags)
+    }
+
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods(event.modifierFlags))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, clickMods(event))
         ghostty_surface_mouse_pressure(surface, 0, 0)
         if Self.copyOnSelect, !(window?.styleMask.contains(.fullScreen) ?? false), let text = selectedText, !text.isEmpty {
             NSPasteboard.general.clearContents()

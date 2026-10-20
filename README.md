@@ -47,7 +47,12 @@ and Mona Sans (bundled).
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).
   Going to a stashed block from the sidebar or the
-  finder brings it out too, and the pointer follows. Drop a pill on
+  finder brings it out too, and the pointer follows. **⌥ with any
+  click that opens something** puts what opens over the tile clicked
+  in, that tile going behind it (as ⌥-drag stacks): a link or a
+  block's pill in a note, a badge's link, a sidebar row, a listing's
+  file or folder, a scrubber's command, ⌘⌥-click on a terminal's link,
+  ⌥⇧⌘-click on a page's. Drop a pill on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
   while you drag is the target tile's shape, to say so; ⇧-drag a pill

@@ -277,7 +277,7 @@ extension EditorView {
 extension EditorView {
     func textView(_ view: TextView, handle event: NSEvent) -> Bool { handleCompletionKey(event) }
     func textView(_ view: TextView, mentioned block: BlockID) { delegate?.editor(self, linkedFrom: block) }
-    func textView(_ view: TextView, follow target: String) { delegate?.editor(self, follow: target) }
+    func textView(_ view: TextView, follow target: String, over: Bool) { delegate?.editor(self, follow: target, over: over) }
 
     func textView(_ view: TextView, commandClickAt offset: Int) {
         if let url = urlAt(offset) { delegate?.editor(self, open: url); return }

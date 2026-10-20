@@ -6,8 +6,9 @@ protocol WebViewDelegate: AnyObject {
     /// The page moved on (a link followed, an address typed): the block's
     /// log records where it is.
     func webView(_ view: WebView, append events: [Event])
-    /// A link was ⇧⌘-clicked: opened as a block of its own, beside.
-    func webView(_ view: WebView, open url: URL)
+    /// A link was ⇧⌘-clicked: opened as a block of its own, beside — or,
+    /// with ⌥ too (`over`), over this one.
+    func webView(_ view: WebView, open url: URL, over: Bool)
 }
 
 /// The web lens: an embedded browser on a web block, with an address bar,
@@ -148,7 +149,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
             return
         }
         decisionHandler(.cancel)
-        if action.modifierFlags.contains(.shift) { delegate?.webView(self, open: url) } else { NSWorkspace.shared.open(url) }
+        if action.modifierFlags.contains(.shift) { delegate?.webView(self, open: url, over: action.modifierFlags.contains(.option)) } else { NSWorkspace.shared.open(url) }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

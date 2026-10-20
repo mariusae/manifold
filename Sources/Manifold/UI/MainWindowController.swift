@@ -1060,9 +1060,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A linked block from a tile's badge: gone to where it is; placed
     /// nowhere, opened beside the tile.
-    func gridOpenLink(_ block: BlockID, from placement: PlacementID) {
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool) {
         let placed = allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
-        if placed, let b = hosts.block(block) {
+        if over, let b = hosts.block(block), b.kind != .arrangement {
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement))
+        } else if placed, let b = hosts.block(block) {
             goTo(b.id)
         } else if let b = hosts.block(block) {
             show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened)
@@ -2316,11 +2318,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         /// Below the tile that opened it, taking its lower half; the two
         /// are linked.
         case besideOpener(PlacementID)
+        /// Over the tile that opened it (⌥ with the click): the tile goes
+        /// behind it, as ⌥-drag stacks; the two are linked.
+        case over(PlacementID)
     }
 
     /// `besideOpener` when there is an opener, else `here`.
-    private func opener(_ placement: PlacementID?) -> Where {
-        placement.map { .besideOpener($0) } ?? .here
+    /// Where what a click opens goes: beside the tile clicked in — or,
+    /// with ⌥ held (`over`, else read off the click), over it.
+    private func opener(_ placement: PlacementID?, over: Bool? = nil) -> Where {
+        guard let placement else { return .here }
+        return (over ?? Self.clickModifiers?.contains(.option) ?? false) ? .over(placement) : .besideOpener(placement)
+    }
+
+    /// Go to a block from a click: where it is — or, with ⌥ held, over
+    /// the tile clicked in.
+    func arrive(_ block: BlockID, from placement: PlacementID?, over: Bool? = nil) {
+        if over ?? Self.clickModifiers?.contains(.option) ?? false, let placement, let b = hosts.block(block), b.kind != .arrangement {
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement))
+        } else {
+            goTo(block)
+        }
+    }
+
+    /// A tile over another (⌥-drag, ⌥-click): moved to just after it, the
+    /// other stashed behind it, and focused; out of its own stack first.
+    func cover(_ tile: PlacementID, over target: PlacementID) {
+        guard let a = arrangement, tile != target, let (c, _) = a.locate(target) else { return }
+        var events: [Event] = a.isStashed(tile) ? a.unstashing(tile) : []
+        var column = a.columns[c]
+        column.removeAll { $0.id == tile }
+        guard let i = column.firstIndex(where: { $0.id == target }) else { return }
+        events += [.move(tile, column: c, at: i + 1), .stash(target, behind: tile), .focus(tile)]
+        if a.full == target { events.append(.full(tile)) }
+        appendToSelected(events)
     }
 
     /// Brings a block into the selected arrangement (or `arrangement`): a
@@ -2346,6 +2377,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             events = a.bringing(block, lens: lens, inColumn: c, below: p, newPlacement: fresh)
             hosts.link(from: from, to: block, kind: kind, context: context)
+        case .over(let p):
+            // A tile of the block already here moves over the opener (as
+            // ⌥-drag would take it there); else one is made over it.
+            if let t = a.tile(of: block, lens: lens) {
+                if t.id != p, let from = a.placement(p)?.block {
+                    cover(t.id, over: p)
+                    hosts.link(from: from, to: block, kind: kind, context: context)
+                }
+            } else {
+                showOver(block, lens: lens, over: p, kind: kind, context: context)
+            }
+            return
         }
         hosts.append(events, to: .block(id))
     }
@@ -2653,15 +2696,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return e.modifierFlags
     }
 
-    func open(_ target: String, from placement: PlacementID?, here: Bool? = nil) {
+    /// `over`: ⌥ was held (else read off the click): what opens goes over
+    /// the tile, not beside it.
+    func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil) {
+        let place = opener(placement, over: over)
         // A link to a block (manifold:host/ulid, as a note's pill is): go to it.
         if target.hasPrefix("manifold:"), let b = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
-            goTo(b)
+            arrive(b, from: placement, over: over)
             return
         }
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
             if scheme == "http" || scheme == "https", here ?? Self.clickModifiers.map(Self.opensHere) ?? true {
-                show(host.newWeb(url: url.absoluteString), lens: .web, opener(placement), context: target)
+                show(host.newWeb(url: url.absoluteString), lens: .web, place, context: target)
             } else {
                 NSWorkspace.shared.open(url)
             }
@@ -2671,7 +2717,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
         if on != host.host {
             // Another host's file: it says what it is.
-            openRemote(target, on: on, base: base, from: placement)
+            openRemote(target, on: on, base: base, from: placement, place: place)
             return
         }
         func resolve(_ text: String) -> String {
@@ -2694,20 +2740,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            show(hosts.textBlock(for: base, on: on), lens: .editor, opener(placement), context: target)
+            show(hosts.textBlock(for: base, on: on), lens: .editor, place, context: target)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         if isDir.boolValue {
-            openDirectory(path, from: placement, context: target)
+            show(hosts.directoryBlock(for: path, on: on), lens: .directory, place, context: target)
         } else if Lens.isMarkdown(path) {
-            show(hosts.textBlock(for: path, on: on), lens: .preview, opener(placement), context: target)
+            show(hosts.textBlock(for: path, on: on), lens: .preview, place, context: target)
         } else if Self.isHTML(path), on == host.host {
-            show(host.webBlock(forFile: path), lens: .web, opener(placement), context: target)
+            show(host.webBlock(forFile: path), lens: .web, place, context: target)
         } else if Self.isEditable(path) {
-            show(hosts.textBlock(for: path, on: on), lens: .editor, opener(placement), context: target)
+            show(hosts.textBlock(for: path, on: on), lens: .editor, place, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, opener(placement), context: target)
+            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -2716,7 +2762,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Opens a path on another host, where it can't be looked at from
     /// here: a folder if it ends in a slash, Markdown by its name, else
     /// text; `path:line:column` as from this host.
-    private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?) {
+    private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?, place: Where) {
         var text = target
         var line: Int?, column: Int?
         if let loc = FileLocation.split(target), loc.line != nil {
@@ -2727,12 +2773,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
-            show(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, opener(from), context: target)
+            show(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, place, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, opener(from), context: target)
+            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
         } else {
             if let line { pendingJump = (path, line, column) }
-            show(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, opener(from), context: target)
+            show(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, place, context: target)
         }
     }
 
@@ -3206,13 +3252,7 @@ extension MainWindowController: GridDelegate {
 
     /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
     /// stack going behind it.
-    func gridCover(_ placement: PlacementID, over target: PlacementID) {
-        guard let a = arrangement, placement != target, let (c, _) = a.locate(target) else { return }
-        var column = a.columns[c]
-        column.removeAll { $0.id == placement }
-        guard let i = column.firstIndex(where: { $0.id == target }) else { return }
-        appendToSelected([.move(placement, column: c, at: i + 1), .stash(target, behind: placement), .focus(placement)])
-    }
+    func gridCover(_ placement: PlacementID, over target: PlacementID) { cover(placement, over: target) }
 
     /// Close Stack: this tile and every one behind it are taken off the
     /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
@@ -3479,14 +3519,14 @@ extension MainWindowController: EditorViewDelegate {
     func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }
 
     /// A link in the text clicked: a block's gone to; an address opened.
-    func editor(_ view: EditorView, follow target: String) { open(target, from: view.placement) }
+    func editor(_ view: EditorView, follow target: String, over: Bool) { open(target, from: view.placement, over: over) }
 
     func editor(_ view: EditorView, open path: String, line: Int, column: Int) {
         let on = view.block.host
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
-        show(block, lens: .editor, .besideOpener(view.placement), context: view.lineAtCaret)
+        show(block, lens: .editor, opener(view.placement), context: view.lineAtCaret)
     }
 
     /// A server's edits to other files on the block's host: files that are
@@ -3515,16 +3555,18 @@ extension MainWindowController: MarkdownViewDelegate {
         guard let a = arrangement, let p = a.placement(view.placement) else { return }
         if url.isFileURL {
             let path = url.standardizedFileURL.path
+            let over = modifiers.contains(.option)
             if Lens.isMarkdown(path), !modifiers.contains(.command) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
                 hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
-                // Page to page in the same tile, as a browser goes.
-                replace(view.placement, with: block, lens: .preview)
+                // Page to page in the same tile, as a browser goes — or,
+                // with ⌥, the page over this one.
+                if over { showOver(block, lens: .preview, over: view.placement) } else { replace(view.placement, with: block, lens: .preview) }
             } else {
-                open(path, from: view.placement)
+                open(path, from: view.placement, over: over)
             }
         } else {
-            open(url.absoluteString, from: view.placement, here: Self.opensHere(modifiers))
+            open(url.absoluteString, from: view.placement, here: Self.opensHere(modifiers), over: modifiers.contains(.option))
         }
     }
 }
@@ -3534,16 +3576,20 @@ extension MainWindowController: WebViewDelegate {
         hosts.append(events, to: .block(view.block))
     }
 
-    func webView(_ view: WebView, open url: URL) {
-        open(url.absoluteString, from: view.placement, here: true)
+    func webView(_ view: WebView, open url: URL, over: Bool) {
+        open(url.absoluteString, from: view.placement, here: true, over: over)
     }
 }
 
 extension MainWindowController: DirectoryViewDelegate {
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool) {
-        if isDirectory {
+        let block = hosts.directoryBlock(for: path, on: view.block.host)
+        if isDirectory, Self.clickModifiers?.contains(.option) == true {
+            // ⌥: the folder's listing over this one.
+            showOver(block, lens: .directory, over: view.placement)
+        } else if isDirectory {
             // A folder takes the listing's place, in the same tile.
-            replace(view.placement, with: hosts.directoryBlock(for: path, on: view.block.host), lens: .directory)
+            replace(view.placement, with: block, lens: .directory)
         } else {
             open(path, from: view.placement)
         }
@@ -3566,7 +3612,7 @@ extension MainWindowController: ProcessViewDelegate {
         hosts.propose(.processes(block: view.block))
     }
 
-    func processView(_ view: ProcessView, goTo block: BlockID) { goTo(block) }
+    func processView(_ view: ProcessView, goTo block: BlockID) { arrive(block, from: view.placement) }
 
     func processView(_ view: ProcessView, signal pid: Int32, _ signal: Int32) {
         hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
@@ -3589,7 +3635,7 @@ extension MainWindowController: GitViewDelegate {
         case let .commit(_, sha): context = String(sha.prefix(7))
         case .versions, .patch: break
         }
-        show(block, lens: .diff, .besideOpener(view.placement), context: context)
+        show(block, lens: .diff, opener(view.placement), context: context)
     }
 
     func gitView(_ view: GitView, open path: String) {
@@ -3631,8 +3677,8 @@ extension MainWindowController: SearchViewDelegate {
 }
 
 extension MainWindowController: TerminalViewDelegate {
-    func terminal(_ view: TerminalView, open target: String) {
-        open(target, from: view.placement)
+    func terminal(_ view: TerminalView, open target: String, over: Bool) {
+        open(target, from: view.placement, over: over)
     }
 
     /// A command from a terminal's scrubber (§3.8): a note of it and its
@@ -3643,7 +3689,7 @@ extension MainWindowController: TerminalViewDelegate {
         client.append(.title(command.text), to: .block(note))
         client.append(.content("$ " + command.text + "\n" + output + "\n", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(note))
         hosts.link(from: view.block, to: note, kind: .opened, context: "command output")
-        show(note, lens: .editor, .here, kind: .opened)
+        show(note, lens: .editor, Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .here, kind: .opened)
     }
 
     func terminalDidFocus(_ view: TerminalView) {
@@ -3736,7 +3782,7 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return hosts.select(block) }
-        if bring { show(block, lens: Lens.default(for: b.kind, path: b.path), .here) } else { goTo(block) }
+        if bring { show(block, lens: Lens.default(for: b.kind, path: b.path), .here) } else { arrive(block, from: arrangement?.focused) }
         if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
     }
 

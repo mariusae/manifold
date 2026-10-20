@@ -12,8 +12,9 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, open url: URL)
     /// A block was ⇧-dragged in as a link: linked to this one.
     func editor(_ view: EditorView, linkedFrom block: BlockID)
-    /// A link in the text was clicked: a block's pill, or an address.
-    func editor(_ view: EditorView, follow target: String)
+    /// A link in the text was clicked: a block's pill, or an address;
+    /// with ⌥ (`over`), what opens goes over this tile.
+    func editor(_ view: EditorView, follow target: String, over: Bool)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.

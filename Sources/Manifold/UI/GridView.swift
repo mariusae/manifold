@@ -34,8 +34,8 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
-    /// A linked block from a tile's badge: gone to.
-    func gridOpenLink(_ block: BlockID, from placement: PlacementID)
+    /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool)
     /// × on a badge's link: the edge ends.
     func gridBreakLink(_ link: String)
     /// A block ⇧-dragged onto a tile: linked to its block.
@@ -232,7 +232,7 @@ final class GridView: NSView, NSDraggingSource {
                         return b
                     }()
                     badge.cards = tile.links
-                    badge.onOpen = { [weak self] block in self?.delegate?.gridOpenLink(block, from: id) }
+                    badge.onOpen = { [weak self] block, over in self?.delegate?.gridOpenLink(block, from: id, over: over) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }

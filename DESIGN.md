@@ -340,6 +340,14 @@ the kind and the message; `done` a filled dot in the accent; `error` a
 filled dot in red; `idle` nothing. The Dock badge counts the blocks
 blocked and done.
 
+**⌥ with a click** that opens something means *over*: the block goes
+over the tile clicked in, which is stashed behind it (`showOver`), as
+⌥-drag stacks a tile over another. One `Where.over` case carries it,
+read off the click wherever a view opens (a note's link or pill, a
+badge, the sidebar, a listing, a scrubber, a terminal's link — ghostty
+wants ⌘ alone for a link, so the terminal keeps ⌥ back and remembers
+it — a page's link).
+
 ### 3.10 Links by hand, and notes about blocks
 
 A block ⇧-dragged onto any tile is *linked* to the tile's block: one

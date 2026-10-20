@@ -20,8 +20,9 @@ protocol TextViewDelegate: AnyObject {
     func textView(_ view: TextView, mentioned block: BlockID)
     /// ⌘-click on a place in the text.
     func textView(_ view: TextView, commandClickAt offset: Int)
-    /// A link in Markdown clicked: a block's pill (manifold:id), or an address.
-    func textView(_ view: TextView, follow target: String)
+    /// A link in Markdown clicked: a block's pill (manifold:id), or an
+    /// address; `over`: ⌥ was held, for what opens to go over this tile.
+    func textView(_ view: TextView, follow target: String, over: Bool)
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
 }
@@ -1566,10 +1567,11 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
-        if event.clickCount == 1, flags.isDisjoint(with: [.command, .shift, .option]), let target = linkTarget(at: p) {
+        if event.clickCount == 1, flags.isDisjoint(with: [.command, .shift]), let target = linkTarget(at: p) {
             // A link, clicked: followed — the caret stays, so the pill does.
+            // ⌥: what it opens goes over this tile.
             dragAnchor = nil
-            delegate?.textView(self, follow: target)
+            delegate?.textView(self, follow: target, over: flags.contains(.option))
             return
         }
         if flags.contains(.command), event.clickCount == 1 {

@@ -19,7 +19,8 @@ struct LinkCard: Equatable {
 /// that breaks the link — one edge, so in both readings at once. One link
 /// alone opens on a click.
 final class LinkBadge: NSView {
-    var onOpen: ((BlockID) -> Void)?
+    /// A link clicked: the block, and whether ⌥ was held (over the tile).
+    var onOpen: ((BlockID, Bool) -> Void)?
     var onBreak: ((String) -> Void)?
     var cards: [LinkCard] = [] {
         didSet {
@@ -52,9 +53,9 @@ final class LinkBadge: NSView {
         super.init(frame: frame)
         wantsLayer = true
         badge.symbol = "link"
-        badge.onClick = { [weak self] in
+        badge.onClick = { [weak self] over in
             guard let self else { return }
-            if self.cards.count == 1, let c = self.cards.first { self.onOpen?(c.block) } else { self.fanned.toggle() }
+            if self.cards.count == 1, let c = self.cards.first { self.onOpen?(c.block, over) } else { self.fanned.toggle() }
         }
         addSubview(badge)
     }
@@ -82,7 +83,7 @@ final class LinkBadge: NSView {
             p.toolTip = card.outbound ? "Links to it" : "Linked from it"
             p.isHidden = true
             let block = card.block, link = card.link
-            p.onClick = { [weak self] in self?.onOpen?(block) }
+            p.onClick = { [weak self] over in self?.onOpen?(block, over) }
             p.onBreak = { [weak self] in self?.onBreak?(link) }
             addSubview(p)
             return p
@@ -160,7 +161,8 @@ final class LinkBadge: NSView {
     /// A small opaque capsule: an arrow for the direction, a symbol, a
     /// few words, and an × to break the link.
     final class Capsule: NSView {
-        var onClick: (() -> Void)?
+        /// Clicked: whether ⌥ was held.
+        var onClick: ((Bool) -> Void)?
         /// With this set, an × at the right end, to call.
         var onBreak: (() -> Void)? { didSet { close.isHidden = onBreak == nil; needsLayout = true } }
         private let arrow = NSImageView()
@@ -234,7 +236,7 @@ final class LinkBadge: NSView {
         override func mouseUp(with event: NSEvent) {
             let p = convert(event.locationInWindow, from: nil)
             guard bounds.contains(p) else { return }
-            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?() }
+            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags.contains(.option)) }
         }
     }
 }
