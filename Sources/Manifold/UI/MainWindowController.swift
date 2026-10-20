@@ -689,9 +689,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
     }
 
-    func debugStack(swap: Bool) -> String {
+    func debugStack(swap: Bool, index: Int = 0) -> String {
         guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
-        if swap, let s = a.columns[c].first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) { gridSwap(s.id) }
+        // The stack as the fan shows it: those stashed above the first
+        // shown tile count as behind it, then those under the tile.
+        let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
+        if swap, index < behind.count { gridSwap(behind[index].id) }
         guard let b = arrangement else { return "gone" }
         return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?") \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
     }

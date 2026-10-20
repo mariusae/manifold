@@ -212,7 +212,8 @@ enum DebugControl {
             // (0: stashed); "stack swap": the first stashed tile behind the
             // focused one takes the top, as ⇧-click on its pill does.
             guard let wc else { return "no window" }
-            return wc.debugStack(swap: arg == "swap")
+            let a = arg.split(separator: " ").map(String.init)
+            return wc.debugStack(swap: a.first == "swap", index: a.count > 1 ? Int(a[1]) ?? 0 : 0)
         case "focused":
             return wc?.debugFocusedBlock?.description ?? "nothing focused"
         case "scrub":
