@@ -279,7 +279,9 @@ when you find it again.
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open in a listing (name, date, size); double-click an entry
-  to open it, ⌘↑ for the folder above — on the folder's own host, remote
+  to open it — a folder in the same tile, as a browser goes; ⌘-double-
+  click for a listing beside, this one staying; ⌥-double-click for one
+  over it — ⌘↑ for the folder above; on the folder's own host, remote
   or not.
 - **Links** go by the click: ⌘-click a web address — in a terminal, an
   editor, a preview or a web page — and the system's browser opens it;

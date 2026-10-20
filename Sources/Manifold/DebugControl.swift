@@ -324,7 +324,7 @@ enum DebugControl {
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                                   windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: n, pressure: 1) {
-                        window.sendEvent(e)
+                        NSApp.postEvent(e, atStart: false)
                     }
                 }
             }

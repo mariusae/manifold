@@ -2526,11 +2526,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// is; Go Back comes back along the trail.
     private func replace(_ placement: PlacementID, with block: BlockID, lens: Lens) {
         guard let a = arrangement, let (c, i) = a.locate(placement) else { return }
-        let h = a.heights[placement]
         let p = Placement(block: block, lens: lens)
-        var events: [Event] = [.remove(placement), .place(p, column: c, at: i)]
-        if let h { events.append(.heights([p.id: h])) }
-        appendToSelected(events)
+        // The column's heights as they were, the new tile in the old one's
+        // place: the remove and the place in between hand room about
+        // (to the next tile, from the one above), and the tile would
+        // otherwise come back a different size, its neighbours moved.
+        var heights: [PlacementID: Double] = [:]
+        for t in a.columns[c] { heights[t.id == placement ? p.id : t.id] = a.height(of: t.id) }
+        appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)])
     }
 
     /// Opens a file to edit: from a terminal, beside it; else here.
@@ -3696,9 +3699,13 @@ extension MainWindowController: WebViewDelegate {
 extension MainWindowController: DirectoryViewDelegate {
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool) {
         let block = hosts.directoryBlock(for: path, on: view.block.host)
-        if isDirectory, Self.clickModifiers?.contains(.option) == true {
+        let mods = Self.clickModifiers ?? []
+        if isDirectory, mods.contains(.option) {
             // ⌥: the folder's listing over this one.
             showOver(block, lens: .directory, over: view.placement)
+        } else if isDirectory, mods.contains(.command) {
+            // ⌘: the folder's listing beside this one, which stays.
+            show(block, lens: .directory, .besideOpener(view.placement))
         } else if isDirectory {
             // A folder takes the listing's place, in the same tile.
             replace(view.placement, with: block, lens: .directory)
