@@ -103,6 +103,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
+        textView.markdown = hasOutline
         status.font = .systemFont(ofSize: 11.5)
         status.textColor = Theme.text
         status.lineBreakMode = .byTruncatingTail
@@ -159,7 +160,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     @objc private func scrolled() { updateScrubber() }
 
     func debugType(_ text: String) { textView.insert(text) }
-    func debugDrop(_ pb: NSPasteboard) -> Bool { textView.drop(pb, at: textView.caretRectInWindow(textView.primarySelection.head).origin) }
+    func debugDrop(_ pb: NSPasteboard) -> Bool {
+        textView.drop(pb, at: textView.convert(textView.caretRectInWindow(textView.primarySelection.head), from: nil).origin)
+    }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
@@ -273,6 +276,23 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     var isDirty: Bool { document?.isDirty == true }
     /// The caret's line, trimmed: what a link made from here was made on.
+    /// Markdown shown richly (notes, .md files) — or as written, as the
+    /// pill's menu chooses; kept with the placement's view state.
+    var richMarkdown = true {
+        didSet { textView.markdown = hasOutline && richMarkdown }
+    }
+    var onToggleMarkdown: ((_ rich: Bool) -> Void)?
+
+    var pillItems: [NSMenuItem] {
+        guard hasOutline else { return [] }
+        let item = ClosureMenuItem(richMarkdown ? "Show Raw Markdown" : "Show Formatted", symbol: richMarkdown ? "textformat.abc" : "text.alignleft") { [weak self] in
+            guard let self else { return }
+            self.richMarkdown.toggle()
+            self.onToggleMarkdown?(self.richMarkdown)
+        }
+        return [item]
+    }
+
     /// The block's host can't be reached (§8): read, not written.
     var offline = false {
         didSet { if offline != oldValue { textView.isEditable = !offline && document?.unreadable != true } }
@@ -319,6 +339,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     private func applyFont() {
         textView.font = textFont
+        textView.codeFont = theme.font(.monospaced, size: max(8, theme.editorSize(.monospaced) + sizeAdjust - 1))
         textView.lineHeightMultiple = font == .proportional ? 1.25 : 1.2
     }
 

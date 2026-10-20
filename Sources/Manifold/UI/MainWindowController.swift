@@ -323,6 +323,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             if let e = v as? EditorView {
                 e.offline = shown.offline
+                e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
                 e.font = hosts.state.appearance.editorFont
                 e.theme = hosts.state.appearance.theme
@@ -341,6 +342,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+            TerminalView.copyOnSelect = desk.settings.copyOnSelect
             v = t
         case .image, .pdf:
             let m = MediaView(placement: p.id, block: p.block, kind: p.lens)
@@ -390,6 +392,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "", font: hosts.state.appearance.editorFont,
                                theme: hosts.state.appearance.theme)
             e.delegate = self
+            e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
+            let pid = p.id, bid = p.block
+            e.onToggleMarkdown = { [weak self] rich in
+                self?.hosts.append(.view(placement: pid, ["markdown": rich ? "rich" : "raw"]), to: .block(bid))
+            }
             v = e
         }
         if let k = v as? KeepsViewState {
@@ -3366,6 +3373,13 @@ extension MainWindowController: EditorViewDelegate {
     /// A block dropped into a note as a link: the host's mention scan sees
     /// the link in the text and makes the edge; this is just the edge at
     /// once, for the badge and Links not to wait.
+    func terminal(_ view: TerminalView, setCopyOnSelect on: Bool) {
+        var s = desk.settings
+        s.copyOnSelect = on
+        TerminalView.copyOnSelect = on
+        host.setSettings(s)
+    }
+
     func editor(_ view: EditorView, mention block: BlockID) {
         hosts.link(from: view.block, to: block, kind: .mention, context: hosts.block(block)?.displayTitle)
     }

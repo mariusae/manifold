@@ -59,6 +59,14 @@ final class TextView: NSView, NSTextInputClient {
     var textColor = Theme.text
     var showsLineNumbers = true { didSet { invalidateAll() } }
     var wraps = true { didSet { invalidateAll() } }
+    /// Markdown shown richly (MarkdownStyle): the attributes of a line say
+    /// what it means; the caret's line shows as written.
+    var markdown = false { didSet { if markdown != oldValue { invalidateAll() } } }
+    var codeFont: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular) { didSet { if markdown { invalidateAll() } } }
+    var markdownPalette = MarkdownStyle.Palette(text: Theme.text, dim: Theme.secondaryText, accent: Theme.accent,
+                                                codeTint: Theme.hover, chipTint: Theme.accent.withAlphaComponent(0.16))
+    /// The line the caret is on, whose Markdown shows raw.
+    private var rawLine: Int?
     var tabWidth = 4
     var isEditable = true
     static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
@@ -219,7 +227,10 @@ final class TextView: NSView, NSTextInputClient {
     private func layout(line n: Int) -> LineLayout {
         if let l = layouts[n] { return l }
         let string = text.lineText(n)
-        let attributed = NSAttributedString(string: string.isEmpty ? " " : string, attributes: attributes())
+        let attributed = NSMutableAttributedString(string: string.isEmpty ? " " : string, attributes: attributes())
+        if markdown, !string.isEmpty {
+            MarkdownStyle.apply(to: attributed, base: font, code: codeFont, palette: markdownPalette, collapseLinks: rawLine != n)
+        }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var rows: [CTLine] = []
         var starts: [Int] = []
@@ -253,6 +264,38 @@ final class TextView: NSView, NSTextInputClient {
             }
         }
         return l
+    }
+
+    /// The tints behind a row's chips (code spans, blocks' links): drawn
+    /// under the text, around each such run.
+    private func drawChips(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
+        guard let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return }
+        ctx.restoreGState()
+        var x0: CGFloat?, x1: CGFloat = 0
+        var color: NSColor?
+        func flush() {
+            if let a = x0, let c = color, x1 > a {
+                c.setFill()
+                NSBezierPath(roundedRect: NSRect(x: textLeft + a - 2, y: rowTop + 1, width: x1 - a + 4, height: lineHeight - 2), xRadius: 4, yRadius: 4).fill()
+            }
+            x0 = nil
+            color = nil
+        }
+        for run in runs {
+            let attrs = CTRunGetAttributes(run) as NSDictionary
+            let range = CTRunGetStringRange(run)
+            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
+            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
+            if let tint = attrs[MarkdownStyle.chip] as? NSColor, attrs[MarkdownStyle.hidden] == nil {
+                if x0 == nil || tint !== color { flush(); x0 = start; color = tint }
+                x1 = start + width
+            } else if attrs[MarkdownStyle.hidden] == nil {
+                flush()
+            }
+        }
+        flush()
+        ctx.saveGState()
+        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
     }
 
     private func attributes() -> [NSAttributedString.Key: Any] {
@@ -389,7 +432,9 @@ final class TextView: NSView, NSTextInputClient {
             }
             guard !l.text.isEmpty else { continue }
             for (r, row) in l.rows.enumerated() {
-                ctx.textPosition = CGPoint(x: textLeft, y: lineTop + CGFloat(r) * lineHeight + ascent)
+                let rowTop = lineTop + CGFloat(r) * lineHeight
+                if markdown { drawChips(in: row, at: rowTop, ctx) }
+                ctx.textPosition = CGPoint(x: textLeft, y: rowTop + ascent)
                 CTLineDraw(row, ctx)
             }
         }
@@ -565,6 +610,15 @@ final class TextView: NSView, NSTextInputClient {
     func setSelections(_ s: [Selection], scroll: Bool = true) {
         selections = s
         normalizeSelections()
+        if markdown {
+            // The caret's line shows its Markdown as written: the line it
+            // left and the one it came to are laid out again.
+            let now = selections.last.map { text.line(at: $0.head) }
+            if now != rawLine {
+                for n in [rawLine, now].compactMap({ $0 }) { layouts.removeValue(forKey: n) }
+                rawLine = now
+            }
+        }
         if let h = highlightedLine, !selections.contains(where: { text.line(at: $0.head) == h }) { highlightedLine = nil }
         restartCaret()
         needsDisplay = true

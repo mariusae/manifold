@@ -9,6 +9,8 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, open target: String)
     /// A command on the scrubber was opened: it and its output, as a block.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
+    /// Copy on Select was switched from the pill's menu: a setting.
+    func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
@@ -493,10 +495,28 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods(event.modifierFlags))
     }
 
+    /// Whether a selection made with the mouse goes to the clipboard at
+    /// once (a setting, the same for every terminal) — not in full screen,
+    /// where selecting is for reading.
+    static var copyOnSelect = true
+
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods(event.modifierFlags))
         ghostty_surface_mouse_pressure(surface, 0, 0)
+        if Self.copyOnSelect, !(window?.styleMask.contains(.fullScreen) ?? false), let text = selectedText, !text.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+    }
+
+    var pillItems: [NSMenuItem] {
+        let item = ClosureMenuItem("Copy on Select", symbol: "doc.on.clipboard") { [weak self] in
+            guard let self else { return }
+            self.delegate?.terminal(self, setCopyOnSelect: !Self.copyOnSelect)
+        }
+        item.state = Self.copyOnSelect ? .on : .off
+        return [item]
     }
 
     override func rightMouseDown(with event: NSEvent) {

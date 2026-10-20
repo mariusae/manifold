@@ -122,10 +122,19 @@ and Mona Sans (bundled).
   it when the pointer rests there — click one to open it beside — and
   in Links the note is under *about*, the block's notes under *notes*.
   ⇧-drag a block's pill into a note (or any Markdown text) and it lands
-  as a link, `[title](manifold:…)`, shown as a small pill in the
-  preview, ⌘-clicked in the editor, either going to the block; the
-  note then *mentions* the block, which Links shows both ways. So a web
-  of annotations grows: notes about blocks, blocks in notes.
+  as a link, `[title](manifold:…)`, shown as a chip of the title in
+  the editor and a small pill in the preview, ⌘-clicked in the editor,
+  either going to the block; the note then *mentions* the block, which
+  Links shows both ways. So a web of annotations grows: notes about
+  blocks, blocks in notes.
+- **Notes are Markdown, shown richly** as you write: headings bold,
+  `**bold**` and `*italic*` in their faces, `` `code` `` in its font on
+  a tint, list markers and quotes set off, links underlined with their
+  addresses dimmed, a block's link collapsed to a chip of its name. Every
+  character stays where it is — the line the caret is on shows as
+  written, markers and all — and the file is plain Markdown. The pill's
+  menu has Show Raw Markdown, kept per tile. Markdown files get the
+  same.
 - **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
   workspace off the desk. Neither loses anything: the block, with its
   history, is a ⌘O away, and a workspace taken off sits under
@@ -250,6 +259,10 @@ when you find it again.
   web pages, diffs and terminals are searched this way; in a terminal,
   Ghostty itself finds through the screen and its history and marks
   every match.
+- **Copy on Select**: text selected with the mouse in a terminal is on
+  the clipboard at once (not in full screen, where selecting is for
+  reading); off and on from the terminal's pill menu, for every
+  terminal.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

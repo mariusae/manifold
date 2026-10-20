@@ -87,6 +87,9 @@ public struct Settings: Codable, Equatable, Sendable {
     public var languageServers: [LanguageServerConfig] = LanguageServerConfig.defaults
     /// The command an agent block runs.
     public var agentCommand: String = "claude"
+    /// A terminal's selection goes to the clipboard as it's made (not
+    /// in full screen).
+    public var copyOnSelect: Bool = true
 
     public init() {}
 
@@ -99,6 +102,7 @@ public struct Settings: Codable, Equatable, Sendable {
         undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0
         languageServers = (try? c.decodeIfPresent([LanguageServerConfig].self, forKey: .languageServers)) ?? LanguageServerConfig.defaults
         agentCommand = (try? c.decodeIfPresent(String.self, forKey: .agentCommand)) ?? "claude"
+        copyOnSelect = (try? c.decodeIfPresent(Bool.self, forKey: .copyOnSelect)) ?? true
     }
 }
 
