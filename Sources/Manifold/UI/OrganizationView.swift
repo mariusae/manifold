@@ -146,8 +146,10 @@ final class DeepOutlineView: NSOutlineView {
 
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         guard flat, column == 0 else { return super.frameOfCell(atColumn: column, row: row) }
+        // Set in from the row's highlight (the source list's own inset), so
+        // a symbol sits inside it with room, as the text does at the right.
         let r = rect(ofRow: row)
-        return NSRect(x: 4, y: r.minY, width: max(0, bounds.width - 8), height: r.height)
+        return NSRect(x: 14, y: r.minY, width: max(0, bounds.width - 28), height: r.height)
     }
 
     override func mouseDown(with event: NSEvent) {
