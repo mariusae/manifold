@@ -3177,13 +3177,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Open requests being waited on: the placements that must go before
     /// the command returns.
-    private var openWaits: [(host: HostID, id: Int, client: Int, placements: [PlacementID])] = []
+    private var openWaits: [(host: HostID, id: Int, client: Int, placements: [PlacementID], made: [BlockID])] = []
 
     /// A `manifold` command on `on` asks for paths: each goes beside the
     /// block it was run in (or on the focused stack), and with `wait`, the
     /// command is answered once they've all been put away.
     private func openRequest(on: HostID, id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool) {
         var placed: [PlacementID] = []
+        // The blocks this request makes ($EDITOR's): ephemeral, discarded
+        // once the editing is done, so a commit message or an agent's
+        // prompt leaves nothing in the graph.
+        var made: [BlockID] = []
         // The arrangement with the block the command ran in, else the selected.
         let besidePlacement = beside.flatMap { b in
             allWorkspaces.lazy.compactMap { self.hosts.arrangement($0)?.placements.first { $0.block == b } }.first
@@ -3195,9 +3199,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let isDir = on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
             let media = Self.mediaKind(path)
             let html = Self.isHTML(path) && on == host.host
+            let known = hosts.blocks.contains { $0.id.host == on && $0.path == path }
             let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on)
                 : html ? host.webBlock(forFile: path)
                 : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
+            if wait, !known { made.append(block) }
             // With --wait ($EDITOR), a file is for editing, Markdown too.
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
                 : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) && !wait ? .preview : .editor)
@@ -3214,7 +3220,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         if wait, !placed.isEmpty {
-            openWaits.append((on, id, client, placed))
+            openWaits.append((on, id, client, placed, made))
         } else {
             hosts.propose(.openDone(id: id, client: client), on: on)
         }
@@ -3236,13 +3242,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate()
     }
 
-    /// Answers `open --wait` commands whose placements have all gone.
+    /// Answers `open --wait` commands whose placements have all gone, and
+    /// discards the blocks they made that nothing else took up.
     private func checkOpenWaits() {
         guard !openWaits.isEmpty else { return }
         let present = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
+        let placedBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         openWaits.removeAll { wait in
             if wait.placements.allSatisfy({ !present.contains($0) }) {
                 hosts.propose(.openDone(id: wait.id, client: wait.client), on: wait.host)
+                for b in wait.made where !placedBlocks.contains(b) && hosts.block(b)?.text?.isDirty != true {
+                    hosts.propose(.discard(b))
+                }
                 return true
             }
             return false

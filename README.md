@@ -575,7 +575,10 @@ is migrated into logs on first run.
   host, `manifoldd open --wait`): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
-  comes back.
+  comes back. The block it edited in is ephemeral: once the command
+  returns it is discarded, unless the file was a block already or the
+  editor was moved somewhere else, so a commit message or an agent's
+  prompt leaves nothing behind in the graph.
 - **`git diff | manifold diff`** shows a patch as a diff block, beside the
   terminal it ran in (`manifold diff "before lunch"`, or `--title`, names
   it; else it is "Patch, n files"). Double-click a line to open the file
