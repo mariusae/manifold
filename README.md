@@ -18,7 +18,10 @@ and Mona Sans (bundled).
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Under **Desk**, each workspace expands to
+  top to move the window. The Workspaces, Inbox and Status
+  organizations are flat: hosts, workspaces and groups are labels that
+  open and close when clicked, and a block's row has a second line for
+  what it says. Under **Desk**, each workspace expands to
   its tiles in order, the selected one open and the focused tile
   highlighted, so the sidebar is the table of contents of the screen:
   click a tile to focus it, a workspace to go to it, double-click
@@ -169,6 +172,18 @@ and Mona Sans (bundled).
   box in a task list — a quote with its mark, and on an empty item ends
   it. The pill's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
+- **Archive** (⇧⌘W, or Archive in a pill's or a row's menu) puts a
+  block away as it is: its tiles leave every workspace, and it sits
+  under **Archived** at the end of its host in the Workspaces sidebar,
+  to be recalled with a click. A terminal's shell is ended and not
+  started again — the transcript shows as it was, and the shell's exit
+  archives a terminal by itself. Unarchive, in the same menus, takes it
+  out again (a terminal then gets a shell when next shown).
+- **Inbox** (Organize By ▸ Inbox, ⌥⌘6) lists the blocks whose status
+  came to need attention — done, failed, needs you — by host and
+  workspace, each with what it said and how long ago, until taken out
+  by hand: ⇧⌘I, or Remove from Inbox in a pill's or a row's menu (Add
+  to Inbox puts any block there).
 - **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
   workspace off the desk. Neither loses anything: the block, with its
   history, is a ⌘O away, and a workspace taken off sits under

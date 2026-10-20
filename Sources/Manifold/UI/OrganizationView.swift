@@ -5,7 +5,7 @@ import ManifoldCore
 /// arrangements and their columns; files under folders under roots,
 /// across hosts; what's linked to the focused block; blocks by day.
 enum Organization: String, CaseIterable {
-    case desk, files, links, time, status
+    case desk, files, links, time, status, inbox
 
     var title: String {
         switch self {
@@ -14,6 +14,7 @@ enum Organization: String, CaseIterable {
         case .links: "Links"
         case .time: "Time"
         case .status: "Status"
+        case .inbox: "Inbox"
         }
     }
 
@@ -24,6 +25,7 @@ enum Organization: String, CaseIterable {
         case .links: "link"
         case .time: "clock"
         case .status: "checkmark.circle"
+        case .inbox: "tray"
         }
     }
 }
@@ -53,6 +55,10 @@ final class OrgNode {
     /// A word at the right, before the glyph: how long ago.
     var trailing: String?
     var tooltip: String?
+    /// How the row is set: a host's heading, a section's label (a
+    /// workspace, a group), or a block's row.
+    enum Style { case host, section, row }
+    var style: Style = .row
     /// On the desk: the arrangement this row is, or is a column of.
     var arrangement: BlockID?
     /// On the desk: which column of its arrangement, and the placement shown.
@@ -154,6 +160,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var collapsedByHand: Set<String> = []
     private var trackedRow: Int = -1
     private var selecting = false
+    /// Flat (§3.5): no chevrons and no indentation — sections (hosts,
+    /// workspaces, groups) are labels that open and close when clicked,
+    /// and a block's row has two lines when it has something to say.
+    var flat = false {
+        didSet { if flat != oldValue { outline.indentationPerLevel = flat ? 0 : 14 } }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -232,6 +244,16 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { false }
+    func outlineView(_ outlineView: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool { !flat }
+
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        guard let n = item as? OrgNode else { return 26 }
+        switch n.style {
+        case .host: return 30
+        case .section: return 24
+        case .row: return flat && !n.detail.isEmpty ? 40 : 26
+        }
+    }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
 
@@ -245,13 +267,14 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let n = item as? OrgNode else { return false }
-        return n.block != nil || n.action != nil
+        return n.style == .row && (n.block != nil || n.action != nil)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? OrgNode else { return nil }
         let cell = outlineView.makeView(withIdentifier: .init("org"), owner: nil) as? OrgRowView ?? OrgRowView()
         cell.identifier = .init("org")
+        cell.flat = flat
         cell.show(node)
         return cell
     }
@@ -263,6 +286,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
         if let action = node.action {
             action()
+        } else if node.style != .row, node.hasChildren {
+            // A section: clicked, it opens or closes; a workspace's is gone
+            // to as well.
+            if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
+            if node.block != nil, node.arrangement != nil, node.column == nil {
+                delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
+            }
         } else if node.block != nil {
             delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
         } else if node.hasChildren {
@@ -438,6 +468,9 @@ final class OrgRowView: NSTableCellView {
     private let trailing = NSTextField(labelWithString: "")
     private var symbol = ""
     private var detailSymbol = ""
+    private var node: OrgNode?
+    /// Set by the outline: flat rows have two lines when there's a detail.
+    var flat = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -466,6 +499,7 @@ final class OrgRowView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ node: OrgNode) {
+        self.node = node
         glyph.look = node.look
         glyph.isHidden = node.look == nil
         glyph.toolTip = node.tooltip
@@ -476,8 +510,18 @@ final class OrgRowView: NSTableCellView {
             icon.image = Theme.symbol(node.symbol, size: 12)
         }
         name.stringValue = node.title
-        name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-        name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
+        switch node.style {
+        case .host:
+            name.font = .systemFont(ofSize: 13, weight: .semibold)
+            name.textColor = Theme.text
+        case .section:
+            name.font = .systemFont(ofSize: 11.5, weight: .semibold)
+            name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
+        case .row:
+            name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
+            name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
+        }
+        icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
         icon.alphaValue = node.dimmed ? 0.6 : 1
         count.stringValue = node.count.map { "\($0)" } ?? ""
@@ -497,7 +541,56 @@ final class OrgRowView: NSTableCellView {
     override func layout() {
         super.layout()
         let h = bounds.height
-        icon.frame = NSRect(x: 2, y: (h - 14) / 2, width: 16, height: 14)
+        if let node, node.style == .section {
+            // A label across: the name in its grey, a count at the right.
+            var right = bounds.width - 4
+            if !count.isHidden {
+                let w = max(20, ceil((count.stringValue as NSString).size(withAttributes: [.font: count.font!]).width) + 10)
+                count.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
+                right -= w + 6
+            }
+            glyph.isHidden = true
+            let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width) + 4
+            let nw = min(wanted, max(0, right - 4))
+            name.frame = NSRect(x: 4, y: (h - 15) / 2, width: nw, height: 15)
+            detail.frame = NSRect(x: 4 + nw + 6, y: (h - 15) / 2, width: max(0, right - nw - 10), height: 15)
+            detail.alphaValue = 1
+            detailIcon.isHidden = true
+            trailing.isHidden = true
+            return
+        }
+        if let node, flat, node.style == .row, !detail.isHidden {
+            // Two lines: the name, then what it says with the glyph before
+            // it and how long ago at the right.
+            icon.frame = NSRect(x: 2, y: h - 20 + 1, width: 16, height: 14)
+            var right = bounds.width - 4
+            if !count.isHidden {
+                let w = max(20, ceil((count.stringValue as NSString).size(withAttributes: [.font: count.font!]).width) + 10)
+                count.frame = NSRect(x: right - w, y: h - 20 + 1, width: w, height: 15)
+                right -= w + 6
+            }
+            name.frame = NSRect(x: 22, y: h - 21, width: max(0, right - 22), height: 17)
+            var x: CGFloat = 22
+            var dright = bounds.width - 6
+            if !trailing.isHidden {
+                let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
+                trailing.frame = NSRect(x: dright - w, y: 3, width: w, height: 15)
+                dright -= w + 8
+            }
+            if !glyph.isHidden {
+                glyph.frame = NSRect(x: x, y: 4, width: StatusGlyph.size, height: StatusGlyph.size)
+                x += StatusGlyph.size + 4
+            } else if !detailIcon.isHidden {
+                detailIcon.frame = NSRect(x: x, y: 4.5, width: 13, height: 12)
+                x += 16
+            }
+            detail.frame = NSRect(x: x, y: 3, width: max(0, dright - x), height: 15)
+            detail.alphaValue = 1
+            glyph.alphaValue = 1
+            detailIcon.alphaValue = 1
+            return
+        }
+        icon.frame = NSRect(x: 2, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
         var right = bounds.width - 4
         if !count.isHidden {
             let w = max(20, ceil((count.stringValue as NSString).size(withAttributes: [.font: count.font!]).width) + 10)

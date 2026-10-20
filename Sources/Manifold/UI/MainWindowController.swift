@@ -568,7 +568,37 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A terminal's shell ended (not for dormancy): its placements go, as a
     /// closed window's would; the block stays, with its transcript.
-    private func terminalEnded(_ block: BlockID) {
+    /// ⇧⌘W: the focused block archived (§3.7) — put away as it is, its
+    /// tiles gone from every workspace, to be recalled from the sidebar's
+    /// Archived section; a terminal's shell ends and isn't started again.
+    @objc func archiveFocused(_ sender: Any?) {
+        guard let b = focusedShown?.block else { return NSSound.beep() }
+        hosts.propose(.archive(b.id, true))
+        withdraw(b.id)
+    }
+
+    /// ⇧⌘I: the focused block into the inbox, or out of it (§3.7).
+    @objc func toggleInbox(_ sender: Any?) {
+        guard let b = focusedShown?.block else { return NSSound.beep() }
+        hosts.propose(.inbox(b.id, !b.isInInbox))
+    }
+
+    /// The menu's verbs for a block's being: archive or unarchive; into
+    /// the inbox or out of it.
+    private func keepingItems(for b: Block) -> [NSMenuItem] {
+        [ClosureMenuItem(b.isArchived ? "Unarchive" : "Archive", symbol: b.isArchived ? "archivebox.fill" : "archivebox", key: b.isArchived ? "" : "W") { [weak self] in
+            self?.hosts.propose(.archive(b.id, !b.isArchived))
+            if !b.isArchived { self?.withdraw(b.id) }
+        }, ClosureMenuItem(b.isInInbox ? "Remove from Inbox" : "Add to Inbox", symbol: b.isInInbox ? "tray.and.arrow.up" : "tray.and.arrow.down", key: "I") { [weak self] in
+            self?.hosts.propose(.inbox(b.id, !b.isInInbox))
+        }]
+    }
+
+    private func terminalEnded(_ block: BlockID) { withdraw(block) }
+
+    /// A block's tiles taken off every workspace (its shell ended, or it
+    /// was archived); an unnamed workspace left empty goes too.
+    private func withdraw(_ block: BlockID) {
         for id in allWorkspaces {
             guard let a = hosts.arrangement(id) else { continue }
             for p in a.placements(of: block) { hosts.append(.remove(p.id), to: .block(id)) }
@@ -1454,6 +1484,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func organizeByLinks(_ sender: Any?) { setOrganization(.links) }
     @objc func organizeByTime(_ sender: Any?) { setOrganization(.time) }
     @objc func organizeByStatus(_ sender: Any?) { setOrganization(.status) }
+    @objc func organizeByInbox(_ sender: Any?) { setOrganization(.inbox) }
 
     func setOrganization(_ org: Organization, show: Bool = true) {
         var state = hosts.state.window
@@ -1475,6 +1506,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let filter = self.sidebar.filterText.lowercased()
             let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil
+            // Flat, with sections, where rows are blocks by place or state;
+            // a tree with chevrons where the nesting is the point (folders, links).
+            self.sidebar.organizationView.flat = [.desk, .inbox, .status].contains(org)
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
         }
         organizationWork = work
@@ -1512,7 +1546,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func statusGroups(_ filter: String) -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
         var groups: [StatusGroup: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
-            for b in c.node.blocks {
+            for b in c.node.blocks where !b.isArchived {
                 guard let look = StatusGlyph.look(of: b) else { continue }
                 let r = b.statusRecord
                 guard matches(filter, [b.displayTitle, b.path, r?.msg, r?.app]) else { continue }
@@ -1526,6 +1560,52 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return ua != ub ? ua : a.2 > b.2
             }
         }
+    }
+
+    /// Inbox (§3.7): the blocks whose status came to need attention and
+    /// haven't been taken out by hand — by host, then by the workspace
+    /// they're in, each with what it said and how long ago.
+    private func inboxTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        var nodes: [OrgNode] = []
+        var open: Set<String> = []
+        for c in hosts.all {
+            let blocks = c.node.blocks.filter { $0.isInInbox && !$0.isArchived && matches(filter, [$0.displayTitle, $0.path, $0.statusRecord?.msg, $0.statusRecord?.app]) }
+            guard !blocks.isEmpty else { continue }
+            // Which workspace holds each, the first that does; the rest elsewhere.
+            var byWorkspace: [(BlockID?, [Block])] = []
+            for b in blocks.sorted(by: { ($0.statusRecord?.at ?? $0.created) > ($1.statusRecord?.at ?? $1.created) }) {
+                let w = allWorkspaces.first { hosts.arrangement($0)?.placements(of: b.id).isEmpty == false }
+                if let i = byWorkspace.firstIndex(where: { $0.0 == w }) { byWorkspace[i].1.append(b) } else { byWorkspace.append((w, [b])) }
+            }
+            let hid = "inbox:host:\(c.host.raw)"
+            let sections = byWorkspace.map { w, items -> OrgNode in
+                let title = w.flatMap { hosts.arrangement($0) }.map { self.title(of: $0) } ?? "Elsewhere"
+                let sid = hid + "/" + (w?.description ?? "elsewhere")
+                let rows = items.map { b -> OrgNode in
+                    let r = b.statusRecord
+                    var words: [String] = []
+                    if let app = r?.app { words.append(app) }
+                    if let msg = r?.msg, !msg.isEmpty { words.append(msg) } else if let t = r?.title, !t.isEmpty { words.append(t) }
+                    if words.isEmpty, let s = StatusGlyph.summary(b) { words.append(s) }
+                    let n = node(for: b, id: sid + "/" + b.id.description, detail: words.joined(separator: " · "))
+                    n.trailing = Age.short(r?.at ?? b.created)
+                    n.emphasis = r?.wantsAttention ?? false
+                    n.age = nil
+                    return n
+                }
+                let s = OrgNode(id: sid, block: w, title: title, symbol: "rectangle.3.group", count: rows.count, isGroup: true, children: rows)
+                s.style = .section
+                s.arrangement = w
+                open.insert(sid)
+                return s
+            }
+            let h = OrgNode(id: hid, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", count: blocks.count, isGroup: true, children: sections)
+            h.style = .host
+            open.insert(hid)
+            nodes.append(h)
+        }
+        if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing to attend to", symbol: "tray")], []) }
+        return (nodes, open)
     }
 
     private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
@@ -1547,6 +1627,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return n
             }
             let n = OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
+            n.style = .section
             // The group's row opens it in the surface as a state view (§3.6).
             n.action = { [weak self] in self?.showStateView(group) }
             n.emphasis = stateGroup == group
@@ -1639,6 +1720,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .links: return linksTree(filter)
         case .time: return timeTree(filter)
         case .status: return statusTree(filter)
+        case .inbox: return inboxTree(filter)
         }
     }
 
@@ -1682,6 +1764,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                             symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
                             detail: a.isNamed ? "kept" : "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
+            n.style = .section
             n.emphasis = id == selected
             if id == selected || !filter.isEmpty { open.insert(aid) }
             return n
@@ -1702,10 +1785,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
                 .prefix(40)
             let recent = off.compactMap { workspace($0.id) }
+            // Archived blocks (§3.7): put away, under their own section,
+            // the last seen first, each recalled as it was by a click.
+            let archived = c.node.blocks.filter { $0.isArchived && $0.kind != .arrangement && matches(filter, [$0.displayTitle, $0.path]) }
+                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
+                .prefix(40)
+            if !archived.isEmpty {
+                let rid = "archived:desk:\(c.host.raw)"
+                let rows = archived.map { b -> OrgNode in
+                    let n = node(for: b, id: rid + "/" + b.id.description, detail: b.place?.abbreviatingHome ?? "")
+                    n.dimmed = true
+                    n.trailing = (c.node.graph.seen(b.id)).map(Age.short)
+                    return n
+                }
+                let group = OrgNode(id: rid, title: "Archived", symbol: "archivebox", count: rows.count, isGroup: true, children: rows)
+                group.style = .section
+                group.dimmed = true
+                nodes.append(group)
+            }
             if !recent.isEmpty {
                 let rid = "recent:desk:\(c.host.raw)"
                 for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
                 let group = OrgNode(id: rid, title: "Recent", symbol: "clock", count: recent.count, isGroup: true, children: recent)
+                group.style = .section
                 group.dimmed = true
                 if !filter.isEmpty { open.insert(rid) }
                 nodes.append(group)
@@ -1716,7 +1818,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let roots = byHost.map { c, nodes -> OrgNode in
             let id = "host:\(c.host.raw)"
             open.insert(id)
-            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer", count: nodes.count, isGroup: true, children: nodes)
+            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", count: nodes.count, isGroup: true, children: nodes)
+            n.style = .host
             hostStanding(n, c)
             return n
         }
@@ -1879,7 +1982,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var byDay: [Date: [(Block, Stamp)]] = [:]
         let cal = Calendar.current
         for c in hosts.all {
-            for b in c.node.blocks where b.kind != .arrangement || b.arrangement?.isNamed == true {
+            for b in c.node.blocks where !b.isArchived && (b.kind != .arrangement || b.arrangement?.isNamed == true) {
                 guard let seen = c.node.graph.seen(b.id) else { continue }
                 guard matches(filter, [b.displayTitle, b.path]) else { continue }
                 byDay[cal.startOfDay(for: seen.date), default: []].append((b, seen))
@@ -3483,6 +3586,10 @@ extension MainWindowController: GridDelegate {
         if hosts.block(block)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
         }
+        if let b = hosts.block(block) {
+            menu.addItem(.separator())
+            for item in keepingItems(for: b) { menu.addItem(item) }
+        }
         menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
             self?.linksCenter = block
             self?.setOrganization(.links)
@@ -3992,6 +4099,10 @@ extension MainWindowController: OrganizationViewDelegate {
         } else {
             menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, newColumn: false) })
             menu.addItem(ClosureMenuItem("Bring Here", symbol: "arrow.down.to.line") { [weak self] in self?.organizationOpen(node, newColumn: true) })
+            if let b = hosts.block(id), b.kind != .arrangement {
+                menu.addItem(.separator())
+                for item in keepingItems(for: b) { menu.addItem(item) }
+            }
             menu.addItem(.separator())
         }
         menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in

@@ -35,6 +35,7 @@ final class StatusGlyph: NSView {
     /// ended for idleness, inactive; else nothing.
     static func look(of block: Block?) -> Look? {
         guard let block else { return nil }
+        if block.isArchived { return .inactive }
         if let r = block.statusRecord {
             switch r.state {
             case .idle: break
@@ -56,7 +57,7 @@ final class StatusGlyph: NSView {
         case .working(let p): words = [p.map { "Working, \($0)%" } ?? "Working"]
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
-        case .inactive: words = ["Inactive: the shell ended while idle"]
+        case .inactive: words = [block.isArchived ? "Archived: as it was; no shell" : "Inactive: the shell ended while idle"]
         case .connecting: words = ["Connecting to its host"]
         case .offline: words = ["Its host can't be reached: as last seen"]
         case .needsYou:

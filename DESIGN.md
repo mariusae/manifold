@@ -385,6 +385,16 @@ node stays as last seen: tiles of its blocks wear the offline glyph,
 editors there take no edits, appends go nowhere. The sidebar's host row
 shows the state and opens the host's home (the welcome carries it).
 
+**Archived and inbox** (as built). Two flags on a block, in its log:
+`archived` — put away as it is (`archive` proposal; the shell's own
+exit sets it on a terminal), its tiles withdrawn, no shell started on
+attach (the host replays the transcript and keeps the connection,
+taking no input), listed under Archived in the Workspaces sidebar and
+nowhere else; `inbox` — set when a status record comes to want
+attention (done, error, blocked), cleared by hand (`inbox` proposal) or
+with the status, listed by the Inbox organization by host and
+workspace.
+
 ### 3.8 The scrubber: a terminal's outline
 
 A terminal's scroll bar is a scrubber (§3.1, as Prism's): the strip's

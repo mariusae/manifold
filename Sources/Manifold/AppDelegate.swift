@@ -151,7 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
         item(file, "Take Off This Column", #selector(MainWindowController.closePaneOrTab(_:)), "w")
-        item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
+        item(file, "Archive Block", #selector(MainWindowController.archiveFocused(_:)), "w", [.command, .shift])
+        item(file, "Add to or Remove from Inbox", #selector(MainWindowController.toggleInbox(_:)), "i", [.command, .shift])
+        item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")
@@ -249,7 +251,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
                                   ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4"),
-                                  ("Status", #selector(MainWindowController.organizeByStatus(_:)), "5")] {
+                                  ("Status", #selector(MainWindowController.organizeByStatus(_:)), "5"),
+                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "6")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")

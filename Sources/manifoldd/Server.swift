@@ -412,6 +412,14 @@ final class Server {
         case let .clearStatus(block):
             if node.block(block)?.status != nil { append(.status(id: rootStatusID, nil), to: .block(block)) }
             done()
+        case let .archive(block, on):
+            if let b = node.block(block), b.isArchived != on { append(.archived(on), to: .block(block)) }
+            // Archived, a terminal's shell ends; it isn't started again (attach replays).
+            if on, let s = sessions[block] { s.terminate() }
+            done()
+        case let .inbox(block, on):
+            if let b = node.block(block), b.isInInbox != on { append(.inbox(on), to: .block(block)) }
+            done()
         case let .link(link):
             append(.link(link), to: .links(host))
             done()
@@ -726,6 +734,15 @@ final class Server {
             conn.close()
             return
         }
+        if block.isArchived {
+            // Archived: the transcript as it was, and nothing more — no
+            // shell; what's typed goes nowhere.
+            let history = (try? Data(contentsOf: historyFile(id))) ?? Data()
+            conn.send(Frame(.data, history))
+            conn.send(Frame(.replayDone, Data([0])))
+            conn.onFrame = { _ in }
+            return
+        }
         let session: Session
         if let existing = sessions[id] {
             session = existing
@@ -830,10 +847,16 @@ final class Server {
 
     private func sessionExited(_ id: BlockID, status: Int32) {
         guard let s = sessions.removeValue(forKey: id) else { return }
+        // Its transcript whole, for the archived block to show as it was.
+        try? FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
+        try? s.takeHistory().write(to: historyFile(id), options: .atomic)
         if s.endedForIdleness {
             append(.shell(.dormant(idleSeconds: s.idleSeconds)), to: .block(id))
         } else {
+            // The shell ended for good: the block is archived (§3.7) — kept
+            // as it was, its transcript to be recalled, no shell to start.
             append(.shell(.ended(status: status)), to: .block(id))
+            if node.block(id)?.isArchived != true { append(.archived(true), to: .block(id)) }
         }
     }
 

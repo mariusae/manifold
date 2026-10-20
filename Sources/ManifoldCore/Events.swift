@@ -254,6 +254,10 @@ public enum Event: Codable, Equatable, Sendable {
     // Status (§3.7): a record reported (replacing the last for its id),
     // or, with nil, cleared with everything under it.
     case status(id: String, StatusRecord?)
+    /// Put away, or taken out again (§3.7).
+    case archived(Bool)
+    /// Into the inbox, or out of it (§3.7).
+    case inbox(Bool)
 
     // Desk.
     case order([BlockID])
@@ -333,10 +337,15 @@ extension Block {
             if let record {
                 if status == nil { status = [:] }
                 status![id] = record
+                // Something to attend to: into the inbox, until taken out by hand.
+                if id == rootStatusID, record.wantsAttention { inbox = true }
             } else {
                 for k in statusRecords(under: id) { status?.removeValue(forKey: k) }
                 if status?.isEmpty == true { status = nil }
+                if id == rootStatusID || id.isEmpty { inbox = nil }
             }
+        case let .archived(on): archived = on ? true : nil
+        case let .inbox(on): inbox = on ? true : nil
         case .shell(.ended), .shell(.dormant):
             // The process gone: what was working or blocked is no more;
             // done and error stay to be attended to.

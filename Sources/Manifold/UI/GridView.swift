@@ -1084,7 +1084,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: 11)
         }
-        let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
+        let title = shown.title + (shown.block?.isArchived == true ? "  (archived)" : shown.isDormant ? "  (dormant)" : "")
         if name.stringValue != title { name.stringValue = title }
         if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)

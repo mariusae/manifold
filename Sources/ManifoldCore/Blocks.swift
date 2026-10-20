@@ -598,6 +598,16 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// keeps it (§3.5): in the log, so it survives a restart and a move
     /// between lenses, like the editor's selection does.
     public var views: [PlacementID: [String: String]]?
+    /// Archived (§3.7): put away, to be recalled as it was — a terminal's
+    /// shell ended and not started again; off the sidebar but for the
+    /// Archived section.
+    public var archived: Bool?
+    /// In the inbox (§3.7): something to attend to — set when its status
+    /// comes to need attention, cleared by hand.
+    public var inbox: Bool?
+
+    public var isArchived: Bool { archived == true }
+    public var isInInbox: Bool { inbox == true }
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
         self.id = id

@@ -1030,3 +1030,22 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     let file = Block(id: BlockID(), kind: .text, created: at, path: "/Users/x/src/manifold/README.md")
     #expect(file.place == "/Users/x/src/manifold")
 }
+
+@Test func aStatusThatNeedsAttentionPutsTheBlockInTheInbox() {
+    var b = Block(id: BlockID(), kind: .terminal, created: Stamp(wall: 1, host: .local))
+    #expect(!b.isInInbox)
+    b.apply(.status(id: rootStatusID, StatusRecord(state: .working, at: Stamp(wall: 2, host: .local))), at: Stamp(wall: 9, host: .local))
+    #expect(!b.isInInbox)
+    b.apply(.status(id: rootStatusID, StatusRecord(state: .done, at: Stamp(wall: 3, host: .local))), at: Stamp(wall: 9, host: .local))
+    #expect(b.isInInbox)
+    b.apply(.inbox(false), at: Stamp(wall: 9, host: .local))
+    #expect(!b.isInInbox)
+    b.apply(.status(id: rootStatusID, StatusRecord(state: .blocked, at: Stamp(wall: 4, host: .local))), at: Stamp(wall: 9, host: .local))
+    #expect(b.isInInbox)
+    b.apply(.status(id: rootStatusID, nil), at: Stamp(wall: 9, host: .local))
+    #expect(!b.isInInbox)
+    b.apply(.archived(true), at: Stamp(wall: 9, host: .local))
+    #expect(b.isArchived)
+    b.apply(.archived(false), at: Stamp(wall: 9, host: .local))
+    #expect(!b.isArchived)
+}
