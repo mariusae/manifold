@@ -21,7 +21,7 @@ and Mona Sans (bundled).
   top to move the window. Along the bottom of the sidebar run a search
   (the filter field, shown and hidden), a switch between by-workspace
   and by-file, the inbox, and, at the right, counts of what needs you,
-  is working and is done, which go to Status; the other organizations
+  is working and is done and not yet read, which go to Status; the other organizations
   are in the ⋯ menu. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each
   day, with what's behind the window blurred beneath it. The Workspaces, Inbox and Status

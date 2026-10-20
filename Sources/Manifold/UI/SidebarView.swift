@@ -303,7 +303,8 @@ final class ClosureMenuItem: NSMenuItem {
 }
 
 /// The bar's counts of what's doing something (§3.7): needs you, working,
-/// done — each its glyph and a number, hidden at zero; clicked, Status.
+/// done and not yet read — each its glyph and a number, hidden at zero;
+/// clicked, Status.
 final class StatusCountsView: NSView {
     var onClick: (() -> Void)?
     var emphasized = false { didSet { for l in labels { l.textColor = emphasized ? Theme.text : Theme.secondaryText } } }

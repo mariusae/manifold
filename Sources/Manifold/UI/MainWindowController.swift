@@ -1547,8 +1547,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let filter = self.sidebar.filterText.lowercased()
             let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil
+            // The counts: what needs you, what's working, and what's done
+            // or failed and not yet read — one attended to is counted no more.
             let g = self.statusGroups("")
-            self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: (g[.done]?.count ?? 0) + (g[.failed]?.count ?? 0))
+            let unread = (g[.done] ?? []).filter { $0.1?.read != true }.count + (g[.failed] ?? []).filter { $0.1?.read != true }.count
+            self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = [.desk, .inbox, .status].contains(org)
