@@ -259,7 +259,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { false }
-    func outlineView(_ outlineView: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool { !flat }
+    // Flat, the chevron is hidden by its frame (DeepOutlineView), not by
+    // saying it shouldn't show: that makes the outline refuse to collapse.
 
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
         guard let n = item as? OrgNode else { return 26 }
@@ -401,7 +402,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
         if let action = node.action { action(); return "ran" }
         if node.block != nil { delegate?.organizationOpen(node, newColumn: command); return "opened" }
-        if node.hasChildren { if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }; return "toggled" }
+        if node.hasChildren {
+            let was = outline.isItemExpanded(node)
+            if was { outline.collapseItem(node) } else { outline.expandItem(node) }
+            return "toggled: was \(was) now \(outline.isItemExpanded(node)) rows \(outline.numberOfRows) expanded=\(expanded.contains(node.id)) byHand=\(collapsedByHand.contains(node.id)) default=\(expandedByDefault.contains(node.id))"
+        }
         return "nothing"
     }
 
