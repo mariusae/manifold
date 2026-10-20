@@ -815,6 +815,60 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
+    /// A stack switched (⌘E): the new top's view slides in from `dir`'s
+    /// side over the old top's, which slides out the other way, both
+    /// kept to the tile by masks that hold still as the layers move.
+    func slideTile(outgoing: PaneContent, incoming id: PlacementID, from dir: CGFloat) {
+        layoutSubtreeIfNeeded()
+        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }),
+              let inLayer = tile.view.layer, let outLayer = outgoing.layer else { return }
+        let frame = tile.view.frame
+        outgoing.frame = frame
+        outgoing.isHidden = false
+        keep(tile.view, above: outgoing)
+        let w = frame.width
+        let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.25, 1)
+        func masked(_ layer: CALayer) -> CALayer {
+            let m = CALayer()
+            m.backgroundColor = NSColor.black.cgColor
+            m.frame = layer.bounds
+            layer.mask = m
+            return m
+        }
+        let inMask = masked(inLayer), outMask = masked(outLayer)
+        let leaving = outgoing.placement
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self, weak outgoing] in
+            for l in [inLayer, outLayer] {
+                l.removeAnimation(forKey: "manifold.slide")
+                l.mask = nil
+            }
+            if let self, let outgoing, self.isStashed(leaving) { outgoing.isHidden = true }
+        }
+        let move = { (layer: CALayer, mask: CALayer, from: CGFloat, to: CGFloat) in
+            let a = CABasicAnimation(keyPath: "transform")
+            a.fromValue = CATransform3DMakeTranslation(from, 0, 0)
+            a.toValue = CATransform3DMakeTranslation(to, 0, 0)
+            a.duration = 0.22
+            a.timingFunction = ease
+            a.fillMode = .forwards
+            a.isRemovedOnCompletion = false
+            layer.add(a, forKey: "manifold.slide")
+            // The mask holds the tile's place while the layer moves under it.
+            let b = CABasicAnimation(keyPath: "position.x")
+            b.fromValue = mask.position.x - from
+            b.toValue = mask.position.x - to
+            b.duration = 0.22
+            b.timingFunction = ease
+            b.fillMode = .forwards
+            b.isRemovedOnCompletion = false
+            mask.add(b, forKey: "manifold.slide")
+        }
+        move(inLayer, inMask, dir * w, 0)
+        move(outLayer, outMask, 0, -dir * w)
+        CATransaction.commit()
+    }
+
     /// The shown tile under a point.
     private func tile(at point: NSPoint) -> Tile? {
         for c in columns.indices {

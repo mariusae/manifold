@@ -44,6 +44,10 @@ and Mona Sans (bundled).
   tile's own pill and it swaps with the next behind it. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it;
+  **⌘E walks a stack**: with ⌘ held, each press brings the next tile
+  behind to the top, sliding in from the right (⇧⌘E from the left,
+  back) over the one there; letting go of ⌘ leaves it, Escape puts the
+  first back. Without a stack, ⌘E finds the word at hand.
   Unstack in the pill's menu lays the whole stack out in the column;
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).

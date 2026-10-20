@@ -168,7 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
             ("Find Next", .nextMatch, "g", .command),
             ("Find Previous", .previousMatch, "g", [.command, .shift]),
-            ("Find Word at Hand", .setSearchString, "e", .command),
+            // ⌘E is the stack switch; without a stack it finds the word at hand.
+            ("Find Word at Hand", .setSearchString, "", .command),
         ] {
             item(find, title, #selector(NSTextView.performTextFinderAction(_:)), key, mods).tag = action.rawValue
         }
@@ -300,6 +301,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Show Previous Workspace", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
         item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
         item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
+        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "e", [.command])
+        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "e", [.command, .shift])
         for n in 1...9 {
             item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }

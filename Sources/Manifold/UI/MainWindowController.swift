@@ -22,6 +22,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// began with, and how far along it is.
     private var walk: (ids: [BlockID], index: Int)?
     private var walkMonitors: [Any] = []
+    /// ⌘E's walk, while ⌘ is held: the focused tile's stack, top first,
+    /// and how far along it is.
+    private var stackWalk: (ids: [PlacementID], index: Int)?
+    private var stackMonitors: [Any] = []
+    /// A stack just switched: once rendered, the new top slides in over the old.
+    private var pendingStackSlide: (outgoing: PaneContent, incoming: PlacementID, dir: CGFloat)?
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     /// Each placement's view, for every arrangement on the desk.
@@ -215,6 +221,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
+            if let s = pendingStackSlide {
+                pendingStackSlide = nil
+                content.slideTile(outgoing: s.outgoing, incoming: s.incoming, from: s.dir)
+            }
             window.title = title(of: a)
             // The keyboard may be in no view at all (the window's, after
             // the view it was in went, as a closed editor's does).
@@ -1289,6 +1299,74 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } else if let home = w.ids.first {
             show(arrangement: home, slidingFrom: -1)
         }
+    }
+
+    // MARK: ⌘E
+
+    /// ⌘E (⇧⌘E back): with ⌘ held, a walk through the focused tile's
+    /// stack, top first then each behind in turn, every one brought to
+    /// the top sliding in from the right (from the left, going back) over
+    /// the one there; letting go of ⌘ leaves it there, Escape puts the
+    /// first back. Without a stack, ⌘E finds the word at hand, as the
+    /// Find menu has it.
+    @objc func walkStack(_ sender: Any?) { walkStack(back: false) }
+    @objc func walkStackBack(_ sender: Any?) { walkStack(back: true) }
+
+    private func walkStack(back: Bool) {
+        guard let a = arrangement else { return }
+        if stackWalk == nil {
+            guard let f = a.focused, !a.isStashed(f), let (c, _) = a.locate(f) else { return findWordAtHand() }
+            let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }.map(\.id)
+            guard !behind.isEmpty else { return findWordAtHand() }
+            stackWalk = ([f] + behind, 0)
+            if NSEvent.modifierFlags.contains(.command) { watchStackWalk() }
+        }
+        guard var w = stackWalk else { return }
+        w.ids = w.ids.filter { a.placement($0) != nil }
+        guard w.ids.count > 1 else { return endStackWalk(settling: true) }
+        let n = w.ids.count
+        w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
+        stackWalk = w
+        bringToTop(w.ids[w.index], slidingFrom: back ? -1 : 1)
+        // From the menu, without ⌘ held, it's one step.
+        if stackMonitors.isEmpty { endStackWalk(settling: true) }
+    }
+
+    /// A stashed tile takes the top of its stack, the top going behind it
+    /// (as ⌥-click does), sliding in over it from `dir`'s side.
+    private func bringToTop(_ id: PlacementID, slidingFrom dir: CGFloat) {
+        guard let a = arrangement, a.isStashed(id), let top = a.tile(behind: id) else { return }
+        if let leaving = views[top.id] { pendingStackSlide = (leaving, id, dir) }
+        appendToSelected(a.unstashing(id) + [.stash(top.id, behind: id), .focus(id)])
+    }
+
+    private func watchStackWalk() {
+        stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            if !event.modifierFlags.contains(.command) { self?.endStackWalk(settling: true) }
+            return event
+        } as Any)
+        stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event }
+            self?.endStackWalk(settling: false)
+            return nil
+        } as Any)
+    }
+
+    private func endStackWalk(settling: Bool) {
+        stackMonitors.forEach(NSEvent.removeMonitor)
+        stackMonitors = []
+        guard let w = stackWalk else { return }
+        stackWalk = nil
+        if !settling, let home = w.ids.first, arrangement?.isStashed(home) == true {
+            bringToTop(home, slidingFrom: -1)
+        }
+    }
+
+    /// Find Word at Hand, as the Find menu's item does it.
+    private func findWordAtHand() {
+        let item = NSMenuItem()
+        item.tag = NSTextFinder.Action.setSearchString.rawValue
+        NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
     }
 
     /// The arrangement about to be shown slides in from `dir`'s side over
