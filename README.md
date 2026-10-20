@@ -115,6 +115,16 @@ and Mona Sans (bundled).
   sidebar for its active column, or between workspaces for one of
   its own. Workspaces drag from the sidebar onto the grid the same
   way, their columns coming over.
+- **Notes about blocks** (⇧⌘N with a block focused) are an edge from
+  the note to the block: the block's tile wears a badge at its lower
+  right, a note's symbol and how many, which fans the notes out above
+  it when the pointer rests there — click one to open it beside — and
+  in Links the note is under *about*, the block's notes under *notes*.
+  ⇧-drag a block's pill into a note (or any Markdown text) and it lands
+  as a link, `[title](manifold:…)`, shown as a small pill in the
+  preview, ⌘-clicked in the editor, either going to the block; the
+  note then *mentions* the block, which Links shows both ways. So a web
+  of annotations grows: notes about blocks, blocks in notes.
 - **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
   workspace off the desk. Neither loses anything: the block, with its
   history, is a ⌘O away, and a workspace taken off sits under

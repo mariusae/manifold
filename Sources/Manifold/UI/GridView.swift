@@ -30,6 +30,8 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
+    /// A note from a tile's badge: opened beside the tile.
+    func gridOpenNote(_ note: BlockID, from placement: PlacementID)
 }
 
 /// The surface (DESIGN.md §3.1): the arrangement as a grid, columns side
@@ -44,7 +46,10 @@ final class GridView: NSView, NSDraggingSource {
     struct Tile {
         var shown: Shown
         var view: PaneContent
+        /// The notes about the block (§3.5), for the badge at its lower right.
+        var notes: [NoteCard] = []
     }
+    private var badges: [PlacementID: NoteBadge] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -102,6 +107,10 @@ final class GridView: NSView, NSDraggingSource {
         for (id, p) in pills where !incoming.contains(id) {
             p.removeFromSuperview()
             pills.removeValue(forKey: id)
+        }
+        for (id, b) in badges where !incoming.contains(id) {
+            b.removeFromSuperview()
+            badges.removeValue(forKey: id)
         }
         self.columns = columns
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
@@ -193,6 +202,21 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onDragStart = stashed ? nil : { [weak self, weak pill] event in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill)
+                }
+                // The notes about the block, as a badge at the lower right.
+                if tile.notes.isEmpty {
+                    badges[id]?.removeFromSuperview()
+                    badges.removeValue(forKey: id)
+                } else {
+                    let badge = badges[id] ?? {
+                        let b = NoteBadge()
+                        b.layer?.zPosition = 6
+                        badges[id] = b
+                        return b
+                    }()
+                    badge.cards = tile.notes
+                    badge.onOpen = { [weak self] note in self?.delegate?.gridOpenNote(note, from: id) }
+                    addSubview(badge, positioned: .above, relativeTo: pill)
                 }
                 tile.view.isHidden = stashed
             }
@@ -313,7 +337,9 @@ final class GridView: NSView, NSDraggingSource {
             for t in columns.flatMap({ $0 }) where t.shown.id != full {
                 t.view.isHidden = true
                 pills[t.shown.id]?.isHidden = true
+                badges[t.shown.id]?.isHidden = true
             }
+            if let badge = badges[full] { placeBadge(badge, in: bounds) }
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
             tile.view.frame = bounds
@@ -330,6 +356,7 @@ final class GridView: NSView, NSDraggingSource {
             t.view.isHidden = isStashed(t.shown.id)
             pills[t.shown.id]?.isHidden = false
             pills[t.shown.id]?.behind = 0
+            badges[t.shown.id]?.isHidden = isStashed(t.shown.id)
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -347,6 +374,7 @@ final class GridView: NSView, NSDraggingSource {
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
                     addSubview(pill, positioned: .above, relativeTo: tile.view)
                 }
+                if let badge = badges[tile.shown.id] { placeBadge(badge, in: r) }
                 if shownIndex > 0, rowIndex < rowDividers.count {
                     rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY - 2, width: r.width, height: Self.gap + 4)
                     rowIndex += 1
@@ -551,9 +579,13 @@ final class GridView: NSView, NSDraggingSource {
             // ⇧-drag: not the tile but what it stands for — its path (a
             // terminal's folder, a page's address) — for wherever text or
             // files are taken: a terminal types it, an editor inserts it.
-            guard let text = shown?.block.flatMap({ $0.path ?? $0.web?.url ?? $0.terminal?.cwd ?? $0.place }) else { return }
+            guard let block = shown?.block, let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
             item.setString(text, forType: .string)
             if text.hasPrefix("/") { item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL) }
+            // And the block itself, as a link a note takes: [title](manifold:id).
+            item.setString(block.id.description, forType: .manifoldBlock)
+            let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
+            item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
             pathDrag = true
         } else {
             item.setString(placement, forType: .manifoldPlacement)
@@ -566,6 +598,15 @@ final class GridView: NSView, NSDraggingSource {
                                          height: image.size.height), contents: image)
         delegate?.gridDragChanged(true)
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    /// A tile's note badge: at its lower right, in from the scroll bar's
+    /// column and the edge, with room above for its fan.
+    private func placeBadge(_ badge: NoteBadge, in r: NSRect) {
+        badge.isHidden = false
+        let size = badge.wantedSize
+        let w = min(size.width, max(r.width - 40, 60))
+        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: r.minY + 10, width: w, height: min(size.height, r.height - Self.band - 12))
     }
 
     /// Whether the drag under way is a ⇧-drag of a block's path.

@@ -10,6 +10,8 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, propose proposal: Proposal)
     /// A web address was ⌘-clicked.
     func editor(_ view: EditorView, open url: URL)
+    /// A block was dropped in as a link: the text mentions it.
+    func editor(_ view: EditorView, mention block: BlockID)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
@@ -100,6 +102,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.delegate = self
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
+        textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
         status.font = .systemFont(ofSize: 11.5)
         status.textColor = Theme.text
         status.lineBreakMode = .byTruncatingTail

@@ -16,7 +16,7 @@ struct FootCard {
 /// direction, how many, and its cards, newest first. The Links
 /// organization in the sidebar shows them.
 struct FootBunch {
-    enum Role { case openedFrom, openedHere, found, sources, derived, placedIn, before, after, mentions }
+    enum Role { case openedFrom, openedHere, found, sources, derived, placedIn, before, after, mentions, notes }
     var role: Role
     var title: String
     var symbol: String

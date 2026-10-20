@@ -207,7 +207,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let tiles = a.columns.map { column in
                 column.filter { !recentlyClosed.contains($0.block) }.map { p -> GridView.Tile in
                     let shown = self.shown(p)
-                    return GridView.Tile(shown: shown, view: view(for: shown))
+                    return GridView.Tile(shown: shown, view: view(for: shown), notes: notes(about: p.block))
                 }
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
@@ -676,7 +676,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is ScrubTip || view is NoteBadge { view.mouseMoved(with: event); break }
+            if let badge = view.superview as? NoteBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
     }
@@ -959,9 +960,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// ⇧⌘N: a new note beside the focused block.
     /// ⇧⌘N: a note on the focused block's host, at home in its folder.
+    /// ⇧⌘N: a note — about the focused block (§3.5), an edge from the
+    /// note to it, so the block wears it and the note knows its subject.
     @objc func newNote(_ sender: Any?) {
         let client = hosts.client(focusedHost) ?? host
-        show(client.newNote(home: focusedCwd), lens: .editor, .here)
+        let note = client.newNote(home: focusedCwd)
+        if let f = focusedShown, let b = f.block, b.kind != .arrangement {
+            hosts.link(from: note, to: b.id, kind: .about, context: b.displayTitle)
+        }
+        show(note, lens: .editor, .here)
+    }
+
+    /// The notes about a block: the `about` edges into it, each by the
+    /// note's title, else its first words.
+    private func notes(about block: BlockID) -> [NoteCard] {
+        let edges = hosts.neighborhood(of: block).inbound[.link(.about)] ?? []
+        var seen = Set<BlockID>()
+        return edges.compactMap { e -> NoteCard? in
+            guard seen.insert(e.from).inserted, let n = hosts.block(e.from) else { return nil }
+            return NoteCard(id: e.from, title: Self.noteTitle(n))
+        }
+    }
+
+    /// What to call a note: its title, else its first line, else "Note".
+    static func noteTitle(_ b: Block) -> String {
+        if let t = b.title, !t.isEmpty { return t }
+        if let first = b.text?.text.string.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            return String(first.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).prefix(60))
+        }
+        return b.displayTitle
+    }
+
+    func gridOpenNote(_ note: BlockID, from placement: PlacementID) {
+        show(note, lens: .editor, .besideOpener(placement), kind: .opened)
     }
 
     /// ⌘L: the focused tile's pill edits what it offers (a page's address).
@@ -2539,6 +2570,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func open(_ target: String, from placement: PlacementID?, here: Bool? = nil) {
+        // A link to a block (manifold:host/ulid, as a note's pill is): go to it.
+        if target.hasPrefix("manifold:"), let b = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+            goTo(b)
+            return
+        }
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
             if scheme == "http" || scheme == "https", here ?? Self.clickModifiers.map(Self.opensHere) ?? true {
                 show(host.newWeb(url: url.absoluteString), lens: .web, opener(placement), context: target)
@@ -3228,6 +3264,8 @@ extension MainWindowController: GridDelegate {
         bunch(.found, "found", "magnifyingglass", n.outbound[.link(.found)] ?? [], toward: \.to, fallback: "a hit")
         bunch(.derived, "compared", "arrow.left.arrow.right", n.inbound[.link(.source)] ?? [], toward: \.from, fallback: "a diff of this")
         bunch(.sources, "sources", "doc.text", n.outbound[.link(.source)] ?? [], toward: \.to, fallback: "compared here")
+        bunch(.notes, "notes", "note.text", n.inbound[.link(.about)] ?? [], toward: \.from, fallback: "a note about this")
+        bunch(.notes, "about", "note.text", n.outbound[.link(.about)] ?? [], toward: \.to, fallback: "what this is about")
         bunch(.mentions, "mentioned in", "link", n.inbound[.link(.mention)] ?? [], toward: \.from, fallback: "a link")
         bunch(.mentions, "mentions", "link", n.outbound[.link(.mention)] ?? [], toward: \.to, fallback: "a link")
         // Other arrangements holding the block: not the one it's shown in.
@@ -3292,6 +3330,10 @@ extension MainWindowController: EditorViewDelegate {
 
     func editor(_ view: EditorView, open url: URL) {
         open(url.absoluteString, from: view.placement)
+    }
+
+    func editor(_ view: EditorView, mention block: BlockID) {
+        hosts.link(from: view.block, to: block, kind: .mention, context: hosts.block(block)?.displayTitle)
     }
 
     func editor(_ view: EditorView, open path: String, line: Int, column: Int) {

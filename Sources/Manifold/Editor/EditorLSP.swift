@@ -276,6 +276,8 @@ extension EditorView {
 
 extension EditorView {
     func textView(_ view: TextView, handle event: NSEvent) -> Bool { handleCompletionKey(event) }
+    func textView(_ view: TextView, mentioned block: BlockID) { delegate?.editor(self, mention: block) }
+
     func textView(_ view: TextView, commandClickAt offset: Int) {
         if let url = urlAt(offset) { delegate?.editor(self, open: url); return }
         definition(at: offset)
@@ -289,7 +291,7 @@ extension EditorView {
         let range = text.lineRange(n)
         let line = text.lineText(n)
         let col = offset - range.start
-        guard let re = try? NSRegularExpression(pattern: #"https?://[^\s<>"'`)\]]+"#) else { return nil }
+        guard let re = try? NSRegularExpression(pattern: #"(?:https?://|manifold:)[^\s<>"'`)\]]+"#) else { return nil }
         let ns = line as NSString
         for m in re.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
             // Offsets are in UTF-16 units either way for ASCII-only lines;

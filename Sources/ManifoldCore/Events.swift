@@ -59,6 +59,8 @@ public enum Leader: String, Codable, Sendable {
 
 public enum LinkKind: String, Codable, Sendable {
     case opened, found, output, cwd, source, mention, placed
+    /// A note about a block (§3.5): from the note to what it's about.
+    case about
 }
 
 public struct Link: Codable, Equatable, Hashable, Sendable, Identifiable {

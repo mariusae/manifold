@@ -340,6 +340,18 @@ the kind and the message; `done` a filled dot in the accent; `error` a
 filled dot in red; `idle` nothing. The Dock badge counts the blocks
 blocked and done.
 
+### 3.10 Notes about blocks
+
+A note made with a block focused (⇧⌘N) is *about* it: an `about` edge
+from the note to the block (§3.5), one more link kind. The block's
+tile wears its notes as a badge at the lower right, fanning out when
+hovered; Links lists them under *notes* (inbound) and *about*
+(outbound). A block ⇧-dragged into a note lands as a Markdown link to
+it, `[title](manifold:host/ulid)`, and a `mention` edge; the preview
+styles such links as pills and the editor ⌘-clicks them, both going
+to the block. Annotation is thus the graph again: nothing new is
+stored but edges and the note's own text.
+
 ### 3.9 Hosts that come and go
 
 A remote host is a client the app keeps whether or not it can reach it

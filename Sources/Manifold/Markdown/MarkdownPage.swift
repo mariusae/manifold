@@ -198,6 +198,9 @@ enum MarkdownPage {
         li > input[type=checkbox] { margin: 0 0.45em 0 -1.35em; vertical-align: -1px; }
         ul:has(> li > input[type=checkbox]) { list-style: none; }
         ::-webkit-scrollbar { width: 0; height: 0; }
+        a[href^="manifold:"] { display: inline-block; padding: 0 0.55em; border: 0.5px solid rgba(127,127,127,0.5); border-radius: 999px;
+          background: rgba(127,127,127,0.12); color: inherit; font-size: 0.9em; line-height: 1.55; vertical-align: 0.05em; }
+        a[href^="manifold:"]:hover { text-decoration: none; background: rgba(127,127,127,0.24); }
         a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
           font-family: var(--mono), ui-monospace, Menlo, monospace; font-size: 0.86em;

@@ -16,6 +16,8 @@ protocol TextViewDelegate: AnyObject {
     func textViewDidScroll(_ view: TextView)
     /// A key, before the view sees it: true if it was taken (a popup's).
     func textView(_ view: TextView, handle event: NSEvent) -> Bool
+    /// A block was dropped in as a link to it (a note about it, a mention).
+    func textView(_ view: TextView, mentioned block: BlockID)
     /// ⌘-click on a place in the text.
     func textView(_ view: TextView, commandClickAt offset: Int)
     /// ⌃Space.
@@ -119,7 +121,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.string, .fileURL])
+        registerForDraggedTypes([.manifoldBlockLink, .string, .fileURL])
         wantsLayer = true
         fontChanged()
     }
@@ -1224,22 +1226,31 @@ final class TextView: NSView, NSTextInputClient {
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard isEditable, Self.droppedText(sender.draggingPasteboard) != nil else { return [] }
+        guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
         setSelections([Selection(at: offset(at: p))], scroll: false)
         return .copy
     }
 
+    /// Whether a ⇧-dragged block lands as a link to it (a note, a
+    /// Markdown text) rather than as its path.
+    var acceptsBlockLinks = false
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard isEditable, let text = Self.droppedText(sender.draggingPasteboard) else { return false }
+        let pb = sender.draggingPasteboard
+        guard isEditable, let text = Self.droppedText(pb, links: acceptsBlockLinks) else { return false }
         window?.makeFirstResponder(self)
         let p = convert(sender.draggingLocation, from: nil)
         setSelections([Selection(at: offset(at: p))], scroll: false)
         insert(text)
+        if acceptsBlockLinks, pb.string(forType: .manifoldBlockLink) != nil, let id = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) {
+            delegate?.textView(self, mentioned: id)
+        }
         return true
     }
 
-    static func droppedText(_ pb: NSPasteboard) -> String? {
+    static func droppedText(_ pb: NSPasteboard, links: Bool = false) -> String? {
+        if links, let link = pb.string(forType: .manifoldBlockLink), !link.isEmpty { return link }
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             return urls.map(\.path).joined(separator: "\n")
         }

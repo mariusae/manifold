@@ -118,6 +118,8 @@ extension NSPasteboard.PasteboardType {
     static let manifoldPlacement = NSPasteboard.PasteboardType("com.manifold.placement")
     /// A block being dragged from the sidebar, by id.
     static let manifoldBlock = NSPasteboard.PasteboardType("com.manifold.block")
+    /// A ⇧-dragged block as a Markdown link to it, for a note to take.
+    static let manifoldBlockLink = NSPasteboard.PasteboardType("com.manifold.blocklink")
 }
 
 /// A small borderless button showing a symbol, with a hover background.
