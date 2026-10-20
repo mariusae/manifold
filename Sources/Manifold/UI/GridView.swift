@@ -171,7 +171,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
-                // The bar clicked focuses the tile, ⌘-clicked fills the
+                // The bar clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
                 // the tile's menu; double-clicked, the tile is maximized.
                 pill.onClick = { [weak self, weak pill] at, mods in
@@ -197,11 +197,11 @@ final class GridView: NSView, NSDraggingSource {
                         pill.beginEditing(edit)
                         return
                     }
-                    // The bar clicked focuses the tile; ⌘-clicked, the tile
-                    // fills its column.
+                    // The bar clicked grows the tile a step (acme's colgrow),
+                    // focused; ⌘-clicked, the tile fills its column.
                     _ = at
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.command) { self.delegate?.gridFill(id) }
+                    if mods.contains(.command) { self.delegate?.gridFill(id) } else { self.delegate?.gridGrow(id) }
                 }
                 pill.onPathClick = { [weak self] in
                     guard let self, !stashed else { return }

@@ -117,8 +117,8 @@ and Mona Sans (bundled).
   badge, the program its status names in a grey capsule, its status
   glyph, and maximize and close (×) at the right. The bar is always there; the content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
-  the bar to move the tile; click it to focus the tile, ⌘-click to
-  fill the column, double-click to maximize; click its symbol for the
+  the bar to move the tile; click it to grow the tile a step, ⌘-click
+  to fill the column, double-click to maximize; click its symbol for the
   tile's menu; ⇧-click it for where the block is, folder by folder up
   to the root (a terminal's working directory likewise), each browsing
   that folder here, as ⌘-clicking a document's title does in the

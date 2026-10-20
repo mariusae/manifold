@@ -131,8 +131,8 @@ columns sets widths; a tile closed gives its height to its neighbor.
 Each tile is a **card** with a **bar** across its top: the block's
 symbol and name, where it is, a count of the stack behind it, its
 links, its status glyph (§3.7), and maximize and close; the bar is the
-tile's handle to drag, focuses the tile clicked, and holds its menu
-behind the symbol. The content runs beneath the bar, never under it,
+tile's handle to drag, grows the tile a step when clicked, and holds
+its menu behind the symbol. The content runs beneath the bar, never under it,
 with room between cards and the window's wash — a few pools of colour
 placed afresh each day over what's behind the window, blurred — showing
 through. A stack's sheets peek out above its card, rounded, as paper.
