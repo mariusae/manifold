@@ -216,11 +216,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             window.title = title(of: a)
+            // The keyboard may be in no view at all (the window's, after
+            // the view it was in went, as a closed editor's does).
+            let responder = window.firstResponder as? NSView
             if palette == nil, stateView == nil, history == nil, neighborhoodView == nil,
                let focused = a.focused, let view = views[focused], view.superview != nil,
-               let responder = window.firstResponder as? NSView, !responder.isDescendant(of: view) {
+               !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
-                if focused == lastFocused,
+                if focused == lastFocused, let responder,
                    let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
                    a.placement(typing) != nil, !a.isStashed(typing) {
                     // The tile focus didn't move but the keyboard is in
