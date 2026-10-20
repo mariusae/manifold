@@ -59,7 +59,16 @@ final class TextView: NSView, NSTextInputClient {
     // Appearance.
     var font: NSFont = .systemFont(ofSize: 14) { didSet { fontChanged() } }
     var lineHeightMultiple: CGFloat = 1.2 { didSet { fontChanged() } }
-    var textColor = Theme.text
+    var textColor = Theme.text { didSet { if textColor != oldValue { layouts = [:]; needsDisplay = true } } }
+    /// What ⌘ shows as links: byte ranges of names there's somewhere to go
+    /// to, in the link color go.dev's docs have.
+    var linkRanges: [TextRange] = [] { didSet { if linkRanges != oldValue { layouts = [:]; needsDisplay = true } } }
+    /// The link under the pointer, underlined as a hovered link is.
+    var hoveredLink: TextRange? { didSet { if hoveredLink != oldValue { needsDisplay = true } } }
+    static let linkColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
+                                           NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1))
+    /// The line numbers' color (go.dev's for its listings, in view mode).
+    var gutterColor = TextView.gutterText { didSet { if gutterColor != oldValue { needsDisplay = true } } }
     var showsLineNumbers = true { didSet { if showsLineNumbers != oldValue { invalidateAll() } } }
     var wraps = true { didSet { invalidateAll() } }
     /// Markdown shown richly (MarkdownStyle): the attributes of a line say
@@ -310,6 +319,15 @@ final class TextView: NSView, NSTextInputClient {
             }
             if drawn.isEmpty { pillLines.removeValue(forKey: n) } else { pillLines[n] = drawn }
             updatePillTimer()
+        }
+        // The names ⌘ shows as links, on this line.
+        if !linkRanges.isEmpty, !string.isEmpty {
+            let start = text.offset(ofLine: n), end = start + string.utf8.count
+            for r in linkRanges where r.end > start && r.start < end {
+                let a = utf16Index(in: string, byteOffset: max(r.start, start) - start)
+                let b = utf16Index(in: string, byteOffset: min(r.end, end) - start)
+                if b > a { attributed.addAttribute(.foregroundColor, value: Self.linkColor, range: NSRange(location: a, length: b - a)) }
+            }
         }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var rows: [CTLine] = []
@@ -611,7 +629,7 @@ final class TextView: NSView, NSTextInputClient {
             let l = layout(line: n)
             let lineTop = top(ofLine: n)
             if showsLineNumbers {
-                let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: Self.gutterText])
+                let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: gutterColor])
                 let size = s.size()
                 ctx.restoreGState()
                 s.draw(at: NSPoint(x: Self.insets.left + 2, y: lineTop + (lineHeight - size.height) / 2))
@@ -669,6 +687,12 @@ final class TextView: NSView, NSTextInputClient {
                     NSBezierPath(ovalIn: NSRect(x: textLeft - 10, y: top(ofLine: n) + lineHeight / 2 - 2.5, width: 5, height: 5)).fill()
                 }
             }
+        }
+
+        // The link under the pointer (⌘ held), underlined.
+        if let h = hoveredLink, !h.isEmpty {
+            Self.linkColor.setFill()
+            rows(of: h, from: first, to: last) { r in NSRect(x: r.minX, y: r.maxY - lineHeight * 0.2, width: r.width, height: 1).fill() }
         }
 
         // Marked text (being composed) is underlined.

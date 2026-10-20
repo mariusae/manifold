@@ -1,17 +1,71 @@
 import AppKit
+import ManifoldCore
 
 /// What lies under the cards and the sidebar (§3.1): a wash of soft
 /// colour, a few blurred pools of pastel light on a pale ground — or, in
 /// the dark, deep tints on a near-black one — placed afresh each day by a
-/// seed from the date, so no two days' desks are quite the same.
+/// seed from the date, so no two days' desks are quite the same — and
+/// lit by the hour: warmer while the sun is low, cooler when it's high
+/// (Daylight), looked at again every few minutes and eased into.
 final class BackdropView: NSView {
+    /// The light it was last drawn in.
+    private(set) var cast = Daylight.Cast.neutral
+    /// The clock the light is read from: a debugging hour, or now.
+    var clock: Date? { didSet { relight(fade: true) } }
+    private var timer: Timer?
+    private var wake: NSObjectProtocol?
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        cast = Daylight.cast(at: Date(), from: Daylight.place())
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        timer?.invalidate()
+        if let wake { NSWorkspace.shared.notificationCenter.removeObserver(wake) }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        timer?.invalidate()
+        timer = nil
+        guard window != nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in self?.relight(fade: true) }
+        timer?.tolerance = 30
+        if wake == nil {
+            wake = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.relight(fade: true) }
+            }
+        }
+        relight(fade: false)
+    }
+
+    /// The light looked at again; redrawn if it has moved, cross-faded
+    /// over a few seconds so the change is never seen happening.
+    func relight(fade: Bool) {
+        let now = Daylight.cast(at: clock ?? Date(), from: Daylight.place())
+        guard now != cast else { return }
+        cast = now
+        if fade, let layer {
+            let t = CATransition()
+            t.type = .fade
+            t.duration = 4
+            layer.add(t, forKey: "relight")
+        }
+        needsDisplay = true
+    }
+
+    /// A colour in the light: each channel, linearized, taken by the cast.
+    private func lit(_ color: NSColor) -> CGColor {
+        guard let c = color.usingColorSpace(.deviceRGB) else { return color.cgColor }
+        func f(_ v: CGFloat, _ k: Double) -> CGFloat { CGFloat(pow(pow(Double(v), 2.2) * k, 1 / 2.2)) }
+        return NSColor(deviceRed: f(c.redComponent, cast.red), green: f(c.greenComponent, cast.green),
+                       blue: f(c.blueComponent, cast.blue), alpha: c.alphaComponent).cgColor
+    }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -48,7 +102,7 @@ final class BackdropView: NSView {
             ? [(0.70, 0.40, 0.26), (0.92, 0.35, 0.24), (0.06, 0.35, 0.22), (0.08, 0.15, 0.12)]
             : [(0.72, 0.28, 0.97), (0.95, 0.24, 0.99), (0.07, 0.28, 1.0), (0.12, 0.14, 1.0)]
         let space = CGColorSpaceCreateDeviceRGB()
-        let colors = stops.map { h, s, b in NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1).cgColor }
+        let colors = stops.map { h, s, b in lit(NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1)) }
         if let g = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 0.4, 0.75, 1]) {
             ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: bounds.height), end: CGPoint(x: bounds.width, y: 0), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         }
@@ -60,8 +114,8 @@ final class BackdropView: NSView {
                 : NSColor(calibratedHue: hue, saturation: 0.18, brightness: 1, alpha: 1)
             let center = CGPoint(x: CGFloat(r.next()) * w, y: CGFloat(r.next()) * h)
             let radius = max(w, h) * (0.3 + 0.3 * CGFloat(r.next()))
-            guard let c = color.usingColorSpace(.deviceRGB),
-                  let g = CGGradient(colorsSpace: space, colors: [c.withAlphaComponent(0.5).cgColor, c.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1]) else { continue }
+            let c = lit(color)
+            guard let g = CGGradient(colorsSpace: space, colors: [c.copy(alpha: 0.5)!, c.copy(alpha: 0)!] as CFArray, locations: [0, 1]) else { continue }
             ctx.drawRadialGradient(g, startCenter: center, startRadius: 0, endCenter: center, endRadius: radius, options: [])
         }
     }

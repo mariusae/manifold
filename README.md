@@ -24,7 +24,12 @@ and Mona Sans (bundled).
   is working and is done and not yet read, which go to Status; the other organizations
   are in the ⋯ menu. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each
-  day, with what's behind the window blurred beneath it. The Workspaces, Inbox and Status
+  day, with what's behind the window blurred beneath it, and lit by the
+  hour: the sun's height where your time zone's city is gives its
+  light's colour temperature, so the wash is a touch warmer while the
+  sun is low, morning and evening, a touch cooler when it's high, and a
+  dim cool blue at night, looked at again every five minutes and eased
+  into over a few seconds. The Workspaces, Inbox and Status
   organizations are flat: a host's heading opens and closes its
   workspaces, a workspace's label goes to it (the current one's folds
   it, and opens it again), groups' labels open and close, and a block's
@@ -98,8 +103,9 @@ and Mona Sans (bundled).
   comes back when that's done, or when the pointer rests where it would
   be; the other tiles' pills stay, whatever is under them. A pill can
   also **become a field**: a web page has no address bar of its own —
-  click its pill (or ⌘L) and it widens into one, the address selected
-  to type over, or words to search for; ⏎ goes, ⎋ leaves it. ⌘[ and ⌘]
+  click the address in its pill (or ⌘L) and it becomes one, there, the
+  title left as it is and the address selected to type over, or words
+  to search for (the rest of the bar grows the tile, as any bar does); ⏎ goes, ⎋ leaves it. ⌘[ and ⌘]
   go back and forward, ⌘R reloads. The pill's menu (its icon) carries
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
@@ -145,8 +151,12 @@ and Mona Sans (bundled).
   folder of the block it was made from: it is found there, and saved
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
   beside the focused block; Browse This Folder (⌃⌘O) its own.
-  **Go Back** and **Go Forward** (⌘[ ⌘]) walk the trail across tiles
-  and workspaces.
+  **Go Back** and **Go Forward** (⌘[ ⌘], or the mouse's back and
+  forward buttons) go along where the focus has been, this Mac's own
+  history: to the tile, in its workspace, brought out if it was stashed,
+  the pointer with it. Settle where you went back to — stay a couple of
+  seconds, type, click — and it is the newest place, so back from there
+  goes where you were before going back.
 - **⌃⇥** walks the workspaces most recently settled on first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
@@ -269,7 +279,12 @@ when you find it again.
   runs under its shell, the shell first, each process a submenu of End,
   Force End and what runs under it.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
-  on one asks where to save it). The **editor** lens is Manifold's own
+  on one asks where to save it). A note has its own symbol (a note, not
+  a file's page) wherever it's listed, and a name without being saved:
+  Name… in its pill's menu, File ▸ Name Note… or the palette turns its
+  pill's title into a field (⏎ names it, emptied it's Untitled again);
+  saved, it's offered under that name, and its file's name names it
+  from then on. The **editor** lens is Manifold's own
   text view (the pill's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out
   with Core Text, line numbers, several
@@ -295,9 +310,12 @@ when you find it again.
   [Blocks.swift](Sources/ManifoldCore/Blocks.swift), anything not in
   it plain text): Markdown rendered (cmark-gfm), a note's too, following
   the text as it's edited on the same block or saved by another
-  program; code and plain text as they are, not taken in, on the plain
-  grey golang.org sets code on. Code (by its extension) is set in the
-  fixed-width font, edited or viewed, unless the tile's menu says
+  program; code and plain text as they are, not taken in. Viewed, both
+  are set as go.dev sets the Go spec: code in Menlo on its pale grey,
+  lines at 1.4, its text and line numbers' colors; Markdown in its
+  colors, heading sizes and spacing, its links, and its code blocks
+  (the theme's font for the rest). Code (by its extension) is set in
+  the fixed-width font when edited too, unless the tile's menu says
   otherwise. ⌥⇧⌘P puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a
   file shown already, in either mode, goes to its tile. A link followed
@@ -321,7 +339,9 @@ when you find it again.
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
-  Definition (⌃⌘J, or ⌘-click), Find References (⌃⌘R), Show Documentation
+  Definition (⌃⌘J, or ⌘-click: with ⌘ held, everything there's somewhere
+  to go to — by the server's semantic tokens — shows in go.dev's link
+  color, the one under the pointer underlined), Find References (⌃⌘R), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
   on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
   Language Servers… is the table: the languages by extension, the command
@@ -430,9 +450,9 @@ when you find it again.
   *before* and *after* (what you went to around it, from the trail), each
   row with what made the link (the ⌘-clicked line, the search hit, the
   editor line that named a definition) and when. Window ▸ Go Back and Go
-  Forward (⌃⌘[, ⌃⌘]) walk the trail across columns and workspaces:
-  back to the block you were at before, wherever it was, and forward
-  again. Show the Neighborhood Map, in the palette, draws the focused
+  Forward (⌘[, ⌘]) go along the focus history across columns and
+  workspaces: back to the block you were at before, wherever it was, and
+  forward again. Show the Neighborhood Map, in the palette, draws the focused
   block's surroundings in graph form, two steps out — what it's joined
   to on a ring around it, what those are joined to beyond, edges by
   kind, with what made each shown when a block is pointed at. Click a
@@ -493,7 +513,7 @@ when you find it again.
   Compare with Now opens a diff block of then against now.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: the page
-  has the whole tile, its pill is the address (click it, or ⌘L), ⌘[ and
+  has the whole tile, its pill has the address (click it, or ⌘L), ⌘[ and
   ⌘] go back and forward, and its pages are in its log.
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click

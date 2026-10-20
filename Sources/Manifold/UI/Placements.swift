@@ -15,7 +15,7 @@ struct Shown: Equatable {
     var kind: BlockKind { block?.kind ?? kindOf(lens) }
     var title: String { block?.displayTitle ?? kind.defaultTitle }
     var path: String? { block?.path }
-    var symbol: String { Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil) }
+    var symbol: String { block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil) }
     /// Where it is, for subtitles: a folder, or a working directory.
     var place: String? { block?.place }
     var isDirty: Bool { block?.text?.isDirty == true }
@@ -72,6 +72,9 @@ extension PaneContent {
 struct PillEdit {
     var text: String
     var placeholder: String
+    /// Over the name, in its type (a note's name), rather than over the
+    /// place after it (a page's address).
+    var overName = false
     var commit: (String) -> Void
 }
 

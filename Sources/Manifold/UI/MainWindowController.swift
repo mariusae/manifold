@@ -114,6 +114,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         setTrafficLights(visible: pinned, animated: false)
         watchClicks()
+        watchHistoryButtons()
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
             self?.collect()
@@ -234,7 +235,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // The keyboard may be in no view at all (the window's, after
             // the view it was in went, as a closed editor's does).
             let responder = window.firstResponder as? NSView
-            if palette == nil, stateView == nil, history == nil, neighborhoodView == nil,
+            // Nor while a pill is a field (a note being named, an address typed).
+            if palette == nil, stateView == nil, history == nil, neighborhoodView == nil, !content.isEditingPill,
                let focused = a.focused, let view = views[focused], view.superview != nil,
                !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
@@ -391,6 +393,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.offline = shown.offline
                 e.richMarkdown = viewState(of: p)["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
+                e.noteName = hosts.block(p.block).flatMap { $0.isNote ? $0.title : nil }
                 e.isRemote = p.block.host != host.host
                 e.font = editorFont(for: p, path: shown.path)
                 e.theme = hosts.state.appearance.theme
@@ -916,6 +919,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
             self?.newNote(nil)
         })
+        if let f = focusedShown, f.block?.isNote == true {
+            items.append(PaletteItem(symbol: "pencil", title: "Name This Note…", subtitle: "Action") { [weak self] in
+                self?.nameNote(f.id)
+            })
+        }
         if arrangement != nil {
             items.append(PaletteItem(symbol: "pencil", title: "Name This Workspace…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
@@ -1347,6 +1355,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let id = selected { rename(id) }
     }
 
+    /// File ▸ Name Note…: the focused note's name, in its pill.
+    @objc func nameFocusedNote(_ sender: Any?) {
+        if let f = focusedShown { nameNote(f.id) }
+    }
+
+    /// A note named in its tile's pill, as it is — nothing saved: the
+    /// name is the block's title, kept in its log, until a file's name
+    /// takes over. Emptied, it's Untitled again.
+    func nameNote(_ placement: PlacementID) {
+        guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block), b.isNote else { return }
+        focus(placement)
+        let block = p.block
+        content.editPill(placement, PillEdit(text: b.title ?? "", placeholder: "Name this note", overName: true) { [weak self] name in
+            self?.hosts.append(.title(name.isEmpty ? nil : name), to: .block(block))
+        })
+    }
+
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
 
     @objc func setColorScheme(_ sender: NSMenuItem) {
@@ -1400,6 +1425,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = (item.representedObject as? String) == hosts.state.appearance.editorFont.rawValue ? .on : .off
         case #selector(setContrastCorrection(_:)):
             item.state = (item.representedObject as? String) == hosts.state.appearance.contrastCorrection.rawValue ? .on : .off
+        case #selector(nameFocusedNote(_:)):
+            return focusedShown?.block?.isNote == true
         case #selector(togglePinnedSidebar(_:)):
             item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
         default:
@@ -2292,20 +2319,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return NeighborhoodModel(center: center, nodes: nodes, edges: edges, more: more)
     }
 
-    // MARK: Back and forward along the trail
+    // MARK: Back and forward, by focus
 
-    /// Where along the trail ⌃⌘[ has gone back to, and where it started.
-    private var trailPosition: Int?
-    private var trailAnchor: Int?
-    private var navigatingTrail = false
-    private var lastTrailFocus: PlacementID?
+    /// A place focus was, in this client's history: a tile in a workspace.
+    private struct FocusPlace: Equatable {
+        var workspace: BlockID
+        var placement: PlacementID
+        var block: BlockID
+    }
 
-    /// Any other move resets the walk: the next ⌃⌘[ starts from now.
+    /// Where focus has been, this client's alone (§8.2), oldest first:
+    /// every move to a tile or a workspace, across workspaces, that
+    /// wasn't going back or forward.
+    private var focusHistory: [FocusPlace] = []
+    /// While going back and forward: the place gone to, by its index.
+    private var historyCursor: Int?
+    private var navigatingHistory = false
+    private var lastFocusPlace: FocusPlace?
+    private var settleWork: DispatchWorkItem?
+    private var settleMonitor: Any?
+    static let historyLimit = 500
+
+    /// The place focus is now, if a tile is focused.
+    private var currentFocusPlace: FocusPlace? {
+        guard let w = selected, let a = hosts.arrangement(w), let f = a.focused, let p = a.placement(f) else { return nil }
+        return FocusPlace(workspace: w, placement: f, block: p.block)
+    }
+
+    /// A move of focus is noted: a new place in the history, unless it's
+    /// going back or forward that moved it.
     private func noteTrailFocus() {
-        let f = arrangement?.focused
-        if f != lastTrailFocus {
-            lastTrailFocus = f
-            if !navigatingTrail { trailPosition = nil; trailAnchor = nil }
+        let place = currentFocusPlace
+        if place != lastFocusPlace {
+            lastFocusPlace = place
+            if !navigatingHistory, let place {
+                // Moved elsewhere while going back: where it had gone is
+                // settled on first, so back comes to it again.
+                if historyCursor != nil { settle() }
+                record(place)
+            }
             // Focusing takes the pen (§8.2): for the block, and the
             // workspace it sits in.
             if let b = focusedShown?.placement.block { hosts.own(b) }
@@ -2313,45 +2365,112 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// ⌃⌘[: the block gone to before this one, by the trail (§3.5).
-    @objc func goBack(_ sender: Any?) { walkTrail(-1) }
-    /// ⌃⌘]: forward again, as far as where going back began.
-    @objc func goForward(_ sender: Any?) { walkTrail(1) }
+    private func record(_ place: FocusPlace) {
+        if focusHistory.last != place { focusHistory.append(place) }
+        if focusHistory.count > Self.historyLimit { focusHistory.removeFirst(focusHistory.count - Self.historyLimit) }
+    }
 
-    private func walkTrail(_ direction: Int) {
-        let g = host.node.graph
-        guard g.stepCount > 0 else { return }
-        let current = focusedShown?.placement.block
-        if trailPosition == nil {
-            trailPosition = g.stepCount - 1
-            trailAnchor = trailPosition
-        }
-        var i = trailPosition! + direction
-        let limit = direction < 0 ? 0 : (trailAnchor ?? g.stepCount - 1)
-        while direction < 0 ? i >= limit : i <= limit {
-            guard let step = g.step(at: i) else { return }
-            if step.block != current, step.block != g.step(at: trailPosition!)?.block, hosts.block(step.block) != nil {
-                trailPosition = i
-                go(to: step)
+    /// ⌘[ (or the mouse's back button): where focus was before, across
+    /// workspaces, the pointer following.
+    @objc func goBack(_ sender: Any?) { walkHistory(-1) }
+    /// ⌘] (or the mouse's forward button): forward again, as far as where
+    /// going back began.
+    @objc func goForward(_ sender: Any?) { walkHistory(1) }
+
+    private func walkHistory(_ direction: Int) {
+        guard !focusHistory.isEmpty else { return NSSound.beep() }
+        var i = (historyCursor ?? focusHistory.count - 1) + direction
+        let here = currentFocusPlace
+        while focusHistory.indices.contains(i) {
+            let place = focusHistory[i]
+            if place != here, go(to: place) {
+                historyCursor = i
+                awaitSettling()
                 return
             }
             i += direction
         }
+        NSSound.beep()
     }
 
-    /// Goes to a step: its arrangement; the block's placement here, if it
-    /// has one; else the block recalled beside what's focused.
-    private func go(to step: Step) {
-        guard let b = hosts.block(step.block) else { return }
-        navigatingTrail = true
-        defer { navigatingTrail = false }
-        if b.kind == .arrangement {
-            hosts.select(step.block)
+    /// Goes to a place: its workspace, the tile out of its stack (or from
+    /// behind a maximized one) and focused; the tile gone, its block
+    /// wherever it is; nothing left of either, false.
+    private func go(to place: FocusPlace) -> Bool {
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        if let a = hosts.arrangement(place.workspace), allWorkspaces.contains(place.workspace), a.placement(place.placement) != nil {
+            if selected != place.workspace { hosts.select(place.workspace) }
+            if a.focused != place.placement || a.isStashed(place.placement) || (a.full != nil && a.full != place.placement) {
+                hosts.append(a.revealing(place.placement), to: .block(place.workspace))
+            }
+        } else if hosts.block(place.block) != nil {
+            goTo(place.block)
         } else {
-            goTo(step.block)
+            return false
         }
         render()
-        lastTrailFocus = arrangement?.focused
+        lastFocusPlace = currentFocusPlace
+        warpPointerToFocus()
+        return true
+    }
+
+    /// After going back or forward, staying put (a couple of seconds), a
+    /// key typed or a click settles on where it went: it's a new place in
+    /// the history, and back from there goes where it was before.
+    private func awaitSettling() {
+        settleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.settle() }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+        guard settleMonitor == nil else { return }
+        settleMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, (event.window ?? NSApp.keyWindow) === self.window else { return event }
+            // Not the keys that go back and forward themselves.
+            if event.type == .keyDown, event.modifierFlags.contains(.command), ["[", "]"].contains(event.charactersIgnoringModifiers ?? "") { return event }
+            self.settle()
+            return event
+        }
+    }
+
+    private func settle() {
+        settleWork?.cancel()
+        settleWork = nil
+        if let settleMonitor { NSEvent.removeMonitor(settleMonitor) }
+        settleMonitor = nil
+        guard historyCursor != nil else { return }
+        historyCursor = nil
+        if let place = currentFocusPlace { record(place) }
+    }
+
+    /// The mouse's back and forward buttons (3 and 4), wherever it is in
+    /// the window: back and forward by focus.
+    private var historyButtonsMonitor: Any?
+    private func watchHistoryButtons() {
+        historyButtonsMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
+            guard let self, (event.window ?? NSApp.keyWindow) === self.window else { return event }
+            switch event.buttonNumber {
+            case 3: self.goBack(nil); return nil
+            case 4: self.goForward(nil); return nil
+            default: return event
+            }
+        }
+    }
+
+    /// Debugging: the backdrop's light — at "HH:MM" today, or "now" again.
+    func debugSun(_ arg: String) -> String {
+        let hm = arg.split(separator: ":").compactMap { Int($0) }
+        if arg == "now" { backdrop.clock = nil }
+        else if hm.count == 2 { backdrop.clock = Calendar.current.date(bySettingHour: hm[0], minute: hm[1], second: 0, of: Date()) }
+        let c = backdrop.cast, p = Daylight.place()
+        return String(format: "at %.2f,%.2f elevation %.1f° %.0f K cast r%.3f g%.3f b%.3f", p.latitude, p.longitude, c.elevation, c.kelvin, c.red, c.green, c.blue)
+    }
+
+    /// Debugging: the history, the place gone to marked.
+    func debugHistory() -> String {
+        focusHistory.enumerated().map { i, p in
+            "\(i == historyCursor ? ">" : " ")\(i) \(hosts.block(p.block)?.displayTitle ?? "?") in \(hosts.arrangement(p.workspace).map(title(of:)) ?? "?")"
+        }.joined(separator: "\n")
     }
 
     // MARK: Finding and opening
@@ -3918,6 +4037,9 @@ extension MainWindowController: GridDelegate {
             self?.linksCenter = block
             self?.setOrganization(.links)
         })
+        if let b = hosts.block(block), b.isNote {
+            menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.nameNote(placement) })
+        }
         if let b = hosts.block(block), b.kind == .text, p.lens.isText {
             let viewing = p.lens == .preview
             menu.addItem(ClosureMenuItem(viewing ? "Edit" : "View", symbol: viewing ? "pencil" : "eye", key: "\r") { [weak self] in self?.toggleMode(placement) })

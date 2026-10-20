@@ -157,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
+        item(file, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         file.addItem(.separator())
         item(file, "Take Off This Column", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Archive Block", #selector(MainWindowController.archiveFocused(_:)), "w", [.command, .shift])

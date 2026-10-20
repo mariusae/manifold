@@ -1259,3 +1259,48 @@ private final class Seen: @unchecked Sendable {
     #expect(Array(left.keys) == ["Stop"])
     #expect(json["model"] as? String == "opus")
 }
+
+@Test func semanticTokensGiveTheNamesThereIsSomewhereToGoTo() {
+    // "func main() {" / "\tfmt.Println(\"日本\", x)": keyword, function; namespace, function, string, variable.
+    let text = Rope("func main() {\n\tfmt.Println(\"日本\", x)\n}\n")
+    let legend = ["keyword", "function", "namespace", "string", "variable"]
+    let data = [0, 0, 4, 0, 0,   0, 5, 4, 1, 0,   1, 1, 3, 2, 0,   0, 4, 7, 1, 0,   0, 8, 4, 3, 0,   0, 6, 1, 4, 0]
+    let names = SemanticTokens.navigable(data, legend: legend, in: text).map { String(text[$0]) }
+    #expect(names == ["main", "fmt", "Println", "x"])
+}
+
+@Test func theSunIsWhereTheAlmanacSaysAndItsLightWarmsAsItSets() {
+    func at(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
+    let oslo = Daylight.Place(latitude: 59.92, longitude: 10.75)
+    // Midsummer noon in Oslo: 90 − 59.92 + 23.44.
+    #expect(abs(Daylight.elevation(at: at("2026-06-21T11:19:00Z"), from: oslo) - 53.5) < 0.5)
+    // The equinox's noon on the equator, nearly overhead; Los Angeles's small hours in January, well below.
+    #expect(Daylight.elevation(at: at("2026-03-20T12:07:00Z"), from: .init(latitude: 0, longitude: 0)) > 88)
+    #expect(Daylight.elevation(at: at("2026-01-15T11:00:00Z"), from: .init(latitude: 34.05, longitude: -118.24)) < -40)
+
+    let low = Daylight.cast(at: at("2026-06-21T20:20:00Z"), from: oslo)
+    let high = Daylight.cast(at: at("2026-06-21T11:19:00Z"), from: oslo)
+    #expect(low.kelvin < 4000 && high.kelvin > 6000)
+    #expect(low.red == 1 && low.blue < low.green && low.green < 1)
+    #expect(high.blue == 1 && high.red < high.green)
+    // Subtle: no channel loses more than the strength.
+    #expect(min(low.blue, high.red) >= 1 - Daylight.strength)
+
+    let table = Daylight.parseZoneTable("# comment\nNO\t+5955+01045\tEurope/Oslo\nUS\t+340308-1181434\tAmerica/Los_Angeles\tPacific\n")
+    #expect(abs(table["Europe/Oslo"]!.latitude - 59.9167) < 0.001 && abs(table["Europe/Oslo"]!.longitude - 10.75) < 0.001)
+    #expect(abs(table["America/Los_Angeles"]!.longitude + 118.2428) < 0.001)
+}
+
+@Test func aNoteIsNamedWithoutBeingSavedAndItsFileNamesItOnceItIs() {
+    let at = stamp()
+    var b = Block(id: BlockID(), kind: .text, created: at)
+    #expect(b.isNote && b.displayTitle == "Untitled")
+    b.apply(.title("  Standup  "), at: at)
+    #expect(b.isNote && b.displayTitle == "Standup")
+    b.apply(.title(""), at: at)
+    #expect(b.displayTitle == "Untitled")
+    b.apply(.title("Standup"), at: at)
+    b.apply(.path("/tmp/standup.md"), at: at)
+    b.apply(.title(nil), at: at)
+    #expect(!b.isNote && b.displayTitle == "standup.md")
+}

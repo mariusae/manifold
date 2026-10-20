@@ -125,6 +125,109 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         documentChanged()
+        watchCommandKey(window != nil)
+    }
+
+    // MARK: ⌘ links
+
+    private var commandMonitor: Any?
+    private var commandDown = false
+    /// What the language server last said there's somewhere to go to, for
+    /// a version of the text (nil ranges: it can't say).
+    private var navigable: (version: Int, ranges: [TextRange]?)?
+    private var askingNavigable = false
+    /// When the server last couldn't say (not ready yet, say): asked again
+    /// a moment later, not at every ⌘.
+    private var navigableFailedAt: Date?
+
+    /// While ⌘ is held over the editor, the names there's somewhere to go
+    /// to (as the language server says) show as links, as go.dev's docs
+    /// set them; the one under the pointer underlined. ⌘-click goes.
+    private func watchCommandKey(_ on: Bool) {
+        if let commandMonitor { NSEvent.removeMonitor(commandMonitor) }
+        commandMonitor = nil
+        guard on else { return }
+        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            let down = event.modifierFlags.contains(.command) && self.pointerInside
+            if down != self.commandDown {
+                self.commandDown = down
+                if down { self.showLinks() } else { self.textView.linkRanges = []; self.textView.hoveredLink = nil }
+            } else if down {
+                self.updateHoveredLink()
+            }
+            return event
+        }
+    }
+
+    /// Debugging: ⌘ held over the editor (without the pointer), and the
+    /// names shown as links once the server has answered.
+    func debugLinks(keep: Bool = false) -> String {
+        commandDown = true
+        navigableFailedAt = nil
+        showLinks()
+        let deadline = Date().addingTimeInterval(8)
+        while askingNavigable, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05)) }
+        let names = textView.linkRanges.map { String(textView.text[$0]) }
+        if keep {
+            // As if the pointer rested on the second link.
+            if textView.linkRanges.count > 1 { textView.hoveredLink = textView.linkRanges[1] }
+        } else {
+            commandDown = false
+            textView.linkRanges = []
+            textView.hoveredLink = nil
+        }
+        return navigable?.ranges == nil ? "no semantic tokens" : "\(names.count) links: " + names.prefix(30).joined(separator: " ")
+    }
+
+    private var pointerInside: Bool {
+        guard let window, !path.isEmpty else { return false }
+        return scroll.frame.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
+
+    private func showLinks() {
+        guard let doc = document else { return }
+        if let n = navigable, n.version == doc.version {
+            textView.linkRanges = n.ranges ?? []
+            updateHoveredLink()
+            return
+        }
+        updateHoveredLink()
+        guard !askingNavigable, navigableFailedAt.map({ Date().timeIntervalSince($0) > 2 }) ?? true else { return }
+        askingNavigable = true
+        let version = doc.version
+        delegate?.editor(self, lsp: .navigable(block)) { [weak self] result in
+            guard let self else { return }
+            self.askingNavigable = false
+            if case let .ranges(r) = result {
+                self.navigable = (version, r.sorted { $0.start < $1.start })
+                self.navigableFailedAt = nil
+                if self.commandDown { self.showLinks() }
+            } else {
+                // Not cached: the server may be ready next time — asked
+                // again in a moment if ⌘ is still held (a server just
+                // started, still reading the project).
+                self.navigableFailedAt = Date()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+                    if let self, self.commandDown { self.showLinks() }
+                }
+            }
+        }
+    }
+
+    /// The link under the pointer; with no word from the server, the word
+    /// there (⌘-click asks the server where it goes).
+    private func updateHoveredLink() {
+        guard let window else { return }
+        let p = textView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let offset = textView.offset(at: p)
+        if let ranges = navigable?.ranges, navigable?.version == document?.version {
+            textView.hoveredLink = ranges.first { $0.start <= offset && offset < $0.end }
+        } else {
+            let word = textView.wordRange(at: offset)
+            textView.hoveredLink = word.isEmpty ? nil : word
+            textView.linkRanges = word.isEmpty ? [] : [word]
+        }
     }
 
     override func layout() {
@@ -216,6 +319,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     func destroy() {
+        watchCommandKey(false)
         // Where it was left, kept as the tile goes, for when it's made again.
         if restored { saveState() }
         stateWork?.cancel()
@@ -301,6 +405,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
             }
+            // As go.dev sets its code: its text and line numbers' colors.
+            textView.textColor = viewing ? Theme.codeText : Theme.text
+            textView.gutterColor = viewing ? Theme.codeLineNumber : TextView.gutterText
+            applyFont()
             documentChanged()
         }
     }
@@ -397,13 +505,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: Fonts
 
     private var textFont: NSFont {
-        theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
+        // Viewed, set as go.dev sets code: Menlo, at its 0.83rem.
+        if viewing { return NSFont(name: "Menlo-Regular", size: max(8, 13.3 + sizeAdjust)) ?? .monospacedSystemFont(ofSize: 13.3, weight: .regular) }
+        return theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
     }
 
     private func applyFont() {
         textView.font = textFont
         textView.codeFont = theme.font(.monospaced, size: max(8, theme.editorSize(.monospaced) + sizeAdjust - 1))
-        textView.lineHeightMultiple = font == .proportional ? 1.25 : 1.2
+        // Viewed, set as go.dev sets code: lines at 1.4.
+        textView.lineHeightMultiple = viewing ? 1.4 : font == .proportional ? 1.25 : 1.2
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }
@@ -432,6 +543,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// Where the block lives (its folder): where a note is saved by default.
     var home: String?
+    /// A note's name, if it has been given one: what it's saved as.
+    var noteName: String?
+    private var saveName: String {
+        guard let n = noteName?.trimmingCharacters(in: .whitespaces), !n.isEmpty else { return "Note.md" }
+        let safe = n.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        return (safe as NSString).pathExtension.isEmpty ? safe + ".md" : safe
+    }
     /// On another host: the Mac's save panel can't browse there, so a
     /// note is saved by naming a path on the host.
     var isRemote = false
@@ -453,7 +571,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             alert.messageText = "Save the note on its host"
             alert.informativeText = "The path to save it at, on the host it's on."
             let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-            field.stringValue = (home ?? "~").appendingPathComponent("Note.md")
+            field.stringValue = (home ?? "~").appendingPathComponent(saveName)
             alert.accessoryView = field
             alert.addButton(withTitle: "Save")
             alert.addButton(withTitle: "Cancel")
@@ -464,19 +582,20 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 guard !path.isEmpty else { return }
                 self.path = path
                 self.textView.commentLeader = Self.commentLeader(for: path)
-                self.delegate?.editor(self, append: [.path(path)])
+                // Its file's name names it now.
+                self.delegate?.editor(self, append: [.path(path)] + (self.noteName == nil ? [] : [.title(nil)]))
                 self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
             }
             return
         }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Note.md"
+        panel.nameFieldStringValue = saveName
         if let home { panel.directoryURL = URL(fileURLWithPath: home) }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url, let doc = self.document else { return }
             self.path = url.path
             self.textView.commentLeader = Self.commentLeader(for: url.path)
-            self.delegate?.editor(self, append: [.path(url.path)])
+            self.delegate?.editor(self, append: [.path(url.path)] + (self.noteName == nil ? [] : [.title(nil)]))
             self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
         }
     }

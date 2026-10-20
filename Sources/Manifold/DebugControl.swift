@@ -282,6 +282,29 @@ enum DebugControl {
             guard a[0] == "ws", a.count == 4, let ws = BlockID(string: a[1]) else { return "usage" }
             let node = OrgNode(id: "host:\(a[2])", title: "", symbol: "")
             return wc.organizationCanDrop(.arrangement(ws), onto: node, at: index) && wc.organizationDrop(.arrangement(ws), onto: node, at: index) ? "ok" : "refused"
+        case "mousebutton":
+            // "mousebutton <n>": an other-button press (3 back, 4 forward) in the window, through the app.
+            guard let window = wc?.window, let n = Int64(arg),
+                  let base = NSEvent.mouseEvent(with: .otherMouseDown, location: NSPoint(x: window.frame.width / 2, y: window.frame.height / 2),
+                                                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let cg = base.cgEvent else { return "usage: mousebutton <n>" }
+            cg.setIntegerValueField(.mouseEventButtonNumber, value: n)
+            guard let e = NSEvent(cgEvent: cg) else { return "no event" }
+            NSApp.postEvent(e, atStart: false)
+            return "posted button \(e.buttonNumber) to window \(e.window === window ? "ok" : "none")"
+        case "sun":
+            // "sun [HH:MM|now]": the backdrop's light, at that hour today if given.
+            return wc?.debugSun(arg) ?? "no window"
+        case "history":
+            // This client's focus history; "history back|forward" goes along it.
+            guard let wc else { return "no window" }
+            if arg == "back" { wc.goBack(nil) } else if arg == "forward" { wc.goForward(nil) }
+            return wc.debugHistory()
+        case "links":
+            // ⌘ held over the focused editor: the names shown as links.
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            return e.debugLinks(keep: arg == "keep")
         case "pointertarget":
             // Where the pointer would be warped for the focused tile, not moving it.
             return wc?.debugPointerTarget() ?? "no window"
@@ -304,6 +327,7 @@ enum DebugControl {
             // The focused block, and whether the window is key (status is
             // attended to only while it is).
             return (wc?.debugFocusedBlock?.description ?? "nothing focused") + (wc?.window?.isKeyWindow == true ? " key" : " not key")
+                + " responder " + (wc?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "none")
         case "scrub":
             // "scrub": the focused terminal's scrubber; "scrub hover <f>",
             // "scrub go|open <id>", "scrub locate", "scrub row <n>".

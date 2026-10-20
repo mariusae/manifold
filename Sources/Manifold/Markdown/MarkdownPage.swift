@@ -224,20 +224,22 @@ enum MarkdownPage {
         <style>
         \(fontFaces)
         :root { color-scheme: light dark; \(themeVariables(.notes)) }
-        html { background: #fcfcfb; }
+        /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
+           spacing, its code (in Menlo, as it comes out on a Mac) and its
+           links; the theme's font for the rest. */
+        html { background: #ffffff; }
         body {
-          margin: 0; color: #24292f;
-          font: 15px/1.6 var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          margin: 0; color: #202224;
+          font: 16px/1.4 var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
           font-feature-settings: var(--sans-features);
           -webkit-font-smoothing: antialiased; word-wrap: break-word;
         }
-        main { max-width: 780px; margin: 0 auto; padding: 28px 40px 96px; }
+        main { max-width: 75.75rem; margin: 0 auto; padding: 1.5rem 1.5rem 96px; }
         main > :first-child { margin-top: 0; }
-        h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin: 1.5em 0 0.6em; }
-        h1 { font-size: 1.9em; padding-bottom: 0.25em; border-bottom: 1px solid #e4e6e9; }
-        h2 { font-size: 1.45em; padding-bottom: 0.2em; border-bottom: 1px solid #eceef0; }
-        h3 { font-size: 1.2em; } h4 { font-size: 1em; } h5, h6 { font-size: 0.9em; color: #57606a; }
-        p, ul, ol, blockquote, pre, table, details { margin: 0 0 1em; }
+        h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.25; margin: 1.25rem 0 0.75rem; color: #202224; }
+        h1 { font-size: 2.25rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.125rem; }
+        h4, h5, h6 { font-size: 1rem; }
+        p, ul, ol, blockquote, pre, table, details { margin: 1rem 0; }
         ul, ol { padding-left: 1.8em; } li + li { margin-top: 0.2em; }
         li > input[type=checkbox] { margin: 0 0.45em 0 -1.35em; vertical-align: -1px; }
         ul:has(> li > input[type=checkbox]) { list-style: none; }
@@ -245,13 +247,13 @@ enum MarkdownPage {
         a[href^="manifold:"] { display: inline-block; padding: 0 0.55em; border: 0.5px solid rgba(127,127,127,0.5); border-radius: 999px;
           background: rgba(127,127,127,0.12); color: inherit; font-size: 0.9em; line-height: 1.55; vertical-align: 0.05em; }
         a[href^="manifold:"]:hover { text-decoration: none; background: rgba(127,127,127,0.24); }
-        a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
+        a { color: #007d9c; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
-          font-family: var(--mono), ui-monospace, Menlo, monospace; font-size: 0.86em;
+          font-family: Menlo, monospace; font-size: 0.83rem;
           font-feature-settings: var(--mono-features);
         }
-        :not(pre) > code { background: #eff0ee; padding: 0.12em 0.35em; border-radius: 4px; }
-        pre { background: #f3f3f1; padding: 12px 14px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+        :not(pre) > code { font-size: 0.9em; }
+        pre { background: #f8f8f8; color: #202224; padding: 0.5rem 1.75rem; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
         pre code { font-size: 1em; background: none; padding: 0; }
         blockquote { margin-left: 0; padding: 0 1em; color: #57606a; border-left: 3px solid #d8dbe0; }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
@@ -264,13 +266,11 @@ enum MarkdownPage {
         .missing { color: #a40e26; }
         ::selection { background: #cfe2fb; }
         @media (prefers-color-scheme: dark) {
-          html { background: #1c1c1b; }
-          body { color: #e3e3df; }
-          h1 { border-bottom-color: #3a3a38; } h2 { border-bottom-color: #333331; }
-          h5, h6, blockquote, .footnotes { color: #9d9d98; }
-          a { color: #58a6ff; }
-          :not(pre) > code { background: #2c2c2a; }
-          pre { background: #252524; }
+          html { background: #202224; }
+          body, h1, h2, h3, h4, h5, h6 { color: #f0f1f2; }
+          blockquote, .footnotes { color: #9d9d98; }
+          a { color: #50b7e0; }
+          pre { background: #2d2d2d; color: #f0f1f2; }
           blockquote { border-left-color: #444441; }
           th, td { border-color: #3a3a38; } th { background: #262625; }
           tr:nth-child(2n) td { background: #212120; }

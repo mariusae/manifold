@@ -168,6 +168,7 @@ final class GridView: NSView, NSDraggingSource {
                 let id = tile.shown.id
                 let stashed = isStashed(id)
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
+                pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
                 pill.onDirtyClick = { [weak self] dot in self?.delegate?.gridDirtyClicked(id, from: dot) }
@@ -190,9 +191,10 @@ final class GridView: NSView, NSDraggingSource {
                         self.delegate?.gridSwapNext(id)
                         return
                     }
-                    // A pill with something to edit (a page's address) becomes
-                    // its field; the tile is focused, not grown.
-                    if let pill, !pill.isEditing, let edit = tile.view.pillEdit, !mods.contains(.command) {
+                    // The address in a page's pill, clicked, becomes its field;
+                    // the tile is focused, not grown. The rest of the bar is
+                    // the bar.
+                    if let pill, !pill.isEditing, pill.isOnPlace(at), let edit = tile.view.pillEdit, !mods.contains(.command) {
                         self.delegate?.gridFocus(id)
                         pill.beginEditing(edit)
                         return
@@ -406,7 +408,7 @@ final class GridView: NSView, NSDraggingSource {
             let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
             let caret = t.view.caretRectInWindow.map { NSStringFromRect($0) } ?? "none"
             let capsule = p.map { NSStringFromRect($0.convert($0.capsule(in: $0), to: nil)) } ?? "-"
-            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) behind=\(p?.behind ?? 0) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule)"
+            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) behind=\(p?.behind ?? 0) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule) \(p?.debugEdit ?? "")"
         }.joined(separator: "\n")
     }
 
@@ -686,6 +688,14 @@ final class GridView: NSView, NSDraggingSource {
                 pill.dodging = away
             }
         }
+    }
+
+    /// Whether some pill is a field just now, the keyboard in it.
+    var isEditingPill: Bool { pills.values.contains { $0.isEditing } }
+
+    /// A tile's pill as a field for `edit` (a note's name).
+    func editPill(_ id: PlacementID, _ edit: PillEdit) {
+        pills[id]?.beginEditing(edit)
     }
 
     /// ⌘L: the focused tile's pill edits what its view offers, if anything.
@@ -1113,9 +1123,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let glyph = StatusGlyph()
     private let dirty = DirtyDot()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
-    /// A field in the name's place while the pill edits something (a
-    /// page's address): the pill widens to show it.
+    /// A field over the place while the pill edits it (a page's
+    /// address), the name left as it is; over the name too when there's
+    /// no room after it.
     private let editor = NSTextField()
+    /// Whether the place (the grey after the name) is there to edit: a
+    /// click on it edits, the I-beam over it says so.
+    var editsPlace = false { didSet { if editsPlace != oldValue { window?.invalidateCursorRects(for: self) } } }
     private var edit: PillEdit?
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
@@ -1224,7 +1238,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.stringValue = e.text
         editor.placeholderString = e.placeholder
         editor.textColor = Theme.text
-        name.isHidden = true
+        editor.font = e.overName ? name.font : subtitle.font
+        subtitle.isHidden = true
         editor.isHidden = false
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -1246,8 +1261,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         case #selector(insertNewline(_:)):
             let text = editor.stringValue.trimmingCharacters(in: .whitespaces)
             let commit = edit?.commit
+            // A name may be emptied (a note Untitled again); an address not.
+            let emptied = edit?.overName == true
             endEditing()
-            if !text.isEmpty { commit?(text) }
+            if !text.isEmpty || emptied { commit?(text) }
             return true
         case #selector(cancelOperation(_:)):
             endEditing()
@@ -1290,9 +1307,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if name.stringValue != title { name.stringValue = title }
         // Where it is, after the name, in grey: a folder, an address.
         let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""
-        // Not when the name already says it (a terminal named for its folder).
+        // Not when the name already says it (a terminal named for its
+        // folder) — but a page's address always, being what's clicked to
+        // type another.
         let tail = String(shown.title.drop(while: { $0 == "…" }))
-        let where_ = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail)) ? "" : place
+        let said = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail))
+        let where_ = said && shown.block?.web == nil ? "" : place
         if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
         if close.isHidden != stashed { close.isHidden = stashed }
         let app = shown.block?.statusRecord?.app ?? ""
@@ -1372,33 +1392,58 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // The links' pill sits before the dot and the buttons: the name stops short of it.
         right -= linkRoom
         let th = ceil(name.intrinsicContentSize.height)
+        let wanted = ceil(name.intrinsicContentSize.width) + 4
+        let nw = min(wanted, max(0, right - x))
+        name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
+        let sx = x - 2 + nw + 8
+        count.isHidden = true
+        let sh = ceil(subtitle.intrinsicContentSize.height)
+        subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
         if isEditing {
-            name.isHidden = true
+            // Over the address, where it was; over the name when the
+            // address would have too little room.
+            subtitle.isHidden = true
+            let roomy = edit?.overName != true && right - sx >= 160
+            name.isHidden = !roomy
+            let ex = roomy ? sx - 2 : x - 2
             let eh = ceil(editor.intrinsicContentSize.height)
-            editor.frame = NSRect(x: x - 2, y: ((h - eh) / 2).rounded(), width: max(0, right - x + 2), height: eh)
+            editor.frame = NSRect(x: ex, y: ((h - eh) / 2).rounded(), width: max(0, right - ex), height: eh)
         } else {
-            let wanted = ceil(name.intrinsicContentSize.width) + 4
-            let nw = min(wanted, max(0, right - x))
-            name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-            let sx = x - 2 + nw + 8
-            count.isHidden = true
             subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
-            let sh = ceil(subtitle.intrinsicContentSize.height)
-            subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
         }
         window?.invalidateCursorRects(for: self)
     }
 
+    /// The place, where it's to edit (a page's address), as far as its
+    /// text goes: there a click edits it.
+    private var placeRect: NSRect? {
+        guard editsPlace, !isEditing, !subtitle.isHidden else { return nil }
+        let f = subtitle.frame
+        let w = min(f.width, ceil(subtitle.intrinsicContentSize.width) + 4)
+        return NSRect(x: f.minX - 4, y: 0, width: w + 8, height: bounds.height)
+    }
+
+    /// Debugging: where the place to edit is, and the field and name while editing (window coordinates).
+    var debugEdit: String {
+        func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
+        return "place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
+    }
+
+    /// Whether a point (the pill's coordinates) is on the place to edit.
+    func isOnPlace(_ p: NSPoint) -> Bool { placeRect?.contains(p) ?? false }
+
     /// The open hand over the bar, which drags; the pointing hand over
-    /// what's clicked on it — the symbol (the menu), maximize and close.
+    /// what's clicked on it — the symbol (the menu), maximize and close;
+    /// the I-beam over an address to edit.
     override func resetCursorRects() {
-        var hands = [icon.frame.insetBy(dx: -8, dy: -6)]
-        for b in [corner, close] where !b.isHidden { hands.append(b.frame) }
-        hands.sort { $0.minX < $1.minX }
+        var spots: [(NSRect, NSCursor)] = [(icon.frame.insetBy(dx: -8, dy: -6), .pointingHand)]
+        for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
+        if let r = placeRect { spots.append((r, .iBeam)) }
+        spots.sort { $0.0.minX < $1.0.minX }
         var x: CGFloat = 0
-        for r in hands {
+        for (r, cursor) in spots {
             if r.minX > x { addCursorRect(NSRect(x: x, y: 0, width: r.minX - x, height: bounds.height), cursor: .openHand) }
-            addCursorRect(r.intersection(bounds), cursor: .pointingHand)
+            addCursorRect(r.intersection(bounds), cursor: cursor)
             x = max(x, r.maxX)
         }
         if x < bounds.width { addCursorRect(NSRect(x: x, y: 0, width: bounds.width - x, height: bounds.height), cursor: .openHand) }

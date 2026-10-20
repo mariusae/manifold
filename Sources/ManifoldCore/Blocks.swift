@@ -679,6 +679,9 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
 
     /// What to call it: its title, the program's title, its file's name, or
     /// its kind.
+    /// A text with nowhere on disk yet: a note.
+    public var isNote: Bool { kind == .text && path == nil }
+
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }

@@ -144,7 +144,8 @@ final class Hosts {
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         let block: BlockID
         switch request {
-        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _):
+        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
+             let .navigable(b):
             block = b
         }
         guard let c = client(of: block) else { return done(.error("the block's host isn't attached")) }

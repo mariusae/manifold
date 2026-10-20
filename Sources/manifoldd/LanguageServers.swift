@@ -139,7 +139,8 @@ final class LanguageServers {
     func request(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         let block: BlockID
         switch request {
-        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _):
+        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
+             let .navigable(b):
             block = b
         }
         guard let (text, path) = textOf(block), let path else { return done(.error("not a file")) }
@@ -182,6 +183,14 @@ final class LanguageServers {
                     done(.edits([LSPFileEdit(path: path, edits: self.textEdits(edits, in: text))]))
                 case .failure(let e): done(.error(e.message))
                 }
+            }
+        case .navigable:
+            // Asked once the server is ready, as every question is: its
+            // legend of token types is known by then.
+            server.request("textDocument/semanticTokens/full", ["textDocument": ["uri": uri]]) { [weak server] result in
+                guard let legend = server?.tokenTypes else { return done(.error("the language server has no semantic tokens")) }
+                guard case .success(let value) = result, let data = (value as? [String: Any])?["data"] as? [Int] else { return done(.ranges([])) }
+                done(.ranges(SemanticTokens.navigable(data, legend: legend, in: text)))
             }
         case let .completion(_, offset):
             server.request("textDocument/completion", ["textDocument": ["uri": uri], "position": position(offset)]) { result in
@@ -347,6 +356,8 @@ final class LanguageServer {
     private var nextID = 1
     private var waiting: [Int: (Result<Any, RPCError>) -> Void] = [:]
     private(set) var ready = false
+    /// The server's semantic token types, by index, if it has them.
+    private(set) var tokenTypes: [String]?
     private(set) var failed = false
     private var queued: [(String, [String: Any])] = []
     var onDiagnostics: ((String, [[String: Any]]) -> Void)?
@@ -375,6 +386,9 @@ final class LanguageServer {
             "rootUri": LanguageServers.uri(root),
             "rootPath": root,
             "workspaceFolders": [["uri": LanguageServers.uri(root), "name": root.lastPathComponent]],
+            // gopls gives semantic tokens only when asked to; the others go
+            // by the capability below, and pass over what isn't theirs.
+            "initializationOptions": ["semanticTokens": true],
             "capabilities": [
                 "textDocument": [
                     "synchronization": ["didSave": true],
@@ -382,13 +396,22 @@ final class LanguageServer {
                     "completion": ["completionItem": ["snippetSupport": true, "insertReplaceSupport": false]],
                     "publishDiagnostics": ["relatedInformation": false],
                     "rename": ["prepareSupport": false],
+                    // For what ⌘ shows as links: the names in a text, by kind.
+                    "semanticTokens": [
+                        "requests": ["full": true],
+                        "tokenTypes": Array(SemanticTokens.navigableTypes) + ["keyword", "modifier", "comment", "string", "number", "regexp", "operator"],
+                        "tokenModifiers": [String](),
+                        "formats": ["relative"],
+                    ],
                 ],
                 "workspace": ["workspaceEdit": ["documentChanges": true], "workspaceFolders": true],
             ],
         ]) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success:
+            case .success(let value):
+                let provider = ((value as? [String: Any])?["capabilities"] as? [String: Any])?["semanticTokensProvider"] as? [String: Any]
+                self.tokenTypes = (provider?["legend"] as? [String: Any])?["tokenTypes"] as? [String]
                 self.notify("initialized", [:])
                 self.ready = true
                 self.onState?("ready")

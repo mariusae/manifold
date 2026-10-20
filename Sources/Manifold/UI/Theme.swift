@@ -20,10 +20,16 @@ enum Theme {
     static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
     /// Floating panels: the palette, a stack's list.
-    /// Behind a text in view mode: the plain grey golang.org sets code
-    /// on (#EFEFEF), and its like in the dark.
-    static let codePage = NSColor.dynamic(NSColor(srgbRed: 0xEF / 255.0, green: 0xEF / 255.0, blue: 0xEF / 255.0, alpha: 1),
-                                          NSColor(white: 0.16, alpha: 1))
+    /// A text in view mode, as go.dev's docs (the Go spec) set code: on
+    /// their grey (#F8F8F8; #2D2D2D in the dark), in their text color
+    /// (#202224; #F0F1F2), its line numbers in theirs (#999).
+    static let codePage = NSColor.dynamic(hex(0xF8F8F8), hex(0x2D2D2D))
+    static let codeText = NSColor.dynamic(hex(0x202224), hex(0xF0F1F2))
+    static let codeLineNumber = NSColor.dynamic(hex(0x999999), hex(0x848688))
+
+    static func hex(_ v: Int) -> NSColor {
+        NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    }
     static let panel = NSColor.dynamic(NSColor(white: 0.995, alpha: 1), NSColor(white: 0.17, alpha: 1))
     static let panelBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.12), NSColor(white: 1, alpha: 0.14))
     /// Over the window, behind the palette.
@@ -77,8 +83,11 @@ enum Theme {
     }
 
     static func symbolName(for kind: BlockKind, path: String? = nil) -> String {
-        symbolName(for: Lens.default(for: kind, path: path), path: path)
+        kind == .text && path == nil ? noteSymbol : symbolName(for: Lens.default(for: kind, path: path), path: path)
     }
+
+    /// A note's: a text not saved anywhere yet, unlike a file's page.
+    static let noteSymbol = "note.text"
 
     /// A lens's symbol for a text at `path`: viewed, Markdown is rich
     /// text and anything else still a page of text.

@@ -129,10 +129,16 @@ public enum LSPRequest: Codable, Sendable {
     case rename(BlockID, offset: Int, newName: String)
     case format(BlockID, tabSize: Int)
     case completion(BlockID, offset: Int)
+    /// Where in the text there's something to go to (a type, a function,
+    /// a variable…), as the server's semantic tokens say: what ⌘ shows
+    /// as links.
+    case navigable(BlockID)
 }
 
 public enum LSPResult: Codable, Sendable {
     case locations([LSPLocation])
+    /// Byte ranges of the text.
+    case ranges([TextRange])
     case hover(String)
     case edits([LSPFileEdit])
     case completions([Completion])
@@ -158,5 +164,36 @@ extension Rope {
         let utf16 = text.utf16
         guard let i = utf16.index(utf16.startIndex, offsetBy: character, limitedBy: utf16.endIndex) else { return r.end }
         return r.start + text.utf8.distance(from: text.utf8.startIndex, to: i)
+    }
+}
+
+/// A language server's semantic tokens: what kind of thing each name in a
+/// text is, for what ⌘ shows as links.
+public enum SemanticTokens {
+    /// The token types there's something to go to for: names, as opposed
+    /// to keywords, strings, numbers, comments and operators.
+    public static let navigableTypes: Set<String> = [
+        "namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable",
+        "property", "enumMember", "event", "function", "method", "macro", "decorator",
+    ]
+
+    /// Tokens (five numbers each, relative to the one before: line, start,
+    /// length — in UTF-16 — type, modifiers) as byte ranges of the names
+    /// among them, by the server's legend of types.
+    public static func navigable(_ data: [Int], legend: [String], in text: Rope) -> [TextRange] {
+        var out: [TextRange] = []
+        var line = 0, start = 0
+        var i = 0
+        while i + 4 < data.count {
+            let dLine = data[i], dStart = data[i + 1], length = data[i + 2], type = data[i + 3]
+            line += dLine
+            start = dLine == 0 ? start + dStart : dStart
+            if type >= 0, type < legend.count, navigableTypes.contains(legend[type]) {
+                let a = text.byteOffset(line: line, character: start), b = text.byteOffset(line: line, character: start + length)
+                if b > a { out.append(TextRange(a, b)) }
+            }
+            i += 5
+        }
+        return out
     }
 }
