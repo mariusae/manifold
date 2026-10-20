@@ -1139,6 +1139,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// × on a badge's link: the edge ends, in both readings at once.
     func gridBreakLink(_ link: String) { hosts.propose(.unlink(link)) }
 
+    /// The bar's ×: the tile taken off, as ⌘W takes the focused one.
+    func gridClose(_ placement: PlacementID) {
+        guard let a = arrangement, let id = selected, let block = a.placement(placement)?.block else { return }
+        hosts.append([.remove(placement)], to: .block(id))
+        discardIfUnplaced(block)
+        if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
+    }
+
     func gridLink(_ block: BlockID, to target: PlacementID) {
         guard let t = shown(target)?.block else { return }
         link(block, to: t.id)

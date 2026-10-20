@@ -35,6 +35,8 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
+    /// The bar's ×: the tile taken off (as ⌘W does).
+    func gridClose(_ placement: PlacementID)
     /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool)
     /// × on a badge's link: the edge ends.
@@ -97,17 +99,23 @@ final class GridView: NSView, NSDraggingSource {
     /// The shown tile whose stack is fanned out under its pill.
     private var fanned: PlacementID? { didSet { if fanned != oldValue { needsLayout = true } } }
 
-    /// The band at a tile's top that its pill floats in; the content runs
-    /// underneath it.
-    static let band: CGFloat = 32
-    static let gap: CGFloat = 1
+    /// What a tile's content leaves at its top: nothing — the bar is above
+    /// it, not over it (kept for the views that asked).
+    static let band: CGFloat = 0
+    /// A tile is a card (§3.1): its bar at the top — symbol, name, where it
+    /// is, its links and status, maximize and close — and its content
+    /// beneath, rounded, with room between cards and around them.
+    static let barHeight: CGFloat = 30
+    static let gap: CGFloat = 8
+    static let inset: CGFloat = 8
+    static let corner: CGFloat = 10
 
     var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
+        layer?.backgroundColor = .clear
         dropOverlay.isHidden = true
         registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink])
     }
@@ -132,7 +140,14 @@ final class GridView: NSView, NSDraggingSource {
         self.full = full
         for column in columns {
             for tile in column {
-                if tile.view.superview !== self, !switching.contains(tile.shown.id) { addSubview(tile.view) }
+                if tile.view.superview !== self, !switching.contains(tile.shown.id) {
+                    tile.view.wantsLayer = true
+                    tile.view.layer?.cornerRadius = Self.corner
+                    tile.view.layer?.cornerCurve = .continuous
+                    tile.view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+                    tile.view.layer?.masksToBounds = true
+                    addSubview(tile.view)
+                }
                 let pill = pills[tile.shown.id] ?? {
                     let p = TilePill()
                     pills[tile.shown.id] = p
@@ -143,9 +158,10 @@ final class GridView: NSView, NSDraggingSource {
                 let stashed = isStashed(id)
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
-                // The capsule clicked grows the tile, ⌘-clicked fills the
+                pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
+                // The bar clicked focuses the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
-                // the tile's menu.
+                // the tile's menu; double-clicked, the tile is maximized.
                 pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
                     if stashed {
@@ -169,27 +185,11 @@ final class GridView: NSView, NSDraggingSource {
                         pill.beginEditing(edit)
                         return
                     }
-                    // Where in the capsule the click was: the pointer follows
-                    // the pill there once the tile has grown and moved it.
-                    let offset = pill.map { p -> NSPoint in
-                        let c = p.capsule(in: p)
-                        return NSPoint(x: at.x - c.minX, y: at.y - c.minY)
-                    }
+                    // The bar clicked focuses the tile; ⌘-clicked, the tile
+                    // fills its column.
+                    _ = at
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.command) {
-                        self.delegate?.gridFill(id)
-                    } else {
-                        self.delegate?.gridGrow(id)
-                    }
-                    if let offset {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self, let pill = self.pills[id], let window = pill.window, !pill.isHidden else { return }
-                            self.layoutSubtreeIfNeeded()
-                            let c = pill.capsule(in: pill)
-                            let p = pill.convert(NSPoint(x: c.minX + offset.x, y: c.minY + offset.y), to: nil)
-                            Pointer.warp(to: window.convertPoint(toScreen: p))
-                        }
-                    }
+                    if mods.contains(.command) { self.delegate?.gridFill(id) }
                 }
                 pill.onPathClick = { [weak self] in
                     guard let self, !stashed else { return }
@@ -344,12 +344,12 @@ final class GridView: NSView, NSDraggingSource {
     private func columnFrames() -> [NSRect] {
         let n = columns.count
         guard n > 0 else { return [] }
-        let usable = bounds.width - CGFloat(n - 1) * Self.gap
-        var x: CGFloat = 0
+        let usable = bounds.width - 2 * Self.inset - CGFloat(n - 1) * Self.gap
+        var x: CGFloat = Self.inset
         return fractions.enumerated().map { i, f in
-            let w = i == n - 1 ? bounds.width - x : (usable * f).rounded()
+            let w = i == n - 1 ? bounds.width - Self.inset - x : (usable * f).rounded()
             defer { x += w + Self.gap }
-            return NSRect(x: x, y: 0, width: w, height: bounds.height)
+            return NSRect(x: x, y: Self.inset, width: w, height: bounds.height - 2 * Self.inset)
         }
     }
 
@@ -373,11 +373,11 @@ final class GridView: NSView, NSDraggingSource {
         let sum = shares.reduce(0, +)
         if sum > 0 { shares = shares.map { $0 / sum } }
         let usable = f.height - CGFloat(tiles.count - 1) * Self.gap
-        var hs = shares.map { max(Self.band, (usable * CGFloat($0)).rounded()) }
+        var hs = shares.map { max(Self.barHeight, (usable * CGFloat($0)).rounded()) }
         // Over by the minimums: taken from the tallest.
         var over = hs.reduce(0, +) - usable
-        while over > 0, let i = hs.indices.max(by: { hs[$0] < hs[$1] }), hs[i] > Self.band {
-            let take = min(over, hs[i] - Self.band)
+        while over > 0, let i = hs.indices.max(by: { hs[$0] < hs[$1] }), hs[i] > Self.barHeight {
+            let take = min(over, hs[i] - Self.barHeight)
             hs[i] -= take
             over -= take
         }
@@ -400,17 +400,18 @@ final class GridView: NSView, NSDraggingSource {
                 pills[t.shown.id]?.isHidden = true
                 badges[t.shown.id]?.isHidden = true
             }
-            if let badge = badges[full] { placeBadge(badge, in: bounds) }
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
-            tile.view.frame = bounds
+            let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
+            tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - Self.barHeight)
             focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
                 pill.behind = 0
-                pill.frame = NSRect(x: 0, y: bounds.height - Self.band, width: bounds.width, height: Self.band)
+                pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                 keep(pill, above: tile.view)
             }
+            if let badge = badges[full] { placeBadge(badge, in: r) }
             return
         }
         for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
@@ -433,17 +434,18 @@ final class GridView: NSView, NSDraggingSource {
             for (i, tile) in columns[c].enumerated() {
                 guard !isStashed(tile.shown.id) else { continue }
                 let r = tiles[i]
+                let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
                 let held = switching.contains(tile.shown.id)
-                if !held { tile.view.frame = r }
-                if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
+                if !held { tile.view.frame = body }
+                if held, let s = switcher, s.topID == tile.shown.id { s.frame = body }
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
-                    pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
+                    pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                     if !held { keep(pill, above: tile.view) }
                 }
                 if let badge = badges[tile.shown.id] { placeBadge(badge, in: r) }
                 if shownIndex > 0, rowIndex < rowDividers.count {
-                    rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY - 2, width: r.width, height: Self.gap + 4)
+                    rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY, width: r.width, height: Self.gap)
                     rowIndex += 1
                 }
                 shownIndex += 1
@@ -462,7 +464,7 @@ final class GridView: NSView, NSDraggingSource {
                     // Gathered, the top pill draws their edges; fanned, they
                     // come out from behind it, packed close, each a step
                     // down — and go back in the same way.
-                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 2))
+                    let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (Self.barHeight + 2))
                     keep(pill, above: topPill)
                     pill.alphaValue = 1
                     if open {
@@ -495,8 +497,9 @@ final class GridView: NSView, NSDraggingSource {
         // The focus ring: around the focused tile, over everything.
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
             focusRing.isHidden = false
-            if focusRing.frame != t.view.frame {
-                focusRing.frame = t.view.frame
+            let card = t.view.frame.union(pills[focused]?.frame ?? t.view.frame)
+            if focusRing.frame != card {
+                focusRing.frame = card
                 focusRing.needsDisplay = true
             }
             if let p = pills[focused] { keep(focusRing, above: p) }
@@ -504,7 +507,7 @@ final class GridView: NSView, NSDraggingSource {
             focusRing.isHidden = true
         }
         for (i, d) in columnDividers.enumerated() {
-            d.frame = NSRect(x: frames[i].maxX - 3, y: 0, width: Self.gap + 6, height: bounds.height)
+            d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
         }
     }
 
@@ -576,6 +579,9 @@ final class GridView: NSView, NSDraggingSource {
     /// A pill over the line the text cursor is on fades out, so what is
     /// typed there can be seen; it comes back when the cursor moves on.
     private func dodgeCarets() {
+        // The bar sits above the content now, never over the text cursor.
+        for p in pills.values where p.dodging { p.dodging = false }
+        return
         guard window != nil else { return }
         for column in columns {
             for tile in column {
@@ -710,9 +716,9 @@ final class GridView: NSView, NSDraggingSource {
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
         let h = min(size.height, r.height - 12)
-        // Its capsule on the pill's line: both centred in the band.
-        let capsuleTop = r.maxY - (Self.band - TilePill.height) / 2 - (TilePill.height - LinkBadge.capsuleHeight) / 2
-        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: capsuleTop - h, width: w, height: h)
+        // Its capsule in the bar, before the bar's buttons.
+        let capsuleTop = r.maxY - (Self.barHeight - LinkBadge.capsuleHeight) / 2
+        badge.frame = NSRect(x: r.maxX - TilePill.rightChrome - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 
     /// Whether the drag under way is a ⇧-drag of a block's path.
@@ -918,9 +924,22 @@ final class GridView: NSView, NSDraggingSource {
         dropLinks = false
     }
 
+    /// Behind the cards, the window shows through; above a card with a
+    /// stack behind it, the stack's edges peek out, as sheets under a sheet.
     override func draw(_ dirtyRect: NSRect) {
-        Theme.divider.setFill()
-        bounds.fill()
+        for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id {
+            let bar = pill.frame
+            for level in 1...min(pill.behind, 2) {
+                let inset = CGFloat(level) * 10
+                let rect = NSRect(x: bar.minX + inset, y: bar.maxY + CGFloat(level) * 3 - 1, width: bar.width - 2 * inset, height: 3)
+                let path = NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5)
+                Theme.sheet(level: level).setFill()
+                path.fill()
+                Theme.text.withAlphaComponent(0.12).setStroke()
+                path.lineWidth = 0.5
+                path.stroke()
+            }
+        }
     }
 }
 
@@ -951,49 +970,52 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var edit: PillEdit?
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
+    var onClose: (() -> Void)?
     private var downAt: NSPoint?
     private var focused = false
     private var maximized = false
-    /// How many stashed tiles are bunched under this pill (§3.1): their
-    /// edges peek out at its right, level with it, as Prism's sheets do.
-    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; needsDisplay = true } } }
+    /// How many stashed tiles are bunched behind this tile (§3.1): the
+    /// grid draws their edges above the bar; the bar says how many.
+    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsDisplay = true } } }
+    private let subtitle = NSTextField(labelWithString: "")
+    private let count = NSTextField(labelWithString: "")
+    private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
 
-    static let height: CGFloat = 24
-    /// Every pill the same width, within its tile.
-    static let width: CGFloat = 220
-    /// Edges shown at most, and how far each peeks out.
-    private static let mostBehind = 3
-    private static let step: CGFloat = 6
+    static let height: CGFloat = GridView.barHeight
+    /// What the bar's right end takes: close, maximize, and room.
+    static let rightChrome: CGFloat = 54
 
-    private var edges: Int { min(behind, Self.mostBehind) }
-
-    /// The capsule's frame, the edges behind it included, in `view`'s coordinates.
-    func capsule(in view: NSView) -> NSRect {
-        var r = glass.frame
-        r.size.width += CGFloat(edges) * Self.step
-        return convert(r, to: view)
-    }
+    /// The bar's frame in `view`'s coordinates (what a drop on it stashes behind).
+    func capsule(in view: NSView) -> NSRect { convert(bounds, to: view) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         glass.wantsLayer = true
-        glass.layer?.cornerRadius = Self.height / 2
+        glass.layer?.cornerRadius = GridView.corner
         glass.layer?.cornerCurve = .continuous
+        glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         glass.layer?.borderWidth = 0.5
-        glass.layer?.shadowOpacity = 0.14
-        glass.layer?.shadowRadius = 5
-        glass.layer?.shadowOffset = CGSize(width: 0, height: -1.5)
-        glass.themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.shadowColor = NSColor.black.cgColor
-        }
+        glass.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
-        name.font = .systemFont(ofSize: 11.5, weight: .medium)
+        name.font = .systemFont(ofSize: 12.5, weight: .semibold)
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
-        name.alignment = .center
+        name.alignment = .left
+        subtitle.font = .systemFont(ofSize: 11.5)
+        subtitle.textColor = Theme.secondaryText
+        subtitle.lineBreakMode = .byTruncatingMiddle
+        count.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+        count.textColor = Theme.secondaryText
+        count.alignment = .center
+        count.wantsLayer = true
+        count.layer?.cornerRadius = 7
+        count.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
+        count.isHidden = true
+        close.target = self
+        close.action = #selector(closeClicked)
+        close.toolTip = "Close (⌘W)"
         dirty.wantsLayer = true
         dirty.layer?.cornerRadius = 3
         dirty.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
@@ -1009,9 +1031,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, glyph, dirty, corner, editor] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, dirty, corner, close, editor] { addSubview(v) }
         themed { $0.updateColors() }
     }
+
+    @objc private func closeClicked() { onClose?() }
 
     // MARK: Editing in place
 
@@ -1086,6 +1110,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         let title = shown.title + (shown.block?.isArchived == true ? "  (archived)" : shown.isDormant ? "  (dormant)" : "")
         if name.stringValue != title { name.stringValue = title }
+        // Where it is, after the name, in grey: a folder, an address.
+        let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""
+        // Not when the name already says it (a terminal named for its folder).
+        let tail = String(shown.title.drop(while: { $0 == "…" }))
+        let where_ = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail)) ? "" : place
+        if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
+        if close.isHidden != stashed { close.isHidden = stashed }
         if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
@@ -1105,88 +1136,78 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : focused ? Theme.accent.withAlphaComponent(0.5) : Theme.cardBorder).cgColor
+            glass.layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : Theme.cardBorder).cgColor
         }
         glass.layer?.borderWidth = hovered ? 1.5 : 0.5
-        name.font = .systemFont(ofSize: 11.5, weight: focused || hovered ? .semibold : .medium)
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
-        restingAlpha = focused ? 1 : 0.72
-        if !dodging { alphaValue = restingAlpha }
     }
 
-    /// As wide as its title needs, within bounds: never past half the
-    /// tile (so what's under the band stays reachable at the sides), nor
-    /// wider than `width`, nor narrower than fits an icon and a few words.
-    private var pillWidth: CGFloat {
-        var chrome: CGFloat = 10 + 22 + 12 + 8
-        if !stashed { chrome += 18 }
-        if !glyph.isHidden { chrome += StatusGlyph.size + 6 }
-        if !dirty.isHidden { chrome += 12 }
-        let wanted = ceil(name.intrinsicContentSize.width) + chrome
-        let most = max(min(Self.width, bounds.width * 0.5), 110)
-        // Editing, it widens for what's typed: most of the tile.
-        if isEditing { return min(max(wanted, 560), bounds.width - 24) }
-        return min(max(wanted, 110), most, bounds.width - 24)
-    }
-
-    /// Only the capsule is the pill (its corner button included); the
-    /// rest is the tile beneath.
-    /// How it shows when the text cursor isn't under it: the focused
-    /// tile's plain, the others' a little lighter.
-    private var restingAlpha: CGFloat = 0.88
-    /// Out of the text cursor's way: faded, and taking no clicks.
-    var dodging = false {
-        didSet {
-            guard dodging != oldValue else { return }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.15
-                animator().alphaValue = dodging ? 0 : restingAlpha
-            }
-        }
-    }
+    /// Kept for the grid's asking: the bar is above the content, never
+    /// over the text cursor, so it never gets out of the way.
+    var dodging = false
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Hidden (another tile maximized over this one) or out of the
-        // cursor's way: nothing here. An override doesn't get AppKit's
-        // own check for hidden views.
-        guard !isHidden, !dodging else { return nil }
+        guard !isHidden else { return nil }
         let p = convert(point, from: superview)
-        guard glass.frame.contains(p) else { return nil }
+        guard bounds.contains(p) else { return nil }
         return super.hitTest(point) ?? self
     }
 
     override func layout() {
         super.layout()
-        let h = Self.height
-        let w = pillWidth
-        let y = ((bounds.height - h) / 2).rounded()
-        // Centered with the edges behind it counted in.
-        glass.frame = NSRect(x: ((bounds.width - w - CGFloat(edges) * Self.step) / 2).rounded(), y: y, width: w, height: h)
-        var x = glass.frame.minX + 10
-        icon.frame = NSRect(x: x, y: y + (h - 14) / 2, width: 16, height: 14)
+        let h = bounds.height
+        glass.frame = bounds
+        var x: CGFloat = 10
+        icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         x += 22
-        var right = glass.frame.maxX - 12
+        var right = bounds.width - 10
+        close.isHidden = stashed
+        if !close.isHidden {
+            close.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            right -= 22
+        }
         corner.isHidden = stashed
         if !corner.isHidden {
-            corner.frame = NSRect(x: right - 14, y: y + (h - 16) / 2, width: 16, height: 16)
-            right -= 18
+            corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            right -= 22
         }
         if !glyph.isHidden {
-            glyph.frame = NSRect(x: right - StatusGlyph.size, y: y + (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
-            right -= StatusGlyph.size + 6
+            glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+            right -= StatusGlyph.size + 8
         }
         if !dirty.isHidden {
-            dirty.frame = NSRect(x: right - 6, y: y + (h - 6) / 2, width: 6, height: 6)
-            right -= 12
+            dirty.frame = NSRect(x: right - 6, y: (h - 6) / 2, width: 6, height: 6)
+            right -= 14
         }
+        // Room for the links badge the grid lays over the bar.
+        right -= stashed ? 0 : 0
         let th = ceil(name.intrinsicContentSize.height)
-        name.frame = NSRect(x: x - 2, y: y + ((h - th) / 2).rounded() - 0.5, width: max(0, right - x + 4), height: th)
-        let eh = ceil(editor.intrinsicContentSize.height)
-        editor.frame = NSRect(x: x - 2, y: y + ((h - eh) / 2).rounded(), width: max(0, right - x + 4), height: eh)
+        if isEditing {
+            name.isHidden = true
+            let eh = ceil(editor.intrinsicContentSize.height)
+            editor.frame = NSRect(x: x - 2, y: ((h - eh) / 2).rounded(), width: max(0, right - x + 2), height: eh)
+        } else {
+            let wanted = ceil(name.intrinsicContentSize.width) + 4
+            let nw = min(wanted, max(0, right - x))
+            name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
+            var sx = x - 2 + nw + 8
+            if behind > 0 {
+                count.stringValue = "+\(behind)"
+                count.isHidden = false
+                let cw = max(22, ceil(count.intrinsicContentSize.width) + 10)
+                count.frame = NSRect(x: sx, y: (h - 15) / 2, width: cw, height: 15)
+                sx += cw + 8
+            } else {
+                count.isHidden = true
+            }
+            subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
+            let sh = ceil(subtitle.intrinsicContentSize.height)
+            subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
+        }
     }
 
-    override func resetCursorRects() { addCursorRect(glass.frame, cursor: .openHand) }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
     override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
 
@@ -1201,25 +1222,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
-            if event.modifierFlags.contains(.shift) { onPathClick?() }
+            if event.clickCount == 2, !stashed { onToggleFull?() }
+            else if event.modifierFlags.contains(.shift) { onPathClick?() }
             else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
-    }
-
-    /// The edges of the stashed tiles' pills, the furthest first, each a
-    /// step to the right of the one before it, level with the capsule.
-    override func draw(_ dirtyRect: NSRect) {
-        guard edges > 0 else { return }
-        for level in stride(from: edges, through: 1, by: -1) {
-            let rect = glass.frame.offsetBy(dx: CGFloat(level) * Self.step, dy: 0).insetBy(dx: 0.5, dy: 0.5)
-            let path = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
-            Theme.sheet(level: level).setFill()
-            path.fill()
-            Theme.text.withAlphaComponent(0.1).setStroke()
-            path.lineWidth = 1
-            path.stroke()
-        }
     }
 }
 
@@ -1269,9 +1276,9 @@ final class FocusRingView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 3, yRadius: 3)
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: GridView.corner, yRadius: GridView.corner)
         path.lineWidth = 1.5
-        Theme.accent.withAlphaComponent(0.3).setStroke()
+        Theme.accent.withAlphaComponent(0.45).setStroke()
         path.stroke()
     }
 }
