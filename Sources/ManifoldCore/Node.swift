@@ -189,17 +189,20 @@ public final class Node {
 /// state, lowered to events by whoever leads it. Bringing a block here
 /// (§3.1) is the one way a tile is made.
 extension ArrangementState {
-    /// A tile of `block` through `lens`, anywhere here.
-    public func tile(of block: BlockID, lens: Lens) -> Placement? {
+    /// A tile of `block` through `lens`, anywhere here. Editing a text and
+    /// viewing it are one tile, unless `exact` (one of each, side by side).
+    public func tile(of block: BlockID, lens: Lens, exact: Bool = false) -> Placement? {
         placements.first { $0.block == block && $0.lens == lens }
+            ?? (exact || !lens.isText ? nil : placements.first { $0.block == block && $0.lens.isText })
     }
 
     /// Events that bring `block` into column `column`, as acme places a
     /// new window: below the column's biggest tile, taking its lower half
     /// (or below `below`, when given); a column past the end is a new
     /// one. A tile of the block here already is focused instead.
-    public func bringing(_ block: BlockID, lens: Lens, inColumn column: Int, below: PlacementID? = nil, newPlacement: () -> PlacementID) -> [Event] {
-        if let t = tile(of: block, lens: lens) { return revealing(t.id) }
+    public func bringing(_ block: BlockID, lens: Lens, inColumn column: Int, below: PlacementID? = nil, exact: Bool = false,
+                         newPlacement: () -> PlacementID) -> [Event] {
+        if let t = tile(of: block, lens: lens, exact: exact) { return revealing(t.id) }
         let c = max(column, 0)
         guard c < columns.count else {
             return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
@@ -211,8 +214,8 @@ extension ArrangementState {
     }
 
     /// Events that bring `block` into a new column at `index`.
-    public func bringing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, newPlacement: () -> PlacementID) -> [Event] {
-        if let t = tile(of: block, lens: lens) { return revealing(t.id) }
+    public func bringing(_ block: BlockID, lens: Lens, inNewColumnAt index: Int, exact: Bool = false, newPlacement: () -> PlacementID) -> [Event] {
+        if let t = tile(of: block, lens: lens, exact: exact) { return revealing(t.id) }
         var events: [Event] = [.place(Placement(id: newPlacement(), block: block, lens: lens), column: columns.count, at: 0)]
         if index < columns.count { events.append(.moveColumn(from: columns.count, to: max(index, 0))) }
         return events

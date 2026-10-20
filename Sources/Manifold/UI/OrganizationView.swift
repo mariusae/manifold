@@ -103,9 +103,12 @@ enum OrgDragItem {
     case block(BlockID)
     case placement(PlacementID)
     case arrangement(BlockID)
+    /// A host's row, to reorder the hosts.
+    case host(HostID)
 
     init?(_ pb: NSPasteboard) {
-        if let a = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) { self = .arrangement(a) }
+        if let h = pb.string(forType: .manifoldHost) { self = .host(HostID(h)) }
+        else if let a = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:)) { self = .arrangement(a) }
         else if let p = pb.string(forType: .manifoldPlacement) { self = .placement(p) }
         else if let b = pb.string(forType: .manifoldBlock).flatMap(BlockID.init(string:)) { self = .block(b) }
         else { return nil }
@@ -207,7 +210,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         outline.menu = NSMenu()
         outline.menu?.delegate = self
         outline.backgroundColor = .clear
-        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldHost])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.draggingDestinationFeedbackStyle = .regular
         scroll.documentView = outline
@@ -333,6 +336,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     // MARK: Dragging
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        // A host's row drags the host, to put it elsewhere among them.
+        if let node = item as? OrgNode, node.style == .host, node.id.hasPrefix("host:") {
+            let pb = NSPasteboardItem()
+            pb.setString(String(node.id.dropFirst(5)), forType: .manifoldHost)
+            return pb
+        }
         guard let node = item as? OrgNode, let block = node.block else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(block.description, forType: .manifoldBlock)

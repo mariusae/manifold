@@ -292,6 +292,36 @@ final class Session {
         return dirs.map { "\($0)/\(name)" }.first(where: runnable)
     }
 
+    /// The shell a terminal starts: the host's preference, else your
+    /// login shell, unless $MANIFOLD_SHELL (in the server's environment)
+    /// names another.
+    static func chosenShell(preferred: String?) -> String {
+        let chosen = preferred.flatMap(resolveShell)
+        if let preferred, chosen == nil { log("the preferred shell \(preferred) can't be run here; the login shell instead") }
+        let pw = getpwuid(getuid())
+        let login: String = pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        return chosen ?? ProcessInfo.processInfo.environment["MANIFOLD_SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? login
+    }
+
+    /// The known agents' commands the user's shell finds, as a login
+    /// shell (as an agent block runs its command), in the catalog's order.
+    static func availableAgents(preferred: String?) -> [String] {
+        let shell = chosenShell(preferred: preferred)
+        let names = AgentCatalog.known.map(\.command)
+        let list = names.joined(separator: " ")
+        let posix = "for c in \(list); do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done"
+        let argv: [String]
+        switch shell.lastPathComponent {
+        case "fish": argv = [shell, "-l", "-c", "for c in \(list); if command -q $c; echo $c; end; end"]
+        case "bash", "zsh", "sh", "dash", "ksh": argv = [shell, "-l", "-c", posix]
+        default: argv = ["/bin/sh", "-l", "-c", posix]
+        }
+        guard let (out, _) = try? Child.run(argv, timeout: 20, quiet: true) else { return [] }
+        // What rc files print on the way in is passed over: only the names.
+        let said = Set(String(decoding: out, as: UTF8.self).split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+        return names.filter(said.contains)
+    }
+
     /// The shell to start, and the environment to start it with: ours,
     /// less what belongs to the app that started us, plus the terminal's.
     /// The shell is the host's preference (`preferred`), else
@@ -306,12 +336,7 @@ final class Session {
             env.removeValue(forKey: key)
         }
         let pw = getpwuid(getuid())
-        let chosen = preferred.flatMap(resolveShell)
-        if let preferred, chosen == nil { log("the preferred shell \(preferred) can't be run here; the login shell instead") }
-        // The host's preference; else your login shell, unless
-        // $MANIFOLD_SHELL (in the server's environment) names another.
-        let login: String = pw.flatMap { String(cString: $0.pointee.pw_shell) }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
-        let shell: String = chosen ?? env["MANIFOLD_SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? login
+        let shell = chosenShell(preferred: preferred)
         if let pw {
             env["HOME"] = String(cString: pw.pointee.pw_dir)
             env["USER"] = String(cString: pw.pointee.pw_name)

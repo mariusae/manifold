@@ -20,6 +20,10 @@ enum Theme {
     static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
     /// Floating panels: the palette, a stack's list.
+    /// Behind a text in view mode: the plain grey golang.org sets code
+    /// on (#EFEFEF), and its like in the dark.
+    static let codePage = NSColor.dynamic(NSColor(srgbRed: 0xEF / 255.0, green: 0xEF / 255.0, blue: 0xEF / 255.0, alpha: 1),
+                                          NSColor(white: 0.16, alpha: 1))
     static let panel = NSColor.dynamic(NSColor(white: 0.995, alpha: 1), NSColor(white: 0.17, alpha: 1))
     static let panelBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.12), NSColor(white: 1, alpha: 0.14))
     /// Over the window, behind the palette.
@@ -73,7 +77,13 @@ enum Theme {
     }
 
     static func symbolName(for kind: BlockKind, path: String? = nil) -> String {
-        symbolName(for: Lens.default(for: kind, path: path))
+        symbolName(for: Lens.default(for: kind, path: path), path: path)
+    }
+
+    /// A lens's symbol for a text at `path`: viewed, Markdown is rich
+    /// text and anything else still a page of text.
+    static func symbolName(for lens: Lens, path: String?) -> String {
+        lens == .preview && Lens.viewRendering(for: path) != .markdown ? symbolName(for: .editor) : symbolName(for: lens)
     }
 
     /// Older names for symbols a macOS before this one's may not have,
@@ -121,6 +131,8 @@ extension NSPasteboard.PasteboardType {
     static let manifoldBlock = NSPasteboard.PasteboardType("com.manifold.block")
     /// A ⇧-dragged block as a Markdown link to it, for a note to take.
     static let manifoldBlockLink = NSPasteboard.PasteboardType("com.manifold.blocklink")
+    /// A host's row in the sidebar being dragged, by session id.
+    static let manifoldHost = NSPasteboard.PasteboardType("com.manifold.host")
 }
 
 /// A small borderless button showing a symbol, with a hover background.

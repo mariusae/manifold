@@ -23,6 +23,11 @@ case "bridge":
     Bridge.run(name: name)
 
 case "open":
+    // What the `manifold` script on a host runs for agents' hooks too.
+    if args.dropFirst().first == "agent" { AgentHookCommand.run(Array(args.dropFirst(2))) }
+    if let flag = args.dropFirst().first, flag == "--install-skill" || flag == "--uninstall-skill" {
+        AgentSkill.runInstall(Array(args.dropFirst(2)), uninstall: flag == "--uninstall-skill")
+    }
     var wait = false
     var files: [String] = []
     // `manifold diff` on a host where the `manifold` script runs us.

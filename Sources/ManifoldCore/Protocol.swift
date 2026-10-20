@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 24
+public let protocolVersion = 26
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -112,6 +112,9 @@ public enum Proposal: Codable, Sendable {
     /// The host's own preferences; refused (and not kept) when the host
     /// can't do as they say.
     case preferences(HostPreferences)
+    /// Look again for the known agents on the host (it does so on its own
+    /// when a client says hello, too).
+    case indexAgents
     case seen([BlockID])
     /// The user attended to a block (focused it): its done or error
     /// status is dismissed (§3.7).
@@ -196,6 +199,9 @@ public enum ClientMessage: Codable, Sendable {
     /// `manifold diff`: a patch read from its input, shown as a diff block
     /// (its files opened against `root`, the command's directory).
     case openPatch(id: Int, patch: String, root: String, title: String?, beside: BlockID?)
+    /// An agent's hook (`manifold agent`): what happened in the agent
+    /// running in `block`. A connection's one message, with no hello.
+    case agent(block: BlockID, AgentEvent)
 }
 
 public struct AttachRequest: Codable, Sendable {

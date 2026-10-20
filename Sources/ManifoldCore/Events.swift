@@ -158,10 +158,13 @@ public struct DeskState: Codable, Equatable, Sendable {
     public var settings = Settings()
     /// What this host is set to do, whichever Mac set it.
     public var preferences = HostPreferences()
+    /// The known agents' commands this host has, as it last looked
+    /// (through the user's login shell, as an agent runs).
+    public var agents: [String] = []
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case order, selected, settled, window, appearance, settings, preferences }
+    enum CodingKeys: String, CodingKey { case order, selected, settled, window, appearance, settings, preferences, agents }
 
     // A desk saved before a field existed gets its default.
     public init(from decoder: Decoder) throws {
@@ -173,6 +176,7 @@ public struct DeskState: Codable, Equatable, Sendable {
         appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
         settings = (try? c.decodeIfPresent(Settings.self, forKey: .settings)) ?? Settings()
         preferences = (try? c.decodeIfPresent(HostPreferences.self, forKey: .preferences)) ?? HostPreferences()
+        agents = (try? c.decodeIfPresent([String].self, forKey: .agents)) ?? []
     }
 }
 
@@ -285,6 +289,7 @@ public enum Event: Codable, Equatable, Sendable {
     case appearance(Appearance)
     case settings(Settings)
     case preferences(HostPreferences)
+    case agents([String])
 
     // Registry.
     /// A block gone to: the trail's next step.
@@ -738,6 +743,7 @@ extension DeskState {
         case let .appearance(a): appearance = a
         case let .settings(s): settings = s
         case let .preferences(p): preferences = p
+        case let .agents(a): agents = a
         default: break
         }
     }

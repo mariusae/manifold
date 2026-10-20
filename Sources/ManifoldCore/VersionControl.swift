@@ -2,21 +2,30 @@ import Foundation
 
 /// The version control systems a git block speaks for: git, and Sapling
 /// (`sl`), which keeps no index and names commits by bookmark. Which one
-/// a path is under is told by the nearest `.sl` or `.git` up from it;
-/// `.sl` wins where both are there (Sapling over a git repository).
+/// a path is under is told by the nearest `.sl`, `.hg` (a Sapling
+/// checkout as Meta's are, in Mercurial's directory) or `.git` up from it;
+/// Sapling wins where both are there (Sapling over a git repository).
 public enum VCS: String, Codable, Sendable {
     case git, sapling
 
     public var command: String { self == .git ? "git" : "sl" }
 
-    /// The file whose change means the repository's state did.
-    public var stateFile: String { self == .git ? ".git/index" : ".sl/dirstate" }
+    /// The directories that mark a repository's root, in the order they
+    /// count where there are several.
+    public static let markers: [(directory: String, vcs: VCS)] = [(".sl", .sapling), (".hg", .sapling), (".git", .git)]
+
+    /// The file whose change means the repository at `root` changed: git's
+    /// index, or Sapling's dirstate, in whichever directory it keeps.
+    public func stateFile(in root: String) -> String {
+        if self == .git { return ".git/index" }
+        return FileManager.default.fileExists(atPath: root.appendingPathComponent(".sl")) ? ".sl/dirstate" : ".hg/dirstate"
+    }
 
     /// What the committed version of a file is called: HEAD, or the
     /// working copy's parent.
     public var headName: String { self == .git ? "HEAD" : "." }
 
-    /// The repository holding a path, by walking up for `.sl` or `.git`.
+    /// The repository holding a path, by walking up for its markers.
     public static func repository(of path: String) -> (root: String, vcs: VCS)? {
         var dir = path
         var isDir: ObjCBool = false
@@ -24,8 +33,7 @@ public enum VCS: String, Codable, Sendable {
             dir = path.deletingLastPathComponent
         }
         while dir.count > 1 {
-            if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".sl")) { return (dir, .sapling) }
-            if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git")) { return (dir, .git) }
+            for m in markers where FileManager.default.fileExists(atPath: dir.appendingPathComponent(m.directory)) { return (dir, m.vcs) }
             dir = dir.deletingLastPathComponent
         }
         return nil

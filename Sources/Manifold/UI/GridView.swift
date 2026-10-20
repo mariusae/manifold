@@ -12,7 +12,10 @@ protocol GridDelegate: AnyObject {
     func gridDropArrangement(_ arrangement: BlockID, column: Int)
     func gridCanDrop(_ arrangement: BlockID) -> Bool
     func gridResized(fractions: [Double])
-    func gridResized(heights: [PlacementID: Double])
+    /// The lines between tiles dragged: the column's heights, after the
+    /// tiles pushed down to nothing went into the stacks of the tiles
+    /// below them (each `(tile, behind)`).
+    func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)])
     func gridDragChanged(_ dragging: Bool)
     func gridDragAtLeftEdge()
     /// A tile's pill was clicked: its menu.
@@ -37,6 +40,8 @@ protocol GridDelegate: AnyObject {
     func gridToggleFull(_ placement: PlacementID)
     /// The bar's ×: the tile taken off (as ⌘W does).
     func gridClose(_ placement: PlacementID)
+    /// The bar's dirty dot clicked (the dot given, to put a menu by).
+    func gridDirtyClicked(_ placement: PlacementID, from view: NSView)
     /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool)
     /// × on a badge's link: the edge ends.
@@ -61,8 +66,6 @@ final class GridView: NSView, NSDraggingSource {
         var links: [LinkCard] = []
     }
     private var badges: [PlacementID: LinkBadge] = [:]
-    /// The stack behind a shown tile, as a badge in its bar.
-    private var stackBadges: [PlacementID: StackBadge] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -145,10 +148,6 @@ final class GridView: NSView, NSDraggingSource {
             b.removeFromSuperview()
             badges.removeValue(forKey: id)
         }
-        for (id, b) in stackBadges where !incoming.contains(id) {
-            b.removeFromSuperview()
-            stackBadges.removeValue(forKey: id)
-        }
         self.columns = columns
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
         self.heights = heights
@@ -171,6 +170,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
+                pill.onDirtyClick = { [weak self] dot in self?.delegate?.gridDirtyClicked(id, from: dot) }
                 // The bar clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
                 // the tile's menu; the corner maximizes.
@@ -231,11 +231,14 @@ final class GridView: NSView, NSDraggingSource {
                         return
                     }
                     self.delegate?.gridFocus(id)
-                    if let menu = self.delegate?.gridPillMenu(for: id), let pill = self.pills[id] {
-                        // Under the pointer, as a menu is.
-                        let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
-                        menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
-                    }
+                    self.showPillMenu(id)
+                }
+                // Right-clicked, the title calls up the stack behind the
+                // tile; with none, the tile's menu.
+                pill.onRightClick = { [weak self] _ in
+                    guard let self, !stashed else { return }
+                    self.delegate?.gridFocus(id)
+                    if self.full != nil || !self.openStackSwitcher(id, followingPointer: true) { self.showPillMenu(id) }
                 }
                 // A fanned pill drags its tile out alone; the top's takes
                 // the stack along, unless ⌘ is held.
@@ -247,6 +250,7 @@ final class GridView: NSView, NSDraggingSource {
                 if tile.links.isEmpty {
                     badges[id]?.removeFromSuperview()
                     badges.removeValue(forKey: id)
+                    pill.linkRoom = 0
                 } else {
                     let badge = badges[id] ?? {
                         let b = LinkBadge()
@@ -255,6 +259,7 @@ final class GridView: NSView, NSDraggingSource {
                         return b
                     }()
                     badge.cards = tile.links
+                    pill.linkRoom = badge.capsuleWantedWidth + 14
                     badge.onOpen = { [weak self] block, over in self?.delegate?.gridOpenLink(block, from: id, over: over) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
@@ -289,7 +294,13 @@ final class GridView: NSView, NSDraggingSource {
         }
         for (d, (c, above, below)) in zip(rowDividers, rows) {
             d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, above: above, below: below, to: y) }
-            d.onEnd = { [weak self] in self?.delegate?.gridResized(heights: self?.heights ?? [:]) }
+            d.onEnd = { [weak self] in
+                guard let self else { return }
+                let stashed = self.stashedDown
+                self.stashedDown = []
+                self.dividerBelow = [:]
+                self.delegate?.gridResized(heights: self.heights, stashed: stashed)
+            }
         }
         addSubview(dropOverlay)
         if dragging { addSubview(dragCatcher) }
@@ -329,22 +340,62 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
-    func debugStackBadge(_ placement: PlacementID) -> String {
-        guard let b = stackBadges[placement] else { return "no stack badge" }
-        b.debugFan(true)
-        b.layoutSubtreeIfNeeded()
-        return b.debugTitles.joined(separator: " | ")
+    /// Debugging: the tile's view put back on top, as a view made afresh
+    /// for it (a terminal's, a placeholder's real one) is, and laid out.
+    func debugReadd(_ placement: PlacementID) -> String {
+        guard let v = view(of: placement) else { return "no view" }
+        addSubview(v)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        return "re-added"
     }
+
+    /// Debugging: the tile's title right-clicked; what came up.
+    func debugRightClick(_ placement: PlacementID) -> String {
+        guard let pill = pills[placement] else { return "no pill" }
+        guard full == nil, stacks(columns.indices.first { columns[$0].contains { $0.shown.id == placement } } ?? 0)
+            .contains(where: { $0.top.shown.id == placement && !$0.behind.isEmpty }) else { return "no stack: the menu" }
+        pill.onRightClick?(NSEvent())
+        layoutSubtreeIfNeeded()
+        return switcher.map { "switcher over \(NSStringFromRect($0.frame)), bar hidden \(pill.isHidden)" } ?? "nothing"
+    }
+
+    /// Debugging: the open switcher's pointer resting on card `i`.
+    func debugSwitcherHover(_ i: Int) -> String { switcher?.debugHover(i) ?? "no switcher" }
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
         guard let b = badges[placement] else { return "no badge" }
+        b.debugFan(false)
+        b.layoutSubtreeIfNeeded()
+        let folded = b.debugSheets
+        if arg == "fold" { return "folded, sheets \(folded)" + (b.debugCapsuleCenter.map { " at \(Int($0.x)) \(Int($0.y))" } ?? "") }
         b.debugFan(true)
         b.layoutSubtreeIfNeeded()
         let words = arg.split(separator: " ")
         if words.first == "break", let n = words.dropFirst().first.flatMap({ Int($0) }) {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
         }
-        return b.debugTitles.joined(separator: " | ")
+        return b.debugTitles.joined(separator: " | ") + " (sheets \(folded) folded)"
+    }
+
+    /// Debugging: the line under column `c`'s `r`th shown tile dragged
+    /// down past the next one's least height, and let go.
+    func debugPushDown(column c: Int, row r: Int) -> String {
+        guard c < columns.count else { return "no such column" }
+        let shown = shownTiles(c)
+        guard r + 1 < shown.count, let ib = columns[c].firstIndex(where: { $0.shown.id == shown[r + 1].shown.id }) else { return "no such line" }
+        let frames = tileFrames(column: c, in: columnFrames()[c])
+        dragRowDivider(column: c, above: shown[r].shown.id, below: shown[r + 1].shown.id, to: frames[ib].minY + 1)
+        let stashed = stashedDown
+        stashedDown = []
+        dividerBelow = [:]
+        delegate?.gridResized(heights: heights, stashed: stashed)
+        return "stashed \(stashed.count)"
+    }
+
+    /// Debugging: each tile's dirty dot: hidden, grey or amber.
+    var debugDirty: String {
+        columns.flatMap { $0 }.map { t in "\(t.shown.title): \(pills[t.shown.id]?.debugDirty ?? "-")" }.joined(separator: "\n")
     }
 
     var debugPills: String {
@@ -426,7 +477,6 @@ final class GridView: NSView, NSDraggingSource {
                 t.view.isHidden = true
                 pills[t.shown.id]?.isHidden = true
                 badges[t.shown.id]?.isHidden = true
-                stackBadges[t.shown.id]?.isHidden = true
             }
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
@@ -440,6 +490,7 @@ final class GridView: NSView, NSDraggingSource {
                 keep(pill, above: tile.view)
             }
             if let badge = badges[full] { placeBadge(badge, of: full, in: r) }
+            if let badge = badges[full], let pill = pills[full] { keep(badge, above: pill) }
             return
         }
         for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
@@ -465,51 +516,36 @@ final class GridView: NSView, NSDraggingSource {
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
                 let held = switching.contains(tile.shown.id)
                 if !held { tile.view.frame = body }
-                if held, let s = switcher, s.topID == tile.shown.id { s.frame = body }
+                // The switcher over the whole tile, its bar put away meanwhile.
+                if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                     if !held { keep(pill, above: tile.view) }
+                    pill.isHidden = held
                 }
-                if let badge = badges[tile.shown.id] { placeBadge(badge, of: tile.shown.id, in: r) }
+                if let badge = badges[tile.shown.id] {
+                    placeBadge(badge, of: tile.shown.id, in: r)
+                    badge.isHidden = held
+                    // Over its bar for clicks too, not only drawn over it: a
+                    // view put back on top takes its bar up above it again.
+                    if let pill = pills[tile.shown.id] { keep(badge, above: pill) }
+                }
                 if shownIndex > 0, rowIndex < rowDividers.count {
                     rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY, width: r.width, height: Self.gap)
                     rowIndex += 1
                 }
                 shownIndex += 1
             }
-            // Each stack: its sheets' edges above the top's card, and its
-            // badge in the top's bar, whose fan is the stashed tiles as pills.
+            // Each stack: its sheets' edges above the top's card; its
+            // tiles hang as cards over it when its title is right-clicked.
             _ = top
-            let stacked = Set(stacks(c).filter { !$0.behind.isEmpty }.map { $0.top.shown.id })
             for stack in stacks(c) {
                 guard let topPill = pills[stack.top.shown.id] else { continue }
                 topPill.behind = stack.behind.count
+                topPill.toolTip = stack.behind.isEmpty ? nil
+                    : "\(stack.behind.count) behind this tile — right-click its title to see \(stack.behind.count == 1 ? "it" : "them")"
                 for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
-                let id = stack.top.shown.id
-                if stack.behind.isEmpty {
-                    stackBadges[id]?.removeFromSuperview()
-                    stackBadges.removeValue(forKey: id)
-                    continue
-                }
-                let badge = stackBadges[id] ?? {
-                    let b = StackBadge()
-                    b.layer?.zPosition = 6
-                    b.onPick = { [weak self] picked, mods in
-                        guard let self else { return }
-                        if mods.contains(.option) { self.delegate?.gridSwap(picked) } else { self.delegate?.gridUnstash(picked) }
-                    }
-                    b.onDrag = { [weak self] picked, event, from in self?.beginDrag(of: picked, event: event, from: from) }
-                    stackBadges[id] = b
-                    return b
-                }()
-                badge.cards = stack.behind.map { StackCard(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol) }
-                if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: topPill) }
-                placeStackBadge(badge, of: id, in: tiles[columns[c].firstIndex { $0.shown.id == id } ?? 0], beside: badges[id])
-            }
-            for (id, b) in stackBadges where !stacked.contains(id) && columns[c].contains(where: { $0.shown.id == id }) {
-                b.removeFromSuperview()
-                stackBadges.removeValue(forKey: id)
             }
         }
         if dragging { dragCatcher.frame = bounds }
@@ -543,13 +579,23 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
     }
 
+    /// Tiles a line's drag pushed down into the stack of the tile below,
+    /// each with that tile, to be told when the drag ends.
+    private var stashedDown: [(PlacementID, PlacementID)] = []
+    /// The tile a line's drag goes on against, for one pushed into the
+    /// stack below it: it's after that tile now.
+    private var dividerBelow: [PlacementID: PlacementID] = [:]
+
     /// The line between two tiles dragged: the two share their room by
     /// where it is. Pushed past a tile's least height, that tile goes into
-    /// the stack (its room to the other side), and the line goes on
-    /// against the next, until all above or below are stashed and the
-    /// tile that grew has the column, the others behind it.
+    /// a stack (its room to the other side): pushed up, the stack of the
+    /// tile above it; pushed down, the stack of the tile below it, if any.
+    /// The line goes on against the next, until all above or below are
+    /// stashed and the tile that grew has the column, the others behind it.
     private func dragRowDivider(column c: Int, above a0: PlacementID, below b0: PlacementID, to y: CGFloat) {
         guard c < columns.count else { return }
+        var b0 = b0
+        while let next = dividerBelow[b0] { b0 = next }
         let column = columns[c]
         guard let ia = column.firstIndex(where: { $0.shown.id == a0 }), let ib = column.firstIndex(where: { $0.shown.id == b0 }) else { return }
         let aboves = column[...ia].filter { !isStashed($0.shown.id) }
@@ -570,6 +616,18 @@ final class GridView: NSView, NSDraggingSource {
         }
         if y < bottom + minHeight {
             heights[a] = share(a) + share(b)
+            // Into the stack of the tile below, its own stack with it, as
+            // the model's stash will have it.
+            if let next = column[(rb + 1)...].first(where: { !isStashed($0.shown.id) })?.shown.id {
+                let stack = column[(rb + 1)...].prefix { isStashed($0.shown.id) }
+                var moved = columns[c]
+                let carried = [column[rb]] + stack
+                moved.removeAll { t in carried.contains { $0.shown.id == t.shown.id } }
+                if let n = moved.firstIndex(where: { $0.shown.id == next }) { moved.insert(contentsOf: carried, at: n + 1) }
+                columns[c] = moved
+                stashedDown.append((b, next))
+                dividerBelow[b] = next
+            }
             heights[b] = 0
             needsLayout = true
             return dragRowDivider(column: c, above: a0, below: b0, to: y)
@@ -645,8 +703,7 @@ final class GridView: NSView, NSDraggingSource {
         super.updateTrackingAreas()
     }
 
-    /// The stack's fan is its badge's (StackBadge); the pointer over the
-    /// grid itself does nothing.
+    /// The pointer over the grid itself does nothing.
     override func mouseMoved(with event: NSEvent) {}
 
     // MARK: Dragging tiles
@@ -693,19 +750,11 @@ final class GridView: NSView, NSDraggingSource {
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
-    /// A tile's note badge: at its lower right, in from the scroll bar's
-    /// column and the edge, with room above for its fan.
-    /// The stack badge in the bar, left of the links badge if there is one.
-    private func placeStackBadge(_ badge: StackBadge, of id: PlacementID, in r: NSRect, beside links: LinkBadge?) {
-        badge.isHidden = false
-        let size = badge.wantedSize
-        let w = min(size.width, max(r.width - 40, 60))
-        let h = min(size.height, r.height - 12)
-        let capsuleTop = r.maxY - (Self.barHeight - StackBadge.capsuleHeight) / 2
-        let taken = pills[id]?.rightTaken ?? TilePill.rightChrome
-        // Left of the links badge's capsule (its frame is as wide as its fan), else of the bar's buttons.
-        let right = (links.map { $0.frame.maxX - $0.capsuleWidth } ?? (r.maxX - taken - 8)) - 6
-        badge.frame = NSRect(x: right - w, y: capsuleTop - h, width: w, height: h)
+    /// A tile's menu, under the pointer, as a menu is.
+    private func showPillMenu(_ id: PlacementID) {
+        guard let menu = delegate?.gridPillMenu(for: id), let pill = pills[id] else { return }
+        let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
+        menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
     }
 
     private func placeBadge(_ badge: LinkBadge, of id: PlacementID, in r: NSRect) {
@@ -829,37 +878,75 @@ final class GridView: NSView, NSDraggingSource {
     private var switching: Set<PlacementID> = []
     var isSwitching: Bool { switcher != nil }
 
-    /// ⌘E: the stack under `top` as a file of cards over its tile, opened
-    /// if it isn't, and the choice moved a step down (back: up). False
-    /// when the tile has no stack.
-    func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
-        if switcher == nil {
-            guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
-                  let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
-            layoutSubtreeIfNeeded()
-            let frame = stack.top.view.frame
-            let order = Array(stack.behind.reversed()) + [stack.top]
-            let s = StackSwitcherView(entries: order.map { .init(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol, view: $0.view) },
-                                      contentSize: frame.size, selection: order.count - 1)
-            s.frame = frame
-            s.layer?.zPosition = 20
-            s.onPick = { [weak self] id in self?.settleStackSwitcher(to: id) }
-            switching = Set(order.map(\.shown.id))
-            addSubview(s)
-            switcher = s
-            s.present()
+    /// The switcher was opened by a right-click: it follows the pointer,
+    /// and what's clicked comes out (⌥: takes the top).
+    private var switcherByPointer = false
+    private var switcherMonitor: Any?
+
+    /// The stack under `top` as cards hanging over its tile, if it has one:
+    /// from ⌘E, the choice then stepped along; from a right-click on its
+    /// title, the choice following the pointer, from the top.
+    @discardableResult
+    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool) -> Bool {
+        guard switcher == nil else { return true }
+        guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
+              let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
+        layoutSubtreeIfNeeded()
+        let body = stack.top.view.frame
+        let order = Array(stack.behind.reversed()) + [stack.top]
+        let s = StackSwitcherView(entries: order.map { .init(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol, view: $0.view) },
+                                  contentSize: body.size, selection: order.count - 1)
+        // Over the tile's bar too: the cards hang where it was.
+        s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+        s.layer?.zPosition = 20
+        s.followsPointer = followingPointer
+        s.onPick = { [weak self] id, mods in
+            guard let self else { return }
+            if self.switcherByPointer && !mods.contains(.option) { self.settleStackSwitcher(bringingOut: id) } else { self.settleStackSwitcher(to: id) }
         }
+        s.onCancel = { [weak self] in self?.settleStackSwitcher(cancel: true) }
+        switching = Set(order.map(\.shown.id))
+        switcherByPointer = followingPointer
+        addSubview(s)
+        switcher = s
+        needsLayout = true
+        s.present()
+        if followingPointer {
+            // Escape, or a click away from the cards, lets the stack be.
+            switcherMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+                guard let self, let s = self.switcher, event.window === self.window else { return event }
+                if event.type == .keyDown {
+                    guard event.keyCode == 53 else { return event }
+                    self.settleStackSwitcher(cancel: true)
+                    return nil
+                }
+                if !s.frame.contains(self.convert(event.locationInWindow, from: nil)) { self.settleStackSwitcher(cancel: true) }
+                return event
+            }
+        }
+        return true
+    }
+
+    /// ⌘E: the stack under `top` as cards over its tile, opened if it
+    /// isn't, and the choice moved a step down (back: up). False when the
+    /// tile has no stack.
+    func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
+        guard openStackSwitcher(top, followingPointer: false) else { return false }
         switcher?.move(back ? 1 : -1)
         return true
     }
 
     /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
     /// top as it was), which comes forward to fill the tile; the views go
-    /// back to the grid, and the stack is told which is its top now.
-    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false) {
-        guard let s = switcher else { return }
+    /// back to the grid, and the stack is told which is its top now. With
+    /// `bringingOut`, the top stays and that tile comes out of the stack
+    /// on its own, as clicking it in the stack does.
+    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false, bringingOut: PlacementID? = nil) {
+        guard let s = switcher, !s.isClosing else { return }
+        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
+        switcherMonitor = nil
         let top = s.topID
-        let chosen = cancel ? top : (id ?? s.selectedID)
+        let chosen = cancel || bringingOut != nil ? top : (id ?? s.selectedID)
         s.dismiss(to: chosen) { [weak self, weak s] in
             guard let self, let s else { return }
             s.tearDown(keeping: chosen, in: self)
@@ -873,8 +960,10 @@ final class GridView: NSView, NSDraggingSource {
                 t.view.isHidden = id != chosen
             }
             self.switching = []
+            self.switcherByPointer = false
             self.needsLayout = true
-            if chosen != top { self.delegate?.gridSwap(chosen) }
+            if let out = bringingOut, out != top { self.delegate?.gridUnstash(out) }
+            else if chosen != top { self.delegate?.gridSwap(chosen) }
         }
     }
 
@@ -962,6 +1051,46 @@ final class GridView: NSView, NSDraggingSource {
     }
 }
 
+/// The dot in a tile's bar for a text with unsaved edits: grey, or amber
+/// when the file also changed on disk beneath them. Clicked, it saves, or
+/// (amber) asks which of the two to keep.
+final class DirtyDot: NSView {
+    var stale = false {
+        didSet {
+            needsDisplay = true
+            toolTip = stale ? "Edited, and the file changed on disk — click to choose which to keep" : "Edited — click to save (⌘S)"
+        }
+    }
+    var onClick: ((NSView) -> Void)?
+    private var hovering = false { didSet { needsDisplay = true } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        toolTip = "Edited — click to save (⌘S)"
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let d: CGFloat = hovering ? 8 : 6
+        // Where the 6-point dot was, at the frame's right.
+        let center = NSPoint(x: bounds.maxX - 7, y: bounds.midY)
+        (stale ? StatusGlyph.amber : Theme.secondaryText).setFill()
+        NSBezierPath(ovalIn: NSRect(x: center.x - d / 2, y: center.y - d / 2, width: d, height: d)).fill()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for t in trackingAreas { removeTrackingArea(t) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) { onClick?(self) }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
 /// A tile's pill (§3.1), as Prism names the note at the top of its
 /// column: a small opaque capsule of one width floating centered over the
 /// tile's top, the content running underneath and showing nothing
@@ -981,7 +1110,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
-    private let dirty = NSView()
+    private let dirty = DirtyDot()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
     /// A field in the name's place while the pill edits something (a
     /// page's address): the pill widens to show it.
@@ -990,6 +1119,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
     var onClose: (() -> Void)?
+    /// Right-clicked: the stack behind the tile, called up (or its menu).
+    var onRightClick: ((NSEvent) -> Void)?
+    /// What the links' pill takes of the bar, left of the buttons.
+    var linkRoom: CGFloat = 0 { didSet { if linkRoom != oldValue { needsLayout = true } } }
+    /// The dirty dot clicked, with the dot (to put a menu by).
+    var onDirtyClick: ((NSView) -> Void)? {
+        get { dirty.onClick }
+        set { dirty.onClick = newValue }
+    }
     /// Maximize and close shown; off where the bar only names the tile.
     var showsButtons = true { didSet { if showsButtons != oldValue { needsLayout = true } } }
     private var downAt: NSPoint?
@@ -1056,9 +1194,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⌘W)"
-        dirty.wantsLayer = true
-        dirty.layer?.cornerRadius = 3
-        dirty.themed { $0.layer?.backgroundColor = Theme.secondaryText.cgColor }
         dirty.isHidden = true
         corner.target = self
         corner.action = #selector(cornerClicked)
@@ -1076,6 +1211,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     @objc private func closeClicked() { onClose?() }
+
+    var debugDirty: String { dirty.isHidden ? "clean" : dirty.stale ? "amber" : "grey" }
 
     // MARK: Editing in place
 
@@ -1161,6 +1298,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if program.stringValue != app { program.stringValue = app }
         program.isHidden = app.isEmpty
         if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
+        let stale = shown.block?.text?.stale == true
+        if dirty.stale != stale { dirty.stale = stale }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
         if glyph.isHidden != (look == nil) { glyph.isHidden = look == nil }
@@ -1225,9 +1364,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
             right -= tw + 8
         }
         if !dirty.isHidden {
-            dirty.frame = NSRect(x: right - 6, y: (h - 6) / 2, width: 6, height: 6)
+            // The dot where it always was; the room around it takes the click.
+            dirty.frame = NSRect(x: right - 10, y: (h - 14) / 2, width: 14, height: 14)
             right -= 14
         }
+        // The links' pill sits before the dot and the buttons: the name stops short of it.
+        right -= linkRoom
         let th = ceil(name.intrinsicContentSize.height)
         if isEditing {
             name.isHidden = true
@@ -1262,6 +1404,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let onRightClick { onRightClick(event) } else { super.rightMouseDown(with: event) }
+    }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = downAt else { return }
@@ -1318,7 +1464,12 @@ extension NSView {
 /// The pointer, moved by us: to a point in screen coordinates (AppKit's,
 /// from the bottom left of the main screen).
 enum Pointer {
+    /// MANIFOLD_NO_WARP set: the pointer is left where it is (a scripted
+    /// instance, driven while someone else has the mouse).
+    static let held = ProcessInfo.processInfo.environment["MANIFOLD_NO_WARP"] != nil
+
     static func warp(to screen: NSPoint) {
+        guard !held else { return }
         guard let main = NSScreen.screens.first else { return }
         CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: main.frame.maxY - screen.y))
         CGAssociateMouseAndMouseCursorPosition(1)

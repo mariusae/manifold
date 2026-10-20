@@ -223,6 +223,24 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "dirty":
+            // "dirty": each tile's dirty dot; "dirty click": the focused one's clicked.
+            return arg == "click" ? wc?.debugDirtyClick() ?? "no window" : wc?.debugDirty ?? "no window"
+        case "find":
+            // "find <query>": the focused editor's find pill, typed in.
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            e.debugFind(arg)
+            return "first responder \(type(of: e.window?.firstResponder.map { $0 } as Any))"
+        case "topline":
+            return wc?.debugTopLine() ?? "no window"
+        case "agents":
+            // Launch Agent Here, as it would open now.
+            return wc?.agentMenuItems().map { $0.title + ($0.isEnabled ? "" : " (disabled)") }.joined(separator: "\n") ?? "no window"
+        case "pushdown":
+            // "pushdown c r": the line under column c's rth shown tile dragged down past the next.
+            let a = arg.split(separator: " ").compactMap { Int($0) }
+            guard a.count == 2, let wc else { return "usage: pushdown column row" }
+            return wc.debugPushDown(column: a[0], row: a[1])
         case "termmenu":
             // The focused terminal's right-click menu, its items and submenus listed.
             guard let t = wc?.debugFocusedTerminal, let window = wc?.window else { return "no terminal focused" }
@@ -240,9 +258,44 @@ enum DebugControl {
             guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
             wc.showOutline(of: f.placement.block, beside: f.id)
             return "ok"
-        case "stackbadge":
-            // The focused tile's stack badge fanned, its pills listed.
-            return wc?.debugStackBadge() ?? "no window"
+        case "layerimage":
+            // "layerimage <path>": the surface as Core Animation draws it, its
+            // own layers (the sheets) included.
+            guard let wc, let view = wc.debugSurface, let layer = view.layer else { return "no surface" }
+            let scale = view.window?.backingScaleFactor ?? 2
+            let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
+            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return "no context" }
+            ctx.setFillColor(NSColor.white.cgColor)
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.scaleBy(x: scale, y: scale)
+            view.effectiveAppearance.performAsCurrentDrawingAppearance { layer.render(in: ctx) }
+            guard let img = ctx.makeImage(), let data = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return "no image" }
+            try? data.write(to: URL(fileURLWithPath: arg))
+            return "wrote \(arg)"
+        case "orgdrop":
+            // "orgdrop host <session> <index>": a host's row dropped among the hosts;
+            // "orgdrop ws <workspace> <host session> <index>": a workspace's among its host's rows.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count >= 3, let index = Int(a.last!) else { return "usage: orgdrop host <session> <i> | ws <workspace> <host> <i>" }
+            if a[0] == "host" { return wc.organizationDrop(.host(HostID(a[1])), onto: nil, at: index) ? "ok" : "refused" }
+            guard a[0] == "ws", a.count == 4, let ws = BlockID(string: a[1]) else { return "usage" }
+            let node = OrgNode(id: "host:\(a[2])", title: "", symbol: "")
+            return wc.organizationCanDrop(.arrangement(ws), onto: node, at: index) && wc.organizationDrop(.arrangement(ws), onto: node, at: index) ? "ok" : "refused"
+        case "pointertarget":
+            // Where the pointer would be warped for the focused tile, not moving it.
+            return wc?.debugPointerTarget() ?? "no window"
+        case "readd":
+            // The focused tile's view put back on top of the grid, as a view made afresh is.
+            return wc?.debugReadd() ?? "no window"
+        case "rightclick":
+            // The focused tile's title right-clicked: the stack's fan, or the menu.
+            return wc?.debugRightClick() ?? "no window"
+        case "switcher":
+            // "switcher hover <i>": the open switcher's pointer on card i (0 at the back).
+            let a = arg.split(separator: " ")
+            guard a.first == "hover", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover <i>" }
+            return wc.debugSwitcherHover(i)
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.
@@ -371,20 +424,42 @@ enum DebugControl {
             // "press return|tab|escape|up|down|<char>": a key event through
             // the window, as typed (so popups see it).
             guard let window = wc?.window else { return "no window" }
+            // "cmd+g", "cmd+shift+g": with modifiers, through the app, as
+            // the menus and the views' key equivalents see a press.
+            var mods: NSEvent.ModifierFlags = []
+            var key = arg
+            while let plus = key.firstIndex(of: "+"), key.count > 1 {
+                switch key[..<plus] {
+                case "cmd": mods.insert(.command)
+                case "shift": mods.insert(.shift)
+                case "opt": mods.insert(.option)
+                case "ctrl": mods.insert(.control)
+                default: break
+                }
+                key = String(key[key.index(after: plus)...])
+            }
             let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53), "space": (" ", 49),
+                                                     "pagedown": (String(UnicodeScalar(NSPageDownFunctionKey)!), 121),
+                                                     "pageup": (String(UnicodeScalar(NSPageUpFunctionKey)!), 116),
                                                      "left": (String(UnicodeScalar(NSLeftArrowFunctionKey)!), 123),
                                                      "right": (String(UnicodeScalar(NSRightArrowFunctionKey)!), 124),
                                                      "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
                                                      "down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125)]
-            let (chars, code) = codes[arg] ?? (arg, 0)
+            let (chars, code) = codes[key] ?? (key, 0)
+            var took = "ok"
             for type in [NSEvent.EventType.keyDown, .keyUp] {
-                if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                             windowNumber: window.windowNumber, context: nil, characters: chars,
                                             charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
-                    window.sendEvent(e)
+                    if mods.isEmpty { window.sendEvent(e) } else if type == .keyDown {
+                        // As AppKit offers a key equivalent: the window's views, then the menus.
+                        if window.performKeyEquivalent(with: e) { took = "a view" }
+                        else if NSApp.mainMenu?.performKeyEquivalent(with: e) == true { took = "the menus" }
+                        else { took = "nothing" }
+                    }
                 }
             }
-            return "ok"
+            return took
         case "key":
             // "key <selector>": a standard key command to the focused text view.
             guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }

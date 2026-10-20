@@ -1,12 +1,13 @@
 import AppKit
 import ManifoldCore
 
-/// ⌘E (§3.1): a stack's tiles as the cards of a file, over the stack's
-/// tile. The tiles beneath the one chosen stand at the back, leaning
-/// away, only their title bars showing; the chosen one stands in front of
-/// them, whole; the ones passed over lie flat along the bottom. Each E
-/// flips the next one down. The cards hold the tiles' own views, scaled,
-/// so they stay live.
+/// ⌘E, or a right-click on a tile's title (§3.1): a stack's tiles as
+/// cards hanging in the air over the stack's tile, its own bar put away.
+/// Each hangs a title bar lower than the one behind it, leaning back a
+/// little; the cards in front of the chosen one are let down part of the
+/// way, so it peeks out between them, hanging straight. Each E moves the
+/// choice a card down; with the pointer, the card under it is chosen.
+/// The cards hold the tiles' own views, scaled, so they stay live.
 final class StackSwitcherView: NSView {
     /// A tile for a card: its placement, name, symbol and view.
     struct Entry {
@@ -21,7 +22,14 @@ final class StackSwitcherView: NSView {
     private(set) var selection: Int
     private let contentSize: NSSize
     private let background = SwitcherBackground()
-    var onPick: ((PlacementID) -> Void)?
+    /// A card clicked, with the click's modifiers.
+    var onPick: ((PlacementID, NSEvent.ModifierFlags) -> Void)?
+    /// A click on none of the cards.
+    var onCancel: (() -> Void)?
+    /// The card under the pointer is the one chosen (opened by a right-click).
+    var followsPointer = false {
+        didSet { updateTrackingAreas() }
+    }
 
     /// Where each card is drawn from: the chosen place, eased toward
     /// `selection`, and how far the switcher is open (0 is the column as it
@@ -51,7 +59,7 @@ final class StackSwitcherView: NSView {
         layer?.masksToBounds = true
         addSubview(background)
         for (i, card) in cards.enumerated() {
-            card.onClick = { [weak self] in self?.pick(i) }
+            card.onClick = { [weak self] mods in self?.pick(i, mods) }
             addSubview(card)
         }
     }
@@ -72,6 +80,13 @@ final class StackSwitcherView: NSView {
     func move(_ delta: Int) {
         guard !isClosing else { return }
         selection = (selection + delta + cards.count) % cards.count
+        startAnimating()
+    }
+
+    /// Chooses a card outright (the pointer on it).
+    func choose(_ i: Int) {
+        guard !isClosing, i != selection, cards.indices.contains(i) else { return }
+        selection = i
         startAnimating()
     }
 
@@ -102,10 +117,10 @@ final class StackSwitcherView: NSView {
         }
     }
 
-    private func pick(_ i: Int) {
+    private func pick(_ i: Int, _ mods: NSEvent.ModifierFlags) {
         guard !isClosing else { return }
         selection = i
-        onPick?(cards[i].id)
+        onPick?(cards[i].id, mods)
     }
 
     // MARK: Animation
@@ -146,37 +161,33 @@ final class StackSwitcherView: NSView {
         layoutCards()
     }
 
-    /// Where a card is, by its place relative to the chosen one (`r`):
-    /// below 0, still to come, at the back; 0, chosen; above 0, passed over,
-    /// lying flat along the bottom.
+    /// Where a card hangs: its top edge, down from the top; how far it
+    /// leans back; how far it's faded into the background.
     private struct Pose {
-        var top: CGFloat    // its top edge, down from the top
-        var tilt: CGFloat   // how far it leans back, in degrees
-        var fog: CGFloat    // how far it's faded into the background
-        var alpha: CGFloat
+        var top: CGFloat
+        var tilt: CGFloat
+        var fog: CGFloat
     }
 
-    private static let pileStep: CGFloat = 22
-    private static let maxPile: CGFloat = 4
-    private static let topMargin: CGFloat = 30
-    private static let lean: CGFloat = 14
-    /// How much of the cards passed over shows, nearest first.
-    private static let shelf: [CGFloat] = [0, 58, 24, 6, -16]
+    private static let topMargin: CGFloat = 18
+    /// How much lower each card hangs than the one behind it: its title bar.
+    private static let hangStep: CGFloat = 26
+    /// The most cards fanned out; further back, they hang together at the top.
+    private static let mostFanned = 7
+    private static let lean: CGFloat = 9
 
-    private func pose(_ r: CGFloat) -> Pose {
-        let pile = min(place, Self.maxPile)
-        let chosenTop = Self.topMargin + pile * Self.pileStep
-        if r <= 0 {
-            let slot = pile + r
-            return Pose(top: Self.topMargin + slot * Self.pileStep, tilt: Self.lean,
-                        fog: 0.08 + min(1, -r) * 0.4, alpha: max(0, min(1, slot + 1)))
-        }
-        // Passed over: down onto the shelf, flattening as it goes.
-        func shelfTop(_ n: Int) -> CGFloat { bounds.height - Self.shelf[min(n, Self.shelf.count - 1)] }
-        let n = Int(r.rounded(.down)), f = r - CGFloat(n)
-        let from = n == 0 ? chosenTop : shelfTop(n)
-        return Pose(top: from + (shelfTop(n + 1) - from) * f, tilt: n == 0 ? Self.lean * (1 - f) : 0,
-                    fog: n == 0 ? 0.08 + 0.22 * f : 0.3, alpha: 1)
+    /// Card `i` (0 at the back), with the choice at `place`: every card
+    /// hangs a step lower than the one behind it; those in front of the
+    /// choice are let down by `reveal`, so it shows between them, the more
+    /// the nearer the choice is to passing them.
+    private func pose(_ i: Int, reveal: CGFloat) -> Pose {
+        let back = max(0, cards.count - Self.mostFanned)
+        let slot = CGFloat(max(0, i - back))
+        let r = CGFloat(i) - place
+        let letDown = max(0, min(1, r))
+        return Pose(top: Self.topMargin + slot * Self.hangStep + letDown * reveal,
+                    tilt: Self.lean * min(1, abs(r)),
+                    fog: r < 0 ? 0.06 + min(1, -r) * 0.3 : 0.12 * min(1, r))
     }
 
     private func layoutCards() {
@@ -185,15 +196,20 @@ final class StackSwitcherView: NSView {
         CATransaction.setDisableActions(true)
         let p = openness
         background.alphaValue = p
-        let width = (bounds.width * 0.84).rounded()
+        // Narrow enough that the fan and the peek fit above the tile's foot.
+        let fanned = CGFloat(min(cards.count, Self.mostFanned) - 1) * Self.hangStep
+        let width = min(bounds.width * 0.84, (bounds.height - Self.topMargin - fanned) / 1.05 * contentSize.width / contentSize.height).rounded()
         let scale = width / contentSize.width
         let homeFrame = NSRect(origin: .zero, size: contentSize)
+        let height = SwitcherCard.headerHeight + contentSize.height * scale
+        // How far the cards in front are let down: enough for the chosen
+        // one's title and the top of what's in it to peek out.
+        let reveal = max(Self.hangStep * 2, (height * 0.3).rounded())
         for (i, card) in cards.enumerated() {
-            let pose = pose(CGFloat(i) - place)
-            let height = SwitcherCard.headerHeight + contentSize.height * scale
+            let pose = pose(i, reveal: reveal)
             var frame = NSRect(x: ((bounds.width - width) / 2).rounded(), y: bounds.height - pose.top - height,
                                width: width, height: height)
-            var tilt = pose.tilt, fog = pose.fog, alpha = pose.alpha * p
+            var tilt = pose.tilt, fog = pose.fog, alpha = p
             var chrome: CGFloat = 1
             if i == home {
                 // Fills the column when closed, as it did before opening.
@@ -204,7 +220,7 @@ final class StackSwitcherView: NSView {
                                height: frame.height + (homeFrame.height - frame.height) * q)
                 tilt *= p
                 fog *= p
-                alpha = pose.alpha + (1 - pose.alpha) * q
+                alpha = 1
                 chrome = p
             }
             card.chrome = chrome
@@ -229,7 +245,35 @@ final class StackSwitcherView: NSView {
         return cards.last { !$0.isHidden && $0.frame.contains(local) } ?? self
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {}
+    /// A click on none of the cards lets the stack be.
+    override func mouseUp(with event: NSEvent) { onCancel?() }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        if followsPointer {
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+        }
+        super.updateTrackingAreas()
+    }
+
+    /// With the pointer: the frontmost card under it is chosen (its title
+    /// bar among the others', or the part of it that shows).
+    override func mouseMoved(with event: NSEvent) {
+        guard followsPointer else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        if let i = cards.lastIndex(where: { !$0.isHidden && $0.frame.contains(p) }) { choose(i) }
+    }
+
+    /// Debugging: the pointer resting on card `i`, and the cards' tops after.
+    func debugHover(_ i: Int) -> String {
+        choose(i)
+        place = CGFloat(selection)
+        openness = targetOpenness
+        layoutCards()
+        return "chose \(selection): " + cards.map { "\(Int(bounds.height - $0.frame.maxY))" }.joined(separator: " ")
+    }
 
     override func scrollWheel(with event: NSEvent) {
         scrolled += event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 12)
@@ -259,7 +303,7 @@ final class SwitcherCard: NSView {
     private let header = NSView()
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
-    var onClick: (() -> Void)?
+    var onClick: ((NSEvent.ModifierFlags) -> Void)?
 
     static let headerHeight: CGFloat = 24
 
@@ -375,6 +419,8 @@ final class SwitcherCard: NSView {
         frame.contains(point) ? self : nil
     }
 
+    /// A click on a card in a window not yet active takes the card too.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { onClick?() }
+    override func mouseUp(with event: NSEvent) { onClick?(event.modifierFlags) }
 }

@@ -396,6 +396,24 @@ final class TextView: NSView, NSTextInputClient {
 
     /// The y of a logical line's first row.
     /// The top of a logical line, in the view (the scrubber's marks too).
+    /// The line at `y` (from 0), and how far down it `y` is, as a fraction.
+    func fractionalLine(atY y: CGFloat) -> Double {
+        guard !text.isEmpty else { return 0 }
+        let n = line(atY: y)
+        let t = top(ofLine: n)
+        let b = n + 1 < text.lineCount ? top(ofLine: n + 1) : frame.height
+        return Double(n) + Double(min(max((y - t) / max(b - t, 1), 0), 1))
+    }
+
+    /// Where a fractional line (as `fractionalLine` gives) begins.
+    func y(ofFractionalLine l: Double) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let n = min(max(Int(l), 0), text.lineCount - 1)
+        let t = top(ofLine: n)
+        let b = n + 1 < text.lineCount ? top(ofLine: n + 1) : frame.height
+        return t + CGFloat(min(max(l - Double(n), 0), 1)) * (b - t)
+    }
+
     func top(ofLine n: Int) -> CGFloat {
         ensureRowStarts()
         let row = n < rowStarts.count ? rowStarts[n] : (rowStarts.last ?? 0)
@@ -1122,10 +1140,29 @@ final class TextView: NSView, NSTextInputClient {
         setSelections(out)
     }
 
+    /// Page Up and Down: the view a screenful on, two lines kept, and
+    /// each caret along with it, where it was on the screen — or, at the
+    /// end it's going to, to the start or end of the text.
     private func page(_ direction: Int, extend: Bool) {
-        let visible = enclosingScrollView?.contentSize.height ?? bounds.height
-        let rows = max(1, Int(visible / lineHeight) - 2)
-        for _ in 0..<rows { moveVertically(direction, extend: extend) }
+        guard let clip = enclosingScrollView?.contentView else { return }
+        let visible = clip.bounds.height
+        let step = max(lineHeight, visible - 2 * lineHeight) * CGFloat(direction)
+        let top = min(max(0, clip.bounds.origin.y + step), max(0, frame.height - visible))
+        var out: [Selection] = []
+        let shown = clip.bounds
+        for s in selections {
+            let r = caretRect(s.head)
+            let goalX = s.goalX ?? (r.minX - textLeft)
+            // A caret scrolled out of sight pages from the view's edge, not
+            // from where it is, so the view goes on rather than back.
+            let y = min(max(r.midY, shown.minY + lineHeight / 2), shown.maxY - lineHeight / 2) + step
+            let offset = y < 0 ? 0 : y > frame.height ? text.count : self.offset(at: NSPoint(x: textLeft + goalX, y: y))
+            var moved = extend ? Selection(s.anchor, offset) : Selection(at: offset)
+            moved.goalX = goalX
+            out.append(moved)
+        }
+        scroll(NSPoint(x: clip.bounds.origin.x, y: top))
+        setSelections(out)
     }
 
     private func lineHome(_ offset: Int) -> Int {

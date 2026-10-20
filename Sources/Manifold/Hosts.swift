@@ -13,7 +13,6 @@ final class Hosts {
     private static var stateURL: URL { Paths.directory.appendingPathComponent("client.json") }
     /// Hosts being attached to, by destination, until they say their name.
     private(set) var attaching: Set<String> = []
-    private var connecting: [String: HostClient] = [:]
     private(set) var errors: [String: String] = [:]
 
     var onChange: (() -> Void)?
@@ -154,6 +153,19 @@ final class Hosts {
 
     var all: [HostClient] { [local] + remotes.values.sorted { $0.host < $1.host } }
 
+    /// Every host, in the order the sidebar shows them: as this client
+    /// arranged them (dragging their rows), the rest after.
+    var ordered: [HostClient] {
+        let order = state.hostOrder
+        return all.enumerated().sorted { a, b in
+            let i = order.firstIndex(of: a.element.host.raw) ?? Int.max, j = order.firstIndex(of: b.element.host.raw) ?? Int.max
+            return i != j ? i < j : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// The hosts' order in the sidebar, as this client arranges it.
+    func setHostOrder(_ hosts: [HostID]) { change { $0.hostOrder = hosts.map(\.raw) } }
+
     func client(_ host: HostID) -> HostClient? {
         if host == local.host || host == .local { return local }
         return remotes[host]
@@ -245,7 +257,7 @@ final class Hosts {
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block),
              let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
             (client(of: block) ?? local).propose(proposal, done: done)
-        case .workspaces, .settings, .preferences:
+        case .workspaces, .settings, .preferences, .indexAgents:
             local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {
@@ -318,24 +330,28 @@ final class Hosts {
         attaching.insert(key)
         errors.removeValue(forKey: key)
         let name = label ?? uniqueName(dest.suggestedHostName)
-        let standing: HostClient? = known.map { id in
-            if let c = remotes[id] { return c }
-            let c = HostClient(transport: .remote(dest, name: name), known: id)
+        // The host stands in the app at once — connecting, then there, or
+        // unreachable — a remembered one under its id, one attached to
+        // for the first time under its name until it says its id.
+        let isNew = known == nil
+        let standingID = known ?? HostID(name)
+        let standing: HostClient = remotes[standingID] ?? {
+            let c = HostClient(transport: .remote(dest, name: name), known: standingID)
             wire(c)
-            remotes[id] = c
+            remotes[standingID] = c
             return c
-        }
-        standing?.onNeedsBootstrap = { [weak self, weak standing] in
-            guard let self, let standing, let known, self.remotes[known] === standing else { return }
-            self.attach(dest, known: known, label: name) { _ in }
+        }()
+        standing.onNeedsBootstrap = { [weak self, weak standing] in
+            guard let self, let standing, self.remotes.values.contains(where: { $0 === standing }) else { return }
+            self.attach(dest, known: standing.host, label: name) { _ in }
         }
         onChange?()
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
             do {
-                result = .success(try HostClient.bootstrap(dest, name: name, step: { what in
+                result = .success(try HostClient.bootstrap(dest, name: name, step: { [weak standing] what in
                     DispatchQueue.main.async { standing?.begin(what) }
-                }, progress: { done, total in
+                }, progress: { [weak standing] done, total in
                     DispatchQueue.main.async { standing?.progress(done, of: total) }
                 }))
             } catch {
@@ -344,7 +360,7 @@ final class Hosts {
             DispatchQueue.main.async {
                 // Detached while being reached: what came of it goes, and
                 // the destination is free to attach to again.
-                if let known, self.remotes[known] !== standing {
+                if self.remotes[standingID] !== standing {
                     if case .success(let child) = result { Self.discard(child) }
                     return
                 }
@@ -352,28 +368,27 @@ final class Hosts {
                 switch result {
                 case .failure(let error):
                     self.errors[key] = "\(error)"
-                    standing?.markUnreachable("\(error)")
-                    self.onChange?()
-                    completion(.failure(error))
-                    if let known, let standing {
+                    if isNew {
+                        // Never reached, never remembered: it goes, and says why.
+                        self.remotes.removeValue(forKey: standingID)
+                        standing.disconnect()
+                    } else {
+                        standing.markUnreachable("\(error)")
                         // Again in a while — longer each time — as long as
                         // it's still wanted.
                         standing.scheduleRetry(after: standing.nextRetryDelay()) { [weak self] in
-                            guard let self, self.remotes[known] === standing, standing.link != .connected else { return }
-                            self.attach(dest, known: known, label: name) { _ in }
+                            guard let self, self.remotes[standingID] === standing, standing.link != .connected else { return }
+                            self.attach(dest, known: standingID, label: name) { _ in }
                         }
                     }
+                    self.onChange?()
+                    completion(.failure(error))
                 case .success(let child):
-                    let client = standing ?? HostClient(transport: .remote(dest, name: name))
-                    if standing == nil {
-                        self.wire(client)
-                        self.connecting[key] = client
-                    }
+                    let client = standing
                     client.onWelcome = { [weak self, weak client] in
                         guard let self, let client else { return }
-                        self.connecting.removeValue(forKey: key)
                         // The host names itself (§8): its session id is its key.
-                        if let known, known != client.host, self.remotes[known] === client { self.remotes.removeValue(forKey: known) }
+                        if standingID != client.host, self.remotes[standingID] === client { self.remotes.removeValue(forKey: standingID) }
                         self.remotes[client.host] = client
                         var file = HostsFile.load()
                         // The same destination under an older key (its name,

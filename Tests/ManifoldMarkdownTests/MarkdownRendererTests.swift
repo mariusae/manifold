@@ -47,3 +47,13 @@ import Testing
     // An unclosed block is left as it is.
     #expect(MarkdownRenderer.stripFrontMatter("---\nno end") == "---\nno end")
 }
+
+@Test func blocksSayWhichLinesTheyCameFromFrontMatterCounted() {
+    let md = "---\ntitle: x\n---\n# Title\n\nA paragraph\nover two lines.\n"
+    let html = MarkdownRenderer.html(md, sourcePositions: true)
+    #expect(html.contains(#"<h1 data-sourcepos="4:1-4:7">"#))
+    #expect(html.contains(#"<p data-sourcepos="6:1-7:15">"#))
+    // Without, as before.
+    #expect(!MarkdownRenderer.html(md).contains("data-sourcepos"))
+    #expect(!MarkdownRenderer.html(md).contains("title: x"))
+}

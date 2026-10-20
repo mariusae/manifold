@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hosts = Hosts()
     private var host: HostClient { hosts.local }
     private var windowController: MainWindowController?
+    private let agentMenu = LiveMenu()
     private var createdFirst = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -138,6 +139,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Terminal in a New Workspace", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
         item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
+        let agents = NSMenu(title: "Launch Agent Here")
+        agents.delegate = agentMenu
+        agentMenu.items = { [weak self] in self?.windowController?.agentMenuItems() ?? [] }
+        let agentsItem = NSMenuItem(title: "Launch Agent Here", action: nil, keyEquivalent: "")
+        agentsItem.submenu = agents
+        file.addItem(agentsItem)
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
         item(file, "Show Outline Beside", #selector(MainWindowController.showOutlineBeside(_:)), "o", [.command, .shift])
@@ -183,8 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(findItem)
         item(edit, "Go to Line…", #selector(EditorView.goToLine(_:)), "l")
         edit.addItem(.separator())
-        item(edit, "Edit or Preview", #selector(MainWindowController.toggleEditPreview(_:)), "p", [.command, .option])
-        item(edit, "Edit or Preview Beside", #selector(MainWindowController.editPreviewBeside(_:)), "p", [.command, .option, .shift])
+        item(edit, "Edit or View", #selector(MainWindowController.toggleEditPreview(_:)), "\r")
+        item(edit, "Edit or View Beside", #selector(MainWindowController.editPreviewBeside(_:)), "p", [.command, .option, .shift])
         edit.addItem(.separator())
         let code = NSMenu(title: "Code")
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
@@ -337,5 +344,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.keyEquivalentModifierMask = mods
         menu.addItem(item)
         return item
+    }
+}
+
+
+/// A menu made as it opens, from what's true then (the agents on the
+/// focused block's host).
+final class LiveMenu: NSObject, NSMenuDelegate {
+    var items: () -> [NSMenuItem] = { [] }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for item in items() { menu.addItem(item) }
     }
 }

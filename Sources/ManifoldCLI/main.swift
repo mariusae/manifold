@@ -18,16 +18,27 @@ func fail(_ message: String) -> Never {
 }
 
 var args = Array(CommandLine.arguments.dropFirst())
+// An agent's hook, and installing them: nothing else of the command's.
+if args.first == "agent" { AgentHookCommand.run(Array(args.dropFirst())) }
+if let flag = args.first, flag == "--install-skill" || flag == "--uninstall-skill" {
+    AgentSkill.runInstall(Array(args.dropFirst()), uninstall: flag == "--uninstall-skill")
+}
 if args.contains(where: { $0 == "-h" || $0 == "--help" }) {
     print("""
         usage: manifold [--wait] [file ...]
                manifold diff [--title name] < patch
+               manifold --install-skill [agent ...]   (--uninstall-skill to take it out)
+               manifold agent <event> [--agent name]
 
         Opens files in Manifold: Markdown in a live preview, folders in a
         listing, text in an editor; beside this terminal when run in one of
         Manifold's. With --wait, returns once they've been put away.
         diff shows a patch from its input (git diff | manifold diff) as a
         diff block; double-click a line to open the file there.
+        --install-skill puts hooks in the coding agents found here (or those
+        named) so a Manifold terminal running one shows its status and each
+        of its turns on the scrubber and in the outline; the hooks run
+        `manifold agent`.
         """)
     exit(0)
 }

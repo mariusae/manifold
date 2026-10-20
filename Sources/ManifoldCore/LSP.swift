@@ -52,7 +52,7 @@ public struct LanguageServerConfig: Codable, Equatable, Sendable, Identifiable {
                     return dir
                 }
             }
-            if gitRoot == nil, names.contains(".git") { gitRoot = dir }
+            if gitRoot == nil, VCS.markers.contains(where: { names.contains($0.directory) }) { gitRoot = dir }
             dir = dir.deletingLastPathComponent
         }
         return gitRoot ?? path.deletingLastPathComponent

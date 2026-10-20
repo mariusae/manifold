@@ -1152,3 +1152,110 @@ private final class Seen: @unchecked Sendable {
     let bin = root.appendingPathComponent("home/.manifold/bin")
     #expect(try FileManager.default.contentsOfDirectory(atPath: bin.path).isEmpty)
 }
+
+// MARK: Editing and viewing
+
+@Test func aFileIsViewedAndANoteWrittenInEachByItsExtension() {
+    #expect(Lens.default(for: .text, path: "/a/b.swift") == .preview)
+    #expect(Lens.default(for: .text, path: "/a/README.md") == .preview)
+    #expect(Lens.default(for: .text, path: nil) == .editor)
+    #expect(Lens.viewRendering(for: "/a/README.md") == .markdown)
+    #expect(Lens.viewRendering(for: "/a/main.GO") == .code)
+    #expect(Lens.viewRendering(for: "/a/notes.xyz") == .plain)
+    #expect(Lens.viewRendering(for: "/a/Makefile") == .plain)
+    #expect(Lens.viewRendering(for: nil) == .markdown)
+}
+
+@Test func editingATextAndViewingItAreOneTileUnlessAskedForBoth() {
+    var a = ArrangementState()
+    let block = BlockID()
+    let edited = Placement(block: block, lens: .editor)
+    a.apply(.place(edited, column: 0, at: 0))
+    #expect(a.tile(of: block, lens: .preview)?.id == edited.id)
+    #expect(a.tile(of: block, lens: .preview, exact: true) == nil)
+    #expect(a.bringing(block, lens: .preview, inColumn: 0, newPlacement: { "x" }).allSatisfy { if case .place = $0 { return false } else { return true } })
+    #expect(a.bringing(block, lens: .preview, inColumn: 0, exact: true, newPlacement: { "x" }).contains { if case .place = $0 { return true } else { return false } })
+    // Not for other lenses: a terminal isn't its block's other tile.
+    #expect(a.tile(of: block, lens: .terminal) == nil)
+}
+
+@Test func aTilePushedDownGoesIntoTheStackOfTheTileBelowIt() {
+    var a = ArrangementState()
+    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)
+    let behindY = Placement(block: BlockID(), lens: .terminal)
+    for (i, p) in [x, y, behindY, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.heights([x.id: 0.4, y.id: 0.3, behindY.id: 0, z.id: 0.3]))
+    #expect(a.tile(behind: behindY.id)?.id == y.id)
+    // As the grid tells it when a line's drag pushes y down to nothing.
+    a.apply(.stash(y.id, behind: z.id))
+    a.apply(.heights([x.id: 0.7, y.id: 0, behindY.id: 0, z.id: 0.3]))
+    #expect(a.columns[0].map(\.id) == [x.id, z.id, y.id, behindY.id])
+    #expect(a.tile(behind: y.id)?.id == z.id)
+    #expect(a.tile(behind: behindY.id)?.id == z.id)
+    #expect(a.shownTiles(inColumn: 0).map(\.id) == [x.id, z.id])
+}
+
+@Test func theAgentsAHostHasAreOfferedInTheCatalogsOrder() throws {
+    #expect(AgentCatalog.agents(among: ["muse", "claude", "unknown"]).map(\.command) == ["claude", "muse"])
+    let old = try JSONDecoder().decode(DeskState.self, from: Data(#"{"order":[]}"#.utf8))
+    #expect(old.agents.isEmpty)
+    var d = old
+    d.apply(.agents(["codex"]))
+    #expect(d.agents == ["codex"])
+    #expect(try JSONDecoder().decode(DeskState.self, from: JSONEncoder().encode(d)) == d)
+}
+
+@Test func aSaplingCheckoutInMercurialsDirectoryIsSaplings() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-vcs-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let hg = root.appendingPathComponent("hg"), git = root.appendingPathComponent("git"), both = root.appendingPathComponent("both")
+    for (dir, marks) in [(hg, [".hg"]), (git, [".git"]), (both, [".git", ".hg"])] {
+        for m in marks { try FileManager.default.createDirectory(at: dir.appendingPathComponent(m), withIntermediateDirectories: true) }
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("src/deep"), withIntermediateDirectories: true)
+    }
+    let found = VCS.repository(of: hg.appendingPathComponent("src/deep").path)
+    #expect(found?.root == hg.path && found?.vcs == .sapling)
+    #expect(VCS.sapling.stateFile(in: hg.path) == ".hg/dirstate")
+    #expect(VCS.repository(of: git.appendingPathComponent("src").path)?.vcs == .git)
+    #expect(VCS.repository(of: both.path)?.vcs == .sapling)
+    try FileManager.default.createDirectory(at: hg.appendingPathComponent(".sl"), withIntermediateDirectories: true)
+    #expect(VCS.sapling.stateFile(in: hg.path) == ".sl/dirstate")
+}
+
+// MARK: Agents' hooks
+
+@Test func aHooksInputSaysWhatHappenedInTheAgent() {
+    #expect(AgentHookCommand.event("prompt", agent: "claude", input: ["prompt": "fix the bug\nplease"]) == .prompt(agent: "claude", text: "fix the bug\nplease"))
+    #expect(AgentHookCommand.event("prompt", agent: "codex", input: ["input-messages": ["first", "second"]]) == .prompt(agent: "codex", text: "second"))
+    #expect(AgentHookCommand.event("stop", agent: "claude", input: ["last_assistant_message": "Done."]) == .finished(agent: "claude", message: "Done."))
+    #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["message": "Claude needs your permission to use Bash"]) == .waiting(agent: "claude", message: "Claude needs your permission to use Bash"))
+    // A reminder that it's idle is no one waiting on anything.
+    #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["notification_type": "idle_prompt", "message": "x"]) == nil)
+    #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["message": "Claude is waiting for your input"]) == nil)
+    #expect(AgentHookCommand.event("start", agent: "pi", input: [:]) == .started(agent: "pi"))
+    #expect(AgentHookCommand.event("bogus", agent: "pi", input: [:]) == nil)
+}
+
+@Test func installingHooksKeepsTheRestOfTheSettingsAndReplacesOnlyManifolds() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-skill-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("settings.json")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let theirs = #"{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#
+    try Data(theirs.utf8).write(to: url)
+    for _ in 0..<2 { try AgentSkill.installClaudeStyle(at: url, agent: "claude", events: AgentSkill.claudeEvents) }
+    var json = try AgentSkill.readJSON(url)
+    #expect(json["model"] as? String == "opus")
+    let hooks = json["hooks"] as! [String: Any]
+    let stop = (hooks["Stop"] as! [[String: Any]]).flatMap { $0["hooks"] as! [[String: Any]] }.map { $0["command"] as! String }
+    // Theirs kept; ours once, however many times it's installed.
+    #expect(stop.contains("say done"))
+    #expect(stop.filter { $0.contains("manifold agent stop --agent claude") }.count == 1)
+    #expect(Set(hooks.keys) == Set(AgentSkill.claudeEvents.map(\.hook)))
+    #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("before-manifold").path))
+    try AgentSkill.uninstallClaudeStyle(at: url)
+    json = try AgentSkill.readJSON(url)
+    let left = json["hooks"] as! [String: Any]
+    #expect(Array(left.keys) == ["Stop"])
+    #expect(json["model"] as? String == "opus")
+}

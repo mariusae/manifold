@@ -37,7 +37,8 @@ and Mona Sans (bundled).
   one to name it; drag a block from anywhere in the sidebar onto a tile
   to bring it in beside, onto a workspace for its active column, or
   between workspaces for one of its own, and drag workspaces to
-  reorder them.
+  reorder them (among their host's, under its row) and hosts' rows to
+  reorder the hosts (an order of this Mac's own, in Desk and Files).
 - An **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
   A workspace is what you made it: a block brought in stays until
@@ -46,23 +47,24 @@ and Mona Sans (bundled).
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
-  out above its card, as a stack of paper, and the bar wears a stack
-  badge with how many; the pointer on the badge fans them out below as
-  rounded pills (the one under the pointer ringed in the accent), and one clicked
-  comes back on its own as that tile's lower half, the rest staying
-  behind the tile that showed; ⌥-clicked (an edge or a
-  fanned-out pill), it takes the top instead, whole, the tile that
-  showed going behind it with the rest of the stack; ⌥-click the top
-  tile's own pill and it swaps with the next behind it. A stack is one
+  out above its card, as a stack of paper. **Right-click the tile's
+  title** (or press ⌘E) and the stack's tiles hang over it as cards,
+  live, the tile's own bar put away: each a title bar lower than the
+  one behind it, leaning back a little, and the one chosen hanging
+  straight, peeking out between the rest, those in front of it let
+  down part of the way. Right-clicked, the card under the pointer is
+  the one chosen (scrolling works too): clicked, it comes back on its
+  own as that tile's lower half, the rest staying behind the tile that
+  showed; ⌥-clicked, it takes the top instead, whole, the tile that
+  showed going behind it with the rest of the stack; ⎋ or a click away
+  from the cards leaves things be (with no stack, the right-click is
+  the tile's menu). With ⌘E, each E moves the choice a card down (⇧⌘E
+  back up), and letting go of ⌘ brings the chosen one forward to the
+  top (Escape leaves things be); without a stack, ⌘E finds the word at
+  hand. ⌥-click the top tile's own pill and it swaps with the next
+  behind it. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
-  behind that tile; move the top tile and the stack moves with it;
-  **⌘E turns a stack into a file of cards** over its tile, live: the
-  top drops flat to the bottom and the one beneath it stands up in
-  front, leaning back, with the title bars of the rest behind it. More
-  E's flip further down (⇧⌘E back up; scrolling works too; a card
-  clicked is chosen), and letting go of ⌘ brings the chosen one forward
-  to the top (Escape leaves things be). Without a stack, ⌘E finds the
-  word at hand.
+  behind that tile; move the top tile and the stack moves with it.
   Unstack in the pill's menu lays the whole stack out in the column;
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).
@@ -83,8 +85,9 @@ and Mona Sans (bundled).
   Stash Tile (⌘M, or Stash in a pill's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
-  height stashes it and goes on against the next, until all above or
-  below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
+  height stashes it, in the direction it was pushed (pushed up, behind
+  the tile above it; pushed down, behind the tile below it), and goes
+  on against the next, until all above or below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
   pill) puts a tile over the whole workspace until it is restored, or
   until you go to another tile. A pill is as wide as its title needs
   and never more than half its tile, so what's under the band stays
@@ -113,8 +116,8 @@ and Mona Sans (bundled).
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile is a **card** with a bar across its top:
-  its symbol and name, where it is in grey, its stack badge and links
-  badge, the program its status names in a grey capsule, its status
+  its symbol and name, where it is in grey, its links, the program its
+  status names in a grey capsule, its status
   glyph, and maximize and close (×) at the right. The bar is always there; the content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
@@ -158,11 +161,12 @@ and Mona Sans (bundled).
   way, their columns coming over.
 - **Links by hand**: ⇧-drag any block's pill onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
-  ways. Both tiles wear a badge at the upper right, a link's symbol
-  and how many; the pointer resting there fans the links out below,
-  each with an arrow for its direction (→ links to, ← linked from),
-  the block's symbol and name, to click and go to, and an × that
-  breaks the link, both ways at once. Links lists them under *links*
+  ways. Both tiles wear the link in their bar, as a pill: an arrow for
+  its direction (→ links to, ← linked from), the block's symbol and
+  name, to click and go to, and (under the pointer) an × that breaks
+  the link, both ways at once. With more than one link, the first's
+  pill has sheets peeking out to its right, as a stack of cards, and the pointer
+  resting on it fans the rest out below, each a pill the same. Links lists them under *links*
   and *linked from*. A note made with a block focused (⇧⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
@@ -276,15 +280,28 @@ when you find it again.
   comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection),
   brackets and quotes paired, new lines indented like the last, undo as
   entries in the block's log (undone back to what was saved, it's clean
-  again). Files keep their encoding, line endings and permissions. One
-  changed on disk reloads if clean, or shows a banner over unsaved
-  changes. The **preview** lens renders Markdown (cmark-gfm) and follows
-  the text as it's edited in an editor on the same block, or saved by
-  another program. Edit ▸ Edit or Preview (⌥⌘P) puts an editor over
-  the focused preview, or a preview over a Markdown editor — the one
-  beneath stashed behind it until the one on top is taken off (⌘W), or
-  ⌥⌘P again; ⌥⇧⌘P puts the other beside it, so you can type on the
-  left and read on the right. A link followed in a preview opens another
+  again). Page Up and Down move the view a screenful, the caret along
+  at the same place on screen. Files keep their encoding, line endings
+  and permissions. One changed on disk reloads if clean, or shows a
+  banner over unsaved changes. A tile with unsaved changes has a dot
+  in its bar: grey, clicked to save; amber when the file also changed
+  on disk beneath them, clicked to choose between reloading the file
+  and overwriting it with the edits.
+- **Viewing and editing**: a file opens to be viewed (unless `$EDITOR`
+  opened it, to be edited) and a note to be written in; ⌘↩ (Edit ▸
+  Edit or View, or the pill's menu) goes between the two in the same
+  tile, the line at the top staying at the top and an editor's caret
+  going along. How a file is viewed goes by its extension (a table in
+  [Blocks.swift](Sources/ManifoldCore/Blocks.swift), anything not in
+  it plain text): Markdown rendered (cmark-gfm), a note's too, following
+  the text as it's edited on the same block or saved by another
+  program; code and plain text as they are, not taken in, on the plain
+  grey golang.org sets code on. Code (by its extension) is set in the
+  fixed-width font, edited or viewed, unless the tile's menu says
+  otherwise. ⌥⇧⌘P puts the other mode beside the
+  tile, so you can type on the left and read on the right; opening a
+  file shown already, in either mode, goes to its tile. A link followed
+  in a Markdown view opens another
   Markdown file in the same tile (Go Back returns to the one it came
   from), a web address as a web block below it, any other file as what
   it is, below; `#anchors` scroll.
@@ -312,8 +329,9 @@ when you find it again.
   clangd and zls by default), the files that mark a workspace root, on or
   off; it's a setting on the desk, so every host runs the same.
 - **⌘-click** a file's name in a terminal to open it below the terminal,
-  in its column: Markdown in a preview, folders in a listing,
-  text to edit; `path:line:column` (as grep and compilers print it) goes to
+  in its column: Markdown in a preview, folders in a listing (a folder's
+  bare name too, as `ls` prints it, if there's a folder by that name where
+  the terminal is), text to edit; `path:line:column` (as grep and compilers print it) goes to
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open in a listing (name, date, size); double-click an entry
@@ -370,11 +388,12 @@ when you find it again.
   regular expression); ↓ then ⏎, or a double-click, opens the file at the
   hit beside the results. A search is found again by its query in ⌘O.
 - **Git and Sapling** repositories get a block each (File ▸ Source Control
-  for This Project, ⌥⌘G, for the focused block's; the nearest `.sl` or
-  `.git` up from it says which, `.sl` first): the branch or bookmark
+  for This Project, ⌥⌘G, for the focused block's; the nearest `.sl`,
+  `.hg` (a Sapling checkout as Meta's are) or `.git` up from it says
+  which, Sapling first; with none, the tile goes and says so): the branch or bookmark
   (with how far ahead or behind), what's changed, and the last 200
   commits, looked at again when shown, when a file is saved from
-  Manifold, or when the index (or `.sl/dirstate`) changes. Sapling is
+  Manifold, or when the index (or Sapling's dirstate) changes. Sapling is
   spoken to as `sl` on the host's PATH. ⏎ or a
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
@@ -444,7 +463,9 @@ when you find it again.
   blocks themselves, live, as a **state view**: a list, stacked down one
   scrolling column as Prism's notes are, each under its pill; or an
   overview, all of them in one grid at once, as Mission Control lays out
-  windows. Nothing is placed: click a pill to go to the block, ⌘-click
+  windows: as big as they can be with every one in the room (from about
+  square to twice as wide as tall), scrolling only when there are so many
+  they'd be small. Nothing is placed: click a pill to go to the block, ⌘-click
   to bring it to the workspace you were in, ⎋ (or ×) to go back.
   **Clear Status**, in a row's menu in Status or the tile's pill menu,
   forgets what a block reported until it reports again; a group's row
@@ -460,7 +481,9 @@ when you find it again.
   folder's or search's or git block's selected row and scroll, a diff's
   scroll and whether it was unfolded, an image's zoom, a PDF's page, the
   process list's filter and sort — so a restart, a move between lenses or
-  a reload shows exactly what you left.
+  a reload shows exactly what you left. The block keeps what it was last
+  left at through each lens too, so a tile made for it again (recalled
+  after it was closed, brought to another workspace) starts there.
 - **History** (Workspace ▸ History…, ⌘Y) scrubs the workspace through
   its log: the layout then, the blocks as they are now; with **Everything
   as it was** checked, each placed file is read as of that moment too, and
@@ -478,7 +501,31 @@ when you find it again.
 - **Agents** (File ▸ New Agent, ⌥⌘A) are terminal blocks that run the
   agent command (`claude` unless the settings say otherwise) in a login
   shell where the focused block is; their transcripts are kept like a
-  terminal's, and they come back after a restart the same way.
+  terminal's, and they come back after a restart the same way. Launch
+  Agent Here (in the File menu, a tile's menu, or New…, ⌘T) offers each
+  agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
+  opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's
+  host has: the host looks for them through your login shell (the
+  shell its preferences name, if any) when a Mac attaches, when its
+  shell preference changes, and again as the menu opens.
+- **Agents' hooks** (`manifold --install-skill`, on any host, in one of
+  its terminals or not) let an agent that doesn't speak OSC 7501 (Codex,
+  say) show its status, and give every agent an outline: each prompt is
+  a mark on the terminal's scrubber and in its outline, as a shell's
+  command is, found on the screen where the agent echoes it, until the
+  turn ends. The hooks run `manifold agent <event> --agent <name>`
+  (start, prompt, working, waiting, stop, end), which tells the host
+  over its socket and does nothing outside Manifold's terminals; status
+  goes working on a prompt or a tool, blocked on a permission, done (with
+  the agent's last words) when the turn ends. Installed for whichever of
+  these are found (or those named): Claude Code (`~/.claude/settings.json`;
+  MetaCode reads these too, and is told apart), Codex
+  (`~/.codex/hooks.json`; Codex asks to review new hooks once), Muse
+  (`~/.config/muse/settings.json`), and Pi (an extension,
+  `~/.pi/agent/extensions/manifold.ts`, as Pi has no command hooks).
+  Installing again replaces Manifold's hooks and keeps the rest of each
+  file (a copy of it as it was is left beside it, `.before-manifold`);
+  `manifold --uninstall-skill` takes them out.
 - **Processes** (File ▸ Processes) is a block per host listing what `ps`
   sees, again every few seconds while shown, in tight rows by block:
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
@@ -549,7 +596,9 @@ is migrated into logs on first run.
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
   with their destination and label, and attached again at start. A
-  remembered host stands in the sidebar from the start: a spinner and
+  host stands in the sidebar from the moment it's attached to (a new one
+  under its name until it says its session; gone again, with why, if it
+  can't be reached the first time) and a remembered one from the start: a spinner and
   "connecting…" while it's being reached, a slashed ring and
   "unreachable" (dimmed) when it can't be — tried again after two
   seconds, then four, eight, up to two minutes between tries (the
@@ -625,7 +674,8 @@ is migrated into logs on first run.
   ([Protocol.swift](Sources/ManifoldCore/Protocol.swift)); the same
   `Codable` entries as the logs, raw bytes for terminal I/O.
 - `MANIFOLD_DIR` runs everything against another directory, for a second,
-  throwaway instance; with `MANIFOLD_DEBUG` set too, the app listens on
+  throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one
+  driven by a script); with `MANIFOLD_DEBUG` set too, the app listens on
   `$MANIFOLD_DIR/app-debug.sock` for scripted commands (see
   [DebugControl.swift](Sources/Manifold/DebugControl.swift)).
 

@@ -8,6 +8,9 @@ protocol TerminalViewDelegate: AnyObject {
     /// A link in the terminal was opened (⌘-clicked): a URL, or a path;
     /// `over`: ⌥ was held too, for what opens to go over the terminal.
     func terminal(_ view: TerminalView, open target: String, over: Bool)
+    /// ⌘-clicked on a word ghostty doesn't take for a link (a folder's
+    /// name, as `ls` prints it): opened if it names a folder.
+    func terminal(_ view: TerminalView, openFolder name: String, over: Bool)
     /// A command on the scrubber was opened: it and its output, as a block.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
     /// Copy on Select was switched from the pill's menu: a setting.
@@ -502,6 +505,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func mouseDown(with event: NSEvent) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         guard let surface else { return }
+        commandClickAt = event.modifierFlags.contains(.command) ? event.locationInWindow : nil
+        linkOpened = false
         sendMousePos(event)
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, clickMods(event))
     }
@@ -524,10 +529,24 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return mods(flags)
     }
 
+    /// Where a ⌘-click went down, until it comes up.
+    private var commandClickAt: NSPoint?
+    /// Ghostty opened a link in the click under way (its patterns knew it).
+    var linkOpened = false
+
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, clickMods(event))
         ghostty_surface_mouse_pressure(surface, 0, 0)
+        // A ⌘-click ghostty took for no link: the word there, for a folder.
+        if let down = commandClickAt, hypot(event.locationInWindow.x - down.x, event.locationInWindow.y - down.y) < 4 {
+            let over = openOver
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.linkOpened, let word = self.wordUnderPointer, !word.isEmpty else { return }
+                self.delegate?.terminal(self, openFolder: word, over: over)
+            }
+        }
+        commandClickAt = nil
         if Self.copyOnSelect, !(window?.styleMask.contains(.fullScreen) ?? false), let text = selectedText, !text.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
@@ -793,6 +812,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // Control-return and control-slash would otherwise be eaten by AppKit
         // (the latter with a beep); they belong to the terminal.
         let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        // Command-return is Edit or View for a text; here it's the terminal's, as it was.
+        if flags == [.command], event.charactersIgnoringModifiers == "\r" {
+            keyDown(with: event)
+            return true
+        }
         guard flags.contains(.control), !flags.contains(.command) else { return false }
         switch event.charactersIgnoringModifiers {
         case "\r", "/":
@@ -980,6 +1004,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func searchSelected(_ selected: Int?) {}
 
     /// The selected text, if any.
+    /// The word under the pointer, as a double-click would select it.
+    private var wordUnderPointer: String? {
+        guard let surface else { return nil }
+        var out = ghostty_text_s()
+        guard ghostty_surface_quicklook_word(surface, &out) else { return nil }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text else { return nil }
+        return String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var selectedText: String? {
         guard let surface, ghostty_surface_has_selection(surface) else { return nil }
         var t = ghostty_text_s()

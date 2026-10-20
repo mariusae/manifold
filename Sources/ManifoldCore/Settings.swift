@@ -28,6 +28,9 @@ public struct ClientState: Codable, Equatable, Sendable {
     public var settled: [BlockID] = []
     public var window = WindowState()
     public var appearance = Appearance()
+    /// The hosts in the order the sidebar shows them, by session id;
+    /// ones not in it after, as they come.
+    public var hostOrder: [String] = []
 
     public init() {}
 
@@ -37,9 +40,10 @@ public struct ClientState: Codable, Equatable, Sendable {
         settled = (try? c.decodeIfPresent([BlockID].self, forKey: .settled)) ?? []
         window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
         appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
+        hostOrder = (try? c.decodeIfPresent([String].self, forKey: .hostOrder)) ?? []
     }
 
-    enum CodingKeys: String, CodingKey { case selected, settled, window, appearance }
+    enum CodingKeys: String, CodingKey { case selected, settled, window, appearance, hostOrder }
 }
 
 /// How things look: the theme's fonts, and how terminals are colored.
@@ -103,6 +107,33 @@ public struct Settings: Codable, Equatable, Sendable {
         languageServers = (try? c.decodeIfPresent([LanguageServerConfig].self, forKey: .languageServers)) ?? LanguageServerConfig.defaults
         agentCommand = (try? c.decodeIfPresent(String.self, forKey: .agentCommand)) ?? "claude"
         copyOnSelect = (try? c.decodeIfPresent(Bool.self, forKey: .copyOnSelect)) ?? true
+    }
+}
+
+/// The coding agents Manifold knows to look for on a host, by the
+/// command that starts each, in the order they're offered.
+public enum AgentCatalog {
+    public struct Agent: Equatable, Sendable {
+        public let command: String
+        public let name: String
+    }
+
+    public static let known: [Agent] = [
+        Agent(command: "claude", name: "Claude Code"),
+        Agent(command: "codex", name: "Codex"),
+        Agent(command: "pi", name: "Pi"),
+        Agent(command: "muse", name: "Muse"),
+        Agent(command: "gemini", name: "Gemini CLI"),
+        Agent(command: "opencode", name: "opencode"),
+        Agent(command: "amp", name: "Amp"),
+        Agent(command: "cursor-agent", name: "Cursor Agent"),
+        Agent(command: "goose", name: "Goose"),
+        Agent(command: "aider", name: "Aider"),
+    ]
+
+    /// The known agents among commands a host has, in the catalog's order.
+    public static func agents(among commands: [String]) -> [Agent] {
+        known.filter { commands.contains($0.command) }
     }
 }
 

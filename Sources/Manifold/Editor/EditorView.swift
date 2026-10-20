@@ -76,7 +76,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         self.theme = theme
         super.init(frame: .zero)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        themed { $0.layer?.backgroundColor = ($0.viewing ? Theme.codePage : Theme.windowBackground).cgColor }
 
         scroll.drawsBackground = false
         // No room kept for the (hidden) title bar.
@@ -216,6 +216,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     func destroy() {
+        // Where it was left, kept as the tile goes, for when it's made again.
+        if restored { saveState() }
         stateWork?.cancel()
         completion?.close()
         hover?.close()
@@ -242,19 +244,25 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scheduleHeadings()
         if !restored, doc.version > 0 || doc.unreadable {
             restored = true
-            if let ranges = doc.selections[placement], !ranges.isEmpty {
+            // This tile's own, else where the text was last left in any editor.
+            if let ranges = doc.selections[placement] ?? doc.selections[Self.lastPlacement], !ranges.isEmpty {
                 textView.setSelections(ranges.map { Selection($0.start, $0.end) }, scroll: false)
             }
-            if let y = doc.scroll[placement] {
+            if let y = doc.scroll[placement] ?? doc.scroll[Self.lastPlacement] {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, y)))
                     self.scroll.reflectScrolledClipView(self.scroll.contentView)
                 }
             }
+            // A line asked for before the text was in (the other mode's top).
+            if let line = pendingTopLine {
+                pendingTopLine = nil
+                DispatchQueue.main.async { [weak self] in self?.scroll(toTopLine: line) }
+            }
         }
         if external { textView.savedUndoDepth = textView.undoDepth }
-        textView.isEditable = !doc.unreadable && !offline
+        textView.isEditable = !doc.unreadable && !offline && !viewing
         if doc.stale, banner == nil { showBanner() }
         if !doc.stale, banner != nil { hideBanner() }
         if doc.isDirty != isEdited {
@@ -280,6 +288,36 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     var isDirty: Bool { document?.isDirty == true }
+
+    /// Where a text's selection and scroll were last left in any editor,
+    /// kept beside each tile's own (as a placement of its own).
+    static let lastPlacement: PlacementID = "last:text"
+
+    /// View mode (⌘↩ to edit): the text as it is, not taken in, on the
+    /// grey of a page of code.
+    var viewing = false {
+        didSet {
+            guard viewing != oldValue else { return }
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
+            }
+            documentChanged()
+        }
+    }
+
+    /// The line at the top of the view (from 0, a fraction into it).
+    var topLine: Double {
+        isLoaded ? textView.fractionalLine(atY: scroll.contentView.bounds.minY) : pendingTopLine ?? 0
+    }
+
+    /// The view scrolled so `line` (as `topLine` gives) is at the top: at
+    /// once, or once the text is in.
+    func scroll(toTopLine line: Double) {
+        guard isLoaded, restored else { pendingTopLine = line; return }
+        scroll(toY: textView.y(ofFractionalLine: line))
+    }
+
+    private var pendingTopLine: Double?
     /// The caret's line, trimmed: what a link made from here was made on.
     /// Markdown shown richly (notes, .md files) — or as written, as the
     /// pill's menu chooses; kept with the placement's view state.
@@ -483,9 +521,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         guard let doc = document else { return }
         let ranges = textView.selections.map { $0.range }
         var events: [Event] = []
-        if doc.selections[placement] != ranges { events.append(.selection(placement: placement, ranges: ranges)) }
+        // This tile's, and the text's last, for a tile made for it again.
+        for p in [placement, Self.lastPlacement] where doc.selections[p] != ranges { events.append(.selection(placement: p, ranges: ranges)) }
         let y = Double(scroll.contentView.bounds.origin.y)
-        if abs((doc.scroll[placement] ?? -1) - y) > 0.5 { events.append(.scroll(placement: placement, y: y)) }
+        for p in [placement, Self.lastPlacement] where abs((doc.scroll[p] ?? -1) - y) > 0.5 { events.append(.scroll(placement: p, y: y)) }
         if !events.isEmpty { delegate?.editor(self, append: events) }
     }
 
@@ -494,6 +533,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
     private func hideFind() { finder.hide() }
+
+    /// Debugging: the find pill shown, its field typed in, for `query`.
+    func debugFind(_ query: String) {
+        finder.show(fromSelection: false)
+        finder.pill?.query = query
+    }
 
     // MARK: Go to line
 

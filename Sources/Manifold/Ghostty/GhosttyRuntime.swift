@@ -239,6 +239,7 @@ final class GhosttyRuntime {
             let u = action.action.open_url
             guard let ptr = u.url else { return false }
             let str = String(decoding: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), as: UTF8.self)
+            view?.linkOpened = true
             if let view, let delegate = view.delegate {
                 delegate.terminal(view, open: str, over: view.openOver)
             } else if let url = URL(string: str), url.scheme != nil {

@@ -8,9 +8,12 @@ import cmark_gfm_extensions
 public enum MarkdownRenderer {
     private static let extensions = ["table", "strikethrough", "autolink", "tagfilter", "tasklist"]
 
-    public static func html(_ markdown: String) -> String {
+    /// `sourcePositions`: each block element says which lines of the
+    /// text it came from (`data-sourcepos="3:1-5:12"`, from 1), front
+    /// matter counted, so a place in one can be found in the other.
+    public static func html(_ markdown: String, sourcePositions: Bool = false) -> String {
         cmark_gfm_core_extensions_ensure_registered()
-        let options = CMARK_OPT_UNSAFE | CMARK_OPT_GITHUB_PRE_LANG | CMARK_OPT_FOOTNOTES
+        let options = CMARK_OPT_UNSAFE | CMARK_OPT_GITHUB_PRE_LANG | CMARK_OPT_FOOTNOTES | (sourcePositions ? CMARK_OPT_SOURCEPOS : 0)
         guard let parser = cmark_parser_new(options) else { return "" }
         defer { cmark_parser_free(parser) }
         for name in extensions {
@@ -18,7 +21,7 @@ public enum MarkdownRenderer {
                 cmark_parser_attach_syntax_extension(parser, ext)
             }
         }
-        let text = stripFrontMatter(markdown)
+        let text = stripFrontMatter(markdown, keepingLines: sourcePositions)
         var utf8 = Array(text.utf8)
         utf8.withUnsafeMutableBufferPointer { buf in
             buf.baseAddress!.withMemoryRebound(to: CChar.self, capacity: buf.count) {
@@ -34,11 +37,13 @@ public enum MarkdownRenderer {
 
     /// The document without YAML front matter (a leading block between two
     /// `---` lines), which is metadata rather than text.
-    public static func stripFrontMatter(_ markdown: String) -> String {
+    /// `keepingLines`: the front matter's lines left blank, so the rest
+    /// keep their numbers.
+    public static func stripFrontMatter(_ markdown: String, keepingLines: Bool = false) -> String {
         guard markdown.hasPrefix("---\n") || markdown.hasPrefix("---\r\n") else { return markdown }
         let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
         for i in 1..<lines.count where lines[i].trimmingCharacters(in: .whitespaces) == "---" {
-            return lines[(i + 1)...].joined(separator: "\n")
+            return String(repeating: "\n", count: keepingLines ? i + 1 : 0) + lines[(i + 1)...].joined(separator: "\n")
         }
         return markdown
     }

@@ -34,6 +34,26 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         }
     }
 
+    /// The line of the text (from 0, a fraction into it) at the top of
+    /// the page now, by where the page's elements came from.
+    func topLine(_ done: @escaping (Double?) -> Void) {
+        guard renderedVersion >= 0 else { return done(pendingTopLine) }
+        web.evaluateJavaScript("manifoldTopLine()") { r, _ in done((r as? Double) ?? (r as? Int).map(Double.init)) }
+    }
+
+    /// The page scrolled so the text's `line` (from 0) is at the top: at
+    /// once, or once the page is first shown.
+    func scroll(toTopLine line: Double) {
+        guard renderedVersion >= 0 else { pendingTopLine = line; return }
+        web.evaluateJavaScript("manifoldToLine(\(line))")
+    }
+
+    /// A line of the text (from 1) gone to: at the top, a little of what's
+    /// before it showing.
+    func reveal(line: Int) { scroll(toTopLine: max(0, Double(line - 1) - 2)) }
+
+    private var pendingTopLine: Double?
+
     /// Scrolls to the page's `index`th heading (⌘\).
     func scroll(toHeading index: Int) {
         web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()") { [weak self] _, _ in
@@ -203,7 +223,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         let body: String
         if let (text, version) = source() {
             renderedVersion = version
-            body = MarkdownRenderer.html(text)
+            body = MarkdownRenderer.html(text, sourcePositions: true)
         } else {
             body = "<p class=\"missing\">\(escape(path)) can't be read.</p>"
         }
@@ -216,6 +236,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             let s = keeper.int("selStart").map { "\($0)" } ?? "null", e = keeper.int("selEnd").map { "\($0)" } ?? "null"
             js += " manifoldRestore(\(y), \(s), \(e)); manifoldWatch();"
             keeper.restored = true
+        }
+        // A line asked for before the page had any: there now.
+        if let line = pendingTopLine {
+            pendingTopLine = nil
+            js += " manifoldToLine(\(line));"
         }
         web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
     }

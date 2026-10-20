@@ -359,14 +359,16 @@ final class HostClient {
 
     /// The git block for the repository a path is in: an existing one
     /// whose root holds the path, else a new one the host roots.
-    func gitBlock(for path: String) -> BlockID {
+    /// `done`, with why not if the host couldn't make the block.
+    func gitBlock(for path: String, done: ((String?) -> Void)? = nil) -> BlockID {
         let roots = node.blocks.filter { $0.kind == .git && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
         if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
             propose(.refreshGit(block: b.id))
+            done?(nil)
             return b.id
         }
         let id = BlockID(host: host)
-        propose(.git(block: id, path: path))
+        propose(.git(block: id, path: path), done: done)
         return id
     }
 

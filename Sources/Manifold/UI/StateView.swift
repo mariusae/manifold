@@ -142,21 +142,50 @@ final class StateView: NSView {
                 y += Self.listHeight + m
             }
         case .overview:
-            let columns = max(1, Int((width - m) / (Self.cellWidth + m)))
-            let cw = (width - m - CGFloat(columns) * m) / CGFloat(columns)
+            let (columns, cell) = Self.overviewGrid(count: items.count, in: NSSize(width: width, height: scroll.contentSize.height), margin: m)
+            let rows = (items.count + columns - 1) / max(columns, 1)
+            // The grid in the middle of the room, each row's cards centered.
+            let gridHeight = CGFloat(rows) * cell.height + CGFloat(max(rows - 1, 0)) * m
+            let top0 = max(m, (scroll.contentSize.height - gridHeight) / 2)
             for (i, item) in items.enumerated() {
                 let block = item.shown.placement.block
-                let x = m + CGFloat(i % columns) * (cw + m)
-                let top = m + CGFloat(i / columns) * (Self.cellHeight + m)
-                item.view.frame = NSRect(x: x, y: top + GridView.barHeight, width: cw, height: Self.cellHeight - GridView.barHeight)
+                let row = i / columns, col = i % columns
+                let inRow = row == rows - 1 ? items.count - row * columns : columns
+                let rowWidth = CGFloat(inRow) * cell.width + CGFloat(inRow - 1) * m
+                let x = (width - rowWidth) / 2 + CGFloat(col) * (cell.width + m)
+                let top = top0 + CGFloat(row) * (cell.height + m)
+                item.view.frame = NSRect(x: x, y: top + GridView.barHeight, width: cell.width, height: cell.height - GridView.barHeight)
                 if let pill = pills[block] {
-                    pill.frame = NSRect(x: x, y: top, width: cw, height: GridView.barHeight)
+                    pill.frame = NSRect(x: x, y: top, width: cell.width, height: GridView.barHeight)
                     document.addSubview(pill, positioned: .above, relativeTo: item.view)
                 }
-                y = max(y, top + Self.cellHeight + m)
+                y = max(y, top + cell.height + m)
             }
         }
         document.frame = NSRect(x: 0, y: 0, width: width, height: max(y, scroll.contentSize.height))
+    }
+
+    /// The overview's cards (§3.6), as Mission Control fits windows to the
+    /// screen: as many columns as give the cards the most of the room with
+    /// all of them in it at once, each the same, from about square to
+    /// twice as wide as tall; so many that they'd be small, and they keep
+    /// a least size and the room scrolls.
+    static func overviewGrid(count: Int, in room: NSSize, margin m: CGFloat) -> (columns: Int, cell: NSSize) {
+        guard count > 0, room.width > 0, room.height > 0 else { return (1, NSSize(width: cellWidth, height: cellHeight)) }
+        let widest: CGFloat = 2, narrowest: CGFloat = 1.1
+        var best = (columns: 1, cell: NSSize.zero)
+        for columns in 1...count {
+            let rows = (count + columns - 1) / columns
+            let w = (room.width - CGFloat(columns + 1) * m) / CGFloat(columns)
+            let h = (room.height - CGFloat(rows + 1) * m) / CGFloat(rows)
+            guard w > 0, h > 0 else { continue }
+            let cw = min(w, h * widest), ch = min(h, cw / narrowest)
+            if cw * ch > best.cell.width * best.cell.height { best = (columns, NSSize(width: cw.rounded(.down), height: ch.rounded(.down))) }
+        }
+        let least = NSSize(width: 240, height: 180)
+        guard best.cell.width < least.width else { return best }
+        let columns = max(1, Int((room.width - m) / (least.width + m)))
+        return (columns, NSSize(width: ((room.width - CGFloat(columns + 1) * m) / CGFloat(columns)).rounded(.down), height: least.height))
     }
 
     @objc private func modeChosen() {

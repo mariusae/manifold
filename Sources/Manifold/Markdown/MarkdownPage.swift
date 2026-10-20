@@ -65,6 +65,47 @@ enum MarkdownPage {
           }
           return [point(r.startContainer, r.startOffset), point(r.endContainer, r.endOffset)];
         };
+        // Places in the text (lines from 0, fractions within) and on the
+        // page, through the lines each block element came from.
+        function manifoldPos(el) {
+          var m = /^(\\d+):\\d+-(\\d+):\\d+$/.exec(el.getAttribute('data-sourcepos') || '');
+          return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+        }
+        // The line at the top of the window: within the innermost element
+        // across it, as far down it as the top is; else the next one's.
+        window.manifoldTopLine = function () {
+          var els = document.querySelectorAll('[data-sourcepos]'), best = null, span = 1e9, next = null;
+          for (var i = 0; i < els.length; i++) {
+            var p = manifoldPos(els[i]); if (!p) continue;
+            var r = els[i].getBoundingClientRect();
+            if (r.top <= 0 && r.bottom > 0) { if (p[1] - p[0] <= span) { best = [r, p]; span = p[1] - p[0]; } }
+            else if (r.top > 0 && !next) next = p;
+          }
+          if (best) {
+            var f = best[0].height > 0 ? -best[0].top / best[0].height : 0;
+            return best[1][0] - 1 + f * (best[1][1] - best[1][0] + 1);
+          }
+          return next ? next[0] - 1 : 0;
+        };
+        // The window scrolled so `line` is at its top: as far down the
+        // innermost element it's in, or at the next element after it.
+        window.manifoldToLine = function (line) {
+          var L = line + 1, whole = Math.floor(L), els = document.querySelectorAll('[data-sourcepos]');
+          var best = null, span = 1e9, next = null, nextStart = 1e9;
+          for (var i = 0; i < els.length; i++) {
+            var p = manifoldPos(els[i]); if (!p) continue;
+            if (p[0] <= whole && whole <= p[1]) { if (p[1] - p[0] <= span) { best = [els[i], p]; span = p[1] - p[0]; } }
+            else if (p[0] > whole && p[0] < nextStart) { next = els[i]; nextStart = p[0]; }
+          }
+          if (best) {
+            var r = best[0].getBoundingClientRect(), f = (L - best[1][0]) / (best[1][1] - best[1][0] + 1);
+            window.scrollTo(0, window.scrollY + r.top + f * r.height);
+          } else if (next) {
+            window.scrollTo(0, window.scrollY + next.getBoundingClientRect().top);
+          } else if (line > 0) {
+            window.scrollTo(0, document.body.scrollHeight);
+          }
+        };
         window.manifoldRestore = function (y, start, end) {
           // Selection changes right after are the page settling (focus
           // coming and going), not the reader's: not kept.

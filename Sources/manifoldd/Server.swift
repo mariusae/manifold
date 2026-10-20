@@ -177,7 +177,10 @@ final class Server {
             clients.append(conn)
             attachments += 1
             clientIDs[ObjectIdentifier(conn)] = attachments
-            if name == "Manifold" { appClients.insert(ObjectIdentifier(conn)) }
+            if name == "Manifold" {
+                appClients.insert(ObjectIdentifier(conn))
+                indexAgents()
+            }
             conn.onFrame = { [weak self, unowned conn] frame in self?.clientFrame(frame, from: conn) }
             conn.onClose = { [weak self, unowned conn] in
                 self?.clients.removeAll { $0 === conn }
@@ -190,6 +193,9 @@ final class Server {
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots)))
         case .attach(let req)?:
             attach(conn, req)
+        case let .agent(block, event)?:
+            agentEvent(block, event)
+            conn.close()
         case .shutdown?:
             exit(endSessions: true)
         default:
@@ -403,7 +409,14 @@ final class Server {
             if let shell = p.shell, Session.resolveShell(shell) == nil {
                 return done("There's no shell \(shell) here that can be run.")
             }
-            if p != node.desk(host).preferences { append(.preferences(p), to: .desk(host)) }
+            if p != node.desk(host).preferences {
+                append(.preferences(p), to: .desk(host))
+                // Another shell may find other agents.
+                indexAgents(again: true)
+            }
+            done()
+        case .indexAgents:
+            indexAgents()
             done()
         case let .seen(ids):
             let known = ids.filter { node.registry(host).blocks[$0] != nil }
@@ -678,7 +691,7 @@ final class Server {
 
     private func watchRepo(_ root: String, _ vcs: VCS) {
         guard repoWatchers[root] == nil else { return }
-        let index = root.appendingPathComponent(vcs.stateFile)
+        let index = root.appendingPathComponent(vcs.stateFile(in: root))
         repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in self?.gitChanged(under: index) }
     }
 
@@ -844,7 +857,9 @@ final class Server {
                 let list = node.block(block)?.terminal?.commands ?? []
                 append(.ran(id: (list.last?.id ?? 0) + 1, text, at: clock.now()), to: .block(block))
             case let .commandEnded(status):
-                if let open = node.block(block)?.terminal?.commands?.last(where: { $0.ended == nil }) {
+                // The shell's command, not an agent's turn within it.
+                let turns = agentTurns[block] ?? []
+                if let open = node.block(block)?.terminal?.commands?.last(where: { $0.ended == nil && !turns.contains($0.id) }) {
                     append(.exited(id: open.id, status: status ?? 0, at: clock.now()), to: .block(block))
                 }
             case let .directory(host, path):
@@ -864,6 +879,57 @@ final class Server {
                 case .pause: report(block, .working, progress: percent, msg: "Paused")
                 }
             }
+        }
+    }
+
+    // MARK: Agents' hooks
+
+    /// The marks each block's agent made for its turns, as opposed to the
+    /// shell's commands they run within (an agent run by hand at a prompt).
+    private var agentTurns: [BlockID: Set<Int>] = [:]
+
+    /// What an agent's hook said (`manifold agent`): each prompt a mark on
+    /// the terminal's scrubber and outline, as a shell's command is, open
+    /// until the turn ends; and the agent's status the block's, by name.
+    private func agentEvent(_ block: BlockID, _ event: AgentEvent) {
+        guard let b = node.block(block), reportsStatus(block) else { return }
+        func line(_ text: String?) -> String? {
+            let first = text?.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            return first.isEmpty ? nil : String(first.prefix(200))
+        }
+        func endTurn() {
+            let turns = agentTurns[block] ?? []
+            for c in node.block(block)?.terminal?.commands ?? [] where c.ended == nil && turns.contains(c.id) {
+                append(.exited(id: c.id, status: 0, at: clock.now()), to: .block(block))
+            }
+        }
+        func status(_ state: StatusState, kind: BlockedKind? = nil, msg: String?) {
+            append(.status(id: rootStatusID, StatusRecord(state: state, kind: kind, app: event.agent, msg: msg, at: clock.now())), to: .block(block))
+        }
+        switch event {
+        case .started:
+            status(.idle, msg: nil)
+        case let .prompt(_, text):
+            endTurn()
+            if let mark = line(text) {
+                let id = (node.block(block)?.terminal?.commands?.last?.id ?? 0) + 1
+                append(.ran(id: id, mark, at: clock.now()), to: .block(block))
+                agentTurns[block, default: []].insert(id)
+            }
+            status(.working, msg: line(text))
+        case .working:
+            // After a permission or a tool: working on what it was.
+            let current = b.status?[rootStatusID]
+            if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
+        case let .finished(_, message):
+            endTurn()
+            status(.done, msg: line(message))
+        case let .waiting(_, message):
+            status(.blocked, kind: .permission, msg: line(message))
+        case .ended:
+            endTurn()
+            agentTurns[block] = nil
+            append(.status(id: rootStatusID, nil), to: .block(block))
         }
     }
 
@@ -967,6 +1033,25 @@ final class Server {
         if !node.has(.registry(host)) { append(.seen([], at: clock.now()), to: .registry(host)) }
         for block in node.blocks(of: .text) { watch(block) }
         for shard in node.shards.keys { shardChanged(shard) }
+    }
+
+    /// When the host last looked for agents, so a burst of asking looks once.
+    private var agentsIndexed: Date?
+
+    /// Looks for the known agents through the user's shell, off the queue,
+    /// and keeps what it finds in the desk when that changes.
+    private func indexAgents(again: Bool = false) {
+        if !again, let t = agentsIndexed, Date().timeIntervalSince(t) < 10 { return }
+        agentsIndexed = Date()
+        let shell = node.desk(host).preferences.shell
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = Session.availableAgents(preferred: shell)
+            self?.queue.async {
+                guard let self, found != self.node.desk(self.host).agents else { return }
+                log("agents here: \(found.isEmpty ? "none" : found.joined(separator: ", "))")
+                self.append(.agents(found), to: .desk(self.host))
+            }
+        }
     }
 
     /// A `state.json` from before blocks becomes logs.

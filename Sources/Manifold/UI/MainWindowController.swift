@@ -36,6 +36,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A place to go in a file being opened: done once its editor is shown.
     private var pendingJump: (path: String, line: Int, column: Int?)?
+    /// Tiles ⌘↩ made, each with the line the tile it replaced had at its top.
+    private var pendingTopLines: [PlacementID: Double] = [:]
     private var languageServersWindow: LanguageServersWindow?
     private var clickMonitor: Any?
     /// Blocks whose terminal just closed; they get a new one after a moment
@@ -292,6 +294,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
            let editor = content.views.compactMap({ $0 as? EditorView }).first(where: { $0.path == jump.path }), editor.isLoaded {
             pendingJump = nil
             editor.select(line: jump.line, column: jump.column)
+        } else if let jump = pendingJump, let page = content.views.compactMap({ $0 as? MarkdownView }).first(where: { $0.path == jump.path }) {
+            pendingJump = nil
+            page.reveal(line: jump.line)
         }
 
         if allWorkspaces.isEmpty && host.hasState {
@@ -328,6 +333,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
     }
 
+    /// A text tile's font: the one its pill's menu chose; else, for code
+    /// (by its extension), fixed width, being edited or viewed; else the
+    /// theme's choice.
+    private func editorFont(for p: Placement, path: String?) -> EditorFont {
+        if let chosen = viewState(of: p)["font"].flatMap(EditorFont.init(rawValue:)) { return chosen }
+        return Lens.viewRendering(for: path) == .code ? .monospaced : hosts.state.appearance.editorFont
+    }
+
+    /// What a block was last left at through a lens (its scroll, its
+    /// selection, how it was set), kept beside each tile's own: a tile made
+    /// for it again — recalled after it was closed, brought to another
+    /// workspace — starts there.
+    static func lastViewKey(_ lens: Lens) -> PlacementID { "last:" + lens.rawValue }
+
+    /// A tile's view state: its own, over what its block was last left at
+    /// through its lens.
+    private func viewState(of p: Placement) -> [String: String] {
+        let views = hosts.block(p.block)?.views
+        return (views?[Self.lastViewKey(p.lens)] ?? [:]).merging(views?[p.id] ?? [:]) { _, own in own }
+    }
+
+    /// Keeps a tile's view state, and the block's last through its lens.
+    private func keepViewState(_ values: [String: String], of p: Placement) {
+        hosts.append([.view(placement: p.id, values), .view(placement: Self.lastViewKey(p.lens), values)], to: .block(p.block))
+    }
+
     private func view(for shown: Shown) -> PaneContent {
         let p = shown.placement
         if shown.block == nil {
@@ -358,12 +389,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             if let e = v as? EditorView {
                 e.offline = shown.offline
-                e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
+                e.richMarkdown = viewState(of: p)["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
                 e.isRemote = p.block.host != host.host
-                e.font = (hosts.block(p.block)?.views?[p.id]?["font"]).flatMap(EditorFont.init(rawValue:)) ?? hosts.state.appearance.editorFont
+                e.font = editorFont(for: p, path: shown.path)
                 e.theme = hosts.state.appearance.theme
                 e.undoLimit = desk.settings.undoDepth
+                e.viewing = p.lens == .preview
             }
             if let d = v as? DiffView { d.theme = hosts.state.appearance.theme }
             if let t = v as? TerminalView { t.commands = hosts.block(p.block)?.terminal?.commands ?? [] }
@@ -401,7 +433,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             tv.subject = subject
             tv.source = { [weak self] in self?.hosts.block(subject) }
             v = tv
-        case .preview:
+        case .preview where Lens.viewRendering(for: shown.path) == .markdown:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.delegate = self
             m.source = { [weak self] in
@@ -436,33 +468,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = w
         default:
             let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "",
-                               font: (hosts.block(p.block)?.views?[p.id]?["font"]).flatMap(EditorFont.init(rawValue:)) ?? hosts.state.appearance.editorFont,
+                               font: editorFont(for: p, path: shown.path),
                                theme: hosts.state.appearance.theme)
             e.delegate = self
-            e.onToggleFont = { [weak self] kind in
-                self?.hosts.append(.view(placement: p.id, ["font": kind.rawValue]), to: .block(p.block))
-            }
+            e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
                 return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b), archived: b.isArchived)
             }
-            e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
-            let pid = p.id, bid = p.block
-            e.onToggleMarkdown = { [weak self] rich in
-                self?.hosts.append(.view(placement: pid, ["markdown": rich ? "rich" : "raw"]), to: .block(bid))
-            }
+            e.richMarkdown = viewState(of: p)["markdown"] != "raw"
+            e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
+            // Viewed, not edited: a file that isn't Markdown, on its grey.
+            e.viewing = p.lens == .preview
             v = e
         }
+        // The other mode's top line, when ⌘↩ made this tile.
+        if let line = pendingTopLines.removeValue(forKey: p.id) {
+            (v as? EditorView)?.scroll(toTopLine: line)
+            (v as? MarkdownView)?.scroll(toTopLine: line)
+        }
         if let k = v as? KeepsViewState {
-            let id = p.id
-            k.keeper.load = { [weak self] in
-                guard let self, let b = self.shown(id)?.placement.block else { return [:] }
-                return self.hosts.block(b)?.views?[id] ?? [:]
-            }
-            k.keeper.save = { [weak self] values in
-                guard let self, let b = self.shown(id)?.placement.block else { return }
-                self.hosts.append(.view(placement: id, values), to: .block(b))
-            }
+            // The placement as made (its block and lens never change): a
+            // tile's last state is still kept as it's taken away.
+            k.keeper.load = { [weak self] in self?.viewState(of: p) ?? [:] }
+            k.keeper.save = { [weak self] values in self?.keepViewState(values, of: p) }
         }
         views[p.id] = v
         return v
@@ -775,9 +804,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackBadge { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackSwitcherView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
-            if let badge = view.superview as? StackBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
     }
@@ -790,9 +818,37 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugPills: String { content.debugPills }
-    func debugStackBadge() -> String {
+    var debugDirty: String { content.debugDirty }
+    func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
+    func debugDirtyClick() -> String {
+        guard let f = focusedShown else { return "nothing focused" }
+        gridDirtyClicked(f.id, from: content)
+        return "ok"
+    }
+
+    /// Debugging: the focused text's top line (from 0), as ⌘↩ carries it.
+    func debugTopLine() -> String {
+        guard let f = focusedShown else { return "nothing focused" }
+        if let e = views[f.id] as? EditorView { return String(format: "editor%@ %.2f caret %d", e.viewing ? " viewing" : "", e.topLine, e.caretLine) }
+        guard let m = views[f.id] as? MarkdownView else { return "not a text" }
+        var line: Double?? = nil
+        m.topLine { line = .some($0) }
+        let deadline = Date().addingTimeInterval(2)
+        while line == nil, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
+        return String(format: "page %.2f", (line ?? nil) ?? -1)
+    }
+    func debugSwitcherHover(_ i: Int) -> String { content.debugSwitcherHover(i) }
+
+    var debugSurface: NSView? { content }
+
+    func debugReadd() -> String {
         guard let f = arrangement?.focused else { return "nothing focused" }
-        return content.debugStackBadge(f)
+        return content.debugReadd(f)
+    }
+
+    func debugRightClick() -> String {
+        guard let f = arrangement?.focused else { return "nothing focused" }
+        return content.debugRightClick(f)
     }
 
     func debugBadge(_ arg: String) -> String {
@@ -909,6 +965,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
             self?.newAgent(nil)
         })
+        for a in AgentCatalog.agents(among: hosts.client(focusedHost)?.desk.agents ?? []) {
+            items.append(PaletteItem(symbol: "sparkles", title: "Launch \(a.name) Here", subtitle: a.command) { [weak self] in
+                self?.launchAgent(a.command)
+            })
+        }
         items.append(PaletteItem(symbol: "cpu", title: "Processes on \(hosts.label(of: focusedHost))", subtitle: "Action") { [weak self] in
             self?.showProcesses(nil)
         })
@@ -924,23 +985,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             self.show(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
         })
-        // The file shown, the other way: edit a preview's, preview an editor's.
-        if let f = focusedShown, let path = f.path, let a = arrangement, let column = a.columnIndex(of: f.id) {
-            if f.lens == .preview {
-                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File", subtitle: "⌥⌘P") { [weak self] in
-                    self?.toggleEditPreview(nil)
-                })
-                items.append(PaletteItem(symbol: "pencil.line", title: "Edit This File Beside", subtitle: "⌥⇧⌘P") { [weak self] in
-                    self?.editPreviewBeside(nil)
-                })
-            } else if f.lens == .editor, Lens.isMarkdown(path) {
-                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File", subtitle: "⌥⌘P") { [weak self] in
-                    self?.toggleEditPreview(nil)
-                })
-                items.append(PaletteItem(symbol: "doc.richtext", title: "Preview This File Beside", subtitle: "⌥⇧⌘P") { [weak self] in
-                    self?.editPreviewBeside(nil)
-                })
-            }
+        // The text shown, the other way: edit what's viewed, view what's edited.
+        if let f = focusedShown, f.lens.isText, f.block?.kind == .text, let a = arrangement, let column = a.columnIndex(of: f.id) {
+            let viewing = f.lens == .preview
+            items.append(PaletteItem(symbol: viewing ? "pencil.line" : "eye", title: viewing ? "Edit This" : "View This", subtitle: "⌘↩") { [weak self] in
+                self?.toggleEditPreview(nil)
+            })
+            items.append(PaletteItem(symbol: viewing ? "pencil.line" : "eye", title: viewing ? "Edit This Beside" : "View This Beside", subtitle: "⌥⇧⌘P") { [weak self] in
+                self?.editPreviewBeside(nil)
+            })
             _ = column
             if let dir = f.block?.place {
                 items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
@@ -1170,6 +1223,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// × on a badge's link: the edge ends, in both readings at once.
     func gridBreakLink(_ link: String) { hosts.propose(.unlink(link)) }
 
+    /// A tile's dirty dot clicked: its text saved. Changed on disk under
+    /// the edits too, a choice: the file as it is now, or the edits over it.
+    func gridDirtyClicked(_ placement: PlacementID, from view: NSView) {
+        guard let p = arrangement?.placement(placement), let t = hosts.block(p.block)?.text, t.isDirty else { return }
+        focus(placement)
+        guard t.stale else { return save(p.block, from: placement) }
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Reload from Disk, Losing the Edits", symbol: "arrow.clockwise") { [weak self] in
+            self?.hosts.propose(.readFile(p.block))
+        })
+        menu.addItem(ClosureMenuItem("Overwrite with the Edits", symbol: "square.and.arrow.down") { [weak self] in
+            self?.save(p.block, from: placement)
+        })
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: view)
+    }
+
+    /// Saves a text block: through an editor on it (this tile's first),
+    /// which keeps its own count of what's saved and names a note's file;
+    /// else straight to its file.
+    private func save(_ block: BlockID, from placement: PlacementID) {
+        let editors = views.values.compactMap { $0 as? EditorView }.filter { $0.block == block }
+        if let e = editors.first(where: { $0.placement == placement }) ?? editors.first { return e.saveDocument(nil) }
+        guard let b = hosts.block(block), b.path != nil, let t = b.text else { return NSSound.beep() }
+        hosts.propose(.writeFile(block, version: t.version, text: t.text.string))
+    }
+
     /// The bar's ×: the tile taken off, as ⌘W takes the focused one.
     func gridClose(_ placement: PlacementID) {
         guard let a = arrangement, let id = selected, let block = a.placement(placement)?.block else { return }
@@ -1303,8 +1382,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
-            guard let f = focusedShown, let path = f.path else { return false }
-            return f.lens == .preview || (f.lens == .editor && Lens.isMarkdown(path))
+            guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
+            let viewing = f.lens == .preview
+            item.title = item.action == #selector(toggleEditPreview(_:)) ? (viewing ? "Edit" : "View") : (viewing ? "Edit Beside" : "View Beside")
+            return true
         case #selector(setTextHistory(_:)):
             item.state = item.tag == desk.settings.textHistoryDays ? .on : .off
         case #selector(setTranscriptHistory(_:)):
@@ -1862,7 +1943,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Each host's workspaces, in its desk's order, with any of its that
         // this desk has taken up.
         var byHost: [(HostClient, [OrgNode])] = []
-        for c in hosts.all {
+        for c in hosts.ordered {
             var ids = c.desk.order.filter { $0.host == c.host }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
             var nodes = ids.compactMap(workspace)
@@ -1977,7 +2058,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return node
         }
         var roots: [OrgNode] = []
-        let clients = hosts.all
+        let clients = hosts.ordered
         for c in clients {
             let home = c.transport.isLocal ? NSHomeDirectory() : nil
             var tree = c.node.graph.fileTree(host: c.host, home: home ?? c.home).compactMap(convert)
@@ -2299,18 +2380,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var finderSearch: BlockID?
     private var finderSearchWork: DispatchWorkItem?
 
-    /// The project the focused block is in: the nearest folder up with
-    /// `.git`, else its own folder.
+    /// The project the focused block is in: its repository's root (git
+    /// or Sapling), else its own folder.
     private func projectRoot(from cwd: String?, on: HostID) -> String {
-        var root = cwd ?? NSHomeDirectory()
-        if on == host.host {
-            var dir = root
-            while dir.count > 1 {
-                if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git")) { root = dir; break }
-                dir = dir.deletingLastPathComponent
-            }
-        }
-        return root
+        let root = cwd ?? NSHomeDirectory()
+        guard on == host.host else { return root }
+        return VCS.repository(of: root)?.root ?? root
     }
 
     /// "In Files": the host looks, a moment after the typing pauses.
@@ -2377,7 +2452,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                                 }
                                             }
                                             self.pendingJump = (b.path ?? "", at, nil)
-                                            self.show(block, lens: .editor, .here)
+                                            self.show(block, lens: Lens.default(for: .text, path: b.path), .here)
                                             self.warpPointerToFocus()
                                         }))
                 if items.count >= 300 { return items }
@@ -2569,17 +2644,42 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The pointer to a view's text cursor, or its middle, now.
     func warpPointer(to view: PaneContent) {
-        do {
-            guard let window, view.window === window else { return }
-            var rect = view.caretRectInWindow ?? view.convert(view.bounds, to: nil)
-            if rect.width > 40 || rect.height > 40 { rect = NSRect(x: rect.midX - 1, y: rect.midY - 1, width: 2, height: 2) }
-            let screen = window.convertToScreen(rect)
-            // Core Graphics counts from the main display's top left.
-            guard let main = NSScreen.screens.first else { return }
-            let point = CGPoint(x: screen.midX + 2, y: main.frame.maxY - screen.midY)
-            CGWarpMouseCursorPosition(point)
-            CGAssociateMouseAndMouseCursorPosition(1)
+        guard !Pointer.held, let window, let rect = pointerTarget(in: view) else { return }
+        let screen = window.convertToScreen(rect)
+        // Core Graphics counts from the main display's top left.
+        guard let main = NSScreen.screens.first else { return }
+        let point = CGPoint(x: screen.midX + 2, y: main.frame.maxY - screen.midY)
+        CGWarpMouseCursorPosition(point)
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
+
+    /// Where in the window the pointer goes for a view: its text cursor,
+    /// if that's in sight in the view, else the middle of what shows of
+    /// it. (A cursor scrolled out of sight is somewhere over the tiles
+    /// around it: the pointer would land in another tile.)
+    func pointerTarget(in view: PaneContent) -> NSRect? {
+        guard let window, view.window === window else { return nil }
+        let shown = view.convert(view.visibleRect, to: nil)
+        guard !shown.isEmpty else { return nil }
+        var rect = view.caretRectInWindow.flatMap { shown.contains(NSPoint(x: $0.midX, y: $0.midY)) ? $0 : nil } ?? shown
+        if rect.width > 40 || rect.height > 40 { rect = NSRect(x: rect.midX - 1, y: rect.midY - 1, width: 2, height: 2) }
+        return rect
+    }
+
+    /// Debugging: where the pointer would go for the focused tile, and
+    /// whose tile that is, without moving it.
+    func debugPointerTarget() -> String {
+        guard let a = arrangement, let f = a.focused, let view = views[f], let r = pointerTarget(in: view) else { return "none" }
+        let p = content.convert(NSPoint(x: r.midX, y: r.midY), from: nil)
+        let over = content.views.first { !$0.isHidden && $0.superview === content && $0.frame.contains(p) }
+        let name = over.flatMap { v in a.placement(v.placement).flatMap { hosts.block($0.block)?.displayTitle } } ?? "no tile"
+        var raw = "no caret"
+        if let c = view.caretRectInWindow {
+            let q = content.convert(NSPoint(x: c.midX, y: c.midY), from: nil)
+            let at = content.views.first { !$0.isHidden && $0.superview === content && $0.frame.contains(q) }
+            raw = "caret over " + (at.flatMap { v in a.placement(v.placement).flatMap { hosts.block($0.block)?.displayTitle } } ?? "no tile")
         }
+        return "over \(name)\(over?.placement == f ? " (the focused one)" : ""); \(raw)"
     }
 
     /// An editor's line, or a preview's heading, is in view: the pointer
@@ -2671,7 +2771,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Brings a block into the selected arrangement (or `arrangement`): a
     /// tile of it already there is focused instead.
-    func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil) {
+    /// `exact`: a tile of the block through the other text lens (edited,
+    /// viewed) doesn't count; one is made beside it.
+    func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil,
+              exact: Bool = false) {
         hideStateView()
         let id = arrangement ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
@@ -2690,7 +2793,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let c = a.columnIndex(of: p), let from = a.placement(p)?.block else {
                 return show(block, lens: lens, .here, kind: kind, context: context)
             }
-            events = a.bringing(block, lens: lens, inColumn: c, below: p, newPlacement: fresh)
+            events = a.bringing(block, lens: lens, inColumn: c, below: p, exact: exact, newPlacement: fresh)
             hosts.link(from: from, to: block, kind: kind, context: context)
         case .over(let p):
             // A tile of the block already here moves over the opener (as
@@ -2742,9 +2845,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A tile's block replaced in place — a listing gone into a folder, a
     /// preview gone to another page: the same tile, as a browser's window
     /// is; Go Back comes back along the trail.
-    private func replace(_ placement: PlacementID, with block: BlockID, lens: Lens) {
+    private func replace(_ placement: PlacementID, with block: BlockID, lens: Lens, as id: PlacementID? = nil) {
         guard let a = arrangement, let (c, i) = a.locate(placement) else { return }
-        let p = Placement(block: block, lens: lens)
+        let p = id.map { Placement(id: $0, block: block, lens: lens) } ?? Placement(block: block, lens: lens)
         // The column's heights as they were, the new tile in the old one's
         // place: the remove and the place in between hand room about
         // (to the next tile, from the one above), and the tile would
@@ -2770,14 +2873,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// starting from the editor's selection; placed beside what's focused.
     @objc func findInFiles(_ sender: Any?) {
         let on = focusedHost
-        var root = focusedCwd ?? NSHomeDirectory()
-        if on == host.host {
-            var dir = root
-            while dir.count > 1 {
-                if FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git")) { root = dir; break }
-                dir = dir.deletingLastPathComponent
-            }
-        }
+        let root = projectRoot(from: focusedCwd, on: on)
         var text = ""
         if let tv = window?.firstResponder as? TextView {
             let selected = tv.selectedText
@@ -2790,11 +2886,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// New Agent: a terminal running the agent command (the settings'),
     /// where the focused block is, beside it.
-    @objc func newAgent(_ sender: Any?) {
+    @objc func newAgent(_ sender: Any?) { launchAgent(desk.settings.agentCommand) }
+
+    /// An agent block running `command`, where the focused block is, on
+    /// its host, beside it.
+    func launchAgent(_ command: String) {
+        guard let client = hosts.client(focusedHost) else { return }
+        show(client.newAgent(cwd: focusedCwd, command: command), lens: .agent, .here)
+    }
+
+    /// Launch Agent Here: one item for each known agent the focused
+    /// block's host has (it's asked to look again, for next time).
+    func agentMenuItems() -> [NSMenuItem] {
         let on = focusedHost
-        guard let client = hosts.client(on) else { return }
-        let block = client.newAgent(cwd: focusedCwd, command: desk.settings.agentCommand)
-        show(block, lens: .agent, .here)
+        guard let client = hosts.client(on) else { return [] }
+        if client.isConnected { client.propose(.indexAgents) }
+        let agents = AgentCatalog.agents(among: client.desk.agents)
+        guard !agents.isEmpty else {
+            let none = NSMenuItem(title: "No Agents Found on \(hosts.label(of: on))", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            return [none]
+        }
+        return agents.map { a in ClosureMenuItem(a.name, symbol: "sparkles") { [weak self] in self?.launchAgent(a.command) } }
     }
 
     /// Processes: the focused block's host's process list, beside it.
@@ -2809,7 +2922,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = focusedHost
         guard let client = hosts.client(on) else { return }
         let path = focusedCwd ?? NSHomeDirectory()
-        let block = client.gitBlock(for: path)
+        var shown: BlockID?
+        let block = client.gitBlock(for: path) { [weak self] error in
+            // The host couldn't make it (no repository there): its tile,
+            // waiting for a block that won't come, goes, and says why.
+            guard let self, let error, let block = shown else { return }
+            if let a = self.arrangement, let t = a.tile(of: block, lens: .git) { self.appendToSelected([.remove(t.id)]) }
+            guard let window = self.window else { return }
+            let alert = NSAlert()
+            alert.messageText = "No source control here"
+            alert.informativeText = error
+            alert.beginSheetModal(for: window)
+        }
+        shown = block
         show(block, lens: .git, .here)
     }
 
@@ -2827,7 +2952,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func open(path: String, line: Int, column: Int?, on: HostID, from: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
-        show(block, lens: .editor, opener(from), kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
+        show(block, lens: Lens.default(for: .text, path: path), opener(from), kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
         warpPointerToFocus()
     }
 
@@ -2944,7 +3069,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                         run: { [weak self] in self?.focus(id); self?.warpPointerToFocus() }))
                 // A text's headings, as Markdown has them, each gone to in
                 // its editor by line, in its preview by index.
-                guard b.kind == .text, let text = b.text?.text.string, Lens.isMarkdown(b.path ?? ".md") || p.lens == .preview else { continue }
+                guard b.kind == .text, let text = b.text?.text.string, Lens.viewRendering(for: b.path) == .markdown else { continue }
                 var index = 0
                 var line = 0
                 var inFence = false
@@ -2972,35 +3097,42 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return (items, start)
     }
 
+    /// ⌘↩: the focused text between being edited and viewed — Markdown
+    /// rendered (a note's too), anything else as it is on the grey of a
+    /// page of code — in the same tile.
     @objc func toggleEditPreview(_ sender: Any?) {
-        guard let f = focusedShown, let path = f.path, let a = arrangement, a.locate(f.id) != nil else { return }
-        let other: Lens
-        switch f.lens {
-        case .preview: other = .editor
-        case .editor where Lens.isMarkdown(path): other = .preview
-        default: return
-        }
-        // The other lens over this one, this one behind it until the
-        // other is taken off (⌘W) — or, if this one is behind the other
-        // already (toggled back), simply that one again.
-        if let (c, i) = a.locate(f.id), i + 1 < a.columns[c].count, a.columns[c][i + 1].block == f.placement.block, a.isStashed(a.columns[c][i + 1].id) {
-            let behind = a.columns[c][i + 1].id
-            appendToSelected([.remove(f.id), .focus(behind)])
-            return
-        }
-        showOver(f.placement.block, lens: other, over: f.id)
+        guard let f = focusedShown else { return }
+        toggleMode(f.id)
     }
 
-    /// ⌥⇧⌘P: the other lens beside this one, both in view.
-    @objc func editPreviewBeside(_ sender: Any?) {
-        guard let f = focusedShown, let path = f.path else { return }
-        let other: Lens
-        switch f.lens {
-        case .preview: other = .editor
-        case .editor where Lens.isMarkdown(path): other = .preview
-        default: return
+    /// A text's tile from editing to viewing or back, in place: what was
+    /// at its top still there, the caret (from an editor) and the tile's
+    /// font going along.
+    func toggleMode(_ id: PlacementID) {
+        guard let a = arrangement, let p = a.placement(id), p.lens.isText, hosts.block(p.block)?.kind == .text else { return }
+        let other: Lens = p.lens == .editor ? .preview : .editor
+        let carry = { [weak self] (top: Double?) in
+            guard let self, let a = self.arrangement, a.placement(id) != nil else { return }
+            let fresh = ULID.make()
+            var events: [Event] = []
+            if let e = self.views[id] as? EditorView { events.append(.selection(placement: fresh, ranges: e.textView.selections.map(\.range))) }
+            let kept = (self.hosts.block(p.block)?.views?[id] ?? [:]).filter { ["font", "markdown"].contains($0.key) }
+            if !kept.isEmpty { events.append(.view(placement: fresh, kept)) }
+            if !events.isEmpty { self.hosts.append(events, to: .block(p.block)) }
+            if let top { self.pendingTopLines[fresh] = top }
+            self.replace(id, with: p.block, lens: other, as: fresh)
+            if a.full == id { self.appendToSelected([.full(fresh)]) }
         }
-        show(f.placement.block, lens: other, .besideOpener(f.id), kind: .source, context: other == .editor ? "edited beside" : "previewed beside")
+        if let e = views[id] as? EditorView { carry(e.topLine) }
+        else if let m = views[id] as? MarkdownView { m.topLine(carry) }
+        else { carry(nil) }
+    }
+
+    /// ⌥⇧⌘P: the other mode beside this one, both in view.
+    @objc func editPreviewBeside(_ sender: Any?) {
+        guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return }
+        let other: Lens = f.lens == .preview ? .editor : .preview
+        show(f.placement.block, lens: other, .besideOpener(f.id), kind: .source, context: other == .editor ? "edited beside" : "viewed beside", exact: true)
     }
 
     /// Opens what a link in a placement points at: Markdown files in a
@@ -3062,7 +3194,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            show(hosts.textBlock(for: base, on: on), lens: .editor, place, context: target)
+            show(hosts.textBlock(for: base, on: on), lens: Lens.default(for: .text, path: base), place, context: target)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
@@ -3073,7 +3205,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } else if Self.isHTML(path), on == host.host {
             show(host.webBlock(forFile: path), lens: .web, place, context: target)
         } else if Self.isEditable(path) {
-            show(hosts.textBlock(for: path, on: on), lens: .editor, place, context: target)
+            show(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
             show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
         } else {
@@ -3100,7 +3232,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
         } else {
             if let line { pendingJump = (path, line, column) }
-            show(hosts.textBlock(for: path, on: on), lens: Lens.isMarkdown(path) ? .preview : .editor, place, context: target)
+            show(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
         }
     }
 
@@ -3265,7 +3397,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if wait, !known { made.append(block) }
             // With --wait ($EDITOR), a file is for editing, Markdown too.
             let lens: Lens = isDir || path.hasSuffix("/") ? .directory
-                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (Lens.isMarkdown(path) && !wait ? .preview : .editor)
+                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (wait ? .editor : Lens.default(for: .text, path: path))
             let before = Set(arrangement?.placements.map(\.id) ?? [])
             if wait, placed.isEmpty, let opener = besidePlacement {
                 // $EDITOR: over the terminal that ran it, which comes back
@@ -3694,7 +3826,9 @@ extension MainWindowController: GridDelegate {
     }
 
     func gridResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
-    func gridResized(heights: [PlacementID: Double]) { appendToSelected([.heights(heights)]) }
+    func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)]) {
+        appendToSelected(stashed.map { Event.stash($0.0, behind: $0.1) } + [.heights(heights)])
+    }
     func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
     func gridDragAtLeftEdge() {
@@ -3774,15 +3908,19 @@ extension MainWindowController: GridDelegate {
             menu.addItem(.separator())
             for item in keepingItems(for: b) { menu.addItem(item) }
         }
+        let agents = NSMenu()
+        for item in agentMenuItems() { agents.addItem(item) }
+        let launch = NSMenuItem(title: "Launch Agent Here", action: nil, keyEquivalent: "")
+        launch.setSymbol("sparkles", size: 12)
+        launch.submenu = agents
+        menu.addItem(launch)
         menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
             self?.linksCenter = block
             self?.setOrganization(.links)
         })
-        if let b = hosts.block(block), b.kind == .text, let path = b.path {
-            let other: Lens? = p.lens == .preview ? .editor : (p.lens == .editor && Lens.isMarkdown(path) ? .preview : nil)
-            if let other {
-                menu.addItem(ClosureMenuItem(other == .editor ? "Edit" : "Preview", symbol: other == .editor ? "pencil" : "doc.richtext") { [weak self] in self?.replace(placement, with: block, lens: other) })
-            }
+        if let b = hosts.block(block), b.kind == .text, p.lens.isText {
+            let viewing = p.lens == .preview
+            menu.addItem(ClosureMenuItem(viewing ? "Edit" : "View", symbol: viewing ? "pencil" : "eye", key: "\r") { [weak self] in self?.toggleMode(placement) })
         }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
@@ -3963,7 +4101,7 @@ extension MainWindowController: EditorViewDelegate {
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
-        show(block, lens: .editor, opener(view.placement), context: view.lineAtCaret)
+        show(block, lens: Lens.default(for: .text, path: path), opener(view.placement), context: view.lineAtCaret)
     }
 
     /// A server's edits to other files on the block's host: files that are
@@ -4120,6 +4258,24 @@ extension MainWindowController: SearchViewDelegate {
 extension MainWindowController: TerminalViewDelegate {
     func terminal(_ view: TerminalView, open target: String, over: Bool) {
         open(target, from: view.placement, over: over)
+    }
+
+    /// A ⌘-clicked word that isn't a link to ghostty (`ls` prints a folder
+    /// as a bare name): a folder by that name where the terminal is opens
+    /// as a listing; anything else, nothing. On another host, what can't
+    /// be looked at from here is taken for a folder when it ends in /.
+    func terminal(_ view: TerminalView, openFolder name: String, over: Bool) {
+        let word = name.trimmingCharacters(in: CharacterSet(charactersIn: "'\"`,;"))
+        guard !word.isEmpty else { return }
+        guard view.block.host == host.host else {
+            if word.hasSuffix("/") { open(word, from: view.placement, over: over) }
+            return
+        }
+        var path = (word as NSString).expandingTildeInPath
+        if !path.hasPrefix("/"), let base = hosts.block(view.block)?.terminal?.cwd { path = (base as NSString).appendingPathComponent(path) }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return }
+        open(word, from: view.placement, over: over)
     }
 
     /// A command from a terminal's scrubber (§3.8): a note of it and its
@@ -4344,6 +4500,7 @@ extension MainWindowController: OrganizationViewDelegate {
         switch item {
         case .block(let b): return (b, nil)
         case .arrangement(let a): return (a, nil)
+        case .host: return nil
         case .placement(let p):
             for id in allWorkspaces {
                 if let a = hosts.arrangement(id), let placed = a.placement(p) { return (placed.block, (id, placed)) }
@@ -4353,11 +4510,16 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationCanDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool {
+        // Hosts reordered among themselves, wherever they head the rows.
+        if case .host = item { return (organization == .desk || organization == .files) && node == nil && index >= 0 }
         guard organization == .desk else { return false }
         switch item {
-        case .arrangement:
-            // Reordered among the top-level rows.
-            return node == nil && index >= 0
+        case .host:
+            return false
+        case .arrangement(let a):
+            // Reordered among the top-level rows, or among its host's.
+            if let node { return node.id == "host:\(a.host.raw)" && index >= 0 }
+            return index >= 0
         case .block, .placement:
             if let node { return node.arrangement != nil || node.id.hasPrefix("host:") }
             return index >= 0
@@ -4365,8 +4527,25 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool {
+        if case .host(let h) = item {
+            // Among the hosts as the sidebar shows them.
+            var order = hosts.ordered.map(\.host)
+            guard node == nil, let from = order.firstIndex(of: h) else { return false }
+            order.remove(at: from)
+            order.insert(h, at: min(from < index ? index - 1 : index, order.count))
+            hosts.setHostOrder(order)
+            return true
+        }
         if case .arrangement(let a) = item {
-            guard node == nil, let from = allWorkspaces.firstIndex(of: a) else { return false }
+            if let node {
+                // Among its host's workspaces, which lead its rows.
+                guard node.id == "host:\(a.host.raw)", let client = hosts.client(of: a),
+                      let from = client.desk.order.firstIndex(of: a) else { return false }
+                let to = min(from < index ? index - 1 : index, client.desk.order.count - 1)
+                if to != from { sidebarMove(a, to: to) }
+                return true
+            }
+            guard let from = allWorkspaces.firstIndex(of: a) else { return false }
             let to = from < index ? index - 1 : index
             if to != from { sidebarMove(a, to: to) }
             return true
