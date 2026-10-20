@@ -404,8 +404,9 @@ when you find it again.
   and blocked; done and failed stay, read once you attend to the block
   by focusing it. A busy terminal that says nothing is working.
   Searches, git and diff blocks report as the host works for them. One
-  glyph says it wherever a block is named — a thin arc turning (or
-  filling, when the program says how far) for working, an amber ring
+  glyph says it wherever a block is named — three dots with the lit one
+  travelling for working (a thin arc filling, when the program says how
+  far), an amber ring
   with a dot for a block that needs you, a filled check for done and
   not read yet (red for failed), a plain check once read, a moon for a
   terminal gone inactive — in each tile's pill, the sidebar's rows and

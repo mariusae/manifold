@@ -36,7 +36,7 @@ final class SidebarView: NSView {
     var pinned = false { didSet { updateChrome() } }
     /// The organizations to choose from, under the header; the filter
     /// over any of them; the tree.
-    private let organizations = NSSegmentedControl(images: Organization.allCases.map { Theme.symbol($0.symbol, size: 12)! }, trackingMode: .selectOne, target: nil, action: nil)
+    private let organizations = NSSegmentedControl(images: Organization.allCases.map { Theme.symbol($0.symbol, size: 13, weight: .medium)! }, trackingMode: .selectOne, target: nil, action: nil)
     private let filter = NSSearchField()
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
@@ -81,7 +81,8 @@ final class SidebarView: NSView {
         card.addSubview(moreButton)
 
         organizations.segmentStyle = .capsule
-        organizations.controlSize = .small
+        organizations.controlSize = .regular
+        organizations.segmentDistribution = .fillEqually
         for (i, org) in Organization.allCases.enumerated() { organizations.setToolTip(org.title, forSegment: i) }
         organizations.selectedSegment = 0
         organizations.target = self
@@ -116,7 +117,10 @@ final class SidebarView: NSView {
         moreButton.frame = NSRect(x: bounds.width - 54, y: bounds.height - 30, width: 20, height: 20)
         newButton.frame = NSRect(x: bounds.width - 78, y: bounds.height - 30, width: 20, height: 20)
         var top = bounds.height - Self.headerHeight
-        organizations.frame = NSRect(x: 10, y: top - Self.chooserHeight + 4, width: bounds.width - 20, height: 22)
+        // The control at the height it wants, centred in its band, its
+        // segments sharing the width, so the symbols sit centred.
+        let h = ceil(organizations.fittingSize.height)
+        organizations.frame = NSRect(x: 10, y: top - Self.chooserHeight + ((Self.chooserHeight - h) / 2).rounded(), width: bounds.width - 20, height: h)
         top -= Self.chooserHeight
         filter.frame = NSRect(x: 10, y: top - Self.filterHeight + 5, width: bounds.width - 20, height: 22)
         top -= Self.filterHeight

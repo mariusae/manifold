@@ -1,9 +1,9 @@
 import AppKit
 import ManifoldCore
 
-/// A block's status in one glyph (§3.7), drawn wherever its name is: a
-/// thin arc turning for working (filling clockwise from the top when the
-/// program says how far), an amber ring with a dot for a block that needs
+/// A block's status in one glyph (§3.7), drawn wherever its name is:
+/// three dots with the lit one travelling for running (a thin arc filling
+/// clockwise from the top when the program says how far), an amber ring with a dot for a block that needs
 /// you, a check in a faint ring for done and not yet read (red for
 /// failed), a plain grey check once read, and a moon for a terminal gone
 /// inactive.
@@ -127,6 +127,16 @@ final class StatusGlyph: NSView {
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
+        case .working(nil):
+            // Running, with no word of how far: three dots, the lit one
+            // travelling along, as a typing indicator goes.
+            let lit = Int(phase / 0.4) % 3
+            for i in 0..<3 {
+                let x = center.x + CGFloat(i - 1) * 4.4
+                let r: CGFloat = i == lit ? 1.6 : 1.3
+                (i == lit ? Theme.text.withAlphaComponent(0.95) : Theme.text.withAlphaComponent(0.3)).setFill()
+                NSBezierPath(ovalIn: NSRect(x: x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
+            }
         case .working, .connecting:
             let p: Int? = if case .working(let p) = look { p } else { nil }
             let arc = NSBezierPath()
