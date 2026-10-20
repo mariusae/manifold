@@ -816,13 +816,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let h = client.host
             let state = client.isConnected ? "connected" : "offline"
             items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Workspace", subtitle: state) { [weak self] in
-                guard let self else { return }
                 // The workspace lives on that host, as its terminal does.
-                guard let client = self.hosts.client(h) else { return }
-                let a = client.newArrangement()
-                let t = self.hosts.newTerminal(on: h, cwd: nil)
-                self.hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
-                self.hosts.select(a)
+                self?.newWorkspace(on: h, cwd: nil)
             })
             items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))", subtitle: state) { [weak self] in
                 self?.hosts.detach(h)
@@ -981,13 +976,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func newTab(_ sender: Any?) { showPalette() }
 
-    /// A new terminal in a new arrangement.
+    /// ⌥⌘T (and the first thing at launch): a new terminal in a new
+    /// workspace — both on the focused block's host, so a workspace begun
+    /// from a remote block lives there, for every Mac attached to that
+    /// host to see.
     @objc func newTerminal(_ sender: Any?) {
-        let cwd = focusedCwd
-        let a = host.newArrangement(after: selected?.host == host.host ? selected : nil)
-        let t = hosts.newTerminal(on: focusedHost, cwd: cwd)
+        newWorkspace(on: focusedHost, cwd: focusedCwd)
+    }
+
+    /// A new workspace on a host, with a terminal in it (at `cwd`, else
+    /// home), after the selected workspace if that's on the same host.
+    @discardableResult
+    func newWorkspace(on h: HostID, cwd: String?) -> BlockID? {
+        guard let client = hosts.client(h) else { return nil }
+        let a = client.newArrangement(after: selected?.host == h ? selected : nil)
+        let t = hosts.newTerminal(on: h, cwd: cwd)
         hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
         hosts.select(a)
+        return a
     }
 
     /// ⌘N: a new terminal beside the focused block, in a new column
@@ -2963,11 +2969,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             switch result {
             case .success(let h):
                 // The workspace lives on that host, as its terminal does.
-                guard let client = self.hosts.client(h) else { return }
-                let a = client.newArrangement()
-                let t = self.hosts.newTerminal(on: h, cwd: nil)
-                self.hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
-                self.hosts.select(a)
+                self.newWorkspace(on: h, cwd: nil)
             case .failure(let error):
                 let failed = NSAlert()
                 failed.messageText = "Couldn't attach to \(dest)"
@@ -3938,6 +3940,11 @@ extension MainWindowController: OrganizationViewDelegate {
                 guard let self, let home = c.home else { return }
                 self.openDirectory(home, on: c.host)
             })
+            let there = ClosureMenuItem("New Workspace on \(hosts.label(of: c.host))", symbol: "plus.rectangle.on.rectangle") { [weak self] in
+                self?.newWorkspace(on: c.host, cwd: nil)
+            }
+            there.isEnabled = c.link == .connected
+            menu.addItem(there)
             return menu
         }
         if let arr = node.arrangement, node.column == nil {

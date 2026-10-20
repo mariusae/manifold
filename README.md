@@ -484,6 +484,11 @@ is migrated into logs on first run.
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
+  A workspace lives on a host too, in that host's desk, which every Mac
+  attached to the host sees: New Terminal in a New Workspace (⌥⌘T)
+  makes it on the focused block's host, a host's row in the Desk
+  sidebar has New Workspace on *host* in its menu, and New… (⌘T) lists
+  one per host. What a Mac shows and settles on is its own.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
