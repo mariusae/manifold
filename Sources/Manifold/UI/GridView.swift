@@ -173,7 +173,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
                 // The bar clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
-                // the tile's menu; double-clicked, the tile is maximized.
+                // the tile's menu; the corner maximizes.
                 pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
                     if stashed {
@@ -198,10 +198,18 @@ final class GridView: NSView, NSDraggingSource {
                         return
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused; ⌘-clicked, the tile fills its column.
-                    _ = at
+                    // focused; ⌘-clicked, the tile fills its column. The
+                    // pointer follows the bar to where it was clicked, once
+                    // the tile has grown and moved it, so a click again
+                    // grows again.
                     self.delegate?.gridFocus(id)
                     if mods.contains(.command) { self.delegate?.gridFill(id) } else { self.delegate?.gridGrow(id) }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, let pill = self.pills[id], let window = pill.window, !pill.isHidden else { return }
+                        self.layoutSubtreeIfNeeded()
+                        let p = pill.convert(at, to: nil)
+                        Pointer.warp(to: window.convertPoint(toScreen: p))
+                    }
                 }
                 pill.onPathClick = { [weak self] in
                     guard let self, !stashed else { return }
@@ -1250,8 +1258,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
-            if event.clickCount == 2, !stashed { onToggleFull?() }
-            else if event.modifierFlags.contains(.shift) { onPathClick?() }
+            // Clicks in a row are clicks each (two quick ones grow twice);
+            // the corner maximizes.
+            if event.modifierFlags.contains(.shift) { onPathClick?() }
             else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
