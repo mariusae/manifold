@@ -221,6 +221,8 @@ enum DebugControl {
             // "drop <block>": a block ⇧-dragged into the focused editor.
             guard let id = BlockID(string: arg) else { return "usage: drop <host/ulid>" }
             return wc?.debugDrop(id) ?? "no window"
+        case "pills":
+            return wc?.debugPills ?? "no window"
         case "focused":
             return wc?.debugFocusedBlock?.description ?? "nothing focused"
         case "scrub":
@@ -301,6 +303,7 @@ enum DebugControl {
             var mods: NSEvent.ModifierFlags = []
             if words.contains("cmd") { mods.insert(.command) }
             if words.contains("shift") { mods.insert(.shift) }
+            if words.contains("alt") { mods.insert(.option) }
             for n in 1...count {
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,

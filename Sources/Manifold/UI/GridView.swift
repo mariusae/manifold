@@ -19,9 +19,13 @@ protocol GridDelegate: AnyObject {
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
     /// A stashed tile's pill was clicked: it comes back (§3.1).
     func gridUnstash(_ placement: PlacementID)
-    /// ⇧-clicked: it takes the top of its stack, the tile that showed
+    /// ⌥-clicked: it takes the top of its stack, the tile that showed
     /// going behind it.
     func gridSwap(_ placement: PlacementID)
+    /// ⌥-click on a shown tile's pill: the first tile behind it takes its place.
+    func gridSwapNext(_ placement: PlacementID)
+    /// ⌥-drag: the dragged tile over another, which goes into the stack behind it.
+    func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridStash(_ placement: PlacementID, behind: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
@@ -62,6 +66,8 @@ final class GridView: NSView, NSDraggingSource {
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
+    /// The drop under way covers the tile it's on (⌥-drag).
+    private var dropCovers = false
     /// While a block is dragged anywhere: a catcher over every tile takes
     /// the drag, since a web view would otherwise keep it to itself.
     var dragging = false {
@@ -137,11 +143,16 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        if mods.contains(.shift) {
+                        if mods.contains(.option) {
                             self.delegate?.gridSwap(id)
                         } else {
                             self.delegate?.gridUnstash(id)
                         }
+                        return
+                    }
+                    // ⌥-click on a shown tile's pill: the next in its stack takes its place.
+                    if mods.contains(.option) {
+                        self.delegate?.gridSwapNext(id)
                         return
                     }
                     // A pill with something to edit (a page's address) becomes
@@ -185,7 +196,7 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        if mods.contains(.shift) {
+                        if mods.contains(.option) {
                             self.delegate?.gridSwap(id)
                         } else {
                             self.delegate?.gridUnstash(id)
@@ -280,6 +291,28 @@ final class GridView: NSView, NSDraggingSource {
         return out
     }
 
+    /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
+    var debugPills: String {
+        columns.flatMap { $0 }.map { t in
+            let p = pills[t.shown.id]
+            let order = p.flatMap { subviews.firstIndex(of: $0) }.map(String.init) ?? "-"
+            let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
+            let caret = t.view.caretRectInWindow.map { NSStringFromRect($0) } ?? "none"
+            let capsule = p.map { NSStringFromRect($0.convert($0.capsule(in: $0), to: nil)) } ?? "-"
+            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) dodging=\(p?.dodging ?? false) alpha=\(p?.alphaValue ?? 0) z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule)"
+        }.joined(separator: "\n")
+    }
+
+    /// A view above another in the order, put there only when it isn't:
+    /// re-adding a layer-backed view at every layout flashes it.
+    private func keep(_ v: NSView, above other: NSView) {
+        guard let i = subviews.firstIndex(of: v), let j = subviews.firstIndex(of: other) else {
+            addSubview(v, positioned: .above, relativeTo: other)
+            return
+        }
+        if i < j { addSubview(v, positioned: .above, relativeTo: other) }
+    }
+
     private func columnFrames() -> [NSRect] {
         let n = columns.count
         guard n > 0 else { return [] }
@@ -348,7 +381,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.isHidden = false
                 pill.behind = 0
                 pill.frame = NSRect(x: 0, y: bounds.height - Self.band, width: bounds.width, height: Self.band)
-                addSubview(pill, positioned: .above, relativeTo: tile.view)
+                keep(pill, above: tile.view)
             }
             return
         }
@@ -372,7 +405,7 @@ final class GridView: NSView, NSDraggingSource {
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
-                    addSubview(pill, positioned: .above, relativeTo: tile.view)
+                    keep(pill, above: tile.view)
                 }
                 if let badge = badges[tile.shown.id] { placeBadge(badge, in: r) }
                 if shownIndex > 0, rowIndex < rowDividers.count {
@@ -396,7 +429,7 @@ final class GridView: NSView, NSDraggingSource {
                     // come out from behind it, packed close, each a step
                     // down — and go back in the same way.
                     let target = band.offsetBy(dx: 0, dy: -CGFloat(i + 1) * (TilePill.height + 2))
-                    addSubview(pill, positioned: .above, relativeTo: topPill)
+                    keep(pill, above: topPill)
                     pill.alphaValue = 1
                     if open {
                         if pill.isHidden {
@@ -430,7 +463,7 @@ final class GridView: NSView, NSDraggingSource {
             focusRing.isHidden = false
             focusRing.frame = t.view.frame
             focusRing.needsDisplay = true
-            addSubview(focusRing, positioned: .above, relativeTo: pills[focused])
+            if let p = pills[focused] { keep(focusRing, above: p) }
         } else {
             focusRing.isHidden = true
         }
@@ -572,9 +605,14 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Dragging tiles
 
+    /// Whether the tile drag under way began with ⌥ (or ⌥ is held now):
+    /// dropped on a tile, it covers it, the tile going behind it.
+    private var coverDrag = false
+
     private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView) {
         let item = NSPasteboardItem()
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
+        coverDrag = event.modifierFlags.contains(.option)
         if event.modifierFlags.contains(.shift) {
             // ⇧-drag: not the tile but what it stands for — its path (a
             // terminal's folder, a page's address) — for wherever text or
@@ -609,9 +647,11 @@ final class GridView: NSView, NSDraggingSource {
     /// column and the edge, with room above for its fan.
     private func placeBadge(_ badge: NoteBadge, in r: NSRect) {
         badge.isHidden = false
+        badge.fansDown = true
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
-        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: r.minY + 10, width: w, height: min(size.height, r.height - Self.band - 12))
+        let h = min(size.height, r.height - Self.band - 12)
+        badge.frame = NSRect(x: r.maxX - ScrubberView.width - 10 - w, y: r.maxY - Self.band - 6 - h, width: w, height: h)
     }
 
     /// Whether the drag under way is a ⇧-drag of a block's path.
@@ -625,6 +665,7 @@ final class GridView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         if !pathDrag { delegate?.gridDragChanged(false) }
         pathDrag = false
+        coverDrag = false
     }
 
     /// On a tile's pill: into the stack behind it (a placement, not the
@@ -634,6 +675,14 @@ final class GridView: NSView, NSDraggingSource {
     private func dropTarget(at point: NSPoint, dragged: PlacementID?) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)? {
         let frames = columnFrames()
         guard !frames.isEmpty else { return (0, 0, bounds, true, nil) }
+        if dragged != nil, coverDrag || NSEvent.modifierFlags.contains(.option) {
+            // ⌥: onto the tile under the pointer, whole — its shape the sign.
+            for c in columns.indices {
+                for (i, t) in columns[c].enumerated() where !isStashed(t.shown.id) && t.shown.id != dragged && !t.view.isHidden {
+                    if t.view.frame.contains(point) { return (c, i, t.view.frame, false, t.shown.id) }
+                }
+            }
+        }
         if dragged != nil {
             for c in columns.indices {
                 for (i, t) in columns[c].enumerated() where !isStashed(t.shown.id) && t.shown.id != dragged {
@@ -684,6 +733,7 @@ final class GridView: NSView, NSDraggingSource {
             dropOverlay.isHidden = false
         }
         drop = target
+        dropCovers = target.onto != nil && (coverDrag || NSEvent.modifierFlags.contains(.option))
         return .move
     }
 
@@ -696,7 +746,7 @@ final class GridView: NSView, NSDraggingSource {
         let pb = sender.draggingPasteboard
         if let placement = pb.string(forType: .manifoldPlacement) {
             if let onto = target.onto {
-                delegate?.gridStash(placement, behind: onto)
+                if dropCovers { delegate?.gridCover(placement, over: onto) } else { delegate?.gridStash(placement, behind: onto) }
             } else {
                 delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
             }
@@ -716,6 +766,7 @@ final class GridView: NSView, NSDraggingSource {
     private func hideDrop() {
         dropOverlay.isHidden = true
         drop = nil
+        dropCovers = false
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -878,8 +929,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glyph.look = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         glyph.isHidden = glyph.look == nil
         glyph.toolTip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
-        self.focused = focused
-        updateColors()
+        if self.focused != focused {
+            self.focused = focused
+            updateColors()
+        }
         needsLayout = true
     }
 
@@ -980,7 +1033,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) {
         if downAt != nil {
             let p = convert(event.locationInWindow, from: nil)
-            if event.modifierFlags.contains(.option) { onPathClick?() }
+            if event.modifierFlags.contains(.shift) { onPathClick?() }
             else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil

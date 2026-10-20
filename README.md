@@ -37,13 +37,19 @@ and Mona Sans (bundled).
   beside its pill, fan out from behind it when the pointer rests there
   (packed, opaque, the edges gone while they're out), and one clicked
   comes back on its own as that tile's lower half, the rest staying
-  behind the tile that showed; ⇧-clicked (an edge or a
+  behind the tile that showed; ⌥-clicked (an edge or a
   fanned-out pill), it takes the top instead, whole, the tile that
-  showed going behind it with the rest of the stack. A stack is one
+  showed going behind it with the rest of the stack; ⌥-click the top
+  tile's own pill and it swaps with the next behind it. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
-  behind that tile; move the top tile and the stack moves with it. Going to a stashed block from the sidebar or the
+  behind that tile; move the top tile and the stack moves with it;
+  Unstack in the pill's menu lays the whole stack out in the column.
+  Going to a stashed block from the sidebar or the
   finder brings it out too, and the pointer follows. Drop a pill on
-  another's to stash it there; ⇧-drag a pill and it's not the tile you
+  another's to stash it there; ⌥-drag it instead and it goes on top,
+  the target (and whatever was behind it) stashed behind — the outline
+  while you drag is the target tile's shape, to say so; ⇧-drag a pill
+  and it's not the tile you
   carry but its path (a terminal's folder, a page's address): dropped on
   a terminal it's typed there, quoted for the shell; on an editor,
   inserted where the pointer is; on another app, as a file or text.
@@ -82,7 +88,7 @@ and Mona Sans (bundled).
   resize them. Each tile wears a **pill** floating over its top, one
   width for all, with its symbol, name and status glyph: drag it to
   move the tile; click it to grow the tile a step, ⌘-click to fill the
-  column; click its symbol for the tile's menu; ⌥-click it for where the
+  column; click its symbol for the tile's menu; ⇧-click it for where the
   block is, folder by folder up to the root (a terminal's working
   directory likewise), each browsing that folder here, as ⌘-clicking a
   document's title does in the Finder. ⌥⌘[ and ⌥⌘] move the
@@ -117,8 +123,8 @@ and Mona Sans (bundled).
   its own. Workspaces drag from the sidebar onto the grid the same
   way, their columns coming over.
 - **Notes about blocks** (⇧⌘N with a block focused) are an edge from
-  the note to the block: the block's tile wears a badge at its lower
-  right, a note's symbol and how many, which fans the notes out above
+  the note to the block: the block's tile wears a badge at its upper
+  right, a note's symbol and how many, which fans the notes out below
   it when the pointer rests there — click one to open it beside — and
   in Links the note is under *about*, the block's notes under *notes*.
   ⇧-drag a block's pill into a note (or any Markdown text) and it lands

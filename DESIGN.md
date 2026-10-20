@@ -344,7 +344,7 @@ blocked and done.
 
 A note made with a block focused (⇧⌘N) is *about* it: an `about` edge
 from the note to the block (§3.5), one more link kind. The block's
-tile wears its notes as a badge at the lower right, fanning out when
+tile wears its notes as a badge at the upper right, fanning down when
 hovered; Links lists them under *notes* (inbound) and *about*
 (outbound). A block ⇧-dragged into a note lands as a Markdown link to
 it, `[title](manifold:host/ulid)`, and a `mention` edge; the preview

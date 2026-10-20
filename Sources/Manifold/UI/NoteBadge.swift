@@ -31,6 +31,8 @@ final class NoteBadge: NSView {
     static let step: CGFloat = 26
     static let mostWidth: CGFloat = 240
 
+    /// At a tile's upper right the fan opens downward.
+    var fansDown = false { didSet { if fansDown != oldValue { needsLayout = true } } }
     private let badge = Capsule()
     private var pills: [Capsule] = []
     private var fanned = false { didSet { if fanned != oldValue { needsLayout = true } } }
@@ -76,10 +78,12 @@ final class NoteBadge: NSView {
         super.layout()
         let w = bounds.width
         let bw = min(badge.wantedWidth, w)
-        badge.frame = NSRect(x: w - bw, y: 0, width: bw, height: Self.capsuleHeight)
+        let capsuleY = fansDown ? bounds.height - Self.capsuleHeight : 0
+        badge.frame = NSRect(x: w - bw, y: capsuleY, width: bw, height: Self.capsuleHeight)
         for (i, p) in pills.enumerated() {
             let pw = min(p.wantedWidth, w)
-            let target = NSRect(x: w - pw, y: Self.capsuleHeight + 4 + CGFloat(i) * Self.step, width: pw, height: Self.capsuleHeight)
+            let y = fansDown ? capsuleY - 4 - CGFloat(i + 1) * Self.step + (Self.step - Self.capsuleHeight) : Self.capsuleHeight + 4 + CGFloat(i) * Self.step
+            let target = NSRect(x: w - pw, y: y, width: pw, height: Self.capsuleHeight)
             if fanned {
                 if p.isHidden {
                     p.frame = badge.frame

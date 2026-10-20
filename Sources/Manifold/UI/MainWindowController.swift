@@ -696,6 +696,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
     }
 
+    var debugPills: String { content.debugPills }
+
     func debugStack(swap: Bool, index: Int = 0) -> String {
         guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
         // The stack as the fan shows it: those stashed above the first
@@ -703,7 +705,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
         if swap, index < behind.count { gridSwap(behind[index].id) }
         guard let b = arrangement else { return "gone" }
-        return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?") \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
+        return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?")#\($0.id.suffix(4)) \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
     }
 
     func debugDescribe() -> String {
@@ -3151,7 +3153,35 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.unstashing(placement))
     }
 
-    /// ⇧-click on a stashed pill: that tile shows where the stack's top
+    /// ⌥-click on a shown tile's pill: the first tile behind it takes its place.
+    func gridSwapNext(_ placement: PlacementID) {
+        guard let a = arrangement, let (c, _) = a.locate(placement),
+              let next = a.columns[c].first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }) else { return NSSound.beep() }
+        gridSwap(next.id)
+    }
+
+    /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
+    /// stack going behind it.
+    func gridCover(_ placement: PlacementID, over target: PlacementID) {
+        guard let a = arrangement, placement != target, let (c, _) = a.locate(target) else { return }
+        var column = a.columns[c]
+        column.removeAll { $0.id == placement }
+        guard let i = column.firstIndex(where: { $0.id == target }) else { return }
+        appendToSelected([.move(placement, column: c, at: i + 1), .stash(target, behind: placement), .focus(placement)])
+    }
+
+    /// Unstack: every tile behind this one shows, sharing its room.
+    func gridUnstackAll(_ placement: PlacementID) {
+        guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
+        let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }
+        guard !behind.isEmpty else { return }
+        let share = a.height(of: placement) / Double(behind.count + 1)
+        var heights: [PlacementID: Double] = [placement: share]
+        for t in behind { heights[t.id] = share }
+        appendToSelected([.heights(heights)])
+    }
+
+    /// ⌥-click on a stashed pill: that tile shows where the stack's top
     /// did, and the top goes behind it.
     func gridSwap(_ placement: PlacementID) {
         guard let a = arrangement, a.isStashed(placement), let top = a.tile(behind: placement) else { return gridUnstash(placement) }
@@ -3245,6 +3275,9 @@ extension MainWindowController: GridDelegate {
         let maximized = a.full == placement
         menu.addItem(ClosureMenuItem(maximized ? "Restore" : "Maximize", symbol: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") { [weak self] in self?.gridToggleFull(placement) })
         menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
+        if let c = a.columnIndex(of: placement), a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }) {
+            menu.addItem(ClosureMenuItem("Unstack", symbol: "square.stack.3d.up.slash") { [weak self] in self?.gridUnstackAll(placement) })
+        }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
             menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down", key: "m") { [weak self] in

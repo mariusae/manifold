@@ -937,3 +937,25 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(abs(a.height(of: top.id) - a.height(of: t2.id)) < 0.001)
     #expect(a.focused == t2.id)
 }
+
+
+@Test func aTileDraggedOverAnotherCoversItWithItsStackBehind() {
+    var a = ArrangementState()
+    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .editor)
+    let z = Placement(block: BlockID(), lens: .web), w = Placement(block: BlockID(), lens: .terminal)
+    a.apply(.place(x, column: 0, at: 0))
+    a.apply(.place(y, column: 0, at: 1))
+    a.apply(.place(z, column: 1, at: 0))
+    a.apply(.place(w, column: 1, at: 1))
+    a.apply(.stash(w.id, behind: z.id))
+    // z (with w behind it) ⌥-dragged over y: z takes y's place and room, y behind it, w still behind z.
+    var column = a.columns[0]
+    column.removeAll { $0.id == z.id }
+    let i = column.firstIndex { $0.id == y.id }!
+    for e in [Event.move(z.id, column: 0, at: i + 1), .stash(y.id, behind: z.id), .focus(z.id)] { a.apply(e) }
+    #expect(a.columns.count == 1)
+    #expect(a.shownTiles(inColumn: 0).map(\.id) == [x.id, z.id])
+    #expect(a.stashedTiles(inColumn: 0).map(\.id).sorted() == [y.id, w.id].sorted())
+    #expect(abs(a.height(of: x.id) - 0.5) < 0.001 && abs(a.height(of: z.id) - 0.5) < 0.001)
+    #expect(a.focused == z.id)
+}
