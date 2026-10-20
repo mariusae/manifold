@@ -625,7 +625,7 @@ host. Opening an entry places its block beside the listing and links it.
 Each its kind's natural view: PDFKit and an image view (zoom, pages); a
 side-by-side and inline diff; git status, log and blame as lists that open
 diffs and files; search results grouped by file with context, live while
-running; a process list (sort, filter, signal); an agent's transcript with
+running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.
 
 ### 7.6 Web

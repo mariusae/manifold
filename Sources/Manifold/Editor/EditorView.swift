@@ -296,14 +296,26 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     func refreshPills() { textView.refreshPills() }
     var onToggleMarkdown: ((_ rich: Bool) -> Void)?
 
+    /// The font switched from the pill's menu: this tile's, kept with its view state.
+    var onToggleFont: ((EditorFont) -> Void)?
+
     var pillItems: [NSMenuItem] {
-        guard hasOutline else { return [] }
-        let item = ClosureMenuItem(richMarkdown ? "Show Raw Markdown" : "Show Formatted", symbol: richMarkdown ? "textformat.abc" : "text.alignleft") { [weak self] in
-            guard let self else { return }
-            self.richMarkdown.toggle()
-            self.onToggleMarkdown?(self.richMarkdown)
+        var items: [NSMenuItem] = []
+        if hasOutline {
+            items.append(ClosureMenuItem(richMarkdown ? "Show Raw Markdown" : "Show Formatted", symbol: richMarkdown ? "textformat.abc" : "text.alignleft") { [weak self] in
+                guard let self else { return }
+                self.richMarkdown.toggle()
+                self.onToggleMarkdown?(self.richMarkdown)
+            })
         }
-        return [item]
+        // The other kind of font than the one in use, for this tile.
+        let other: EditorFont = font == .monospaced ? .proportional : .monospaced
+        items.append(ClosureMenuItem(other == .monospaced ? "Fixed-Width Font" : "Variable-Width Font", symbol: other == .monospaced ? "textformat.123" : "textformat") { [weak self] in
+            guard let self else { return }
+            self.font = other
+            self.onToggleFont?(other)
+        })
+        return items
     }
 
     /// The block's host can't be reached (§8): read, not written.

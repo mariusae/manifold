@@ -151,6 +151,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return nil
     }
 
+    /// The focused tile at the last render: a focus that moved takes the
+    /// keyboard with it; one that didn't follows the keyboard.
+    private var lastFocused: PlacementID?
+
     func render() {
         guard let window else { return }
         if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
@@ -216,16 +220,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                let focused = a.focused, let view = views[focused], view.superview != nil,
                let responder = window.firstResponder as? NSView, !responder.isDescendant(of: view) {
                 // Not while something is over the window with the keyboard.
-                if let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
+                if focused == lastFocused,
+                   let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
                    a.placement(typing) != nil, !a.isStashed(typing) {
-                    // The keyboard is in another tile (typing went on through
-                    // a change of focus): the tile focus follows it, rather
-                    // than the keyboard being taken from under the typing.
+                    // The tile focus didn't move but the keyboard is in
+                    // another tile (typing went on there): the focus follows
+                    // it, rather than the keyboard being taken from under
+                    // the typing.
                     focus(typing)
                 } else {
+                    // The focus moved (a go-to, a click, a new tile): the
+                    // keyboard goes with it.
                     window.makeFirstResponder(view.focusView)
                 }
             }
+            lastFocused = a.focused
             for case let t as TerminalView in views.values { t.syncFocus() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
@@ -334,7 +343,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.offline = shown.offline
                 e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
-                e.font = hosts.state.appearance.editorFont
+                e.font = (hosts.block(p.block)?.views?[p.id]?["font"]).flatMap(EditorFont.init(rawValue:)) ?? hosts.state.appearance.editorFont
                 e.theme = hosts.state.appearance.theme
                 e.undoLimit = desk.settings.undoDepth
             }
@@ -398,9 +407,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             w.source = { [weak self] in self?.hosts.block(p.block) }
             v = w
         default:
-            let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "", font: hosts.state.appearance.editorFont,
+            let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "",
+                               font: (hosts.block(p.block)?.views?[p.id]?["font"]).flatMap(EditorFont.init(rawValue:)) ?? hosts.state.appearance.editorFont,
                                theme: hosts.state.appearance.theme)
             e.delegate = self
+            e.onToggleFont = { [weak self] kind in
+                self?.hosts.append(.view(placement: p.id, ["font": kind.rawValue]), to: .block(p.block))
+            }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
                 return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b))
@@ -2352,6 +2365,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         events += [.move(tile, column: c, at: i + 1), .stash(target, behind: tile), .focus(tile)]
         if a.full == target { events.append(.full(tile)) }
         appendToSelected(events)
+        warpPointerToFocus()
     }
 
     /// Brings a block into the selected arrangement (or `arrangement`): a
@@ -2391,6 +2405,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         hosts.append(events, to: .block(id))
+        // The pointer follows to what's shown (§3.1), as after a go-to.
+        if id == selected { warpPointerToFocus() }
     }
 
     /// A block **over** a tile (§3.1): placed where the tile is, with the
@@ -2409,6 +2425,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         if !again, let t = a.tile(of: block, lens: lens) {
             focus(t.id)
+            warpPointerToFocus()
             return t.id
         }
         let p = Placement(block: block, lens: lens)
@@ -2417,6 +2434,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if a.full == opener { events.append(.full(p.id)) }
         appendToSelected(events)
         if from != block { hosts.link(from: from, to: block, kind: kind, context: context) }
+        warpPointerToFocus()
         return p.id
     }
 

@@ -217,7 +217,9 @@ when you find it again.
   terminal back with the same processes still running.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). The **editor** lens is Manifold's own
-  text view: the file's text laid out with Core Text, line numbers, several
+  text view (the pill's menu switches a tile between the fixed-width
+  and variable-width font, kept per tile): the file's text laid out
+  with Core Text, line numbers, several
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
@@ -414,9 +416,11 @@ when you find it again.
   shell where the focused block is; their transcripts are kept like a
   terminal's, and they come back after a restart the same way.
 - **Processes** (File ▸ Processes) is a block per host listing what `ps`
-  sees, again every few seconds while shown: filter, sort by column, End
-  (SIGTERM) or Force End (SIGKILL) the selected one. Its controls sit
-  under the pill, and stack as the tile narrows.
+  sees, again every few seconds while shown, in tight rows by block:
+  filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
+  (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the
+  buttons or a row's menu, which also goes to the row's block. Its
+  controls sit under the pill, and stack as the tile narrows.
 
 ## Contrast correction
 
