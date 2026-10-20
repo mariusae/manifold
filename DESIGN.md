@@ -338,12 +338,16 @@ dismissing for the blocks it leads, on the client's `attend` proposal.
 
 **Indicators**, as apex's handle says what a window waits for: one
 glyph, drawn wherever a block's name is — its pill, its sidebar row, a
-finder row, a card. `working` is a ring, an arc turning while the
-program does not say how far and filled clockwise from the top as far
-as it does; `blocked` is the ring pulsing in the accent, its tooltip
-the kind and the message; `done` a filled dot in the accent; `error` a
-filled dot in red; `idle` nothing. The Dock badge counts the blocks
-blocked and done.
+finder row, a card. `working` is an open ring, three quarters of it
+turning while the program does not say how far and filled clockwise
+from the top as far as it does (OSC 9;4 progress counts); `blocked` an
+amber ring with a dot, its tooltip the kind and the message; `done` a
+filled disc with a check until attended to, then a plain check;
+`error` the same in red; `idle` nothing. In a tile's bar and a
+sidebar row the glyph sits at the right edge, in the sidebar with how
+long ago the status was reported before it, and what it said on the
+line beneath the name. The Dock badge counts the blocks blocked and
+done.
 
 **⌥ with a click** that opens something means *over*: the block goes
 over the tile clicked in, which is stashed behind it (`showOver`), as

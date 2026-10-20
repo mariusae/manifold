@@ -589,9 +589,22 @@ final class OrgRowView: NSTableCellView {
             detailIcon.isHidden = true
             return
         }
+        // The status at the right of the name's line, as apex sets it:
+        // how long ago, then the glyph at the edge.
+        func statusAtRight(_ right: inout CGFloat, y: CGFloat) {
+            if !glyph.isHidden {
+                glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: y + (17 - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+                right -= StatusGlyph.size + 8
+            }
+            if !trailing.isHidden {
+                let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
+                trailing.frame = NSRect(x: right - w, y: y + 0.5, width: w, height: 15)
+                right -= w + 8
+            }
+        }
         if let node, flat, node.style == .row, !detail.isHidden {
-            // Two lines: the name, then what it says with the glyph before
-            // it and how long ago at the right.
+            // Two lines: the name with the status at its right, then what
+            // the status says beneath, aligned with the name.
             icon.frame = NSRect(x: 2, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4
             if !count.isHidden {
@@ -599,22 +612,14 @@ final class OrgRowView: NSTableCellView {
                 count.frame = NSRect(x: right - w, y: h - 20 + 1, width: w, height: 15)
                 right -= w + 6
             }
+            statusAtRight(&right, y: h - 21)
             name.frame = NSRect(x: 22, y: h - 21, width: max(0, right - 22), height: 17)
             var x: CGFloat = 22
-            var dright = bounds.width - 6
-            if !trailing.isHidden {
-                let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
-                trailing.frame = NSRect(x: dright - w, y: 3, width: w, height: 15)
-                dright -= w + 8
-            }
-            if !glyph.isHidden {
-                glyph.frame = NSRect(x: x, y: 4, width: StatusGlyph.size, height: StatusGlyph.size)
-                x += StatusGlyph.size + 4
-            } else if !detailIcon.isHidden {
+            if !detailIcon.isHidden {
                 detailIcon.frame = NSRect(x: x, y: 4.5, width: 13, height: 12)
                 x += 16
             }
-            detail.frame = NSRect(x: x, y: 3, width: max(0, dright - x), height: 15)
+            detail.frame = NSRect(x: x, y: 3, width: max(0, bounds.width - 6 - x), height: 15)
             detail.alphaValue = 1
             glyph.alphaValue = 1
             detailIcon.alphaValue = 1
@@ -627,18 +632,7 @@ final class OrgRowView: NSTableCellView {
             count.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
             right -= w + 6
         }
-        // The status glyph goes before the detail (what the status says)
-        // when there is one; at the right otherwise.
-        let glyphLeads = !glyph.isHidden && !detail.isHidden
-        if !glyph.isHidden, !glyphLeads {
-            glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
-            right -= StatusGlyph.size + 8
-        }
-        if !trailing.isHidden {
-            let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
-            trailing.frame = NSRect(x: right - w, y: (h - 15) / 2 - 0.5, width: w, height: 15)
-            right -= w + 8
-        }
+        statusAtRight(&right, y: (h - 17) / 2)
         let nameWidth = max(0, right - 22)
         if detail.isHidden {
             name.frame = NSRect(x: 22, y: (h - 17) / 2, width: nameWidth, height: 17)
@@ -650,11 +644,7 @@ final class OrgRowView: NSTableCellView {
             name.frame = NSRect(x: 22, y: (h - 17) / 2, width: nw, height: 17)
             var x = 22 + nw + 6
             var dw = nameWidth - nw - 6
-            if glyphLeads {
-                glyph.frame = NSRect(x: x, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
-                x += StatusGlyph.size + 4
-                dw -= StatusGlyph.size + 4
-            } else if !detailIcon.isHidden {
+            if !detailIcon.isHidden {
                 detailIcon.frame = NSRect(x: x, y: (h - 12) / 2, width: 13, height: 12)
                 x += 16
                 dw -= 16
@@ -662,7 +652,7 @@ final class OrgRowView: NSTableCellView {
             detail.frame = NSRect(x: x, y: (h - 15) / 2 - 0.5, width: max(0, dw), height: 15)
             let shown = dw >= 36
             detail.alphaValue = shown ? 1 : 0
-            glyph.alphaValue = glyphLeads && !shown ? 0 : 1
+            glyph.alphaValue = 1
             detailIcon.alphaValue = shown ? 1 : 0
         }
     }

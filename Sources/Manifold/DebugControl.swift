@@ -288,12 +288,6 @@ enum DebugControl {
             guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
             wc.hosts.propose(.attend(b))
             return "ok"
-        case "attend":
-            // As focusing the block with the window key does: dismisses
-            // its done or failed status.
-            guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
-            wc.hosts.propose(.attend(b))
-            return "ok"
         case "scroll":
             // "scroll x y dy": a wheel turned dy lines over that point (window
             // coordinates from the top-left), to the view there.

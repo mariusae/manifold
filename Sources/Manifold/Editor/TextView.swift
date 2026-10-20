@@ -217,7 +217,7 @@ final class TextView: NSView, NSTextInputClient {
         needsDisplay = true
     }
 
-    /// A pill running (three travelling dots) keeps its lines redrawn.
+    /// A pill running (the ring turning) keeps its lines redrawn.
     private func updatePillTimer() {
         let running = markdown && pillLines.values.contains { $0.contains { if case .working(nil) = $0.1.status { return true } else { return false } } }
         if running, pillTimer == nil {

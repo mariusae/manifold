@@ -1572,6 +1572,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                         symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
         n.look = StatusGlyph.look(of: block)
         n.tooltip = StatusGlyph.tooltip(block)
+        n.trailing = StatusGlyph.at(of: block).map(Age.short)
         return n
     }
 
@@ -1805,6 +1806,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                     detail: notes.joined(separator: " · "))
                     if a.isStashed(p.id) { n.detailSymbol = "tray.and.arrow.down" } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
+                    n.trailing = StatusGlyph.at(of: b).map(Age.short)
                     n.arrangement = id
                     n.column = c
                     n.placement = p.id
@@ -1932,6 +1934,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block.kind, path: block.path),
                                    detail: edited, age: Self.age(f.latest))
                 node.look = StatusGlyph.look(of: block)
+                node.trailing = StatusGlyph.at(of: block).map(Age.short)
                 node.dimmed = !isActive
                 active[ObjectIdentifier(node)] = isActive
                 return node

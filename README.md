@@ -423,13 +423,14 @@ when you find it again.
   and blocked; done and failed stay, read once you attend to the block
   by focusing it. A busy terminal that says nothing is working.
   Searches, git and diff blocks report as the host works for them. One
-  glyph says it wherever a block is named — three dots with the lit one
-  travelling for working (a thin arc filling, when the program says how
-  far), an amber ring
+  glyph says it wherever a block is named — an open ring turning for
+  working (filling clockwise from the top when the program says how
+  far, as OSC 9;4 progress does), an amber ring
   with a dot for a block that needs you, a filled check for done and
   not read yet (red for failed), a plain check once read, a moon for a
-  terminal gone inactive — in each tile's pill, the sidebar's rows and
-  the finder; the Dock badge counts the blocks that need you or are
+  terminal gone inactive — at the right of each tile's bar and of the
+  sidebar's rows, with how long ago beside it there, and in the
+  finder; the Dock badge counts the blocks that need you or are
   done and unread. **Status** in the sidebar (⌥⌘5) lists blocks by it,
   the unread first and how long ago at the right. Click a group's row —
   Needs you, Done, Failed, Working, Inactive — and the surface shows its

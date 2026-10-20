@@ -1,12 +1,12 @@
 import AppKit
 import ManifoldCore
 
-/// A block's status in one glyph (§3.7), drawn wherever its name is:
-/// three dots with the lit one travelling for running (a thin arc filling
-/// clockwise from the top when the program says how far), an amber ring with a dot for a block that needs
-/// you, a check in a faint ring for done and not yet read (red for
-/// failed), a plain grey check once read, and a moon for a terminal gone
-/// inactive.
+/// A block's status in one glyph (§3.7), drawn wherever its name is: an
+/// open ring turning for running (filling clockwise from the top when the
+/// program says how far, as OSC 9;4 or 7501 progress does), an amber ring
+/// with a dot for a block that needs you, a filled disc with a check for
+/// done and not yet read (red for failed), a plain grey check once read,
+/// and a moon for a terminal gone inactive.
 final class StatusGlyph: NSView {
     enum Look: Equatable {
         case working(progress: Int?)
@@ -49,6 +49,17 @@ final class StatusGlyph: NSView {
         }
         if let t = block.terminal, t.dormantSince != nil, t.pid == nil { return .inactive }
         return nil
+    }
+
+    /// When the status shown came to be: the report's stamp; for an
+    /// inactive terminal, when its shell went; nothing for the rest.
+    static func at(of block: Block?) -> Stamp? {
+        guard let block, let look = look(of: block) else { return nil }
+        switch look {
+        case .inactive: return block.terminal?.dormantSince
+        case .archived: return nil
+        default: return block.statusRecord?.at
+        }
     }
 
     static func tooltip(_ block: Block?) -> String? {
@@ -130,33 +141,28 @@ final class StatusGlyph: NSView {
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
-        case .working(nil):
-            // Running, with no word of how far: three dots, the lit one
-            // travelling along, as a typing indicator goes.
-            let lit = Int(phase / 0.4) % 3
-            for i in 0..<3 {
-                let x = center.x + CGFloat(i - 1) * 4.4
-                let r: CGFloat = i == lit ? 1.6 : 1.3
-                (i == lit ? Theme.text.withAlphaComponent(0.95) : Theme.text.withAlphaComponent(0.3)).setFill()
-                NSBezierPath(ovalIn: NSRect(x: x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
-            }
         case .working, .connecting:
+            // Running: an open ring. With no word of how far, three
+            // quarters of it, turning; with progress, as much of it as is
+            // done, clockwise from the top over a faint track.
             let p: Int? = if case .working(let p) = look { p } else { nil }
+            let ink = look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.9)
             let arc = NSBezierPath()
-            arc.lineWidth = 1.6
+            arc.lineWidth = 2
             arc.lineCapStyle = .round
-            (look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.85)).setStroke()
             if let p {
-                let faint = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-                faint.lineWidth = 1.6
-                Theme.text.withAlphaComponent(0.18).setStroke()
-                faint.stroke()
-                Theme.text.withAlphaComponent(0.85).setStroke()
-                arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * Double(p) / 100, clockwise: true)
+                let track = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+                track.lineWidth = 2
+                Theme.text.withAlphaComponent(0.15).setStroke()
+                track.stroke()
+                if p > 0 {
+                    arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * Double(min(p, 100)) / 100, clockwise: true)
+                }
             } else {
-                let start = 90 - (phase * 240).truncatingRemainder(dividingBy: 360)
-                arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 280, clockwise: true)
+                let start = 45 - (phase * 180).truncatingRemainder(dividingBy: 360)
+                arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 270, clockwise: true)
             }
+            ink.setStroke()
             arc.stroke()
         case .needsYou:
             let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
