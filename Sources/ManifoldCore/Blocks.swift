@@ -14,6 +14,9 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case git
     case process
     case agent
+    /// An outline of another block (§3.8): its commands or headings as
+    /// a list, linked to it as its source; gone when its tile closes.
+    case outline
     /// Placements of other blocks, laid out (§3 of DESIGN.md).
     case arrangement
 
@@ -30,6 +33,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .git: "Git"
         case .process: "Processes"
         case .agent: "Agent"
+        case .outline: "Outline"
         case .arrangement: "Untitled"
         }
     }
@@ -81,6 +85,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .process: return .process
         case .agent: return .agent
         case .arrangement: return .card
+        case .outline: return .outline
         }
     }
 
@@ -399,6 +404,12 @@ public enum DiffSubject: Codable, Equatable, Sendable {
 
 /// A diff block: the subject, and the texts (or the patch) the host read
 /// for it, kept in the log so the block is a record of what was compared.
+/// An outline block's state (§3.8): the block it outlines.
+public struct OutlineState: Codable, Equatable, Sendable {
+    public var subject: BlockID?
+    public init(subject: BlockID? = nil) { self.subject = subject }
+}
+
 public struct DiffState: Codable, Equatable, Sendable {
     public var subject: DiffSubject?
     public var oldText: String?
@@ -598,6 +609,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var git: GitState?
     public var diff: DiffState?
     public var processes: ProcessState?
+    public var outline: OutlineState?
     public var arrangement: ArrangementState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
     public var status: [String: StatusRecord]?
@@ -627,6 +639,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .text: text = TextState()
         case .terminal, .agent: terminal = TerminalState()
         case .process: processes = ProcessState()
+        case .outline: outline = OutlineState()
         case .directory: directory = DirectoryState()
         case .web: web = WebState()
         case .search: search = SearchState()

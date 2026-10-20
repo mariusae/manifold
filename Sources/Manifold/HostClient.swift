@@ -373,6 +373,14 @@ final class HostClient {
         return id
     }
 
+    /// The outline block of another (§3.8): the one there is, else one made.
+    func outlineBlock(of subject: BlockID) -> BlockID {
+        if let b = node.blocks.first(where: { $0.kind == .outline && $0.outline?.subject == subject }) { return b.id }
+        let id = BlockID(host: host)
+        propose(.outline(block: id, of: subject))
+        return id
+    }
+
     func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
         guard from != to else { return }
         propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context)))
@@ -615,6 +623,10 @@ final class HostClient {
             for e in entries { clock.observe(e.at) }
             if !node.apply(entries, to: shard) {
                 NSLog("entries for %@ don't follow; waiting for a snapshot", shard.description)
+            }
+            // A block discarded by the host is gone here too.
+            if case .registry = shard {
+                for e in entries { if case let .unregister(id) = e.event { node.remove(.block(id)) } }
             }
             if let block = shard.block {
                 for e in entries {

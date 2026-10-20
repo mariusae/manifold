@@ -121,6 +121,11 @@ public enum Proposal: Codable, Sendable {
     case archive(BlockID, Bool)
     /// Into the inbox, or out of it, by hand (§3.7).
     case inbox(BlockID, Bool)
+    /// Makes an outline block of another (§3.8), linked to it as its source.
+    case outline(block: BlockID, of: BlockID)
+    /// A block gone for good — an outline whose tile closed: its log
+    /// deleted, unregistered, every replica told.
+    case discard(BlockID)
     case link(Link)
     case unlink(String)
     /// The whole history of a shard, for scrubbing.

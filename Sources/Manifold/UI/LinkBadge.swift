@@ -10,6 +10,8 @@ struct LinkCard: Equatable {
     var title: String
     var symbol: String
     var outbound: Bool
+    /// Put away: shown faded.
+    var archived = false
 }
 
 /// A block's links by hand (§3.5): a small capsule at the tile's upper
@@ -30,6 +32,7 @@ final class LinkBadge: NSView {
                 for (p, c) in zip(pills, cards) {
                     if p.title != c.title { p.title = c.title }
                     if p.symbol != c.symbol { p.symbol = c.symbol }
+                    p.alphaValue = c.archived ? 0.5 : 1
                 }
                 badge.toolTip = tooltip
                 needsLayout = true
@@ -81,6 +84,7 @@ final class LinkBadge: NSView {
             p.symbol = card.symbol
             p.title = card.title
             p.toolTip = card.outbound ? "Links to it" : "Linked from it"
+            p.alphaValue = card.archived ? 0.5 : 1
             p.isHidden = true
             let block = card.block, link = card.link
             p.onClick = { [weak self] over in self?.onOpen?(block, over) }

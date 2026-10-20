@@ -218,6 +218,8 @@ public enum Event: Codable, Equatable, Sendable {
 
     // Diff.
     case diffSubject(DiffSubject)
+    /// An outline block's subject (§3.8).
+    case outlineSubject(BlockID)
     case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
 
     // Search.
@@ -345,6 +347,9 @@ extension Block {
                 if id == rootStatusID || id.isEmpty { inbox = nil }
             }
         case let .archived(on): archived = on ? true : nil
+        case let .outlineSubject(b):
+            if outline == nil { outline = OutlineState() }
+            outline?.subject = b
         case let .inbox(on): inbox = on ? true : nil
         case .shell(.ended), .shell(.dormant):
             // The process gone: what was working or blocked is no more;

@@ -380,9 +380,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             v = pv
         case .outline:
+            // An outline block shows its subject's commands or headings;
+            // an older outline placed as a lens on the block itself still does.
             let tv = OutlineLensView(placement: p.id, block: p.block)
             tv.delegate = self
-            tv.source = { [weak self] in self?.hosts.block(p.block) }
+            let subject = hosts.block(p.block)?.outline?.subject ?? p.block
+            tv.subject = subject
+            tv.source = { [weak self] in self?.hosts.block(subject) }
             v = tv
         case .preview:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
@@ -427,7 +431,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
-                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b))
+                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b), archived: b.isArchived)
             }
             e.richMarkdown = hosts.block(p.block)?.views?[p.id]?["markdown"] != "raw"
             let pid = p.id, bid = p.block
@@ -607,6 +611,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             hosts.client(of: id)?.removeWorkspace(id)
             hosts.select(allWorkspaces.first { $0 != id })
         }
+        discardIfUnplaced(block)
     }
 
     // MARK: Sidebar
@@ -1071,13 +1076,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for c in hosts.all {
             for e in c.node.graph.edges(from: block, kind: .link(.linked)) where e.isLive {
                 guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true))
+                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true, archived: b.isArchived))
             }
         }
         for c in hosts.all {
             for e in c.node.graph.edges(to: block, kind: .link(.linked)) where e.isLive {
                 guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false))
+                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false, archived: b.isArchived))
             }
         }
         return cards
@@ -1175,7 +1180,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Taken off, a tile's room goes to the first of the stack
             // behind it, if there is one, which comes back where it was
             // and takes the focus (the model's doing); else to the next.
+            let block = a.placement(f)?.block
             hosts.append([.remove(f)], to: .block(id))
+            if let block { discardIfUnplaced(block) }
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
@@ -1984,6 +1991,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
                                        detail: card.detail + (card.at.map { " · " + Age.ago($0) } ?? ""), age: Self.age(card.at))
                     node.look = StatusGlyph.look(of: hosts.block(card.block))
+                    // An archived block, linked to: faded, as put away.
+                    node.dimmed = hosts.block(card.block)?.isArchived == true
                     node.loadChildren = { bunches(of: card.block, prefix: cid) }
                     return node
                 }
@@ -3586,7 +3595,7 @@ extension MainWindowController: GridDelegate {
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if [.terminal, .agent, .editor, .preview].contains(p.lens) {
             menu.addItem(ClosureMenuItem("Show Outline Beside", symbol: "list.bullet.rectangle") { [weak self] in
-                self?.show(block, lens: .outline, .besideOpener(placement), kind: .opened, context: "outline")
+                self?.showOutline(of: block, beside: placement)
             })
         }
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
@@ -3700,11 +3709,27 @@ extension MainWindowController: EditorViewDelegate {
     /// An outline's entry clicked: the block's tile goes there — its
     /// terminal to the command's row, its editor or preview to the
     /// heading; with no tile of it shown, one is opened beside the outline.
+    /// An outline block of another (§3.8), beside its tile: a graph node
+    /// of its own, linked to its subject as its source, gone when closed.
+    func showOutline(of block: BlockID, beside placement: PlacementID) {
+        guard let client = hosts.client(block.host) else { return }
+        show(client.outlineBlock(of: block), lens: .outline, .besideOpener(placement), kind: .opened, context: "outline")
+    }
+
+    /// An outline block whose last tile closed is discarded: it was only
+    /// ever a view of its subject.
+    private func discardIfUnplaced(_ block: BlockID) {
+        guard let b = hosts.block(block), b.kind == .outline,
+              !allWorkspaces.contains(where: { hosts.arrangement($0)?.placements(of: block).isEmpty == false }) else { return }
+        hosts.propose(.discard(block))
+    }
+
     func outline(_ view: OutlineLensView, go entry: OutlineLensView.Entry) {
-        let shown = views.values.filter { $0.block == view.block && $0.superview != nil && !$0.isHidden && !($0 is OutlineLensView) }
-        if shown.isEmpty, let b = hosts.block(view.block) {
+        let subject = view.subject ?? view.block
+        let shown = views.values.filter { $0.block == subject && $0.superview != nil && !$0.isHidden && !($0 is OutlineLensView) }
+        if shown.isEmpty, let b = hosts.block(subject) {
             if let path = b.path, let line = entry.line { pendingJump = (path, line + 1, nil) }
-            show(view.block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(view.placement))
+            show(subject, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(view.placement))
             return
         }
         for v in shown {
@@ -4212,7 +4237,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: self = .done
         case .failed: self = .failed
         case .working: self = .working
-        case .inactive, .connecting, .offline: self = .inactive
+        case .inactive, .connecting, .offline, .archived: self = .inactive
         }
     }
 

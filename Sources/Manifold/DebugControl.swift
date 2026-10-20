@@ -238,7 +238,7 @@ enum DebugControl {
         case "outline":
             // The focused block's outline lens, beside its tile.
             guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
-            wc.show(f.placement.block, lens: .outline, .besideOpener(f.id))
+            wc.showOutline(of: f.placement.block, beside: f.id)
             return "ok"
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;

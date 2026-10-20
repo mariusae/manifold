@@ -26,7 +26,10 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
 
     let keeper = ViewStateKeeper()
     let placement: PlacementID
+    /// The outline block itself.
     let block: BlockID
+    /// The block it outlines; `source` gives that block's state.
+    var subject: BlockID?
     weak var delegate: OutlineLensViewDelegate?
     var source: () -> Block? = { nil }
 

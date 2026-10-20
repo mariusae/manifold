@@ -420,6 +420,23 @@ final class Server {
         case let .inbox(block, on):
             if let b = node.block(block), b.isInInbox != on { append(.inbox(on), to: .block(block)) }
             done()
+        case let .outline(block, of):
+            if node.block(block) == nil {
+                append(.create(kind: .outline, title: nil, path: nil), to: .block(block))
+                append(.outlineSubject(of), to: .block(block))
+                append(.link(Link(from: block, to: of, kind: .source, at: clock.now(), context: "outline")), to: .links(host))
+            }
+            done()
+        case let .discard(block):
+            // Gone for good: its session ended, its log deleted, and the
+            // registry told, which every replica follows.
+            sessions.removeValue(forKey: block)?.terminate()
+            if node.block(block) != nil {
+                node.remove(.block(block))
+                store.delete(.block(block))
+                append(.unregister(block), to: .registry(host))
+            }
+            done()
         case let .link(link):
             append(.link(link), to: .links(host))
             done()
