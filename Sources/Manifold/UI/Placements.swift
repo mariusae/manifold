@@ -35,6 +35,7 @@ struct Shown: Equatable {
         case .process: .process
         case .agent: .agent
         case .card: .arrangement
+        case .timeline: .terminal
         }
     }
 }

@@ -36,6 +36,8 @@ final class OrgNode {
     var title: String
     var symbol: String
     var detail: String
+    /// A small symbol before the detail, in its grey: stashed, maximized.
+    var detailSymbol: String?
     /// How many blocks beneath, shown as a count; nil for none.
     var count: Int?
     /// How long unseen, 0 fresh to 1 long ago: rows fade with it.
@@ -431,9 +433,11 @@ final class OrgRowView: NSTableCellView {
     private let name = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
     private let trailing = NSTextField(labelWithString: "")
     private var symbol = ""
+    private var detailSymbol = ""
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -454,7 +458,9 @@ final class OrgRowView: NSTableCellView {
         trailing.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         trailing.textColor = Theme.secondaryText
         trailing.alignment = .right
-        for v in [icon, name, count, detail, trailing, glyph] { addSubview(v) }
+        detailIcon.contentTintColor = Theme.secondaryText
+        detailIcon.isHidden = true
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -478,6 +484,11 @@ final class OrgRowView: NSTableCellView {
         count.isHidden = node.count == nil
         detail.stringValue = node.detail
         detail.isHidden = node.detail.isEmpty
+        if (node.detailSymbol ?? "") != detailSymbol {
+            detailSymbol = node.detailSymbol ?? ""
+            detailIcon.image = detailSymbol.isEmpty ? nil : Theme.symbol(detailSymbol, size: 10)
+        }
+        detailIcon.isHidden = detailSymbol.isEmpty
         alphaValue = 1 - 0.45 * (node.age ?? 0)
         toolTip = node.detail.isEmpty ? node.title : node.title + " — " + node.detail
         needsLayout = true
@@ -493,7 +504,10 @@ final class OrgRowView: NSTableCellView {
             count.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
             right -= w + 6
         }
-        if !glyph.isHidden {
+        // The status glyph goes before the detail (what the status says)
+        // when there is one; at the right otherwise.
+        let glyphLeads = !glyph.isHidden && !detail.isHidden
+        if !glyph.isHidden, !glyphLeads {
             glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
         }
@@ -511,9 +525,22 @@ final class OrgRowView: NSTableCellView {
             // and goes when that's too little to say anything.
             let nw = min(wanted, nameWidth)
             name.frame = NSRect(x: 22, y: (h - 17) / 2, width: nw, height: 17)
-            let dw = nameWidth - nw - 6
-            detail.frame = NSRect(x: 22 + nw + 6, y: (h - 15) / 2 - 0.5, width: max(0, dw), height: 15)
-            detail.alphaValue = dw < 36 ? 0 : 1
+            var x = 22 + nw + 6
+            var dw = nameWidth - nw - 6
+            if glyphLeads {
+                glyph.frame = NSRect(x: x, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+                x += StatusGlyph.size + 4
+                dw -= StatusGlyph.size + 4
+            } else if !detailIcon.isHidden {
+                detailIcon.frame = NSRect(x: x, y: (h - 12) / 2, width: 13, height: 12)
+                x += 16
+                dw -= 16
+            }
+            detail.frame = NSRect(x: x, y: (h - 15) / 2 - 0.5, width: max(0, dw), height: 15)
+            let shown = dw >= 36
+            detail.alphaValue = shown ? 1 : 0
+            glyph.alphaValue = glyphLeads && !shown ? 0 : 1
+            detailIcon.alphaValue = shown ? 1 : 0
         }
     }
 }

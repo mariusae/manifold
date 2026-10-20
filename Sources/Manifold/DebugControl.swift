@@ -235,6 +235,11 @@ enum DebugControl {
                 }
             }
             return list(menu, 0).joined(separator: "\n")
+        case "timeline":
+            // The focused block's timeline lens, beside its tile.
+            guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
+            wc.show(f.placement.block, lens: .timeline, .besideOpener(f.id))
+            return "ok"
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.

@@ -68,6 +68,7 @@ enum Theme {
         case .process: "cpu"
         case .agent: "sparkles"
         case .card: "rectangle.3.group"
+        case .timeline: "list.bullet.rectangle"
         }
     }
 

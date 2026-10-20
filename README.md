@@ -44,10 +44,13 @@ and Mona Sans (bundled).
   tile's own pill and it swaps with the next behind it. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it;
-  **⌘E walks a stack**: with ⌘ held, each press brings the next tile
-  behind to the top, sliding in from the right (⇧⌘E from the left,
-  back) over the one there; letting go of ⌘ leaves it, Escape puts the
-  first back. Without a stack, ⌘E finds the word at hand.
+  **⌘E turns a stack into a file of cards** over its tile, live: the
+  top drops flat to the bottom and the one beneath it stands up in
+  front, leaning back, with the title bars of the rest behind it. More
+  E's flip further down (⇧⌘E back up; scrolling works too; a card
+  clicked is chosen), and letting go of ⌘ brings the chosen one forward
+  to the top (Escape leaves things be). Without a stack, ⌘E finds the
+  word at hand.
   Unstack in the pill's menu lays the whole stack out in the column;
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).
@@ -301,6 +304,11 @@ when you find it again.
   the clipboard at once, the selection pulsing once to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
+- **A timeline** is a scrubber's marks as a tile of their own: Show
+  Timeline Beside in a terminal's, editor's or preview's pill menu lists
+  its commands (with their outcome and when) or its headings, each
+  clicked to go there in the block's tile — or, with none shown, in one
+  opened beside.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

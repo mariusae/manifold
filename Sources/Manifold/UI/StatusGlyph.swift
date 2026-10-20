@@ -73,6 +73,11 @@ final class StatusGlyph: NSView {
         return words.joined(separator: "\n")
     }
 
+    /// The status in a line: what the tooltip says, with " · " between.
+    static func summary(_ block: Block?) -> String? {
+        tooltip(block)?.split(separator: "\n").joined(separator: " · ")
+    }
+
     override var intrinsicContentSize: NSSize { NSSize(width: Self.size, height: Self.size) }
     override var isHidden: Bool { didSet { updateTimer() } }
 

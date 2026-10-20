@@ -22,12 +22,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// began with, and how far along it is.
     private var walk: (ids: [BlockID], index: Int)?
     private var walkMonitors: [Any] = []
-    /// ⌘E's walk, while ⌘ is held: the focused tile's stack, top first,
-    /// and how far along it is.
-    private var stackWalk: (ids: [PlacementID], index: Int)?
+    /// ⌘E's switcher, while ⌘ is held: what ends it.
     private var stackMonitors: [Any] = []
-    /// A stack just switched: once rendered, the new top slides in over the old.
-    private var pendingStackSlide: (outgoing: PaneContent, incoming: PlacementID, dir: CGFloat)?
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     /// Each placement's view, for every arrangement on the desk.
@@ -221,10 +217,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
-            if let s = pendingStackSlide {
-                pendingStackSlide = nil
-                content.slideTile(outgoing: s.outgoing, incoming: s.incoming, from: s.dir)
-            }
             window.title = title(of: a)
             // The keyboard may be in no view at all (the window's, after
             // the view it was in went, as a closed editor's does).
@@ -251,6 +243,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
+            for case let t as TimelineView in views.values { t.documentChanged() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
@@ -386,6 +379,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             v = pv
+        case .timeline:
+            let tv = TimelineView(placement: p.id, block: p.block)
+            tv.delegate = self
+            tv.source = { [weak self] in self?.hosts.block(p.block) }
+            v = tv
         case .preview:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.delegate = self
@@ -1309,41 +1307,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: ⌘E
 
-    /// ⌘E (⇧⌘E back): with ⌘ held, a walk through the focused tile's
-    /// stack, top first then each behind in turn, every one brought to
-    /// the top sliding in from the right (from the left, going back) over
-    /// the one there; letting go of ⌘ leaves it there, Escape puts the
-    /// first back. Without a stack, ⌘E finds the word at hand, as the
-    /// Find menu has it.
+    /// ⌘E (⇧⌘E back): with ⌘ held, the focused tile's stack as a file of
+    /// cards over its tile — the top drops flat to the bottom and the one
+    /// beneath stands up in front, leaning back, the title bars of the
+    /// rest behind it; each E flips the next one down, scrolling works
+    /// too, and letting go of ⌘ brings the chosen one forward to the top
+    /// (Escape leaves things be). From the menu it's one step. Without a
+    /// stack, ⌘E finds the word at hand, as the Find menu has it.
     @objc func walkStack(_ sender: Any?) { walkStack(back: false) }
     @objc func walkStackBack(_ sender: Any?) { walkStack(back: true) }
 
     private func walkStack(back: Bool) {
-        guard let a = arrangement else { return }
-        if stackWalk == nil {
-            guard let f = a.focused, !a.isStashed(f), let (c, _) = a.locate(f) else { return findWordAtHand() }
-            let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }.map(\.id)
-            guard !behind.isEmpty else { return findWordAtHand() }
-            stackWalk = ([f] + behind, 0)
-            if NSEvent.modifierFlags.contains(.command) { watchStackWalk() }
+        guard let a = arrangement, let f = a.focused else { return findWordAtHand() }
+        if content.isSwitching {
+            _ = content.stepStackSwitcher(f, back: back)
+            return
         }
-        guard var w = stackWalk else { return }
-        w.ids = w.ids.filter { a.placement($0) != nil }
-        guard w.ids.count > 1 else { return endStackWalk(settling: true) }
-        let n = w.ids.count
-        w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
-        stackWalk = w
-        bringToTop(w.ids[w.index], slidingFrom: back ? -1 : 1)
-        // From the menu, without ⌘ held, it's one step.
-        if stackMonitors.isEmpty { endStackWalk(settling: true) }
-    }
-
-    /// A stashed tile takes the top of its stack, the top going behind it
-    /// (as ⌥-click does), sliding in over it from `dir`'s side.
-    private func bringToTop(_ id: PlacementID, slidingFrom dir: CGFloat) {
-        guard let a = arrangement, a.isStashed(id), let top = a.tile(behind: id) else { return }
-        if let leaving = views[top.id] { pendingStackSlide = (leaving, id, dir) }
-        appendToSelected(a.unstashing(id) + [.stash(top.id, behind: id), .focus(id)])
+        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return findWordAtHand() }
+        if NSEvent.modifierFlags.contains(.command) {
+            watchStackWalk()
+        } else {
+            // From the menu: one step, seen, then settled on.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.content.settleStackSwitcher() }
+        }
     }
 
     private func watchStackWalk() {
@@ -1361,11 +1347,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func endStackWalk(settling: Bool) {
         stackMonitors.forEach(NSEvent.removeMonitor)
         stackMonitors = []
-        guard let w = stackWalk else { return }
-        stackWalk = nil
-        if !settling, let home = w.ids.first, arrangement?.isStashed(home) == true {
-            bringToTop(home, slidingFrom: -1)
-        }
+        content.settleStackSwitcher(cancel: !settling)
     }
 
     /// Find Word at Hand, as the Find menu's item does it.
@@ -1675,15 +1657,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     let b = hosts.block(p.block)
                     let title = b?.displayTitle ?? "On \(hosts.label(of: p.block.host))"
                     guard matches(filter, [title, b?.path]) else { continue }
+                    // Its status, in words, with the glyph before them; else
+                    // its state — stashed, maximized — as a small symbol.
                     var notes: [String] = []
+                    if let status = StatusGlyph.summary(b) { notes.append(status) }
                     if b == nil { notes.append("not attached") }
                     if b?.text?.isDirty == true { notes.append("edited") }
-                    if a.isStashed(p.id) { notes.append("stashed") }
-                    if a.full == p.id { notes.append("maximized") }
-                    if a.columns.count > 1 { notes.append("column \(c + 1)") }
                     let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
                                     symbol: b.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "questionmark.square.dashed",
                                     detail: notes.joined(separator: " · "))
+                    if a.isStashed(p.id) { n.detailSymbol = "tray.and.arrow.down" } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
                     n.arrangement = id
                     n.column = c
@@ -3480,6 +3463,11 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        if [.terminal, .agent, .editor, .preview].contains(p.lens) {
+            menu.addItem(ClosureMenuItem("Show Timeline Beside", symbol: "list.bullet.rectangle") { [weak self] in
+                self?.show(block, lens: .timeline, .besideOpener(placement), kind: .opened, context: "timeline")
+            })
+        }
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
             menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down", key: "m") { [weak self] in
                 guard let self else { return }
@@ -3582,6 +3570,27 @@ extension MainWindowController: EditorViewDelegate {
 
     func editorText(_ view: EditorView) -> TextState? {
         hosts.block(view.block)?.text
+    }
+
+    /// A timeline's entry clicked: the block's tile goes there — its
+    /// terminal to the command's row, its editor or preview to the
+    /// heading; with no tile of it shown, one is opened beside the timeline.
+    func timeline(_ view: TimelineView, go entry: TimelineView.Entry) {
+        let shown = views.values.filter { $0.block == view.block && $0.superview != nil && !$0.isHidden && !($0 is TimelineView) }
+        if shown.isEmpty, let b = hosts.block(view.block) {
+            if let path = b.path, let line = entry.line { pendingJump = (path, line + 1, nil) }
+            show(view.block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(view.placement))
+            return
+        }
+        for v in shown {
+            switch v {
+            case let t as TerminalView: t.go(toCommand: entry.id)
+            case let e as EditorView: if let line = entry.line { e.select(line: line + 1, column: nil) }
+            case let m as MarkdownView: m.scroll(toHeading: entry.id)
+            default: break
+            }
+            if let p = arrangement?.placement(v.placement), arrangement?.isStashed(p.id) == true { focus(p.id) }
+        }
     }
 
     func editorEditedChanged(_ view: EditorView) {
@@ -4089,3 +4098,5 @@ enum StatusGroup: Int, CaseIterable {
         }
     }
 }
+
+extension MainWindowController: TimelineViewDelegate {}

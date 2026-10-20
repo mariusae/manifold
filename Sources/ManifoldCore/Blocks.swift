@@ -52,6 +52,9 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case agent
     /// An arrangement as a card: its title and a small live picture.
     case card
+    /// What a block's scrubber marks — a terminal's commands, a text's
+    /// headings — as a list to steer the block's tile by (§3.8).
+    case timeline
 
     /// The lens a block of `kind` is shown with unless another is asked for.
     public static func `default`(for kind: BlockKind, path: String? = nil) -> Lens {

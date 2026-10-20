@@ -193,6 +193,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         perform("scroll_to_row:\(Int(mark.at))")
     }
 
+    /// A command's row scrolled to, by its id (a timeline's click).
+    func go(toCommand id: Int) {
+        guard let row = located[id] else { return }
+        perform("scroll_to_row:\(row)")
+    }
+
     /// A command and its output, as shown: the rows from its prompt to
     /// the next command's (or the end).
     private func transcript(of mark: ScrubMark) -> (ShellCommand, String)? {

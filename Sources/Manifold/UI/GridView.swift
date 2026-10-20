@@ -132,7 +132,7 @@ final class GridView: NSView, NSDraggingSource {
         self.full = full
         for column in columns {
             for tile in column {
-                if tile.view.superview !== self { addSubview(tile.view) }
+                if tile.view.superview !== self, !switching.contains(tile.shown.id) { addSubview(tile.view) }
                 let pill = pills[tile.shown.id] ?? {
                     let p = TilePill()
                     pills[tile.shown.id] = p
@@ -413,7 +413,7 @@ final class GridView: NSView, NSDraggingSource {
             }
             return
         }
-        for t in columns.flatMap({ $0 }) {
+        for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
             let stashed = isStashed(t.shown.id)
             t.view.isHidden = stashed
             // A stashed tile's pill stays as it is — hidden behind the
@@ -433,11 +433,13 @@ final class GridView: NSView, NSDraggingSource {
             for (i, tile) in columns[c].enumerated() {
                 guard !isStashed(tile.shown.id) else { continue }
                 let r = tiles[i]
-                tile.view.frame = r
+                let held = switching.contains(tile.shown.id)
+                if !held { tile.view.frame = r }
+                if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.band, width: r.width, height: Self.band)
-                    keep(pill, above: tile.view)
+                    if !held { keep(pill, above: tile.view) }
                 }
                 if let badge = badges[tile.shown.id] { placeBadge(badge, in: r) }
                 if shownIndex > 0, rowIndex < rowDividers.count {
@@ -815,59 +817,63 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    /// A stack switched (⌘E): the new top's view slides in from `dir`'s
-    /// side over the old top's, which slides out the other way, both
-    /// kept to the tile by masks that hold still as the layers move.
-    func slideTile(outgoing: PaneContent, incoming id: PlacementID, from dir: CGFloat) {
-        layoutSubtreeIfNeeded()
-        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }),
-              let inLayer = tile.view.layer, let outLayer = outgoing.layer else { return }
-        let frame = tile.view.frame
-        outgoing.frame = frame
-        outgoing.isHidden = false
-        keep(tile.view, above: outgoing)
-        let w = frame.width
-        let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.25, 1)
-        func masked(_ layer: CALayer) -> CALayer {
-            let m = CALayer()
-            m.backgroundColor = NSColor.black.cgColor
-            m.frame = layer.bounds
-            layer.mask = m
-            return m
+    // MARK: ⌘E
+
+    private var switcher: StackSwitcherView?
+    /// The tiles whose views the switcher holds: the grid leaves them be.
+    private var switching: Set<PlacementID> = []
+    var isSwitching: Bool { switcher != nil }
+
+    /// ⌘E: the stack under `top` as a file of cards over its tile, opened
+    /// if it isn't, and the choice moved a step down (back: up). False
+    /// when the tile has no stack.
+    func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
+        if switcher == nil {
+            guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
+                  let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
+            layoutSubtreeIfNeeded()
+            let frame = stack.top.view.frame
+            let order = Array(stack.behind.reversed()) + [stack.top]
+            let s = StackSwitcherView(entries: order.map { .init(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol, view: $0.view) },
+                                      contentSize: frame.size, selection: order.count - 1)
+            s.frame = frame
+            s.layer?.zPosition = 20
+            s.onPick = { [weak self] id in self?.settleStackSwitcher(to: id) }
+            switching = Set(order.map(\.shown.id))
+            addSubview(s)
+            switcher = s
+            s.present()
         }
-        let inMask = masked(inLayer), outMask = masked(outLayer)
-        let leaving = outgoing.placement
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak self, weak outgoing] in
-            for l in [inLayer, outLayer] {
-                l.removeAnimation(forKey: "manifold.slide")
-                l.mask = nil
-            }
-            if let self, let outgoing, self.isStashed(leaving) { outgoing.isHidden = true }
-        }
-        let move = { (layer: CALayer, mask: CALayer, from: CGFloat, to: CGFloat) in
-            let a = CABasicAnimation(keyPath: "transform")
-            a.fromValue = CATransform3DMakeTranslation(from, 0, 0)
-            a.toValue = CATransform3DMakeTranslation(to, 0, 0)
-            a.duration = 0.22
-            a.timingFunction = ease
-            a.fillMode = .forwards
-            a.isRemovedOnCompletion = false
-            layer.add(a, forKey: "manifold.slide")
-            // The mask holds the tile's place while the layer moves under it.
-            let b = CABasicAnimation(keyPath: "position.x")
-            b.fromValue = mask.position.x - from
-            b.toValue = mask.position.x - to
-            b.duration = 0.22
-            b.timingFunction = ease
-            b.fillMode = .forwards
-            b.isRemovedOnCompletion = false
-            mask.add(b, forKey: "manifold.slide")
-        }
-        move(inLayer, inMask, dir * w, 0)
-        move(outLayer, outMask, 0, -dir * w)
-        CATransaction.commit()
+        switcher?.move(back ? 1 : -1)
+        return true
     }
+
+    /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
+    /// top as it was), which comes forward to fill the tile; the views go
+    /// back to the grid, and the stack is told which is its top now.
+    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false) {
+        guard let s = switcher else { return }
+        let top = s.topID
+        let chosen = cancel ? top : (id ?? s.selectedID)
+        s.dismiss(to: chosen) { [weak self, weak s] in
+            guard let self, let s else { return }
+            s.tearDown(keeping: chosen, in: self)
+            s.removeFromSuperview()
+            if self.switcher === s { self.switcher = nil }
+            // The views back in the grid, as they'll be once the stack has
+            // its new top: the chosen one showing, the rest behind it.
+            for id in self.switching {
+                guard let t = self.tile(id) else { continue }
+                if t.view.superview !== self { self.addSubview(t.view) }
+                t.view.isHidden = id != chosen
+            }
+            self.switching = []
+            self.needsLayout = true
+            if chosen != top { self.delegate?.gridSwap(chosen) }
+        }
+    }
+
+    private func tile(_ id: PlacementID) -> Tile? { columns.flatMap { $0 }.first { $0.shown.id == id } }
 
     /// The shown tile under a point.
     private func tile(at point: NSPoint) -> Tile? {
