@@ -399,7 +399,8 @@ enum DebugControl {
                 tv.keyDown(with: e)
                 return "ok"
             }
-            tv.doCommand(by: Selector(arg))
+            // Menu actions, as the Edit menu sends them; the rest as key commands.
+            if arg == "paste:" { tv.paste(nil) } else { tv.doCommand(by: Selector(arg)) }
             return "ok"
         case "editor":
             // The focused editor's text, selections, and undo depth.
