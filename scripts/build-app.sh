@@ -48,11 +48,12 @@ cp Frameworks/firacode/LICENSE "$app/Contents/Resources/Fonts/FiraCode-LICENSE"
 # Tiempos Text is licensed: bundled when scripts/fetch-fonts.sh found it.
 [ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"
 
-# The icon is drawn by a script, and only redrawn when the script changes.
-if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ]; then
+# The icon is drawn from its SVG by a script, and only redrawn when either changes.
+icon=Resources/Icons/manifold-m.svg
+if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ] || [ "$icon" -nt build/AppIcon.icns ]; then
   iconset=build/AppIcon.iconset
   rm -rf "$iconset" && mkdir -p "$iconset"
-  swift scripts/make-icon.swift build/icon-1024.png
+  swift scripts/make-icon.swift "$icon" build/icon-1024.png
   for s in 16 32 128 256 512; do
     sips -z $s $s build/icon-1024.png --out "$iconset/icon_${s}x${s}.png" >/dev/null
     sips -z $((s*2)) $((s*2)) build/icon-1024.png --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
