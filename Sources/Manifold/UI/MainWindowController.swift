@@ -669,9 +669,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "ran \(item.title)"
     }
     /// A pointer move, handed to the surface as its tracking area would.
-    func debugHover(_ event: NSEvent) { content.mouseMoved(with: event) }
+    /// A synthesized move: to the grid (its stacks), and to whatever view
+    /// is under the point that takes moves of its own (a scrubber).
+    func debugHover(_ event: NSEvent) {
+        content.mouseMoved(with: event)
+        guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
+        var v: NSView? = hit
+        while let view = v, view !== content {
+            if view is ScrubberView || view is ScrubTip { view.mouseMoved(with: event); break }
+            v = view.superview
+        }
+    }
 
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
+    var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
 
     func debugSidebar(show: Bool) {
         if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
@@ -2243,7 +2254,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return t.id
         }
         let p = Placement(block: block, lens: lens)
-        appendToSelected([.place(p, column: c, at: i + 1), .stash(opener, behind: p.id), .focus(p.id)])
+        var events: [Event] = [.place(p, column: c, at: i + 1), .stash(opener, behind: p.id), .focus(p.id)]
+        // Over a maximized tile, it's the maximized one now.
+        if a.full == opener { events.append(.full(p.id)) }
+        appendToSelected(events)
         if from != block { hosts.link(from: from, to: block, kind: kind, context: context) }
         return p.id
     }

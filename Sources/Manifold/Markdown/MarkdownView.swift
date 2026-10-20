@@ -68,13 +68,64 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         config.userContentController.addUserScript(WKUserScript(source: "(function(){var s=document.createElement('style');s.textContent='::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:rgba(127,127,127,.5);border-radius:7px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:rgba(127,127,127,.8);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}';(document.head||document.documentElement).appendChild(s);})();", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
-        handler.onState = { [weak self] values in self?.keeper.note(values) }
+        handler.onState = { [weak self] values in
+            self?.keeper.note(values)
+            if values["scroll"] != nil { self?.scheduleOutline() }
+        }
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)
+        scrubber.onScroll = { [weak self] f in
+            self?.web.evaluateJavaScript("window.scrollTo(0, \(f) * Math.max(document.documentElement.scrollHeight - window.innerHeight, 0));")
+        }
+        scrubber.onPick = { [weak self] mark in self?.scroll(toHeading: mark.id) }
+        scrubber.onHover = { [weak self] mark, y in self?.hoverScrubber(mark, at: y) }
+        tip.showsCopy = false
+        tip.isHidden = true
+        tip.onExit = { [weak self] in self?.tip.isHidden = true }
+        addSubview(scrubber)
+        addSubview(tip)
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
+    }
+
+    // MARK: The scrubber (§3.1)
+
+    private let scrubber = ScrubberView(frame: .zero)
+    private let tip = ScrubTip(frame: .zero)
+    private var outlineWork: DispatchWorkItem?
+
+    /// The page's headings and where it is, asked of the page a moment
+    /// after it rendered, scrolled or changed size.
+    private func scheduleOutline() {
+        outlineWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.readOutline() }
+        outlineWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func readOutline() {
+        guard loaded else { return }
+        let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].offsetTop,hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,m:m};})()"
+        web.evaluateJavaScript(js) { [weak self] r, _ in
+            guard let self, let d = r as? [String: Any], let h = d["h"] as? Double, let y = d["y"] as? Double, let v = d["v"] as? Double else { return }
+            let marks = ((d["m"] as? [[Any]]) ?? []).enumerated().compactMap { i, row -> ScrubMark? in
+                guard row.count == 3, let top = row[0] as? Double, let text = row[2] as? String else { return nil }
+                return ScrubMark(id: i, at: top, title: text, detail: nil)
+            }
+            self.scrubber.update(marks: marks, total: h, offset: y, shown: v)
+        }
+    }
+
+    private func hoverScrubber(_ mark: ScrubMark?, at y: CGFloat) {
+        guard let mark else { tip.isHidden = true; return }
+        tip.show(mark)
+        let size = tip.fittingSize
+        let point = convert(NSPoint(x: 0, y: y), from: scrubber)
+        let top = min(max(point.y - size.height / 2, 0), bounds.height - size.height)
+        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
+        tip.isHidden = false
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -95,8 +146,10 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     override func layout() {
         super.layout()
-        web.frame = bounds
-        finder.layout(in: bounds)
+        web.frame = NSRect(x: 0, y: 0, width: max(bounds.width - ScrubberView.width, 0), height: bounds.height)
+        scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: 0, width: ScrubberView.width, height: bounds.height)
+        finder.layout(in: web.frame)
+        scheduleOutline()
     }
 
     // MARK: Find
@@ -156,7 +209,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             js += " manifoldRestore(\(y), \(s), \(e)); manifoldWatch();"
             keeper.restored = true
         }
-        web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js)
+        web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
     }
 
     private func json(_ s: String) -> String {

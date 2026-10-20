@@ -218,9 +218,10 @@ enum DebugControl {
         case "scrub":
             // "scrub": the focused terminal's scrubber; "scrub hover <f>",
             // "scrub go|open <id>", "scrub locate", "scrub row <n>".
-            guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
-            return t.debugScrub(a.first ?? "", a.count > 1 ? a[1] : "")
+            if let t = wc?.debugFocusedTerminal { return t.debugScrub(a.first ?? "", a.count > 1 ? a[1] : "") }
+            if let e = wc?.debugFocusedEditor { return e.debugScrub(a.first ?? "", a.count > 1 ? a[1] : "") }
+            return "no terminal or editor focused"
         case "org":
             // "org rows": the sidebar's rows; "org click <row> [cmd|double]".
             let a = arg.split(separator: " ").map(String.init)

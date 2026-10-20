@@ -263,7 +263,8 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     /// The y of a logical line's first row.
-    private func top(ofLine n: Int) -> CGFloat {
+    /// The top of a logical line, in the view (the scrubber's marks too).
+    func top(ofLine n: Int) -> CGFloat {
         ensureRowStarts()
         let row = n < rowStarts.count ? rowStarts[n] : (rowStarts.last ?? 0)
         return Self.insets.top + CGFloat(row) * lineHeight

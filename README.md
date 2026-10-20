@@ -248,7 +248,9 @@ when you find it again.
   right-click it for **Show Command and Output**, and the command and
   what it printed, as the screen showed them, become a note beside the
   terminal; the tip's copy button (or **Copy Command and Output**) puts
-  the same on the clipboard. Drag the knob or click the track to scroll as ever.
+  the same on the clipboard. An editor's and a preview's scroll bars
+  are scrubbers too, their ticks the headings of a Markdown text (or a
+  note): hover for the heading, click to go to it. Drag the knob or click the track to scroll as ever.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

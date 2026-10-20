@@ -197,6 +197,7 @@ enum MarkdownPage {
         ul, ol { padding-left: 1.8em; } li + li { margin-top: 0.2em; }
         li > input[type=checkbox] { margin: 0 0.45em 0 -1.35em; vertical-align: -1px; }
         ul:has(> li > input[type=checkbox]) { list-style: none; }
+        ::-webkit-scrollbar { width: 0; height: 0; }
         a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
           font-family: var(--mono), ui-monospace, Menlo, monospace; font-size: 0.86em;

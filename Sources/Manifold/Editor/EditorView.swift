@@ -77,11 +77,25 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // No room kept for the (hidden) title bar.
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .legacy
+        // The scroll bar is a scrubber (§3.1): down the right, outside
+        // the text, its marks the headings of a Markdown text.
+        scroll.hasVerticalScroller = false
         scroll.documentView = textView
         addSubview(scroll)
+        scrubber.onScroll = { [weak self] f in
+            guard let self else { return }
+            let span = max(self.textView.frame.height - self.scroll.contentSize.height, 0)
+            self.scroll(toY: f * span)
+        }
+        scrubber.onPick = { [weak self] mark in self?.scroll(toY: CGFloat(mark.at) - 8) }
+        scrubber.onHover = { [weak self] mark, y in self?.hoverScrubber(mark, at: y) }
+        tip.showsCopy = false
+        tip.isHidden = true
+        tip.onExit = { [weak self] in self?.tip.isHidden = true }
+        addSubview(scrubber)
+        addSubview(tip)
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         textView.document = self
         textView.delegate = self
         textView.autoresizingMask = [.width]
@@ -117,8 +131,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             status.frame = NSRect(x: 10, y: 3, width: bounds.width - 20, height: Self.statusHeight - 6)
             bottom = Self.statusHeight
         }
-        scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: top - bottom)
+        scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width - ScrubberView.width, height: top - bottom)
         textView.frame.size.width = scroll.contentSize.width
+        scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
+        updateScrubber()
         finder.layout(in: bounds)
         if let reveal = pendingReveal, window != nil, scroll.contentSize.height >= 1 {
             pendingReveal = nil
@@ -127,6 +143,62 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     static let statusHeight: CGFloat = 24
+
+    // MARK: The scrubber (§3.1)
+
+    private let scrubber = ScrubberView(frame: .zero)
+    private let tip = ScrubTip(frame: .zero)
+    private var headings: [ScrubMark] = []
+    private var headingsWork: DispatchWorkItem?
+    /// Whether the text is an outline's kind: Markdown, or a note.
+    private var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
+
+    @objc private func scrolled() { updateScrubber() }
+
+    func debugScrub(_ what: String, _ arg: String) -> String {
+        switch what {
+        case "pick": return scrubber.debugPick(Int(arg) ?? 0)
+        default: return "marks \(headings.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))\n" + scrubber.debugMarks
+        }
+    }
+
+    private func scroll(toY y: CGFloat) {
+        let most = max(textView.frame.height - scroll.contentSize.height, 0)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: min(max(y, 0), most)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+    }
+
+    /// The headings again, a moment after the text changed.
+    private func scheduleHeadings() {
+        guard hasOutline else { return }
+        headingsWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.findHeadings() }
+        headingsWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    private func findHeadings() {
+        headings = MarkdownOutline.headings(in: textView.text.string).map {
+            ScrubMark(id: $0.line, at: 0, title: $0.text, detail: nil)
+        }
+        updateScrubber()
+    }
+
+    private func updateScrubber() {
+        let marks = headings.map { m -> ScrubMark in var n = m; n.at = Double(textView.top(ofLine: m.id)); return n }
+        scrubber.update(marks: marks, total: Double(textView.frame.height), offset: Double(scroll.contentView.bounds.minY),
+                        shown: Double(scroll.contentSize.height))
+    }
+
+    private func hoverScrubber(_ mark: ScrubMark?, at y: CGFloat) {
+        guard let mark else { tip.isHidden = true; return }
+        tip.show(mark)
+        let size = tip.fittingSize
+        let point = convert(NSPoint(x: 0, y: y), from: scrubber)
+        let top = min(max(point.y - size.height / 2, 0), bounds.height - size.height)
+        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
+        tip.isHidden = false
+    }
 
     func destroy() {
         stateWork?.cancel()
@@ -152,6 +224,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let external = doc.version != lastVersion && doc.version != textView.undoKnownVersion
         lastVersion = doc.version
         textView.documentChanged()
+        scheduleHeadings()
         if !restored, doc.version > 0 || doc.unreadable {
             restored = true
             if let ranges = doc.selections[placement], !ranges.isEmpty {
@@ -209,6 +282,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: TextViewDelegate
 
     func textViewDidChangeSelection(_ view: TextView) {
+        scheduleHeadings()
         scheduleStateSave()
         updateStatus()
         hover?.close()

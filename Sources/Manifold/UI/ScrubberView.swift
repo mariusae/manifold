@@ -145,7 +145,7 @@ final class ScrubberView: NSView {
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
 
@@ -223,6 +223,13 @@ final class ScrubberView: NSView {
         placed.map { "\($0.mark.id) @\(Int($0.mark.at)) y\(Int($0.y))\($0.mark.failed ? " failed" : "")\($0.mark.running ? " running" : "") \($0.mark.title)" }.joined(separator: "\n")
     }
 
+    /// Debugging: as a click on the nth mark.
+    func debugPick(_ n: Int) -> String {
+        guard n >= 0, n < placed.count else { return "no mark \(n) of \(placed.count)" }
+        onPick?(placed[n].mark)
+        return "picked \(placed[n].mark.title)"
+    }
+
     /// Debugging: as the pointer resting at a fraction of the strip.
     func debugHover(fraction: Double) -> ScrubMark? {
         let y = Self.pad + CGFloat(fraction) * (bounds.height - 2 * Self.pad)
@@ -241,6 +248,8 @@ final class ScrubTip: NSView {
     /// Copies the command and its output.
     private let copyButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
     var onCopy: (() -> Void)?
+    /// Whether there's something to copy (a command's transcript).
+    var showsCopy = true { didSet { copyButton.isHidden = !showsCopy; needsLayout = true } }
     var onClick: (() -> Void)?
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
@@ -293,21 +302,22 @@ final class ScrubTip: NSView {
     override var fittingSize: NSSize {
         let w = max(label.intrinsicContentSize.width, detail.isHidden ? 0 : detail.intrinsicContentSize.width)
         let h = label.intrinsicContentSize.height + (detail.isHidden ? 0 : detail.intrinsicContentSize.height + 1)
-        return NSSize(width: min(480, ceil(w) + 28 + 26), height: ceil(h) + 10)
+        return NSSize(width: min(480, ceil(w) + 28 + (showsCopy ? 26 : 0)), height: ceil(h) + 10)
     }
 
     override func layout() {
         super.layout()
         let lh = label.intrinsicContentSize.height, dh = detail.isHidden ? 0 : detail.intrinsicContentSize.height + 1
         let top = (bounds.height - lh - dh) / 2
-        label.frame = NSRect(x: 11, y: bounds.height - top - lh, width: bounds.width - 22 - 26, height: lh)
-        detail.frame = NSRect(x: 11, y: bounds.height - top - lh - dh, width: bounds.width - 22 - 26, height: max(dh - 1, 0))
+        let room: CGFloat = showsCopy ? 26 : 0
+        label.frame = NSRect(x: 11, y: bounds.height - top - lh, width: bounds.width - 22 - room, height: lh)
+        detail.frame = NSRect(x: 11, y: bounds.height - top - lh - dh, width: bounds.width - 22 - room, height: max(dh - 1, 0))
         copyButton.frame = NSRect(x: bounds.width - 30, y: (bounds.height - 20) / 2, width: 20, height: 20)
     }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
 
@@ -317,6 +327,28 @@ final class ScrubTip: NSView {
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        if bounds.contains(p), !copyButton.frame.contains(p) { onClick?() }
+        if bounds.contains(p), copyButton.isHidden || !copyButton.frame.contains(p) { onClick?() }
+    }
+}
+
+
+/// The headings of a Markdown text, by line: what an outline of it is
+/// made of (⌘\, the scrubber).
+enum MarkdownOutline {
+    struct Heading { var line: Int; var level: Int; var text: String }
+
+    static func headings(in text: String) -> [Heading] {
+        var out: [Heading] = []
+        var inFence = false
+        var line = 0
+        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            defer { line += 1 }
+            if raw.hasPrefix("```") { inFence.toggle() }
+            guard !inFence, raw.hasPrefix("#") else { continue }
+            let level = raw.prefix { $0 == "#" }.count
+            guard level <= 6, raw.dropFirst(level).first == " " else { continue }
+            out.append(Heading(line: line, level: level, text: raw.dropFirst(level).trimmingCharacters(in: .whitespaces)))
+        }
+        return out
     }
 }
