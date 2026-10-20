@@ -112,6 +112,36 @@ public enum FileFinder {
         return qi == q.count ? score : nil
     }
 
+    /// How well a query names something: by its title first — the whole
+    /// of it, the start of it, the start of a word in it, somewhere in it,
+    /// its letters in order — and only then by what's around it (a path,
+    /// a folder, a program), which counts for less. 0 for no match.
+    public static func nameMatch(_ query: String, title: String, secondary: String) -> Int {
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return 1 }
+        let t = title.lowercased()
+        if t == q { return 600 }
+        if t.hasPrefix(q) { return 520 }
+        let words = t.split { !$0.isLetter && !$0.isNumber }
+        if words.contains(where: { $0.hasPrefix(q) }) { return 500 }
+        // Every word of the query the start of a word in the title, in order.
+        let qs = q.split(separator: " ")
+        if qs.count > 1 {
+            var i = 0
+            var all = true
+            for w in qs {
+                guard let j = words[i...].firstIndex(where: { $0.hasPrefix(w) }) else { all = false; break }
+                i = j + 1
+            }
+            if all { return 480 }
+        }
+        if t.contains(q) { return 400 }
+        if let f = score(q, title) { return 200 + min(f, 150) / 2 }
+        if let f = score(q, secondary) { return 100 + min(f, 150) / 3 }
+        return 0
+    }
+
+
     /// The paths matching a query, best first.
     public static func rank(_ query: String, _ paths: [String], limit: Int = 500) -> [String] {
         let q = query.trimmingCharacters(in: .whitespaces)

@@ -1049,3 +1049,15 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     b.apply(.archived(false), at: Stamp(wall: 9, host: .local))
     #expect(!b.isArchived)
 }
+
+@Test func theFinderNamesThingsByTitleBeforeWhatIsAroundThem() {
+    #expect(FileFinder.nameMatch("claude", title: "Claude Code", secondary: "agent ~/src/manifold") >= 500)
+    #expect(FileFinder.nameMatch("claude", title: "Claude.pdf", secondary: "/Users/x/Claude.pdf") >= 500)
+    #expect(FileFinder.nameMatch("code", title: "Claude Code", secondary: "") == 500)
+    #expect(FileFinder.nameMatch("claude code", title: "Claude Code", secondary: "") == 600)
+    #expect(FileFinder.nameMatch("aude", title: "Claude Code", secondary: "") == 400)
+    // Only in what's around it: a weak match.
+    let weak = FileFinder.nameMatch("terminal", title: "A.swift", secondary: "a note about the terminal")
+    #expect(weak > 0 && weak < 200)
+    #expect(FileFinder.nameMatch("zzz", title: "Claude Code", secondary: "") == 0)
+}

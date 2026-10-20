@@ -210,17 +210,20 @@ Every block has a log: its edits, where it was placed, what it was named.
 What you aren't using is tidied away rather than closed, and comes back
 when you find it again.
 
-- **⌘O finds anything** the host knows, ranked by where you are: what's
-  linked to the focused block (opened from it, placed with it, compared
-  against it) comes first, nearest first and the most recently joined
-  first among them, with nothing typed; a match near it outranks one far
-  from it. Then blocks by title and path, named
-  workspaces, terminals by where they are, and the files under the
-  focused block's folder, ranked by how well they match and how recently
-  they were seen, and the processes under the host's terminals and
-  agents, by command or path, each going to its block. Choosing a block
-  shows it here, in the focused column; choosing a workspace puts it on
-  the desk. ⇥ goes round the finder's scopes: **In Files** has the host
+- **⌘O finds anything** the host knows, in tiers by where you are:
+  what's on this workspace first, then what's linked to the focused
+  block or on the desk, then the rest, then what's archived; files not
+  yet blocks come below the blocks (the system's scratch folders last),
+  and the processes under the host's terminals and agents, by command,
+  each going to its block. Within a tier, what the query *names* wins:
+  a title it is, or starts, or starts a word of, then one it's found
+  in, then one with its letters in order; a match only in what's
+  around a block (its folder, its program) counts for less, and never
+  rises above the rest for being here. The most recently seen comes
+  first among equals; with nothing typed, that is the order. A
+  workspace is found by its own name only — what it holds is found as
+  itself. Choosing a block shows it here, in the focused column;
+  choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host
   look for the words in the files under the project (as Find in Files
   does; ↩ opens the file at the line, and the last row makes it a search
   block); **In Blocks** finds lines in the texts of the workspace's

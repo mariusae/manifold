@@ -2360,16 +2360,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func finderItems(_ query: String, files: [String]) -> [FinderItem] {
+        // Each thing found is placed in a tier — here (on this workspace),
+        // near (linked to the focused block, or on the desk), elsewhere,
+        // archived; files and processes below blocks — and within its tier
+        // ranked by how well the query names it, then by recency (§3.5).
         var scored: [(score: Int, recency: Int64, item: FinderItem)] = []
         let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
-        // Context is the ranking (§3.5): what's near the focused block in
-        // the graph comes first, nearest first; a match near it outranks
-        // one far from it.
         let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 3) } ?? [:]
-        // When each neighbor was last joined to the focused block: the newest
-        // connection ranks first among equals.
+        let focusedBlock = focusedShown?.placement.block
+        let here = Set(arrangement?.placements.map(\.block) ?? [])
+        let onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         var joinedAt: [BlockID: Int64] = [:]
-        if let f = focusedShown?.placement.block {
+        if let f = focusedBlock {
             let n = hosts.neighborhood(of: f)
             for es in n.outbound.values { for e in es { joinedAt[e.to] = max(joinedAt[e.to] ?? 0, e.at.wall) } }
             for es in n.inbound.values { for e in es { joinedAt[e.from] = max(joinedAt[e.from] ?? 0, e.at.wall) } }
@@ -2381,58 +2383,83 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
             let title = block.displayTitle
             let programs = running[block.id] ?? []
-            let hay: String
+            let secondary: String
             let detail: String
             var note = ""
             switch block.kind {
             case .arrangement:
+                // A workspace by its own name; what it holds is found as itself.
                 guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
-                hay = title + " " + a.placements.compactMap { hosts.block($0.block)?.displayTitle }.joined(separator: " ")
+                secondary = ""
                 detail = a.isNamed ? "Workspace · \(a.placements.count) blocks" : "Workspace, unnamed · \(a.placements.count) blocks"
                 note = allWorkspaces.contains(block.id) ? "on the desk" : ""
             case .text:
-                hay = (block.path ?? title) + " " + title
+                secondary = block.path ?? ""
                 detail = block.path.map { ($0 as NSString).deletingLastPathComponent.abbreviatingHome } ?? "Note"
                 note = block.text?.isDirty == true ? "edited" : ""
             case .terminal:
-                hay = title + " " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
+                secondary = (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
                 detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
                 note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "dormant" : (block.terminal?.busy == true ? "running" : "")
             case .directory:
-                hay = block.path ?? title
+                secondary = block.path ?? ""
                 detail = "Folder"
             case .search:
-                hay = title + " " + (block.search?.query?.root ?? "")
+                secondary = block.search?.query?.root ?? ""
                 detail = "Search in \(block.search?.query?.root.abbreviatingHome ?? "")"
             case .image, .pdf:
-                hay = block.path ?? title
+                secondary = block.path ?? ""
                 detail = block.kind == .pdf ? "PDF" : "Image"
             case .process:
-                hay = "processes " + title
+                secondary = "processes"
                 detail = "Processes"
             case .agent:
-                hay = "agent " + title + " " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
+                secondary = "agent " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
                 detail = "Agent in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
                 note = block.terminal?.pid == nil ? "ended" : ""
             case .git:
-                hay = "git " + (block.path ?? title)
+                secondary = "git " + (block.path ?? "")
                 detail = "Git, \(block.path?.abbreviatingHome ?? "")"
             case .diff:
-                hay = "diff " + title + " " + (block.path ?? "")
+                secondary = "diff " + (block.path ?? "")
                 detail = "Diff, \(block.path?.deletingLastPathComponent.abbreviatingHome ?? "")"
-            default:
-                hay = title
-                detail = block.kind.defaultTitle
+            case .outline:
+                continue
+            case .web:
+                secondary = block.web?.url ?? ""
+                detail = block.web?.url ?? "Web page"
             }
-            var score = query.isEmpty ? 1 : (Finder.score(query, hay + " " + block.id.host.raw))
-            guard score > 0 else { continue }
+            // The kind's name is as good as a word of the title: "terminal"
+            // finds the terminals, "note" the notes.
+            let kindWord = block.kind == .text ? (block.path == nil ? "Note" : "File") : block.kind.defaultTitle
+            let match = FileFinder.nameMatch(query, title: title + " " + kindWord, secondary: secondary + " " + block.id.host.raw)
+            guard match > 0 else { continue }
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
             }
-            if let d = near[block.id], d > 0 {
-                score = query.isEmpty ? 1 + (4 - d) : score * (5 - d) / 2
+            let tier: Int
+            if block.isArchived {
+                tier = 1
+                note = "archived"
+            } else if block.kind == .arrangement {
+                tier = allWorkspaces.contains(block.id) ? 4 : 2
+            } else if here.contains(block.id) {
+                tier = 5
+                if note.isEmpty { note = block.id == focusedBlock ? "here, focused" : "here" }
+            } else if let d = near[block.id], d > 0 {
+                tier = 4
                 if note.isEmpty { note = d == 1 ? "linked" : "near" }
+            } else if onDesk.contains(block.id) {
+                tier = 4
+            } else {
+                tier = 3
             }
+            // A weak match — the query's letters in order in the title, or
+            // only in what's around the block — gets no tier above
+            // elsewhere: being here doesn't make it what you meant.
+            let placed = match < 400 ? min(tier, 2) : tier
+            // The focused block is where you are: last among those here.
+            let score = placed * 1000 + match - (block.id == focusedBlock ? 300 : 0)
             let id = block.id
             let kind = block.kind
             let path = block.path
@@ -2446,23 +2473,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for block in hosts.blocks where block.kind == .process {
                 let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
                 for e in block.processes?.entries ?? [] {
-                    guard let under = e.block else { continue }
-                    let s = Finder.score(query, e.command + " " + (e.path ?? ""))
-                    guard s > 0 else { continue }
+                    guard let under = e.block, hosts.block(under)?.isArchived != true else { continue }
+                    let m = FileFinder.nameMatch(query, title: e.command, secondary: e.path ?? "")
+                    guard m > 0 else { continue }
                     let command = e.command.count > 100 ? String(e.command.prefix(100)) + "…" : e.command
-                    scored.append((s, block.processes?.listedAt?.wall ?? 0, FinderItem(
+                    scored.append((2000 + m, block.processes?.listedAt?.wall ?? 0, FinderItem(
                         symbol: "cpu", title: command, detail: (e.path?.abbreviatingHome ?? "pid \(e.pid)") + remote,
                         note: hosts.block(under)?.displayTitle ?? "", run: { [weak self] in self?.goTo(under) })))
                 }
             }
         }
+        // Files not yet blocks: below the blocks; the system's temporary
+        // folders lowest of all, being mostly scratch.
         for file in files where !known.contains(file) {
             let name = (file as NSString).lastPathComponent
-            let score = query.isEmpty ? 1 : Finder.score(query, file)
-            guard score > 0 else { continue }
-            scored.append((score, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
-                                               detail: (file as NSString).deletingLastPathComponent.abbreviatingHome, note: "file",
-                                               run: { [weak self] in self?.open(file, from: nil) })))
+            let m = FileFinder.nameMatch(query, title: name, secondary: file)
+            guard m > 0 else { continue }
+            let scratch = file.hasPrefix("/tmp/") || file.hasPrefix("/private/tmp/") || file.hasPrefix("/private/var/folders/")
+            scored.append(((scratch ? 1000 : 2000) + m, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
+                                                         detail: (file as NSString).deletingLastPathComponent.abbreviatingHome, note: "file",
+                                                         run: { [weak self] in self?.open(file, from: nil) })))
         }
         scored.sort { a, b in
             if a.score != b.score { return a.score > b.score }
