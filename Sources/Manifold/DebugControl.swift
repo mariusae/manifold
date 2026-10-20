@@ -239,6 +239,7 @@ enum DebugControl {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
             if a.first == "expand", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row) }
+            if a.first == "deep", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row, deep: true) }
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
             if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }
             return "usage: org rows | org click <row> [cmd|double] | org expand <row> | org hover <row> | org menu <row> [title]"

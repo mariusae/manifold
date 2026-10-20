@@ -126,7 +126,18 @@ protocol OrganizationViewDelegate: AnyObject {
 /// An outline whose chevron, clicked with ⇧ (or ⌥, as outlines have it),
 /// opens or closes the whole subtree.
 final class DeepOutlineView: NSOutlineView {
-    private var deep: Bool { NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false }
+    /// Only while a ⇧-click is being handled: not for every expansion
+    /// made while ⇧ happens to be down (a ⇧-drag, ⇧⌘N), which on a tree
+    /// whose children are made as they're reached (Links) would go on
+    /// for ever.
+    private var deep = false
+
+    override func mouseDown(with event: NSEvent) {
+        deep = event.modifierFlags.contains(.shift)
+        defer { deep = false }
+        super.mouseDown(with: event)
+    }
+
     override func expandItem(_ item: Any?, expandChildren: Bool) { super.expandItem(item, expandChildren: expandChildren || deep) }
     override func collapseItem(_ item: Any?, collapseChildren: Bool) { super.collapseItem(item, collapseChildren: collapseChildren || deep) }
 }
@@ -326,10 +337,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "chose \(choose)"
     }
 
-    func debugExpand(row: Int) -> String {
+    func debugExpand(row: Int, deep: Bool = false) -> String {
         guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
-        outline.expandItem(node)
-        return "expanded"
+        outline.expandItem(node, expandChildren: deep)
+        return "expanded, \(outline.numberOfRows) rows"
     }
 
     /// As a click (or ⌘-click, or double-click) on a row would do.

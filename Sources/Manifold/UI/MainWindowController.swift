@@ -1712,9 +1712,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return ([OrgNode(id: "none", title: "Nothing focused", symbol: "circle.dashed")], [])
         }
         var open: Set<String> = ["center"]
+        // Children are made as they're reached, so the walk must end: a
+        // few bunches deep, and never back to a block on the way here.
+        let deepest = 4
         func bunches(of block: BlockID, prefix: String) -> [OrgNode] {
-            footBunches(of: block).compactMap { bunch -> OrgNode? in
-                let cards = bunch.cards.filter { matches(filter, [$0.title, $0.detail]) }
+            let path = prefix.split(separator: "/")
+            guard path.count / 2 < deepest else { return [] }
+            let onTheWay = Set(path.compactMap { BlockID(string: String($0)) }) .union([center])
+            return footBunches(of: block).compactMap { bunch -> OrgNode? in
+                let cards = bunch.cards.filter { !onTheWay.contains($0.block) && matches(filter, [$0.title, $0.detail]) }
                 guard !cards.isEmpty else { return nil }
                 let id = "\(prefix)/\(bunch.title)"
                 open.insert(id)
