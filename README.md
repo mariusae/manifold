@@ -164,7 +164,11 @@ and Mona Sans (bundled).
 - Drag a tile by its pill: between two tiles to put it there, near a
   column's side for a new column there, onto a workspace in the
   sidebar for its active column, or between workspaces for one of
-  its own. A stack's top takes the stack along; ⌘-drag it to take it
+  its own. To another workspace it moves, as a file does; ⌥-dragged it
+  is copied — shown there as well, the same block in both. Held over a
+  workspace's row, the workspace springs open under the drag, to drop
+  it exactly where it should go there; one left empty and unnamed by a
+  move goes. A stack's top takes the stack along; ⌘-drag it to take it
   alone, the next behind coming out in its place — a fanned-out pill
   drags its tile out alone the same way. ⌘W on a stack's top takes it
   off and the next comes out. Workspaces drag from the sidebar onto the grid the same
@@ -284,7 +288,10 @@ when you find it again.
   Name… in its pill's menu, File ▸ Name Note… or the palette turns its
   pill's title into a field (⏎ names it, emptied it's Untitled again);
   saved, it's offered under that name, and its file's name names it
-  from then on. The **editor** lens is Manifold's own
+  from then on. A file's text is the file's: one shown whose text hasn't
+  come in is asked for until it does (whatever went astray on the way),
+  says "Reading the file…" and can't be typed into or saved meanwhile,
+  and a file opened again is looked at on disk again. The **editor** lens is Manifold's own
   text view (the pill's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out
   with Core Text, line numbers, several
@@ -313,8 +320,9 @@ when you find it again.
   program; code and plain text as they are, not taken in. Viewed, both
   are set as go.dev sets the Go spec: code in Menlo on its pale grey,
   lines at 1.4, its text and line numbers' colors; Markdown in its
-  colors, heading sizes and spacing, its links, and its code blocks
-  (the theme's font for the rest). Code (by its extension) is set in
+  colors, heading sizes and spacing, its links, and its code blocks,
+  each with a copy button at its corner on hover (the theme's font for
+  the rest). Code (by its extension) is set in
   the fixed-width font when edited too, unless the tile's menu says
   otherwise. ⌥⇧⌘P puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a
@@ -417,7 +425,10 @@ when you find it again.
   spoken to as `sl` on the host's PATH. ⏎ or a
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
-  open the file there; on a commit, the whole commit. Compare with Last
+  open the file there; on a commit, the whole commit; on **All changes
+  as one diff** (first under the changes, or in the tile's menu), every
+  outstanding change at once, as plain `git diff` (`sl diff`) shows it,
+  read again as the repository moves. Compare with Last
   Commit (⌥⌘D) does the same for the file being edited. A diff shows
   old and new side by side when its tile is wide enough for two
   columns, unified when it isn't. The editor's

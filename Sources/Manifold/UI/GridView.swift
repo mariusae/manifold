@@ -785,7 +785,8 @@ final class GridView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         if pathDrag { return .copy }
-        return context == .withinApplication ? .move : []
+        // ⌥ copies to another workspace (as a file is copied).
+        return context == .withinApplication ? [.move, .copy] : []
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
@@ -866,7 +867,9 @@ final class GridView: NSView, NSDraggingSource {
         showDrop(target.rect)
         drop = target
         dropCovers = target.onto != nil && (coverDrag || NSEvent.modifierFlags.contains(.option))
-        return .move
+        // ⌥ leaves only a copy on offer: a tile from another workspace is
+        // copied here; one of this workspace's is covered or stacked.
+        return sender.draggingSourceOperationMask.contains(.move) ? .move : .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { hideDrop() }

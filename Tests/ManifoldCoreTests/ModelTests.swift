@@ -1304,3 +1304,26 @@ private final class Seen: @unchecked Sendable {
     b.apply(.title(nil), at: at)
     #expect(!b.isNote && b.displayTitle == "standup.md")
 }
+
+@Test func aFileBlockNeedsReadingUntilItsTextComesInAndANoteNever() {
+    let at = stamp()
+    // A block made for a file before anyone opened it: nothing to show yet.
+    var file = Block(id: BlockID(), kind: .text, created: at, path: "/tmp/b.txt")
+    #expect(file.needsRead)
+    file.apply(.content("hello\n", encoding: "utf-8", lineEnding: "\n", fingerprint: "f1"), at: at)
+    #expect(!file.needsRead)
+    // A new file: read as empty, but read.
+    var fresh = Block(id: BlockID(), kind: .text, created: at, path: "/tmp/new.txt")
+    fresh.apply(.content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), at: at)
+    #expect(!fresh.needsRead)
+    // One that couldn't be read as text isn't asked for forever.
+    var binary = Block(id: BlockID(), kind: .text, created: at, path: "/tmp/b.bin")
+    binary.apply(.unreadable(true), at: at)
+    #expect(!binary.needsRead)
+    // A note has nothing to read; a note saved has its own text.
+    var note = Block(id: BlockID(), kind: .text, created: at)
+    #expect(!note.needsRead)
+    note.apply(.edit([TextEdit(TextRange(0, 0), "mine")]), at: at)
+    note.apply(.path("/tmp/mine.md"), at: at)
+    #expect(!note.needsRead)
+}

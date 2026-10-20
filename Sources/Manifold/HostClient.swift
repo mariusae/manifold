@@ -341,13 +341,79 @@ final class HostClient {
         return id
     }
 
-    /// The text block for a path, made (and read) if there isn't one.
+    /// The text block for a path, made (and read) if there isn't one. One
+    /// already here is made sure of: read if its text never came in (a
+    /// block the host made for a file another text names), looked at
+    /// again on disk if it has no edits (the host sends it only if it
+    /// differs).
     func textBlock(for path: String) -> BlockID {
-        if let b = textBlock(path: path) { return b.id }
+        if let b = textBlock(path: path) {
+            if b.needsRead { ensureRead(b.id) } else if b.text?.isDirty == false { propose(.readFile(b.id)) }
+            return b.id
+        }
         let id = BlockID(host: host)
         append(.create(kind: .text, title: nil, path: path), to: .block(id))
-        propose(.readFile(id))
+        ensureRead(id)
         return id
+    }
+
+    // MARK: Texts read in
+
+    /// Files this client wants the text of: asked for until it's in,
+    /// whatever goes astray on the way — a request made while the link
+    /// was down, an answer lost to a refused append or a fence, a copy
+    /// that fell out of step.
+    private var wantedReads: Set<BlockID> = []
+    private var readsInFlight: Set<BlockID> = []
+    private var readAttempts: [BlockID: Int] = [:]
+
+    /// A file's text, read in if it isn't yet; asked again until it is.
+    func ensureRead(_ id: BlockID) {
+        guard node.block(id)?.needsRead == true else { return }
+        wantedReads.insert(id)
+        requestRead(id)
+    }
+
+    private func requestRead(_ id: BlockID) {
+        guard conn != nil, !readsInFlight.contains(id) else { return }
+        guard node.block(id)?.needsRead == true else {
+            wantedReads.remove(id)
+            readAttempts[id] = nil
+            return
+        }
+        readsInFlight.insert(id)
+        propose(.readFile(id)) { [weak self] error in
+            guard let self, self.readsInFlight.remove(id) != nil else { return }
+            guard self.node.block(id)?.needsRead == true else {
+                self.wantedReads.remove(id)
+                self.readAttempts[id] = nil
+                return
+            }
+            // Answered, and still not in: the answer went astray, or the
+            // host thinks this copy has it — ask for the host's copy too.
+            let n = (self.readAttempts[id] ?? 0) + 1
+            self.readAttempts[id] = n
+            NSLog("host %@: %@ still not read in after %d tries%@", self.host.raw, id.description, n, error.map { ": \($0)" } ?? "")
+            if error == nil { self.resync(.block(id)) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + min(8, 0.25 * pow(2, Double(min(n, 6))))) { [weak self] in
+                self?.requestRead(id)
+            }
+        }
+    }
+
+    /// Every wanted text not in yet, asked for again (on attaching, on a
+    /// fresh copy of a shard).
+    private func retryReads() {
+        for id in wantedReads { requestRead(id) }
+    }
+
+    /// Shards asked for afresh and not yet come: asked once a while.
+    private var resyncing: [ShardID: Date] = [:]
+
+    private func resync(_ shard: ShardID) {
+        if let asked = resyncing[shard], Date().timeIntervalSince(asked) < 3 { return }
+        resyncing[shard] = Date()
+        conn?.send(.message(ClientMessage.resync(shard: shard)))
     }
 
     func directoryBlock(for path: String) -> BlockID {
@@ -591,6 +657,8 @@ final class HostClient {
             NSLog("host %@: connection closed", self.host.raw)
             self.conn = nil
             self.isConnected = false
+            // Reads asked over this link won't be answered: asked again on the next.
+            self.readsInFlight = []
             self.pingTimer?.invalidate()
             self.pingSent = nil
             // Gone before it answered: unreachable, not still connecting.
@@ -671,6 +739,9 @@ final class HostClient {
             // Shards we had that the host no longer has (a fresh host).
             let known = Set(snapshots.map(\.shard))
             for shard in node.shards.keys where !known.contains(shard) { node.remove(shard) }
+            resyncing = [:]
+            readsInFlight = []
+            retryReads()
             hasState = true
             if first { onWelcome?() }
             onConnected?()
@@ -681,7 +752,10 @@ final class HostClient {
         case let .entries(shard, entries):
             for e in entries { clock.observe(e.at) }
             if !node.apply(entries, to: shard) {
-                NSLog("entries for %@ don't follow; waiting for a snapshot", shard.description)
+                // Out of step: the host's copy, rather than this one wrong
+                // until the next attach.
+                NSLog("entries for %@ don't follow; asking for a snapshot", shard.description)
+                resync(shard)
             }
             // A block discarded by the host is gone here too.
             if case .registry = shard {
@@ -694,6 +768,8 @@ final class HostClient {
             }
         case let .snapshot(snap):
             node.load(snap)
+            resyncing[snap.shard] = nil
+            if let id = snap.shard.block, wantedReads.contains(id) { requestRead(id) }
         case let .rejected(shard):
             NSLog("append to %@ was refused", shard.description)
         case let .fenced(shard):
@@ -748,6 +824,9 @@ final class HostClient {
         guard node.has(shard) else { return }
         switch proposal {
         case let .content(text, encoding, lineEnding, fingerprint):
+            // A text not in yet is this client's to put in, fenced or
+            // not: no one can have edited what isn't there.
+            if fenced.contains(shard), let id = shard.block, node.block(id)?.needsRead == true { own(shard) }
             append(.content(text, encoding: encoding, lineEnding: lineEnding, fingerprint: fingerprint), to: shard)
         case let .clean(version, fingerprint):
             append(.clean(version: version, fingerprint: fingerprint), to: shard)

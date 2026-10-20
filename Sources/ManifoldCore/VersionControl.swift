@@ -86,6 +86,15 @@ public enum VCS: String, Codable, Sendable {
         }
     }
 
+    /// What's changed and not committed, as a patch: plain `git diff`
+    /// (the work tree against the index), `sl diff` (against the parent).
+    public var uncommittedArguments: [String] {
+        switch self {
+        case .git: ["diff", "--no-color"]
+        case .sapling: ["--color", "never", "diff", "--git"]
+        }
+    }
+
     /// A commit as a patch with `diff --git` headers.
     public func showArguments(_ sha: String) -> [String] {
         switch self {

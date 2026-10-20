@@ -211,6 +211,8 @@ final class Server {
             clientAppended(shard, entries, from: conn)
         case let .own(shard)?:
             own(shard, by: conn)
+        case let .resync(shard)?:
+            if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
         case let .open(id, paths, beside, wait)?:
@@ -361,22 +363,12 @@ final class Server {
             if kill(pid, sig) != 0 { return done(String(cString: strerror(errno))) }
             done()
         case let .readFile(block):
-            guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
-            if let contents = TextFile.read(path) {
-                conn.send(.message(ServerMessage.propose(shard: .block(block), .content(contents.text, encoding: contents.encoding,
-                                                                                          lineEnding: contents.lineEnding, fingerprint: contents.fingerprint))))
-                watch(b, force: true)
-                done()
-            } else if FileManager.default.fileExists(atPath: path) {
-                conn.send(.message(ServerMessage.propose(shard: .block(block), .unreadable)))
-                done("can't be read as text")
-            } else {
-                // A new file: empty, clean, not yet on disk.
-                conn.send(.message(ServerMessage.propose(shard: .block(block), .content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""))))
-                done()
-            }
+            readFile(block, for: conn, done: done)
         case let .writeFile(block, version, text):
             guard let b = node.block(block), b.kind == .text, let path = b.path, let t = b.text else { return done("not a file") }
+            // Whatever asked, a file is never written over by a text that
+            // never came from it.
+            if b.needsRead, FileManager.default.fileExists(atPath: path) { return done("The file hasn't been read in yet; not written over.") }
             do {
                 let fingerprint = try TextFile.write(text, to: path, encoding: t.encoding, lineEnding: t.lineEnding)
                 expectedFingerprints[block] = fingerprint
@@ -499,6 +491,7 @@ final class Server {
                 case let .commit(repo, _): path = repo
                 case let .versions(id, _, _): path = node.block(id)?.path
                 case let .patch(root, _): path = root
+                case let .uncommitted(repo): path = repo
                 }
                 append(.create(kind: .diff, title: nil, path: path), to: .block(block))
             }
@@ -642,6 +635,8 @@ final class Server {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
         let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
         report(block, .working, msg: "Refreshing")
+        // The repository's changes in one diff, if open, looked at with it.
+        for d in node.blocks where d.kind == .diff && d.diff?.subject == .uncommitted(repo: root) { loadDiff(d.id) }
         var commands = [vcs.statusArguments, vcs.logArguments(limit: 200)]
         if let w = vcs.whereArguments { commands.append(w) }
         if let a = vcs.aheadArguments { commands.append(a) }
@@ -718,6 +713,25 @@ final class Server {
             let new = to.map { Block.replaying(entries, id: id, upTo: $0)?.text?.text.string ?? "" } ?? (node.block(id)?.text?.text.string ?? "")
             append(.diffLoaded(oldText: old, newText: new, patch: nil, error: nil, at: clock.now()), to: .block(block))
             report(block, .done, msg: "Compared")
+        case let .uncommitted(repo):
+            let vcs = git.repository(of: repo)?.vcs ?? .git
+            watchRepo(repo, vcs)
+            git.run(vcs, vcs.uncommittedArguments, in: repo) { [weak self] result in
+                guard let self, self.node.block(block) != nil else { return }
+                switch result {
+                case .success(let patch):
+                    // Unchanged since it was last read: nothing to append.
+                    if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
+                        self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                        return
+                    }
+                    self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                    self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                case .failure(let e):
+                    self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
+                    self.report(block, .error, msg: e.message)
+                }
+            }
         case let .commit(repo, sha):
             let vcs = git.repository(of: repo)?.vcs ?? .git
             git.run(vcs, vcs.showArguments(sha), in: repo) { [weak self] result in
@@ -757,9 +771,50 @@ final class Server {
         let proposal: HostProposal = t.isDirty
             ? .stale
             : .content(contents.text, encoding: contents.encoding, lineEnding: contents.lineEnding, fingerprint: contents.fingerprint)
-        let frame = Frame.message(ServerMessage.propose(shard: .block(id), proposal))
-        // The leader is whichever client is attached; with one, that's it.
-        if let leader = clients.first { leader.send(frame) }
+        leader(of: .block(id))?.send(.message(ServerMessage.propose(shard: .block(id), proposal)))
+    }
+
+    /// Who writes what the host proposes for a shard it doesn't lead: the
+    /// app attachment holding its pen, else any app attachment — never a
+    /// command-line client, which would let it drop.
+    private func leader(of shard: ShardID) -> Connection? {
+        let apps = clients.filter { appClients.contains(ObjectIdentifier($0)) }
+        if let owner = owners[shard], let c = apps.first(where: { ObjectIdentifier($0) == owner }) { return c }
+        return apps.first ?? clients.first
+    }
+
+    /// A text block's file read in, for the attachment that asked. What
+    /// it already has, unedited and as on disk, isn't sent again (opening
+    /// a file checks it so). A file that seems not to be there is looked
+    /// for again a few times before it's taken for a new one — a file
+    /// being replaced, a slow file system, isn't read as empty.
+    private func readFile(_ block: BlockID, for conn: Connection, attempt: Int = 0, done: @escaping (String?) -> Void) {
+        guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
+        let send = { (p: HostProposal) in conn.send(.message(ServerMessage.propose(shard: .block(block), p))) }
+        if let contents = TextFile.read(path) {
+            if let t = b.text, !t.isDirty, t.version > 0, t.diskFingerprint == contents.fingerprint, !t.unreadable {
+                // Already so.
+            } else {
+                send(.content(contents.text, encoding: contents.encoding, lineEnding: contents.lineEnding, fingerprint: contents.fingerprint))
+            }
+            watch(b, force: true)
+            done(nil)
+        } else if FileManager.default.fileExists(atPath: path) {
+            if attempt < 3 {
+                queue.asyncAfter(deadline: .now() + 0.2 * Double(attempt + 1)) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
+                return
+            }
+            send(.unreadable)
+            done("can't be read as text")
+        } else if attempt < 3 {
+            queue.asyncAfter(deadline: .now() + 0.2 * Double(attempt + 1)) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
+        } else {
+            // A new file: empty, clean, not yet on disk; watched, so it's
+            // read when it comes.
+            send(.content("", encoding: "utf-8", lineEnding: "\n", fingerprint: ""))
+            watch(b, force: true)
+            done(nil)
+        }
     }
 
     // MARK: Sessions

@@ -427,6 +427,9 @@ public enum DiffSubject: Codable, Equatable, Sendable {
     case versions(block: BlockID, from: Stamp, to: Stamp?)
     /// A patch given to `manifold diff`, its paths against `root`.
     case patch(root: String, title: String?)
+    /// What's changed in a repository and not yet committed, as plain
+    /// `git diff` (`sl diff`) shows it: read again as the repository moves.
+    case uncommitted(repo: String)
 }
 
 /// A diff block: the subject, and the texts (or the patch) the host read
@@ -682,6 +685,14 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// A text with nowhere on disk yet: a note.
     public var isNote: Bool { kind == .text && path == nil }
 
+    /// A file whose text has never come in from disk: nothing to show or
+    /// edit yet, only to read (a block made for a file before anyone
+    /// opened it, a read that went astray).
+    public var needsRead: Bool {
+        guard kind == .text, path != nil, let t = text else { return false }
+        return t.diskFingerprint == nil && !t.unreadable && t.version == 0
+    }
+
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }
@@ -703,6 +714,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
                 f.timeStyle = .short
                 let name = path?.lastPathComponent ?? "Note"
                 return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
+            case let .uncommitted(repo):
+                return "Changes in \(repo.lastPathComponent)"
             case let .patch(_, title):
                 if let title, !title.isEmpty { return title }
                 let files = diff?.patch?.split(separator: "\n").filter { $0.hasPrefix("+++ ") }.count ?? 0

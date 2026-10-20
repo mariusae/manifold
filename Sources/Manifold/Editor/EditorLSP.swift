@@ -20,7 +20,7 @@ extension EditorView {
     }
 
     func layoutStatus() {
-        let message = busyMessage ?? statusMessage
+        let message = loadingMessage ?? busyMessage ?? statusMessage
         guard let message else {
             if !statusBox.isHidden {
                 statusBox.isHidden = true
@@ -29,7 +29,7 @@ extension EditorView {
             return
         }
         status.stringValue = message
-        let severity = busyMessage != nil ? 0 : (textView.diagnostics.first { $0.range.start <= caret && caret <= max($0.range.end, $0.range.start) }?.severity ?? 3)
+        let severity = loadingMessage != nil || busyMessage != nil ? 0 : (textView.diagnostics.first { $0.range.start <= caret && caret <= max($0.range.end, $0.range.start) }?.severity ?? 3)
         let tint: NSColor = severity == 0 ? Theme.panel : TextView.diagnosticColor(severity).withAlphaComponent(0.12)
         statusBox.themed { v in
             v.layer?.backgroundColor = (tint.blended(withFraction: 0.5, of: Theme.panel) ?? Theme.panel).cgColor

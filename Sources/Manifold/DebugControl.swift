@@ -278,10 +278,10 @@ enum DebugControl {
             // "orgdrop ws <workspace> <host session> <index>": a workspace's among its host's rows.
             let a = arg.split(separator: " ").map(String.init)
             guard let wc, a.count >= 3, let index = Int(a.last!) else { return "usage: orgdrop host <session> <i> | ws <workspace> <host> <i>" }
-            if a[0] == "host" { return wc.organizationDrop(.host(HostID(a[1])), onto: nil, at: index) ? "ok" : "refused" }
+            if a[0] == "host" { return wc.organizationDrop(.host(HostID(a[1])), onto: nil, at: index, copy: false) ? "ok" : "refused" }
             guard a[0] == "ws", a.count == 4, let ws = BlockID(string: a[1]) else { return "usage" }
             let node = OrgNode(id: "host:\(a[2])", title: "", symbol: "")
-            return wc.organizationCanDrop(.arrangement(ws), onto: node, at: index) && wc.organizationDrop(.arrangement(ws), onto: node, at: index) ? "ok" : "refused"
+            return wc.organizationCanDrop(.arrangement(ws), onto: node, at: index) && wc.organizationDrop(.arrangement(ws), onto: node, at: index, copy: false) ? "ok" : "refused"
         case "mousebutton":
             // "mousebutton <n>": an other-button press (3 back, 4 forward) in the window, through the app.
             guard let window = wc?.window, let n = Int64(arg),
@@ -293,6 +293,21 @@ enum DebugControl {
             guard let e = NSEvent(cgEvent: cg) else { return "no event" }
             NSApp.postEvent(e, atStart: false)
             return "posted button \(e.buttonNumber) to window \(e.window === window ? "ok" : "none")"
+        case "pillmenu":
+            // "pillmenu [title]": the focused tile's menu, or that item chosen.
+            return wc?.debugPillMenu(arg) ?? "no window"
+        case "workspaces":
+            return wc?.debugWorkspaces() ?? "no window"
+        case "blockdrop":
+            // "blockdrop <placement> <workspace|new> [copy]": dropped on the sidebar.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count >= 2 else { return "usage: blockdrop <placement> <workspace|new> [copy]" }
+            return wc.debugBlockDrop(a[0], onto: a[1] == "new" ? nil : BlockID(string: a[1]), copy: a.contains("copy"))
+        case "griddrop":
+            // "griddrop <placement> <column> <at> [copy]": from another workspace into this grid.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count >= 3, let c = Int(a[1]), let at = Int(a[2]) else { return "usage: griddrop <placement> <column> <at> [copy]" }
+            return wc.debugGridDrop(a[0], column: c, at: at, copy: a.contains("copy"))
         case "sun":
             // "sun [HH:MM|now]": the backdrop's light, at that hour today if given.
             return wc?.debugSun(arg) ?? "no window"

@@ -293,6 +293,12 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let dict = message.body as? [String: Any] else { return }
+        // A code block's copy button.
+        if let text = dict["copy"] as? String {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return
+        }
         var values: [String: String] = [:]
         if let y = dict["scrolling"] as? Double { onScrolling?(y); return }
         if let y = dict["scroll"] as? Double { values["scroll"] = "\(Int(y.rounded()))" }

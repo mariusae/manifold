@@ -32,6 +32,32 @@ enum MarkdownPage {
             seen[slug] = n + 1;
             h.id = n ? slug + '-' + n : slug;
           });
+          // A copy button on each code block, shown on hover, in a wrapper
+          // so it stays put as a long line scrolls under it.
+          var copyIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5.5" y="5.5" width="8" height="8.5" rx="1.6"/><path d="M10.5 3.6V3.2c0-.9-.7-1.6-1.6-1.6H3.6C2.7 1.6 2 2.3 2 3.2v6.2c0 .9.7 1.6 1.6 1.6H4"/></svg>';
+          var doneIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+          main.querySelectorAll('pre').forEach(function (pre) {
+            var wrap = document.createElement('div');
+            wrap.className = 'codeblock';
+            pre.parentNode.insertBefore(wrap, pre);
+            wrap.appendChild(pre);
+            var b = document.createElement('button');
+            b.className = 'copy';
+            b.title = 'Copy';
+            b.setAttribute('aria-label', 'Copy');
+            b.innerHTML = copyIcon;
+            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            b.addEventListener('click', function (e) {
+              e.preventDefault();
+              var code = pre.querySelector('code') || pre;
+              try { window.webkit.messageHandlers.manifoldState.postMessage({ copy: code.textContent }); } catch (err) {}
+              b.innerHTML = doneIcon;
+              b.classList.add('done');
+              clearTimeout(b.manifoldTimer);
+              b.manifoldTimer = setTimeout(function () { b.innerHTML = copyIcon; b.classList.remove('done'); }, 1200);
+            });
+            wrap.appendChild(b);
+          });
           window.scrollTo(0, toTop ? 0 : y);
         };
         window.manifoldScrollTo = function (id) {
@@ -255,6 +281,17 @@ enum MarkdownPage {
         :not(pre) > code { font-size: 0.9em; }
         pre { background: #f8f8f8; color: #202224; padding: 0.5rem 1.75rem; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
         pre code { font-size: 1em; background: none; padding: 0; }
+        .codeblock { position: relative; margin: 1em 0; }
+        .codeblock > pre { margin: 0; }
+        .copy {
+          position: absolute; top: 6px; right: 6px; width: 26px; height: 26px;
+          display: flex; align-items: center; justify-content: center;
+          border: 1px solid #e1e4e8; border-radius: 6px; background: #ffffff; color: #6e7781;
+          cursor: pointer; opacity: 0; transition: opacity 0.12s; user-select: none; -webkit-user-select: none; padding: 0;
+        }
+        .codeblock:hover .copy, .copy.done { opacity: 1; }
+        .copy:hover { color: #202224; border-color: #c8ccd1; }
+        .copy.done { color: #1a7f37; }
         blockquote { margin-left: 0; padding: 0 1em; color: #57606a; border-left: 3px solid #d8dbe0; }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
         th, td { border: 1px solid #e1e4e8; padding: 6px 12px; } th { font-weight: 600; background: #f6f6f4; }
@@ -271,6 +308,9 @@ enum MarkdownPage {
           blockquote, .footnotes { color: #9d9d98; }
           a { color: #50b7e0; }
           pre { background: #2d2d2d; color: #f0f1f2; }
+          .copy { background: #383838; border-color: #4a4a4a; color: #a8a8a8; }
+          .copy:hover { color: #f0f1f2; border-color: #5a5a5a; }
+          .copy.done { color: #56d364; }
           blockquote { border-left-color: #444441; }
           th, td { border-color: #3a3a38; } th { background: #262625; }
           tr:nth-child(2n) td { background: #212120; }

@@ -92,13 +92,16 @@ final class TextView: NSView, NSTextInputClient {
     var tabWidth = 4
     var isEditable = true
     static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
-    /// The gutter: room for the line count's digits, the numbers set at
-    /// its left, so the text has the rest.
+    /// The gutter: a lane for the git marks, then room for the line
+    /// count's digits, the numbers set at its left, so the text has the rest.
     var gutterWidth: CGFloat {
         guard showsLineNumbers else { return 0 }
         let digits = max(2, String(max(text.lineCount, 1)).count)
-        return CGFloat(digits) * gutterDigitWidth + 18
+        return Self.markLane + CGFloat(digits) * gutterDigitWidth + 18
     }
+    /// The git marks' lane, left of the line numbers: a bar or a wedge
+    /// never drawn over a digit.
+    static let markLane: CGFloat = 8
     private var gutterDigitWidth: CGFloat {
         let f = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize * 0.78), weight: .regular)
         return ceil(("0" as NSString).size(withAttributes: [.font: f]).width)
@@ -632,7 +635,7 @@ final class TextView: NSView, NSTextInputClient {
                 let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: gutterColor])
                 let size = s.size()
                 ctx.restoreGState()
-                s.draw(at: NSPoint(x: Self.insets.left + 2, y: lineTop + (lineHeight - size.height) / 2))
+                s.draw(at: NSPoint(x: Self.insets.left + Self.markLane + 2, y: lineTop + (lineHeight - size.height) / 2))
                 ctx.saveGState()
                 ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }
@@ -650,7 +653,7 @@ final class TextView: NSView, NSTextInputClient {
         // The git gutter: a bar beside added and changed lines, a wedge
         // where lines were taken out.
         if showsLineNumbers, !gutterMarks.isEmpty {
-            let x = Self.insets.left + 2
+            let x = Self.insets.left
             for m in gutterMarks where m.line <= last && m.line + max(m.count, 1) >= first {
                 guard m.line < text.lineCount || m.kind == .deleted else { continue }
                 switch m.kind {

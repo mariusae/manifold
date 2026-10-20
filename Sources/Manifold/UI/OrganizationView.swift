@@ -128,8 +128,13 @@ protocol OrganizationViewDelegate: AnyObject {
     /// Something dragged onto a row, or between the rows under `node`
     /// (nil for the top level) at `index`.
     func organizationCanDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool
-    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool
+    /// `copy`: ⌥ held — a block dragged to another workspace is shown
+    /// there too, not taken from where it was.
+    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int, copy: Bool) -> Bool
     func organizationDragChanged(_ dragging: Bool)
+    /// A drag rested on a workspace's row: that workspace, opened, so the
+    /// block can be dropped where it's wanted in it (a folder sprung open).
+    func organizationSpring(_ node: OrgNode)
 }
 
 /// The tree of an organization, as an outline: rows with a symbol, a
@@ -356,18 +361,63 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        springWork?.cancel()
+        springNode = nil
         delegate?.organizationDragChanged(false)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? [.move, .copy] : []
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return [] }
         let node = item as? OrgNode
-        return delegate?.organizationCanDrop(drag, onto: node, at: index) == true ? .move : []
+        guard delegate?.organizationCanDrop(drag, onto: node, at: index) == true else { return [] }
+        let isBlock: Bool
+        switch drag {
+        case .block, .placement: isBlock = true
+        case .arrangement, .host: isBlock = false
+        }
+        if isBlock, let node, node.arrangement != nil, node.column == nil { springLoad(node) }
+        // ⌥: the plus by the pointer, as when copying a file.
+        return isBlock && Self.copying(info) ? .copy : .move
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return false }
-        return delegate?.organizationDrop(drag, onto: item as? OrgNode, at: index) ?? false
+        springWork?.cancel()
+        return delegate?.organizationDrop(drag, onto: item as? OrgNode, at: index, copy: Self.copying(info)) ?? false
+    }
+
+    /// Whether a drag copies: ⌥ held (the source then offers only a copy).
+    static func copying(_ info: NSDraggingInfo) -> Bool {
+        NSEvent.modifierFlags.contains(.option) || info.draggingSourceOperationMask == .copy
+    }
+
+    // MARK: Spring-loaded workspaces
+
+    private var springNode: String?
+    private var springWork: DispatchWorkItem?
+    static let springDelay: TimeInterval = 0.8
+
+    /// A drag over a workspace's row: held there a moment, the workspace
+    /// opens under it, as Finder springs a folder open.
+    private func springLoad(_ node: OrgNode) {
+        guard springNode != node.id else { return }
+        springNode = node.id
+        springWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.springNode == node.id, NSEvent.pressedMouseButtons & 1 != 0, let window = self.window else { return }
+            // Still over that row.
+            let p = self.outline.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            let row = self.outline.row(at: p)
+            guard row >= 0, (self.outline.item(atRow: row) as? OrgNode)?.id == node.id else { return }
+            self.springNode = nil
+            self.delegate?.organizationSpring(node)
+        }
+        springWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.springDelay, execute: work)
     }
 
     // MARK: Debugging aids

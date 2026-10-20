@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 27
+public let protocolVersion = 28
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -189,6 +189,10 @@ public enum ClientMessage: Codable, Sendable {
     /// The client wants the pen for a shard it may lead (§8.2): it focused
     /// the block. The host hands it over, fencing the last owner.
     case own(shard: ShardID)
+    /// The client's copy of a shard fell out of step (entries that don't
+    /// follow, a text that should be in and isn't): the host sends its
+    /// snapshot.
+    case resync(shard: ShardID)
     case propose(id: Int, Proposal)
     case attach(AttachRequest)
     /// Asks the server to exit, ending every session.

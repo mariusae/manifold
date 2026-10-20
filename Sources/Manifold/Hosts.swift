@@ -306,6 +306,11 @@ final class Hosts {
         (client(host) ?? local).textBlock(for: path)
     }
 
+    /// A shown file's text, read in if it never came, asked until it is.
+    func ensureRead(_ block: BlockID) {
+        (client(of: block) ?? local).ensureRead(block)
+    }
+
     func directoryBlock(for path: String, on host: HostID) -> BlockID {
         (client(host) ?? local).directoryBlock(for: path)
     }

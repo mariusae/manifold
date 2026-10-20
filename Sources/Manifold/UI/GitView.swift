@@ -30,10 +30,13 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         case change(GitStatusEntry)
         case commit(GitCommit)
         case note(String)
+        /// Every change at once, as plain `git diff` shows them.
+        case allChanges
     }
     private var rows: [Row] = []
     private var refreshedAt: Stamp?
     private var root = ""
+    private var vcs: VCS = .git
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -89,6 +92,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         switch row {
         case let .change(s): "change:" + s.path
         case let .commit(c): "commit:" + c.sha
+        case .allChanges: "all"
         default: nil
         }
     }
@@ -125,6 +129,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     func documentChanged() {
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
+        vcs = g.vcs ?? .git
         header.stringValue = root.abbreviatingHome + (g.vcs == .sapling ? " · Sapling" : "")
         var branch = g.branch ?? ""
         if g.ahead > 0 { branch += " ↑\(g.ahead)" }
@@ -135,6 +140,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         var out: [Row] = []
         if let e = g.error { out.append(.note(e)) }
         out.append(.section(g.status.isEmpty ? "No changes" : "\(g.status.count) change\(g.status.count == 1 ? "" : "s")"))
+        if !g.status.isEmpty { out.append(.allChanges) }
         for s in g.status { out.append(.change(s)) }
         out.append(.section("History"))
         for c in g.log { out.append(.commit(c)) }
@@ -160,8 +166,20 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             }
         case let .commit(c):
             delegate?.gitView(self, openDiff: .commit(repo: root, sha: c.sha))
+        case .allChanges:
+            showAllChanges()
         default: break
         }
+    }
+
+    /// Every outstanding change in one diff beside it, as plain `git diff`.
+    func showAllChanges() {
+        guard !root.isEmpty else { return }
+        delegate?.gitView(self, openDiff: .uncommitted(repo: root))
+    }
+
+    var pillItems: [NSMenuItem] {
+        [ClosureMenuItem("All Changes as One Diff", symbol: "doc.on.doc") { [weak self] in self?.showAllChanges() }]
     }
 
     override func doCommand(by selector: Selector) {
@@ -187,7 +205,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         switch rows[row] {
-        case .change, .commit: return true
+        case .change, .commit, .allChanges: return true
         default: return false
         }
     }
@@ -232,6 +250,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             let color: NSColor = s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor)
             let a = NSMutableAttributedString(string: letters + "  ", attributes: [.font: mono, .foregroundColor: color])
             a.append(NSAttributedString(string: s.path, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
+            f.attributedStringValue = a.truncatingTail()
+        case .allChanges:
+            let a = NSMutableAttributedString(string: "±   ", attributes: [.font: mono, .foregroundColor: Theme.secondaryText])
+            a.append(NSAttributedString(string: "All changes as one diff", attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
+            a.append(NSAttributedString(string: vcs == .sapling ? "   sl diff" : "   git diff", attributes: [.font: mono, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = a.truncatingTail()
         case let .commit(c):
             let a = NSMutableAttributedString(string: c.short + "  ", attributes: [.font: mono, .foregroundColor: Theme.secondaryText])

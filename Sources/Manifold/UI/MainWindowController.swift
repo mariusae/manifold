@@ -363,6 +363,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func view(for shown: Shown) -> PaneContent {
         let p = shown.placement
+        // A file shown is a file read: one whose text never came is asked
+        // for until it does.
+        if shown.block?.needsRead == true { hosts.ensureRead(p.block) }
         if shown.block == nil {
             // On a host we aren't attached to (§8): a placeholder that says
             // so, until the host is, when it is made again.
@@ -794,6 +797,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugFocusedPlacement: Shown? { focusedShown }
     var debugOrganization: OrganizationView { sidebar.organizationView }
     /// Runs the first palette item whose title starts with `prefix`.
+    /// Debugging: the focused tile's pill menu, or the item so titled chosen.
+    func debugPillMenu(_ title: String) -> String {
+        guard let f = focusedShown, let menu = gridPillMenu(for: f.id) else { return "no menu" }
+        if title.isEmpty { return menu.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n") }
+        guard let item = menu.items.first(where: { $0.title == title }) as? ClosureMenuItem else { return "no such item" }
+        item.debugRun()
+        return "chose \(title)"
+    }
+
+    /// Debugging: every workspace on the desk, its tiles' placements and titles.
+    func debugWorkspaces() -> String {
+        allWorkspaces.compactMap { id -> String? in
+            guard let a = hosts.arrangement(id) else { return nil }
+            let tiles = a.columns.map { col in col.map { "\($0.id)=\(hosts.block($0.block)?.displayTitle ?? "?")" }.joined(separator: ", ") }
+            return "\(id == selected ? "*" : " ")\(id) \(title(of: a)): " + tiles.map { "[\($0)]" }.joined(separator: " ")
+        }.joined(separator: "\n")
+    }
+
+    /// Debugging: a tile dropped on a workspace's row in the sidebar (or
+    /// between the rows, "new"), moved or copied.
+    func debugBlockDrop(_ placement: PlacementID, onto arrangement: BlockID?, copy: Bool) -> String {
+        let node = arrangement.map { a -> OrgNode in
+            let n = OrgNode(id: "ws:\(a)", block: a, title: "", symbol: "")
+            n.arrangement = a
+            return n
+        }
+        let item = OrgDragItem.placement(placement)
+        guard organizationCanDrop(item, onto: node, at: node == nil ? 0 : -1) else { return "refused" }
+        return organizationDrop(item, onto: node, at: node == nil ? 0 : -1, copy: copy) ? "ok" : "failed"
+    }
+
+    /// Debugging: a tile from another workspace dropped in this one's grid.
+    func debugGridDrop(_ placement: PlacementID, column: Int, at: Int, copy: Bool) -> String {
+        bringFromElsewhere(placement, column: column, at: at, newColumn: false, copy: copy)
+        return "ok"
+    }
+
     func debugRunPaletteItem(_ prefix: String) -> String {
         guard let item = paletteItems().first(where: { $0.title.hasPrefix(prefix) }) else { return "no item" }
         item.run()
@@ -1253,7 +1293,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func save(_ block: BlockID, from placement: PlacementID) {
         let editors = views.values.compactMap { $0 as? EditorView }.filter { $0.block == block }
         if let e = editors.first(where: { $0.placement == placement }) ?? editors.first { return e.saveDocument(nil) }
-        guard let b = hosts.block(block), b.path != nil, let t = b.text else { return NSSound.beep() }
+        guard let b = hosts.block(block), b.path != nil, !b.needsRead, let t = b.text else { return NSSound.beep() }
         hosts.propose(.writeFile(block, version: t.version, text: t.text.string))
     }
 
@@ -3836,11 +3876,46 @@ extension MainWindowController: GridDelegate {
 
     func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool) {
         guard let a = arrangement else { return }
+        if a.placement(placement) == nil { return bringFromElsewhere(placement, column: column, at: at, newColumn: newColumn) }
         if newColumn || column >= a.columns.count {
             movePlacement(placement, toNewColumn: column, in: a, alone: alone)
         } else {
             appendToSelected((alone ? a.leavingAlone(placement) : []) + [.move(placement, column: column, at: at)])
         }
+    }
+
+    /// A tile dragged here from another workspace (one sprung open from
+    /// the sidebar under the drag): its block placed where it was dropped,
+    /// stacked behind `behind` if it was dropped on a tile, and taken from
+    /// the workspace it came from — unless ⌥ copies it, shown in both.
+    private func bringFromElsewhere(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, behind: PlacementID? = nil,
+                                    copy: Bool = NSEvent.modifierFlags.contains(.option)) {
+        guard let a = arrangement, let id = selected, let (block, from) = dragged(.placement(placement)), let from else { return }
+        let lens = from.placement.lens
+        if let t = a.tile(of: block, lens: lens) {
+            // Here already: only gone from there.
+            focus(t.id)
+        } else {
+            let new = ULID.make()
+            if newColumn || column >= a.columns.count {
+                show(block, lens: lens, .inNewColumn(column))
+            } else {
+                let below = at > 0 && at - 1 < a.columns[column].count ? a.columns[column][at - 1].id : nil
+                appendToSelected(below.map { a.bringing(block, lens: lens, inColumn: column, below: $0, newPlacement: { new }) }
+                                 ?? [.place(Placement(id: new, block: block, lens: lens), column: column, at: 0)])
+                if let behind, let now = hosts.arrangement(id), now.placement(new) != nil {
+                    appendToSelected(now.stashing(new, behind: behind))
+                }
+            }
+        }
+        if !copy { takeOut(from.placement.id, of: from.arrangement) }
+    }
+
+    /// A tile taken off a workspace it was moved from; the workspace, left
+    /// empty and unnamed, off the desk.
+    private func takeOut(_ placement: PlacementID, of arrangement: BlockID) {
+        hosts.append(.remove(placement), to: .block(arrangement))
+        if arrangement != selected, let a = hosts.arrangement(arrangement), a.isEmpty, !a.isNamed { removeFromDesk(arrangement) }
     }
 
     /// A block from the sidebar dropped in the grid: brought there.
@@ -3873,7 +3948,12 @@ extension MainWindowController: GridDelegate {
 
     /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
     /// stack going behind it.
-    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool) { cover(placement, over: target, alone: alone) }
+    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool) {
+        if let a = arrangement, a.placement(placement) == nil, let (c, i) = a.locate(target) {
+            return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, behind: target)
+        }
+        cover(placement, over: target, alone: alone)
+    }
 
     /// Close Stack: this tile and every one behind it are taken off the
     /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
@@ -3920,6 +4000,9 @@ extension MainWindowController: GridDelegate {
 
     func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool) {
         guard let a = arrangement else { return }
+        if a.placement(placement) == nil, let (c, i) = a.locate(behind) {
+            return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, behind: behind)
+        }
         appendToSelected((alone ? a.leavingAlone(placement) : []) + a.stashing(placement, behind: behind))
     }
 
@@ -4334,6 +4417,7 @@ extension MainWindowController: GitViewDelegate {
             }
             context = new.path.lastPathComponent
         case let .commit(_, sha): context = String(sha.prefix(7))
+        case .uncommitted: context = "uncommitted"
         case .versions, .patch: break
         }
         show(block, lens: .diff, opener(view.placement), context: context)
@@ -4648,7 +4732,12 @@ extension MainWindowController: OrganizationViewDelegate {
         }
     }
 
-    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int) -> Bool {
+    func organizationSpring(_ node: OrgNode) {
+        guard let arr = node.arrangement, arr != selected else { return }
+        hosts.select(arr)
+    }
+
+    func organizationDrop(_ item: OrgDragItem, onto node: OrgNode?, at index: Int, copy: Bool) -> Bool {
         if case .host(let h) = item {
             // Among the hosts as the sidebar shows them.
             var order = hosts.ordered.map(\.host)
@@ -4675,20 +4764,22 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
         let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
         if let node, let arr = node.arrangement {
-            // Onto a column: shown there; onto an arrangement: in its focused column.
-            if let from, from.arrangement != arr { hosts.append(.remove(from.placement.id), to: .block(from.arrangement)) }
+            // Onto a column: shown there; onto an arrangement: in its
+            // focused column. Moved from where it was, or with ⌥ copied —
+            // there as well as here.
             let place: Where = node.column.map { .inColumn($0) } ?? .here
             show(block, lens: lens, place, in: arr)
+            if let from, from.arrangement != arr, !copy { takeOut(from.placement.id, of: from.arrangement) }
             hosts.select(arr)
             return true
         }
         guard node == nil else { return false }
         // Between arrangements: one of its own there.
-        if let from, hosts.arrangement(from.arrangement)?.placements.count == 1 {
+        if !copy, let from, hosts.arrangement(from.arrangement)?.placements.count == 1 {
             sidebarMove(from.arrangement, to: index)
             return true
         }
-        if let from { hosts.append(.remove(from.placement.id), to: .block(from.arrangement)) }
+        if let from, !copy { takeOut(from.placement.id, of: from.arrangement) }
         let n = host.newArrangement()
         show(block, lens: lens, .here, in: n)
         sidebarMove(n, to: index)

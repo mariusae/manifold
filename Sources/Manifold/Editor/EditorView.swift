@@ -59,6 +59,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     var statusMessage: String? { didSet { if statusMessage != oldValue { layoutStatus() } } }
     /// Something the server is doing for us, shown while it lasts.
     var busyMessage: String? { didSet { if busyMessage != oldValue { layoutStatus() } } }
+    /// The file's text not in yet: said so, over anything else.
+    var loadingMessage: String? { didSet { if loadingMessage != oldValue { layoutStatus() } } }
+
+    /// Whether the text is the file's (or a note's own): until it is,
+    /// there's nothing to edit or save — typing into the empty page and
+    /// saving would write it over the file.
+    var isLoaded: Bool {
+        guard let doc = document else { return false }
+        return path.isEmpty || doc.diskFingerprint != nil || doc.unreadable || doc.version > 0
+    }
 
     var font: EditorFont { didSet { if font != oldValue { applyFont() } } }
     var undoLimit = 0 { didSet { textView.undoLimit = undoLimit } }
@@ -366,7 +376,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             }
         }
         if external { textView.savedUndoDepth = textView.undoDepth }
-        textView.isEditable = !doc.unreadable && !offline && !viewing
+        textView.isEditable = !doc.unreadable && !offline && !viewing && isLoaded
+        loadingMessage = isLoaded ? nil : "Reading the file…"
         if doc.stale, banner == nil { showBanner() }
         if !doc.stale, banner != nil { hideBanner() }
         if doc.isDirty != isEdited {
@@ -474,8 +485,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         guard text.lineCount > 0 else { return "" }
         return String(text.lineText(text.line(at: textView.primarySelection.head)).trimmingCharacters(in: .whitespaces).prefix(200))
     }
-    /// The file's text has arrived (or it couldn't be read).
-    var isLoaded: Bool { (document?.version ?? 0) > 0 || document?.unreadable == true }
 
     // MARK: TextViewDelegate
 
@@ -537,6 +546,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     @objc func saveDocument(_ sender: Any?) {
         guard let doc = document, !doc.unreadable else { return }
         if path.isEmpty { return saveAs() }
+        // Never a text that isn't the file's over the file.
+        guard isLoaded else { return NSSound.beep() }
         textView.savedUndoDepth = textView.undoDepth
         delegate?.editor(self, propose: .writeFile(block, version: doc.version, text: doc.text.string))
     }
