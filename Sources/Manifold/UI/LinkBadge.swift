@@ -126,9 +126,12 @@ final class LinkBadge: NSView {
                 }, completionHandler: { [weak self, weak p] in
                     guard let self, let p, !self.fanned else { return }
                     p.isHidden = true
+                    self.window?.invalidateCursorRects(for: p)
                 })
             }
         }
+        // The capsules moved: their cursor rects (the pointing hand) with them.
+        for c in [badge] + pills { window?.invalidateCursorRects(for: c) }
     }
 
     /// Only the capsules take the mouse; between them, the tile does.
@@ -148,9 +151,14 @@ final class LinkBadge: NSView {
         let p = convert(event.locationInWindow, from: nil)
         let over = ([badge] + pills).contains { !$0.isHidden && $0.frame.insetBy(dx: -6, dy: -4).contains(p) }
         if over { fanned = true } else if fanned, !badge.frame.insetBy(dx: -10, dy: -10).contains(p) { fanned = false }
+        // The capsule under the pointer is ringed: the one a click takes.
+        for c in [badge] + pills { c.hovered = !c.isHidden && c.frame.contains(p) }
     }
 
-    override func mouseExited(with event: NSEvent) { fanned = false }
+    override func mouseExited(with event: NSEvent) {
+        fanned = false
+        for c in [badge] + pills { c.hovered = false }
+    }
 
     /// Debugging: the fan, as the pointer resting on the badge would open it.
     func debugFan(_ open: Bool) { fanned = open }
@@ -174,6 +182,16 @@ final class LinkBadge: NSView {
         private let label = NSTextField(labelWithString: "")
         private let close = NSImageView()
         var direction: String? { didSet { arrow.image = direction.flatMap { Theme.symbol($0, size: 9, weight: .semibold) }; arrow.isHidden = direction == nil; needsLayout = true } }
+        /// Under the pointer: ringed in the accent, as a fanned pill is.
+        var hovered = false {
+            didSet {
+                guard hovered != oldValue else { return }
+                effectiveAppearance.performAsCurrentDrawingAppearance {
+                    layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : Theme.panelBorder).cgColor
+                }
+                layer?.borderWidth = hovered ? 1.5 : 0.5
+            }
+        }
         var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 10) } }
         var title = "" { didSet { label.stringValue = title; needsLayout = true } }
 

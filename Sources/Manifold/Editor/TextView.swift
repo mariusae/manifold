@@ -1657,6 +1657,27 @@ final class TextView: NSView, NSTextInputClient {
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 
+    /// The pointer over a link, or a block's pill: the pointing hand.
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let over = linkTarget(at: convert(event.locationInWindow, from: nil)) != nil
+        if over != overLink {
+            overLink = over
+            (over ? NSCursor.pointingHand : NSCursor.iBeam).set()
+        }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        (overLink ? NSCursor.pointingHand : NSCursor.iBeam).set()
+    }
+
+    private var overLink = false
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         menu.addItem(withTitle: "Cut", action: #selector(cut(_:)), keyEquivalent: "")
@@ -1688,6 +1709,22 @@ final class TextView: NSView, NSTextInputClient {
 
     @objc func paste(_ sender: Any?) {
         guard isEditable, let s = NSPasteboard.general.string(forType: .string) else { return }
+        // In Markdown, an address pasted over words links them: [words](address).
+        if acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
+            let address = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            var reps: [(TextRange, String)] = []
+            var after: [Selection] = []
+            var shift = 0
+            for sel in selections.sorted(by: { $0.min < $1.min }) {
+                let words = text[TextRange(sel.min, sel.max)]
+                let made = sel.isCaret ? address : "[\(words)](\(address))"
+                reps.append((sel.range, made))
+                after.append(Selection(at: sel.min + shift + made.utf8.count))
+                shift += made.utf8.count - sel.range.length
+            }
+            replace(reps, selectAfter: after)
+            return
+        }
         let lines = s.components(separatedBy: "\n")
         // One line per cursor, when they match up.
         if selections.count > 1, lines.count == selections.count {
@@ -1700,6 +1737,13 @@ final class TextView: NSView, NSTextInputClient {
     @objc override func selectAll(_ sender: Any?) { setSelections([Selection(0, text.count)], scroll: false) }
 
     @objc func pasteAsPlainText(_ sender: Any?) { paste(sender) }
+
+    /// One address and nothing else: a web link, a file, or a block.
+    static func isAddress(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !t.contains(where: { $0.isWhitespace }) else { return false }
+        return t.hasPrefix("http://") || t.hasPrefix("https://") || t.hasPrefix("file://") || t.hasPrefix("manifold:")
+    }
 
     // MARK: NSTextInputClient
 

@@ -166,7 +166,8 @@ and Mona Sans (bundled).
   of sight as in Prism: headings bold, `**bold**` and `*italic*` in
   their faces, `` `code` `` in its font on a tint, fenced code blocks
   in the code font edge to edge, list markers and quotes set off,
-  links as their words, clicked to follow; a block's link is its pill,
+  links as their words, clicked to follow (the pointer over one is the
+  hand), an address pasted over words making a link of them; a block's link is its pill,
   live. Every character stays where it is — the line the caret is on
   shows as written, markers dimmed — and the file is plain Markdown; a
   note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌘⇧C wrap the selection
