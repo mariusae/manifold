@@ -10,6 +10,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// This machine's host: the desk and settings are its.
     var host: HostClient { hosts.local }
     private let root = RootView()
+    private let glass = NSVisualEffectView()
+    private let backdrop = BackdropView()
     /// The arrangement shown; and the one it replaced, while it slides away.
     private var content = GridView()
     private var outgoing = GridView()
@@ -66,7 +68,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
-        window.backgroundColor = Theme.windowBackground
+        window.backgroundColor = .clear
+        window.isOpaque = false
         window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 480, height: 300)
         window.tabbingMode = .disallowed
@@ -76,6 +79,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         root.frame = window.contentLayoutRect
         window.contentView = root
+        // Under everything: what's behind the window, blurred, and over
+        // that the wash of colour the cards and the sidebar sit on.
+        glass.material = .underWindowBackground
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        root.addSubview(glass)
+        backdrop.alphaValue = 0.9
+        root.addSubview(backdrop)
         root.addSubview(content)
         root.addSubview(sidebar)
         root.onMouseMoved = { [weak self] p in self?.mouseMoved(to: p) }
@@ -475,6 +486,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func layoutViews() {
         let b = root.bounds
+        glass.frame = b
+        backdrop.frame = b
         let w = sidebarWidth, inset = Theme.sidebarInset
         let sidebarFrame = NSRect(x: sidebarShown ? inset : -w - 20, y: inset, width: w, height: b.height - 2 * inset)
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
@@ -1521,6 +1534,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let filter = self.sidebar.filterText.lowercased()
             let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil
+            let g = self.statusGroups("")
+            self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: (g[.done]?.count ?? 0) + (g[.failed]?.count ?? 0))
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = [.desk, .inbox, .status].contains(org)
@@ -3385,6 +3400,13 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarMoreMenu() -> NSMenu {
         let menu = NSMenu()
+        // The organizations the bar doesn't hold.
+        for org in [Organization.links, .time, .status] {
+            let item = ClosureMenuItem("Organize by \(org.title)", symbol: org.symbol) { [weak self] in self?.setOrganization(org) }
+            item.state = organization == org ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar", symbol: "sidebar.left") { [weak self] in self?.sidebarTogglePinned() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Show Logs in Finder", symbol: "folder") {

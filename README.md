@@ -18,7 +18,13 @@ and Mona Sans (bundled).
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. The Workspaces, Inbox and Status
+  top to move the window. Along the bottom of the sidebar run a search
+  (the filter field, shown and hidden), a switch between by-workspace
+  and by-file, the inbox, and, at the right, counts of what needs you,
+  is working and is done, which go to Status; the other organizations
+  are in the ⋯ menu. The window sits on a wash of soft colour — a few
+  pools of pastel light, deep tints in the dark — placed afresh each
+  day, with what's behind the window blurred beneath it. The Workspaces, Inbox and Status
   organizations are flat: a host's heading opens and closes its
   workspaces, a workspace's label goes to it (the current one's folds
   it, and opens it again), groups' labels open and close, and a block's
@@ -39,8 +45,9 @@ and Mona Sans (bundled).
   below the biggest tile of the active column, taking its lower half;
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
-  others. A stash is a stack behind any tile: a few edges peek out
-  beside its pill, fan out from behind it when the pointer rests there
+  others. A stash is a stack behind any tile: the sheets behind it peek
+  out above its card, as a stack of paper, and the bar counts them
+  (+N); they fan out from behind it when the pointer rests there
   (packed, opaque, the edges gone while they're out, the one under
   the pointer ringed in the accent), and one clicked
   comes back on its own as that tile's lower half, the rest staying
@@ -106,14 +113,17 @@ and Mona Sans (bundled).
   along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
-  resize them. Each tile wears a **pill** floating over its top, one
-  width for all, with its symbol, name and status glyph: drag it to
-  move the tile; click it to grow the tile a step, ⌘-click to fill the
-  column; click its symbol for the tile's menu; ⇧-click it for where the
-  block is, folder by folder up to the root (a terminal's working
-  directory likewise), each browsing that folder here, as ⌘-clicking a
-  document's title does in the Finder. ⌥⌘[ and ⌥⌘] move the
-  focus between tiles.
+  resize them. Each tile is a **card** with a bar across its top:
+  its symbol and name, where it is in grey, a +N for the stack behind
+  it, its links, its status glyph, and maximize and close (×) at the
+  right. The bar is always there; the content runs beneath it, rounded,
+  with room between cards and the window's wash showing through. Drag
+  the bar to move the tile; click it to focus the tile, ⌘-click to
+  fill the column, double-click to maximize; click its symbol for the
+  tile's menu; ⇧-click it for where the block is, folder by folder up
+  to the root (a terminal's working directory likewise), each browsing
+  that folder here, as ⌘-clicking a document's title does in the
+  Finder. ⌥⌘[ and ⌥⌘] move the focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the workspace it is in (this one if it is here, else
   the one most recently settled on) is selected and the tile focused.

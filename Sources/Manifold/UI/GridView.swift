@@ -327,7 +327,7 @@ final class GridView: NSView, NSDraggingSource {
             let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
             let caret = t.view.caretRectInWindow.map { NSStringFromRect($0) } ?? "none"
             let capsule = p.map { NSStringFromRect($0.convert($0.capsule(in: $0), to: nil)) } ?? "-"
-            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) dodging=\(p?.dodging ?? false) alpha=\(p?.alphaValue ?? 0) z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule)"
+            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) behind=\(p?.behind ?? 0) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule)"
         }.joined(separator: "\n")
     }
 
@@ -509,6 +509,7 @@ final class GridView: NSView, NSDraggingSource {
         for (i, d) in columnDividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
         }
+        layoutSheets()
     }
 
     private func dragColumnDivider(_ i: Int, to x: CGFloat) {
@@ -924,22 +925,40 @@ final class GridView: NSView, NSDraggingSource {
         dropLinks = false
     }
 
-    /// Behind the cards, the window shows through; above a card with a
-    /// stack behind it, the stack's edges peek out, as sheets under a sheet.
-    override func draw(_ dirtyRect: NSRect) {
+    /// The sheets behind a card with a stack (§3.1): each a rounded sheet
+    /// a little narrower than the one before, risen a few points above the
+    /// card, the rest of it beneath — layers under the cards, as a stack
+    /// of paper. Laid out with the cards.
+    private var sheetLayers: [CAShapeLayer] = []
+
+    private func layoutSheets() {
+        var wanted: [(NSRect, Int)] = []
         for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id {
             let bar = pill.frame
-            for level in 1...min(pill.behind, 2) {
-                let inset = CGFloat(level) * 10
-                let rect = NSRect(x: bar.minX + inset, y: bar.maxY + CGFloat(level) * 3 - 1, width: bar.width - 2 * inset, height: 3)
-                let path = NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5)
-                Theme.sheet(level: level).setFill()
-                path.fill()
-                Theme.text.withAlphaComponent(0.12).setStroke()
-                path.lineWidth = 0.5
-                path.stroke()
+            for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
+                let inset = CGFloat(level) * 6
+                let rise = CGFloat(level) * 3
+                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Self.corner, width: bar.width - 2 * inset, height: Self.corner + rise), level))
             }
         }
+        while sheetLayers.count > wanted.count { sheetLayers.removeLast().removeFromSuperlayer() }
+        while sheetLayers.count < wanted.count {
+            let l = CAShapeLayer()
+            l.lineWidth = 0.5
+            l.zPosition = -1
+            layer?.insertSublayer(l, at: 0)
+            sheetLayers.append(l)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            for (l, (rect, level)) in zip(sheetLayers, wanted) {
+                l.path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+                l.fillColor = Theme.sheet(level: level).cgColor
+                l.strokeColor = Theme.text.withAlphaComponent(0.18).cgColor
+            }
+        }
+        CATransaction.commit()
     }
 }
 
@@ -976,7 +995,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var maximized = false
     /// How many stashed tiles are bunched behind this tile (§3.1): the
     /// grid draws their edges above the bar; the bar says how many.
-    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsDisplay = true } } }
+    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsLayout = true } } }
     private let subtitle = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)

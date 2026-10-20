@@ -128,10 +128,15 @@ the biggest empty space, else takes the lower half of the biggest tile
 in the active column (acme's `makenewwindow`); a tile grows by a few
 lines, as big as can be, or to the whole column; the divider between
 columns sets widths; a tile closed gives its height to its neighbor.
-Each tile wears a **pill** at its top, as Prism names the note at the
-top of its column: a glass pill with the block's symbol, its name, and
-its status glyph (§3.7); the pill is the tile's handle to drag, and its
-menu, clicked. Pills, not acme's tag lines.
+Each tile is a **card** with a **bar** across its top: the block's
+symbol and name, where it is, a count of the stack behind it, its
+links, its status glyph (§3.7), and maximize and close; the bar is the
+tile's handle to drag, focuses the tile clicked, and holds its menu
+behind the symbol. The content runs beneath the bar, never under it,
+with room between cards and the window's wash — a few pools of colour
+placed afresh each day over what's behind the window, blurred — showing
+through. A stack's sheets peek out above its card, rounded, as paper.
+(Once a glass pill floating over the tile, as Prism names a column.)
 
 Two verbs, and no others, put a block in front of you:
 
