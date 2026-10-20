@@ -139,6 +139,16 @@ final class DeepOutlineView: NSOutlineView {
     /// whose children are made as they're reached (Links) would go on
     /// for ever.
     private var deep = false
+    /// Flat: no room kept for a chevron, every row from the left edge.
+    var flat = false
+
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect { flat ? .zero : super.frameOfOutlineCell(atRow: row) }
+
+    override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
+        guard flat, column == 0 else { return super.frameOfCell(atColumn: column, row: row) }
+        let r = rect(ofRow: row)
+        return NSRect(x: 4, y: r.minY, width: max(0, bounds.width - 8), height: r.height)
+    }
 
     override func mouseDown(with event: NSEvent) {
         deep = event.modifierFlags.contains(.shift)
@@ -164,7 +174,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// workspaces, groups) are labels that open and close when clicked,
     /// and a block's row has two lines when it has something to say.
     var flat = false {
-        didSet { if flat != oldValue { outline.indentationPerLevel = flat ? 0 : 14 } }
+        didSet {
+            if flat != oldValue {
+                outline.indentationPerLevel = flat ? 0 : 14
+                outline.flat = flat
+            }
+        }
     }
 
     override init(frame: NSRect) {
@@ -286,13 +301,14 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
         if let action = node.action {
             action()
+        } else if node.style == .section, node.block != nil, node.arrangement != nil, node.column == nil {
+            // A workspace's label: gone to (which opens it whole, the
+            // others folding to what peeks out), or, the current one,
+            // folded and opened again — the tree's to decide.
+            delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
         } else if node.style != .row, node.hasChildren {
-            // A section: clicked, it opens or closes; a workspace's is gone
-            // to as well.
+            // A host's heading, a group's label: clicked, it opens or closes.
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
-            if node.block != nil, node.arrangement != nil, node.column == nil {
-                delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
-            }
         } else if node.block != nil {
             delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
         } else if node.hasChildren {

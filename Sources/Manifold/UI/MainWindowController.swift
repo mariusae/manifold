@@ -1728,17 +1728,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// is more than one, each expanding to its tiles in order (by column,
     /// top to bottom), the selected one open and the focused tile marked:
     /// the table of contents of the screen.
+    /// The current workspace folded in the sidebar, by a click on its
+    /// label: only what peeks out shows, until clicked again.
+    private var deskFolded = false
+
+    /// Whether a tile peeks out of a folded workspace (§3.5): it has a
+    /// status to attend to or to watch — working, needs you, done, failed.
+    private func peeks(_ b: Block?) -> Bool {
+        switch StatusGlyph.look(of: b) {
+        case .working, .needsYou, .done, .failed: true
+        default: false
+        }
+    }
+
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
         func workspace(_ id: BlockID) -> OrgNode? {
             guard let a = hosts.arrangement(id) else { return nil }
             let aid = "arr/\(id)"
+            // The current workspace whole; the others folded to the tiles
+            // that peek out (as apex folds them), unless there's a filter.
+            let whole = (id == selected && !deskFolded) || !filter.isEmpty
             var tiles: [OrgNode] = []
             for (c, column) in a.columns.enumerated() {
                 for p in column {
                     let b = hosts.block(p.block)
                     let title = b?.displayTitle ?? "On \(hosts.label(of: p.block.host))"
                     guard matches(filter, [title, b?.path]) else { continue }
+                    guard whole || peeks(b) else { continue }
                     // Its status, in words, with the glyph before them; else
                     // its state — stashed, maximized — as a small symbol.
                     var notes: [String] = []
@@ -1766,7 +1783,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.arrangement = id
             n.style = .section
             n.emphasis = id == selected
-            if id == selected || !filter.isEmpty { open.insert(aid) }
+            if !tiles.isEmpty { open.insert(aid) }
             return n
         }
         // Each host's workspaces, in its desk's order, with any of its that
@@ -1929,7 +1946,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.tooltip = (why.map { "Can't be reached: \($0)" } ?? "Can't be reached now") + when
             n.dimmed = true
         }
-        if c.isRemote || c.home != nil {
+        // Its row opens and closes its workspaces; its home folder is in its menu.
+        if false, c.isRemote || c.home != nil {
             let host = c.host
             n.action = { [weak self] in
                 guard let self, let home = self.hosts.client(host)?.home ?? (host == self.host.host ? NSHomeDirectory() : nil) else { return }
@@ -4006,7 +4024,16 @@ extension MainWindowController: OrganizationViewDelegate {
         HoverCard.shared.hide()
         if let arr = node.arrangement, !bring {
             hideStateView()
-            if arr != selected { hosts.select(arr) }
+            if arr == selected, node.placement == nil, node.column == nil, node.style == .section {
+                // The current workspace's label: folded, or opened again.
+                deskFolded.toggle()
+                refreshOrganization(now: true)
+                return
+            }
+            if arr != selected {
+                deskFolded = false
+                hosts.select(arr)
+            }
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
                 // Out of its stack, from behind a maximized tile, focused,
                 // and the pointer on it.

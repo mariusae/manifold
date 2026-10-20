@@ -19,9 +19,12 @@ and Mona Sans (bundled).
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
   top to move the window. The Workspaces, Inbox and Status
-  organizations are flat: hosts, workspaces and groups are labels that
-  open and close when clicked, and a block's row has a second line for
-  what it says. Under **Desk**, each workspace expands to
+  organizations are flat: a host's heading opens and closes its
+  workspaces, a workspace's label goes to it (the current one's folds
+  it, and opens it again), groups' labels open and close, and a block's
+  row has a second line for what it says. Only the current workspace
+  shows whole; the others fold to the tiles that peek out — working,
+  needing you, done or failed — as apex folds them. Under **Desk**, each workspace expands to
   its tiles in order, the selected one open and the focused tile
   highlighted, so the sidebar is the table of contents of the screen:
   click a tile to focus it, a workspace to go to it, double-click
