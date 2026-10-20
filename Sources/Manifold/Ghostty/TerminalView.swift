@@ -193,7 +193,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         perform("scroll_to_row:\(Int(mark.at))")
     }
 
-    /// A command's row scrolled to, by its id (a timeline's click).
+    /// A command's row scrolled to, by its id (an outline's click).
     func go(toCommand id: Int) {
         guard let row = located[id] else { return }
         perform("scroll_to_row:\(row)")

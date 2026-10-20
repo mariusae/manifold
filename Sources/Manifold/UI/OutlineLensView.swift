@@ -1,17 +1,17 @@
 import AppKit
 import ManifoldCore
 
-protocol TimelineViewDelegate: AnyObject {
+protocol OutlineLensViewDelegate: AnyObject {
     /// An entry was clicked: the block's own tile goes there (a terminal
     /// to the command's row, an editor or a preview to the heading).
-    func timeline(_ view: TimelineView, go entry: TimelineView.Entry)
+    func outline(_ view: OutlineLensView, go entry: OutlineLensView.Entry)
 }
 
-/// The timeline lens (§3.8): what a block's scrubber marks, as a list of
+/// The outline lens (§3.8): what a block's scrubber marks, as a list of
 /// its own — a terminal's commands with their outcome, a text's headings
 /// — each clicked to go there in the block's tile. Beside a terminal or
 /// a note, it's the outline to steer by.
-final class TimelineView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate {
+final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate {
     struct Entry: Equatable {
         /// A command's id, or a heading's index among the headings.
         var id: Int
@@ -27,7 +27,7 @@ final class TimelineView: NSView, PaneContent, KeepsViewState, NSTableViewDataSo
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
-    weak var delegate: TimelineViewDelegate?
+    weak var delegate: OutlineLensViewDelegate?
     var source: () -> Block? = { nil }
 
     private let scroll = NSScrollView()
@@ -117,12 +117,12 @@ final class TimelineView: NSView, PaneContent, KeepsViewState, NSTableViewDataSo
     @objc private func rowClicked() {
         let row = table.clickedRow
         guard row >= 0, row < entries.count else { return }
-        delegate?.timeline(self, go: entries[row])
+        delegate?.outline(self, go: entries[row])
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36, table.selectedRow >= 0, table.selectedRow < entries.count {
-            delegate?.timeline(self, go: entries[table.selectedRow])
+            delegate?.outline(self, go: entries[table.selectedRow])
         } else {
             super.keyDown(with: event)
         }
@@ -132,8 +132,8 @@ final class TimelineView: NSView, PaneContent, KeepsViewState, NSTableViewDataSo
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: .init("entry"), owner: nil) as? TimelineRow ?? {
-            let r = TimelineRow()
+        let cell = tableView.makeView(withIdentifier: .init("entry"), owner: nil) as? OutlineLensRow ?? {
+            let r = OutlineLensRow()
             r.identifier = .init("entry")
             return r
         }()
@@ -142,8 +142,8 @@ final class TimelineView: NSView, PaneContent, KeepsViewState, NSTableViewDataSo
     }
 }
 
-/// A timeline row: a mark, the words, and the outcome in grey at the right.
-final class TimelineRow: NSTableCellView {
+/// An outline row: a mark, the words, and the outcome in grey at the right.
+final class OutlineLensRow: NSTableCellView {
     private let mark = NSView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
@@ -164,7 +164,7 @@ final class TimelineRow: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ e: TimelineView.Entry) {
+    func show(_ e: OutlineLensView.Entry) {
         level = e.level
         title.stringValue = e.title
         title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : .monospacedSystemFont(ofSize: 11.5, weight: .regular)

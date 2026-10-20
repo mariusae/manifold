@@ -54,7 +54,15 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case card
     /// What a block's scrubber marks — a terminal's commands, a text's
     /// headings — as a list to steer the block's tile by (§3.8).
-    case timeline
+    case outline
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let lens = Lens(rawValue: raw == "timeline" ? "outline" : raw) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown lens \(raw)"))
+        }
+        self = lens
+    }
 
     /// The lens a block of `kind` is shown with unless another is asked for.
     public static func `default`(for kind: BlockKind, path: String? = nil) -> Lens {

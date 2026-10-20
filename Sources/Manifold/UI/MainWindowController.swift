@@ -243,7 +243,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
-            for case let t as TimelineView in views.values { t.documentChanged() }
+            for case let t as OutlineLensView in views.values { t.documentChanged() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
@@ -379,8 +379,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             v = pv
-        case .timeline:
-            let tv = TimelineView(placement: p.id, block: p.block)
+        case .outline:
+            let tv = OutlineLensView(placement: p.id, block: p.block)
             tv.delegate = self
             tv.source = { [weak self] in self?.hosts.block(p.block) }
             v = tv
@@ -3567,8 +3567,8 @@ extension MainWindowController: GridDelegate {
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if [.terminal, .agent, .editor, .preview].contains(p.lens) {
-            menu.addItem(ClosureMenuItem("Show Timeline Beside", symbol: "list.bullet.rectangle") { [weak self] in
-                self?.show(block, lens: .timeline, .besideOpener(placement), kind: .opened, context: "timeline")
+            menu.addItem(ClosureMenuItem("Show Outline Beside", symbol: "list.bullet.rectangle") { [weak self] in
+                self?.show(block, lens: .outline, .besideOpener(placement), kind: .opened, context: "outline")
             })
         }
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
@@ -3679,11 +3679,11 @@ extension MainWindowController: EditorViewDelegate {
         hosts.block(view.block)?.text
     }
 
-    /// A timeline's entry clicked: the block's tile goes there — its
+    /// An outline's entry clicked: the block's tile goes there — its
     /// terminal to the command's row, its editor or preview to the
-    /// heading; with no tile of it shown, one is opened beside the timeline.
-    func timeline(_ view: TimelineView, go entry: TimelineView.Entry) {
-        let shown = views.values.filter { $0.block == view.block && $0.superview != nil && !$0.isHidden && !($0 is TimelineView) }
+    /// heading; with no tile of it shown, one is opened beside the outline.
+    func outline(_ view: OutlineLensView, go entry: OutlineLensView.Entry) {
+        let shown = views.values.filter { $0.block == view.block && $0.superview != nil && !$0.isHidden && !($0 is OutlineLensView) }
         if shown.isEmpty, let b = hosts.block(view.block) {
             if let path = b.path, let line = entry.line { pendingJump = (path, line + 1, nil) }
             show(view.block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(view.placement))
@@ -4210,4 +4210,4 @@ enum StatusGroup: Int, CaseIterable {
     }
 }
 
-extension MainWindowController: TimelineViewDelegate {}
+extension MainWindowController: OutlineLensViewDelegate {}

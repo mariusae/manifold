@@ -319,8 +319,8 @@ when you find it again.
   the clipboard at once, the selection pulsing once to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
-- **A timeline** is a scrubber's marks as a tile of their own: Show
-  Timeline Beside in a terminal's, editor's or preview's pill menu lists
+- **An outline** is a scrubber's marks as a tile of their own: Show
+  Outline Beside in a terminal's, editor's or preview's pill menu lists
   its commands (with their outcome and when) or its headings, each
   clicked to go there in the block's tile — or, with none shown, in one
   opened beside.
