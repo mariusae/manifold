@@ -336,7 +336,7 @@ when you find it again.
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
 - **An outline** is a scrubber's marks as a block of their own: Show
-  Outline Beside in a terminal's, editor's or preview's pill menu makes
+  Outline Beside (⇧⌘O, or in a terminal's, editor's or preview's pill menu) makes
   one (linked to its subject as its source, so Links shows it) listing
   the commands (with their outcome and when) or the headings, each
   clicked to go there in the subject's tile — or, with none shown, in

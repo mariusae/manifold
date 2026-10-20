@@ -99,8 +99,11 @@ enum MarkdownPage {
           if (window.manifoldWatching) return;
           window.manifoldWatching = true;
           function post(m) { try { window.webkit.messageHandlers.manifoldState.postMessage(m); } catch (e) {} }
-          var t1, t2;
+          var t1, t2, live = false;
           window.addEventListener('scroll', function () {
+            // Where it is, every frame while it moves — for the scrubber to
+            // follow live — and, once it has stopped, for keeping.
+            if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); }); }
             clearTimeout(t1); t1 = setTimeout(function () { post({ scroll: window.scrollY }); }, 250);
           });
           document.addEventListener('selectionchange', function () {

@@ -3779,6 +3779,12 @@ extension MainWindowController: EditorViewDelegate {
     /// An outline's entry clicked: the block's tile goes there — its
     /// terminal to the command's row, its editor or preview to the
     /// heading; with no tile of it shown, one is opened beside the outline.
+    /// ⇧⌘O: the focused tile's outline beside it.
+    @objc func showOutlineBeside(_ sender: Any?) {
+        guard let f = focusedShown, [.terminal, .agent, .editor, .preview].contains(f.lens) else { return NSSound.beep() }
+        showOutline(of: f.placement.block, beside: f.id)
+    }
+
     /// An outline block of another (§3.8), beside its tile: a graph node
     /// of its own, linked to its subject as its source, gone when closed.
     func showOutline(of block: BlockID, beside placement: PlacementID) {

@@ -71,6 +71,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             self?.keeper.note(values)
             if values["scroll"] != nil { self?.scheduleOutline() }
         }
+        // The scrubber follows the page as it moves, with the headings as last read.
+        handler.onScrolling = { [weak self] y in
+            guard let self, let o = self.lastOutline else { return }
+            self.scrubber.update(marks: o.marks, total: o.total, offset: y, shown: o.shown)
+        }
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         web.unregisterDraggedTypes()
@@ -95,6 +100,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private let scrubber = ScrubberView(frame: .zero)
     private let tip = ScrubTip(frame: .zero)
     private var outlineWork: DispatchWorkItem?
+    /// The page's headings and size as last read, for following a scroll live.
+    private var lastOutline: (marks: [ScrubMark], total: Double, shown: Double)?
 
     /// The page's headings and where it is, asked of the page a moment
     /// after it rendered, scrolled or changed size.
@@ -114,6 +121,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
                 guard row.count == 3, let top = row[0] as? Double, let text = row[2] as? String else { return nil }
                 return ScrubMark(id: i, at: top, title: text, detail: nil)
             }
+            self.lastOutline = (marks, h, v)
             self.scrubber.update(marks: marks, total: h, offset: y, shown: v)
         }
     }
@@ -255,10 +263,13 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 /// What the page says about its scroll and selection, as the keeper takes it.
 final class StateMessages: NSObject, WKScriptMessageHandler {
     var onState: (([String: String]) -> Void)?
+    /// The page moving, frame by frame: nothing to keep, only to follow.
+    var onScrolling: ((Double) -> Void)?
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let dict = message.body as? [String: Any] else { return }
         var values: [String: String] = [:]
+        if let y = dict["scrolling"] as? Double { onScrolling?(y); return }
         if let y = dict["scroll"] as? Double { values["scroll"] = "\(Int(y.rounded()))" }
         if let s = dict["selStart"] as? Int, let e = dict["selEnd"] as? Int {
             values["selStart"] = s < 0 ? "" : "\(s)"
