@@ -482,6 +482,12 @@ is migrated into logs on first run.
   terminal, names that host and is left alone. Manifold starts your
   login shell; `MANIFOLD_SHELL` in the server's environment names
   another.
+- **A memory watchdog** keeps an eye on the app's own footprint from a
+  thread of its own: past 6 GB it has the system sample the process
+  (every thread's stack) into `logs/memory-sample.txt` in the data
+  folder, once, for finding what runs away; past 24 GB it ends the
+  app — a renderer; the server keeps everything — rather than take the
+  machine down, and says so in the log.
 - **Retention** is tunable, in View ▸ Keep History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long

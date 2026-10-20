@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         signal(SIGPIPE, SIG_IGN)
+        MemoryWatch.start()
         _ = GhosttyRuntime.shared
         NSApp.mainMenu = makeMainMenu()
         AppearanceWatcher.shared.start()
