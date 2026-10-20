@@ -425,7 +425,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                 keep(pill, above: tile.view)
             }
-            if let badge = badges[full] { placeBadge(badge, in: r) }
+            if let badge = badges[full] { placeBadge(badge, of: full, in: r) }
             return
         }
         for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
@@ -457,7 +457,7 @@ final class GridView: NSView, NSDraggingSource {
                     pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                     if !held { keep(pill, above: tile.view) }
                 }
-                if let badge = badges[tile.shown.id] { placeBadge(badge, in: r) }
+                if let badge = badges[tile.shown.id] { placeBadge(badge, of: tile.shown.id, in: r) }
                 if shownIndex > 0, rowIndex < rowDividers.count {
                     rowDividers[rowIndex].frame = NSRect(x: r.minX, y: r.maxY, width: r.width, height: Self.gap)
                     rowIndex += 1
@@ -491,7 +491,7 @@ final class GridView: NSView, NSDraggingSource {
                 }()
                 badge.cards = stack.behind.map { StackCard(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol) }
                 if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: topPill) }
-                placeStackBadge(badge, in: tiles[columns[c].firstIndex { $0.shown.id == id } ?? 0], beside: badges[id])
+                placeStackBadge(badge, of: id, in: tiles[columns[c].firstIndex { $0.shown.id == id } ?? 0], beside: badges[id])
             }
             for (id, b) in stackBadges where !stacked.contains(id) && columns[c].contains(where: { $0.shown.id == id }) {
                 b.removeFromSuperview()
@@ -682,18 +682,19 @@ final class GridView: NSView, NSDraggingSource {
     /// A tile's note badge: at its lower right, in from the scroll bar's
     /// column and the edge, with room above for its fan.
     /// The stack badge in the bar, left of the links badge if there is one.
-    private func placeStackBadge(_ badge: StackBadge, in r: NSRect, beside links: LinkBadge?) {
+    private func placeStackBadge(_ badge: StackBadge, of id: PlacementID, in r: NSRect, beside links: LinkBadge?) {
         badge.isHidden = false
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
         let h = min(size.height, r.height - 12)
         let capsuleTop = r.maxY - (Self.barHeight - StackBadge.capsuleHeight) / 2
-        let taken = pills.values.first { $0.frame.maxY == r.maxY && $0.frame.minX == r.minX }?.rightTaken ?? TilePill.rightChrome
-        let right = (links.map { $0.frame.minX } ?? (r.maxX - taken - 8)) - 6
+        let taken = pills[id]?.rightTaken ?? TilePill.rightChrome
+        // Left of the links badge's capsule (its frame is as wide as its fan), else of the bar's buttons.
+        let right = (links.map { $0.frame.maxX - $0.capsuleWidth } ?? (r.maxX - taken - 8)) - 6
         badge.frame = NSRect(x: right - w, y: capsuleTop - h, width: w, height: h)
     }
 
-    private func placeBadge(_ badge: LinkBadge, in r: NSRect) {
+    private func placeBadge(_ badge: LinkBadge, of id: PlacementID, in r: NSRect) {
         badge.isHidden = false
         badge.fansDown = true
         let size = badge.wantedSize
@@ -701,7 +702,7 @@ final class GridView: NSView, NSDraggingSource {
         let h = min(size.height, r.height - 12)
         // Its capsule in the bar, before the bar's buttons.
         let capsuleTop = r.maxY - (Self.barHeight - LinkBadge.capsuleHeight) / 2
-        let taken = pills.values.first { $0.frame.maxY == r.maxY && $0.frame.minX == r.minX }?.rightTaken ?? TilePill.rightChrome
+        let taken = pills[id]?.rightTaken ?? TilePill.rightChrome
         badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 

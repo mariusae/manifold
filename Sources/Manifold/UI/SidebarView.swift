@@ -27,7 +27,8 @@ class FlippedView: NSView {
 /// not pinned). Its top row carries the window buttons, New, and ⋯.
 final class SidebarView: NSView {
     weak var delegate: SidebarDelegate?
-    private let card = NSVisualEffectView()
+    /// Clear over the window's wash when pinned, as Kero's is; a pale sheet when floating over the cards.
+    private let card = NSView()
     private let pinButton: IconButton
     private let newButton: IconButton
     private let moreButton: IconButton
@@ -64,15 +65,10 @@ final class SidebarView: NSView {
         layer?.shadowRadius = 14
         layer?.shadowOffset = NSSize(width: 0, height: -2)
 
-        card.material = .sidebar
-        card.blendingMode = .withinWindow
-        card.state = .active
         card.wantsLayer = true
         card.layer?.cornerRadius = 10
         card.layer?.cornerCurve = .continuous
         card.layer?.masksToBounds = true
-        card.layer?.borderWidth = 0.5
-        card.themed { $0.layer?.borderColor = Theme.cardBorder.cgColor }
         addSubview(card)
 
         card.addSubview(header)
@@ -193,6 +189,12 @@ final class SidebarView: NSView {
 
     private func updateChrome() {
         layer?.shadowOpacity = pinned ? 0 : 0.16
+        card.themed { [weak self] v in
+            guard let self else { return }
+            v.layer?.backgroundColor = self.pinned ? NSColor.clear.cgColor : Theme.panel.withAlphaComponent(0.94).cgColor
+            v.layer?.borderWidth = self.pinned ? 0 : 0.5
+            v.layer?.borderColor = Theme.cardBorder.cgColor
+        }
         pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
         pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
     }

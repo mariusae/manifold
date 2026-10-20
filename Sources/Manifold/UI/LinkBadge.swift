@@ -70,6 +70,9 @@ final class LinkBadge: NSView {
         return "\(cards.count) links"
     }
 
+    /// The capsule's width: the badge's frame is as wide as its fan.
+    var capsuleWidth: CGFloat { min(badge.wantedWidth, bounds.width) }
+
     /// How much of the tile it needs: the capsule, and room for the fan.
     var wantedSize: NSSize {
         let widest = max(badge.wantedWidth, pills.map(\.wantedWidth).max() ?? 0)
