@@ -393,13 +393,16 @@ when you find it again.
   the clipboard at once, the selection pulsing once to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
-- **An outline** is a scrubber's marks as a block of their own: Show
-  Outline Beside (⇧⌘O, or in a terminal's, editor's or preview's pill menu) makes
-  one (linked to its subject as its source, so Links shows it) listing
-  the commands (with their outcome and when) or the headings, each
-  clicked to go there in the subject's tile — or, with none shown, in
-  one opened beside. The outline is a lens on the block itself, not a
-  block of its own.
+- **An outline** is a scrubber's marks as a list: Show Outline Beside
+  (⇧⌘O, or in a terminal's, editor's or preview's bar menu) shows the
+  block through its outline lens beside it, listing the commands (with
+  their outcome and when) or the headings, each clicked to go there in
+  the block's tile — or, with none shown, in one opened beside. A
+  terminal's command clicked there also opens its output as a block of
+  its own: a note whose first line is a pill linking back to that
+  command (clicked, the terminal scrolls to it) and the command and what
+  it printed beneath as code. One per command; clicked again, the same
+  note comes back.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

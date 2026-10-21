@@ -39,6 +39,19 @@ public struct BlockID: Hashable, Codable, Sendable, CustomStringConvertible, Com
         self.init(host: host, ulid: ULID.make())
     }
 
+    /// A `manifold:` link's address split: the block, and what follows a
+    /// `#` (a place in it — `command=7`, a terminal's command), if any.
+    public static func link(_ address: String) -> (block: BlockID, fragment: String?)? {
+        var s = address.hasPrefix("manifold:") ? String(address.dropFirst(9)) : address
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var fragment: String?
+        if let hash = s.firstIndex(of: "#") {
+            fragment = String(s[s.index(after: hash)...])
+            s = String(s[..<hash])
+        }
+        return BlockID(string: s).map { ($0, fragment) }
+    }
+
     public init?(string: String) {
         guard let slash = string.firstIndex(of: "/") else { return nil }
         let host = String(string[..<slash]), ulid = String(string[string.index(after: slash)...])

@@ -116,7 +116,7 @@ enum MarkdownStyle {
             let words = m.range(at: 2), address = s.substring(with: m.range(at: 4))
             a.addAttribute(target, value: address, range: m.range)
             let rest = NSRange(location: m.range(at: 3).location, length: m.range(at: 3).length + m.range(at: 4).length + m.range(at: 5).length)
-            if address.hasPrefix("manifold:"), let id = BlockID(string: String(address.dropFirst(9))) {
+            if address.hasPrefix("manifold:"), let id = BlockID.link(address)?.block {
                 if !reveal, let look = look(id) {
                     let width = pillWidth(look)
                     let first = NSRange(location: m.range.location, length: 1)

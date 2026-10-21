@@ -12,7 +12,9 @@ protocol TerminalViewDelegate: AnyObject {
     /// name, as `ls` prints it): opened if it names a folder.
     func terminal(_ view: TerminalView, openFolder name: String, over: Bool)
     /// A command on the scrubber was opened: it and its output, as a block.
-    func terminal(_ view: TerminalView, show command: ShellCommand, output: String)
+    /// A command and its output, to show as a block of their own, beside
+    /// a placement (an outline's) if given.
+    func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?)
     /// Copy on Select was switched from the pill's menu: a setting.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
     /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
@@ -197,15 +199,28 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// A command's row scrolled to, by its id (an outline's click).
-    func go(toCommand id: Int) {
-        guard let row = located[id] else { return }
+    /// Scrolls to a command's row; false if it isn't found on the screen (yet).
+    @discardableResult
+    func go(toCommand id: Int) -> Bool {
+        guard let row = located[id] else { return false }
         perform("scroll_to_row:\(row)")
+        return true
+    }
+
+    /// A command's output as a block of its own (§3.8), beside a placement.
+    @discardableResult
+    func showOutput(ofCommand id: Int, beside: PlacementID?) -> Bool {
+        guard let (c, output) = transcript(ofCommand: id) else { return false }
+        delegate?.terminal(self, show: c, output: output, beside: beside)
+        return true
     }
 
     /// A command and its output, as shown: the rows from its prompt to
     /// the next command's (or the end).
-    private func transcript(of mark: ScrubMark) -> (ShellCommand, String)? {
-        guard let c = commands.first(where: { $0.id == mark.id }), let row = located[c.id] else { return nil }
+    private func transcript(of mark: ScrubMark) -> (ShellCommand, String)? { transcript(ofCommand: mark.id) }
+
+    private func transcript(ofCommand id: Int) -> (ShellCommand, String)? {
+        guard let c = commands.first(where: { $0.id == id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
         var output = text(rows: (row + 1)..<min(next, row + 20000))
         while output.hasSuffix("\n") || output.hasSuffix(" ") { output.removeLast() }
@@ -216,7 +231,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func open(_ mark: ScrubMark) {
         guard let (c, output) = transcript(of: mark) else { return }
         hideTip(now: true)
-        delegate?.terminal(self, show: c, output: output)
+        delegate?.terminal(self, show: c, output: output, beside: nil)
     }
 
     /// The command and its output, onto the clipboard.

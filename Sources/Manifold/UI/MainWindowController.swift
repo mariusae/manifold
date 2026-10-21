@@ -996,6 +996,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    var debugOutlineLens: OutlineLensView? { content.views.compactMap { $0 as? OutlineLensView }.first }
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
     var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
 
@@ -3035,6 +3036,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return (over ?? Self.clickModifiers?.contains(.option) ?? false) ? .over(placement) : .besideOpener(placement)
     }
 
+    /// A terminal scrolled to one of its commands, once its tile is up and
+    /// it has found the command's row (a moment, for a tile just made).
+    private func goToCommand(_ id: Int, in block: BlockID, tries: Int = 20) {
+        if let t = content.views.compactMap({ $0 as? TerminalView }).first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }), t.go(toCommand: id) { return }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToCommand(id, in: block, tries: tries - 1) }
+    }
+
     /// Go to a block from a click: where it is — or, with ⌥ held, over
     /// the tile clicked in.
     func arrive(_ block: BlockID, from placement: PlacementID?, over: Bool? = nil) {
@@ -3444,9 +3453,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the tile, not beside it.
     func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil) {
         let place = opener(placement, over: over)
-        // A link to a block (manifold:host/ulid, as a note's pill is): go to it.
-        if target.hasPrefix("manifold:"), let b = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+        // A link to a block (manifold:host/ulid, as a note's pill is): go to
+        // it — and to a place in it, if the link names one (#command=7).
+        if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
             arrive(b, from: placement, over: over)
+            if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
             return
         }
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
@@ -4334,7 +4345,9 @@ extension MainWindowController: EditorViewDelegate {
         }
         for v in shown {
             switch v {
-            case let t as TerminalView: t.go(toCommand: entry.id)
+            case let t as TerminalView:
+                t.go(toCommand: entry.id)
+                t.showOutput(ofCommand: entry.id, beside: view.placement)
             case let e as EditorView: if let line = entry.line { e.select(line: line + 1, column: nil) }
             case let m as MarkdownView: m.scroll(toHeading: entry.id)
             default: break
@@ -4580,13 +4593,32 @@ extension MainWindowController: TerminalViewDelegate {
 
     /// A command from a terminal's scrubber (§3.8): a note of it and its
     /// output, as the screen showed it, opened from the terminal.
-    func terminal(_ view: TerminalView, show command: ShellCommand, output: String) {
+    /// A command and its output as a block (§3.8): a note whose first
+    /// line links back to the command in the terminal (its pill, which
+    /// scrolls the terminal there), and the output beneath as code. One
+    /// per command: asked again, the one there is is shown.
+    func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
+        // From an outline: where a new tile goes (half the column's biggest
+        // tile), an outline being too small to halve; else below the
+        // terminal, or over it with ⌥.
+        let place: Where = beside != nil ? .here : (Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .besideOpener(view.placement))
+        let context = "command \(command.id)"
+        if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to) != nil }) {
+            return show(made.to, lens: .editor, place, kind: .opened, context: context)
+        }
         let client = hosts.client(view.block.host) ?? host
         let note = client.newNote(home: hosts.block(view.block)?.terminal?.cwd)
+        // A fence longer than any run of backticks in what it holds.
+        let ticks = (output + command.text).split(separator: "\n").map { line in line.split(whereSeparator: { $0 != "`" }).map(\.count).max() ?? 0 }.max() ?? 0
+        let fence = String(repeating: "`", count: max(3, ticks + 1))
+        let back = "[\(command.text)](manifold:\(view.block)#command=\(command.id))"
+        let text = back + "\n\n" + fence + "console\n$ " + command.text + "\n" + output + "\n" + fence + "\n"
         client.append(.title(command.text), to: .block(note))
-        client.append(.content("$ " + command.text + "\n" + output + "\n", encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(note))
-        hosts.link(from: view.block, to: note, kind: .opened, context: "command output")
-        show(note, lens: .editor, Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .here, kind: .opened)
+        client.append(.content(text, encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(note))
+        // Its text is the terminal's, not yours: nothing to save.
+        if let v = client.block(note)?.text?.version { client.append(.clean(version: v, fingerprint: nil), to: .block(note)) }
+        hosts.link(from: view.block, to: note, kind: .opened, context: context)
+        show(note, lens: .editor, place, kind: .opened, context: context)
     }
 
     func terminalDidFocus(_ view: TerminalView) {

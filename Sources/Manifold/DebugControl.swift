@@ -254,8 +254,15 @@ enum DebugControl {
             }
             return list(menu, 0).joined(separator: "\n")
         case "outline":
-            // The focused block's outline lens, beside its tile.
-            guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
+            // The focused block's outline lens, beside its tile; "outline
+            // entries", "outline click <n>": the outline lens on screen.
+            guard let wc else { return "no window" }
+            let words = arg.split(separator: " ").map(String.init)
+            if let o = wc.debugOutlineLens {
+                if words.first == "entries" { return o.debugEntries }
+                if words.first == "click", words.count > 1, let n = Int(words[1]) { return o.debugClick(n) }
+            }
+            guard let f = wc.debugFocusedPlacement else { return "nothing focused" }
             wc.showOutline(of: f.placement.block, beside: f.id)
             return "ok"
         case "layerimage":

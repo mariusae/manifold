@@ -117,6 +117,14 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
         }
     }
 
+    /// Debugging: the entries, and one clicked by its index.
+    var debugEntries: String { entries.enumerated().map { "\($0.offset) \($0.element.title)" }.joined(separator: "\n") }
+    func debugClick(_ n: Int) -> String {
+        guard n >= 0, n < entries.count else { return "no entry \(n) of \(entries.count)" }
+        delegate?.outline(self, go: entries[n])
+        return "clicked \(entries[n].title)"
+    }
+
     @objc private func rowClicked() {
         let row = table.clickedRow
         guard row >= 0, row < entries.count else { return }

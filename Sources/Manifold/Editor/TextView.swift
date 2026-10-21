@@ -1648,7 +1648,7 @@ final class TextView: NSView, NSTextInputClient {
     /// The block a `[title](manifold:host/ulid)` link names.
     static func blockID(inLink link: String) -> BlockID? {
         guard let r = link.range(of: "](manifold:"), let end = link[r.upperBound...].firstIndex(of: ")") else { return nil }
-        return BlockID(string: String(link[r.upperBound..<end]))
+        return BlockID.link(String(link[r.upperBound..<end]))?.block
     }
 
     static func droppedText(_ pb: NSPasteboard, links: Bool = false) -> String? {
