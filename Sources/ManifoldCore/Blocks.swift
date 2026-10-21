@@ -253,13 +253,16 @@ public struct DirectoryEntry: Codable, Equatable, Sendable {
     /// Modified, as seconds since 1970.
     public var modified: Double
     public var isHidden: Bool
+    /// Ignored by the repository it's in (git's or Sapling's ignore rules).
+    public var isIgnored: Bool?
 
-    public init(name: String, isDirectory: Bool, size: Int64, modified: Double, isHidden: Bool) {
+    public init(name: String, isDirectory: Bool, size: Int64, modified: Double, isHidden: Bool, isIgnored: Bool? = nil) {
         self.name = name
         self.isDirectory = isDirectory
         self.size = size
         self.modified = modified
         self.isHidden = isHidden
+        self.isIgnored = isIgnored
     }
 }
 

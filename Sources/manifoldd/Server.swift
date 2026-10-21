@@ -454,6 +454,22 @@ final class Server {
                 append(.link(Link(from: terminal, to: block, kind: .opened, at: clock.now(), context: "command \(command)")), to: .links(host))
             }
             done()
+        case let .listFolder(path):
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let entries = FolderListing.children(of: path)
+                self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: entries, complete: true))) }
+            }
+        case let .listTree(path, limit):
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                var isDir: ObjCBool = false
+                let readable = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+                let tree = readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
+                self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false))) }
+            }
+        case let .readPath(path, limit):
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
+            let data = size.map { $0 <= Int64(limit) } == true ? try? Data(contentsOf: URL(fileURLWithPath: path)) : nil
+            conn.send(.message(ServerMessage.bytes(id: id, data)))
         case let .readBytes(block):
             guard let b = node.block(block), let path = b.path else { return done("not a file") }
             let data = try? Data(contentsOf: URL(fileURLWithPath: path))
@@ -640,8 +656,15 @@ final class Server {
 
     private func list(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .directory, let path = b.path else { return }
-        if let entries = TextFile.list(path) {
-            append(.entries(entries, at: clock.now()), to: .block(block))
+        // Listed off the queue (asking git what's ignored takes a moment);
+        // only a change is written, so a listing asked for again and again
+        // (a folder view keeping current) doesn't grow the log.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let entries = FolderListing.children(of: path) else { return }
+            self?.queue.async {
+                guard let self, let d = self.node.block(block)?.directory else { return }
+                if entries != d.entries || d.listedAt == nil { self.append(.entries(entries, at: self.clock.now()), to: .block(block)) }
+            }
         }
     }
 

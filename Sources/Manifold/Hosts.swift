@@ -327,7 +327,7 @@ final class Hosts {
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
              let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
             (client(of: block) ?? local).propose(proposal, done: done)
-        case .workspaces, .settings, .preferences, .indexAgents:
+        case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .readPath:
             local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {

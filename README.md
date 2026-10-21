@@ -384,11 +384,24 @@ when you find it again.
   the terminal is), text to edit; `path:line:column` (as grep and compilers print it) goes to
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
-- **Folders** open in a listing (name, date, size); double-click an entry
-  to open it — a folder in the same tile, as a browser goes; ⌘-double-
-  click for a listing beside, this one staying; ⌥-double-click for one
-  over it — ⌘↑ for the folder above; on the folder's own host, remote
-  or not.
+- **Folders** open as the Finder shows them, in three modes chosen at the
+  bar's right: a **list** (name, date modified, size, kind; sorted by any,
+  folders on top) whose folders open in place into the tree under it;
+  **columns**, each folder chosen opening the next, a file chosen
+  previewed in the last by Quick Look with its kind, size and date; and a
+  **gallery**, the file chosen large over a strip of thumbnails. What the
+  folder's repository ignores (git's or Sapling's rules) and hidden files
+  are left out; ⇧⌘. shows them, dimmed. The **filter** (⌘F) looks
+  through the whole tree beneath, less what's ignored — the matches
+  shown with the folders on the way to them — ⏎ or ↓ to the files, ⎋ to
+  clear it. Along the bar, the path: each folder in it clicked, or the
+  arrow, ⌘↑, goes up. ⏎ or a double-click opens an entry — a folder in
+  the same tile, as a browser goes; ⌘-double-click for a listing beside,
+  this one staying; ⌥-double-click for one over it. The mode, the
+  selection, the folders left open, the sort and the filter are kept
+  with the tile, and the listing keeps current as files come and go. On
+  the folder's own host, remote or not (a remote file is fetched for its
+  preview).
 - **Links** go by the click: ⌘-click a web address — in a terminal, an
   editor, a preview or a web page — and the system's browser opens it;
   ⇧⌘-click and it opens in Manifold's own web lens beside (a plain click
@@ -441,7 +454,8 @@ when you find it again.
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the
   host runs `rg` (or `grep`) and the hits arrive grouped by file as they're
-  found, matches marked. ⏎ in the field asks again (Aa for case, .* for a
+  found, matches marked, each file's name staying at the top while its
+  hits scroll under it until the next file's takes over. ⏎ in the field asks again (Aa for case, .* for a
   regular expression); ↓ then ⏎, or a double-click, opens the file at the
   hit beside the results. A search is found again by its query in ⌘O.
 - **Git and Sapling** repositories get a block each (File ▸ Source Control

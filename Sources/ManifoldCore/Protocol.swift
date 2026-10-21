@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 31
+public let protocolVersion = 32
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -173,6 +173,14 @@ public enum Proposal: Codable, Sendable {
     case processes(block: BlockID)
     /// Send a signal to a process on the host.
     case signal(pid: Int32, signal: Int32)
+    /// A folder's entries, ignored ones marked (§7.4), answered with `listing`.
+    case listFolder(path: String)
+    /// The tree under a folder, less what's ignored, as paths relative to
+    /// it: `limit` files at most; answered with `listing`.
+    case listTree(path: String, limit: Int)
+    /// A file's bytes by its path, `limit` at most, answered with `bytes`
+    /// (nil when it's bigger, or unreadable).
+    case readPath(path: String, limit: Int)
 }
 
 /// What a host asks the leader of a shard to append.
@@ -263,4 +271,7 @@ public enum ServerMessage: Codable, Sendable {
     case gutter(BlockID, [GutterMark])
     /// A file's bytes, for `readBytes`; nil if it couldn't be read.
     case bytes(id: Int, Data?)
+    /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
+    /// be read; `complete` false when the tree had more than asked for.
+    case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
 }

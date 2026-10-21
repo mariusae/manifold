@@ -1009,6 +1009,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugSidebarView: SidebarView { sidebar }
     /// Debugging: the output tiles, as shown; "raw", what each holds,
     /// escaped; "copy" and "back", the focused one's buttons pressed.
+    /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
+    func debugDirectory(_ arg: String) -> String {
+        guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }
+        return d.debug(arg)
+    }
+
     func debugOutputs(_ verb: String) -> String {
         let focused = arrangement?.focused.flatMap { views[$0] as? OutputView }
         if verb == "copy" { return focused?.debugCopy() ?? "no output focused" }
@@ -4598,6 +4604,35 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewRefresh(_ view: DirectoryView) {
         hosts.propose(.listDirectory(view.block))
+    }
+
+    func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        client.listFolder(path, done: done)
+    }
+
+    func directoryView(_ view: DirectoryView, tree path: String, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil, false) }
+        client.listTree(path, done: done)
+    }
+
+    func directoryViewIsLocal(_ view: DirectoryView) -> Bool {
+        hosts.client(view.block.host)?.transport.isLocal ?? true
+    }
+
+    /// A file here, as it is; one on another host, fetched afresh (20 MB at
+    /// most) into a folder by host and path.
+    func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        if client.transport.isLocal { return done(URL(fileURLWithPath: path)) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-previews/\(view.block.host.raw)" + path.deletingLastPathComponent)
+        let url = dir.appendingPathComponent(path.lastPathComponent)
+        client.readBytes(path: path, limit: 20 << 20) { data in
+            guard let data else { return done(nil) }
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            guard (try? data.write(to: url)) != nil else { return done(nil) }
+            done(url)
+        }
     }
 }
 

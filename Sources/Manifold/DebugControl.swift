@@ -418,6 +418,8 @@ enum DebugControl {
             guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
             let w = window.convertPoint(fromScreen: p)
             return "\(Int(w.x)) \(Int(window.contentView!.bounds.height - w.y))"
+        case "dir":
+            return wc?.debugDirectory(arg) ?? "no window"
         case "outputs":
             return wc?.debugOutputs(arg) ?? "no window"
         case "card":

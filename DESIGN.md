@@ -704,10 +704,35 @@ remote hosts (§8) will need.
 
 ### 7.4 Directory
 
-Finder's, in the content area: list (sortable columns: name, date, size,
-kind), column, and icon views; inline rename; Quick Look; drag to and from
-Finder and other placements; git status badges; works the same on a remote
-host. Opening an entry places its block beside the listing and links it.
+Finder's, in the content area, in three modes: a list (sortable columns:
+name, date, size, kind; folders on top) that is an outline, each folder
+opening in place into the tree under it; columns (`NSBrowser`), with the
+file chosen previewed in a last column; and a gallery, the file chosen
+large over a strip of Quick Look thumbnails. The preview is Quick Look's
+(`QLPreviewView`) over the name, kind, size and date; a remote file is
+fetched first (`readPath`, 20 MB at most) into a folder by host and path.
+Over them, a bar: the way up (an arrow, ⌘↑, and the path, each folder in
+it a link), a filter, and the modes.
+
+The host lists (§4): a folder's entries come with `isIgnored` set from
+the repository it's in (`git check-ignore`, or for Sapling whatever isn't
+in `sl files` or `sl status -u`), and the tree under a folder (`listTree`,
+20,000 files at most) is git's tracked and unignored files, Sapling's, or
+a walk that skips hidden and dependency folders. Ignored and hidden
+entries are left out unless ⇧⌘. shows them. The listing's own entries are
+the block's (`listDirectory`, written to its log only when they change);
+the folders opened under it are asked for as they open (`listFolder`),
+answered and not logged. While it's on screen and the app is in use, the
+view asks again every few seconds for what it shows, and a folder whose
+entries changed is reloaded keeping the selection. The filter takes the
+tree once (again after thirty seconds) and shows, in every mode, the
+entries whose path holds each word (the last in the name), the folders on
+the way to them, and all of a folder that matched. The mode, the
+selection (a path, shared by the modes), the open folders, the sort, the
+filter and whether hidden files show are the placement's view state
+(§3.5). Opening an entry places its block beside the listing and links it;
+a folder replaces the listing in its tile. Still to come: inline rename, drag to and from the
+Finder and other placements, and git status badges.
 
 ### 7.5 Image, PDF, diff, git, search, process, agent
 

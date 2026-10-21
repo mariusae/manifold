@@ -135,6 +135,7 @@ final class HostClient {
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
     private var pendingBytes: [Int: (Data?) -> Void] = [:]
+    private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
     /// How each text block stands against what's committed.
@@ -275,6 +276,33 @@ final class HostClient {
         nextProposal += 1
         pendingBytes[id] = done
         conn?.send(.message(ClientMessage.propose(id: id, .readBytes(block: block))))
+    }
+
+    /// A folder's entries, ignored ones marked (§7.4).
+    func listFolder(_ path: String, done: @escaping ([DirectoryEntry]?) -> Void) {
+        list(.listFolder(path: path)) { entries, _ in done(entries) }
+    }
+
+    /// The tree under a folder, less what's ignored, named relative to it.
+    func listTree(_ path: String, limit: Int = 20_000, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
+        list(.listTree(path: path, limit: limit), done: done)
+    }
+
+    private func list(_ proposal: Proposal, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
+        guard conn != nil else { return done(nil, false) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingListings[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+    }
+
+    /// A file's bytes by its path, nil past `limit`.
+    func readBytes(path: String, limit: Int, done: @escaping (Data?) -> Void) {
+        guard conn != nil else { return done(nil) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingBytes[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .readPath(path: path, limit: limit))))
     }
 
     // MARK: Conveniences
@@ -802,6 +830,8 @@ final class HostClient {
             pendingLSP.removeValue(forKey: id)?(result)
         case let .bytes(id, data):
             pendingBytes.removeValue(forKey: id)?(data)
+        case let .listing(id, entries, complete):
+            pendingListings.removeValue(forKey: id)?(entries, complete)
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
             onLanguageServer?(language, root, state)
