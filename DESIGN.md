@@ -133,7 +133,12 @@ Each tile is a **card** with a **bar** across its top: the block's
 symbol and name, where it is, a count of the stack behind it, its
 links, its status glyph (§3.7), and maximize and close; the bar is the
 tile's handle to drag, grows the tile a step when clicked, and holds
-its menu behind the symbol. The content runs beneath the bar, never under it,
+its menu behind the symbol. As a tile narrows the bar gives things up in
+order, so the symbol and some of the name always show: the place goes
+first, then the links' pill shrinks to its arrow and symbol, then the
+program's capsule goes, then the pill to its arrow alone, then maximize,
+then the pill altogether; close, the status glyph and the unsaved dot
+stay, and last the name is cut. The content runs beneath the bar, never under it,
 with room between cards and the window's wash — a few pools of colour
 placed afresh each day over what's behind the window, blurred — showing
 through. A stack's sheets peek out above its card, rounded, as paper.

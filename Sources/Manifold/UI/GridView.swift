@@ -252,7 +252,7 @@ final class GridView: NSView, NSDraggingSource {
                 if tile.links.isEmpty {
                     badges[id]?.removeFromSuperview()
                     badges.removeValue(forKey: id)
-                    pill.linkRoom = 0
+                    pill.linkWanted = 0
                 } else {
                     let badge = badges[id] ?? {
                         let b = LinkBadge()
@@ -261,7 +261,7 @@ final class GridView: NSView, NSDraggingSource {
                         return b
                     }()
                     badge.cards = tile.links
-                    pill.linkRoom = badge.capsuleWantedWidth + 14
+                    pill.linkWanted = badge.capsuleWantedWidth
                     badge.onOpen = { [weak self] block, over in self?.delegate?.gridOpenLink(block, from: id, over: over) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
@@ -529,7 +529,7 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 if let badge = badges[tile.shown.id] {
                     placeBadge(badge, of: tile.shown.id, in: r)
-                    badge.isHidden = held
+                    if held { badge.isHidden = true }
                     // Over its bar for clicks too, not only drawn over it: a
                     // view put back on top takes its bar up above it again.
                     if let pill = pills[tile.shown.id] { keep(badge, above: pill) }
@@ -771,12 +771,18 @@ final class GridView: NSView, NSDraggingSource {
     private func placeBadge(_ badge: LinkBadge, of id: PlacementID, in r: NSRect) {
         badge.isHidden = false
         badge.fansDown = true
+        // The bar has settled what room the pill gets and what else shows.
+        pills[id]?.layoutSubtreeIfNeeded()
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
         let h = min(size.height, r.height - 12)
-        // Its capsule in the bar, before the bar's buttons.
+        // Its capsule in the bar, before the bar's buttons, as wide as the
+        // bar gave it (shrunk to its arrow when the bar is narrow).
         let capsuleTop = r.maxY - (Self.barHeight - LinkBadge.capsuleHeight) / 2
         let taken = pills[id]?.rightTaken ?? TilePill.rightChrome
+        let given = pills[id]?.linkGiven ?? .infinity
+        badge.capsuleLimit = given
+        badge.isHidden = given == 0
         badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 
@@ -1140,7 +1146,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Right-clicked: the stack behind the tile, called up (or its menu).
     var onRightClick: ((NSEvent) -> Void)?
     /// What the links' pill takes of the bar, left of the buttons.
-    var linkRoom: CGFloat = 0 { didSet { if linkRoom != oldValue { needsLayout = true } } }
+    /// What the links' pill wants of the bar, its sheets included; what
+    /// it's given is `linkGiven`, after the shrinkage below.
+    var linkWanted: CGFloat = 0 { didSet { if linkWanted != oldValue { needsLayout = true } } }
+    private(set) var linkGiven: CGFloat = 0
+    /// The links' pill shrunk: the arrow and the symbol; the arrow alone.
+    static let linkCompact: CGFloat = 50
+    static let linkMinimal: CGFloat = 30
+    /// The least the name is shown at, before anything else gives way.
+    static let nameMinimum: CGFloat = 56
     /// The dirty dot clicked, with the dot (to put a menu by).
     var onDirtyClick: ((NSView) -> Void)? {
         get { dirty.onClick }
@@ -1367,13 +1381,44 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var x: CGFloat = 10
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         x += 22
+        // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
+        // order, so the name keeps at least a little room — the place
+        // goes first (below), then the links' pill shrinks to its arrow
+        // and symbol, then the program's capsule goes, then the pill to
+        // its arrow alone, then maximize, then the pill altogether; the
+        // ×, the status and the dot stay, and last the name itself is cut.
+        let showClose = !stashed && showsButtons
+        var showCorner = !stashed && showsButtons
+        var showProgram = !program.stringValue.isEmpty
+        let programWidth = ceil(program.intrinsicContentSize.width) + 14
+        var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
+        let nameWanted = ceil(name.intrinsicContentSize.width) + 4
+        let nameNeed = min(nameWanted, Self.nameMinimum)
+        func spare() -> CGFloat {
+            var used = x + 10 + linkRoom
+            if showClose { used += 22 }
+            if showCorner { used += 22 }
+            if !glyph.isHidden { used += StatusGlyph.size + 8 }
+            if showProgram { used += programWidth + 8 }
+            if !dirty.isHidden { used += 14 }
+            return bounds.width - used
+        }
+        if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
+        if spare() < nameNeed, showProgram { showProgram = false }
+        if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
+        if spare() < nameNeed, showCorner { showCorner = false }
+        // Narrower still, the pill goes altogether: the symbol and a bit of
+        // the name say what the tile is; the links are a hover away in the
+        // sidebar.
+        if spare() < nameNeed, linkRoom > 0 { linkRoom = 0 }
+        linkGiven = linkRoom > 0 ? linkRoom - 14 : 0
         var right = bounds.width - 10
-        close.isHidden = stashed || !showsButtons
+        close.isHidden = !showClose
         if !close.isHidden {
             close.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
         }
-        corner.isHidden = stashed || !showsButtons
+        corner.isHidden = !showCorner
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
@@ -1382,10 +1427,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
         }
+        program.isHidden = !showProgram
         if !program.isHidden {
-            let tw = ceil(program.intrinsicContentSize.width) + 14
-            program.frame = NSRect(x: right - tw, y: (h - 17) / 2, width: tw, height: 17)
-            right -= tw + 8
+            program.frame = NSRect(x: right - programWidth, y: (h - 17) / 2, width: programWidth, height: 17)
+            right -= programWidth + 8
         }
         if !dirty.isHidden {
             // The dot where it always was; the room around it takes the click.
@@ -1395,7 +1440,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // The links' pill sits before the dot and the buttons: the name stops short of it.
         right -= linkRoom
         let th = ceil(name.intrinsicContentSize.height)
-        let wanted = ceil(name.intrinsicContentSize.width) + 4
+        let wanted = nameWanted
         let nw = min(wanted, max(0, right - x))
         name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
         let sx = x - 2 + nw + 8

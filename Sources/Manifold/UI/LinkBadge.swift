@@ -83,8 +83,11 @@ final class LinkBadge: NSView {
         return cards.count == 1 ? first : first + ", and \(cards.count - 1) more"
     }
 
+    /// The most the bar gives the first link's pill, its sheets aside:
+    /// shrunk, it shows its arrow and symbol, then its arrow alone.
+    var capsuleLimit: CGFloat = .infinity { didSet { if capsuleLimit != oldValue { needsLayout = true } } }
     /// The first link's pill's width, as the bar has room for it.
-    var capsuleWidth: CGFloat { min(min(badge.wantedWidth, Self.barWidth), bounds.width - sheetRoom) }
+    var capsuleWidth: CGFloat { min(min(badge.wantedWidth, Self.barWidth), bounds.width - sheetRoom, capsuleLimit) }
     /// What the first link's pill would take of the bar, its sheets included.
     var capsuleWantedWidth: CGFloat { min(badge.wantedWidth, Self.barWidth) + sheetRoom }
     /// The room the sheets take to the pill's right (kept while fanned, so the pill stays put).
@@ -249,7 +252,9 @@ final class LinkBadge: NSView {
         var onBreak: (() -> Void)? { didSet { updateClose(); needsLayout = true } }
         /// The × only under the pointer (in a tile's bar, beside the tile's own ×); its room kept.
         var breaksOnHover = false { didSet { updateClose() } }
-        private func updateClose() { close.isHidden = onBreak == nil || (breaksOnHover && !hovered) }
+        private func updateClose() { close.isHidden = onBreak == nil || compact || (breaksOnHover && !hovered) }
+        /// Too narrow for words: the arrow and the symbol, or the arrow alone.
+        private var compact = false
         private let arrow = NSImageView()
         private let icon = NSImageView()
         private let label = NSTextField(labelWithString: "")
@@ -310,15 +315,33 @@ final class LinkBadge: NSView {
         override func layout() {
             super.layout()
             let h = bounds.height
-            var x: CGFloat = 9
+            let w = bounds.width
+            // Shrinkage: under the room for a word of the title, the words
+            // go; under the room for the symbol, the symbol goes too, and
+            // the arrow sits in the middle alone.
+            let wordRoom = 10 + arrowWidth + 20 + 24
+            compact = w < wordRoom
+            updateClose()
+            if w < 44 {
+                let only = direction == nil ? icon : arrow
+                only.frame = NSRect(x: (w - 12) / 2, y: (h - 12) / 2, width: 12, height: 12)
+                arrow.isHidden = direction == nil
+                icon.isHidden = direction != nil
+                label.isHidden = true
+                return
+            }
+            arrow.isHidden = direction == nil
+            icon.isHidden = false
+            var x: CGFloat = compact ? (w - (arrowWidth + 14)) / 2 : 9
             if !arrow.isHidden {
                 arrow.frame = NSRect(x: x, y: (h - 10) / 2, width: 10, height: 10)
                 x += arrowWidth
             }
             icon.frame = NSRect(x: x, y: (h - 12) / 2, width: 14, height: 12)
             x += 20
-            let right = bounds.width - 10 - closeWidth
-            if onBreak != nil { close.frame = NSRect(x: bounds.width - 10 - 12, y: (h - 12) / 2, width: 12, height: 12) }
+            if compact { label.isHidden = true; return }
+            let right = w - 10 - closeWidth
+            if onBreak != nil { close.frame = NSRect(x: w - 10 - 12, y: (h - 12) / 2, width: 12, height: 12) }
             let lh = ceil(label.intrinsicContentSize.height)
             label.frame = NSRect(x: x, y: ((h - lh) / 2).rounded(), width: max(right - x, 0), height: lh)
             label.isHidden = title.isEmpty

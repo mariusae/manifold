@@ -124,7 +124,11 @@ and Mona Sans (bundled).
   resize them. Each tile is a **card** with a bar across its top:
   its symbol and name, where it is in grey, its links, the program its
   status names in a grey capsule, its status
-  glyph, and maximize and close (×) at the right. The bar is always there; the content runs beneath it, rounded,
+  glyph, and maximize and close (×) at the right. The bar is always there; as
+  a tile narrows it gives things up in order — the place, then the
+  links' pill shrunk to its arrow and symbol, then the program, then
+  the pill to its arrow alone, then maximize, then the pill — so the
+  symbol and some of the name always show. The content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
   pointer follows the bar, so a click again grows again), ⌘-click
