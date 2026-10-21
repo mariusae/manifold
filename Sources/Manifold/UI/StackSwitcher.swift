@@ -287,10 +287,10 @@ final class StackSwitcherView: NSView {
 }
 
 /// Behind the cards: a wash from the window's color down to a cool grey.
+/// Behind the cards: nothing of its own — the window's background shows,
+/// so the fan reads as the tile opened, not a window over it.
 final class SwitcherBackground: NSView {
-    override func draw(_ dirtyRect: NSRect) {
-        NSGradient(starting: Theme.switcherBottom, ending: Theme.switcherTop)?.draw(in: bounds, angle: 90)
-    }
+    override func draw(_ dirtyRect: NSRect) {}
 }
 
 /// A sheet in the switcher: a title bar with its icon and name, then the

@@ -60,8 +60,10 @@ and Mona Sans (bundled).
   others. A stash is a stack behind any tile: the sheets behind it peek
   out above its card, as a stack of paper. **Right-click the tile's
   title** (or press ⌘E) and the stack's tiles hang over it as cards,
-  live, the tile's own bar put away: each as wide as the column, the
-  tile at its own size, a title bar lower than the
+  live, the tile's own bar put away, on the window's own background
+  (a stack too short to hold them, down to its bar say, first grows —
+  more than a tile gone to does: 320 points, or half the column): each
+  as wide as the column, the tile at its own size, a title bar lower than the
   one behind it, all leaning back a little alike, and the one chosen
   peeking out between the rest, those in front of it let down part of
   the way. Right-clicked, the card under the pointer is

@@ -2011,23 +2011,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         showingSome(a.revealing(placement), in: a)
     }
 
-    /// Events that leave a tile focused, with that tile grown if it's
-    /// collapsed to its bar (a pill, less than a line of it showing): to
-    /// show some of what's in it — 160 points of it, or a quarter of its
-    /// column, whichever is less — taken from its neighbours as growing takes it,
-    /// as apex does for a window it goes to.
-    private func showingSome(_ events: [Event], in a: ArrangementState) -> [Event] {
+    /// How much of a tile to show, grown to it: a glimpse, for a tile
+    /// gone to (as apex does for a window it goes to); more, for a stack
+    /// about to fan out, so the cards have room to hang.
+    enum Reveal {
+        case glimpse, fan
+
+        /// Its content's height, at most and as a part of the column.
+        var points: CGFloat { self == .glimpse ? 160 : 320 }
+        var share: CGFloat { self == .glimpse ? 1 / 4 : 1 / 2 }
+    }
+
+    /// Events that leave a tile focused (or `placement`), with that tile
+    /// grown to `reveal` if it's short of it — for a glimpse, only one
+    /// collapsed to its bar (a pill, less than a line of it showing) —
+    /// taken from its neighbours as growing takes it.
+    private func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil, _ reveal: Reveal = .glimpse) -> [Event] {
         var after = a
         for e in events { after.apply(e) }
-        guard let f = after.focused, after.full == nil, !after.isStashed(f), let (c, _) = after.locate(f) else { return events }
+        guard let f = placement ?? after.focused, after.full == nil, !after.isStashed(f), let (c, _) = after.locate(f) else { return events }
         let shown = after.shownTiles(inColumn: c)
         guard shown.count > 1 else { return events }
         let sum = shown.reduce(0.0) { $0 + after.height(of: $1.id) }
         let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
         guard sum > 0, usable > 0 else { return events }
         let share = after.height(of: f) / sum
-        guard usable * CGFloat(share) - GridView.barHeight < 20 else { return events }
-        let want = Double((min(160, usable / 4) + GridView.barHeight) / usable)
+        let body = usable * CGFloat(share) - GridView.barHeight
+        let target = min(reveal.points, usable * reveal.share)
+        guard reveal == .glimpse ? body < 20 : body < target - 1 else { return events }
+        let want = Double((target + GridView.barHeight) / usable)
         return events + after.growing(f, step: (want - share) * sum)
     }
 
@@ -4204,6 +4216,15 @@ extension MainWindowController: SidebarDelegate {
 
 extension MainWindowController: GridDelegate {
     func gridFocus(_ placement: PlacementID) { focus(placement) }
+
+    func gridRoomForFan(_ top: PlacementID) -> Bool {
+        guard let a = arrangement else { return false }
+        let events = showingSome([], in: a, placement: top, .fan)
+        guard !events.isEmpty else { return false }
+        appendToSelected(events)
+        render()
+        return true
+    }
     func gridCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
     /// Another arrangement dropped on this one: its columns come over.

@@ -3,6 +3,9 @@ import ManifoldCore
 
 protocol GridDelegate: AnyObject {
     func gridFocus(_ placement: PlacementID)
+    /// A stack about to fan out: its tile grown to hold the fan, if it's
+    /// short of it. True when it was (the fan waits for the tile to settle).
+    func gridRoomForFan(_ top: PlacementID) -> Bool
     /// A tile dropped at a place in the grid: into column `column` at
     /// index `at`, or a new column at `column`.
     func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
@@ -973,7 +976,10 @@ final class GridView: NSView, NSDraggingSource {
     private var switcher: StackSwitcherView?
     /// The tiles whose views the switcher holds: the grid leaves them be.
     private var switching: Set<PlacementID> = []
-    var isSwitching: Bool { switcher != nil }
+    var isSwitching: Bool { switcher != nil || fanWaiting }
+    /// The fan asked for, waiting on its tile to grow; and ⌘E's steps meanwhile.
+    private var fanWaiting = false
+    private var fanSteps = 0
 
     /// The switcher was opened by a right-click: it follows the pointer,
     /// and what's clicked comes out (⌥: takes the top).
@@ -984,10 +990,24 @@ final class GridView: NSView, NSDraggingSource {
     /// from ⌘E, the choice then stepped along; from a right-click on its
     /// title, the choice following the pointer, from the top.
     @discardableResult
-    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool) -> Bool {
-        guard switcher == nil else { return true }
+    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false) -> Bool {
+        guard switcher == nil, !fanWaiting else { return true }
         guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
               let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
+        // A stack too short to fan out (down to its bar, say) grows first,
+        // and fans out once it has.
+        if !roomMade, delegate?.gridRoomForFan(top) == true {
+            fanWaiting = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+                guard let self else { return }
+                self.fanWaiting = false
+                let steps = self.fanSteps
+                self.fanSteps = 0
+                guard self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true) else { return }
+                if steps != 0 { self.switcher?.move(steps) }
+            }
+            return true
+        }
         layoutSubtreeIfNeeded()
         let body = stack.top.view.frame
         let order = Array(stack.behind.reversed()) + [stack.top]
@@ -1029,7 +1049,7 @@ final class GridView: NSView, NSDraggingSource {
     /// tile has no stack.
     func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
         guard openStackSwitcher(top, followingPointer: false) else { return false }
-        switcher?.move(back ? 1 : -1)
+        if fanWaiting { fanSteps += back ? 1 : -1 } else { switcher?.move(back ? 1 : -1) }
         return true
     }
 
