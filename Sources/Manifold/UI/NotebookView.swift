@@ -28,14 +28,16 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     }
 
     private let header = NSView()
-    private let dot = NSView()
+    /// The shell's state, as the sidebar shows a block's: turning while a
+    /// cell runs, a moon with no shell; else the shell's symbol.
+    private let glyph = StatusGlyph()
+    private let shellIcon = NSImageView()
     private let status = NSTextField(labelWithString: "")
-    private var buttons: [NSButton] = []
-    private let runButton = NSButton(), runAllButton = NSButton(), stopButton = NSButton(), restartButton = NSButton(),
-                addButton = NSButton(), moreButton = NSButton()
+    private let runs = ActionCapsule()
+    private let tools = ActionCapsule()
     private let scroll = NSScrollView()
     private let stack = FlippedView()
-    private let addBelow = NSButton(title: "New Cell", target: nil, action: nil)
+    private let addBelow = HoverLink(title: "New Cell", symbol: "plus")
     private var cells: [String: NotebookCellView] = [:]
     private var order: [String] = []
     /// Cells made here that the host hasn't written yet, and where.
@@ -47,7 +49,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
     var isDead: Bool { false }
-    static let headerHeight: CGFloat = 38
+    static let headerHeight: CGFloat = 40
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
@@ -55,45 +57,29 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        dot.wantsLayer = true
-        dot.layer?.cornerRadius = 4
-        status.font = .systemFont(ofSize: 12)
-        status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingMiddle
-        header.addSubview(dot)
-        header.addSubview(status)
-        for (b, symbol, tip, action) in [
-            (runButton, "play.fill", "Run Cell (⌘↩)", #selector(runFocused)),
-            (runAllButton, "forward.end.fill", "Run All Cells", #selector(runAll)),
-            (stopButton, "stop.fill", "Interrupt (⌘.) — again to kill", #selector(interrupt)),
-            (restartButton, "arrow.clockwise", "Restart Shell", #selector(restart)),
-            (addButton, "plus", "New Cell Below", #selector(addCell)),
-            (moreButton, "ellipsis.circle", "More", #selector(more)),
-        ] {
-            b.isBordered = false
-            b.bezelStyle = .accessoryBarAction
-            b.image = Theme.symbol(symbol, size: 12, weight: .medium)
-            b.contentTintColor = Theme.secondaryText
-            b.toolTip = tip
-            b.target = self
-            b.action = action
-            header.addSubview(b)
-            buttons.append(b)
-        }
+        shellIcon.image = Theme.symbol("apple.terminal", size: 12)
+        shellIcon.contentTintColor = Theme.secondaryText
+        for v in [glyph, shellIcon, status] as [NSView] { header.addSubview(v) }
+        runs.actions = [
+            .init(symbol: "play.fill", tip: "Run Cell (⌘↩)") { [weak self] _, _ in self?.runFocused() },
+            .init(symbol: "forward.end.fill", tip: "Run All Cells") { [weak self] _, _ in self?.runAll() },
+            .init(symbol: "stop.fill", tip: "Interrupt (⌘.) — again to stop it for good") { [weak self] _, _ in self?.interrupt() },
+        ]
+        tools.actions = [
+            .init(symbol: "plus", tip: "New Cell Below") { [weak self] _, _ in self?.addCell() },
+            .init(symbol: "arrow.clockwise", tip: "Restart Shell") { [weak self] _, _ in self?.restart() },
+            .init(symbol: "ellipsis", tip: "More") { [weak self] view, rect in self?.more(from: view, at: rect) },
+        ]
+        header.addSubview(runs)
+        header.addSubview(tools)
         addSubview(header)
         scroll.documentView = stack
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         addSubview(scroll)
-        addBelow.bezelStyle = .accessoryBarAction
-        addBelow.image = Theme.symbol("plus", size: 10, weight: .medium)
-        addBelow.imagePosition = .imageLeading
-        addBelow.controlSize = .small
-        addBelow.font = .systemFont(ofSize: 11)
-        addBelow.contentTintColor = Theme.secondaryText
-        addBelow.target = self
-        addBelow.action = #selector(addAtEnd)
+        addBelow.clicked = { [weak self] in self?.addAtEnd() }
         stack.addSubview(addBelow)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
     }
@@ -167,24 +153,36 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         if focusedCell == cell { cells[cell]?.scrollOutputToEnd() }
     }
 
+    /// The shell, where it is and what it's doing, as the folder view's
+    /// bar says where it is: the name strong, the rest quiet.
     private func updateHeader() {
         let nb = shown
         let place = source()?.home?.abbreviatingHome ?? "~"
-        let shell = nb?.shell ?? "shell"
-        let color: NSColor
+        let name: String
+        var doing: String?
         if nb?.pid == nil {
-            color = Theme.secondaryText.withAlphaComponent(0.5)
-            status.stringValue = "No shell — a run starts one · \(place)"
+            glyph.look = .inactive
+            name = "No shell"
+            doing = "a run starts one"
+            glyph.toolTip = "The shell has ended: the next run starts a new one"
         } else if let r = nb?.running, let c = nb?.cell(r) {
-            color = NSColor.systemOrange
-            status.stringValue = "\(shell) · running [\(c.count ?? 0)]" + (nb!.queued.isEmpty ? "" : ", \(nb!.queued.count) waiting") + " · \(place)"
+            glyph.look = .working(progress: nil)
+            name = nb?.shell ?? "shell"
+            doing = "running \(c.count ?? 0)" + (nb!.queued.isEmpty ? "" : ", \(nb!.queued.count) waiting")
+            glyph.toolTip = "Running"
         } else {
-            color = NSColor.systemGreen
-            status.stringValue = "\(shell) · idle · \(place)"
+            glyph.look = nil
+            name = nb?.shell ?? "shell"
         }
-        dot.layer?.backgroundColor = color.cgColor
-        stopButton.isEnabled = nb?.running != nil || !(nb?.queued.isEmpty ?? true)
-        stopButton.contentTintColor = stopButton.isEnabled ? Theme.statusError : Theme.secondaryText.withAlphaComponent(0.4)
+        shellIcon.isHidden = glyph.look != nil
+        let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: Theme.text])
+        s.append(NSAttributedString(string: "  " + place, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.secondaryText]))
+        if let doing {
+            s.append(NSAttributedString(string: "  ·  " + doing, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.secondaryText]))
+        }
+        status.attributedStringValue = s
+        let stoppable = nb?.running != nil || !(nb?.queued.isEmpty ?? true)
+        runs.set(2, enabled: stoppable, tint: stoppable ? Theme.statusError : nil)
     }
 
     // MARK: Layout
@@ -194,13 +192,12 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         let w = bounds.width, h = bounds.height
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         let mid = Self.headerHeight / 2
-        dot.frame = NSRect(x: 14, y: mid - 4, width: 8, height: 8)
-        var x = w - 8
-        for b in buttons.reversed() {
-            x -= 28
-            b.frame = NSRect(x: x, y: mid - 12, width: 26, height: 24)
-        }
-        status.frame = NSRect(x: 28, y: mid - 8, width: max(0, x - 36), height: 16)
+        glyph.frame = NSRect(x: 14, y: mid - 8, width: 16, height: 16)
+        shellIcon.frame = glyph.frame
+        let t = tools.intrinsicContentSize, rn = runs.intrinsicContentSize
+        tools.frame = NSRect(x: w - 10 - t.width, y: mid - t.height / 2, width: t.width, height: t.height)
+        runs.frame = NSRect(x: tools.frame.minX - 8 - rn.width, y: mid - rn.height / 2, width: rn.width, height: rn.height)
+        status.frame = NSRect(x: 36, y: mid - 8, width: max(0, runs.frame.minX - 46), height: 17)
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, h - Self.headerHeight))
         layoutCells()
     }
@@ -209,16 +206,16 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     func layoutCells() {
         let w = scroll.contentSize.width
         guard w > 0 else { return }
-        var y: CGFloat = 10
+        var y: CGFloat = 6
         for id in order {
             guard let v = cells[id] else { continue }
             let h = v.height(forWidth: w)
             v.frame = NSRect(x: 0, y: y, width: w, height: h)
-            y += h + 10
+            y += h + 16
         }
-        addBelow.sizeToFit()
-        addBelow.frame = NSRect(x: 52, y: y, width: addBelow.frame.width + 8, height: 22)
-        y += 40
+        let a = addBelow.intrinsicContentSize
+        addBelow.frame = NSRect(x: NotebookCellView.gutter + 4, y: y - 2, width: a.width, height: a.height)
+        y += 44
         stack.frame = NSRect(x: 0, y: 0, width: w, height: max(y, scroll.contentSize.height))
     }
 
@@ -309,28 +306,28 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     // MARK: The header's buttons and keys
 
-    @objc func runFocused() {
+    func runFocused() {
         guard let id = focusedCell ?? order.first else { return }
         run(id, then: .stay)
     }
 
-    @objc func runAll() {
+    func runAll() {
         cells.values.forEach { $0.flushSource() }
         delegate?.notebook(self, run: order.filter { !(cells[$0]?.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
     }
 
-    @objc func interrupt() { delegate?.notebookInterrupt(self) }
+    func interrupt() { delegate?.notebookInterrupt(self) }
 
-    @objc func restart() { delegate?.notebookRestart(self) }
+    func restart() { delegate?.notebookRestart(self) }
 
-    @objc func addCell() {
+    func addCell() {
         let i = focusedCell.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? order.count
         insert(at: i)
     }
 
-    @objc private func addAtEnd() { insert(at: order.count) }
+    private func addAtEnd() { insert(at: order.count) }
 
-    @objc private func more() {
+    private func more(from view: NSView, at rect: NSRect) {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() })
         menu.addItem(ClosureMenuItem("Clear All Outputs", symbol: "eraser") { [weak self] in
@@ -340,7 +337,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Interrupt", symbol: "stop.fill") { [weak self] in self?.interrupt() })
         menu.addItem(ClosureMenuItem("Restart Shell", symbol: "arrow.clockwise") { [weak self] in self?.restart() })
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: moreButton.bounds.height + 4), in: moreButton)
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.minY - 4), in: view)
     }
 
     var pillItems: [NSMenuItem] {
@@ -436,9 +433,12 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
     let output = OutputTextView()
     private let outputScroll = NSScrollView()
     private let count = NSTextField(labelWithString: "")
-    private let spinner = NSProgressIndicator()
-    private let play = NSButton()
-    private let menuButton = NSButton()
+    private let queuedIcon = NSImageView()
+    private let play = HoverIcon(symbol: "play.fill", tip: "Run (⌘↩)")
+    private let menuButton = HoverIcon(symbol: "ellipsis", tip: "Cell")
+    /// The focused cell's mark, as a selected row's in the sidebar.
+    private let bar = NSView()
+    private let glyph = StatusGlyph()
     private let footer = NSTextField(labelWithString: "")
     private var cell = NotebookCell(id: "")
     private var running = false
@@ -451,7 +451,9 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
     var font: NSFont { didSet { editor.font = font; renderedOutput = nil; render() } }
     var focused = false { didSet { refreshChrome() } }
 
-    static let gutter: CGFloat = 52
+    static let gutter: CGFloat = 48
+    /// Where text starts in the command's box and in the output alike.
+    static let textInset: CGFloat = 8
     static let maxOutputHeight: CGFloat = 420
 
     init(id: String, font: NSFont) {
@@ -459,10 +461,15 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         self.font = font
         super.init(frame: .zero)
         box.wantsLayer = true
-        box.layer?.cornerRadius = 7
-        box.layer?.borderWidth = 1
+        box.layer?.cornerRadius = 8
+        box.layer?.cornerCurve = .continuous
         addSubview(box)
+        bar.wantsLayer = true
+        bar.layer?.cornerRadius = 1.5
+        addSubview(bar)
         editor.font = font
+        editor.textColor = Theme.codeText
+        editor.insertionPointColor = Theme.codeText
         editor.isRichText = false
         editor.allowsUndo = true
         editor.isAutomaticQuoteSubstitutionEnabled = false
@@ -471,33 +478,29 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         editor.isAutomaticSpellingCorrectionEnabled = false
         editor.isContinuousSpellCheckingEnabled = false
         editor.drawsBackground = false
-        editor.textContainerInset = NSSize(width: 6, height: 7)
+        editor.textContainerInset = NSSize(width: Self.textInset, height: 8)
         editor.textContainer?.widthTracksTextView = true
         editor.delegate = self
         editor.cellView = self
         box.addSubview(editor)
+        // The run's number, as the editor numbers its lines.
         count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = Theme.secondaryText
+        count.textColor = Theme.codeLineNumber
         count.alignment = .right
         addSubview(count)
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        addSubview(spinner)
-        for (b, symbol, tip, action) in [(play, "play.fill", "Run (⌘↩)", #selector(playClicked)), (menuButton, "ellipsis", "Cell", #selector(menuClicked))] {
-            b.isBordered = false
-            b.bezelStyle = .accessoryBarAction
-            b.image = Theme.symbol(symbol, size: 11, weight: .semibold)
-            b.contentTintColor = Theme.secondaryText
-            b.toolTip = tip
-            b.target = self
-            b.action = action
-            addSubview(b)
-        }
+        queuedIcon.image = Theme.symbol("clock", size: 11)
+        queuedIcon.contentTintColor = Theme.secondaryText
+        queuedIcon.toolTip = "Waiting to run"
+        addSubview(queuedIcon)
+        play.clicked = { [weak self] _ in self?.playClicked() }
+        menuButton.clicked = { [weak self] view in self?.menuClicked(from: view) }
+        addSubview(play)
+        addSubview(menuButton)
+        addSubview(glyph)
         output.isEditable = false
         output.isSelectable = true
         output.drawsBackground = false
-        output.textContainerInset = NSSize(width: 6, height: 4)
+        output.textContainerInset = NSSize(width: Self.textInset, height: 2)
         output.textContainer?.widthTracksTextView = true
         output.isVerticallyResizable = true
         output.isHorizontallyResizable = false
@@ -533,13 +536,21 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         refreshChrome()
     }
 
+    /// The focused cell: the accent's bar at its left and a light ring,
+    /// as a focused tile is ringed; under the pointer, a hairline.
     private func refreshChrome() {
-        box.layer?.backgroundColor = Theme.codePage.cgColor
-        box.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.8) : Theme.divider).cgColor
-        box.layer?.borderWidth = focused ? 1.5 : 1
-        let showPlay = (hovered || focused) && !running
+        // Layers' colours, as the view's appearance has them (light or dark).
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            box.layer?.backgroundColor = Theme.codePage.cgColor
+            box.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.45) : Theme.divider).cgColor
+            bar.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.85).cgColor
+        }
+        box.layer?.borderWidth = focused || hovered ? 1 : 0
+        bar.isHidden = !focused
+        let showPlay = (hovered || focused) && !running && !queued
         play.isHidden = !showPlay
-        count.isHidden = showPlay || running
+        count.isHidden = showPlay || queued
+        queuedIcon.isHidden = !queued
         menuButton.isHidden = !(hovered || focused)
     }
 
@@ -555,10 +566,10 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         if pendingSource == nil, editor.string != c.source, editor.window?.firstResponder !== editor {
             editor.string = c.source
         }
-        if r { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         if !r { liveOutput = nil }
         if outputChanged || !r { render() }
-        count.stringValue = q ? "…" : c.count.map { "[\($0)]" } ?? "[ ]"
+        count.stringValue = c.count.map(String.init) ?? ""
+        count.toolTip = c.count.map { "Run \($0) in this notebook" }
         tick()
         refreshChrome()
         needsLayout = true
@@ -569,23 +580,32 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         render()
     }
 
-    /// The footer: how it ended, how long it took, when; a running one's clock.
+    /// The footer: the status's glyph, as the sidebar draws it (turning,
+    /// a check, a red one), then how it ended, how long it took, when.
     func tick() {
         var words: [String] = []
+        footer.textColor = Theme.secondaryText
         if running {
-            if let ran = cell.ran { words.append("running \(Self.duration(Date().timeIntervalSince(ran.date)))") }
-            footer.textColor = Theme.secondaryText
+            glyph.look = .working(progress: nil)
+            words.append("Running")
+            if let ran = cell.ran { words.append(Self.duration(Date().timeIntervalSince(ran.date))) }
         } else if queued {
-            words.append("waiting to run")
-            footer.textColor = Theme.secondaryText
+            glyph.look = nil
+            words.append("Waiting to run")
         } else if let ended = cell.ended {
-            if let s = cell.status { words.append(s == 0 ? "ok" : s == 130 ? "interrupted" : "exit \(s)") } else { words.append("the shell ended") }
+            let ok = cell.status == 0
+            glyph.look = ok ? .done(read: true) : .failed(read: true)
+            if let s = cell.status { words.append(ok ? "Done" : s == 130 ? "Interrupted" : "Exit \(s)") } else { words.append("The shell ended") }
             if let ran = cell.ran { words.append(Self.duration(ended.date.timeIntervalSince(ran.date))) }
             words.append(Age.ago(ended))
-            if cell.truncated == true { words.append("only the last megabyte kept") }
-            footer.textColor = (cell.status ?? 1) == 0 ? Theme.secondaryText : Theme.statusError
+            if cell.truncated == true { words.append("the last megabyte kept") }
+            // Failed in red; stopped by hand, quietly.
+            if !ok, cell.status != 130 { footer.textColor = Theme.statusError.withAlphaComponent(0.85) }
+        } else {
+            glyph.look = nil
         }
         footer.stringValue = words.joined(separator: " · ")
+        glyph.isHidden = glyph.look == nil
     }
 
     static func duration(_ t: TimeInterval) -> String {
@@ -634,29 +654,35 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
     }
 
     func height(forWidth w: CGFloat) -> CGFloat {
-        let inner = w - Self.gutter - 16
-        let footerHeight: CGFloat = footer.stringValue.isEmpty ? 0 : 18
-        return editorHeight(inner) + 6 + outputHeight(inner) + footerHeight + 2
+        let inner = w - Self.gutter - 18
+        let oh = outputHeight(inner)
+        let footerHeight: CGFloat = footer.stringValue.isEmpty ? 0 : 20
+        return editorHeight(inner) + (oh > 0 ? 8 + oh : 0) + (footerHeight > 0 ? 4 + footerHeight : 0)
     }
 
     override var isFlipped: Bool { true }
 
     override func layout() {
         super.layout()
-        let x = Self.gutter, inner = bounds.width - Self.gutter - 16
+        let x = Self.gutter, inner = bounds.width - Self.gutter - 18
         let eh = editorHeight(inner)
         box.frame = NSRect(x: x, y: 0, width: inner, height: eh)
         editor.frame = box.bounds
-        count.frame = NSRect(x: 0, y: 7, width: x - 8, height: 15)
-        spinner.frame = NSRect(x: x - 26, y: 6, width: 16, height: 16)
-        play.frame = NSRect(x: x - 32, y: 3, width: 24, height: 22)
-        menuButton.frame = NSRect(x: box.frame.maxX - 26, y: 3, width: 24, height: 22)
+        bar.frame = NSRect(x: 8, y: 4, width: 3, height: max(0, eh - 8))
+        let firstLine = 8 + (font.ascender - font.descender + font.leading) / 2
+        count.frame = NSRect(x: 12, y: firstLine - 8, width: x - 22, height: 15)
+        queuedIcon.frame = NSRect(x: x - 26, y: firstLine - 8, width: 16, height: 16)
+        play.frame = NSRect(x: x - 30, y: firstLine - 11, width: 22, height: 22)
+        menuButton.frame = NSRect(x: box.frame.maxX - 28, y: 4, width: 22, height: 22)
         let oh = outputHeight(inner)
         outputScroll.isHidden = oh == 0
-        outputScroll.frame = NSRect(x: x, y: eh + 6, width: inner, height: oh)
+        outputScroll.frame = NSRect(x: x, y: eh + 8, width: inner, height: oh)
         output.frame.size.width = outputScroll.contentSize.width
         output.sizeToFit()
-        footer.frame = NSRect(x: x + 6, y: eh + 6 + oh, width: inner - 6, height: 16)
+        let fy = eh + (oh > 0 ? 8 + oh : 0) + 4
+        let textX = x + Self.textInset + 5
+        glyph.frame = NSRect(x: textX - 1, y: fy + 2, width: 14, height: 14)
+        footer.frame = NSRect(x: glyph.isHidden ? textX : textX + 19, y: fy + 1, width: inner - 30, height: 16)
     }
 
     // MARK: Editing
@@ -681,10 +707,24 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
 
     func editorFocused() { owner?.cellFocused(id) }
 
-    @objc private func playClicked() { owner?.run(id, then: .stay) }
+    private func playClicked() { owner?.run(id, then: .stay) }
 
-    @objc private func menuClicked() {
-        guard let owner else { return }
+    private func menuClicked(from view: NSView) {
+        let menu = NSMenu()
+        cellMenuItems().forEach(menu.addItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 4), in: view)
+    }
+
+    /// A right-click anywhere on the cell (but in its text): the cell's menu.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        cellMenuItems().forEach(menu.addItem)
+        return menu
+    }
+
+    /// What can be done to the cell, for its "…" and right-click menus.
+    func cellMenuItems() -> [NSMenuItem] {
+        guard let owner else { return [] }
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Run Cell", symbol: "play.fill") { owner.run(self.id, then: .stay) })
         menu.addItem(.separator())
@@ -707,12 +747,14 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         menu.addItem(ClosureMenuItem("Clear Output", symbol: "eraser") { owner.clearOutput(self.id) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Delete Cell", symbol: "trash") { owner.delete(self.id) })
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: menuButton.bounds.height + 4), in: menuButton)
+        let items = menu.items
+        menu.removeAllItems()
+        return items
     }
 
     var debugSummary: String {
         let state = running ? "running" : queued ? "queued" : ""
-        return "\(count.stringValue) \(state) $ \(editor.string.replacingOccurrences(of: "\n", with: "⏎")) | \(footer.stringValue)\n    "
+        return "[\(count.stringValue)] \(state) $ \(editor.string.replacingOccurrences(of: "\n", with: "⏎")) | \(footer.stringValue)\n    "
             + output.string.replacingOccurrences(of: "\n", with: "\n    ").prefix(600)
     }
 }
@@ -725,6 +767,29 @@ extension NotebookView {
 /// the cells beside it; ⌥⌘↑ and ⌥⌘↓ move it.
 final class CellEditor: NSTextView {
     weak var cellView: NotebookCellView?
+
+    /// Empty: what to do, in the placeholder's grey.
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, let font else { return }
+        let hint = NSAttributedString(string: "Command — ⌘↩ runs it", attributes: [.font: font, .foregroundColor: NSColor.placeholderTextColor])
+        hint.draw(at: NSPoint(x: textContainerOrigin.x + (textContainer?.lineFragmentPadding ?? 5), y: textContainerOrigin.y))
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        if string.count <= 1 { needsDisplay = true }
+    }
+
+    /// The text's menu, the cell's after it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        if let items = cellView?.cellMenuItems(), !items.isEmpty {
+            menu.addItem(.separator())
+            items.forEach(menu.addItem)
+        }
+        return menu
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -861,5 +926,199 @@ final class OutputTextView: NSTextView {
         guard r.location != NSNotFound, let t = Self.token(in: string, at: r.location) else { return "no link at \"\(text)\"" }
         opened(t.text)
         return "opened \(t.text)"
+    }
+}
+
+/// Buttons gathered in a capsule, as a Mac toolbar groups them (and as
+/// the folder view's modes sit): each a symbol, lit under the pointer,
+/// pressed darker, dimmed when it can't be used.
+final class ActionCapsule: NSView {
+    struct Action {
+        var symbol: String
+        var tip: String
+        var enabled = true
+        var tint: NSColor?
+        /// Told the capsule and the segment's rect, to hang a menu from.
+        var perform: (NSView, NSRect) -> Void
+
+        init(symbol: String, tip: String, perform: @escaping (NSView, NSRect) -> Void) {
+            self.symbol = symbol
+            self.tip = tip
+            self.perform = perform
+        }
+    }
+
+    var actions: [Action] = [] { didSet { needsDisplay = true; invalidateIntrinsicContentSize(); needsLayout = true } }
+    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private var pressed: Int? { didSet { if pressed != oldValue { needsDisplay = true } } }
+    private let segment = NSSize(width: 30, height: 24)
+    private let inset: CGFloat = 3
+
+    func set(_ i: Int, enabled: Bool, tint: NSColor? = nil) {
+        guard i < actions.count, actions[i].enabled != enabled || actions[i].tint != tint else { return }
+        actions[i].enabled = enabled
+        actions[i].tint = tint
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: segment.width * CGFloat(actions.count) + 2 * inset, height: segment.height + 2 * inset)
+    }
+
+    func rect(_ i: Int) -> NSRect {
+        NSRect(x: inset + CGFloat(i) * segment.width, y: inset, width: segment.width, height: segment.height)
+    }
+
+    private func index(at p: NSPoint) -> Int? { actions.indices.first { rect($0).contains(p) } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.text.withAlphaComponent(0.06).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        for (i, a) in actions.enumerated() {
+            let r = rect(i)
+            if a.enabled, i == pressed || i == hovered {
+                (i == pressed ? Theme.selection : Theme.hover).setFill()
+                NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+            }
+            guard let image = Theme.symbol(a.symbol, size: 12, weight: .medium) else { continue }
+            let ink = a.enabled ? (a.tint ?? Theme.text.withAlphaComponent(0.78)) : Theme.secondaryText.withAlphaComponent(0.35)
+            image.tinted(ink).draw(in: NSRect(x: r.midX - image.size.width / 2, y: r.midY - image.size.height / 2,
+                                              width: image.size.width, height: image.size.height))
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        removeAllToolTips()
+        for (i, a) in actions.enumerated() { addToolTip(rect(i), owner: a.tip as NSString, userData: nil) }
+    }
+
+    override func resetCursorRects() {
+        for (i, a) in actions.enumerated() where a.enabled { addCursorRect(rect(i), cursor: .pointingHand) }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow], owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) { hovered = index(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) { hovered = nil }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let i = index(at: convert(event.locationInWindow, from: nil)), actions[i].enabled else { return }
+        pressed = i
+        // Tracked to the mouse's release, as a button is: let go outside, nothing.
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let inside = rect(i).contains(convert(next.locationInWindow, from: nil))
+            if next.type == .leftMouseUp {
+                pressed = nil
+                if inside { actions[i].perform(self, rect(i)) }
+                return
+            }
+            pressed = inside ? i : nil
+        }
+    }
+
+    /// Debugging: an action pressed.
+    func debugPress(_ i: Int) {
+        guard i < actions.count, actions[i].enabled else { return }
+        actions[i].perform(self, rect(i))
+    }
+}
+
+/// A quiet link of a control: a symbol and a word in the secondary colour,
+/// the text's own under the pointer.
+final class HoverLink: NSView {
+    var clicked: () -> Void = {}
+    private let title: String
+    private let symbol: String
+    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    init(title: String, symbol: String) {
+        self.title = title
+        self.symbol = symbol
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var label: NSAttributedString {
+        NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                                                       .foregroundColor: hovered ? Theme.text : Theme.secondaryText])
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.size().width) + 30, height: 24) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if hovered {
+            Theme.hover.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        }
+        let ink = hovered ? Theme.text : Theme.secondaryText
+        if let image = Theme.symbol(symbol, size: 10, weight: .semibold) {
+            image.tinted(ink).draw(in: NSRect(x: 9, y: (bounds.height - image.size.height) / 2, width: image.size.width, height: image.size.height))
+        }
+        let l = label
+        l.draw(at: NSPoint(x: 23, y: (bounds.height - l.size().height) / 2))
+    }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { clicked() }
+    }
+    override func mouseDown(with event: NSEvent) {}
+}
+
+/// A symbol that's a button: a soft circle under the pointer, darker
+/// pressed, the pointing hand over it.
+final class HoverIcon: NSView {
+    var clicked: (NSView) -> Void = { _ in }
+    private let symbol: String
+    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
+
+    init(symbol: String, tip: String) {
+        self.symbol = symbol
+        super.init(frame: .zero)
+        toolTip = tip
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if hovered || pressed {
+            (pressed ? Theme.selection : Theme.hover).setFill()
+            NSBezierPath(ovalIn: bounds).fill()
+        }
+        guard let image = Theme.symbol(symbol, size: 10, weight: .semibold) else { return }
+        image.tinted(hovered ? Theme.text : Theme.secondaryText).draw(in: NSRect(x: bounds.midX - image.size.width / 2, y: bounds.midY - image.size.height / 2,
+                                                                               width: image.size.width, height: image.size.height))
+    }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+    override func mouseUp(with event: NSEvent) {
+        pressed = false
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { clicked(self) }
     }
 }

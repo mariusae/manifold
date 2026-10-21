@@ -460,9 +460,15 @@ when you find it again.
   next (made if it's the last); ⌥↩ runs it and makes one below; ↑ and ↓
   past a cell's first or last line go to the cells beside it; ⌥⌘↑ and
   ⌥⌘↓ move it. A run's output streams in as it comes and replaces the
-  last; beneath it, how it ended (ok, exit 1, interrupted), how long it
-  took and when; the gutter counts runs as Jupyter does, [3], with a
-  spinner while one runs. Cells run one at a time, in the order asked
+  last; beneath it, the sidebar's status glyph (turning while it runs, a
+  check once done, red when it failed) with how it ended (Done, Exit 1,
+  Interrupted), how long it took and when; the gutter numbers the runs as
+  the editor numbers lines. The focused cell wears the accent's bar at its
+  left, as a selected row does, and a light ring, as a focused tile does;
+  ▶ and the cell's menu (also on a right-click) show under the pointer.
+  The header groups its buttons in capsules, as the folder view's modes
+  are: run, run all, stop (red while there's something to stop); a new
+  cell, restart, more. Cells run one at a time, in the order asked
   (Run All runs them all); one that fails stops those waiting. ⌘. (or
   the stop button) interrupts the running cell with ^C and drops those
   waiting; again kills its program, for one that ignores ^C. Restart
