@@ -11,8 +11,8 @@ public enum FileFinder {
     /// found by looking, nearest first, skipping hidden and dependency
     /// folders, until there are `limit` of them.
     public static func list(root: String, limit: Int = 20_000) -> [String] {
-        if let files = gitFiles(root: root) {
-            return sorted(Array(files.prefix(limit)))
+        if let files = gitFiles(root: root, limit: limit) {
+            return sorted(files)
         }
         return sorted(walk(root: root, limit: limit))
     }
@@ -27,7 +27,7 @@ public enum FileFinder {
         return ordered.map(\.path)
     }
 
-    static func gitFiles(root: String) -> [String]? {
+    static func gitFiles(root: String, limit: Int = .max) -> [String]? {
         let git = Process()
         git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         git.arguments = ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
@@ -38,10 +38,16 @@ public enum FileFinder {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         git.waitUntilExit()
         guard git.terminationStatus == 0 else { return nil }
-        let files = data.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
-        // Deleted-but-tracked files are listed too; only what's there.
+        // Deleted-but-tracked files are listed too; only what's there — and
+        // only as many as are kept are looked for (a big checkout has more).
         let fm = FileManager.default
-        return files.filter { fm.fileExists(atPath: root.appendingPathComponent($0)) }
+        var files: [String] = []
+        for raw in data.split(separator: 0) {
+            let path = String(decoding: raw, as: UTF8.self)
+            if fm.fileExists(atPath: root.appendingPathComponent(path)) { files.append(path) }
+            if files.count >= limit { break }
+        }
+        return files
     }
 
     static func walk(root: String, limit: Int) -> [String] {

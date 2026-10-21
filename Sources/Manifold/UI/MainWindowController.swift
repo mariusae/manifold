@@ -110,6 +110,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebar.delegate = self
         sidebar.organizationView.delegate = self
+        // The finder's window made ahead, so the first ⌘O shows at once.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in _ = self?.finder }
         sidebar.organizationView.collapsedByHand = Set(hosts.state.collapsedRows)
         sidebar.organizationView.onCollapsedChanged = { [weak self] rows in self?.hosts.setCollapsedRows(rows) }
         for c in [content, outgoing] { c.delegate = self }

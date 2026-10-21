@@ -177,8 +177,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Listings of folders lately listed: shown at once when asked again,
     /// listed afresh behind.
     private static var listings: [String: (at: Date, files: [FinderCandidate])] = [:]
-    /// The most rows shown since the finder opened: it grows to fit, but
-    /// doesn't shrink as you type, so nothing jumps under the pointer.
+    /// The rows the panel has room for while open: full height for the
+    /// finder (it never moves under you); for the outline, as many as it
+    /// has shown, growing only.
     private var tallest = 0
     /// The scope or query changed: what's asked of a host can start.
     var onQueryChanged: ((String, Scope) -> Void)?
@@ -319,7 +320,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.placeholderString = placeholder
         field.stringValue = ""
         shown = []
-        tallest = 0
+        // At its full height from the start: the files arriving, or the
+        // rows thinning as you type, never move it.
+        tallest = Self.visibleRows
         listing += 1
         fileCandidates = []
         if let root {
