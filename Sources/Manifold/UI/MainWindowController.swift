@@ -14,6 +14,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let backdrop = BackdropView()
     /// The arrangement shown; and the one it replaced, while it slides away.
     private var content = GridView()
+    /// The content area, which the grids are clipped to: a workspace
+    /// sliding out (⌃⇥) leaves through its edge, never under the sidebar
+    /// (which is translucent, and would show it).
+    private let stage: NSView = {
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.masksToBounds = true
+        return v
+    }()
     private var outgoing = GridView()
     /// The arrangement `content` shows, and which way the next one to be
     /// shown slides in (1 from the right, -1 from the left), if it does.
@@ -89,7 +98,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(glass)
         backdrop.alphaValue = 0.96
         root.addSubview(backdrop)
-        root.addSubview(content)
+        stage.addSubview(content)
+        root.addSubview(stage)
         root.addSubview(sidebar)
         root.addSubview(toast)
         root.onMouseMoved = { [weak self] p in self?.mouseMoved(to: p) }
@@ -532,14 +542,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let sidebarFrame = NSRect(x: sidebarShown ? inset : -w - 20, y: inset, width: w, height: b.height - 2 * inset)
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + 2 * inset : 0
-        content.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
-        stateView?.frame = content.frame
-        if sliding { outgoing.frame = content.frame }
+        stage.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
+        content.frame = stage.bounds
+        stateView?.frame = stage.frame
+        if sliding { outgoing.frame = stage.bounds }
         palette?.frame = b
         history?.frame = b
         if !toast.isHidden {
             let s = toast.wantedSize
-            toast.frame = NSRect(x: content.frame.minX + (content.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
+            toast.frame = NSRect(x: stage.frame.minX + (stage.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
         }
     }
 
@@ -815,7 +826,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard !sidebarShown else { return }
         sidebarShown = true
         sidebar.isHidden = false
-        root.addSubview(sidebar, positioned: .above, relativeTo: content)
+        root.addSubview(sidebar, positioned: .above, relativeTo: stage)
         if let palette { root.addSubview(palette, positioned: .above, relativeTo: sidebar) }
         let target = NSRect(x: Theme.sidebarInset, y: Theme.sidebarInset, width: sidebarWidth,
                             height: root.bounds.height - 2 * Theme.sidebarInset)
@@ -1806,7 +1817,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let frame = content.frame
         swap(&content, &outgoing)
         content.frame = frame
-        root.addSubview(content, positioned: .above, relativeTo: outgoing)
+        stage.addSubview(content, positioned: .above, relativeTo: outgoing)
         guard let incoming = content.layer, let leaving = outgoing.layer else { return finishSlide() }
         sliding = true
         CATransaction.begin()
@@ -2092,7 +2103,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             v.onLeave = { [weak self] in self?.hideStateView() }
             v.onModeChanged = { [weak self] m in self?.stateMode = m }
-            root.addSubview(v, positioned: .above, relativeTo: content)
+            root.addSubview(v, positioned: .above, relativeTo: stage)
             stateView = v
         }
         stateMembers = []
