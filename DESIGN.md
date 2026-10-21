@@ -149,7 +149,7 @@ Two verbs, and no others, put a block in front of you:
 
 | verb | what it does |
 |---|---|
-| **Go to** | the block where it already is: the workspace it is in (this one if it is here, else the one most recently settled on) is selected and the tile focused |
+| **Go to** | the block where it already is: the workspace it is in (this one if it is here, else the one most recently gone to) is selected and the tile focused |
 | **Bring here** | a tile of it in this workspace, by the grid's rule; if it is here already, that tile is focused |
 
 A row clicked in the sidebar, or chosen in the finder, *goes to* the

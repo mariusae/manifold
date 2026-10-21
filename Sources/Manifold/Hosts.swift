@@ -7,7 +7,7 @@ import ManifoldCore
 final class Hosts {
     let local: HostClient
     private(set) var remotes: [HostID: HostClient] = [:]
-    /// What is this client's alone (§8.2): the workspace shown, the settled
+    /// What is this client's alone (§8.2): the workspace shown, the
     /// order, the window, the appearance; in a file beside the hosts file.
     private(set) var state = ClientState()
     private static var stateURL: URL { Paths.directory.appendingPathComponent("client.json") }

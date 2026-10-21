@@ -137,7 +137,7 @@ and Mona Sans (bundled).
   Finder. ⌥⌘[ and ⌥⌘] move the focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the workspace it is in (this one if it is here, else
-  the one most recently settled on) is selected and the tile focused.
+  the one most recently gone to) is selected and the tile focused.
   **Bring here** makes a tile of it in this workspace; if it is here
   already, that tile is focused. A row clicked in the sidebar, or
   chosen in the finder (⌘O), goes to the block if it is placed anywhere,
@@ -159,7 +159,7 @@ and Mona Sans (bundled).
   the pointer with it. Settle where you went back to — stay a couple of
   seconds, type, click — and it is the newest place, so back from there
   goes where you were before going back.
-- **⌃⇥** walks the workspaces most recently settled on first, each
+- **⌃⇥** walks the workspaces most recently gone to first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
   workspaces too.
