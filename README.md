@@ -21,16 +21,14 @@ and Mona Sans (bundled).
   top to move the window. Along the bottom of the sidebar run a search
   (the filter field, shown and hidden), a switch between by-workspace
   and by-file, the inbox, and, at the right, counts of what needs you,
-  is working and is done and not yet read, which go to Status; the other organizations
-  are in the ⋯ menu. The window sits on a wash of soft colour — a few
+  is working and is done and not yet read, which open the Inbox. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each
   day, with what's behind the window blurred beneath it, and lit by the
   hour: the sun's height where your time zone's city is gives its
   light's colour temperature, so the wash is a touch warmer while the
   sun is low, morning and evening, a touch cooler when it's high, and a
   dim cool blue at night, looked at again every five minutes and eased
-  into over a few seconds. The Workspaces, Inbox and Status
-  organizations are flat: a host's heading opens and closes its
+  into over a few seconds. The organizations are flat: a host's heading opens and closes its
   workspaces, a workspace's label goes to it (the current one's folds
   it, and opens it again), groups' labels open and close, and a block's
   row has a second line for what it says. Only the current workspace
@@ -208,31 +206,29 @@ and Mona Sans (bundled).
   box in a task list — a quote with its mark, and on an empty item ends
   it. The pill's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
-- **Archive** (⇧⌘W, or Archive in a pill's or a row's menu) puts a
-  block away as it is: its tiles leave every workspace, and it sits
-  under **Archived** at the end of its host in the Workspaces sidebar,
-  to be recalled with a click. A terminal's shell is ended and not
-  started again — the transcript shows as it was, and the shell's exit
-  archives a terminal by itself. Unarchive, in the same menus, takes it
-  out again (a terminal then gets a shell when next shown).
-- **Inbox** (Organize By ▸ Inbox, ⌥⌘6) lists the blocks whose status
-  came to need attention — done, failed, needs you — by host and
-  workspace, each with what it said and how long ago, until taken out
-  by hand: ⇧⌘I, or Remove from Inbox in a pill's or a row's menu (Add
-  to Inbox puts any block there).
+- **Keep** (Keep in a bar's or a row's menu, or File ▸ Keep or Let Go)
+  makes a block a root of its own: kept whatever refers to it, until
+  let go. **Keep and Close** (⇧⌘W) keeps it and takes its tiles off
+  every workspace; it then sits under **Kept** at the end of its host
+  in the Workspaces sidebar, with the named workspaces off the desk, to
+  be recalled with a click. Dropping a block's bar on Kept keeps it too.
+- **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
+  foot) lists the blocks whose status wants attention — done or failed
+  and not yet read, or needing you — by host and workspace, each with
+  what it said and how long ago. Reading a block (focusing it) takes it
+  out; there is nothing to clear by hand.
 - **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace off the
-  desk. A block is kept while something reaches it — a workspace on the
-  desk or a named one, a pin, the archive, or a link by hand from a
-  kept block — and once nothing does it waits half an hour under
+  desk, and an unnamed workspace unseen for three days drifts off by
+  itself. A block is kept while something reaches it — a workspace on
+  the desk or a named one, a Keep, or a link by hand from a kept block
+  — and once nothing does it waits half an hour under
   **Recently Closed** at the foot of its host in the sidebar (and in
   ⌘O, marked *recent*), then is collected: gone, with its history. An
   unnamed workspace taken off the desk goes the same way; a named one
   sits under **Kept**. **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
-  foot of the window names each, with Restore. **Pin or Unpin Block** (File
-  menu, or Pin in a bar's or a row's menu) keeps a block whatever
-  refers to it.
+  foot of the window names each, with Restore.
 
 ## Nothing is closed
 
@@ -250,7 +246,7 @@ when you find it again.
   yet blocks come below the blocks (the system's scratch folders last),
   and the processes under the host's terminals and agents, by command,
   each going to its block. Each row says at the right where the block
-  is — here, linked, near, pinned, archived, or *recent* for one closed
+  is — here, linked, near, kept, or *recent* for one closed
   and not yet collected, which choosing brings back — and how long
   since it was last seen. A
   workspace is found by its own name only — what it holds is found as
@@ -398,9 +394,8 @@ when you find it again.
   one (linked to its subject as its source, so Links shows it) listing
   the commands (with their outcome and when) or the headings, each
   clicked to go there in the subject's tile — or, with none shown, in
-  one opened beside. An outline whose last tile closes is gone for
-  good; it was only ever a view. A block put away shows faded
-  wherever a link names it, with an archive box for its glyph.
+  one opened beside. The outline is a lens on the block itself, not a
+  block of its own.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one
@@ -443,8 +438,10 @@ when you find it again.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
-- **The sidebar organizes the same graph five ways** (View ▸ Organize
-  By, ⌥⌘1–5): **Desk** — the workspaces, as before; **Files** — every
+- **The sidebar organizes the same graph three ways** (View ▸ Organize
+  By, ⌥⌘1–3): **Workspaces** — the desk, each workspace named by what it
+  holds unless you name it (its blocks' folder, with the branch when a
+  git block is there); **Files** — every
   block with a path under its folders — and every block that is *at* a
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
@@ -452,31 +449,40 @@ when you find it again.
   workspace now is listed first, what's kept otherwise after it, dimmed,
   and what's closed and not yet collected under Recently Closed
   (repositories, `~` and `/` at the top; runs of single folders one row;
-  counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
-  joined to the focused block by kind, each row opening one more step;
-  **Time** — blocks by the day they were last seen; **Status** — by
-  what they are doing (below). A filter narrows any
-  of them. The rows work the same everywhere: click to go to the block
-  (or bring it here, if it is nowhere), ⌘-click to bring it here, rest
-  the pointer for a card, right-click for Go To, Bring Here and Links
-  Around This. Links written in a text —
-  `[[title]]`, `[words](file.md)` — become edges the moment they're
-  typed, so the Links view shows a note's backlinks whether or not
-  anyone followed them.
-- **Links is a block's neighborhood** in the graph of blocks (DESIGN.md
-  §3.5), in the sidebar, following the focus: *opened here*, *found by*,
-  *compared*, *mentions*, *also in* (other workspaces holding it),
-  *before* and *after* (what you went to around it, from the trail), each
-  row with what made the link (the ⌘-clicked line, the search hit, the
-  editor line that named a definition) and when. Window ▸ Go Back and Go
-  Forward (⌘[, ⌘]) go along the focus history across columns and
-  workspaces: back to the block you were at before, wherever it was, and
-  forward again. Show the Neighborhood Map, in the palette, draws the focused
-  block's surroundings in graph form, two steps out — what it's joined
-  to on a ring around it, what those are joined to beyond, edges by
-  kind, with what made each shown when a block is pointed at. Click a
+  counts beneath; rows fade as they go unseen); **Inbox** — what wants
+  attention (above). A filter narrows any of them. The rows work the
+  same everywhere, by the one rule for opening things: click to go to
+  the block (or bring it here, if it is nowhere), ⌘-click to show it
+  beside the focused tile, ⌥-click to show it over the focused tile;
+  rest the pointer for a card; right-click for Go To, Show Beside, Show
+  Over and the Neighborhood Map. Links written in a text — `[[title]]`,
+  `[words](file.md)` — become edges the moment they're typed, so the
+  map shows a note's backlinks whether or not anyone followed them.
+- **One rule for the modifiers**, wherever a click opens a block — a
+  sidebar row, a link, a tile's links badge, a listing's entry, a
+  scrubber's command, a finder row chosen with ⏎: plain **goes to** it
+  where it is (or opens it here); **⌥ puts it over** the tile you
+  clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
+  beside** that tile. ⇧ is about the path: ⇧-click a bar for where the
+  block is, folder by folder; ⇧-drag a bar to link. In a terminal, ⌘ is
+  what makes a click a click on a link at all, so there ⌘⌥ is over and
+  ⌘ alone beside.
+- **Links are two kinds**: by hand (⇧-drag a bar onto a tile, a note
+  made beside a block), which keep what they point at; and by the way
+  (a file ⌘-clicked in a terminal, a hit followed, a diff of a file, a
+  `[[mention]]` in a note), which are history and keep nothing. The
+  tile's links badge shows the ones by hand; **the Neighborhood Map**
+  (Window ▸ Show the Neighborhood Map, ⌥⌘N, or the badge's or a row's
+  menu) draws a block's surroundings in graph form, two steps out —
+  what it's joined to on a ring around it, what those are joined to
+  beyond, with what made each link shown when a block is pointed at,
+  and what you went to before and after it, from the trail. Click a
   block to look around *it* instead (Back returns), double-click or ⏎ to
-  go there, arrow keys move, Space re-centers, ⎋ closes.
+  go there, arrow keys move, Space re-centers, ⎋ closes. Window ▸ Go
+  Back and Go Forward (⌘[, ⌘]) walk the trail — every tile focused and
+  every workspace gone to, which the host keeps — across columns and
+  workspaces: back to the block you were at before, wherever it was,
+  and forward again; ⌃⇥ goes round the workspaces in the same order.
 - **Every block has a status** (DESIGN.md §3.7), in the schema of
   [OSC 7501](https://mitchellh.com/writing/program-status-osc7501):
   idle, working (with progress, or without), done, blocked (waiting for
@@ -496,10 +502,10 @@ when you find it again.
   terminal gone inactive — at the right of each tile's bar and of the
   sidebar's rows, with how long ago beside it there, and in the
   finder; the Dock badge counts the blocks that need you or are
-  done and unread. **Status** in the sidebar (⌥⌘5) lists blocks by it,
-  the unread first and how long ago at the right. Click a group's row —
-  Needs you, Done, Failed, Working, Inactive — and the surface shows its
-  blocks themselves, live, as a **state view**: a list, stacked down one
+  done and unread. The **Inbox** (⌥⌘3, or the counts at the foot of
+  the sidebar) lists what wants attention, the unread first and how
+  long ago at the right. Overview (⌘') shows a workspace's blocks
+  themselves, live, as a **state view**: a list, stacked down one
   scrolling column as Prism's notes are, each under its pill; or an
   overview, all of them in one grid at once, as Mission Control lays out
   windows: as big as they can be with every one in the room (from about
@@ -537,7 +543,7 @@ when you find it again.
   agent command (`claude` unless the settings say otherwise) in a login
   shell where the focused block is; their transcripts are kept like a
   terminal's, and they come back after a restart the same way. Launch
-  Agent Here (in the File menu, a tile's menu, or New…, ⌘T) offers each
+  Agent Here (in the File menu, a tile's menu, or the box, ⌘T) offers each
   agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
   opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's
   host has: the host looks for them through your login shell (the
@@ -628,8 +634,8 @@ is migrated into logs on first run.
   A workspace lives on a host too, in that host's desk, which every Mac
   attached to the host sees: New Terminal in a New Workspace (⌥⌘T)
   makes it on the focused block's host, a host's row in the Desk
-  sidebar has New Workspace on *host* in its menu, and New… (⌘T) lists
-  one per host. What a Mac shows and settles on is its own.
+  sidebar has New Workspace on *host* in its menu, and the box (⌘T)
+  lists one per host. What a Mac shows and settles on is its own.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
@@ -643,7 +649,7 @@ is migrated into logs on first run.
   tooltip says when the next is; **Try Again Now** in the row's menu
   hurries it), and once connected, pinged every fifteen seconds so a
   bridge that hangs is noticed and made again. **Detach from *host*…**
-  (in the row's menu, or New…, ⌘T) forgets it here, even while it's still
+  (in the row's menu, or the box, ⌘T) forgets it here, even while it's still
   being reached: it isn't attached again at start, and its server,
   shells and blocks stay there for attaching again. **Reset Server on
   *host*…** (the same menu, or the palette) installs the server there
@@ -701,7 +707,7 @@ is migrated into logs on first run.
   couple of seconds. A shell on another machine, through ssh in the
   terminal, names that host and is left alone. Manifold starts the
   shell a host's preferences name (Preferences for *host*… in its
-  row's menu, or New…, ⌘T: a name on its PATH or a path, kept on the
+  row's menu, or the box, ⌘T: a name on its PATH or a path, kept on the
   host, so every Mac attached shares it, and refused if the host can't
   run it); else `MANIFOLD_SHELL` in the server's environment; else your
   login shell. Shells already running keep theirs.

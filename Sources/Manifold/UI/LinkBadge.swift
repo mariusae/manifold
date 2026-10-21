@@ -21,6 +21,8 @@ final class LinkBadge: NSView {
     /// A link clicked: the block, and whether ⌥ was held (over the tile).
     var onOpen: ((BlockID, Bool) -> Void)?
     var onBreak: ((String) -> Void)?
+    /// Right-clicked: the neighborhood map, the big view of the links.
+    var onMap: (() -> Void)?
     var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
@@ -69,10 +71,22 @@ final class LinkBadge: NSView {
             guard let self, let c = self.cards.first else { return }
             self.onBreak?(c.link)
         }
+        badge.onMenu = { [weak self] in self?.showMenu() }
         addSubview(badge)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The capsule's menu: the map, and the link broken.
+    private func showMenu() {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
+        if let c = cards.first {
+            menu.addItem(ClosureMenuItem("Break the Link", symbol: "xmark") { [weak self] in self?.onBreak?(c.link) })
+        }
+        guard let event = NSApp.currentEvent else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: badge)
+    }
 
     private var tooltip: String {
         guard let c = cards.first else { return "" }
@@ -243,6 +257,8 @@ final class LinkBadge: NSView {
         var onClick: ((Bool) -> Void)?
         /// Dragged a little: what to do with the drag (a stack's pill comes out).
         var onDragStart: ((NSEvent) -> Void)?
+        /// Right-clicked: its menu.
+        var onMenu: (() -> Void)?
         private var downAt: NSPoint?
         /// With this set, an × at the right end, to call.
         var onBreak: (() -> Void)? { didSet { updateClose(); needsLayout = true } }
@@ -350,6 +366,7 @@ final class LinkBadge: NSView {
         /// A click in a window not yet active goes to the link too.
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+        override func rightMouseDown(with event: NSEvent) { onMenu?() }
         override func mouseDragged(with event: NSEvent) {
             guard let start = downAt, onDragStart != nil else { return }
             let p = event.locationInWindow

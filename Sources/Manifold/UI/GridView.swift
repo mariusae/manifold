@@ -8,6 +8,8 @@ protocol GridDelegate: AnyObject {
     func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
     /// A block from the sidebar dropped at a place in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
+    /// Files dropped from outside: opened where they landed.
+    func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool)
     /// Another arrangement dropped: its columns come over at `column`.
     func gridDropArrangement(_ arrangement: BlockID, column: Int)
     func gridCanDrop(_ arrangement: BlockID) -> Bool
@@ -41,7 +43,8 @@ protocol GridDelegate: AnyObject {
     /// The bar's ×: the tile taken off (as ⌘W does).
     func gridClose(_ placement: PlacementID)
     /// The bar's dirty dot clicked (the dot given, to put a menu by).
-    func gridDirtyClicked(_ placement: PlacementID, from view: NSView)
+    /// The links' badge asks for the map around the tile's block.
+    func gridShowMap(for placement: PlacementID)
     /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool)
     /// × on a badge's link: the edge ends.
@@ -132,10 +135,18 @@ final class GridView: NSView, NSDraggingSource {
         wantsLayer = true
         layer?.backgroundColor = .clear
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL])
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Files from the Finder (or anywhere) being dragged: their paths.
+    private static func droppedFiles(_ pb: NSPasteboard) -> [String] {
+        guard pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil, pb.string(forType: .manifoldArrangement) == nil,
+              let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return [] }
+        return urls.map(\.path)
+    }
+    private var dropFiles = false
 
     func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?, full: PlacementID? = nil) {
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
@@ -171,7 +182,6 @@ final class GridView: NSView, NSDraggingSource {
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
-                pill.onDirtyClick = { [weak self] dot in self?.delegate?.gridDirtyClicked(id, from: dot) }
                 // The bar clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
                 // the tile's menu; the corner maximizes.
@@ -264,6 +274,7 @@ final class GridView: NSView, NSDraggingSource {
                     pill.linkWanted = badge.capsuleWantedWidth
                     badge.onOpen = { [weak self] block, over in self?.delegate?.gridOpenLink(block, from: id, over: over) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
+                    badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
                 // Not a view the switcher holds: it shows in its card.
@@ -281,8 +292,8 @@ final class GridView: NSView, NSDraggingSource {
             columnDividers.append(d)
         }
         for (i, d) in columnDividers.enumerated() {
-            d.onDrag = { [weak self] x in self?.dragColumnDivider(i, to: x) }
-            d.onEnd = { [weak self] in self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
+            d.onDrag = { [weak self] x in self?.dividerDragging = true; self?.dragColumnDivider(i, to: x) }
+            d.onEnd = { [weak self] in self?.dividerDragging = false; self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
         }
         var rows: [(Int, PlacementID, PlacementID)] = []
         for c in columns.indices where shownTiles(c).count > 1 {
@@ -296,9 +307,10 @@ final class GridView: NSView, NSDraggingSource {
             rowDividers.append(d)
         }
         for (d, (c, above, below)) in zip(rowDividers, rows) {
-            d.onDrag = { [weak self] y in self?.dragRowDivider(column: c, above: above, below: below, to: y) }
+            d.onDrag = { [weak self] y in self?.dividerDragging = true; self?.dragRowDivider(column: c, above: above, below: below, to: y) }
             d.onEnd = { [weak self] in
                 guard let self else { return }
+                self.dividerDragging = false
                 let stashed = self.stashedDown
                 self.stashedDown = []
                 self.dividerBelow = [:]
@@ -509,6 +521,23 @@ final class GridView: NSView, NSDraggingSource {
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
         var rowIndex = 0
+        // Tiles glide to new places when the grid itself didn't change
+        // size (a tile placed, closed, grown or stashed); a resize or a
+        // divider dragged lays out at once.
+        let gliding = bounds == lastLayoutBounds && !dragging && !dividerDragging && !isSwitching
+        lastLayoutBounds = bounds
+        var frameNow: [PlacementID: NSRect] = [:]
+        func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
+            if gliding, let was, was != .zero, was != frame, !view.isHidden {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.18
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    view.animator().frame = frame
+                }
+            } else {
+                view.frame = frame
+            }
+        }
         for (c, f) in frames.enumerated() {
             let tiles = tileFrames(column: c, in: f)
             var shownIndex = 0
@@ -518,12 +547,15 @@ final class GridView: NSView, NSDraggingSource {
                 let r = tiles[i]
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
                 let held = switching.contains(tile.shown.id)
-                if !held { tile.view.frame = body }
+                let was = lastFrames[tile.shown.id]
+                frameNow[tile.shown.id] = body
+                if !held { settle(tile.view, body, was: was) }
                 // The switcher over the whole tile, its bar put away meanwhile.
                 if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
-                    pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
+                    let bar = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
+                    settle(pill, bar, was: was.map { NSRect(x: $0.minX, y: $0.maxY, width: $0.width, height: Self.barHeight) })
                     if !held { keep(pill, above: tile.view) }
                     pill.isHidden = held
                 }
@@ -551,11 +583,13 @@ final class GridView: NSView, NSDraggingSource {
                 for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
             }
         }
+        lastFrames = frameNow
         if dragging { dragCatcher.frame = bounds }
         // The focus ring: around the focused tile, over everything.
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
             focusRing.isHidden = false
-            let card = t.view.frame.union(pills[focused]?.frame ?? t.view.frame)
+            let body = frameNow[focused] ?? t.view.frame
+            let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
             if focusRing.frame != card {
                 focusRing.frame = card
                 focusRing.needsDisplay = true
@@ -568,6 +602,35 @@ final class GridView: NSView, NSDraggingSource {
             d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
         }
         layoutSheets()
+        layoutShadows(Array(frameNow.values))
+    }
+
+    /// A soft shadow under each card in the light, none in the dark
+    /// (where the cards are lighter than the wash already).
+    private func layoutShadows(_ bodies: [NSRect]) {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let wanted = dark || full != nil ? [] : bodies.filter { $0 != .zero }
+        while shadowLayers.count > wanted.count { shadowLayers.removeLast().removeFromSuperlayer() }
+        while shadowLayers.count < wanted.count {
+            let l = CAShapeLayer()
+            l.zPosition = -10
+            l.shadowColor = NSColor.black.cgColor
+            l.shadowOpacity = 0.10
+            l.shadowRadius = 10
+            l.shadowOffset = CGSize(width: 0, height: -4)
+            layer?.insertSublayer(l, at: 0)
+            shadowLayers.append(l)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (l, body) in zip(shadowLayers, wanted) {
+            let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+            let path = CGPath(roundedRect: card, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+            l.path = path
+            l.shadowPath = path
+            l.fillColor = NSColor.black.withAlphaComponent(0.001).cgColor
+        }
+        CATransaction.commit()
     }
 
     private func dragColumnDivider(_ i: Int, to x: CGFloat) {
@@ -852,6 +915,15 @@ final class GridView: NSView, NSDraggingSource {
         let point = convert(sender.draggingLocation, from: nil)
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
+        if !Self.droppedFiles(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
+            // Files from outside: opened where they land, as a block is brought.
+            showDrop(target.rect)
+            drop = target
+            dropFiles = true
+            dropLinks = false
+            return .copy
+        }
+        dropFiles = false
         if pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil,
            let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
             // ⇧-drag: a block's link, over a tile whose view didn't take it
@@ -1001,6 +1073,13 @@ final class GridView: NSView, NSDraggingSource {
         defer { hideDrop() }
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
+        if dropFiles {
+            dropFiles = false
+            let files = Self.droppedFiles(pb)
+            guard !files.isEmpty else { return false }
+            delegate?.gridOpenFiles(files, column: target.column, at: target.at, newColumn: target.newColumn)
+            return true
+        }
         if dropLinks {
             guard let onto = target.onto, let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) else { return false }
             delegate?.gridLink(block, to: onto)
@@ -1037,6 +1116,15 @@ final class GridView: NSView, NSDraggingSource {
     /// card, the rest of it beneath — layers under the cards, as a stack
     /// of paper. Laid out with the cards.
     private var sheetLayers: [CAShapeLayer] = []
+    /// A shadow under each card, in the light (§3.1): the cards lifted a
+    /// little off the wash.
+    private var shadowLayers: [CAShapeLayer] = []
+    /// Where each tile was laid out last, so a tile that moves (placed,
+    /// closed, grown, stashed) glides there, while a window resized or
+    /// a divider dragged lays out at once.
+    private var lastFrames: [PlacementID: NSRect] = [:]
+    private var lastLayoutBounds: NSRect = .zero
+    private var dividerDragging = false
 
     private func layoutSheets() {
         var wanted: [(NSRect, Int)] = []
@@ -1074,43 +1162,6 @@ final class GridView: NSView, NSDraggingSource {
 /// The dot in a tile's bar for a text with unsaved edits: grey, or amber
 /// when the file also changed on disk beneath them. Clicked, it saves, or
 /// (amber) asks which of the two to keep.
-final class DirtyDot: NSView {
-    var stale = false {
-        didSet {
-            needsDisplay = true
-            toolTip = stale ? "Edited, and the file changed on disk — click to choose which to keep" : "Edited — click to save (⌘S)"
-        }
-    }
-    var onClick: ((NSView) -> Void)?
-    private var hovering = false { didSet { needsDisplay = true } }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        toolTip = "Edited — click to save (⌘S)"
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let d: CGFloat = hovering ? 8 : 6
-        // Where the 6-point dot was, at the frame's right.
-        let center = NSPoint(x: bounds.maxX - 7, y: bounds.midY)
-        (stale ? StatusGlyph.amber : Theme.secondaryText).setFill()
-        NSBezierPath(ovalIn: NSRect(x: center.x - d / 2, y: center.y - d / 2, width: d, height: d)).fill()
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for t in trackingAreas { removeTrackingArea(t) }
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) { onClick?(self) }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
-
 /// A tile's pill (§3.1), as Prism names the note at the top of its
 /// column: a small opaque capsule of one width floating centered over the
 /// tile's top, the content running underneath and showing nothing
@@ -1130,7 +1181,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
-    private let dirty = DirtyDot()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
@@ -1155,11 +1205,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     static let linkMinimal: CGFloat = 30
     /// The least the name is shown at, before anything else gives way.
     static let nameMinimum: CGFloat = 56
-    /// The dirty dot clicked, with the dot (to put a menu by).
-    var onDirtyClick: ((NSView) -> Void)? {
-        get { dirty.onClick }
-        set { dirty.onClick = newValue }
-    }
     /// Maximize and close shown; off where the bar only names the tile.
     var showsButtons = true { didSet { if showsButtons != oldValue { needsLayout = true } } }
     private var downAt: NSPoint?
@@ -1170,8 +1215,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsLayout = true } } }
     private let subtitle = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
-    /// The program at work in the tile, as its status names it, in a grey capsule.
-    private let program = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
 
     static let height: CGFloat = GridView.barHeight
@@ -1183,8 +1226,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
         if !glyph.isHidden { w += StatusGlyph.size + 8 }
-        if !program.isHidden { w += ceil(program.intrinsicContentSize.width) + 14 + 8 }
-        if !dirty.isHidden { w += 14 }
         return w
     }
 
@@ -1200,13 +1241,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         glass.layer?.borderWidth = 0
         glass.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
-        program.font = .systemFont(ofSize: 11, weight: .medium)
-        program.textColor = Theme.secondaryText
-        program.alignment = .center
-        program.wantsLayer = true
-        program.layer?.cornerRadius = 8
-        program.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
-        program.isHidden = true
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
         name.font = .systemFont(ofSize: 12.5, weight: .semibold)
@@ -1226,7 +1260,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⌘W)"
-        dirty.isHidden = true
         corner.target = self
         corner.action = #selector(cornerClicked)
         corner.toolTip = "Maximize"
@@ -1238,13 +1271,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, program, glyph, dirty, corner, close, editor] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, corner, close, editor] { addSubview(v) }
         themed { $0.updateColors() }
     }
 
     @objc private func closeClicked() { onClose?() }
 
-    var debugDirty: String { dirty.isHidden ? "clean" : dirty.stale ? "amber" : "grey" }
+    var debugDirty: String { !isDirty ? "clean" : isStale ? "amber" : "grey" }
+    private var isDirty = false
+    private var isStale = false
 
     // MARK: Editing in place
 
@@ -1321,7 +1356,21 @@ final class TilePill: NSView, NSTextFieldDelegate {
             icon.image = Theme.symbol(shown.symbol, size: 11)
         }
         let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
-        if name.stringValue != title { name.stringValue = title }
+        // Edited and unsaved: a dot after the name, amber when the file
+        // changed on disk under the edits (the menu says what to do).
+        let stale = shown.block?.text?.stale == true
+        if name.stringValue != title || isDirty != shown.isDirty || isStale != stale {
+            isDirty = shown.isDirty
+            isStale = stale
+            if shown.isDirty {
+                let s = NSMutableAttributedString(string: title + " •", attributes: [.font: name.font!, .foregroundColor: name.textColor!])
+                s.addAttribute(.foregroundColor, value: stale ? StatusGlyph.amber : Theme.secondaryText, range: NSRange(location: title.count + 1, length: 1))
+                name.attributedStringValue = s
+            } else {
+                name.stringValue = title
+            }
+            name.toolTip = shown.isDirty ? (stale ? "Edited, and the file changed on disk — the menu says which to keep" : "Edited — ⌘S saves") : nil
+        }
         // Where it is, after the name, in grey: a folder, an address.
         let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""
         // Not when the name already says it (a terminal named for its
@@ -1332,12 +1381,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let where_ = said && shown.block?.web == nil ? "" : place
         if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
         if close.isHidden != stashed { close.isHidden = stashed }
-        let app = shown.block?.statusRecord?.app ?? ""
-        if program.stringValue != app { program.stringValue = app }
-        program.isHidden = app.isEmpty
-        if dirty.isHidden == shown.isDirty { dirty.isHidden = !shown.isDirty }
-        let stale = shown.block?.text?.stale == true
-        if dirty.stale != stale { dirty.stale = stale }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
         if glyph.isHidden != (look == nil) { glyph.isHidden = look == nil }
@@ -1384,13 +1427,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
         // order, so the name keeps at least a little room — the place
         // goes first (below), then the links' pill shrinks to its arrow
-        // and symbol, then the program's capsule goes, then the pill to
-        // its arrow alone, then maximize, then the pill altogether; the
-        // ×, the status and the dot stay, and last the name itself is cut.
+        // and symbol, then to its arrow alone, then maximize goes, then
+        // the pill altogether; the × and the status stay, and last the
+        // name itself is cut.
         let showClose = !stashed && showsButtons
         var showCorner = !stashed && showsButtons
-        var showProgram = !program.stringValue.isEmpty
-        let programWidth = ceil(program.intrinsicContentSize.width) + 14
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
         let nameWanted = ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
@@ -1399,12 +1440,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if showClose { used += 22 }
             if showCorner { used += 22 }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
-            if showProgram { used += programWidth + 8 }
-            if !dirty.isHidden { used += 14 }
             return bounds.width - used
         }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
-        if spare() < nameNeed, showProgram { showProgram = false }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
         if spare() < nameNeed, showCorner { showCorner = false }
         // Narrower still, the pill goes altogether: the symbol and a bit of
@@ -1426,16 +1464,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !glyph.isHidden {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
-        }
-        program.isHidden = !showProgram
-        if !program.isHidden {
-            program.frame = NSRect(x: right - programWidth, y: (h - 17) / 2, width: programWidth, height: 17)
-            right -= programWidth + 8
-        }
-        if !dirty.isHidden {
-            // The dot where it always was; the room around it takes the click.
-            dirty.frame = NSRect(x: right - 10, y: (h - 14) / 2, width: 14, height: 14)
-            right -= 14
         }
         // The links' pill sits before the dot and the buttons: the name stops short of it.
         right -= linkRoom
@@ -1590,9 +1618,9 @@ final class FocusRingView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: GridView.corner, yRadius: GridView.corner)
-        path.lineWidth = 1.5
-        Theme.accent.withAlphaComponent(0.45).setStroke()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: GridView.corner, yRadius: GridView.corner)
+        path.lineWidth = 2
+        Theme.accent.withAlphaComponent(0.6).setStroke()
         path.stroke()
     }
 }
@@ -1605,7 +1633,7 @@ final class DragCatcherView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .fileURL])
     }
 
     required init?(coder: NSCoder) { fatalError() }

@@ -112,7 +112,7 @@ enum OrgDragItem {
 protocol OrganizationViewDelegate: AnyObject {
     /// A row was clicked: show its block here, or beside (§3.1); go to
     /// an arrangement; focus a column.
-    func organizationOpen(_ node: OrgNode, newColumn: Bool)
+    func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags)
     /// A row was double-clicked; true if that meant something (naming an
     /// arrangement), else the row opens or closes.
     func organizationActivate(_ node: OrgNode) -> Bool
@@ -313,12 +313,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             // A workspace's label: gone to (which opens it whole, the
             // others folding to what peeks out), or, the current one,
             // folded and opened again — the tree's to decide.
-            delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
+            delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
         } else if node.style != .row, node.hasChildren {
             // A host's heading, a group's label: clicked, it opens or closes.
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         } else if node.block != nil {
-            delegate?.organizationOpen(node, newColumn: NSApp.currentEvent?.modifierFlags.contains(.command) ?? false)
+            delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
         } else if node.hasChildren {
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         }
@@ -459,7 +459,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             return "toggled"
         }
         if let action = node.action { action(); return "ran" }
-        if node.block != nil { delegate?.organizationOpen(node, newColumn: command); return "opened" }
+        if node.block != nil { delegate?.organizationOpen(node, modifiers: command ? [.command] : []); return "opened" }
         if node.hasChildren {
             let was = outline.isItemExpanded(node)
             if was { outline.collapseItem(node) } else { outline.expandItem(node) }

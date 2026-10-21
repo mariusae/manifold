@@ -320,8 +320,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// An arrangement's title: its name, else what's focused in it.
+    /// A workspace's name: the one given; else, by what it holds — the
+    /// folder most of its blocks are at (with its repository's branch,
+    /// when a git block is there), else the focused block's name.
     private func title(of a: ArrangementState) -> String {
         if a.isNamed { return a.title! }
+        let blocks = a.placements.compactMap { hosts.block($0.block) }
+        var places: [String: Int] = [:]
+        for b in blocks { if let p = b.place, p.count > 1 { places[p, default: 0] += 1 } }
+        if let place = places.max(by: { $0.value != $1.value ? $0.value < $1.value : $0.key.count > $1.key.count })?.key {
+            var t = place.abbreviatingHome
+            if let branch = blocks.first(where: { $0.kind == .git })?.git?.branch, !branch.isEmpty { t += " · " + branch }
+            return t
+        }
         if let f = a.focusedPlacement, let b = hosts.block(f.block) { return b.displayTitle }
         return "Untitled"
     }
@@ -992,8 +1003,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugDirty: String { content.debugDirty }
     func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
     func debugDirtyClick() -> String {
-        guard let f = focusedShown else { return "nothing focused" }
-        gridDirtyClicked(f.id, from: content)
+        guard let f = focusedShown, let t = hosts.block(f.placement.block)?.text, t.isDirty else { return "nothing dirty focused" }
+        save(f.placement.block, from: f.id)
         return "ok"
     }
 
@@ -1275,7 +1286,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return id
     }
 
-    @objc func newTab(_ sender: Any?) { showPalette() }
+    /// ⌘T: the one box (§3.5) — the finder, where the verbs (new terminal,
+    /// new note, attach…) are found by name beside the blocks. With
+    /// nothing on the desk, the palette of verbs alone.
+    @objc func newTab(_ sender: Any?) {
+        if allWorkspaces.isEmpty { showPalette() } else { openDocument(nil) }
+    }
 
     /// ⌥⌘T (and the first thing at launch): a new terminal in a new
     /// workspace — both on the focused block's host, so a workspace begun
@@ -1407,21 +1423,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// × on a badge's link: the edge ends, in both readings at once.
     func gridBreakLink(_ link: String) { hosts.propose(.unlink(link)) }
 
-    /// A tile's dirty dot clicked: its text saved. Changed on disk under
-    /// the edits too, a choice: the file as it is now, or the edits over it.
-    func gridDirtyClicked(_ placement: PlacementID, from view: NSView) {
-        guard let p = arrangement?.placement(placement), let t = hosts.block(p.block)?.text, t.isDirty else { return }
-        focus(placement)
-        guard t.stale else { return save(p.block, from: placement) }
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Reload from Disk, Losing the Edits", symbol: "arrow.clockwise") { [weak self] in
-            self?.hosts.propose(.readFile(p.block))
-        })
-        menu.addItem(ClosureMenuItem("Overwrite with the Edits", symbol: "square.and.arrow.down") { [weak self] in
-            self?.save(p.block, from: placement)
-        })
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: view)
-    }
 
     /// Saves a text block: through an editor on it (this tile's first),
     /// which keeps its own count of what's saved and names a note's file;
@@ -2757,15 +2758,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for block in hosts.blocks {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
-            let title = block.displayTitle
+            var title = block.displayTitle
             let programs = running[block.id] ?? []
             let secondary: String
             let detail: String
             var note = ""
             switch block.kind {
             case .arrangement:
-                // A workspace by its own name; what it holds is found as itself.
+                // A workspace by its name; what it holds is found as itself.
                 guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
+                title = self.title(of: a)
                 secondary = ""
                 detail = a.isNamed ? "Workspace · \(a.placements.count) blocks" : "Workspace, unnamed · \(a.placements.count) blocks"
                 note = allWorkspaces.contains(block.id) ? "on the desk" : ""
@@ -2862,6 +2864,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
         }
+        // The verbs (new terminal, new note, attach…), found by name among
+        // the blocks: after blocks that match as well.
+        if !query.isEmpty {
+            for item in paletteItems() where item.title != "Find Anything…" {
+                let m = FileFinder.nameMatch(query, title: item.title, secondary: item.subtitle)
+                guard m >= 200 else { continue }
+                let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : 1
+                let run = item.run
+                scored.append((band * 1000, 45, m, 0, FinderItem(symbol: item.symbol, title: item.title, detail: item.subtitle, note: "do", run: run)))
+            }
+        }
         // Files not yet blocks: below the blocks; the system's temporary
         // folders lowest of all, being mostly scratch.
         for file in files where !known.contains(file) {
@@ -2890,7 +2903,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Recall, from the finder: an arrangement onto the desk and selected;
     /// any other block gone to.
-    func recall(_ id: BlockID) { goTo(id) }
+    /// Chosen in the finder: gone to; with ⌘ held on ⏎, beside the focused
+    /// tile; with ⌥, over it (the rule, §3.1).
+    func recall(_ id: BlockID) {
+        let mods = NSApp.currentEvent?.modifierFlags ?? []
+        guard let b = hosts.block(id), b.kind != .arrangement, let f = arrangement?.focused else { return goTo(id) }
+        let lens = Lens.default(for: b.kind, path: b.path)
+        if mods.contains(.option) { show(id, lens: lens, .over(f)) }
+        else if mods.contains(.command) { show(id, lens: lens, .besideOpener(f)) }
+        else { goTo(id) }
+    }
 
     /// After a go-to (⌘O, ⌘\, a found line): the pointer moves to what was
     /// gone to — the text cursor if the tile has one, else the tile's
@@ -3845,7 +3867,7 @@ extension MainWindowController: SidebarDelegate {
     func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
-    func sidebarNewTab() { showPalette() }
+    func sidebarNewTab() { newTab(nil) }
 
     func sidebarMove(_ arrangement: BlockID, to index: Int) {
         guard let client = hosts.client(of: arrangement) else { return }
@@ -4089,6 +4111,25 @@ extension MainWindowController: GridDelegate {
     }
     func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
+    /// Files dropped from the Finder: each opened where it landed, the
+    /// first in a new column there if that's where the drop was.
+    func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool) {
+        for (i, path) in paths.enumerated() {
+            let isDir = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
+            let media = Self.mediaKind(path)
+            let block = isDir ? hosts.directoryBlock(for: path, on: host.host)
+                : media.flatMap { kind in host.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: host.host)
+            let lens: Lens = isDir ? .directory : media == .pdf ? .pdf : media == .image ? .image : Lens.default(for: .text, path: path)
+            let place: Where = i == 0 && newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
+            show(block, lens: lens, place)
+        }
+    }
+
+    func gridShowMap(for placement: PlacementID) {
+        guard let b = arrangement?.placement(placement)?.block else { return }
+        showNeighborhood(around: b)
+    }
+
     func gridDragAtLeftEdge() {
         if !sidebarShown { showSidebar(animated: true) }
     }
@@ -4142,6 +4183,15 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        if let t = hosts.block(block)?.text, t.isDirty {
+            menu.addItem(.separator())
+            if t.stale {
+                menu.addItem(ClosureMenuItem("Reload from Disk, Losing the Edits", symbol: "arrow.clockwise") { [weak self] in self?.hosts.propose(.readFile(block)) })
+                menu.addItem(ClosureMenuItem("Overwrite with the Edits", symbol: "square.and.arrow.down") { [weak self] in self?.save(block, from: placement) })
+            } else {
+                menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "S") { [weak self] in self?.save(block, from: placement) })
+            }
+        }
         if [.terminal, .agent, .editor, .preview].contains(p.lens) {
             menu.addItem(ClosureMenuItem("Show Outline Beside", symbol: "list.bullet.rectangle") { [weak self] in
                 self?.showOutline(of: block, beside: placement)
@@ -4611,9 +4661,10 @@ extension MainWindowController: OrganizationViewDelegate {
     /// A row clicked: an arrangement is gone to; a tile is focused (in its
     /// arrangement); any other block is gone to where it is, or, with ⌘,
     /// brought here (§3.1).
-    func organizationOpen(_ node: OrgNode, newColumn bring: Bool) {
+    func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags) {
         HoverCard.shared.hide()
-        if let arr = node.arrangement, !bring {
+        let over = modifiers.contains(.option), beside = modifiers.contains(.command)
+        if let arr = node.arrangement, !over, !beside {
             hideStateView()
             if arr == selected, node.placement == nil, node.column == nil, node.style == .section {
                 // The current workspace's label: folded, or opened again.
@@ -4635,7 +4686,13 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return hosts.select(block) }
-        if bring { show(block, lens: Lens.default(for: b.kind, path: b.path), .here) } else { arrive(block, from: arrangement?.focused) }
+        // The rule (§3.1): plain goes to it where it is (here, if nowhere);
+        // ⌥ puts it over the focused tile; ⌘ beside it.
+        let lens = Lens.default(for: b.kind, path: b.path)
+        if over, let f = arrangement?.focused { show(block, lens: lens, .over(f)) }
+        else if beside, let f = arrangement?.focused { show(block, lens: lens, .besideOpener(f)) }
+        else if beside { show(block, lens: lens, .here) }
+        else { arrive(block, from: arrangement?.focused, over: false) }
     }
 
     /// Double-clicking an arrangement names it.
@@ -4730,8 +4787,9 @@ extension MainWindowController: OrganizationViewDelegate {
             })
             menu.addItem(.separator())
         } else {
-            menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, newColumn: false) })
-            menu.addItem(ClosureMenuItem("Bring Here", symbol: "arrow.down.to.line") { [weak self] in self?.organizationOpen(node, newColumn: true) })
+            menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, modifiers: []) })
+            menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.2x1") { [weak self] in self?.organizationOpen(node, modifiers: [.command]) })
+            menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.organizationOpen(node, modifiers: [.option]) })
             if let b = hosts.block(id), b.kind != .arrangement {
                 menu.addItem(.separator())
                 for item in keepingItems(for: b) { menu.addItem(item) }
@@ -4775,7 +4833,7 @@ extension MainWindowController: OrganizationViewDelegate {
             if let node { return node.id == "host:\(a.host.raw)" && index >= 0 }
             return index >= 0
         case .block, .placement:
-            if let node { return node.arrangement != nil || node.id.hasPrefix("host:") }
+            if let node { return node.arrangement != nil || node.id.hasPrefix("host:") || node.id.hasPrefix("kept:") }
             return index >= 0
         }
     }
@@ -4811,6 +4869,11 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
         let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
+        if let node, node.id.hasPrefix("kept:") {
+            // Onto Kept: kept (§4), and left where it is.
+            hosts.pin(block, true)
+            return true
+        }
         if let node, let arr = node.arrangement {
             // Onto a column: shown there; onto an arrangement: in its
             // focused column. Moved from where it was, or with ⌥ copied —

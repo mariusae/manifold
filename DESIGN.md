@@ -21,7 +21,7 @@ windows; Manifold is blocks from many hosts, linked, in workspaces.
 ## 1. Principles
 
 - **What nothing refers to goes.** A block is kept while a workspace, a
-  named workspace, a pin, an archive, or a link by hand reaches it (§4);
+  named workspace, a Keep, or a link by hand reaches it (§4);
   closed everywhere, it waits half an hour to be brought back, then is
   collected. The graph holds what you're using, not everything you ever
   touched.
@@ -130,14 +130,15 @@ in the active column (acme's `makenewwindow`); a tile grows by a few
 lines, as big as can be, or to the whole column; the divider between
 columns sets widths; a tile closed gives its height to its neighbor.
 Each tile is a **card** with a **bar** across its top: the block's
-symbol and name, where it is, a count of the stack behind it, its
-links, its status glyph (§3.7), and maximize and close; the bar is the
-tile's handle to drag, grows the tile a step when clicked, and holds
-its menu behind the symbol. As a tile narrows the bar gives things up in
-order, so the symbol and some of the name always show: the place goes
-first, then the links' pill shrinks to its arrow and symbol, then the
-program's capsule goes, then the pill to its arrow alone, then maximize,
-then the pill altogether; close, the status glyph and the unsaved dot
+symbol and name (a dot after it while edited and unsaved), where it
+is, its links, its status glyph (§3.7, the program it names in the
+tooltip), and maximize and close; the stack behind it shows as its
+sheets. The bar is the tile's handle to drag, grows the tile a step
+when clicked, and holds its menu behind the symbol. As a tile narrows
+the bar gives things up in order, so the symbol and some of the name
+always show: the place goes first, then the links' pill shrinks to its
+arrow and symbol, then to its arrow alone, then maximize goes, then
+the pill altogether; close and the status glyph
 stay, and last the name is cut. The content runs beneath the bar, never under it,
 with room between cards and the window's wash — a few pools of colour
 placed afresh each day over what's behind the window, blurred — showing
@@ -180,8 +181,12 @@ does.
 
 A workspace has a title and nothing else to find it by: recall is by
 search (§6), not a path. The **desk** is what's in the sidebar: the
-workspaces in use, most recently settled on first, the named ones that
-you've kept there. Taking a workspace off the desk doesn't end it.
+workspaces in use, in the order you arranged them, the named ones
+that you've kept there. Taking a workspace off the desk doesn't end it
+at once (§4). An unnamed workspace is named by what it holds — the
+folder most of its blocks are at, with the repository's branch when a
+git block is there, else the focused block — so the sidebar never says
+"Untitled" twice.
 
 A workspace can be shown in a window of its own or as one of the desk's
 tabs in a window, as Safari has both: drag a tab out for a window, a window
@@ -236,7 +241,7 @@ are in the data now and only want indexing:
 | **placed in** (spatial, present) | workspace → block | the workspace's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
-| **before / after** (temporal, across blocks) | block → block | the registry's `seen` entries, kept as a bounded *trail* per host; the desk's `settled` order, for workspaces |
+| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each workspace seen — the one history, which back and forward walk and ⌃⇥ orders by |
 | **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
@@ -354,13 +359,17 @@ long ago the status was reported before it, and what it said on the
 line beneath the name. The Dock badge counts the blocks blocked and
 done.
 
-**⌥ with a click** that opens something means *over*: the block goes
-over the tile clicked in, which is stashed behind it (`showOver`), as
-⌥-drag stacks a tile over another. One `Where.over` case carries it,
-read off the click wherever a view opens (a note's link or pill, a
-badge, the sidebar, a listing, a scrubber, a terminal's link — ghostty
-wants ⌘ alone for a link, so the terminal keeps ⌥ back and remembers
-it — a page's link).
+**One rule for the modifiers**, wherever a click opens a block — a
+sidebar row, a note's link or pill, a badge, a listing's entry, a
+scrubber's command, a finder row chosen with ⏎: plain **goes to** it
+where it is (here, if nowhere); **⌥ means over** — the block goes over
+the tile clicked in, which is stashed behind it (`showOver`), as
+⌥-drag stacks a tile over another; **⌘ means beside** — below the tile
+clicked in, taking its lower half. ⇧ is about the path: ⇧-click a bar
+for where the block is, ⇧-drag a bar to link. One `Where` case carries
+each, read off the click wherever a view opens (a terminal's link needs
+⌘ to be a link at all, so there ⌘⌥ is over and ⌘ alone beside; the
+terminal keeps ⌥ back and remembers it).
 
 ### 3.10 Links by hand, and notes about blocks
 
@@ -399,15 +408,11 @@ node stays as last seen: tiles of its blocks wear the offline glyph,
 editors there take no edits, appends go nowhere. The sidebar's host row
 shows the state and opens the host's home (the welcome carries it).
 
-**Archived and inbox** (as built). Two flags on a block, in its log:
-`archived` — put away as it is (`archive` proposal; the shell's own
-exit sets it on a terminal), its tiles withdrawn, no shell started on
-attach (the host replays the transcript and keeps the connection,
-taking no input), listed under Archived in the Workspaces sidebar and
-nowhere else; `inbox` — set when a status record comes to want
-attention (done, error, blocked), cleared by hand (`inbox` proposal) or
-with the status, listed by the Inbox organization by host and
-workspace.
+**The Inbox** is a derivation, not a flag: the blocks whose root
+status wants attention — done or failed and not yet read, or needing
+you — by host and workspace. Reading a block (focusing it) takes it
+out; nothing is set or cleared by hand. (Keeping a block is a separate
+thing, §4.)
 
 ### 3.8 The scrubber: a terminal's outline
 
@@ -441,11 +446,15 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Desk** | workspaces and what they place (§3) | named workspaces |
+| **Desk** | workspaces and what they place (§3), with Kept and Recently Closed (§4) at each host's foot | the desk's workspaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
-| **Links** | the neighborhood of a block by edge kind (§3.5), one more step on opening a row | the focused block, or one looked at |
-| **Time** | blocks by the day they were last seen or made | days |
-| **Status** | blocks by what they are doing (§3.7): blocked, working, done, error, idle; a group opened in the surface as a **state view** | the states |
+| **Inbox** | the blocks whose status wants attention (§3.7), by host and workspace | hosts |
+
+Three, no more. The links live on the tile's badge and its fan, and in
+the neighborhood map (⌥⌘N, or the badge's menu) as the one big view
+of them; what's working, done or needing you is the counts in the
+sidebar's bar, which open the Inbox, and the state views; and time is
+⌘O with nothing typed, which is the trail.
 
 Two edges make the first two possible. **`contains`** (folder → file or
 folder) is read off the paths: every block with a path is under the
@@ -458,10 +467,11 @@ are whole without anyone having followed them, as a wiki's are.
 
 The sidebar is the one browser for all of them, and the **spine** of the
 window: pinned beside the surface (it can still be set to slide out
-over it), a chooser (Desk · Files · Links · Time), a filter, and the same
-row — symbol, name, a count, a detail, fading with age — with the same
-gestures everywhere: click to show here, ⌘-click to show beside (§3.1), a
-card on hover, Links Around This in the menu. Under Desk, a workspace
+over it), a filter, a bar at the foot (search, by workspace or by file,
+the inbox, the counts), and the same row — symbol, name, a count, a
+detail, fading with age — with the same gestures everywhere (the one
+rule: click to go to, ⌘-click to show beside, ⌥-click to show over,
+§3.1), a card on hover, the Neighborhood Map in the menu. Under Desk, a workspace
 expands to its columns, in order, the focused one marked, so the sidebar
 is the table of contents of the screen; clicking a column row focuses
 it, and a block dragged onto one is shown there. Links follows focus.
@@ -474,9 +484,8 @@ an **overview**, all of them laid out in one grid at once, as Mission
 Control lays out windows — so what is blocked, or done, can be looked at
 without placing any of it. A block clicked in a state view is gone to;
 ⌘-clicked, brought to the workspace last shown. A state view is not
-a workspace: nothing is placed, nothing is logged. The neighborhood map stays in the
-palette as a picture of the Links organization; ⌘O stays the quick way
-in.
+a workspace: nothing is placed, nothing is logged. ⌘O stays the quick
+way in.
 
 ---
 
@@ -489,8 +498,7 @@ from a **root** to it. The roots on a host are
 |---|---|
 | a workspace on a desk | what is in front of you |
 | a named workspace | naming is keeping (§3.3), on the desk or off |
-| a pinned block | kept on purpose, whatever refers to it (Pin or Unpin) |
-| an archived block | put away as it was (§3.7), to be recalled |
+| a kept block | Keep, by hand: a root whatever refers to it; Keep and Close (⇧⌘W) keeps it and takes its tiles off |
 | a **hold** | another host's standing reference (below) |
 
 and every block a root places, links by hand, or reaches through what it
@@ -504,12 +512,14 @@ within the grace is simply kept, its mark forgotten.
 
 Closing is what makes things unreachable. ⌘W takes a tile off its
 workspace; an unnamed workspace left empty leaves the desk; ⌥⇧⌘W takes
-one off whole. The app keeps what it closed on a stack, and **⇧⌘T**
+one off whole; and an unnamed workspace unseen for some days
+(`workspaceDriftDays`, 3 by default) drifts off the desk by itself. The app keeps what it closed on a stack, and **⇧⌘T**
 puts the last thing back where it was — a tile at its old column and
 place (here, if that workspace has gone), a workspace onto the desk —
 skipping whatever has been collected meanwhile. The sidebar lists what
 exists and nothing reaches under **Recently Closed**, and the finder
-marks it *recent*; either brings it back by a click.
+marks it *recent*; either brings it back by a click. Kept blocks on no
+workspace of the desk, and named workspaces off it, sit under **Kept**.
 
 Collection is never refused and never silent. Closing takes with it
 everything the closed block alone reached — what it placed, what it
@@ -585,16 +595,16 @@ indexes of every host it is attached to, so backlinks cross hosts.
 
 ### 6.2 Recall
 
-One finder (⌘O, ⌘P) over everything every attached host knows: block
-titles and paths, note and transcript text, workspace titles, recent
-searches. It ranks by frecency and text, and shows each result's state,
-host, and where it was last placed. Alongside it:
+One box (⌘O, and ⌘T is the same box) over everything every attached
+host keeps: blocks by title and path, workspaces by name, processes,
+files under the project — and the verbs (new terminal, new note,
+attach a host, launch an agent), found by name among them, marked
+*do*. It ranks as §3.5 says, and shows each result's state, host, and
+where it is. Alongside it:
 
-- **Back and forward** through what you settled on, across workspaces.
-- **Related** — a panel for the focused block: its links both ways, the
-  workspaces it appears in, what was placed beside it.
-- **Timeline** — what you settled on, across everything, by time; the
-  long version of ⌃⇥'s order.
+- **Back and forward** along the trail, across workspaces (§3.5).
+- **The neighborhood map** for the focused block: its links both ways,
+  the workspaces it appears in, what was placed beside it.
 
 ---
 
@@ -732,8 +742,8 @@ until they're taken off.
 writer, the host: the registry, the links, and the **desk**, a host's
 metalog of its workspaces — which exist, in order — and its settings;
 clients propose (`workspaces`, `settings`). What is a client's alone —
-the workspace it shows, the order it settled on them, its window, its
-appearance — is `ClientState`, in a file beside its hosts file, so two
+the workspace it shows, its window, its appearance — is `ClientState`,
+in a file beside its hosts file, so two
 machines attached to one host see the same workspaces and each its own
 selection. The blocks a client may lead — text, web, workspaces — have **one owner
 at a time**, by focus: the host hands a block's pen to whichever
@@ -867,11 +877,10 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `.status` entries, `StatusScanner` for OSC 7501, 9;4 and 133 fed by
   each session on the host, the host reporting for searches, git and
   diffs, `attend` marking done and error read; `StatusGlyph` in pills,
-  rows and the finder; the Status organization; the Dock badge.
+  rows and the finder; the Inbox; the Dock badge.
 - State views (§3.6, milestone 19): `StateView` over the surface for a
-  status group's blocks, live, as a list or an overview, from the
-  group's row in the Status organization; the blocks' views under
-  `state:` placement ids, kept while it's up; ⎋ leaves it.
+  workspace's blocks, live, as a list or an overview (⌘'); the blocks'
+  views under `state:` placement ids, kept while it's up; ⎋ leaves it.
 - History of a text: `Block.replaying(_:upTo:)` rebuilds a block from its
   log at a moment; the history view (⌥⌘Y) scrubs a text block through
   its changes, and a diff block can compare a text block at two moments
@@ -902,7 +911,7 @@ Today's pieces map directly:
 | `Tab` | an unnamed workspace on the desk |
 | `Column` (a stack) | a column, shown by the stacks lens |
 | put-away timer | collection (§4) |
-| ⌃⇥'s settled order | the timeline |
+| ⌃⇥'s settled order | the trail (§3.5) |
 | `state.json` and JSON commands | per-shard logs and entries |
 | editor drafts in `editors/` | the text block's log |
 
@@ -972,14 +981,13 @@ Then, putting the model to use (§3.7, §3.1 as a grid, state views):
     `StatusScanner` in the core for OSC 7501, 9;4 and 133; the host
     feeding it from each session, reporting for searches, git and
     diffs, and dismissing on `attend`; the glyph (`StatusGlyph`) in
-    sidebar rows, the finder and cards; the Status organization; the
-    Dock badge.
+    sidebar rows, the finder and cards; the Inbox; the Dock badge.
 18. **Grids.** `ArrangementState` as acme's tiling (columns of tiles
     with heights, `Heights` back in the log); `GridView` with pills
     (`TilePill`) for tiles; placement by acme's rule; Go to and Bring
     here as the two verbs everywhere; collection of placements retired.
-19. **State views.** `StateView` in the surface for a status group,
-    as a list or an overview; from the Status organization.
+19. **State views.** `StateView` in the surface for a workspace's
+    blocks, as a list or an overview (⌘').
 
 ---
 
