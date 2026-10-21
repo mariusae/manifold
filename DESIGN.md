@@ -742,6 +742,15 @@ diffs and files; search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.
 
+A search's hit is previewed beside the results (beneath them on a tall,
+narrow tile), as the column browser previews a file (§7.4): the file read
+from the search's host (`readPath`, 4 MB at most, not a binary one),
+read-only in the code face with a gutter of line numbers, scrolled so the
+hit's line sits in the middle — lit as the editor lights its line, its
+match boxed and filled stronger than the other matches, all of which are
+marked as the query finds them (text or a regular expression, with or
+without case). A file is read once per run of the search.
+
 ### 7.6 Web
 
 An embedded browser (WKWebView) on the client: address bar, back and

@@ -457,7 +457,12 @@ when you find it again.
   found, matches marked, each file's name staying at the top while its
   hits scroll under it until the next file's takes over. ⏎ in the field asks again (Aa for case, .* for a
   regular expression); ↓ then ⏎, or a double-click, opens the file at the
-  hit beside the results. A search is found again by its query in ⌘O.
+  hit beside the results. The hit chosen (the first, before one is) is
+  previewed as the column browser previews a file — beside the hits when
+  the tile is wide, beneath them when it's tall: the whole file in the
+  code face with its line numbers, the hit's line lit in the middle, its
+  match boxed and every other match marked; a double-click in it opens
+  the file at that line. A search is found again by its query in ⌘O.
 - **Git and Sapling** repositories get a block each (File ▸ Source Control
   for This Project, ⌥⌘G, for the focused block's; the nearest `.sl`,
   `.hg` (a Sapling checkout as Meta's are) or `.git` up from it says

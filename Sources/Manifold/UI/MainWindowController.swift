@@ -272,10 +272,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let t as OutlineLensView in views.values { t.documentChanged() }
-            for case let o as OutputView in views.values { o.refresh() }
+            let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
-            for case let s as SearchView in views.values { s.documentChanged() }
+            for case let s as SearchView in views.values { s.codeFont = codeFont; s.documentChanged() }
             for case let g as GitView in views.values { g.documentChanged() }
             for case let m as MediaView in views.values { m.documentChanged() }
             for case let pv as ProcessView in views.values { pv.documentChanged() }
@@ -498,6 +499,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .search:
             let s = SearchView(placement: p.id, block: p.block)
             s.delegate = self
+            s.codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             s.source = { [weak self] in self?.hosts.block(p.block) }
             v = s
         case .web:
@@ -1009,6 +1011,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugSidebarView: SidebarView { sidebar }
     /// Debugging: the output tiles, as shown; "raw", what each holds,
     /// escaped; "copy" and "back", the focused one's buttons pressed.
+    /// Debugging: the focused search's preview; "searchpreview <n>", the nth hit chosen.
+    func debugSearchPreview(_ arg: String) -> String {
+        guard let s = arrangement?.focused.flatMap({ views[$0] as? SearchView }) else { return "no search focused" }
+        return s.debugPreview(arg)
+    }
+
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     func debugDirectory(_ arg: String) -> String {
         guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }
@@ -4710,6 +4718,19 @@ extension MainWindowController: SearchViewDelegate {
 
     func searchViewCancel(_ view: SearchView) {
         hosts.propose(.cancelSearch(block: view.block))
+    }
+
+    /// A file's text for the preview: 4 MB at most, and not a binary one.
+    func searchView(_ view: SearchView, read path: String, done: @escaping (String?) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        client.readBytes(path: path, limit: 4 << 20) { data in
+            guard let data, !data.prefix(8192).contains(0) else { return done(nil) }
+            done(String(decoding: data, as: UTF8.self))
+        }
+    }
+
+    func searchView(_ view: SearchView, open path: String, line: Int) {
+        open(path: path, line: line, column: 1, on: view.block.host, from: view.placement, kind: .opened, context: nil)
     }
 }
 

@@ -7,6 +7,10 @@ protocol SearchViewDelegate: AnyObject {
     /// Open a hit beside the results.
     func searchView(_ view: SearchView, open hit: SearchHit)
     func searchViewCancel(_ view: SearchView)
+    /// A file's text on the search's host, for the preview.
+    func searchView(_ view: SearchView, read path: String, done: @escaping (String?) -> Void)
+    /// A file opened at a line, beside the results.
+    func searchView(_ view: SearchView, open path: String, line: Int)
 }
 
 /// The search lens (DESIGN.md §7.5): the query along the top (text, Aa
@@ -28,6 +32,13 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let status = NSTextField(labelWithString: "")
     private let scroll = NSScrollView()
     private let table = NSTableView()
+    private let preview = SearchPreviewView()
+    private let split = NSBox()
+    /// The code face, for the preview.
+    var codeFont: NSFont {
+        get { preview.font }
+        set { preview.font = newValue }
+    }
 
     private enum Row {
         case file(String, count: Int)
@@ -98,6 +109,17 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         scroll.drawsBackground = false
         addSubview(scroll)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+        split.boxType = .separator
+        addSubview(split)
+        preview.read = { [weak self] path, done in
+            guard let self, let d = self.delegate else { return done(nil) }
+            d.searchView(self, read: path, done: done)
+        }
+        preview.open = { [weak self] path, line in
+            guard let self else { return }
+            self.delegate?.searchView(self, open: path, line: line)
+        }
+        addSubview(preview)
         documentChanged()
     }
 
@@ -108,6 +130,18 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = table.selectedRow
         if row >= 0, row < rows.count, case let .hit(h) = rows[row] { keeper.note(["selected": "\(h.path):\(h.line)"]) }
+        updatePreview()
+    }
+
+    /// The selected hit in its file; with none, the first.
+    private func updatePreview() {
+        guard !preview.isHidden else { return }
+        let row = table.selectedRow
+        var hit: SearchHit?
+        if row >= 0, row < rows.count, case let .hit(h) = rows[row] { hit = h }
+        if hit == nil { hit = rows.lazy.compactMap { if case let .hit(h) = $0 { return h } else { return nil } }.first }
+        guard hit != preview.hit else { return }
+        preview.show(hit, query: query, root: query?.root ?? "")
     }
 
     /// Back as it was: the hit chosen, the scroll, a query typed but not asked.
@@ -130,7 +164,28 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         field.frame = NSRect(x: 12, y: top - 25, width: regexButton.frame.minX - 8 - 12, height: 24)
         rootLabel.frame = NSRect(x: w / 2, y: top - 46, width: w / 2 - 12, height: 16)
         status.frame = NSRect(x: 12, y: top - 46, width: w / 2 - 16, height: 16)
-        scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, top - 54))
+        // The preview beside the hits when there's width for both, else
+        // beneath them when there's height, else not at all.
+        let area = NSRect(x: 0, y: 0, width: w, height: max(0, top - 54))
+        let wasHidden = preview.isHidden
+        if w >= 620 {
+            let left = max(260, (w * 0.42).rounded())
+            scroll.frame = NSRect(x: 0, y: 0, width: left, height: area.height)
+            split.frame = NSRect(x: left, y: 0, width: 1, height: area.height)
+            preview.frame = NSRect(x: left + 1, y: 0, width: w - left - 1, height: area.height)
+            preview.isHidden = false
+        } else if area.height >= 380 {
+            let below = (area.height * 0.5).rounded()
+            preview.frame = NSRect(x: 0, y: 0, width: w, height: below)
+            split.frame = NSRect(x: 0, y: below, width: w, height: 1)
+            scroll.frame = NSRect(x: 0, y: below + 1, width: w, height: area.height - below - 1)
+            preview.isHidden = false
+        } else {
+            scroll.frame = area
+            preview.isHidden = true
+        }
+        split.isHidden = preview.isHidden
+        if wasHidden, !preview.isHidden { updatePreview() }
         table.tableColumns[0].width = scroll.contentSize.width
     }
 
@@ -150,6 +205,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             hitCount = 0
             fileCount = 0
             shownHits = 0
+            preview.forget()
+            preview.show(nil, query: nil, root: "")
         }
         if s.hits.count != shownHits { rebuild(s.hits) }
         var text: String
@@ -189,6 +246,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.reloadData()
         if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
         if let s = source()?.search, !s.running { restoreState() }
+        updatePreview()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -268,6 +326,21 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         }
     }
 
+    /// Debugging: the preview, and a hit chosen (its index among the hits),
+    /// or "query <text>" asked.
+    func debugPreview(_ arg: String) -> String {
+        if arg.hasPrefix("query ") {
+            field.stringValue = String(arg.dropFirst(6))
+            fieldEntered()
+            return "asked"
+        }
+        if let n = Int(arg) {
+            let hitRows = rows.indices.filter { if case .hit = rows[$0] { return true } else { return false } }
+            if n < hitRows.count { table.selectRowIndexes([hitRows[n]], byExtendingSelection: false); table.scrollRowToVisible(hitRows[n]) }
+        }
+        return (preview.isHidden ? "hidden " : "") + preview.debugState
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if case .file = rows[row] { return FileHeaderRowView() }
@@ -318,8 +391,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             let s = NSMutableAttributedString(string: "\(h.line)  ", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: Theme.secondaryText])
             let line = h.text.trimmingCharacters(in: .whitespaces)
             let body = NSMutableAttributedString(string: line, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: Theme.text])
-            if let q = query, !q.regex, let r = line.range(of: q.text, options: q.caseSensitive ? [] : [.caseInsensitive]) {
-                body.addAttribute(.backgroundColor, value: TextView.matchColor, range: NSRange(r, in: line))
+            for r in query?.ranges(in: line, limit: 20) ?? [] {
+                body.addAttribute(.backgroundColor, value: TextView.matchColor, range: r)
             }
             s.append(body)
             f.attributedStringValue = s.truncatingTail()
