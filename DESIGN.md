@@ -967,7 +967,10 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `growing(_:step:whole:)` for colgrow, a removed tile's height to its
   neighbor; a share of 0 is a stashed tile, bunched as a pill under
   the column's top pill and fanned out on hover (`stashing`,
-  `unstashing`); `full` a tile maximized over the workspace;
+  `unstashing`; `revealing`, what going to a tile does, brings a
+  stashed one to the top of its stack, `toppingStack`, and a new tile
+  goes after its anchor's stack, never inside it); `full` a tile
+  maximized over the workspace;
   `GridView` with `TilePill` (one width, opaque; symbol, name, status
   glyph, a maximize corner; drag to move, click for the menu),
   dividers, drops between tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
