@@ -1,31 +1,42 @@
 import AppKit
 import ManifoldCore
 
-/// A block's card, shown while the pointer rests on its row: a picture
-/// of its tile when one is on screen (as Safari shows a tab), what it
-/// is, where, when it was last seen, and a little of its text.
+/// A block's card, shown while the pointer rests on its row: the block
+/// itself, live — its own view lent, scaled to the card — when it's out of
+/// sight; a picture of its tile when that's on screen (as Safari shows a
+/// tab); what it is, where, when it was last seen, and a little of its text.
+/// It's drawn in the window it's for, over everything in it, so a view
+/// lent to it stays in its window (a terminal's surface keeps drawing).
 final class HoverCard: NSObject {
     static let shared = HoverCard()
-    private let panel: NSPanel
-    private let box = NSView()
+    private let box = CardView()
     private let picture = NSImageView()
+    /// Where a lent view goes: its own size kept, drawn smaller.
+    private let liveHolder = NSView()
+    private let scaler = NSView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let body = NSTextField(wrappingLabelWithString: "")
     private var pendingShow: DispatchWorkItem?
 
+    /// A view lent to the card while it shows, given back when it goes.
+    struct LiveLoan {
+        let view: NSView
+        /// Its own size, kept: the card draws it scaled.
+        let size: NSSize
+        let giveBack: (NSView) -> Void
+    }
+    private var loan: LiveLoan?
+
     private override init() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 100), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         super.init()
-        panel.hasShadow = true
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.isFloatingPanel = true
-        panel.level = .popUpMenu
-        panel.ignoresMouseEvents = true
         box.wantsLayer = true
         box.layer?.cornerRadius = 10
+        box.layer?.cornerCurve = .continuous
         box.layer?.borderWidth = 0.5
+        box.layer?.shadowOpacity = 0.22
+        box.layer?.shadowRadius = 14
+        box.layer?.shadowOffset = CGSize(width: 0, height: -4)
         box.themed {
             $0.layer?.backgroundColor = Theme.panel.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
@@ -39,18 +50,22 @@ final class HoverCard: NSObject {
         body.font = .systemFont(ofSize: 12)
         body.textColor = Theme.text
         body.maximumNumberOfLines = 8
+        for v in [picture, liveHolder] {
+            v.wantsLayer = true
+            v.layer?.cornerRadius = 10
+            v.layer?.cornerCurve = .continuous
+            v.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            v.layer?.masksToBounds = true
+            v.isHidden = true
+        }
         picture.imageScaling = .scaleProportionallyUpOrDown
         picture.imageAlignment = .alignTop
-        picture.wantsLayer = true
-        picture.layer?.cornerRadius = 10
-        picture.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        picture.layer?.masksToBounds = true
-        picture.isHidden = true
-        for v in [picture, title, detail, body] { box.addSubview(v) }
-        panel.contentView = box
-        // Floating at a menu's level, it's above every app's windows: it
-        // goes the moment Manifold isn't the app in front, and never waits
-        // on a pointer that has left.
+        liveHolder.themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        liveHolder.addSubview(scaler)
+        for v in [picture, liveHolder, title, detail, body] { box.addSubview(v) }
+        box.isHidden = true
+        // In the window, it's behind whatever app is in front; still, a
+        // lent view goes home the moment Manifold isn't in front.
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.hide()
         }
@@ -102,15 +117,23 @@ final class HoverCard: NSObject {
         var body: String
         var font: NSFont?
         var picture: NSImage?
+        /// The block's own view, asked for when the card comes up.
+        var lend: (() -> LiveLoan?)?
         var rect: NSRect
         weak var window: NSWindow?
     }
     private var card: Card?
 
-    /// Shows the card beside a rect (in window coordinates) after a moment.
-    func show(key: String = "", title: String, detail: String, body: String, font: NSFont?, picture image: NSImage? = nil, beside rect: NSRect, in window: NSWindow) {
+    /// Shows the card beside a rect (in window coordinates) after a moment;
+    /// `lend`, asked then, lends the block's own view to show live.
+    func show(key: String = "", title: String, detail: String, body: String, font: NSFont?, picture image: NSImage? = nil,
+              lend: (() -> LiveLoan?)? = nil, beside rect: NSRect, in window: NSWindow) {
         pendingShow?.cancel()
-        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, rect: rect, window: window)
+        // The same block's card, already up: left as it is.
+        if card?.key == key, !key.isEmpty, !box.isHidden { return }
+        giveBack()
+        box.isHidden = true
+        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, lend: lend, rect: rect, window: window)
         let work = DispatchWorkItem { [weak self] in self?.present() }
         pendingShow = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
@@ -122,64 +145,112 @@ final class HoverCard: NSObject {
         guard var c = card, c.key == key, let image else { return }
         c.picture = image
         card = c
-        if panel.isVisible { present() }
+        if !box.isHidden { present() }
     }
 
     private func present() {
-        guard let c = card, let window = c.window, NSApp.isActive else { return }
-        let image = c.picture
+        guard let c = card, let window = c.window, let root = window.contentView else { return }
+        // The block itself, live, if it lends its view.
+        if loan == nil, let l = c.lend?() {
+            loan = l
+            l.view.removeFromSuperview()
+            l.view.frame = NSRect(origin: .zero, size: l.size)
+            l.view.isHidden = false
+            scaler.addSubview(l.view)
+            // Laid out afresh at the size it's given (one hidden in a stack had none).
+            l.view.needsLayout = true
+            l.view.layoutSubtreeIfNeeded()
+        }
+        let image = loan == nil ? c.picture : nil
         title.stringValue = c.title
         detail.stringValue = c.detail
         body.stringValue = c.body
         body.font = c.font ?? .systemFont(ofSize: 12)
-        body.isHidden = c.body.isEmpty || image != nil
-        // Wide with a picture, as Safari's preview of a tab is.
-        let width: CGFloat = image == nil ? 320 : 440, pad: CGFloat = 12
+        body.isHidden = c.body.isEmpty || image != nil || loan != nil
+        // Wide with a picture or the block itself, as Safari's preview of a tab is.
+        let width: CGFloat = image == nil && loan == nil ? 320 : 480, pad: CGFloat = 12
         body.preferredMaxLayoutWidth = width - 2 * pad
         let bodyHeight = body.isHidden ? 0 : ceil(body.sizeThatFits(NSSize(width: width - 2 * pad, height: 240)).height)
-        // The picture across the top, as wide as the card, no taller than it is wide.
-        var pictureHeight: CGFloat = 0
-        if let image, image.size.width > 0 {
-            pictureHeight = min(width * 0.7, (width * image.size.height / image.size.width).rounded())
+        // Across the top, as wide as the card, no taller than most of its width.
+        var topHeight: CGFloat = 0
+        if let l = loan, l.size.width > 0 {
+            topHeight = min(width * 0.72, (width * l.size.height / l.size.width).rounded())
+        } else if let image, image.size.width > 0 {
+            topHeight = min(width * 0.7, (width * image.size.height / image.size.width).rounded())
             picture.image = image
         }
-        picture.isHidden = image == nil
-        let height = pictureHeight + pad + 17 + 2 + (c.detail.isEmpty ? 0 : 16) + (body.isHidden ? 0 : 8 + bodyHeight) + pad
-        picture.frame = NSRect(x: 0, y: height - pictureHeight, width: width, height: pictureHeight)
-        title.frame = NSRect(x: pad, y: height - pictureHeight - pad - 17, width: width - 2 * pad, height: 17)
-        detail.frame = NSRect(x: pad, y: height - pictureHeight - pad - 17 - 2 - 16, width: width - 2 * pad, height: 16)
+        picture.isHidden = image == nil || loan != nil
+        liveHolder.isHidden = loan == nil
+        let height = topHeight + pad + 17 + 2 + (c.detail.isEmpty ? 0 : 16) + (body.isHidden ? 0 : 8 + bodyHeight) + pad
+        let top = NSRect(x: 0, y: height - topHeight, width: width, height: topHeight)
+        picture.frame = top
+        liveHolder.frame = top
+        if let l = loan {
+            // Scaled to the card's width, its top at the card's top.
+            let scale = width / l.size.width
+            scaler.frame = NSRect(x: 0, y: topHeight - l.size.height * scale, width: width, height: l.size.height * scale)
+            scaler.setBoundsSize(l.size)
+        }
+        title.frame = NSRect(x: pad, y: height - topHeight - pad - 17, width: width - 2 * pad, height: 17)
+        detail.frame = NSRect(x: pad, y: height - topHeight - pad - 17 - 2 - 16, width: width - 2 * pad, height: 16)
         detail.isHidden = c.detail.isEmpty
         body.frame = NSRect(x: pad, y: pad, width: width - 2 * pad, height: bodyHeight)
-        let rect = c.rect
-        var origin = window.convertToScreen(NSRect(origin: NSPoint(x: rect.maxX + 8, y: rect.midY), size: .zero)).origin
-        origin.y -= height / 2
-        if let screen = window.screen {
-            origin.y = max(screen.visibleFrame.minY + 8, min(origin.y, screen.visibleFrame.maxY - height - 8))
-            if origin.x + width > screen.visibleFrame.maxX { origin.x = window.convertToScreen(NSRect(origin: NSPoint(x: rect.minX, y: 0), size: .zero)).origin.x - width - 8 }
-        }
-        panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
-        panel.orderFront(nil)
+        // Beside the row, in the window, kept inside it.
+        let rect = root.convert(c.rect, from: nil)
+        var origin = NSPoint(x: rect.maxX + 8, y: rect.midY - height / 2)
+        origin.y = max(8, min(origin.y, root.bounds.height - height - 8))
+        if origin.x + width > root.bounds.width - 8 { origin.x = max(8, rect.minX - width - 8) }
+        if box.superview !== root || root.subviews.last !== box { root.addSubview(box, positioned: .above, relativeTo: nil) }
+        box.frame = NSRect(origin: origin, size: NSSize(width: width, height: height))
+        box.isHidden = false
     }
 
-    /// Debugging: the card's picture, written as a PNG.
+    /// The lent view home, as it was.
+    private func giveBack() {
+        guard let l = loan else { return }
+        loan = nil
+        if l.view.superview === scaler { l.view.removeFromSuperview() }
+        l.giveBack(l.view)
+    }
+
+    /// Debugging: the card's picture (or what it shows live), written as a PNG.
     func debugWritePicture(to path: String) -> String {
-        guard let image = card?.picture, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+        let image = loan != nil && !box.isHidden ? Self.liveImage(of: liveHolder) : card?.picture
+        guard let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else { return "no picture" }
         do { try png.write(to: URL(fileURLWithPath: path)) } catch { return "\(error)" }
         return "wrote \(path)"
     }
 
+    /// The live area as Core Animation draws it (a terminal's surface included).
+    private static func liveImage(of view: NSView) -> NSImage? {
+        guard let layer = view.layer, let scale = view.window?.backingScaleFactor else { return nil }
+        let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
+        guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.scaleBy(x: scale, y: scale)
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { layer.render(in: ctx) }
+        return ctx.makeImage().map { NSImage(cgImage: $0, size: view.bounds.size) }
+    }
+
     /// Debugging: whether the card is up, its size, and what it holds.
     var debugState: String {
-        // What it holds, shown or not (not, while another app is in front).
         guard let c = card else { return "hidden" }
-        return (panel.isVisible ? "shown \(Int(panel.frame.width))x\(Int(panel.frame.height))" : "held, not shown (app not in front)") + " picture=\(c.picture.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none") title=\(c.title) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
+        let what = loan.map { "live \(String(describing: type(of: $0.view))) \(Int($0.size.width))x\(Int($0.size.height))" }
+            ?? "picture=" + (c.picture.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none")
+        return (box.isHidden ? "held, not shown" : "shown \(Int(box.frame.width))x\(Int(box.frame.height))") + " \(what) title=\(c.title) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
     }
 
     func hide() {
         pendingShow?.cancel()
         pendingShow = nil
         card = nil
-        panel.orderOut(nil)
+        box.isHidden = true
+        giveBack()
     }
+}
+
+/// The card's box: takes no clicks, so the pointer goes through it.
+private final class CardView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

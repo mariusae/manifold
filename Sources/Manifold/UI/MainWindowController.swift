@@ -271,6 +271,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if selected != shownArrangement {
+            // A card's lent view goes home before the workspace changes
+            // under it (it may be one of the workspace coming in).
+            HoverCard.shared.hide()
             // The workspace left: each tile it showed pictured, for its card.
             for v in content.views where v.superview != nil && !v.isHiddenOrHasHiddenAncestor { rememberPicture(of: v) }
             if let dir = pendingSlide, shownArrangement != nil, selected != nil { slide(from: dir) }
@@ -5105,10 +5108,13 @@ extension MainWindowController: OrganizationViewDelegate {
         // Its tile, if one is on screen: a picture of it, as Safari shows a
         // tab — a terminal as the text on its screen, a page by its own
         // snapshot (which comes a moment later), the rest as they draw.
-        // Out of sight (another workspace, stacked, collapsed): a terminal
-        // as its screen still holds it; the rest as last pictured.
+        // Out of sight (another workspace, stacked, collapsed, or nowhere):
+        // the block itself, live, its view lent to the card — or, failing
+        // that, a terminal as its screen still holds it, the rest as last
+        // pictured.
         let key = id.description
         var picture: NSImage? = nil
+        var lend: (() -> HoverCard.LiveLoan?)? = nil
         if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
             switch shown {
             case let t as TerminalView:
@@ -5131,19 +5137,46 @@ extension MainWindowController: OrganizationViewDelegate {
                 picture = HoverCard.picture(of: shown)
             }
             if let picture { tilePictures[id] = picture }
-        } else if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView,
-                  let image = HoverCard.surfacePicture(of: t) {
-            picture = image
-        } else if let kept = tilePictures[id] {
-            picture = kept
-        } else if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView {
-            let text = t.visibleText
-            if !text.isEmpty {
-                body = text
-                font = hosts.state.appearance.theme.font(.monospaced, size: 11)
+        } else {
+            lend = { [weak self] in self?.lendView(of: id) }
+            if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView,
+               let image = HoverCard.surfacePicture(of: t) {
+                picture = image
+            } else if let kept = tilePictures[id] {
+                picture = kept
             }
         }
-        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture, beside: rect, in: window)
+        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture, lend: lend, beside: rect, in: window)
+    }
+
+    /// The block's own view, for a card to show live while the block is
+    /// out of sight: a view it has that isn't showing (another workspace's,
+    /// or stacked or collapsed in this one), lent and put back as it was;
+    /// else one made for the card, let go after (its state not kept).
+    private func lendView(of id: BlockID) -> HoverCard.LiveLoan? {
+        guard let b = hosts.block(id), b.kind != .arrangement else { return nil }
+        let size = NSSize(width: 760, height: 520)
+        if let v = views.values.first(where: { $0.block == id && ($0.window == nil || $0.isHiddenOrHasHiddenAncestor) && !($0 is PlaceholderView) }) {
+            let inGrid = v.superview === content
+            let wasHidden = v.isHidden, frame = v.frame
+            if inGrid { content.lend(v.placement) }
+            let own = frame.width > 200 && frame.height > 120 ? frame.size : size
+            return HoverCard.LiveLoan(view: v, size: own) { [weak self] view in
+                guard let self else { return }
+                view.frame = frame
+                view.isHidden = wasHidden
+                if inGrid { self.content.takeBack(v.placement, view: view) }
+            }
+        }
+        // None made yet (a workspace not shown since launch, a block placed nowhere).
+        let p = Placement(id: "hover:\(id)", block: id, lens: Lens.default(for: b.kind, path: b.path))
+        let v = view(for: shown(p))
+        views.removeValue(forKey: p.id)
+        (v as? KeepsViewState)?.keeper.save = nil
+        return HoverCard.LiveLoan(view: v, size: size) { view in
+            view.removeFromSuperview()
+            (view as? PaneContent)?.destroy()
+        }
     }
 
     func rememberPicture(of view: PaneContent) {

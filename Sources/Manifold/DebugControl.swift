@@ -453,6 +453,7 @@ enum DebugControl {
             return wc?.debugOutputs(arg) ?? "no window"
         case "card":
             if arg.hasPrefix("/") { return HoverCard.shared.debugWritePicture(to: arg) }
+            if arg == "hide" { HoverCard.shared.hide(); return "hidden" }
             return HoverCard.shared.debugState
         case "closed":
             // The closed stack, and what nothing reaches.

@@ -181,7 +181,7 @@ final class GridView: NSView, NSDraggingSource {
         self.full = full
         for column in columns {
             for tile in column {
-                if tile.view.superview !== self, !switching.contains(tile.shown.id) {
+                if tile.view.superview !== self, !held(tile.shown.id) {
                     Self.styleBody(tile.view)
                     addSubview(tile.view)
                 }
@@ -288,7 +288,7 @@ final class GridView: NSView, NSDraggingSource {
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
                 // Not a view the switcher holds: it shows in its card.
-                if !switching.contains(id) { setHidden(tile.view, stashed) }
+                if !held(id) { setHidden(tile.view, stashed) }
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
@@ -519,7 +519,7 @@ final class GridView: NSView, NSDraggingSource {
             if let badge = badges[full], let pill = pills[full] { keep(badge, above: pill) }
             return
         }
-        for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
+        for t in columns.flatMap({ $0 }) where !held(t.shown.id) {
             let stashed = isStashed(t.shown.id)
             setHidden(t.view, stashed)
             // A stashed tile's pill stays as it is — hidden behind the
@@ -557,7 +557,7 @@ final class GridView: NSView, NSDraggingSource {
                 guard !isStashed(tile.shown.id) else { continue }
                 let r = tiles[i]
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
-                let held = switching.contains(tile.shown.id)
+                let held = held(tile.shown.id)
                 let was = lastFrames[tile.shown.id]
                 // Less than a line of content under the bar: the tile is
                 // collapsed to its bar, a pill, its content out of sight.
@@ -988,6 +988,25 @@ final class GridView: NSView, NSDraggingSource {
     private var switcher: StackSwitcherView?
     /// The tiles whose views the switcher holds: the grid leaves them be.
     private var switching: Set<PlacementID> = []
+    /// Tiles whose views are lent out (to a hover card, live): left be
+    /// until they're given back.
+    private var lent: Set<PlacementID> = []
+
+    /// A tile whose view is elsewhere for now: in the switcher's cards, or lent.
+    private func held(_ id: PlacementID) -> Bool { switching.contains(id) || lent.contains(id) }
+
+    /// A tile's view lent out (it's out of sight: stacked, collapsed).
+    func lend(_ id: PlacementID) { lent.insert(id) }
+
+    /// A lent view back in the grid, out of sight as it was.
+    func takeBack(_ id: PlacementID, view: NSView) {
+        guard lent.remove(id) != nil else { return }
+        if view.superview !== self, tile(id) != nil {
+            view.removeFromSuperview()
+            addSubview(view, positioned: .below, relativeTo: subviews.first)
+        }
+        needsLayout = true
+    }
     var isSwitching: Bool { switcher != nil || fanWaiting }
     /// The fan asked for, waiting on its tile to grow; and ⌘E's steps meanwhile.
     private var fanWaiting = false
