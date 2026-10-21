@@ -672,6 +672,20 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         return t.diskFingerprint == nil && !t.unreadable && t.version == 0
     }
 
+    /// The coding agent at work in it, if any (Claude Code, Codex…): an
+    /// agent block's by the command it runs; any terminal's by what its
+    /// status hooks name, or by a command still running in it that starts
+    /// one.
+    public var agent: AgentCatalog.Agent? {
+        guard let t = terminal else { return nil }
+        if let c = t.command, let a = AgentCatalog.agent(inCommand: c) { return a }
+        if let app = statusRecord?.app, let a = AgentCatalog.agent(namedByApp: app) { return a }
+        for c in (t.commands ?? []).reversed().prefix(5) where c.status == nil {
+            if let a = AgentCatalog.agent(inCommand: c.text) { return a }
+        }
+        return nil
+    }
+
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }

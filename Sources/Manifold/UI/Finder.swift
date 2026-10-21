@@ -14,6 +14,131 @@ struct FinderItem {
     var run: () -> Void
 }
 
+/// Something to be found (§3.5): taken when the finder opens, and ranked
+/// off the main thread as the query changes, so typing never waits on it.
+struct FinderCandidate: Sendable {
+    var symbol: String
+    var title: String
+    var detail: String
+    var note: String
+    /// What the query names, lowercased: the title, and words as good as
+    /// its own (its kind, the agent at work in it); its words.
+    var name: String
+    var words: [String]
+    /// Other names it answers to as surely as its title (the agent at work
+    /// in it: "claude", "claude code"), lowercased.
+    var aliases: [String] = []
+    /// What's around it, lowercased: a path, a folder, a program.
+    var around: String
+    /// How far from where you are (§3.5); lower is nearer.
+    var distance: Int
+    var recency: Int64
+    /// Which of the finder's actions it runs; -1 for a file, opened by `path`.
+    var action: Int
+    var path: String?
+
+    init(symbol: String, title: String, detail: String, note: String, name: String, aliases: [String] = [], around: String, distance: Int, recency: Int64, action: Int, path: String? = nil) {
+        self.aliases = aliases.map { $0.lowercased() }
+        self.symbol = symbol
+        self.title = title
+        self.detail = detail
+        self.note = note
+        self.name = name.lowercased()
+        self.words = self.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        self.around = around.lowercased()
+        self.distance = distance
+        self.recency = recency
+        self.action = action
+        self.path = path
+    }
+
+    /// A file under the folder: below the blocks, the system's scratch
+    /// folders lower still.
+    static func file(_ path: String) -> FinderCandidate {
+        let name = path.lastPathComponent
+        let scratch = path.hasPrefix("/tmp/") || path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/folders/")
+        return FinderCandidate(symbol: Finder.symbol(forFile: name), title: name, detail: path.deletingLastPathComponent.abbreviatingHome,
+                               note: "file", name: name, around: path, distance: scratch ? 80 : 70, recency: 0, action: -1, path: path)
+    }
+}
+
+/// A counter the main thread bumps and a ranking off it reads, to give up
+/// on a query that's no longer the one typed.
+final class FinderGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func next() -> Int { lock.lock(); defer { lock.unlock() }; value += 1; return value }
+    func isCurrent(_ v: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return value == v }
+}
+
+enum FinderRanking {
+    /// The best `limit` of the candidates for a query (§3.5): what the
+    /// query names best first — the whole title, its start, a word's
+    /// start, all its words, somewhere in it, its letters in order, only
+    /// what's around it — and among equals the nearest, then the
+    /// stronger match, then the latest. With nothing typed, the nearest
+    /// and latest. Nil if given up on (`current` turned false).
+    static func rank(_ query: String, _ candidates: [FinderCandidate], limit: Int = 60, current: () -> Bool = { true }) -> [FinderCandidate]? {
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        if q.isEmpty {
+            let blocks = candidates.filter { $0.action >= 0 }.sorted { $0.distance != $1.distance ? $0.distance < $1.distance : $0.recency > $1.recency }
+            let files = candidates.lazy.filter { $0.action < 0 }.prefix(max(0, limit - min(blocks.count, limit)))
+            return Array(blocks.prefix(limit)) + files
+        }
+        let letters = Array(q.utf8.filter { $0 != 32 })
+        let qWords = q.split(separator: " ").map(String.init)
+        var scored: [(band: Int, match: Int, i: Int)] = []
+        for (i, c) in candidates.enumerated() {
+            if i % 2000 == 0, !current() { return nil }
+            // Every letter, in order, somewhere: else no match at all (cheap, first).
+            guard Self.hasInOrder(letters, c.name) || Self.hasInOrder(letters, c.around) || c.aliases.contains(where: { Self.hasInOrder(letters, $0) }) else { continue }
+            let m = Self.match(q, qWords, c)
+            guard m > 0 else { continue }
+            let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : m >= 200 ? 1 : 0
+            scored.append((band, m, i))
+        }
+        guard current() else { return nil }
+        scored.sort { a, b in
+            if a.band != b.band { return a.band > b.band }
+            let ca = candidates[a.i], cb = candidates[b.i]
+            if ca.distance != cb.distance { return ca.distance < cb.distance }
+            if a.match != b.match { return a.match > b.match }
+            return ca.recency > cb.recency
+        }
+        return scored.prefix(limit).map { candidates[$0.i] }
+    }
+
+    private static func hasInOrder(_ letters: [UInt8], _ s: String) -> Bool {
+        var i = 0
+        for b in s.utf8 where i < letters.count && b == letters[i] { i += 1 }
+        return i == letters.count
+    }
+
+    /// As FileFinder.nameMatch, over what's been lowercased once already.
+    private static func match(_ q: String, _ qWords: [String], _ c: FinderCandidate) -> Int {
+        // An alias named whole, or begun: as the title would be.
+        if c.aliases.contains(q) { return 600 }
+        if c.aliases.contains(where: { $0.hasPrefix(q) }) { return 520 }
+        let t = c.name
+        if t == q { return 600 }
+        if t.hasPrefix(q) { return 520 }
+        if c.words.contains(where: { $0.hasPrefix(q) }) { return 500 }
+        if qWords.count > 1 {
+            var i = 0, all = true
+            for w in qWords {
+                guard let j = c.words[i...].firstIndex(where: { $0.hasPrefix(w) }) else { all = false; break }
+                i = j + 1
+                if i > c.words.count { all = false; break }
+            }
+            if all { return 480 }
+        }
+        if t.contains(q) { return 400 }
+        if let f = FileFinder.score(q, t) { return 200 + min(f, 150) / 2 }
+        if let f = FileFinder.score(q, c.around) { return 100 + min(f, 150) / 3 }
+        return 0
+    }
+}
+
 /// ⌘O: one field that finds anything the attached hosts know, in one of
 /// three scopes (⇥ goes round them): **names** — blocks by title and
 /// path, workspaces by name, processes, files under the focused folder
@@ -32,9 +157,29 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         }
     }
 
-    /// Items for a query in a scope, given the files under the folder
-    /// listed so far.
-    var search: ((String, [String], Scope) -> [FinderItem])?
+    /// Items for a query in the other scopes (In Files, In Blocks), as the
+    /// controller finds them.
+    var search: ((String, Scope) -> [FinderItem])?
+    /// A row before the rest for a query, if it calls for one (a web address).
+    var special: ((String) -> FinderItem?)?
+    /// Opens a file chosen.
+    var openFile: ((String) -> Void)?
+    /// What can be found by name, taken when shown, and what each runs.
+    private var corpus: [FinderCandidate] = []
+    private var actions: [() -> Void] = []
+    /// The files under the folder, as candidates, once listed.
+    private var fileCandidates: [FinderCandidate] = []
+    private var withFiles = false
+    /// Paths that are blocks already, found as blocks rather than files.
+    private var knownPaths: Set<String> = []
+    private let generation = FinderGeneration()
+    private let ranking = DispatchQueue(label: "finder.ranking", qos: .userInteractive)
+    /// Listings of folders lately listed: shown at once when asked again,
+    /// listed afresh behind.
+    private static var listings: [String: (at: Date, files: [FinderCandidate])] = [:]
+    /// The most rows shown since the finder opened: it grows to fit, but
+    /// doesn't shrink as you type, so nothing jumps under the pointer.
+    private var tallest = 0
     /// The scope or query changed: what's asked of a host can start.
     var onQueryChanged: ((String, Scope) -> Void)?
     private(set) var scope: Scope = .names
@@ -51,7 +196,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private let scroll = NSScrollView()
     private let hint = NSTextField(labelWithString: "")
     private var root = ""
-    private var files: [String] = []
     private var shown: [FinderItem] = []
     private var listing = 0
 
@@ -152,37 +296,51 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Results came in (a host's search): listed again.
     func refreshResults() {
-        guard panel.isVisible else { return }
+        guard panel.isVisible, scope != .names else { return }
         refresh()
     }
 
     // MARK: Showing
 
-    /// Shows, listing the files under `root` among everything else.
-    func show(root: String, over window: NSWindow?) {
-        self.root = root
+    /// Shows: what can be found by name (`corpus`, each running its
+    /// action), and with `filesUnder`, the files under that folder too —
+    /// from the last listing at once, listed afresh behind. `scopes`: the
+    /// other scopes (In Files, In Blocks) on offer.
+    func show(corpus: [FinderCandidate], actions: [() -> Void], filesUnder root: String?, knownPaths: Set<String> = [], scopes showScopes: Bool, placeholder: String, over window: NSWindow?) {
+        self.corpus = corpus
+        self.actions = actions
+        self.root = root ?? ""
+        self.knownPaths = knownPaths
+        withFiles = root != nil
         outline = nil
-        scopes.isHidden = false
-        field.placeholderString = "Find anything…"
+        scope = .names
+        scopes.selectedSegment = 0
+        scopes.isHidden = !showScopes
+        field.placeholderString = placeholder
         field.stringValue = ""
-        files = []
         shown = []
-        table.reloadData()
+        tallest = 0
         listing += 1
-        let token = listing
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let found = FileFinder.list(root: root)
-            DispatchQueue.main.async {
-                guard let self, self.listing == token else { return }
-                self.files = found
-                self.refresh()
+        fileCandidates = []
+        if let root {
+            if let cached = Self.listings[root] { fileCandidates = cached.files.filter { !knownPaths.contains($0.path ?? "") } }
+            let token = listing
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let found = FileFinder.list(root: root).map { FinderCandidate.file(root.appendingPathComponent($0)) }
+                DispatchQueue.main.async {
+                    Self.listings[root] = (Date(), found)
+                    if Self.listings.count > 12, let oldest = Self.listings.min(by: { $0.value.at < $1.value.at })?.key { Self.listings.removeValue(forKey: oldest) }
+                    guard let self, self.listing == token else { return }
+                    self.fileCandidates = found.filter { !self.knownPaths.contains($0.path ?? "") }
+                    self.refresh()
+                }
             }
         }
         if let window {
             let frame = window.frame
             panel.setFrameOrigin(NSPoint(x: frame.midX - Self.width / 2, y: frame.maxY - frame.height * 0.18 - panel.frame.height))
         }
-        refresh()
+        refreshNow()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
@@ -195,8 +353,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         scopes.isHidden = true
         field.stringValue = ""
         field.placeholderString = "Go to a tile, or a heading in one…"
-        files = []
         shown = []
+        tallest = 0
         listing += 1
         if let window {
             let frame = window.frame
@@ -211,8 +369,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func debugQuery(_ query: String) -> [String] {
         field.stringValue = query
         if outline == nil { onQueryChanged?(query, scope) }
-        refresh()
+        refreshNow()
         return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") }
+    }
+
+    /// Debugging: how long ranking a query takes, over how much.
+    func debugTime(_ query: String) -> String {
+        let all = corpus + fileCandidates
+        let start = Date()
+        let n = FinderRanking.rank(query, all)?.count ?? 0
+        return String(format: "%d candidates (%d files) → %d rows in %.1f ms", all.count, fileCandidates.count, n, Date().timeIntervalSince(start) * 1000)
     }
 
     /// Chooses the selected row, or moves the selection (for DebugControl).
@@ -226,6 +392,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     func close() {
         listing += 1
+        _ = generation.next()
         panel.orderOut(nil)
     }
 
@@ -236,7 +403,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         }
         let folder = root.abbreviatingHome
         hint.stringValue = switch scope {
-        case .names: files.isEmpty && listing > 0 ? "Looking in \(folder)…" : "Blocks, workspaces, processes, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
+        case .names: !withFiles ? "Blocks and workspaces, and what to make    ↩ Go    ⎋ Close"
+            : fileCandidates.isEmpty ? "Blocks, workspaces, and files in \(folder) (looking…)    ↩ Open    ⎋ Close"
+            : "Blocks, workspaces, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
         case .contents: "Lines in the files under the project    ⇥ Scope    ↩ Open    ⎋ Close"
         case .blocks: "Lines in the workspace's texts    ⇥ Scope    ↩ Go    ⎋ Close"
         }
@@ -244,14 +413,17 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Sizes the panel to its results, keeping its top where it is.
     private func layout() {
-        let rows = min(shown.count, Self.visibleRows)
+        tallest = max(tallest, min(shown.count, Self.visibleRows))
+        let rows = tallest
         let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + 12
         let hintHeight: CGFloat = 24
         let height = Self.fieldHeight + listHeight + hintHeight
         var frame = panel.frame
-        frame.origin.y += frame.height - height
-        frame.size.height = height
-        panel.setFrame(frame, display: true)
+        if frame.height != height {
+            frame.origin.y += frame.height - height
+            frame.size.height = height
+            panel.setFrame(frame, display: true)
+        }
         field.frame = NSRect(x: 52, y: height - Self.fieldHeight + 13, width: Self.width - 70, height: 30)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
         scopes.sizeToFit()
@@ -262,21 +434,55 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     // MARK: Finding
 
+    /// The rows again for the query: by name, ranked off the main thread
+    /// (each keystroke giving up on the last), the newest answer shown;
+    /// the other scopes and the outline at once, being small.
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        shown = outline.map { $0(query) } ?? search?(query, files.map { absolute($0) }, scope) ?? []
-        table.reloadData()
-        if !shown.isEmpty {
+        guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
+        let gen = generation.next()
+        let all = corpus + fileCandidates
+        let generation = self.generation
+        ranking.async { [weak self] in
+            guard let ranked = FinderRanking.rank(query, all, current: { generation.isCurrent(gen) }) else { return }
+            DispatchQueue.main.async {
+                guard let self, generation.isCurrent(gen) else { return }
+                self.show(self.items(ranked, query: query), query: query)
+            }
+        }
+    }
+
+    /// The same, here and now (opening, and for DebugControl).
+    private func refreshNow() {
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
+        _ = generation.next()
+        show(items(FinderRanking.rank(query, corpus + fileCandidates) ?? [], query: query), query: query)
+    }
+
+    private func items(_ ranked: [FinderCandidate], query: String) -> [FinderItem] {
+        var items = ranked.map { c -> FinderItem in
+            let run: () -> Void
+            if let path = c.path, c.action < 0 { run = { [weak self] in self?.openFile?(path) } }
+            else { let a = actions[c.action]; run = a }
+            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run)
+        }
+        if let first = special?(query) { items.insert(first, at: 0) }
+        return items
+    }
+
+    /// Rows shown: reloaded only if they changed, the first selected.
+    private func show(_ items: [FinderItem], query: String) {
+        let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note }
+        shown = items
+        if !same { table.reloadData() }
+        if !shown.isEmpty, !same || table.selectedRow < 0 {
             let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
             table.selectRowIndexes([row], byExtendingSelection: false)
             table.scrollRowToVisible(row)
         }
         updateHint()
         layout()
-    }
-
-    private func absolute(_ item: String) -> String {
-        item.hasPrefix("/") ? item : (root as NSString).appendingPathComponent(item)
     }
 
     // MARK: Keys
@@ -348,14 +554,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
 }
 
-/// An item in the list: its title, where it is under it, and a note at the right.
+/// An item in the list: its title, where it is under it, and a note at
+/// the right. Laid out by hand, its symbols cached: rows are made and
+/// filled with every keystroke.
 final class FileCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("FileCell")
     private let symbol = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
-    private var lead: NSLayoutConstraint!
+    private var level = 0
+    private var symbolName = ""
+    private static var images: [String: NSImage] = [:]
 
     init() {
         super.init(frame: .zero)
@@ -368,42 +578,44 @@ final class FileCell: NSTableCellView {
         note.font = .systemFont(ofSize: 11)
         note.textColor = .tertiaryLabelColor
         note.alignment = .right
-        for field in [title, detail] {
+        for field in [title, detail, note] {
             field.lineBreakMode = .byTruncatingMiddle
             field.maximumNumberOfLines = 1
             field.cell?.usesSingleLineMode = true
-            field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
-        for view in [symbol, title, detail, note] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
-        }
-        lead = symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
-        NSLayoutConstraint.activate([
-            lead,
-            symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
-            symbol.widthAnchor.constraint(equalToConstant: 22),
-            title.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 10),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: note.leadingAnchor, constant: -8),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 5),
-            detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            detail.trailingAnchor.constraint(lessThanOrEqualTo: note.leadingAnchor, constant: -8),
-            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
-            note.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            note.centerYAnchor.constraint(equalTo: centerYAnchor),
-            note.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
-        ])
+        for view in [symbol, title, detail, note] { addSubview(view) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0) {
-        lead.constant = 8 + CGFloat(level) * 22
-        symbol.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-        title.stringValue = text
-        detail.stringValue = folder
+        if name != symbolName {
+            symbolName = name
+            let image = Self.images[name] ?? { let i = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage(); Self.images[name] = i; return i }()
+            symbol.image = image
+        }
+        if title.stringValue != text { title.stringValue = text }
+        if detail.stringValue != folder { detail.stringValue = folder }
         detail.isHidden = folder.isEmpty
-        note.stringValue = text2
+        if note.stringValue != text2 { note.stringValue = text2 }
+        if self.level != level { self.level = level; needsLayout = true }
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height, w = bounds.width
+        let x = 8 + CGFloat(level) * 22
+        symbol.frame = NSRect(x: x, y: (h - 22) / 2, width: 22, height: 22)
+        let noteWidth = min(160, ceil(note.attributedStringValue.size().width) + 4)
+        note.frame = NSRect(x: w - 12 - noteWidth, y: (h - 15) / 2, width: noteWidth, height: 15)
+        let textX = x + 32, textWidth = max(0, note.frame.minX - 8 - textX)
+        if detail.isHidden {
+            title.frame = NSRect(x: textX, y: (h - 19) / 2, width: textWidth, height: 19)
+        } else {
+            title.frame = NSRect(x: textX, y: h - 5 - 19, width: textWidth, height: 19)
+            detail.frame = NSRect(x: textX, y: h - 5 - 19 - 1 - 16, width: textWidth, height: 16)
+        }
     }
 }
 

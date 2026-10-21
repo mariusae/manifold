@@ -1296,7 +1296,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// new note, attach…) are found by name beside the blocks. With
     /// nothing on the desk, the palette of verbs alone.
     @objc func newTab(_ sender: Any?) {
-        if allWorkspaces.isEmpty { showPalette() } else { openDocument(nil) }
+        if allWorkspaces.isEmpty { showPalette() } else { showGraphFinder() }
     }
 
     /// ⌥⌘T (and the first thing at launch): a new terminal in a new
@@ -2730,20 +2730,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Finding and opening
 
     func debugFinder(_ query: String) -> [String] { finder.debugQuery(query) }
+    func debugFinderTime(_ query: String) -> String {
+        if query == "open" {
+            let start = Date()
+            let (c, _) = finderCorpus(verbs: true)
+            return String(format: "snapshot of %d in %.1f ms", c.count, Date().timeIntervalSince(start) * 1000)
+        }
+        return finder.debugTime(query)
+    }
     func debugFinderChoose() { finder.debugChoose() }
     func debugFinderScope(_ n: Int) { finder.debugScope(n) }
     func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
     private lazy var finder: Finder = {
         let f = Finder()
-        f.search = { [weak self] query, files, scope in
+        f.search = { [weak self] query, scope in
             guard let self else { return [] }
             switch scope {
-            case .names: return self.finderItems(query, files: files)
+            case .names: return []
             case .contents: return self.finderContentItems(query)
             case .blocks: return self.finderBlockItems(query)
             }
         }
+        f.special = { [weak self] query in
+            // A web address typed: opened as a page, first.
+            guard query.hasPrefix("http://") || query.hasPrefix("https://") || (query.contains(".") && !query.contains(" ") && !query.contains("/") && query.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true) else { return nil }
+            let url = query.contains("://") ? query : "https://" + query
+            return FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web", run: { [weak self] in self?.open(url, from: self?.focusedShown?.id) })
+        }
+        f.openFile = { [weak self] path in self?.open(path, from: nil) }
         f.onQueryChanged = { [weak self] query, scope in self?.finderQueryChanged(query, scope) }
         return f
     }()
@@ -2837,21 +2852,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌘O: the finder, over everything, and the files where the focused
     /// placement is.
     @objc func openDocument(_ sender: Any?) {
-        let root = focusedCwd ?? NSHomeDirectory()
-        // The hosts' process trees, listed afresh, so they can be found too.
-        for c in hosts.all where c.isConnected { _ = c.processBlock() }
-        finder.show(root: root, over: window)
+        // The files where the focused block is: its folder (a terminal's
+        // working directory, a file's folder), on this Mac.
+        let root = focusedShown.flatMap { $0.placement.block.host == host.host ? ($0.block?.terminal?.cwd ?? $0.block?.place) : nil } ?? NSHomeDirectory()
+        let (corpus, actions) = finderCorpus(verbs: false)
+        let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
+        finder.show(corpus: corpus, actions: actions, filesUnder: root, knownPaths: known, scopes: true, placeholder: "Find a block, or a file in \(root.abbreviatingHome)…", over: window)
     }
 
-    private func finderItems(_ query: String, files: [String]) -> [FinderItem] {
-        // Each block found is ranked by how well the query names it (§3.5)
-        // — a title it is, starts, starts a word of, is in, or has the
-        // letters of in order, and only then what's around the block —
-        // and among equals by its distance from the focused block over the
-        // graph, then by recency. Only what is kept (§4) is found; what was
-        // closed and not yet collected comes at the end, marked recent.
-        var scored: [(score: Int, distance: Int, match: Int, recency: Int64, item: FinderItem)] = []
-        let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
+    /// ⌘T: the graph alone — blocks and workspaces, what's kept — and
+    /// what can be made, found by name (§3.5).
+    private func showGraphFinder() {
+        let (corpus, actions) = finderCorpus(verbs: true)
+        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scopes: false, placeholder: "Go to a block, or make one…", over: window)
+    }
+
+    /// What the finder finds by name (§3.5), taken once as it opens: every
+    /// block and workspace, each with what it's called (and words as good:
+    /// its kind, the agent at work in it), what's around it, how far it is
+    /// from the focused block and how lately seen — and with `verbs`, what
+    /// can be made. Ranked off the main thread as you type (FinderRanking).
+    /// What nothing keeps (§4) comes last, marked recent.
+    private func finderCorpus(verbs: Bool) -> ([FinderCandidate], [() -> Void]) {
+        var corpus: [FinderCandidate] = []
+        var actions: [() -> Void] = []
         let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 6) } ?? [:]
         let focusedBlock = focusedShown?.placement.block
         let here = Set(arrangement?.placements.map(\.block) ?? [])
@@ -2865,13 +2889,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for t in n.before + n.after { joinedAt[t.block] = max(joinedAt[t.block] ?? 0, t.last.wall) }
         }
         let running = runningPrograms()
-        for block in hosts.blocks {
+        for block in hosts.blocks where block.kind != .process {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
             var title = block.displayTitle
             let programs = running[block.id] ?? []
-            let secondary: String
-            let detail: String
+            let agent = block.agent
+            var secondary: String
+            var detail: String
             var note = ""
             switch block.kind {
             case .arrangement:
@@ -2887,7 +2912,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 note = block.text?.isDirty == true ? "edited" : ""
             case .terminal:
                 secondary = (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
-                detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
+                detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (agent.map { " · " + $0.name } ?? (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", ")))
                 note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "dormant" : (block.terminal?.busy == true ? "running" : "")
             case .directory:
                 secondary = block.path ?? ""
@@ -2899,11 +2924,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 secondary = block.path ?? ""
                 detail = block.kind == .pdf ? "PDF" : "Image"
             case .process:
-                secondary = "processes"
-                detail = "Processes"
+                continue
             case .agent:
                 secondary = "agent " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
-                detail = "Agent in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", "))
+                detail = "\(agent?.name ?? "Agent") in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
                 note = block.terminal?.pid == nil ? "ended" : ""
             case .git:
                 secondary = "git " + (block.path ?? "")
@@ -2915,20 +2939,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 secondary = block.web?.url ?? ""
                 detail = block.web?.url ?? "Web page"
             }
-            // The kind's name is as good as a word of the title: "terminal"
-            // finds the terminals, "note" the notes.
-            let kindWord = block.kind == .text ? (block.path == nil ? "Note" : "File") : block.kind.defaultTitle
-            let match = FileFinder.nameMatch(query, title: title + " " + kindWord, secondary: secondary + " " + block.id.host.raw)
-            guard match > 0 else { continue }
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
             }
-            let kept = reachable.contains(block.id)
             // How far from where you are: here is nearest, then by the
             // graph; what nothing reaches comes last of all.
             var distance = near[block.id] ?? 50
-            if !kept {
-                // Closed, not yet collected: chosen, it is brought back.
+            if !reachable.contains(block.id) {
                 note = "recent"
                 distance = 100
             } else if block.isPinned, note.isEmpty {
@@ -2936,79 +2953,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if block.kind == .arrangement {
                 if allWorkspaces.contains(block.id) { distance = min(distance, 2) }
             } else if here.contains(block.id) {
-                distance = block.id == focusedBlock ? 0 : 1
+                distance = block.id == focusedBlock ? 1000 : 1
                 if note.isEmpty { note = block.id == focusedBlock ? "here, focused" : "here" }
             } else if let d = near[block.id], d > 0 {
                 if note.isEmpty { note = d == 1 ? "linked" : "near" }
             } else if onDesk.contains(block.id) {
                 distance = min(distance, 3)
             }
-            // How long since it was last seen, after the note.
             let seen = Age.short(entry.lastSeen)
             note = note.isEmpty ? seen : note + " · " + seen
-            // What the query names, in bands: the whole title, its start, a
-            // word's start, all its words, somewhere in it, its letters in
-            // order, only around it.
-            let band = match >= 600 ? 6 : match >= 520 ? 5 : match >= 500 ? 4 : match >= 480 ? 3 : match >= 400 ? 2 : match >= 200 ? 1 : 0
-            // The focused block is where you are: last among its equals.
+            // Words as good as the title's own: the kind ("terminal", "note"),
+            // and the agent at work in it ("claude", "Claude Code").
+            let kindWord = block.kind == .text ? (block.path == nil ? "Note" : "File") : block.kind.defaultTitle
+            let agentWords = agent.map { " " + $0.command + " " + $0.name } ?? ""
+            secondary += " " + block.id.host.raw
             let id = block.id
-            let kind = block.kind
-            let path = block.path
-            scored.append((band * 1000, block.id == focusedBlock ? 1000 : distance, match, max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), FinderItem(
-                symbol: Theme.symbolName(for: kind, path: path), title: title, detail: detail + remote, note: note,
-                run: { [weak self] in self?.recall(id) })))
+            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block.kind, path: block.path), title: title, detail: detail + remote, note: note,
+                                          name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
+                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count))
+            actions.append { [weak self] in self?.recall(id) }
         }
-        // The processes under a terminal's or agent's shell (§7.5): found by
-        // command or path, each going to its block.
-        if !query.isEmpty {
-            for block in hosts.blocks where block.kind == .process {
-                let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
-                for e in block.processes?.entries ?? [] {
-                    guard let under = e.block else { continue }
-                    let m = FileFinder.nameMatch(query, title: e.command, secondary: e.path ?? "")
-                    guard m > 0 else { continue }
-                    let command = e.command.count > 100 ? String(e.command.prefix(100)) + "…" : e.command
-                    scored.append((0, 60, m, block.processes?.listedAt?.wall ?? 0, FinderItem(
-                        symbol: "cpu", title: command, detail: (e.path?.abbreviatingHome ?? "pid \(e.pid)") + remote,
-                        note: hosts.block(under)?.displayTitle ?? "", run: { [weak self] in self?.goTo(under) })))
-                }
-            }
-        }
-        // The verbs (new terminal, new note, attach…), found by name among
-        // the blocks: after blocks that match as well.
-        if !query.isEmpty {
+        if verbs {
             for item in paletteItems() where item.title != "Find Anything…" {
-                let m = FileFinder.nameMatch(query, title: item.title, secondary: item.subtitle)
-                guard m >= 200 else { continue }
-                let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : 1
-                let run = item.run
-                scored.append((band * 1000, 45, m, 0, FinderItem(symbol: item.symbol, title: item.title, detail: item.subtitle, note: "do", run: run)))
+                corpus.append(FinderCandidate(symbol: item.symbol, title: item.title, detail: item.subtitle, note: "do",
+                                              name: item.title, around: item.subtitle, distance: 45, recency: 0, action: actions.count))
+                actions.append(item.run)
             }
         }
-        // Files not yet blocks: below the blocks; the system's temporary
-        // folders lowest of all, being mostly scratch.
-        for file in files where !known.contains(file) {
-            let name = (file as NSString).lastPathComponent
-            let m = FileFinder.nameMatch(query, title: name, secondary: file)
-            guard m > 0 else { continue }
-            let scratch = file.hasPrefix("/tmp/") || file.hasPrefix("/private/tmp/") || file.hasPrefix("/private/var/folders/")
-            scored.append((0, scratch ? 80 : 70, m, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
-                                                         detail: (file as NSString).deletingLastPathComponent.abbreviatingHome, note: "file",
-                                                         run: { [weak self] in self?.open(file, from: nil) })))
-        }
-        scored.sort { a, b in
-            if a.score != b.score { return a.score > b.score }
-            if a.distance != b.distance { return a.distance < b.distance }
-            if a.match != b.match { return a.match > b.match }
-            return a.recency > b.recency
-        }
-        var items = Array(scored.prefix(60).map(\.item))
-        if query.hasPrefix("http://") || query.hasPrefix("https://") || (query.contains(".") && !query.contains(" ") && !query.contains("/") && query.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true) {
-            let url = query.contains("://") ? query : "https://" + query
-            items.insert(FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web",
-                                    run: { [weak self] in self?.open(url, from: self?.focusedShown?.id) }), at: 0)
-        }
-        return items
+        return (corpus, actions)
     }
 
     /// Recall, from the finder: an arrangement onto the desk and selected;

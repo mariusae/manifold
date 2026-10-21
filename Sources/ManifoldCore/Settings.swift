@@ -123,6 +123,22 @@ public enum AgentCatalog {
         public let name: String
     }
 
+    /// The agent a command line starts, by its program's name ("claude",
+    /// "/usr/local/bin/codex --foo", "npx @openai/codex"), if one is known.
+    public static func agent(inCommand line: String) -> Agent? {
+        let words = line.split(separator: " ").map { String($0).lastPathComponent.lowercased() }
+        for w in words.prefix(3) {
+            if let a = known.first(where: { w == $0.command || w.hasPrefix($0.command + "-") || w.hasPrefix($0.command + "@") }) { return a }
+        }
+        return nil
+    }
+
+    /// The agent a status names as its app ("claude-code", "codex"), if known.
+    public static func agent(namedByApp app: String) -> Agent? {
+        let a = app.lowercased()
+        return known.first { a == $0.command || a.hasPrefix($0.command + "-") || a == $0.name.lowercased() }
+    }
+
     public static let known: [Agent] = [
         Agent(command: "claude", name: "Claude Code"),
         Agent(command: "codex", name: "Codex"),

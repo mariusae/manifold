@@ -604,12 +604,21 @@ indexes of every host it is attached to, so backlinks cross hosts.
 
 ### 6.2 Recall
 
-One box (⌘O, and ⌘T is the same box) over everything every attached
-host keeps: blocks by title and path, workspaces by name, processes,
-files under the project — and the verbs (new terminal, new note,
-attach a host, launch an agent), found by name among them, marked
-*do*. It ranks as §3.5 says, and shows each result's state, host, and
-where it is. Alongside it:
+One box, two ways in. **⌘T** over the graph: blocks by title and path,
+workspaces by name — and the verbs (new terminal, new note, attach a
+host, launch an agent), found by name among them, marked *do*. **⌘O**
+over the same blocks and the files in the focused block's folder. It
+ranks as §3.5 says, and shows each result's state, host, and where it
+is. A block an agent works in answers to the agent's names (its
+command, its product name, from the block's command, its status hooks,
+or a command running in it) as surely as to its title.
+
+It must never stutter. What can be found is taken once as it opens (a
+snapshot of the blocks, a millisecond or so), files are listed in the
+background and kept per folder, and every keystroke ranks the snapshot
+off the main thread, giving up on the keystroke before; the main thread
+only ever fills sixty rows, laid out by hand. The panel grows to fit
+and never shrinks under the pointer while open. Alongside it:
 
 - **Back and forward** along the trail, across workspaces (§3.5).
 - **The neighborhood map** for the focused block: its links both ways,

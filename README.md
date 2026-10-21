@@ -244,6 +244,17 @@ Every block has a log: its edits, where it was placed, what it was named.
 What you aren't using is tidied away rather than closed, and comes back
 when you find it again.
 
+- **⌘T finds the graph**: every block and workspace kept, and what can
+  be made (new terminal, new note, attach a host, launch an agent),
+  marked *do*. **⌘O** finds the same blocks and the files in the focused
+  block's folder (a terminal's working directory, a file's folder),
+  listed in the background and kept a while, so asking again is
+  instant. Both rank off the main thread as you type, each keystroke
+  giving up on the last, so typing never waits; the panel grows to fit
+  and doesn't shrink under you. An agent is found by what it is: a
+  block running Claude Code, Codex or another known agent answers to
+  "claude", "codex" as surely as to its own title, and says so
+  ("Terminal in ~/src · Claude Code").
 - **⌘O finds anything** the host keeps. What the query *names* comes
   first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in
@@ -251,9 +262,8 @@ when you find it again.
   nearest to where you are over the graph — this workspace, then what's
   linked to the focused block, then step by step outward — and the most
   recently seen; with nothing typed, that is the whole order. Files not
-  yet blocks come below the blocks (the system's scratch folders last),
-  and the processes under the host's terminals and agents, by command,
-  each going to its block. Each row says at the right where the block
+  yet blocks come below the blocks (the system's scratch folders last).
+  Each row says at the right where the block
   is — here, linked, near, kept, or *recent* for one closed
   and not yet collected, which choosing brings back — and how long
   since it was last seen. A
