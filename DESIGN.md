@@ -452,8 +452,9 @@ the graph has to capture everything any organization needs:
 | **Desk** | workspaces and what they place (§3): one shape, nothing folding by itself, the current workspace barred at its left, a workspace closed by its chevron staying closed | the desk's workspaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 | **Inbox** | the blocks whose status wants attention (§3.7), by host and workspace | hosts |
+| **Search** | the words typed, in the contents of every kept block — a text's lines, a terminal's commands, names, places, addresses — each block with its matches beneath, pushed over the tree as Kept is | blocks |
 
-Three, no more. The links live on the tile's badge and its fan, and in
+Three, and Search beside them. The links live on the tile's badge and its fan, and in
 the neighborhood map (⌥⌘N, or the badge's menu) as the one big view
 of them; what's working, done or needing you is the counts in the
 sidebar's bar, which open the Inbox, and the state views; and time is

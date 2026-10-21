@@ -66,7 +66,7 @@ final class SidebarView: NSView {
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
-    private var pushed: Bool { organization == .kept || organization == .closed }
+    private var pushed: Bool { organization == .kept || organization == .closed || organization == .search }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -115,7 +115,7 @@ final class SidebarView: NSView {
 
         searchButton.target = self
         searchButton.action = #selector(toggleFilter)
-        searchButton.toolTip = "Filter"
+        searchButton.toolTip = "Search every block (⌥⌘4)"
         byButton.target = self
         byButton.action = #selector(toggleBy)
         inboxButton.target = self
@@ -202,7 +202,24 @@ final class SidebarView: NSView {
         keptRow.current = org == .kept
         closedRow.current = org == .closed
         pushedTitle.stringValue = org.title
+        searchButton.contentTintColor = org == .search ? Theme.text : Theme.secondaryText
+        // Search is its own place (pushed, as Kept is): the field under its
+        // name, taking the keyboard; left, the field goes, emptied.
+        let searching = org == .search
+        if searching != filterShown {
+            filterShown = searching
+            filter.isHidden = !searching
+            if !searching { filter.stringValue = "" }
+        }
+        filter.placeholderString = "Search every block"
+        if searching { DispatchQueue.main.async { [weak self] in guard let self else { return }; self.window?.makeFirstResponder(self.filter) } }
         needsLayout = true
+    }
+
+    /// What a pushed list says under its name (Search: how much was found).
+    func setPushedSubtitle(_ text: String) {
+        guard organization == .search else { return }
+        pushedSubtitle.stringValue = text
     }
 
     @objc private func backClicked() { chooseOrganization(.desk) }
@@ -214,6 +231,7 @@ final class SidebarView: NSView {
         closedRow.count = closed
         keptRow.isHidden = kept == 0 && organization != .kept
         closedRow.isHidden = closed == 0 && organization != .closed
+        guard organization == .kept || organization == .closed else { return needsLayout = true }
         let n = organization == .kept ? kept : closed
         pushedSubtitle.stringValue = organization == .kept
             ? (n == 1 ? "1 kept off the desk" : "\(n) kept off the desk")
@@ -229,6 +247,13 @@ final class SidebarView: NSView {
 
     var filterText: String { filter.isHidden ? "" : filter.stringValue }
 
+    /// Debugging: as if typed into the field; and whether it has the keyboard.
+    func debugTypeFilter(_ text: String) -> String {
+        filter.stringValue = text
+        filterTyped()
+        return window?.firstResponder === filter.currentEditor() ? "typed (field has the keyboard)" : "typed"
+    }
+
     private func chooseOrganization(_ org: Organization) {
         setOrganization(org)
         delegate?.sidebarOrganizationChanged(org)
@@ -238,16 +263,13 @@ final class SidebarView: NSView {
     @objc private func inboxClicked() { chooseOrganization(organization == .inbox ? .desk : .inbox) }
 
     /// The filter field shown (and taking the keyboard), or put away.
+    /// The search button: Search, pushed over the tree; again, back.
     @objc func toggleFilter() {
-        filterShown.toggle()
-        filter.isHidden = !filterShown
-        searchButton.contentTintColor = filterShown ? Theme.text : Theme.secondaryText
-        needsLayout = true
-        if filterShown {
-            window?.makeFirstResponder(filter)
-        } else {
-            filter.stringValue = ""
+        if organization == .search {
+            chooseOrganization(.desk)
             delegate?.sidebarFilterChanged("")
+        } else {
+            chooseOrganization(.search)
         }
     }
 

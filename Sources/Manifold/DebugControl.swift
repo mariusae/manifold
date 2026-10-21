@@ -107,6 +107,7 @@ enum DebugControl {
             }
             return "ok"
         case "sidebar":
+            if arg.hasPrefix("search ") { return wc?.debugSidebarView.debugTypeFilter(String(arg.dropFirst(7))) ?? "no window" }
             if arg.hasPrefix("width "), let w = Double(arg.dropFirst(6)) {
                 // As if the resize handle were dragged there and let go.
                 wc?.sidebarResize(to: CGFloat(w))

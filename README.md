@@ -18,8 +18,12 @@ and Mona Sans (bundled).
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Along the bottom of the sidebar run a search
-  (the filter field, shown and hidden), a switch between by-workspace
+  top to move the window. Along the bottom of the sidebar run **Search**
+  (⌥⌘4: pushed over the tree as Kept is, a field under its name, and
+  the words found in the contents of every block — a text's lines, a
+  terminal's commands, a block's name, place or address — each block
+  with what matched beneath it, clicked to go there: the line in its
+  editor or page, the command in its terminal), a switch between by-workspace
   and by-file, the inbox, and, at the right, counts of what needs you,
   is working and is done and not yet read, which open the Inbox. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each

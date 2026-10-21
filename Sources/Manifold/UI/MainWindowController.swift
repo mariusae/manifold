@@ -996,6 +996,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    var debugSidebarView: SidebarView { sidebar }
     var debugOutlineLens: OutlineLensView? { content.views.compactMap { $0 as? OutlineLensView }.first }
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
     var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
@@ -1895,6 +1896,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
     @objc func organizeByInbox(_ sender: Any?) { setOrganization(.inbox) }
+    @objc func searchBlocks(_ sender: Any?) { setOrganization(organization == .search ? .desk : .search) }
 
     func setOrganization(_ org: Organization, show: Bool = true) {
         var state = hosts.state.window
@@ -2110,7 +2112,111 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .inbox: return inboxTree(filter)
         case .kept: return keptTree(filter)
         case .closed: return closedTree(filter)
+        case .search: return searchTree(filter)
         }
+    }
+
+    /// Search (§3.6): the words typed, in the contents of every block on
+    /// every host — a text's lines, a terminal's commands, a page's title
+    /// and address, a block's own name and place — each block a row with
+    /// what matched under it, clicked to go there (a line in its editor,
+    /// a command in its terminal).
+    private func searchTree(_ query: String) -> ([OrgNode], Set<String>) {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else {
+            sidebar.setPushedSubtitle("The contents of every block")
+            return ([OrgNode(id: "search:hint", title: "Type to search every block", symbol: "text.magnifyingglass")], [])
+        }
+        let reachable = hosts.reachable()
+        var open: Set<String> = []
+        var rows: [(rank: Int, seen: Int64, node: OrgNode)] = []
+        var lines = 0
+        func snippet(_ s: Substring) -> String {
+            // A Markdown link as its words, as the page shows it.
+            let t = s.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+            guard let r = t.lowercased().range(of: q), t.count > 90 else { return t }
+            let start = t.distance(from: t.startIndex, to: r.lowerBound)
+            return (start > 30 ? "…" : "") + String(t.dropFirst(max(0, start - 30)).prefix(90))
+        }
+        for c in hosts.all {
+            for b in c.node.blocks where b.kind != .arrangement && reachable.contains(b.id) {
+                var hits: [OrgNode] = []
+                let id = b.id
+                let prefix = "search/\(id)"
+                if let text = b.text?.text.string {
+                    var n = 0
+                    for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                        n += 1
+                        guard hits.count < 40, raw.lowercased().contains(q) else { continue }
+                        let line = n
+                        let hit = OrgNode(id: "\(prefix)/\(line)", title: snippet(raw), symbol: "text.alignleft", detail: "line \(line)")
+                        hit.action = { [weak self] in self?.goToLine(line, in: id) }
+                        hits.append(hit)
+                    }
+                }
+                for cmd in b.terminal?.commands ?? [] where hits.count < 40 && cmd.text.lowercased().contains(q) {
+                    let cid = cmd.id
+                    let hit = OrgNode(id: "\(prefix)/cmd\(cid)", title: "$ " + snippet(Substring(cmd.text)), symbol: "text.alignleft",
+                                      detail: cmd.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "running")
+                    hit.trailing = Age.short(cmd.at)
+                    hit.action = { [weak self] in
+                        self?.goTo(id)
+                        self?.goToCommand(cid, in: id)
+                    }
+                    hits.append(hit)
+                }
+                let named = [b.displayTitle, b.path, b.place, b.web?.url].compactMap { $0 }.contains { $0.lowercased().contains(q) }
+                guard named || !hits.isEmpty else { continue }
+                lines += hits.count
+                let n = node(for: b, id: prefix, detail: b.place?.abbreviatingHome ?? b.web?.url ?? "")
+                n.isGroup = !hits.isEmpty
+                n.style = .row
+                n.loadChildren = nil
+                let group = OrgNode(id: prefix, block: b.id, title: n.title, symbol: n.symbol, detail: n.detail, count: hits.isEmpty ? nil : hits.count,
+                                    isGroup: !hits.isEmpty, children: hits)
+                group.look = n.look
+                group.tooltip = n.tooltip
+                if !hits.isEmpty { open.insert(prefix) }
+                // Named by it first, then by how many lines say it, then the latest seen.
+                let rank = (named ? 1000 : 0) + min(hits.count, 999)
+                rows.append((rank, c.node.graph.seen(b.id)?.wall ?? 0, group))
+            }
+        }
+        rows.sort { $0.rank != $1.rank ? $0.rank > $1.rank : $0.seen > $1.seen }
+        let blocks = rows.count
+        sidebar.setPushedSubtitle(blocks == 0 ? "Nothing found" : "\(blocks) block\(blocks == 1 ? "" : "s")" + (lines > 0 ? ", \(lines) line\(lines == 1 ? "" : "s")" : ""))
+        if rows.isEmpty { return ([OrgNode(id: "search:none", title: "Nothing found", symbol: "circle.dashed")], []) }
+        return (rows.prefix(200).map(\.node), open)
+    }
+
+    /// A text block gone to, at a line: its editor here focused there, or
+    /// one brought here.
+    private func goToLine(_ line: Int, in block: BlockID) {
+        guard let b = hosts.block(block) else { return }
+        if let a = arrangement, let p = a.placements(of: block).first(where: { $0.lens == .editor }), let e = views[p.id] as? EditorView {
+            focus(p.id)
+            e.select(line: line)
+            warpPointerToFocus()
+            return
+        }
+        // Shown as a page here: the page scrolled to the line.
+        if let a = arrangement, let p = a.placements(of: block).first(where: { $0.lens == .preview }), let m = views[p.id] as? MarkdownView {
+            focus(p.id)
+            m.reveal(line: line)
+            warpPointerToFocus()
+            return
+        }
+        pendingJump = (b.path ?? "", line, nil)
+        show(block, lens: .editor, .here)
+        if b.path == nil {
+            // A note has no path to jump by: its editor, once made, goes there.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, let p = self.arrangement?.placements(of: block).first(where: { $0.lens == .editor }), let e = self.views[p.id] as? EditorView else { return }
+                e.select(line: line)
+            }
+        }
+        warpPointerToFocus()
     }
 
     /// What's kept off the desk on a host (§4): named workspaces, and

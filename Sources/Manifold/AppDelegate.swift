@@ -259,7 +259,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(fontsItem)
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
-                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3")] {
+                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3"),
+                                  ("Search", #selector(MainWindowController.searchBlocks(_:)), "4")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")

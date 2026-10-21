@@ -9,6 +9,8 @@ enum Organization: String, CaseIterable {
     /// The two lists at the sidebar's foot (§4): what's kept off the
     /// desk, and what's closed and not yet collected.
     case kept, closed
+    /// What the words typed are in: the contents of every block.
+    case search
 
     var title: String {
         switch self {
@@ -17,6 +19,7 @@ enum Organization: String, CaseIterable {
         case .inbox: "Inbox"
         case .kept: "Kept"
         case .closed: "Recently Closed"
+        case .search: "Search"
         }
     }
 
@@ -27,6 +30,7 @@ enum Organization: String, CaseIterable {
         case .inbox: "tray"
         case .kept: "pin"
         case .closed: "clock.arrow.circlepath"
+        case .search: "magnifyingglass"
         }
     }
 }
