@@ -655,9 +655,12 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// In the inbox (§3.7): something to attend to — set when its status
     /// comes to need attention, cleared by hand.
     public var inbox: Bool?
+    /// Pinned (§4): kept whatever refers to it, until unpinned.
+    public var pinned: Bool?
 
     public var isArchived: Bool { archived == true }
     public var isInInbox: Bool { inbox == true }
+    public var isPinned: Bool { pinned == true }
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
         self.id = id

@@ -75,9 +75,9 @@ public struct Appearance: Codable, Equatable, Sendable {
 /// Policy: every number the core reads about when things are collected and
 /// how much history is kept. None of these is a constant in the model.
 public struct Settings: Codable, Equatable, Sendable {
-    /// Minutes after which a placement unseen (and not held) leaves an
-    /// unnamed arrangement; 0 never.
-    public var collectAfterMinutes: Int = 60
+    /// Minutes a block stays once nothing reaches it (§4) before it is
+    /// collected; 0 never.
+    public var collectAfterMinutes: Int = 30
     /// Hours after which a terminal off screen with an idle shell goes
     /// dormant (its shell ended, its transcript kept); 0 never.
     public var terminalDormantAfterHours: Int = 8
@@ -99,7 +99,7 @@ public struct Settings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        collectAfterMinutes = (try? c.decodeIfPresent(Int.self, forKey: .collectAfterMinutes)) ?? 60
+        collectAfterMinutes = (try? c.decodeIfPresent(Int.self, forKey: .collectAfterMinutes)) ?? 30
         terminalDormantAfterHours = (try? c.decodeIfPresent(Int.self, forKey: .terminalDormantAfterHours)) ?? 8
         textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
         terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30

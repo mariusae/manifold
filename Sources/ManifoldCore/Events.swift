@@ -122,16 +122,41 @@ public struct Registry: Codable, Equatable, Sendable {
     /// The trail (§3.5): blocks gone to on this host's desk, in order, as
     /// the host saw them focused and selected; so many, the oldest dropped.
     public var trail: [Step] = []
+    /// Other hosts' standing references to blocks here (§4), by id.
+    public var holds: [String: Hold] = [:]
     public static let trailLimit = 20_000
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case blocks, trail }
+    enum CodingKeys: String, CodingKey { case blocks, trail, holds }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         blocks = try c.decode([BlockID: RegistryEntry].self, forKey: .blocks)
         trail = (try? c.decodeIfPresent([Step].self, forKey: .trail)) ?? []
+        holds = (try? c.decodeIfPresent([String: Hold].self, forKey: .holds)) ?? [:]
+    }
+}
+
+/// A hold (§4): a strong reference to a block on this host from another
+/// host — a workspace there placing it, a link there made by hand to it,
+/// a desk there listing a workspace of this host — kept on this host so
+/// its collector knows, as a hazard pointer. Keyed by the edge it stands
+/// for, so the holder can take it back when the edge goes.
+public struct Hold: Codable, Equatable, Sendable, Identifiable {
+    /// The placement's, link's, or desk entry's id on the holder.
+    public var id: String
+    /// The block here that is referred to.
+    public var block: BlockID
+    /// The host that refers to it.
+    public var holder: HostID
+    public var at: Stamp
+
+    public init(id: String, block: BlockID, holder: HostID, at: Stamp) {
+        self.id = id
+        self.block = block
+        self.holder = holder
+        self.at = at
     }
 }
 
@@ -280,6 +305,8 @@ public enum Event: Codable, Equatable, Sendable {
     case archived(Bool)
     /// Into the inbox, or out of it (§3.7).
     case inbox(Bool)
+    /// Pinned (§4): a root of its own, never collected while it is.
+    case pinned(Bool)
 
     // Desk.
     case order([BlockID])
@@ -298,6 +325,10 @@ public enum Event: Codable, Equatable, Sendable {
     case seen([BlockID], at: Stamp)
     case life(BlockID, LifeState, held: Bool)
     case unregister(BlockID)
+    /// Another host's standing reference to a block here (§4): a root
+    /// on this host, until released.
+    case hold(Hold)
+    case release(String)
 
     // Links.
     case link(Link)
@@ -372,6 +403,7 @@ extension Block {
                 if id == rootStatusID || id.isEmpty { inbox = nil }
             }
         case let .archived(on): archived = on ? true : nil
+        case let .pinned(on): pinned = on ? true : nil
         case let .outlineSubject(b):
             if outline == nil { outline = OutlineState() }
             outline?.subject = b
@@ -771,6 +803,11 @@ extension Registry {
             blocks[id]?.held = held
         case let .unregister(id):
             blocks.removeValue(forKey: id)
+            holds = holds.filter { $0.value.block != id }
+        case let .hold(h):
+            holds[h.id] = h
+        case let .release(id):
+            holds.removeValue(forKey: id)
         case let .step(s):
             if trail.last?.block != s.block { trail.append(s) }
             if trail.count > Self.trailLimit { trail.removeFirst(trail.count - Self.trailLimit) }

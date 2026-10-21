@@ -159,8 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         item(file, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         file.addItem(.separator())
-        item(file, "Take Off This Column", #selector(MainWindowController.closePaneOrTab(_:)), "w")
+        item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
+        item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
         item(file, "Archive Block", #selector(MainWindowController.archiveFocused(_:)), "w", [.command, .shift])
+        item(file, "Pin or Unpin Block", #selector(MainWindowController.togglePin(_:)), "")
         item(file, "Add to or Remove from Inbox", #selector(MainWindowController.toggleInbox(_:)), "i", [.command, .shift])
         item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
@@ -217,7 +219,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(arrangement, "Stash Tile", #selector(MainWindowController.stashTile(_:)), "m")
         item(arrangement, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         arrangement.addItem(.separator())
-        item(arrangement, "History…", #selector(MainWindowController.showHistory(_:)), "y")
         item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
 
         let view = submenu(main, "View")

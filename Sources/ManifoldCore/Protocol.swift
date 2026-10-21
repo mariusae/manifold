@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 29
+public let protocolVersion = 30
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -127,6 +127,11 @@ public enum Proposal: Codable, Sendable {
     case archive(BlockID, Bool)
     /// Into the inbox, or out of it, by hand (§3.7).
     case inbox(BlockID, Bool)
+    /// Pinned, or unpinned (§4): a root of its own.
+    case pin(BlockID, Bool)
+    /// Another host's reference to a block here, taken or released (§4).
+    case hold(Hold)
+    case release(String)
     /// Makes an outline block of another (§3.8), linked to it as its source.
     case outline(block: BlockID, of: BlockID)
     /// A block gone for good — an outline whose tile closed: its log

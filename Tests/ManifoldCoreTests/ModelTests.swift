@@ -1383,3 +1383,45 @@ private final class Seen: @unchecked Sendable {
     node.append(.link(Link(from: a, to: b, kind: .found, at: at(11))), to: .links(host), at: at(11))
     #expect(node.graph.edges(from: a, kind: .link(.found)).count == 1)
 }
+
+@Test func reachabilityFollowsStrongEdgesFromRoots() {
+    let node = Node()
+    let host = HostID("h"), other = HostID("o")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    let desk = BlockID(host: host), named = BlockID(host: host), off = BlockID(host: host)
+    let t = BlockID(host: host), f = BlockID(host: host), n = BlockID(host: host), g = BlockID(host: host)
+    let pinned = BlockID(host: host), archived = BlockID(host: host), held = BlockID(host: host), loose = BlockID(host: host)
+    for (id, kind) in [(t, BlockKind.terminal), (f, .text), (n, .text), (g, .text), (pinned, .text), (archived, .text), (held, .text), (loose, .text)] {
+        put(.create(kind: kind, title: nil, path: nil), to: .block(id), at: 1)
+    }
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(desk), at: 2)
+    put(.create(kind: .arrangement, title: "kept", path: nil), to: .block(named), at: 2)
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(off), at: 2)
+    put(.order([desk]), to: .desk(host), at: 3)
+    // On the desk: t; t links f by hand, f opened g (weak); the named
+    // workspace off the desk places n; the unnamed one off the desk
+    // places loose.
+    put(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(desk), at: 4)
+    put(.link(Link(from: t, to: f, kind: .linked, at: stamp(5))), to: .links(host), at: 5)
+    put(.link(Link(from: f, to: g, kind: .opened, at: stamp(6))), to: .links(host), at: 6)
+    put(.place(Placement(block: n, lens: .editor), column: 0, at: 0), to: .block(named), at: 7)
+    put(.place(Placement(block: loose, lens: .editor), column: 0, at: 0), to: .block(off), at: 8)
+    put(.pinned(true), to: .block(pinned), at: 9)
+    put(.archived(true), to: .block(archived), at: 9)
+    put(.hold(Hold(id: "x", block: held, holder: other, at: stamp(10))), to: .registry(host), at: 10)
+
+    #expect(node.roots(on: host) == [desk, named, pinned, archived, held])
+    let r = node.reachable(on: host)
+    #expect(r.contains(t) && r.contains(f) && r.contains(n) && r.contains(pinned) && r.contains(archived) && r.contains(held))
+    #expect(!r.contains(g))      // only opened: weak
+    #expect(!r.contains(off) && !r.contains(loose))
+
+    // The link by hand taken away, f goes; the hold released, held goes.
+    let link = node.links(host).links.first { $0.to == f }!
+    put(.unlink(link.id), to: .links(host), at: 11)
+    put(.release("x"), to: .registry(host), at: 12)
+    let r2 = node.reachable(on: host)
+    #expect(!r2.contains(f) && !r2.contains(held) && r2.contains(t))
+    #expect(EdgeKind.placed.isStrong && EdgeKind.link(.linked).isStrong && !EdgeKind.link(.opened).isStrong && !EdgeKind.contains.isStrong)
+}

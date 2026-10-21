@@ -392,6 +392,28 @@ enum DebugControl {
             default: return "usage: sv list|overview|leave"
             }
             return "ok"
+        case "holds":
+            // Every host's holds, as its registry has them.
+            guard let wc else { return "no window" }
+            return wc.hosts.all.map { c in "\(c.host): " + c.registry.holds.values.map { "\($0.id) \($0.block) by \($0.holder)" }.joined(separator: " | ") }.joined(separator: "\n")
+        case "collectafter":
+            // "collectafter <minutes>": the local host's grace, for trying collection out.
+            guard let wc, let m = Int(arg) else { return "usage: collectafter <minutes>" }
+            var s = wc.hosts.local.desk.settings
+            s.collectAfterMinutes = m
+            wc.hosts.local.setSettings(s)
+            return "ok"
+        case "closed":
+            // The closed stack, and what nothing reaches.
+            return wc?.debugClosed ?? "no window"
+        case "reopen":
+            wc?.reopenClosed(nil)
+            return "ok"
+        case "toast":
+            return wc?.debugToast ?? "none"
+        case "pin":
+            wc?.togglePin(nil)
+            return "ok"
         case "attend":
             // As focusing the block with the window key does: dismisses
             // its done or failed status.

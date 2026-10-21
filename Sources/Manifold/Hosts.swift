@@ -195,6 +195,73 @@ final class Hosts {
     var links: [Link] { all.flatMap { $0.links.links } }
     func isConnected(_ host: HostID) -> Bool { client(host)?.isConnected ?? false }
 
+    // MARK: Keeping (§4), across hosts
+
+    /// The roots as this client sees them: every host's own, and the
+    /// workspaces its desks list from other hosts.
+    func roots() -> Set<BlockID> {
+        var roots: Set<BlockID> = []
+        for c in all {
+            roots.formUnion(c.node.roots(on: c.host))
+            roots.formUnion(c.desk.order)
+        }
+        return roots
+    }
+
+    /// Everything the roots reach over strong edges, across hosts: a
+    /// block's edges are in its own host's graph (its placements in its
+    /// workspace's host's, its links by hand in its own links shard).
+    func reachable() -> Set<BlockID> {
+        local.node.graph.reachable(from: roots()) { [weak self] b in
+            self?.client(of: b)?.node.graph.strongEdges(from: b) ?? []
+        }
+    }
+
+    /// Whether a block exists and nothing reaches it: closed, and to be
+    /// collected unless something takes it up again.
+    func isUnreached(_ block: BlockID, reachable: Set<BlockID>) -> Bool {
+        self.block(block) != nil && !reachable.contains(block)
+    }
+
+    func pin(_ block: BlockID, _ on: Bool) { propose(.pin(block, on)) }
+
+    /// Holds (§4): each strong reference from one host's shards to a
+    /// block on another — a workspace placing it, a link by hand to it,
+    /// a desk listing a workspace of it — is told to that host, keyed by
+    /// the edge, and taken back when the edge goes or its source is no
+    /// longer reached. Only what this client can see is reconciled; the
+    /// holds of hosts it doesn't have are left alone.
+    func reconcileHolds() {
+        guard remotes.count > 0 else { return }
+        let reachable = reachable()
+        let ours = Set(all.map(\.host))
+        var wanted: [HostID: [String: Hold]] = [:]
+        for c in all {
+            let s = c.host
+            for b in c.node.blocks where b.id.host == s && reachable.contains(b.id) {
+                guard let a = b.arrangement else { continue }
+                for p in a.placements where p.block.host != s {
+                    wanted[p.block.host, default: [:]][p.id] = Hold(id: p.id, block: p.block, holder: s, at: c.clock.now())
+                }
+            }
+            for l in c.links.links where l.kind == .linked && l.to.host != s && l.from.host == s && reachable.contains(l.from) {
+                wanted[l.to.host, default: [:]][l.id] = Hold(id: l.id, block: l.to, holder: s, at: c.clock.now())
+            }
+            for id in c.desk.order where id.host != s {
+                let hid = "desk:\(s.raw):\(id.ulid)"
+                wanted[id.host, default: [:]][hid] = Hold(id: hid, block: id, holder: s, at: c.clock.now())
+            }
+        }
+        for r in all where r.isConnected {
+            let have = r.registry.holds.filter { ours.contains($0.value.holder) }
+            let want = wanted[r.host] ?? [:]
+            for (id, h) in want where have[id].map({ $0.block != h.block || $0.holder != h.holder }) ?? true {
+                if r.block(h.block) != nil { r.propose(.hold(h)) }
+            }
+            for id in have.keys where want[id] == nil { r.propose(.release(id)) }
+        }
+    }
+
     // MARK: The graph, across hosts
 
     /// A block's neighborhood over every host's graph: its placements are
@@ -265,8 +332,16 @@ final class Hosts {
                 client(host)?.propose(.seen(group))
             }
             done?(nil)
-        case let .attend(block), let .clearStatus(block), let .archive(block, _), let .inbox(block, _), let .outline(block, _), let .discard(block):
+        case let .attend(block), let .clearStatus(block), let .archive(block, _), let .inbox(block, _), let .pin(block, _),
+             let .outline(block, _), let .discard(block):
             (client(of: block) ?? local).propose(proposal, done: done)
+        case let .hold(h):
+            client(h.block.host)?.propose(proposal, done: done)
+        case .release:
+            // Said to the holding host (reconcileHolds); here, to every host,
+            // which is harmless: a host without the hold does nothing.
+            for c in all { c.propose(proposal) }
+            done?(nil)
         case let .link(link):
             (client(of: link.from) ?? local).propose(proposal, done: done)
         case .unlink:

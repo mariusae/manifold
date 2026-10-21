@@ -91,6 +91,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(backdrop)
         root.addSubview(content)
         root.addSubview(sidebar)
+        root.addSubview(toast)
         root.onMouseMoved = { [weak self] p in self?.mouseMoved(to: p) }
         root.onMouseExitedWindow = { [weak self] in self?.scheduleHide() }
         root.onLayout = { [weak self] in
@@ -287,6 +288,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         checkOpenWaits()
         noteTrailFocus()
         attend()
+        scheduleHoldReconcile()
         refreshOrganization()
 
         layoutViews()
@@ -535,6 +537,121 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sliding { outgoing.frame = content.frame }
         palette?.frame = b
         history?.frame = b
+        if !toast.isHidden {
+            let s = toast.wantedSize
+            toast.frame = NSRect(x: content.frame.minX + (content.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
+        }
+    }
+
+    // MARK: Closing and keeping (§4)
+
+    private var holdWork: DispatchWorkItem?
+
+    /// Holds on other hosts (§4) brought in step with what this client's
+    /// hosts refer to, a moment after things settle.
+    private func scheduleHoldReconcile() {
+        holdWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.hosts.reconcileHolds() }
+        holdWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    /// What was closed, latest last: a tile with where it was, or a
+    /// workspace taken off the desk — ⇧⌘T brings the last one back.
+    private enum Closed {
+        case tile(workspace: BlockID, column: Int, index: Int, placement: Placement, height: Double?)
+        case workspace(BlockID, index: Int)
+    }
+    private var closedStack: [Closed] = []
+    private let toast = ToastView()
+
+    /// A tile about to be taken off: remembered, so ⇧⌘T can put it back.
+    private func noteClosing(_ placement: PlacementID, in workspace: BlockID) {
+        guard let a = hosts.arrangement(workspace), let p = a.placement(placement), let (c, i) = a.locate(placement) else { return }
+        closedStack.append(.tile(workspace: workspace, column: c, index: i, placement: p, height: a.heights[placement]))
+        if closedStack.count > 100 { closedStack.removeFirst(closedStack.count - 100) }
+    }
+
+    /// After tiles were taken off: a block none of them reaches any more
+    /// is on its way to collection; when that would lose something — a
+    /// text edited and unsaved, a terminal with a job running — a toast
+    /// says so, with Restore.
+    private func afterClosing(_ blocks: [BlockID]) {
+        let reachable = hosts.reachable()
+        for id in Set(blocks) where hosts.isUnreached(id, reachable: reachable) {
+            guard let b = hosts.block(id) else { continue }
+            let why: String
+            if b.kind == .text, b.text?.isDirty == true {
+                why = b.path == nil ? "a note with unsaved edits" : "edited and unsaved"
+            } else if (b.kind == .terminal || b.kind == .agent), b.terminal?.busy == true {
+                why = b.kind == .agent ? "its agent still running" : "a job still running"
+            } else { continue }
+            let minutes = hosts.local.desk.settings.collectAfterMinutes
+            let when = minutes > 0 ? "; it goes in \(minutes) min" : ""
+            toast.show("Closed “\(b.displayTitle)”, \(why)\(when)", action: "Restore ⇧⌘T") { [weak self] in self?.reopenClosed(nil) }
+            layoutViews()
+            return
+        }
+    }
+
+    /// ⇧⌘T: the last thing closed, back where it was — a tile into its
+    /// workspace at its old place (here, if that workspace is gone), a
+    /// workspace onto the desk. What has been collected meanwhile is
+    /// skipped.
+    @objc func reopenClosed(_ sender: Any?) {
+        toast.hide()
+        while let last = closedStack.popLast() {
+            switch last {
+            case let .workspace(id, index):
+                guard let client = hosts.client(of: id), client.block(id)?.arrangement != nil else { continue }
+                var order = client.desk.order
+                guard !order.contains(id) else { continue }
+                order.insert(id, at: min(index, order.count))
+                client.setWorkspaceOrder(order)
+                hosts.select(id)
+                return
+            case let .tile(workspace, column, index, placement, height):
+                guard let b = hosts.block(placement.block) else { continue }
+                let fresh = Placement(id: ULID.make(), block: placement.block, lens: placement.lens)
+                if let a = hosts.arrangement(workspace), allWorkspaces.contains(workspace) {
+                    let c = min(column, max(a.columns.count - 1, 0))
+                    let i = a.columns.isEmpty ? 0 : min(index, a.columns[c].count)
+                    var events: [Event] = [.place(fresh, column: c, at: i)]
+                    if let height { events.append(.heights([fresh.id: height])) }
+                    events.append(.focus(fresh.id))
+                    hosts.select(workspace)
+                    hosts.append(events, to: .block(workspace))
+                } else {
+                    show(placement.block, lens: Lens.default(for: b.kind, path: b.path), .here)
+                }
+                warpPointerToFocus()
+                return
+            }
+        }
+        NSSound.beep()
+    }
+
+    /// Debugging: what was closed, latest last; then every block that
+    /// exists and nothing reaches.
+    var debugClosed: String {
+        let reachable = hosts.reachable()
+        let stack = closedStack.map { c -> String in
+            switch c {
+            case let .tile(w, col, i, p, _): "tile \(hosts.block(p.block)?.displayTitle ?? "?") in \(hosts.arrangement(w).map(title(of:)) ?? "?") col \(col) at \(i)"
+            case let .workspace(id, i): "workspace \(hosts.arrangement(id).map(title(of:)) ?? "?") at \(i)"
+            }
+        }
+        let unreached = hosts.blocks.filter { !reachable.contains($0.id) }.map { "\($0.kind) \($0.displayTitle) \($0.id)" }
+        return "closed:\n" + stack.joined(separator: "\n") + "\nroots \(hosts.roots().count) reachable \(reachable.count) blocks \(hosts.blocks.count)\nunreached:\n" + unreached.joined(separator: "\n")
+    }
+
+    var debugToast: String { toast.debugText ?? "none" }
+
+    /// Pin or Unpin: the focused block made a root of its own (§4), kept
+    /// whatever refers to it.
+    @objc func togglePin(_ sender: Any?) {
+        guard let b = focusedShown?.block else { return NSSound.beep() }
+        hosts.pin(b.id, !b.isPinned)
     }
 
     // MARK: Status (§3.7)
@@ -649,6 +766,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         [ClosureMenuItem(b.isArchived ? "Unarchive" : "Archive", symbol: b.isArchived ? "archivebox.fill" : "archivebox", key: b.isArchived ? "" : "W") { [weak self] in
             self?.hosts.propose(.archive(b.id, !b.isArchived))
             if !b.isArchived { self?.withdraw(b.id) }
+        }, ClosureMenuItem(b.isPinned ? "Unpin" : "Pin", symbol: b.isPinned ? "pin.slash" : "pin") { [weak self] in
+            self?.hosts.pin(b.id, !b.isPinned)
         }, ClosureMenuItem(b.isInInbox ? "Remove from Inbox" : "Add to Inbox", symbol: b.isInInbox ? "tray.and.arrow.up" : "tray.and.arrow.down", key: "I") { [weak self] in
             self?.hosts.propose(.inbox(b.id, !b.isInInbox))
         }]
@@ -972,9 +1091,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if arrangement != nil {
             items.append(PaletteItem(symbol: "pencil", title: "Name This Workspace…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
-            })
-            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This Workspace", subtitle: "⌘Y") { [weak self] in
-                self?.showHistory(nil)
             })
         }
         items.append(PaletteItem(symbol: "magnifyingglass", title: "Find Anything…", subtitle: "⌘O") { [weak self] in
@@ -1316,9 +1432,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The bar's ×: the tile taken off, as ⌘W takes the focused one.
     func gridClose(_ placement: PlacementID) {
         guard let a = arrangement, let id = selected, let block = a.placement(placement)?.block else { return }
+        noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
         discardIfUnplaced(block)
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
+        afterClosing([block])
     }
 
     func gridLink(_ block: BlockID, to target: PlacementID) {
@@ -1358,22 +1476,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func closePaneOrTab(_ sender: Any?) {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
+        var closed: [BlockID] = []
         if let f = a.focused {
             // Taken off, a tile's room goes to the first of the stack
             // behind it, if there is one, which comes back where it was
             // and takes the focus (the model's doing); else to the next.
             let block = a.placement(f)?.block
+            noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
-            if let block { discardIfUnplaced(block) }
+            if let block { discardIfUnplaced(block); closed.append(block) }
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
         }
+        afterClosing(closed)
     }
 
     /// ⇧⌘W: the arrangement leaves the desk.
     @objc func closeTab(_ sender: Any?) {
-        if let id = selected { removeFromDesk(id) }
+        guard let id = selected else { return }
+        let blocks = hosts.arrangement(id)?.placements.map(\.block) ?? []
+        removeFromDesk(id)
+        afterClosing(blocks)
     }
 
     /// Every workspace on every host, in the sidebar's order.
@@ -1382,6 +1506,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func removeFromDesk(_ id: BlockID) {
         let all = allWorkspaces
         guard let i = all.firstIndex(of: id) else { return }
+        // Remembered for ⇧⌘T: the workspace, if it holds anything; else
+        // its own blocks were noted as they went.
+        if let client = hosts.client(of: id), let a = client.arrangement(id), !a.isEmpty,
+           let j = client.desk.order.firstIndex(of: id) {
+            closedStack.append(.workspace(id, index: j))
+        }
         hosts.client(of: id)?.removeWorkspace(id)
         if selected == id {
             let rest = all.filter { $0 != id }
@@ -2026,6 +2156,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
+        let reachable = hosts.reachable()
         func workspace(_ id: BlockID) -> OrgNode? {
             guard let a = hosts.arrangement(id) else { return nil }
             let aid = "arr/\(id)"
@@ -2079,15 +2210,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             var ids = c.desk.order.filter { $0.host == c.host }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
             var nodes = ids.compactMap(workspace)
-            // Workspaces off the desk — kept by name, or just taken off —
-            // under Recent, the last seen first, opened by hovering (or
-            // outright with a filter); one chosen comes back onto the desk.
+            // Named workspaces off the desk — kept — under Kept, the last
+            // seen first, opened by hovering; one chosen comes back onto
+            // the desk. What nothing keeps (§4) — unnamed workspaces taken
+            // off, blocks closed everywhere — under Recently Closed until
+            // collected, each brought back by a click.
             let onDesk = Set(ids)
             let far = Stamp(wall: 0, logical: 0, host: c.host)
-            let off = c.node.blocks.filter { $0.kind == .arrangement && !onDesk.contains($0.id) && !($0.arrangement?.isEmpty ?? true) }
+            let off = c.node.blocks.filter { $0.kind == .arrangement && !onDesk.contains($0.id) && $0.arrangement?.isNamed == true }
                 .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
                 .prefix(40)
             let recent = off.compactMap { workspace($0.id) }
+            let closed = c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) && $0.kind != .outline && matches(filter, [$0.displayTitle, $0.path]) }
+                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
+                .prefix(40)
             // Archived blocks (§3.7): put away, under their own section,
             // the last seen first, each recalled as it was by a click.
             let archived = c.node.blocks.filter { $0.isArchived && $0.kind != .arrangement && matches(filter, [$0.displayTitle, $0.path]) }
@@ -2107,9 +2243,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 nodes.append(group)
             }
             if !recent.isEmpty {
-                let rid = "recent:desk:\(c.host.raw)"
+                let rid = "kept:desk:\(c.host.raw)"
                 for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
-                let group = OrgNode(id: rid, title: "Recent", symbol: "clock", count: recent.count, isGroup: true, children: recent)
+                let group = OrgNode(id: rid, title: "Kept", symbol: "bookmark", count: recent.count, isGroup: true, children: recent)
+                group.style = .section
+                group.dimmed = true
+                if !filter.isEmpty { open.insert(rid) }
+                nodes.append(group)
+            }
+            if !closed.isEmpty {
+                let rid = "closed:desk:\(c.host.raw)"
+                let rows = closed.map { b -> OrgNode in
+                    if b.kind == .arrangement, let n = workspace(b.id) { n.dimmed = true; n.emphasis = false; open.remove(n.id); return n }
+                    let n = node(for: b, id: rid + "/" + b.id.description, detail: b.place?.abbreviatingHome ?? "")
+                    n.dimmed = true
+                    n.trailing = (c.node.graph.seen(b.id)).map(Age.short)
+                    return n
+                }
+                let group = OrgNode(id: rid, title: "Recently Closed", symbol: "clock.arrow.circlepath", count: rows.count, isGroup: true, children: rows)
                 group.style = .section
                 group.dimmed = true
                 if !filter.isEmpty { open.insert(rid) }
@@ -2132,23 +2283,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Files: each host's sparse tree, roots open.
     private func filesTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
-        // What is on a workspace now comes first in every folder; the rest
-        // after, dimmed — a folder with something active among its blocks
-        // counts as active.
+        // What is on a workspace now comes first in every folder; what is
+        // kept otherwise (§4) after, dimmed — a folder with something active
+        // among its blocks counts as active; what nothing keeps, closed and
+        // not yet collected, under Recently Closed.
         let placed = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
+        let reachable = hosts.reachable()
         var active: [ObjectIdentifier: Bool] = [:]
         func convert(_ f: FileNode) -> OrgNode? {
             let made = f.children.compactMap(convert)
             var children = made.filter { active[ObjectIdentifier($0)] == true }
-            // The rest — not on any workspace now — under Recent, which
-            // opens when the pointer rests on it (or with a filter).
             let rest = made.filter { active[ObjectIdentifier($0)] != true }
-            if !rest.isEmpty {
-                let recentID = "recent:\(f.host.raw):\(f.path)"
-                let recent = OrgNode(id: recentID, title: "Recent", symbol: "clock", count: rest.count, isGroup: true, children: rest)
-                recent.dimmed = true
-                if !filter.isEmpty { open.insert(recentID) }
-                children.append(recent)
+            let kept = rest.filter { $0.block.map { reachable.contains($0) } ?? true }
+            children += kept
+            let closed = rest.filter { $0.block.map { !reachable.contains($0) } ?? false }
+            if !closed.isEmpty {
+                let closedID = "closed:\(f.host.raw):\(f.path)"
+                let group = OrgNode(id: closedID, title: "Recently Closed", symbol: "clock.arrow.circlepath", count: closed.count, isGroup: true, children: closed)
+                group.dimmed = true
+                if !filter.isEmpty { open.insert(closedID) }
+                children.append(group)
             }
             let block = f.block.flatMap { hosts.block($0) }
             if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
@@ -2695,16 +2849,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func finderItems(_ query: String, files: [String]) -> [FinderItem] {
-        // Each thing found is placed in a tier — here (on this workspace),
-        // near (linked to the focused block, or on the desk), elsewhere,
-        // archived; files and processes below blocks — and within its tier
-        // ranked by how well the query names it, then by recency (§3.5).
-        var scored: [(score: Int, recency: Int64, item: FinderItem)] = []
+        // Each block found is ranked by how well the query names it (§3.5)
+        // — a title it is, starts, starts a word of, is in, or has the
+        // letters of in order, and only then what's around the block —
+        // and among equals by its distance from the focused block over the
+        // graph, then by recency. Only what is kept (§4) is found; what was
+        // closed and not yet collected comes at the end, marked recent.
+        var scored: [(score: Int, distance: Int, match: Int, recency: Int64, item: FinderItem)] = []
         let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
-        let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 3) } ?? [:]
+        let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 6) } ?? [:]
         let focusedBlock = focusedShown?.placement.block
         let here = Set(arrangement?.placements.map(\.block) ?? [])
         let onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
+        let reachable = hosts.reachable()
         var joinedAt: [BlockID: Int64] = [:]
         if let f = focusedBlock {
             let n = hosts.neighborhood(of: f)
@@ -2772,39 +2929,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
             }
-            let tier: Int
+            let kept = reachable.contains(block.id)
+            // How far from where you are: here is nearest, then by the
+            // graph; what nothing reaches comes last of all.
+            var distance = near[block.id] ?? 50
             if block.isArchived {
-                tier = 1
                 note = "archived"
+            } else if !kept {
+                // Closed, not yet collected: chosen, it is brought back.
+                note = "recent"
+                distance = 100
+            } else if block.isPinned, note.isEmpty {
+                note = "pinned"
             } else if block.kind == .arrangement {
-                tier = allWorkspaces.contains(block.id) ? 4 : 2
+                if allWorkspaces.contains(block.id) { distance = min(distance, 2) }
             } else if here.contains(block.id) {
-                tier = 5
+                distance = block.id == focusedBlock ? 0 : 1
                 if note.isEmpty { note = block.id == focusedBlock ? "here, focused" : "here" }
             } else if let d = near[block.id], d > 0 {
-                tier = 4
                 if note.isEmpty { note = d == 1 ? "linked" : "near" }
             } else if onDesk.contains(block.id) {
-                tier = 4
-            } else {
-                // On no workspace: chosen, it is brought back rather than
-                // gone to.
-                tier = 3
-                if note.isEmpty, block.kind != .arrangement { note = "recent" }
+                distance = min(distance, 3)
             }
             // How long since it was last seen, after the note.
             let seen = Age.short(entry.lastSeen)
             note = note.isEmpty ? seen : note + " · " + seen
-            // A weak match — the query's letters in order in the title, or
-            // only in what's around the block — gets no tier above
-            // elsewhere: being here doesn't make it what you meant.
-            let placed = match < 400 ? min(tier, 2) : tier
-            // The focused block is where you are: last among those here.
-            let score = placed * 1000 + match - (block.id == focusedBlock ? 300 : 0)
+            // What the query names, in bands: the whole title, its start, a
+            // word's start, all its words, somewhere in it, its letters in
+            // order, only around it.
+            let band = match >= 600 ? 6 : match >= 520 ? 5 : match >= 500 ? 4 : match >= 480 ? 3 : match >= 400 ? 2 : match >= 200 ? 1 : 0
+            // The focused block is where you are: last among its equals.
             let id = block.id
             let kind = block.kind
             let path = block.path
-            scored.append((score, max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), FinderItem(
+            scored.append((band * 1000, block.id == focusedBlock ? 1000 : distance, match, max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), FinderItem(
                 symbol: Theme.symbolName(for: kind, path: path), title: title, detail: detail + remote, note: note,
                 run: { [weak self] in self?.recall(id) })))
         }
@@ -2818,7 +2976,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     let m = FileFinder.nameMatch(query, title: e.command, secondary: e.path ?? "")
                     guard m > 0 else { continue }
                     let command = e.command.count > 100 ? String(e.command.prefix(100)) + "…" : e.command
-                    scored.append((2000 + m, block.processes?.listedAt?.wall ?? 0, FinderItem(
+                    scored.append((0, 60, m, block.processes?.listedAt?.wall ?? 0, FinderItem(
                         symbol: "cpu", title: command, detail: (e.path?.abbreviatingHome ?? "pid \(e.pid)") + remote,
                         note: hosts.block(under)?.displayTitle ?? "", run: { [weak self] in self?.goTo(under) })))
                 }
@@ -2831,12 +2989,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let m = FileFinder.nameMatch(query, title: name, secondary: file)
             guard m > 0 else { continue }
             let scratch = file.hasPrefix("/tmp/") || file.hasPrefix("/private/tmp/") || file.hasPrefix("/private/var/folders/")
-            scored.append(((scratch ? 1000 : 2000) + m, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
+            scored.append((0, scratch ? 80 : 70, m, 0, FinderItem(symbol: Finder.symbol(forFile: name), title: name,
                                                          detail: (file as NSString).deletingLastPathComponent.abbreviatingHome, note: "file",
                                                          run: { [weak self] in self?.open(file, from: nil) })))
         }
         scored.sort { a, b in
             if a.score != b.score { return a.score > b.score }
+            if a.distance != b.distance { return a.distance < b.distance }
+            if a.match != b.match { return a.match > b.match }
             return a.recency > b.recency
         }
         var items = Array(scored.prefix(60).map(\.item))
@@ -3722,18 +3882,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var history: HistoryView?
 
-    /// The block whose history is up: the arrangement, or a text block.
+    /// The block whose history is up: a text block.
     private var historyOf: BlockID?
-
-    /// ⌘Y: the selected arrangement's history, to scrub through and restore.
-    @objc func showHistory(_ sender: Any?) {
-        guard let id = selected, history == nil else { return hideHistory() }
-        let h = makeHistory()
-        h.onRestore = { [weak self] state, moment in self?.restore(id, to: state, rewindingTo: moment) }
-        h.onNeedBlock = { [weak self] block in self?.hosts.propose(.history(.block(block))) }
-        historyOf = id
-        hosts.propose(.history(.block(id)))
-    }
 
     /// ⌥⌘Y: the focused file's history: its text at every change.
     @objc func showFileHistory(_ sender: Any?) {
@@ -3772,45 +3922,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func historyArrived(_ shard: ShardID, _ base: Block?, _ entries: [Entry]) {
-        guard let history, let block = shard.block else { return }
-        if block == historyOf {
-            if hosts.block(block)?.kind == .text {
-                history.showText(entries: entries, block: block, base: base)
-            } else {
-                history.show(entries: entries, base: base?.arrangement)
-            }
-        } else {
-            history.blockHistory(block, entries, base: base)
-        }
-    }
-
-    /// Appends what makes the arrangement so again: a new version, never a
-    /// revert; with a moment, each placed file's text is made what it was
-    /// then, the same way.
-    private func restore(_ id: BlockID, to state: ArrangementState, rewindingTo moment: Stamp?) {
-        guard let current = hosts.arrangement(id) else { return }
-        var events: [Event] = []
-        for p in current.placements { events.append(.remove(p.id)) }
-        var ids: [PlacementID: PlacementID] = [:]
-        for (c, column) in state.columns.enumerated() {
-            for (i, p) in column.enumerated() {
-                let id = ULID.make()
-                ids[p.id] = id
-                events.append(.place(Placement(id: id, block: p.block, lens: p.lens), column: c, at: i))
-            }
-        }
-        var heights: [PlacementID: Double] = [:]
-        for (old, new) in ids { if let h = state.heights[old] { heights[new] = h } }
-        if !heights.isEmpty { events.append(.heights(heights)) }
-        if let f = state.focused, let id = ids[f] { events.append(.focus(id)) }
-        if state.fractions.count == state.columns.count { events.append(.fractions(state.fractions)) }
-        hosts.append(events, to: .block(id))
-        if let moment, let history {
-            for p in state.placements where p.lens == .editor || p.lens == .preview {
-                if let then = history.text(of: p.block, at: moment) { restore(p.block, toText: then) }
-            }
-        }
-        hideHistory()
+        guard let history, let block = shard.block, block == historyOf else { return }
+        history.showText(entries: entries, block: block, base: base)
     }
 
     /// A text block's text made what it was: one edit, in the log like
@@ -4024,13 +4137,17 @@ extension MainWindowController: GridDelegate {
     /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
     /// is its whole column, which goes.
     func gridCloseStack(_ placement: PlacementID) {
-        guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
+        guard let a = arrangement, let id = selected, let (c, _) = a.locate(placement) else { return }
         let stack = a.full == placement
             ? a.columns[c]
             : a.columns[c].filter { $0.id == placement || (a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement) }
+        for p in stack { noteClosing(p.id, in: id) }
         var events: [Event] = a.full == placement ? [.full(nil)] : []
         events += stack.map { .remove($0.id) }
         appendToSelected(events)
+        for p in stack { discardIfUnplaced(p.block) }
+        if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
+        afterClosing(stack.map(\.block))
     }
 
     /// Unstack: every tile behind this one shows, sharing its room.

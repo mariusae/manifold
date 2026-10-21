@@ -20,12 +20,14 @@ windows; Manifold is blocks from many hosts, linked, in workspaces.
 
 ## 1. Principles
 
-- **Nothing is closed; nothing is lost.** Taking something off the desk
-  only takes it out of view. Every block keeps its history, and anything
-  set aside is recallable.
-- **What can't be rebuilt is held.** A block with unsaved changes, a
-  running job, or anything else not reconstructible from its log is never
-  collected. Everything else may be.
+- **What nothing refers to goes.** A block is kept while a workspace, a
+  named workspace, a pin, an archive, or a link by hand reaches it (§4);
+  closed everywhere, it waits half an hour to be brought back, then is
+  collected. The graph holds what you're using, not everything you ever
+  touched.
+- **Losing something is said, never silent.** Closing the last reference
+  to a block with unsaved edits or a running job goes through, and a
+  toast says what was closed, with Restore (⇧⌘T) beside it.
 - **Everything is linked.** Actions leave links behind (this terminal opened
   that file; this search found that line), so recall can walk from one
   thing to what was around it.
@@ -68,8 +70,7 @@ a stable key so a rename of the machine doesn't orphan anything.
 Every entry carries its host's hybrid logical clock: a timestamp that is
 close to wall time but never runs backwards and orders causally related
 entries. Within a host this orders everything exactly; across hosts it
-lines logs up to within clock skew, which is what scrubbing across hosts
-needs (§3.4).
+lines logs up to within clock skew.
 
 ### 2.3 Block kinds
 
@@ -188,24 +189,23 @@ workspace of workspaces; nothing more is needed for folders.
 
 ### 3.3 Naming is keeping
 
-An **unnamed** workspace is scratch: placements not seen for a while are
-collected out of it (§4), and it drifts off the desk when unused. Naming
-one makes it a place: its columns and their pasts stay however long they
-go unseen, though the blocks behind them may go dormant to free their
-resources and come back when the workspace is recalled.
+An **unnamed** workspace is scratch: taken off the desk, it is a root no
+longer, and it and whatever only it held are collected after the grace
+(§4). Naming one makes it a place: a root whether or not it is on the
+desk, its columns kept however long they go unseen, though the blocks
+behind them may go dormant to free their resources and come back when
+the workspace is recalled.
 
-### 3.4 Scrubbing
+### 3.4 Strong and weak edges
 
-Every workspace can be scrubbed through its history, in two ways:
-
-- **The layout then, the contents now** — what was on this desk last
-  Tuesday, shown live. Cheap: one log.
-- **Everything as it was** — each placed block rewound to the same moment,
-  by clock (§2.2). Exact within a host, within clock skew across hosts.
-
-Either is read-only. *Restore* appends a new version that makes the
-workspace so; nothing is reverted destructively. A single block can be
-scrubbed the same way, and two points of it compared in a `diff` block.
+Of the graph's edges (§3.5), two kinds are **strong**: a workspace's
+placement of a block, and a link made by hand (`linked`). A strong edge
+keeps what it points at (§4). Every other edge is **weak** — what a
+terminal opened, what a search found, what a folder contains, the trail
+of where you went — history and happenstance, which keep nothing alive
+and say nothing about what you mean to keep. Strong edges are followed
+in their direction: a block that links by hand to a kept block is not
+itself kept by that.
 
 ### 3.5 Navigation is contextual: the graph
 
@@ -232,7 +232,7 @@ are in the data now and only want indexing:
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
 | **before / after** (temporal, across blocks) | block → block | the registry's `seen` entries, kept as a bounded *trail* per host; the desk's `settled` order, for workspaces |
-| **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log; for a workspace, "everything as it was" (§3.4) |
+| **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
 Prism's backlinks are `opened` in-edges; its sheet stack is `before /
@@ -259,9 +259,12 @@ destination:
    columns and workspaces, each step previewed as it was on hover,
    live with ⌥ — Prism's stack, but derived from the log, so it survives
    restarts and crosses hosts.
-3. **The finder (⌘O) is ranked by the graph.** With nothing typed, the
-   focused block's neighborhood, nearest first; typed, matches weighted
-   by distance from where you are. Context is the ranking.
+3. **The finder (⌘O) is ranked by the graph.** Only what is kept (§4)
+   is found. With nothing typed, the focused block's neighborhood,
+   nearest first; typed, what the query names best first, and among
+   equals the nearest to where you are over the graph's edges, strong
+   and weak alike. What was closed and not yet collected comes last,
+   marked *recent*: choosing it brings it back.
 4. **Cards** are how a node renders small, at any stamp: a hover panel
    (Prism's `LinkCard`, non-activating, kept while the pointer is on the
    reference or the card), a sidebar row, a finder row. Text as a read-only `TextView`; a terminal as its last
@@ -272,9 +275,8 @@ destination:
    remembered per block. With a stamp, the card shows the node *as it was
    then*, which Prism cannot.
 5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
-   takes a stamp; the slider that scrubs a workspace (§3.4) scrubs a
-   block's foot the same way — who opened it *then*. A map lens of nodes
-   and edges is possible and comes last.
+   takes a stamp — who opened it *then*. A map lens of nodes and edges
+   is possible and comes last.
 6. **Slices edited where they are.** A search hit's line, a link's
    context line, the new side of a diff: each a byte range of a text
    block, each an editor whose typing is an `.edit` entry on the block
@@ -297,9 +299,7 @@ it makes a diff, search or git block; and a `Graph` query layer in
 links and workspace shards already, so neighborhoods are computed
 locally, and asked of the host only for a stamp its logs must be
 replayed for. A scrubber down the editor (Prism's `ScrubMark`s, from the
-language server's document symbols) and the desk's own history (the desk
-shard scrubbed as a workspace is; a timeline lens with empty days
-folded to "⋯ Sep 21–25 · 5 days") sit beside this rather than in it.
+language server's document symbols) sits beside this rather than in it.
 
 ### 3.7 Status: what every block is doing
 
@@ -475,48 +475,63 @@ in.
 
 ---
 
-## 4. Lifecycle and collection
+## 4. Keeping and collection
 
-Every block is in one of four states, recorded in its host's registry:
+What keeps a block is being **reachable**: a path of strong edges (§3.4)
+from a **root** to it. The roots on a host are
 
-| state | meaning |
+| root | why |
 |---|---|
-| **live** | placed in a workspace on screen |
-| **warm** | off screen, its resources kept: a process running, a file watched, text in memory |
-| **dormant** | only its log and last snapshot; resources rebuilt on recall |
-| **held** | not reconstructible (§2.3, *held when*); never collected, whatever else |
+| a workspace on a desk | what is in front of you |
+| a named workspace | naming is keeping (§3.3), on the desk or off |
+| a pinned block | kept on purpose, whatever refers to it (Pin or Unpin) |
+| an archived block | put away as it was (§3.7), to be recalled |
+| a **hold** | another host's standing reference (below) |
 
-Collection moves blocks down the ladder and placements out of unnamed
-workspaces; it never deletes a block. Policy, per host:
+and every block a root places, links by hand, or reaches through what it
+places and links, is kept. The host is the collector: once a minute it
+walks its own shards from its roots, notes each block nothing reaches
+with the moment that began, and **collects** any that has been so for
+the grace (`collectAfterMinutes`, 30 by default, a setting): its
+session ended, its file unwatched, its links gone, its log deleted, the
+registry told, and every replica following. A block reached again
+within the grace is simply kept, its mark forgotten.
 
-- A column's past is trimmed: a placement that has been off the top of
-  its column for an hour (configurable) leaves an unnamed workspace,
-  unless its block is held. What a column shows is never collected, and a
-  named workspace keeps its columns' pasts whole.
-- A block off screen goes from warm to dormant after a while depending on
-  its kind; a terminal whose shell is idle goes dormant by keeping its
-  transcript and cwd and ending the shell, and on recall starts a new shell
-  there under the old transcript (what Manifold does today after a server
-  restart). That loses what lived only in the shell — its environment,
-  shell variables, history not yet written — so it is never silent: a
-  terminal brought back this way says so where its old session ends (a
-  rule across the transcript, "new shell — the last one ended after 3 h
-  idle"), and its placement and finder entry show a dormant terminal as
-  such before you go to it.
-- Logs are compacted to snapshots at intervals. How far back history is
-  kept at full resolution, how coarse it gets after, and how much undo a
-  block keeps are retention settings, per block kind, overridable per block
-  and per workspace (a named workspace may keep its blocks' history
-  longer). The defaults are a starting point to be tuned with use: text
-  logs kept in full (they are small), terminal rows thinned after a while
-  (they add up), undo as deep as the text's history. A git block's
-  refreshes only replace one another, so they are no history at all: one
-  is logged only when the repository changed, and the block's log is
-  folded into its base whole whenever retention runs.
+Closing is what makes things unreachable. ⌘W takes a tile off its
+workspace; an unnamed workspace left empty leaves the desk; ⌥⇧⌘W takes
+one off whole. The app keeps what it closed on a stack, and **⇧⌘T**
+puts the last thing back where it was — a tile at its old column and
+place (here, if that workspace has gone), a workspace onto the desk —
+skipping whatever has been collected meanwhile. The sidebar lists what
+exists and nothing reaches under **Recently Closed**, and the finder
+marks it *recent*; either brings it back by a click.
 
-Every number in this section — idle times, retention, thinning — is a
-setting the core reads, never a constant in it, so policy can be tuned
-without touching the model.
+Collection is never refused and never silent. Closing the last reference
+to a text with unsaved edits, or to a terminal with a job running (which
+collection will end), goes through, and a toast at the foot of the
+window says what was closed and offers Restore.
+
+**Holds, across hosts.** A host sees only its own shards, so a reference
+from another host — a workspace there placing a block here, a link by
+hand there to a block here, a desk there listing a workspace of this
+host — would be invisible to its collector. The client that holds both
+sides tells the target host: a `Hold{id, block, holder}` in the target's
+registry, keyed by the edge it stands for (the placement's or link's
+id, or `desk:<holder>:<workspace>`), proposed when the edge exists and
+released when it goes or its source is no longer reached. Holds are
+roots. A client reconciles the holds of the hosts it has whenever its
+shards settle, so a hold is not lost to a moment offline: the next
+reconcile makes it good. A hold whose holder never returns stays, which
+leaks a little rather than losing anything. Collecting a block drops the
+holds on it.
+
+Dormancy is separate from keeping: a kept terminal off screen with an
+idle shell goes dormant (`terminalDormantAfterHours`), its transcript and
+cwd kept and a new shell started under the old transcript on recall,
+which is never silent (a rule across the transcript says so). Logs are
+compacted to snapshots at intervals; retention settings per block kind
+say how far back history is kept whole. Every number in this section is
+a setting the core reads, never a constant in it.
 
 ---
 
@@ -553,7 +568,7 @@ A link is `Link{from, to, kind, at}` in the `links` shard of the host the
 | `cwd` | a terminal's working directory (to the directory block) |
 | `source` | a preview, a diff side |
 | `mention` | `[[title]]` or a block URL in text |
-| `linked` | a block ⇧-dragged onto a tile; a note made about a block (block → note) |
+| `linked` | a block ⇧-dragged onto a tile; a note made about a block (block → note); the one strong link kind (§3.4) |
 | `placed` | placed next to each other in a workspace, by you |
 
 Each host indexes the links pointing at its blocks; a client merges the
@@ -848,11 +863,16 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   status group's blocks, live, as a list or an overview, from the
   group's row in the Status organization; the blocks' views under
   `state:` placement ids, kept while it's up; ⎋ leaves it.
-- Scrubbing (§3.4): `Block.replaying(_:upTo:)` rebuilds any block from its
-  log at a moment; the history view scrubs text blocks as well as
-  workspaces, "everything as it was" rewinds each placed file by its own
-  log to the workspace's moment, and a diff block can compare a text
-  block at two moments (`DiffSubject.versions`).
+- History of a text: `Block.replaying(_:upTo:)` rebuilds a block from its
+  log at a moment; the history view (⌥⌘Y) scrubs a text block through
+  its changes, and a diff block can compare a text block at two moments
+  (`DiffSubject.versions`). (Workspaces were scrubbed the same way once;
+  that went unused and was taken out with keeping by reachability, §4.)
+- Keeping (§4): `EdgeKind.isStrong`, `Graph.reachable`, `Node.roots(on:)`
+  and `Node.reachable(on:)` in the core; the host's `collect` once a
+  minute, `discard` for what goes; `Hold` in the registry with the
+  `hold`/`release` events and proposals, `Hosts.reconcileHolds` in the
+  app; `pinned` on a block; the app's closed stack, ⇧⌘T and the toast.
 
 - The image, PDF, process and agent lenses (§7.5): bytes read on the
   host; `ps` as entries; an agent is a terminal block with a command.

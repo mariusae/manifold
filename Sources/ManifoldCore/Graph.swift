@@ -25,6 +25,18 @@ public enum EdgeKind: Hashable, Sendable, CustomStringConvertible {
         case .link(let k): k.rawValue
         }
     }
+
+    /// Strong (§4): a reference that keeps what it points at — a
+    /// workspace's placement, a link made by hand. The rest are weak:
+    /// what a terminal opened, a search found, a folder contains, the
+    /// trail — history and happenstance, keeping nothing alive.
+    public var isStrong: Bool {
+        switch self {
+        case .placed: true
+        case .link(let k): k == .linked
+        case .contains: false
+        }
+    }
 }
 
 /// A node of the sparse file tree (§3.6): a folder or a file, with the
@@ -361,6 +373,25 @@ public final class Graph {
             frontier = next
         }
         return dist
+    }
+
+    /// Everything reachable from some roots over the strong edges that
+    /// hold now (§4): what is kept. Edges from a block are looked up in
+    /// this graph alone; across hosts, the caller walks each block's own
+    /// host's graph (`Hosts.reachable`).
+    public func reachable<S: Sequence>(from roots: S, edgesFrom: ((BlockID) -> [Edge])? = nil) -> Set<BlockID> where S.Element == BlockID {
+        var seen = Set(roots)
+        var frontier = Array(seen)
+        while let b = frontier.popLast() {
+            let edges = edgesFrom?(b) ?? strongEdges(from: b)
+            for e in edges where seen.insert(e.to).inserted { frontier.append(e.to) }
+        }
+        return seen
+    }
+
+    /// The strong edges that hold now, out of a block.
+    public func strongEdges(from block: BlockID) -> [Edge] {
+        (out[block] ?? [:]).flatMap { kind, edges in kind.isStrong ? edges.filter(\.isLive) : [] }
     }
 
     // MARK: The trail

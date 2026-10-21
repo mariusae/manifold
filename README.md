@@ -216,12 +216,19 @@ and Mona Sans (bundled).
   workspace, each with what it said and how long ago, until taken out
   by hand: ⇧⌘I, or Remove from Inbox in a pill's or a row's menu (Add
   to Inbox puts any block there).
-- **⌘W** takes the focused tile off its workspace; **⇧⌘W** takes the
-  workspace off the desk. Neither loses anything: the block, with its
-  history, is a ⌘O away, and a workspace taken off sits under
-  **Recent** at the foot of the sidebar's Desk, dimmed, opened by
-  hovering (as Files' Recent is), the last seen first; click it and it
-  is back on the desk. There is no Close.
+- **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace off the
+  desk. A block is kept while something reaches it — a workspace on the
+  desk or a named one, a pin, the archive, or a link by hand from a
+  kept block — and once nothing does it waits half an hour under
+  **Recently Closed** at the foot of its host in the sidebar (and in
+  ⌘O, marked *recent*), then is collected: gone, with its history. An
+  unnamed workspace taken off the desk goes the same way; a named one
+  sits under **Kept**. **⇧⌘T** reopens the last thing closed where it
+  was. Closing the last reference to a text with unsaved edits, or to
+  a terminal with a job running, goes through, and a toast at the foot
+  of the window says so, with Restore. **Pin or Unpin Block** (File
+  menu, or Pin in a bar's or a row's menu) keeps a block whatever
+  refers to it.
 
 ## Nothing is closed
 
@@ -229,20 +236,19 @@ Every block has a log: its edits, where it was placed, what it was named.
 What you aren't using is tidied away rather than closed, and comes back
 when you find it again.
 
-- **⌘O finds anything** the host knows, in tiers by where you are:
-  what's on this workspace first, then what's linked to the focused
-  block or on the desk, then the rest, then what's archived; files not
+- **⌘O finds anything** the host keeps. What the query *names* comes
+  first: a title it is, or starts, or starts a word of, then one it's
+  found in, then one with its letters in order, then a match only in
+  what's around a block (its folder, its program). Among equals, the
+  nearest to where you are over the graph — this workspace, then what's
+  linked to the focused block, then step by step outward — and the most
+  recently seen; with nothing typed, that is the whole order. Files not
   yet blocks come below the blocks (the system's scratch folders last),
   and the processes under the host's terminals and agents, by command,
-  each going to its block. Within a tier, what the query *names* wins:
-  a title it is, or starts, or starts a word of, then one it's found
-  in, then one with its letters in order; a match only in what's
-  around a block (its folder, its program) counts for less, and never
-  rises above the rest for being here. The most recently seen comes
-  first among equals; with nothing typed, that is the order. Each row
-  says at the right where the block is — here, linked, near, archived,
-  or *recent* for one on no workspace, which choosing brings back
-  rather than goes to — and how long since it was last seen. A
+  each going to its block. Each row says at the right where the block
+  is — here, linked, near, pinned, archived, or *recent* for one closed
+  and not yet collected, which choosing brings back — and how long
+  since it was last seen. A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host
@@ -268,9 +274,6 @@ when you find it again.
   transcript, with a line across it saying when the last one ended and
   after how long idle, so it's never a surprise. The finder says
   *dormant* before you go to one.
-- **⌘Y** shows a workspace's history: a slider through every change,
-  the workspace drawn as it was, and Restore, which appends what makes it
-  so again (a new version, never a revert).
 - Blocks are linked by what you do: ⌘-clicking a file in a terminal links
   the two, and the palette lists what's linked to the focused block.
 
@@ -442,8 +445,8 @@ when you find it again.
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
   across hosts, as a sparse tree; in every folder, what is on a
-  workspace now is listed, and the rest waits under Recent, which opens
-  when the pointer rests on it
+  workspace now is listed first, what's kept otherwise after it, dimmed,
+  and what's closed and not yet collected under Recently Closed
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Links** (⌥⌘N) — what's
   joined to the focused block by kind, each row opening one more step;
@@ -516,11 +519,7 @@ when you find it again.
   a reload shows exactly what you left. The block keeps what it was last
   left at through each lens too, so a tile made for it again (recalled
   after it was closed, brought to another workspace) starts there.
-- **History** (Workspace ▸ History…, ⌘Y) scrubs the workspace through
-  its log: the layout then, the blocks as they are now; with **Everything
-  as it was** checked, each placed file is read as of that moment too, and
-  Restore brings both back — as new entries, never a revert. History of
-  This File… (⌥⌘Y) scrubs the focused file through every change it's had
+- **History of This File…** (⌥⌘Y) scrubs the focused file through every change it's had
   in Manifold: Restore This Text puts a version back (one undoable edit);
   Compare with Now opens a diff block of then against now.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a

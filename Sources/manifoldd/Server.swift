@@ -140,6 +140,7 @@ final class Server {
         snapshots.setEventHandler { [weak self] in
             self?.writeSnapshots()
             self?.collectTerminals()
+            self?.collect()
             self?.retain()
         }
         snapshots.resume()
@@ -299,6 +300,52 @@ final class Server {
         return entry
     }
 
+    // MARK: Collection (§4)
+
+    /// When each block was first found unreachable; forgotten when it is
+    /// reached again, or collected.
+    private var unreachableSince: [BlockID: Date] = [:]
+
+    /// A block gone for good: its session ended, its file unwatched, its
+    /// links here gone, its log deleted, and the registry told, which
+    /// every replica follows.
+    private func discard(_ block: BlockID) {
+        sessions.removeValue(forKey: block)?.terminate()
+        watchers.removeValue(forKey: block)
+        unreachableSince.removeValue(forKey: block)
+        guard node.block(block) != nil else { return }
+        for l in node.links(host).links where l.from == block || l.to == block { append(.unlink(l.id), to: .links(host)) }
+        node.remove(.block(block))
+        store.delete(.block(block))
+        append(.unregister(block), to: .registry(host))
+    }
+
+    /// The collector (§4): what no root reaches over strong edges —
+    /// workspaces on the desk and named ones, archived and pinned
+    /// blocks, other hosts' holds — is noted, and collected once it has
+    /// been so for the grace the settings give. Reached again meanwhile,
+    /// it is simply kept.
+    private func collect() {
+        let minutes = node.desk(host).settings.collectAfterMinutes
+        guard minutes > 0 else { return }
+        let reachable = node.reachable(on: host)
+        let now = Date()
+        var gone: [BlockID] = []
+        for b in node.blocks where b.id.host == host {
+            if reachable.contains(b.id) {
+                unreachableSince.removeValue(forKey: b.id)
+                continue
+            }
+            let since = unreachableSince[b.id] ?? { unreachableSince[b.id] = now; return now }()
+            if now.timeIntervalSince(since) >= Double(minutes) * 60 { gone.append(b.id) }
+        }
+        for id in gone {
+            let what = node.block(id).map { "\($0.kind) \"\($0.displayTitle)\"" } ?? "block"
+            log("collected \(what) \(id): reached by nothing for \(minutes) min")
+            discard(id)
+        }
+    }
+
     /// Keeps the registry in step with a block's log, whoever appended.
     private func shardChanged(_ shard: ShardID, entries: [Entry] = []) {
         guard let id = shard.block, let block = node.block(id) else { return }
@@ -432,6 +479,17 @@ final class Server {
         case let .inbox(block, on):
             if let b = node.block(block), b.isInInbox != on { append(.inbox(on), to: .block(block)) }
             done()
+        case let .pin(block, on):
+            if let b = node.block(block), b.isPinned != on { append(.pinned(on), to: .block(block)) }
+            done()
+        case let .hold(h):
+            // Another host's reference to a block here: a root, while it
+            // stands. For a block that's gone there is nothing to hold.
+            if node.block(h.block) != nil, node.registry(host).holds[h.id] != h { append(.hold(h), to: .registry(host)) }
+            done()
+        case let .release(id):
+            if node.registry(host).holds[id] != nil { append(.release(id), to: .registry(host)) }
+            done()
         case let .outline(block, of):
             if node.block(block) == nil {
                 append(.create(kind: .outline, title: nil, path: nil), to: .block(block))
@@ -440,14 +498,7 @@ final class Server {
             }
             done()
         case let .discard(block):
-            // Gone for good: its session ended, its log deleted, and the
-            // registry told, which every replica follows.
-            sessions.removeValue(forKey: block)?.terminate()
-            if node.block(block) != nil {
-                node.remove(.block(block))
-                store.delete(.block(block))
-                append(.unregister(block), to: .registry(host))
-            }
+            discard(block)
             done()
         case let .link(link):
             append(.link(link), to: .links(host))
