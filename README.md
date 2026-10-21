@@ -401,8 +401,8 @@ when you find it again.
   terminal's command clicked there also opens its output as a block of
   its own: a note whose first line is a pill linking back to that
   command (clicked, the terminal scrolls to it) and the command and what
-  it printed beneath as code. One per command; clicked again, the same
-  note comes back.
+  it printed beneath as code, opened as a page to read (⌘↩ edits it).
+  One per command; clicked again, the same note comes back.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

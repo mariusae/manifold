@@ -4595,8 +4595,9 @@ extension MainWindowController: TerminalViewDelegate {
     /// output, as the screen showed it, opened from the terminal.
     /// A command and its output as a block (§3.8): a note whose first
     /// line links back to the command in the terminal (its pill, which
-    /// scrolls the terminal there), and the output beneath as code. One
-    /// per command: asked again, the one there is is shown.
+    /// scrolls the terminal there), and the output beneath as code, shown
+    /// as a page to read (⌘↩ edits it). One per command: asked again, the
+    /// one there is is shown.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
         // From an outline: where a new tile goes (half the column's biggest
         // tile), an outline being too small to halve; else below the
@@ -4604,7 +4605,7 @@ extension MainWindowController: TerminalViewDelegate {
         let place: Where = beside != nil ? .here : (Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .besideOpener(view.placement))
         let context = "command \(command.id)"
         if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to) != nil }) {
-            return show(made.to, lens: .editor, place, kind: .opened, context: context)
+            return show(made.to, lens: .preview, place, kind: .opened, context: context)
         }
         let client = hosts.client(view.block.host) ?? host
         let note = client.newNote(home: hosts.block(view.block)?.terminal?.cwd)
@@ -4618,7 +4619,8 @@ extension MainWindowController: TerminalViewDelegate {
         // Its text is the terminal's, not yours: nothing to save.
         if let v = client.block(note)?.text?.version { client.append(.clean(version: v, fingerprint: nil), to: .block(note)) }
         hosts.link(from: view.block, to: note, kind: .opened, context: context)
-        show(note, lens: .editor, place, kind: .opened, context: context)
+        // Read first, as a page; ⌘↩ edits it.
+        show(note, lens: .preview, place, kind: .opened, context: context)
     }
 
     func terminalDidFocus(_ view: TerminalView) {
