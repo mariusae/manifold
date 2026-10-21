@@ -191,7 +191,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// keyboard with it; one that didn't follows the keyboard.
     private var lastFocused: PlacementID?
 
+    /// Rendering now, and a render asked for meanwhile.
+    private var rendering = false
+    private var renderAgain = false
+
+    /// Everything brought in line with the state. Asked for while it's
+    /// under way — a view being made that tells of itself (an editor of a
+    /// dirty text, set to viewing, says it's edited) — it's done once more
+    /// right after, not inside itself: within, the view isn't kept yet,
+    /// so it would be made again, and again, until the stack ran out.
     func render() {
+        guard !rendering else {
+            renderAgain = true
+            return
+        }
+        rendering = true
+        defer {
+            rendering = false
+            if renderAgain {
+                renderAgain = false
+                DispatchQueue.main.async { [weak self] in self?.render() }
+            }
+        }
+        renderNow()
+    }
+
+    private func renderNow() {
         guard let window else { return }
         if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
         sidebar.pinned = pinned
