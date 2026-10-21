@@ -198,9 +198,9 @@ final class StackSwitcherView: NSView {
         CATransaction.setDisableActions(true)
         let p = openness
         background.alphaValue = p
-        // Narrow enough that the fan and the peek fit above the tile's foot.
-        let fanned = CGFloat(min(cards.count, Self.mostFanned) - 1) * Self.hangStep
-        let width = min(bounds.width * 0.84, (bounds.height - Self.topMargin - fanned) / 1.05 * contentSize.width / contentSize.height).rounded()
+        // As wide as the column: each card the tile at its own size, leaning
+        // back from its top edge, its foot running off below the column's.
+        let width = bounds.width
         let scale = width / contentSize.width
         let homeFrame = NSRect(origin: .zero, size: contentSize)
         let height = SwitcherCard.headerHeight + contentSize.height * scale
