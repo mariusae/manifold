@@ -81,7 +81,12 @@ and Mona Sans (bundled).
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).
   Going to a stashed block from the sidebar or the
-  finder brings it out too, and the pointer follows. **⌥ with any
+  finder brings it out too, and the pointer follows. Going to a tile
+  squeezed down to its bar — by a link, the sidebar, the finder, ⌘J,
+  Back, or opening what's already there (Browse This Folder on a
+  folder shown) — grows it a little, to show some of what's in it (160
+  points, or a quarter of the column), taken from its neighbours as
+  growing takes it, and the pointer goes to it, as apex does. **⌥ with any
   click that opens something** puts what opens over the tile clicked
   in, that tile going behind it (as ⌥-drag stacks): a link or a
   block's pill in a note, a badge's link, a sidebar row, a listing's

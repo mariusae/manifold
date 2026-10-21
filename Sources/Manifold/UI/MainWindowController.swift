@@ -1976,6 +1976,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// and it is focused.
     private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] { a.revealing(placement) }
 
+    /// Arriving at a tile (a link followed, a block gone to, a step back,
+    /// a row of the sidebar): revealed, and grown if it's down to its bar.
+    private func arriving(_ placement: PlacementID, in a: ArrangementState) -> [Event] {
+        showingSome(a.revealing(placement), in: a)
+    }
+
+    /// Events that leave a tile focused, with that tile grown if it's
+    /// collapsed to its bar (a pill, less than a line of it showing): to
+    /// show some of what's in it — 160 points of it, or a quarter of its
+    /// column, whichever is less — taken from its neighbours as growing takes it,
+    /// as apex does for a window it goes to.
+    private func showingSome(_ events: [Event], in a: ArrangementState) -> [Event] {
+        var after = a
+        for e in events { after.apply(e) }
+        guard let f = after.focused, after.full == nil, !after.isStashed(f), let (c, _) = after.locate(f) else { return events }
+        let shown = after.shownTiles(inColumn: c)
+        guard shown.count > 1 else { return events }
+        let sum = shown.reduce(0.0) { $0 + after.height(of: $1.id) }
+        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
+        guard sum > 0, usable > 0 else { return events }
+        let share = after.height(of: f) / sum
+        guard usable * CGFloat(share) - GridView.barHeight < 20 else { return events }
+        let want = Double((min(160, usable / 4) + GridView.barHeight) / usable)
+        return events + after.growing(f, step: (want - share) * sum)
+    }
+
     /// Grow (acme's colgrow): the focused tile takes a step from its
     /// neighbors; with ⇧, as much of its column as can be.
     @objc func growTile(_ sender: Any?) {
@@ -2768,8 +2794,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
            let a = hosts.arrangement(edge.from), allWorkspaces.contains(edge.from), a.placement(pid) != nil {
             if selected != edge.from { hosts.select(edge.from) }
             if a.focused != pid || a.isStashed(pid) || (a.full != nil && a.full != pid) {
-                hosts.append(a.revealing(pid), to: .block(edge.from))
+                hosts.append(arriving(pid, in: a), to: .block(edge.from))
             }
+            warpPointerToFocus()
         } else if let b = hosts.block(step.block) {
             if b.kind == .arrangement { guard allWorkspaces.contains(b.id) else { return false } }
             goTo(step.block)
@@ -3190,14 +3217,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let a = arrangement, let t = a.placements(of: id).first, let here = selected {
             // Here already: out of its stack, from behind a maximized
             // tile, and focused.
-            return hosts.append(revealing(t.id, in: a), to: .block(here))
+            return hosts.append(arriving(t.id, in: a), to: .block(here))
         }
         let recent = hosts.recentWorkspaces()
         let order = recent + allWorkspaces.filter { !recent.contains($0) }
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
                 hosts.select(arr)
-                hosts.append(revealing(t.id, in: a), to: .block(arr))
+                hosts.append(arriving(t.id, in: a), to: .block(arr))
                 return
             }
         }
@@ -3303,7 +3330,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             return
         }
-        hosts.append(events, to: .block(id))
+        // A tile of the block already there, collapsed to its bar: grown.
+        hosts.append(showingSome(events, in: a), to: .block(id))
         // The pointer follows to what's shown (§3.1), as after a go-to.
         if id == selected { warpPointerToFocus() }
     }
@@ -4967,7 +4995,7 @@ extension MainWindowController: OrganizationViewDelegate {
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
                 // Out of its stack, from behind a maximized tile, focused,
                 // and the pointer on it.
-                hosts.append(revealing(p, in: a), to: .block(arr))
+                hosts.append(arriving(p, in: a), to: .block(arr))
                 warpPointerToFocus()
             }
             return
