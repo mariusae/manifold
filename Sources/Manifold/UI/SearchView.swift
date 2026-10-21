@@ -269,7 +269,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        if case .file = rows[row] { return FileHeaderRowView() }
+        return SelectionRowView()
+    }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
         if case .file = rows[row] { return true }
@@ -322,5 +325,21 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             f.attributedStringValue = s.truncatingTail()
         }
         return cell
+    }
+}
+
+/// A file's header among the hits: opaque, so that floating at the top it
+/// stands in for the file scrolled under it rather than over its lines,
+/// and the next file's header pushes it off as it arrives; a hairline
+/// beneath while it floats.
+final class FileHeaderRowView: NSTableRowView {
+    override var isFloating: Bool { didSet { needsDisplay = true } }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        Theme.windowBackground.setFill()
+        bounds.fill()
+        guard isFloating else { return }
+        Theme.divider.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
     }
 }
