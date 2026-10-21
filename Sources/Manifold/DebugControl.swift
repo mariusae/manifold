@@ -406,7 +406,12 @@ enum DebugControl {
             s.collectAfterMinutes = m
             wc.hosts.local.setSettings(s)
             return "ok"
+        case "lastwarp":
+            guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
+            let w = window.convertPoint(fromScreen: p)
+            return "\(Int(w.x)) \(Int(window.contentView!.bounds.height - w.y))"
         case "card":
+            if arg.hasPrefix("/") { return HoverCard.shared.debugWritePicture(to: arg) }
             return HoverCard.shared.debugState
         case "closed":
             // The closed stack, and what nothing reaches.

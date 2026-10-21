@@ -4723,8 +4723,11 @@ extension MainWindowController: OrganizationViewDelegate {
         if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
             switch shown {
             case let t as TerminalView:
-                body = t.visibleText
-                font = hosts.state.appearance.theme.font(.monospaced, size: 11)
+                picture = HoverCard.picture(of: t)
+                if picture == nil {
+                    body = t.visibleText
+                    font = hosts.state.appearance.theme.font(.monospaced, size: 11)
+                }
             case let w as WebView:
                 w.snapshot { image in HoverCard.shared.updatePicture(image, for: key) }
             case let m as MarkdownView:

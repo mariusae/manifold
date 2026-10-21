@@ -91,7 +91,7 @@ final class TextView: NSView, NSTextInputClient {
     private var pillTimer: Timer?
     var tabWidth = 4
     var isEditable = true
-    static let insets = NSEdgeInsets(top: 20, left: 8, bottom: 40, right: 20)
+    static let insets = NSEdgeInsets(top: 10, left: 8, bottom: 40, right: 20)
     /// The gutter: a lane for the git marks, then room for the line
     /// count's digits, the numbers set at its left, so the text has the rest.
     var gutterWidth: CGFloat {

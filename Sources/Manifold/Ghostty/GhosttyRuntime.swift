@@ -73,7 +73,7 @@ final class GhosttyRuntime {
         minimum-contrast = 1.1
         window-padding-x = 10
         window-padding-y = 6
-        window-padding-balance = true
+        window-padding-balance = false
         window-padding-color = extend
         keybind = clear
         confirm-close-surface = false

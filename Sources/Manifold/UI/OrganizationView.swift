@@ -168,7 +168,9 @@ final class DeepOutlineView: NSOutlineView {
         // Set in from the row's highlight (the source list's own inset), so
         // a symbol sits inside it with room, as the text does at the right.
         let r = rect(ofRow: row)
-        return NSRect(x: 14, y: r.minY, width: max(0, bounds.width - 28), height: r.height)
+        // A host's heading sits out at the left, under it its workspaces and blocks.
+        let x: CGFloat = (item(atRow: row) as? OrgNode)?.style == .host ? 0 : 14
+        return NSRect(x: x, y: r.minY, width: max(0, bounds.width - 14 - x), height: r.height)
     }
 
     override func mouseDown(with event: NSEvent) {

@@ -214,14 +214,9 @@ final class GridView: NSView, NSDraggingSource {
                     // pointer follows the bar to where it was clicked, once
                     // the tile has grown and moved it, so a click again
                     // grows again.
+                    self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridFocus(id)
                     if mods.contains(.command) { self.delegate?.gridFill(id) } else { self.delegate?.gridGrow(id) }
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, let pill = self.pills[id], let window = pill.window, !pill.isHidden else { return }
-                        self.layoutSubtreeIfNeeded()
-                        let p = pill.convert(at, to: nil)
-                        Pointer.warp(to: window.convertPoint(toScreen: p))
-                    }
                 }
                 pill.onPathClick = { [weak self] in
                     guard let self, !stashed else { return }
@@ -563,6 +558,7 @@ final class GridView: NSView, NSDraggingSource {
                 if let pill = pills[tile.shown.id] {
                     pill.collapsed = collapsed
                     let bar = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
+                    barTargets[tile.shown.id] = bar
                     settle(pill, bar, was: was.map { NSRect(x: $0.minX, y: $0.maxY, width: $0.width, height: Self.barHeight) })
                     if !held { keep(pill, above: tile.view) }
                     pill.isHidden = held
@@ -611,6 +607,7 @@ final class GridView: NSView, NSDraggingSource {
         }
         layoutSheets()
         layoutShadows(Array(frameNow.values))
+        warpIfGrown()
     }
 
     /// A soft shadow under each card in the light, none in the dark
@@ -1133,6 +1130,24 @@ final class GridView: NSView, NSDraggingSource {
     private var lastFrames: [PlacementID: NSRect] = [:]
     private var lastLayoutBounds: NSRect = .zero
     private var dividerDragging = false
+    /// Where each tile's bar was laid out last (where it is going, while it glides).
+    private var barTargets: [PlacementID: NSRect] = [:]
+    /// A bar clicked to grow its tile: the pointer goes where it was on
+    /// the bar once the grow has moved the bar (§3.1), so a click again
+    /// grows again. Given up after a moment if nothing moved.
+    private var pendingWarp: (id: PlacementID, at: NSPoint, from: NSRect, since: Date)?
+
+    private func warpIfGrown() {
+        guard let w = pendingWarp else { return }
+        guard let bar = barTargets[w.id], let window else { pendingWarp = nil; return }
+        if bar != w.from {
+            pendingWarp = nil
+            let p = convert(NSPoint(x: bar.minX + w.at.x, y: bar.minY + w.at.y), to: nil)
+            Pointer.warp(to: window.convertPoint(toScreen: p))
+        } else if Date().timeIntervalSince(w.since) > 1 {
+            pendingWarp = nil
+        }
+    }
 
     private func layoutSheets() {
         var wanted: [(NSRect, Int)] = []
@@ -1613,7 +1628,11 @@ enum Pointer {
     /// instance, driven while someone else has the mouse).
     static let held = ProcessInfo.processInfo.environment["MANIFOLD_NO_WARP"] != nil
 
+    /// Debugging: where the pointer was last sent, in screen coordinates.
+    nonisolated(unsafe) static var lastWarp: NSPoint?
+
     static func warp(to screen: NSPoint) {
+        lastWarp = screen
         guard !held else { return }
         guard let main = NSScreen.screens.first else { return }
         CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: main.frame.maxY - screen.y))

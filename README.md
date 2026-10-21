@@ -459,8 +459,8 @@ when you find it again.
   the block (or bring it here, if it is nowhere), ⌘-click to show it
   beside the focused tile, ⌥-click to show it over the focused tile;
   rest the pointer for a card — with a picture of its tile when one is
-  on screen, as Safari previews a tab: a terminal as the text on its
-  screen, a page by its own snapshot, an editor or listing as it draws;
+  on screen, as Safari previews a tab: a terminal's screen as Ghostty
+  drew it, a page by its own snapshot, an editor or listing as it draws;
   right-click for Go To, Show Beside, Show
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
   `[words](file.md)` — become edges the moment they're typed, so the

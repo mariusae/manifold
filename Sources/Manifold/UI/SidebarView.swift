@@ -408,8 +408,8 @@ final class FootRowView: NSView {
         super.layout()
         let h = bounds.height
         icon.frame = NSRect(x: 12, y: (h - 12) / 2, width: 14, height: 12)
-        let cw = ceil(countLabel.intrinsicContentSize.width)
-        countLabel.frame = NSRect(x: bounds.width - 14 - cw, y: (h - 15) / 2, width: cw, height: 15)
+        let cw = ceil(countLabel.intrinsicContentSize.width) + 6
+        countLabel.frame = NSRect(x: bounds.width - 10 - cw, y: (h - 15) / 2, width: cw, height: 15)
         label.frame = NSRect(x: 32, y: (h - 16) / 2, width: max(0, countLabel.frame.minX - 40), height: 16)
     }
 

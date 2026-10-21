@@ -53,12 +53,25 @@ final class HoverCard: NSObject {
     /// A picture of a view as it draws now (an editor, a listing; not a
     /// terminal's Metal surface nor a web page, which give their own).
     static func picture(of view: NSView) -> NSImage? {
-        guard view.superview != nil, !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 20, view.bounds.height > 20,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        guard view.superview != nil, !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 20, view.bounds.height > 20 else { return nil }
+        // A terminal draws into an IOSurface its layer shows (Ghostty's
+        // IOSurfaceLayer): the picture is that surface, as it is.
+        if let surface = ioSurface(in: view.layer) {
+            let ci = CIImage(ioSurface: surface)
+            if let cg = CIContext().createCGImage(ci, from: ci.extent) { return NSImage(cgImage: cg, size: view.bounds.size) }
+        }
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
         let image = NSImage(size: view.bounds.size)
         image.addRepresentation(rep)
         return image
+    }
+
+    private static func ioSurface(in layer: CALayer?) -> IOSurface? {
+        guard let layer else { return nil }
+        if let c = layer.contents, CFGetTypeID(c as CFTypeRef) == IOSurfaceGetTypeID() { return (c as! IOSurface) }
+        for sub in layer.sublayers ?? [] { if let s = ioSurface(in: sub) { return s } }
+        return nil
     }
 
     /// What the card shows, kept so a picture that arrives late (a web
@@ -101,13 +114,14 @@ final class HoverCard: NSObject {
         body.stringValue = c.body
         body.font = c.font ?? .systemFont(ofSize: 12)
         body.isHidden = c.body.isEmpty || image != nil
-        let width: CGFloat = 320, pad: CGFloat = 12
+        // Wide with a picture, as Safari's preview of a tab is.
+        let width: CGFloat = image == nil ? 320 : 440, pad: CGFloat = 12
         body.preferredMaxLayoutWidth = width - 2 * pad
         let bodyHeight = body.isHidden ? 0 : ceil(body.sizeThatFits(NSSize(width: width - 2 * pad, height: 240)).height)
         // The picture across the top, as wide as the card, no taller than it is wide.
         var pictureHeight: CGFloat = 0
         if let image, image.size.width > 0 {
-            pictureHeight = min(width * 0.75, (width * image.size.height / image.size.width).rounded())
+            pictureHeight = min(width * 0.7, (width * image.size.height / image.size.width).rounded())
             picture.image = image
         }
         picture.isHidden = image == nil
@@ -126,6 +140,14 @@ final class HoverCard: NSObject {
         }
         panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
         panel.orderFront(nil)
+    }
+
+    /// Debugging: the card's picture, written as a PNG.
+    func debugWritePicture(to path: String) -> String {
+        guard let image = card?.picture, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return "no picture" }
+        do { try png.write(to: URL(fileURLWithPath: path)) } catch { return "\(error)" }
+        return "wrote \(path)"
     }
 
     /// Debugging: whether the card is up, its size, and what it holds.
