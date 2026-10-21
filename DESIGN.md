@@ -131,8 +131,9 @@ lines, as big as can be, or to the whole column; the divider between
 columns sets widths; a tile closed gives its height to its neighbor.
 Each tile is a **card** with a **bar** across its top: the block's
 symbol and name (a dot after it while edited and unsaved), where it
-is (with its host first, "box:~/src", when that isn't the workspace's
-host), its links, its status glyph (§3.7, the program it names in the
+is, its host in a pill after the name (a server's symbol and the
+host's name, in the accent) when that isn't the workspace's host — the
+last thing the bar gives up as it narrows — its links, its status glyph (§3.7, the program it names in the
 tooltip), and maximize and close; the stack behind it shows as its
 sheets. The bar is the tile's handle to drag, grows the tile a step
 when clicked, and holds its menu behind the symbol. As a tile narrows

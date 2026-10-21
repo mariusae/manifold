@@ -1185,6 +1185,56 @@ final class GridView: NSView, NSDraggingSource {
 /// The dot in a tile's bar for a text with unsaved edits: grey, or amber
 /// when the file also changed on disk beneath them. Clicked, it saves, or
 /// (amber) asks which of the two to keep.
+/// The host a block lives on, when that isn't its workspace's host: a
+/// capsule after the name — a server's symbol and the host's name — the
+/// same on every kind of block.
+final class HostPill: NSView {
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    var host: String? {
+        didSet {
+            guard host != oldValue else { return }
+            label.stringValue = host ?? ""
+            toolTip = host.map { "On \($0), not this workspace's host" }
+            needsLayout = true
+        }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 9
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 0.5
+        themed {
+            $0.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.12).cgColor
+            $0.layer?.borderColor = Theme.accent.withAlphaComponent(0.35).cgColor
+        }
+        icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
+        icon.contentTintColor = Theme.accent
+        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = Theme.accent
+        label.lineBreakMode = .byTruncatingTail
+        addSubview(icon)
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    static let height: CGFloat = 18
+    var wantedWidth: CGFloat { 7 + 12 + 3 + min(120, ceil(label.intrinsicContentSize.width) + 4) + 7 }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        icon.frame = NSRect(x: 7, y: (h - 11) / 2, width: 12, height: 11)
+        let lh = ceil(label.intrinsicContentSize.height)
+        label.frame = NSRect(x: 22, y: ((h - lh) / 2).rounded(), width: max(0, bounds.width - 22 - 7), height: lh)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// A tile's pill (§3.1), as Prism names the note at the top of its
 /// column: a small opaque capsule of one width floating centered over the
 /// tile's top, the content running underneath and showing nothing
@@ -1204,6 +1254,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
+    /// The block's host, when it isn't the workspace's (§8).
+    private let hostPill = HostPill()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
@@ -1303,7 +1355,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, corner, close, editor] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, corner, close, editor, hostPill] { addSubview(v) }
+        hostPill.isHidden = true
         themed { $0.updateColors() }
     }
 
@@ -1410,14 +1463,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // type another.
         let tail = String(shown.title.drop(while: { $0 == "…" }))
         let said = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail))
-        var where_ = said && shown.block?.web == nil ? "" : place
-        // From another host than the workspace's: that host first, as ssh
-        // writes it ("box:~/src"), or the host alone.
-        if let host = shown.foreignHost {
-            where_ = where_.isEmpty ? host : shown.block?.web != nil ? host + " · " + where_ : host + ":" + where_
-        }
+        let where_ = said && shown.block?.web == nil ? "" : place
         if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
-        subtitle.toolTip = shown.foreignHost.map { "On \($0), not this workspace's host" }
+        // From another host than the workspace's: the host in its pill.
+        if hostPill.host != shown.foreignHost { hostPill.host = shown.foreignHost; needsLayout = true }
         if close.isHidden != stashed { close.isHidden = stashed }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
@@ -1473,8 +1522,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
         let nameWanted = ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
+        var showHost = hostPill.host != nil
+        let hostWidth = hostPill.wantedWidth
         func spare() -> CGFloat {
-            var used = x + 10 + linkRoom
+            var used = x + 10 + linkRoom + (showHost ? hostWidth + 8 : 0)
             if showClose { used += 22 }
             if showCorner { used += 22 }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
@@ -1487,6 +1538,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // the name say what the tile is; the links are a hover away in the
         // sidebar.
         if spare() < nameNeed, linkRoom > 0 { linkRoom = 0 }
+        // Last of all, the host's pill: what's on another host says so
+        // while there's any room to.
+        if spare() < nameNeed, showHost { showHost = false }
         linkGiven = linkRoom > 0 ? linkRoom - 14 : 0
         var right = bounds.width - 10
         close.isHidden = !showClose
@@ -1507,9 +1561,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
         right -= linkRoom
         let th = ceil(name.intrinsicContentSize.height)
         let wanted = nameWanted
-        let nw = min(wanted, max(0, right - x))
+        let hostRoom = showHost ? hostWidth + 8 : 0
+        let nw = min(wanted, max(0, right - x - hostRoom))
         name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-        let sx = x - 2 + nw + 8
+        var sx = x - 2 + nw + 8
+        hostPill.isHidden = !showHost
+        if showHost {
+            hostPill.frame = NSRect(x: sx - 2, y: ((h - HostPill.height) / 2).rounded(), width: hostWidth, height: HostPill.height)
+            sx += hostWidth + 6
+        }
         count.isHidden = true
         let sh = ceil(subtitle.intrinsicContentSize.height)
         subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
