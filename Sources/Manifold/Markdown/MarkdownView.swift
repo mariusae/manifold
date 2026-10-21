@@ -25,6 +25,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     weak var delegate: MarkdownViewDelegate?
     private let web: WKWebView
 
+    /// A picture of the page as it is now, when it's ready (for a card).
+    func snapshot(_ done: @escaping (NSImage?) -> Void) {
+        web.takeSnapshot(with: nil) { image, _ in done(image) }
+    }
+
     /// The index of the heading at the top of the page now (the last one
     /// at or above the viewport's top), for ⌘\ to begin there.
     func headingAtTop(_ done: @escaping (Int?) -> Void) {

@@ -471,12 +471,13 @@ over it), a filter, a bar at the foot (search, by workspace or by file,
 the inbox, the counts), and the same row — symbol, name, a count, a
 detail, fading with age — with the same gestures everywhere (the one
 rule: click to go to, ⌘-click to show beside, ⌥-click to show over,
-§3.1), a card on hover, the Neighborhood Map in the menu. Under Desk, every
+§3.1), a card on hover (with a picture of the block's tile when one is
+on screen), the Neighborhood Map in the menu. Under Desk, every
 workspace shows its tiles, in order, the focused one marked, so the
 sidebar is the table of contents of the screen; clicking a tile row
 focuses it, and a block dragged onto a workspace is shown there. Two
-rows at the foot, Kept and Recently Closed (§4), each swap their list
-in for the tree.
+rows at the foot, Kept and Recently Closed (§4), each push their list
+over the tree, with a back button and the list's name in the header.
 The workspace stays the working surface; organizations are how you
 reach blocks, never where they live. One exception is on purpose: a
 **state view** shows a status group's blocks themselves in the surface,

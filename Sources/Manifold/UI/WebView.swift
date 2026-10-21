@@ -21,6 +21,11 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     weak var delegate: WebViewDelegate?
     var source: () -> Block? = { nil }
     private let web: WKWebView
+
+    /// A picture of the page as it is now, when it's ready (for a card).
+    func snapshot(_ done: @escaping (NSImage?) -> Void) {
+        web.takeSnapshot(with: nil) { image, _ in done(image) }
+    }
     private var shownURL: String?
 
     var focusView: NSView { web }

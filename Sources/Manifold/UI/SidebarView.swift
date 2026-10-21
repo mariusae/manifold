@@ -60,6 +60,13 @@ final class SidebarView: NSView {
     static let headerHeight: CGFloat = 40
     static let filterHeight: CGFloat = 30
     static let barHeight: CGFloat = 34
+    /// A list pushed over the tree (Kept, Recently Closed): the header
+    /// grows to a back button, the list's name and what it holds.
+    static let pushedHeight: CGFloat = 36
+    private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
+    private let pushedTitle = NSTextField(labelWithString: "")
+    private let pushedSubtitle = NSTextField(labelWithString: "")
+    private var pushed: Bool { organization == .kept || organization == .closed }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -93,6 +100,18 @@ final class SidebarView: NSView {
         moreButton.target = self
         moreButton.action = #selector(moreClicked)
         card.addSubview(moreButton)
+        backButton.target = self
+        backButton.action = #selector(backClicked)
+        backButton.toolTip = "Back to Workspaces"
+        backButton.wantsLayer = true
+        backButton.layer?.cornerRadius = 12
+        backButton.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
+        pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
+        pushedTitle.textColor = Theme.text
+        pushedTitle.lineBreakMode = .byTruncatingTail
+        pushedSubtitle.font = .systemFont(ofSize: 11.5)
+        pushedSubtitle.textColor = Theme.secondaryText
+        for v in [backButton, pushedTitle, pushedSubtitle] { v.isHidden = true; card.addSubview(v) }
 
         searchButton.target = self
         searchButton.action = #selector(toggleFilter)
@@ -136,6 +155,16 @@ final class SidebarView: NSView {
         moreButton.frame = NSRect(x: bounds.width - 54, y: bounds.height - 30, width: 20, height: 20)
         newButton.frame = NSRect(x: bounds.width - 78, y: bounds.height - 30, width: 20, height: 20)
         var top = bounds.height - Self.headerHeight
+        backButton.isHidden = !pushed
+        pushedTitle.isHidden = !pushed
+        pushedSubtitle.isHidden = !pushed
+        if pushed {
+            // The back button and the list's name, under the header's buttons.
+            backButton.frame = NSRect(x: 12, y: top - Self.pushedHeight + 6, width: 24, height: 24)
+            pushedTitle.frame = NSRect(x: 44, y: top - Self.pushedHeight + 17, width: bounds.width - 56, height: 18)
+            pushedSubtitle.frame = NSRect(x: 44, y: top - Self.pushedHeight + 2, width: bounds.width - 56, height: 14)
+            top -= Self.pushedHeight + 6
+        }
         if filterShown {
             filter.frame = NSRect(x: 10, y: top - Self.filterHeight + 5, width: bounds.width - 20, height: 22)
             top -= Self.filterHeight
@@ -150,11 +179,12 @@ final class SidebarView: NSView {
         let cw = counts.wantedWidth
         counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
         var bottom = Self.barHeight
-        for row in [closedRow, keptRow] where !row.isHidden {
+        for row in [closedRow, keptRow] where !row.isHidden && !pushed {
             row.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
             bottom += Self.footRowHeight
         }
-        if !keptRow.isHidden || !closedRow.isHidden { bottom += 6 }
+        if !pushed, !keptRow.isHidden || !closedRow.isHidden { bottom += 6 }
+        for row in [closedRow, keptRow] where pushed { row.frame = .zero }
         organizationView.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: max(0, top - bottom))
         resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
     }
@@ -171,8 +201,11 @@ final class SidebarView: NSView {
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
         keptRow.current = org == .kept
         closedRow.current = org == .closed
+        pushedTitle.stringValue = org.title
         needsLayout = true
     }
+
+    @objc private func backClicked() { chooseOrganization(.desk) }
 
     /// How many are kept off the desk, and closed awaiting collection:
     /// the foot rows, each hidden at zero.
@@ -181,6 +214,10 @@ final class SidebarView: NSView {
         closedRow.count = closed
         keptRow.isHidden = kept == 0 && organization != .kept
         closedRow.isHidden = closed == 0 && organization != .closed
+        let n = organization == .kept ? kept : closed
+        pushedSubtitle.stringValue = organization == .kept
+            ? (n == 1 ? "1 kept off the desk" : "\(n) kept off the desk")
+            : (n == 1 ? "1 closed, awaiting collection" : "\(n) closed, awaiting collection")
         needsLayout = true
     }
 

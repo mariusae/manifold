@@ -158,7 +158,7 @@ final class DeepOutlineView: NSOutlineView {
     /// label), small, at the left: closed by hand, it stays closed.
     override func frameOfOutlineCell(atRow row: Int) -> NSRect {
         guard flat else { return super.frameOfOutlineCell(atRow: row) }
-        guard let n = item(atRow: row) as? OrgNode, n.style == .section, n.hasChildren, !n.id.hasPrefix("back:") else { return .zero }
+        guard let n = item(atRow: row) as? OrgNode, n.style == .section, n.hasChildren else { return .zero }
         let r = rect(ofRow: row)
         return NSRect(x: 4, y: r.minY + (r.height - 12) / 2, width: 12, height: 12)
     }

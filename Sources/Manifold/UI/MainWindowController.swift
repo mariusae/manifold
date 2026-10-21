@@ -2129,14 +2129,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
     }
 
-    /// A list's first row: back to the workspaces.
-    private func backRow() -> OrgNode {
-        let n = OrgNode(id: "back:desk", title: "Workspaces", symbol: "chevron.left")
-        n.style = .section
-        n.action = { [weak self] in self?.setOrganization(.desk) }
-        return n
-    }
-
     /// Rows of blocks and workspaces under their hosts (when there is
     /// more than one), each brought back by a click.
     private func hostedRows(_ make: (HostClient) -> [OrgNode], prefix: String) -> ([OrgNode], Set<String>) {
@@ -2146,8 +2138,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let rows = make(c)
             if !rows.isEmpty { byHost.append((c, rows)) }
         }
-        if byHost.isEmpty { return ([backRow(), OrgNode(id: "\(prefix):none", title: "Nothing here", symbol: "circle.dashed")], []) }
-        if byHost.count == 1 { return ([backRow()] + byHost[0].1, open) }
+        if byHost.isEmpty { return ([OrgNode(id: "\(prefix):none", title: "Nothing here", symbol: "circle.dashed")], []) }
+        if byHost.count == 1 { return (byHost[0].1, open) }
         let roots = byHost.map { c, rows -> OrgNode in
             let id = "\(prefix):host:\(c.host.raw)"
             open.insert(id)
@@ -2155,7 +2147,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.style = .host
             return n
         }
-        return ([backRow()] + roots, open)
+        return (roots, open)
     }
 
     /// Kept (§4), the list: named workspaces off the desk and kept blocks
@@ -4721,7 +4713,25 @@ extension MainWindowController: OrganizationViewDelegate {
             body = b.arrangement.map { a in a.visible.compactMap { self.hosts.block($0.block)?.displayTitle }.joined(separator: " · ") } ?? ""
         default: break
         }
-        HoverCard.shared.show(title: b.displayTitle, detail: detail, body: body, font: font, beside: rect, in: window)
+        // Its tile, if one is on screen: a picture of it, as Safari shows a
+        // tab — a terminal as the text on its screen, a page by its own
+        // snapshot (which comes a moment later), the rest as they draw.
+        let key = id.description
+        var picture: NSImage? = nil
+        if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
+            switch shown {
+            case let t as TerminalView:
+                body = t.visibleText
+                font = hosts.state.appearance.theme.font(.monospaced, size: 11)
+            case let w as WebView:
+                w.snapshot { image in HoverCard.shared.updatePicture(image, for: key) }
+            case let m as MarkdownView:
+                m.snapshot { image in HoverCard.shared.updatePicture(image, for: key) }
+            default:
+                picture = HoverCard.picture(of: shown)
+            }
+        }
+        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture, beside: rect, in: window)
     }
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {

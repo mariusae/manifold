@@ -35,9 +35,10 @@ and Mona Sans (bundled).
   again (remembered). Only tiles have icons; a workspace's label is its
   name and a count of its tiles, a block's row has a second line for
   what it says. Above the bar at the foot sit two quiet rows, **Kept**
-  and **Recently Closed**, each with a count; clicking one shows that
-  list in place of the tree (Workspaces at its top comes back), and
-  neither is in the tree itself. Under **Workspaces**, the sidebar is
+  and **Recently Closed**, each with a count; clicking one pushes that
+  list over the tree, the header showing a back button, the list's
+  name and what it holds, as Safari's Bookmarks does; neither is in
+  the tree itself. Under **Workspaces**, the sidebar is
   the table of contents of the screen:
   click a tile to focus it, a workspace to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
@@ -457,7 +458,10 @@ when you find it again.
   same everywhere, by the one rule for opening things: click to go to
   the block (or bring it here, if it is nowhere), ⌘-click to show it
   beside the focused tile, ⌥-click to show it over the focused tile;
-  rest the pointer for a card; right-click for Go To, Show Beside, Show
+  rest the pointer for a card — with a picture of its tile when one is
+  on screen, as Safari previews a tab: a terminal as the text on its
+  screen, a page by its own snapshot, an editor or listing as it draws;
+  right-click for Go To, Show Beside, Show
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
   `[words](file.md)` — become edges the moment they're typed, so the
   map shows a note's backlinks whether or not anyone followed them.

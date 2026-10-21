@@ -406,6 +406,8 @@ enum DebugControl {
             s.collectAfterMinutes = m
             wc.hosts.local.setSettings(s)
             return "ok"
+        case "card":
+            return HoverCard.shared.debugState
         case "closed":
             // The closed stack, and what nothing reaches.
             return wc?.debugClosed ?? "no window"

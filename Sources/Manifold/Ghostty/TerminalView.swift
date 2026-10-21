@@ -360,6 +360,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
+    /// What the screen shows now, as text: the rows in view, blank ones
+    /// at the end left off (for a card of the terminal).
+    var visibleText: String {
+        let rows = text(rows: scrollbar.offset..<(scrollbar.offset + scrollbar.len))
+        var lines = rows.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        return lines.suffix(14).joined(separator: "\n")
+    }
+
     /// The text shown from one row up to another: for a command's output.
     private func text(rows range: Range<Int>) -> String {
         guard let lines = screenLines() else { return "" }
