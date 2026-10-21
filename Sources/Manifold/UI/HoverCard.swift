@@ -48,6 +48,12 @@ final class HoverCard: NSObject {
         picture.isHidden = true
         for v in [picture, title, detail, body] { box.addSubview(v) }
         panel.contentView = box
+        // Floating at a menu's level, it's above every app's windows: it
+        // goes the moment Manifold isn't the app in front, and never waits
+        // on a pointer that has left.
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.hide()
+        }
     }
 
     /// A picture of a view as it draws now (an editor, a listing; not a
@@ -58,13 +64,26 @@ final class HoverCard: NSObject {
         // IOSurfaceLayer): the picture is that surface, as it is.
         if let surface = ioSurface(in: view.layer) {
             let ci = CIImage(ioSurface: surface)
-            if let cg = CIContext().createCGImage(ci, from: ci.extent) { return NSImage(cgImage: cg, size: view.bounds.size) }
+            if let cg = imaging.createCGImage(ci, from: ci.extent) { return NSImage(cgImage: cg, size: view.bounds.size) }
         }
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
         let image = NSImage(size: view.bounds.size)
         image.addRepresentation(rep)
         return image
+    }
+
+    /// One context for every surface pictured: making one costs more than
+    /// the picture does.
+    private static let imaging = CIContext()
+
+    /// A terminal's screen as its surface last held it, on screen or not
+    /// (another workspace's, stacked away).
+    static func surfacePicture(of view: NSView) -> NSImage? {
+        guard view.bounds.width > 20, view.bounds.height > 20, let surface = ioSurface(in: view.layer) else { return nil }
+        let ci = CIImage(ioSurface: surface)
+        guard let cg = imaging.createCGImage(ci, from: ci.extent) else { return nil }
+        return NSImage(cgImage: cg, size: view.bounds.size)
     }
 
     private static func ioSurface(in layer: CALayer?) -> IOSurface? {
@@ -107,7 +126,7 @@ final class HoverCard: NSObject {
     }
 
     private func present() {
-        guard let c = card, let window = c.window else { return }
+        guard let c = card, let window = c.window, NSApp.isActive else { return }
         let image = c.picture
         title.stringValue = c.title
         detail.stringValue = c.detail
@@ -152,8 +171,9 @@ final class HoverCard: NSObject {
 
     /// Debugging: whether the card is up, its size, and what it holds.
     var debugState: String {
-        guard panel.isVisible, let c = card else { return "hidden" }
-        return "shown \(Int(panel.frame.width))x\(Int(panel.frame.height)) picture=\(c.picture.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none") title=\(c.title) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
+        // What it holds, shown or not (not, while another app is in front).
+        guard let c = card else { return "hidden" }
+        return (panel.isVisible ? "shown \(Int(panel.frame.width))x\(Int(panel.frame.height))" : "held, not shown (app not in front)") + " picture=\(c.picture.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none") title=\(c.title) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
     }
 
     func hide() {

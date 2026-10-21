@@ -541,9 +541,13 @@ when you find it again.
   same everywhere, by the one rule for opening things: click to go to
   the block (or bring it here, if it is nowhere), ⌘-click to show it
   beside the focused tile, ⌥-click to show it over the focused tile;
-  rest the pointer for a card — with a picture of its tile when one is
-  on screen, as Safari previews a tab: a terminal's screen as Ghostty
-  drew it, a page by its own snapshot, an editor or listing as it draws;
+  rest the pointer for a card — with a picture of its tile, as Safari
+  previews a tab: a terminal's screen as Ghostty drew it, a page by its
+  own snapshot, an editor or listing as it draws; out of sight (another
+  workspace, stacked, collapsed), a terminal as its screen still holds
+  it and the rest as last pictured — taken as a tile is stacked,
+  collapsed or its workspace left (a block not seen since launch gets
+  its text). The card shows only while Manifold is in front;
   right-click for Go To, Show Beside, Show
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
   `[words](file.md)` — become edges the moment they're typed, so the

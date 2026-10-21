@@ -114,7 +114,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in _ = self?.finder }
         sidebar.organizationView.collapsedByHand = Set(hosts.state.collapsedRows)
         sidebar.organizationView.onCollapsedChanged = { [weak self] rows in self?.hosts.setCollapsedRows(rows) }
-        for c in [content, outgoing] { c.delegate = self }
+        for c in [content, outgoing] {
+            c.delegate = self
+            c.onHiding = { [weak self] view in self?.rememberPicture(of: view) }
+        }
         sidebar.isHidden = true
 
         if let f = hosts.state.window.frame, f.count == 4 {
@@ -191,6 +194,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// keyboard with it; one that didn't follows the keyboard.
     private var lastFocused: PlacementID?
 
+    /// Each block's tile as last pictured, for its card while it's out of
+    /// sight: taken as a tile is stacked, collapsed or maximized over, as
+    /// its workspace is left, and whenever its card is shown.
+    private var tilePictures: [BlockID: NSImage] = [:]
+
     /// Rendering now, and a render asked for meanwhile.
     private var rendering = false
     private var renderAgain = false
@@ -263,6 +271,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if selected != shownArrangement {
+            // The workspace left: each tile it showed pictured, for its card.
+            for v in content.views where v.superview != nil && !v.isHiddenOrHasHiddenAncestor { rememberPicture(of: v) }
             if let dir = pendingSlide, shownArrangement != nil, selected != nil { slide(from: dir) }
             shownArrangement = selected
         }
@@ -1078,7 +1088,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackSwitcherView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackSwitcherView || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
@@ -5090,6 +5100,8 @@ extension MainWindowController: OrganizationViewDelegate {
         // Its tile, if one is on screen: a picture of it, as Safari shows a
         // tab — a terminal as the text on its screen, a page by its own
         // snapshot (which comes a moment later), the rest as they draw.
+        // Out of sight (another workspace, stacked, collapsed): a terminal
+        // as its screen still holds it; the rest as last pictured.
         let key = id.description
         var picture: NSImage? = nil
         if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
@@ -5101,14 +5113,45 @@ extension MainWindowController: OrganizationViewDelegate {
                     font = hosts.state.appearance.theme.font(.monospaced, size: 11)
                 }
             case let w as WebView:
-                w.snapshot { image in HoverCard.shared.updatePicture(image, for: key) }
+                w.snapshot { [weak self] image in
+                    if let image { self?.tilePictures[id] = image }
+                    HoverCard.shared.updatePicture(image, for: key)
+                }
             case let m as MarkdownView:
-                m.snapshot { image in HoverCard.shared.updatePicture(image, for: key) }
+                m.snapshot { [weak self] image in
+                    if let image { self?.tilePictures[id] = image }
+                    HoverCard.shared.updatePicture(image, for: key)
+                }
             default:
                 picture = HoverCard.picture(of: shown)
             }
+            if let picture { tilePictures[id] = picture }
+        } else if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView,
+                  let image = HoverCard.surfacePicture(of: t) {
+            picture = image
+        } else if let kept = tilePictures[id] {
+            picture = kept
+        } else if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView {
+            let text = t.visibleText
+            if !text.isEmpty {
+                body = text
+                font = hosts.state.appearance.theme.font(.monospaced, size: 11)
+            }
         }
         HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture, beside: rect, in: window)
+    }
+
+    func rememberPicture(of view: PaneContent) {
+        switch view {
+        case let w as WebView:
+            w.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
+        case let m as MarkdownView:
+            m.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
+        default:
+            if let image = HoverCard.picture(of: view) { tilePictures[view.block] = image }
+        }
+        // Kept for the blocks still about.
+        if tilePictures.count > 200 { tilePictures = tilePictures.filter { hosts.block($0.key) != nil } }
     }
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {

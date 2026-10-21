@@ -65,6 +65,18 @@ protocol GridDelegate: AnyObject {
 /// stack under the filling tile's, fanned out while the pointer is over
 /// them, each clicked to come back.
 final class GridView: NSView, NSDraggingSource {
+    /// Told of a tile's view about to go out of sight — stacked, collapsed
+    /// to its bar, behind a maximized tile — while it still shows: for a
+    /// picture of it to keep.
+    var onHiding: ((PaneContent) -> Void)?
+
+    /// A tile's view shown or hidden; one about to go, pictured first.
+    private func setHidden(_ view: PaneContent, _ hidden: Bool) {
+        guard view.isHidden != hidden else { return }
+        if hidden, view.window != nil, view.superview != nil { onHiding?(view) }
+        view.isHidden = hidden
+    }
+
     struct Tile {
         var shown: Shown
         var view: PaneContent
@@ -276,7 +288,7 @@ final class GridView: NSView, NSDraggingSource {
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
                 // Not a view the switcher holds: it shows in its card.
-                if !switching.contains(id) { tile.view.isHidden = stashed }
+                if !switching.contains(id) { setHidden(tile.view, stashed) }
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
@@ -487,7 +499,7 @@ final class GridView: NSView, NSDraggingSource {
         if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
             // One tile over everything; the rest wait behind it.
             for t in columns.flatMap({ $0 }) where t.shown.id != full {
-                t.view.isHidden = true
+                setHidden(t.view, true)
                 pills[t.shown.id]?.isHidden = true
                 badges[t.shown.id]?.isHidden = true
             }
@@ -509,7 +521,7 @@ final class GridView: NSView, NSDraggingSource {
         }
         for t in columns.flatMap({ $0 }) where !switching.contains(t.shown.id) {
             let stashed = isStashed(t.shown.id)
-            t.view.isHidden = stashed
+            setHidden(t.view, stashed)
             // A stashed tile's pill stays as it is — hidden behind the
             // top's, or out in the fan: shown here, it would be drawn over
             // the top pill for a frame, until the gather hid it again.
@@ -553,7 +565,7 @@ final class GridView: NSView, NSDraggingSource {
                 frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
                 if !held {
                     settle(tile.view, body, was: was)
-                    if tile.view.isHidden != collapsed { tile.view.isHidden = collapsed }
+                    setHidden(tile.view, collapsed)
                 }
                 // The switcher over the whole tile, its bar put away meanwhile.
                 if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }

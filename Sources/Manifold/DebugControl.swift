@@ -423,6 +423,13 @@ enum DebugControl {
             guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }
             wc.open(arg, from: f.id, over: true)
             return "ok"
+        case "workspace":
+            // "workspace <n>": the nth workspace selected, as ⌘n does.
+            guard let wc, let n = Int(arg) else { return "usage: workspace <n>" }
+            let item = NSMenuItem()
+            item.tag = n
+            wc.selectTabByNumber(item)
+            return "ok"
         case "inbox":
             // The Inbox in ⌘J's order; "inbox next": ⌘J.
             guard let wc else { return "no window" }

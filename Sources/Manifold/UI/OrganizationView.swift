@@ -673,7 +673,8 @@ final class OrgRowView: NSTableCellView {
         detailIcon.isHidden = detailSymbol.isEmpty
         alphaValue = 1 - 0.45 * (node.age ?? 0)
         tipOwner.text = node.liveTooltip
-        toolTip = node.liveTooltip != nil ? nil : node.detail.isEmpty ? node.title : node.title + " — " + node.detail
+        // A block's row has its card (the title, and more) for a tooltip.
+        toolTip = node.liveTooltip != nil || node.block != nil ? nil : node.detail.isEmpty ? node.title : node.title + " — " + node.detail
         placeLiveTip()
         needsLayout = true
     }
