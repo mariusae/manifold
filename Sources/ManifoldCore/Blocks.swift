@@ -17,6 +17,9 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     /// A terminal command's output, captured as the terminal received it
     /// (§3.8): read-only, linked back to the command.
     case output
+    /// A shell notebook (§7.7): cells of commands run in one shell that
+    /// lives on, each with what its last run printed.
+    case notebook
     /// Placements of other blocks, laid out (§3 of DESIGN.md).
     case arrangement
 
@@ -34,6 +37,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .process: "Processes"
         case .agent: "Agent"
         case .output: "Output"
+        case .notebook: "Shell Notebook"
         case .arrangement: "Untitled"
         }
     }
@@ -58,6 +62,8 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case card
     /// A command's output, as the terminal showed it (§3.8).
     case output
+    /// A shell notebook's cells (§7.7).
+    case notebook
     /// What a block's scrubber marks — a terminal's commands, a text's
     /// headings — as a list to steer the block's tile by (§3.8).
     case outline
@@ -87,6 +93,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .process: return .process
         case .agent: return .agent
         case .output: return .output
+        case .notebook: return .notebook
         case .arrangement: return .card
         }
     }
@@ -487,6 +494,140 @@ public struct OutputState: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: Shell notebooks
+
+/// A cell of a shell notebook (§7.7): a command, and what its last run
+/// printed (escapes and all), how it ended, and when.
+public struct NotebookCell: Codable, Equatable, Sendable {
+    public var id: String
+    public var source: String
+    public var output: String?
+    public var status: Int32?
+    /// Its run's number in the notebook's shell, as Jupyter counts.
+    public var count: Int?
+    public var ran: Stamp?
+    public var ended: Stamp?
+    /// Only the end of a long output was kept.
+    public var truncated: Bool?
+
+    public init(id: String, source: String = "") {
+        self.id = id
+        self.source = source
+    }
+
+    /// A fresh id for a cell.
+    public static func newID() -> String {
+        let letters = Array("abcdefghijkmnpqrstuvwxyz23456789")
+        return String((0..<8).map { _ in letters.randomElement()! })
+    }
+}
+
+/// A shell notebook's state (§7.7): its cells, which is running and which
+/// wait their turn, and its shell.
+public struct NotebookState: Codable, Equatable, Sendable {
+    public var cells: [NotebookCell] = []
+    public var running: String?
+    public var queued: [String] = []
+    /// Runs so far, in this shell and the ones before it.
+    public var runs = 0
+    /// The shell's pid while there is one, and its name.
+    public var pid: Int32?
+    public var shell: String?
+    public var shellStarted: Stamp?
+    public init() {}
+
+    public func cell(_ id: String) -> NotebookCell? { cells.first { $0.id == id } }
+
+    mutating func apply(_ edit: NotebookEdit) {
+        func update(_ id: String, _ f: (inout NotebookCell) -> Void) {
+            if let i = cells.firstIndex(where: { $0.id == id }) { f(&cells[i]) }
+        }
+        switch edit {
+        case let .insert(cell, at):
+            guard !cells.contains(where: { $0.id == cell.id }) else { return }
+            cells.insert(cell, at: max(0, min(at, cells.count)))
+        case let .remove(id):
+            cells.removeAll { $0.id == id }
+            queued.removeAll { $0 == id }
+        case let .move(id, to):
+            guard let i = cells.firstIndex(where: { $0.id == id }) else { return }
+            let c = cells.remove(at: i)
+            cells.insert(c, at: max(0, min(to, cells.count)))
+        case let .source(id, text):
+            update(id) { $0.source = text }
+        case let .clear(id):
+            update(id) {
+                $0.output = nil
+                $0.status = nil
+                $0.count = nil
+                $0.ran = nil
+                $0.ended = nil
+                $0.truncated = nil
+            }
+        case .clearAll:
+            for i in cells.indices where cells[i].id != running {
+                cells[i].output = nil
+                cells[i].status = nil
+                cells[i].count = nil
+                cells[i].ran = nil
+                cells[i].ended = nil
+                cells[i].truncated = nil
+            }
+        case let .queued(ids):
+            queued = ids
+        case let .started(id, count, at):
+            running = id
+            runs = max(runs, count)
+            queued.removeAll { $0 == id }
+            update(id) {
+                $0.count = count
+                $0.ran = at
+                $0.ended = nil
+                $0.status = nil
+                $0.output = ""
+                $0.truncated = nil
+            }
+        case let .finished(id, output, status, truncated, at):
+            if running == id { running = nil }
+            update(id) {
+                $0.output = output
+                $0.status = status
+                $0.ended = at
+                $0.truncated = truncated ? true : nil
+            }
+        case let .shell(pid, name, at):
+            pid.map { _ in shellStarted = at }
+            self.pid = pid
+            if let name { shell = name }
+            if pid == nil { running = nil; queued = [] }
+        }
+    }
+}
+
+/// A change to a shell notebook: the cells, as the user edits them
+/// (proposed by the app, written by the host), and their runs and the
+/// shell, as the host has them.
+public enum NotebookEdit: Codable, Equatable, Sendable {
+    case insert(NotebookCell, at: Int)
+    case remove(String)
+    case move(String, to: Int)
+    case source(String, String)
+    case clear(String)
+    case clearAll
+    case queued([String])
+    case started(String, count: Int, at: Stamp)
+    case finished(String, output: String, status: Int32?, truncated: Bool, at: Stamp)
+    case shell(pid: Int32?, name: String?, at: Stamp)
+
+    /// Whether the app may ask for it (the rest are the host's to say).
+    public var isUsers: Bool {
+        switch self {
+        case .insert, .remove, .move, .source, .clear, .clearAll: true
+        default: false
+        }
+    }
+}
+
 public struct WebState: Codable, Equatable, Sendable {
     public var url: String?
     /// Loaded from the client's network, or through the host (§7.6).
@@ -674,6 +815,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var git: GitState?
     public var diff: DiffState?
     public var output: OutputState?
+    public var notebook: NotebookState?
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
@@ -707,6 +849,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .git: git = GitState()
         case .diff: diff = DiffState()
         case .output: output = OutputState()
+        case .notebook: notebook = NotebookState()
         case .arrangement: arrangement = ArrangementState()
         default: break
         }

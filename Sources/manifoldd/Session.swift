@@ -384,7 +384,7 @@ final class Session {
     /// less what belongs to the app that started us, plus the terminal's.
     /// The shell is the host's preference (`preferred`), else
     /// $MANIFOLD_SHELL, else the user's login shell.
-    private static func shellAndEnvironment(clientEnv: [String: String], preferred: String? = nil) -> (String, [String: String]) {
+    static func shellAndEnvironment(clientEnv: [String: String], preferred: String? = nil) -> (String, [String: String]) {
         var env = ProcessInfo.processInfo.environment
         for key in ["__CFBundleIdentifier", "XPC_SERVICE_NAME", "XPC_FLAGS", "PWD", "OLDPWD", "SHLVL",
                     "MANIFOLD_PANE", "MANIFOLD_BLOCK", "_", "TERM_SESSION_ID", "INSIDE_EMACS"] {

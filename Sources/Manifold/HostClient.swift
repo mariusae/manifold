@@ -830,6 +830,8 @@ final class HostClient {
             pendingLSP.removeValue(forKey: id)?(result)
         case let .bytes(id, data):
             pendingBytes.removeValue(forKey: id)?(data)
+        case let .notebookLive(block, cell, output):
+            onNotebookLive?(block, cell, output)
         case let .listing(id, entries, complete):
             pendingListings.removeValue(forKey: id)?(entries, complete)
         case let .languageServer(language, root, state):
@@ -842,6 +844,8 @@ final class HostClient {
     var onConnected: (() -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
+    /// A notebook's running cell printed (§7.7).
+    var onNotebookLive: ((BlockID, String, String) -> Void)?
     var onLanguageServer: ((String, String, String) -> Void)?
 
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?

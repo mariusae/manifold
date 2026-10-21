@@ -79,6 +79,7 @@ enum Theme {
         case .agent: "sparkles"
         case .card: "rectangle.3.group"
         case .output: "text.alignleft"
+        case .notebook: "text.and.command.macwindow"
         case .outline: "list.bullet.rectangle"
         }
     }
@@ -108,6 +109,7 @@ enum Theme {
         "cpu": ["cpu.fill", "memorychip"],
         "number": ["number.square", "textformat"],
         "apple.terminal": ["terminal"],
+        "text.and.command.macwindow": ["apple.terminal.on.rectangle", "terminal"],
         "arrow.left.arrow.right": ["arrow.right.arrow.left", "arrow.left.and.right"],
     ]
 

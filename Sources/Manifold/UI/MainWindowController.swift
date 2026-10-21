@@ -148,6 +148,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             for case let e as EditorView in self.views.values where e.block == block { e.gutterChanged() }
         }
+        hosts.onNotebookLive = { [weak self] block, cell, output in
+            guard let self else { return }
+            for case let n as NotebookView in self.views.values where n.block == block { n.live(cell: cell, output: output) }
+        }
         hosts.onDiagnostics = { [weak self] block in
             guard let self else { return }
             for case let e as EditorView in self.views.values where e.block == block { e.diagnosticsChanged() }
@@ -274,6 +278,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as OutlineLensView in views.values { t.documentChanged() }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
+            for case let n as NotebookView in views.values { n.codeFont = codeFont; n.documentChanged() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.codeFont = codeFont; s.documentChanged() }
@@ -484,6 +489,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             g.delegate = self
             g.source = { [weak self] in self?.hosts.block(p.block) }
             v = g
+        case .notebook:
+            let n = NotebookView(placement: p.id, block: p.block)
+            n.delegate = self
+            n.source = { [weak self] in self?.hosts.block(p.block) }
+            n.codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            n.documentChanged()
+            v = n
         case .output:
             let o = OutputView(placement: p.id, block: p.block)
             o.delegate = self
@@ -1017,6 +1029,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return s.debugPreview(arg)
     }
 
+    /// Debugging: the focused notebook, told `arg` (see NotebookView.debug).
+    func debugNotebook(_ arg: String) -> String {
+        guard let n = arrangement?.focused.flatMap({ views[$0] as? NotebookView }) else { return "no notebook focused" }
+        return n.debug(arg)
+    }
+
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     func debugDirectory(_ arg: String) -> String {
         guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }
@@ -1140,6 +1158,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         })
         items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
             self?.newNote(nil)
+        })
+        items.append(PaletteItem(symbol: "text.and.command.macwindow", title: "New Shell Notebook", subtitle: "⌃⇧⌘N") { [weak self] in
+            self?.newShellNotebook(nil)
         })
         if let f = focusedShown, f.block?.isNote == true {
             items.append(PaletteItem(symbol: "pencil", title: "Name This Note…", subtitle: "Action") { [weak self] in
@@ -1384,6 +1405,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⇧⌘N: a note — about the focused block (§3.5): the block linked to
     /// the note, as if ⇧-dragged into it, so the block wears it and the
     /// note knows its subject.
+    /// A shell notebook (§7.7) on the focused block's host, its shell
+    /// started where that block is, placed here.
+    @objc func newShellNotebook(_ sender: Any?) {
+        let client = hosts.client(focusedHost) ?? host
+        let id = BlockID(host: client.host)
+        client.propose(.newNotebook(block: id, cwd: focusedCwd))
+        showWhenMade(id, lens: .notebook, place: .here)
+    }
+
     @objc func newNote(_ sender: Any?) {
         let client = hosts.client(focusedHost) ?? host
         let note = client.newNote(home: focusedCwd)
@@ -2182,7 +2212,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let id = b.id
                 let prefix = "search/\(id)"
                 // A text's lines; an output's, its escapes taken out.
-                let searched = b.text?.text.string ?? b.output.map { o in
+                let notebookText = b.notebook.map { nb in nb.cells.map { "$ " + $0.source + "\n" + ($0.output ?? "") }.joined(separator: "\n") }
+                let searched = b.text?.text.string ?? notebookText.map { $0
+                        .replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
+                        .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+                } ?? b.output.map { o in
                     o.plain ? o.output : o.output
                         .replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
                         .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
@@ -2194,7 +2228,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                         guard hits.count < 40, raw.lowercased().contains(q) else { continue }
                         let line = n
                         let hit = OrgNode(id: "\(prefix)/\(line)", title: snippet(raw), symbol: "text.alignleft", detail: "line \(line)")
-                        hit.action = b.kind == .output ? { [weak self] in self?.goTo(id) } : { [weak self] in self?.goToLine(line, in: id) }
+                        hit.action = b.kind == .output || b.kind == .notebook ? { [weak self] in self?.goTo(id) } : { [weak self] in self?.goToLine(line, in: id) }
                         hits.append(hit)
                     }
                 }
@@ -2981,6 +3015,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .web:
                 secondary = block.web?.url ?? ""
                 detail = block.web?.url ?? "Web page"
+            case .notebook:
+                let sources = (block.notebook?.cells ?? []).prefix(20).map(\.source).joined(separator: " ")
+                secondary = "notebook shell " + (block.place ?? "") + " " + sources
+                detail = "Shell notebook in \(block.place?.abbreviatingHome ?? "~")"
+                note = block.notebook?.running != nil ? "running" : ""
             case .output:
                 secondary = "output " + (block.place ?? "")
                 detail = "Output" + (block.output?.status.map { $0 == 0 ? ", ok" : ", exit \($0)" } ?? "") + (block.place.map { " · " + $0.abbreviatingHome } ?? "")
@@ -4641,6 +4680,35 @@ extension MainWindowController: DirectoryViewDelegate {
             guard (try? data.write(to: url)) != nil else { return done(nil) }
             done(url)
         }
+    }
+}
+
+extension MainWindowController: NotebookViewDelegate {
+    func notebook(_ view: NotebookView, edit: NotebookEdit) {
+        hosts.client(view.block.host)?.propose(.editNotebook(block: view.block, edit: edit))
+    }
+
+    func notebook(_ view: NotebookView, run cells: [String]) {
+        hosts.client(view.block.host)?.propose(.runCells(block: view.block, cells: cells))
+    }
+
+    func notebookInterrupt(_ view: NotebookView) {
+        hosts.client(view.block.host)?.propose(.interruptNotebook(block: view.block))
+    }
+
+    func notebookRestart(_ view: NotebookView) {
+        hosts.client(view.block.host)?.propose(.restartNotebook(block: view.block))
+    }
+
+    func notebookStart(_ view: NotebookView) {
+        guard hosts.block(view.block)?.notebook?.pid == nil else { return }
+        hosts.client(view.block.host)?.propose(.startNotebook(block: view.block))
+    }
+
+    /// As a terminal's ⌘-click: a path from where the shell is, an address
+    /// in the browser, `file:line:column` at that place.
+    func notebook(_ view: NotebookView, open target: String) {
+        open(target, from: view.placement)
     }
 }
 

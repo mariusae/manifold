@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 32
+public let protocolVersion = 33
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -181,6 +181,20 @@ public enum Proposal: Codable, Sendable {
     /// A file's bytes by its path, `limit` at most, answered with `bytes`
     /// (nil when it's bigger, or unreadable).
     case readPath(path: String, limit: Int)
+    /// A shell notebook made, one empty cell in it, its shell started in
+    /// `cwd` (§7.7).
+    case newNotebook(block: BlockID, cwd: String?)
+    /// A notebook's cells changed as the user edits them.
+    case editNotebook(block: BlockID, edit: NotebookEdit)
+    /// Cells run, in order, after any running or waiting.
+    case runCells(block: BlockID, cells: [String])
+    /// The running cell interrupted (^C), those waiting dropped; asked
+    /// again while it runs, its program killed.
+    case interruptNotebook(block: BlockID)
+    /// The notebook's shell ended and a fresh one started.
+    case restartNotebook(block: BlockID)
+    /// The notebook's shell started if it isn't running.
+    case startNotebook(block: BlockID)
 }
 
 /// What a host asks the leader of a shard to append.
@@ -274,4 +288,8 @@ public enum ServerMessage: Codable, Sendable {
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
+    /// What a notebook's running cell has printed so far (its end, if
+    /// long): sent as it comes, not kept; the cell's output is written
+    /// when it ends (§7.7).
+    case notebookLive(block: BlockID, cell: String, output: String)
 }

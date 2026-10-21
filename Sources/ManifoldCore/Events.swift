@@ -260,6 +260,8 @@ public enum Event: Codable, Equatable, Sendable {
     case diffSubject(DiffSubject)
     /// An output block's whole state, as captured (§3.8).
     case output(OutputState)
+    /// A shell notebook's cells and runs (§7.7).
+    case notebook(NotebookEdit)
     /// An outline block's subject (§3.8).
     case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
 
@@ -406,6 +408,7 @@ extension Block {
         if git != nil { git!.apply(event) }
         if diff != nil { diff!.apply(event) }
         if case let .output(o) = event { output = o }
+        if case let .notebook(edit) = event { notebook?.apply(edit) }
         if processes != nil { processes!.apply(event) }
         if arrangement != nil { arrangement!.apply(event, at: at) }
     }

@@ -101,7 +101,7 @@ public final class Node {
         case .desk, .registry, .links: return .host
         case .block(let id):
             switch block(id)?.kind {
-            case .terminal?, .directory?, .search?, .git?, .process?, .agent?: return .host
+            case .terminal?, .directory?, .search?, .git?, .process?, .agent?, .notebook?: return .host
             case nil: return .client
             default: return .client
             }

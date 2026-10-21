@@ -1433,3 +1433,36 @@ private final class Seen: @unchecked Sendable {
     #expect(OutputState.trimmed("100%\r \r") == "100%\r \r")
     #expect(OutputState.trimmed("plain\n") == "plain\n")
 }
+
+// MARK: Shell notebooks
+
+@Test func notebookCellsRunAndKeepTheirLastOutput() {
+    var nb = NotebookState()
+    let a = NotebookCell(id: "a", source: "echo hi"), b = NotebookCell(id: "b")
+    let t = Stamp(wall: 1)
+    nb.apply(.insert(a, at: 0))
+    nb.apply(.insert(b, at: 5))
+    nb.apply(.insert(a, at: 1))  // the same cell again: ignored
+    #expect(nb.cells.map(\.id) == ["a", "b"])
+    nb.apply(.source("b", "false"))
+    nb.apply(.queued(["a", "b"]))
+    nb.apply(.started("a", count: 1, at: t))
+    #expect(nb.running == "a" && nb.queued == ["b"] && nb.cell("a")?.output == "")
+    nb.apply(.finished("a", output: "hi\r\n", status: 0, truncated: false, at: t))
+    #expect(nb.running == nil && nb.cell("a")?.output == "hi\r\n" && nb.cell("a")?.status == 0)
+    // A second run starts its output afresh.
+    nb.apply(.started("a", count: 2, at: t))
+    #expect(nb.cell("a")?.output == "" && nb.cell("a")?.count == 2 && nb.runs == 2)
+    nb.apply(.finished("a", output: "again", status: 0, truncated: false, at: t))
+    nb.apply(.move("b", to: 0))
+    #expect(nb.cells.map(\.id) == ["b", "a"])
+    nb.apply(.clear("a"))
+    #expect(nb.cell("a")?.output == nil && nb.cell("a")?.count == nil && nb.cell("a")?.source == "echo hi")
+    // The shell gone: nothing runs or waits.
+    nb.apply(.queued(["b"]))
+    nb.apply(.shell(pid: nil, name: nil, at: t))
+    #expect(nb.queued.isEmpty && nb.pid == nil)
+    nb.apply(.remove("b"))
+    #expect(nb.cells.map(\.id) == ["a"])
+    #expect(NotebookEdit.source("a", "x").isUsers && !NotebookEdit.started("a", count: 1, at: t).isUsers)
+}

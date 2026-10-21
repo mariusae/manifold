@@ -766,6 +766,42 @@ A web block made from a remote block (a URL ⌘-clicked in a terminal on
 devbox) starts out loading from its host; one made here, from here. A web
 block's history is its log; scrubbing it walks the pages it showed.
 
+### 7.7 Shell notebook
+
+Jupyter's notebook for a shell: a block of cells, each a command and
+what its last run printed, run in one shell that lives on between runs.
+The block is the host's to write (§8.2): the app proposes each edit
+(`editNotebook`: insert, remove, move, a cell's text, clearing) and the
+runs (`runCells`, `interruptNotebook`, `restartNotebook`), so edits and
+runs never race in the log.
+
+The host keeps a shell per notebook (`NotebookShell`): the user's zsh or
+bash (another shell's notebook gets zsh), started as a terminal's is,
+with its rc files, on a pty of its own with `TERM=dumb` and pagers set
+to `cat`. Once it has started, a line quiets it — no echo, no prompt, no
+line editor, no hooks but one — and sets its prompt hook to write `OSC
+7503;E;status;pwd`; the line ends writing `OSC 7503;R`, and the shell is
+ready. A cell runs as one line: `OSC 7503;B`, then `eval` of a file
+holding the cell's text, so whatever the cell sets stays set and an
+error reads as it would at a prompt. What comes between B and the next E
+is the cell's output; the E, from the prompt hook, comes after a ^C as
+after anything else, with the status (130) and where the shell is now
+(written as the block's `cwd`, so a relative path ⌘-clicked in an output
+is found from there). An E with no B before it (a prompt from the
+shell's start) is passed over, unless the run was interrupted.
+
+While a cell runs, what it has printed is sent to the clients as it
+comes (`notebookLive`, a tenth of a second at most apart, its last
+256 KB), not written; when it ends its output is written to the cell
+(the last megabyte), with its status and when. One cell runs at a time;
+the rest wait in the block's queue, run in order; a failure empties it,
+as an interrupt does. A second interrupt within ten seconds kills the
+foreground program's group. A notebook reports its status as a terminal
+does (§3.7): working while a cell runs, done when the queue empties,
+failed with the cell's exit. The shell ends with the server (or the
+block); the cells and their outputs stay, and the next run starts a new
+shell.
+
 ---
 
 ## 8. Hosts, attachments and the wire

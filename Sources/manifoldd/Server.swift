@@ -41,6 +41,14 @@ final class Server {
     private var pending: [Connection] = []
     private var attachments = 0
     private var sessions: [BlockID: Session] = [:]
+    /// Shell notebooks' shells (§7.7), and what a running cell has printed
+    /// that the clients haven't been sent yet.
+    private var notebooks: [BlockID: NotebookShell] = [:]
+    private var notebookLive: [BlockID: (cell: String, output: Data)] = [:]
+    private var notebookLiveScheduled: Set<BlockID> = []
+    /// When each notebook's running cell was last interrupted: asked again
+    /// while it still runs, its program is killed.
+    private var notebookInterrupted: [BlockID: Date] = [:]
     private var watchers: [BlockID: FileWatcher] = [:]
     private var listener: DispatchSourceRead?
     private var timer: DispatchSourceTimer?
@@ -333,6 +341,7 @@ final class Server {
     /// every replica follows.
     private func discard(_ block: BlockID) {
         sessions.removeValue(forKey: block)?.terminate()
+        notebooks.removeValue(forKey: block)?.terminate()
         watchers.removeValue(forKey: block)
         unreachableSince.removeValue(forKey: block)
         guard node.block(block) != nil else { return }
@@ -432,6 +441,50 @@ final class Server {
                 if let cwd { append(.cwd(cwd), to: .block(block)) }
                 append(.command(command), to: .block(block))
             }
+            done()
+        case let .newNotebook(block, cwd):
+            if node.block(block) == nil {
+                append(.create(kind: .notebook, title: nil, path: nil), to: .block(block))
+                if let cwd { append(.cwd(cwd), to: .block(block)) }
+                append(.notebook(.insert(NotebookCell(id: NotebookCell.newID()), at: 0)), to: .block(block))
+            }
+            startNotebook(block)
+            done()
+        case let .editNotebook(block, edit):
+            guard edit.isUsers, let nb = node.block(block)?.notebook else { return done("not a notebook") }
+            if case let .remove(cell) = edit, nb.running == cell { notebooks[block]?.interrupt() }
+            append(.notebook(edit), to: .block(block))
+            done()
+        case let .runCells(block, cells):
+            guard let nb = node.block(block)?.notebook else { return done("not a notebook") }
+            log("notebook \(block): run asked for \(cells), running \(nb.running ?? "nothing"), waiting \(nb.queued)")
+            var queue = nb.queued
+            for c in cells where c != nb.running && !queue.contains(c) && nb.cell(c) != nil { queue.append(c) }
+            if queue != nb.queued { append(.notebook(.queued(queue)), to: .block(block)) }
+            advanceNotebook(block)
+            done()
+        case let .interruptNotebook(block):
+            guard let nb = node.block(block)?.notebook else { return done("not a notebook") }
+            if !nb.queued.isEmpty { append(.notebook(.queued([])), to: .block(block)) }
+            if nb.running != nil, let shell = notebooks[block] {
+                if let last = notebookInterrupted[block], Date().timeIntervalSince(last) < 10 {
+                    shell.killForeground()
+                } else {
+                    shell.interrupt()
+                }
+                notebookInterrupted[block] = Date()
+            }
+            done()
+        case let .restartNotebook(block):
+            guard node.block(block)?.notebook != nil else { return done("not a notebook") }
+            if let old = notebooks.removeValue(forKey: block) {
+                old.terminate()
+                notebookStopped(block, old)
+            }
+            startNotebook(block)
+            done()
+        case let .startNotebook(block):
+            startNotebook(block)
             done()
         case let .captureOutput(block, terminal, command, fallback):
             // A command's output as a block of its own (§3.8): the bytes the
@@ -982,6 +1035,89 @@ final class Server {
         session.attach(conn, cols: req.cols, rows: req.rows)
     }
 
+    // MARK: Shell notebooks (§7.7)
+
+    /// The notebook's shell, started if it isn't running.
+    @discardableResult
+    private func startNotebook(_ block: BlockID) -> NotebookShell? {
+        if let s = notebooks[block] { return s }
+        guard let b = node.block(block), b.kind == .notebook else { return nil }
+        guard let s = NotebookShell(id: block, cwd: b.home, preferred: node.desk(host).preferences.shell, queue: queue) else { return nil }
+        notebooks[block] = s
+        s.onReady = { [weak self] in self?.advanceNotebook(block) }
+        s.onOutput = { [weak self] data in self?.notebookPrinted(block, data) }
+        s.onEnded = { [weak self] data, status, pwd in self?.notebookCellEnded(block, data, status: status, pwd: pwd) }
+        s.onExit = { [weak self, weak s] in
+            guard let self, let s, self.notebooks[block] === s else { return }
+            self.notebooks.removeValue(forKey: block)
+            self.notebookStopped(block, s)
+        }
+        append(.notebook(.shell(pid: s.pid, name: s.name, at: clock.now())), to: .block(block))
+        return s
+    }
+
+    /// A shell gone: its block says so, and what was waiting won't run.
+    private func notebookStopped(_ block: BlockID, _ shell: NotebookShell) {
+        guard node.block(block)?.notebook != nil else { return }
+        if let running = node.block(block)?.notebook?.running {
+            append(.notebook(.finished(running, output: "", status: nil, truncated: false, at: clock.now())), to: .block(block))
+        }
+        append(.notebook(.shell(pid: nil, name: nil, at: clock.now())), to: .block(block))
+        notebookLive.removeValue(forKey: block)
+    }
+
+    /// The next waiting cell run, if nothing runs and the shell is ready.
+    private func advanceNotebook(_ block: BlockID) {
+        guard let nb = node.block(block)?.notebook, nb.running == nil, let next = nb.queued.first else { return }
+        guard let cell = nb.cell(next) else {
+            append(.notebook(.queued(Array(nb.queued.dropFirst()))), to: .block(block))
+            return advanceNotebook(block)
+        }
+        guard let shell = startNotebook(block), shell.ready, !shell.busy else { return }
+        notebookInterrupted.removeValue(forKey: block)
+        log("notebook \(block): cell \(next) runs as [\(nb.runs + 1)]")
+        append(.notebook(.started(next, count: nb.runs + 1, at: clock.now())), to: .block(block))
+        let line = cell.source.split(separator: "\n").first.map(String.init) ?? ""
+        report(block, .working, msg: line)
+        notebookLive[block] = (next, Data())
+        shell.run(cell.source)
+    }
+
+    /// The running cell printed: sent to the clients, a tenth of a second at most apart.
+    private func notebookPrinted(_ block: BlockID, _ data: Data) {
+        guard let running = node.block(block)?.notebook?.running else { return }
+        notebookLive[block] = (running, data)
+        guard notebookLiveScheduled.insert(block).inserted else { return }
+        queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            self.notebookLiveScheduled.remove(block)
+            guard let live = self.notebookLive[block] else { return }
+            let tail = live.output.count > 256 << 10 ? live.output.suffix(256 << 10) : live.output
+            let frame = Frame.message(ServerMessage.notebookLive(block: block, cell: live.cell, output: String(decoding: tail, as: UTF8.self)))
+            for c in self.clients { c.send(frame) }
+        }
+    }
+
+    /// The running cell ended: its output written (the last megabyte), where
+    /// the shell went, its status; a failure stops what was waiting.
+    private func notebookCellEnded(_ block: BlockID, _ data: Data, status: Int32?, pwd: String?) {
+        notebookLive.removeValue(forKey: block)
+        guard let b = node.block(block), let nb = b.notebook, let id = nb.running else { return }
+        let limit = 1 << 20
+        let kept = data.count > limit ? data.suffix(limit) : data
+        append(.notebook(.finished(id, output: String(decoding: kept, as: UTF8.self), status: status, truncated: data.count > limit, at: clock.now())), to: .block(block))
+        if let pwd, pwd != b.home { append(.cwd(pwd), to: .block(block)) }
+        let failed = (status ?? 0) != 0
+        if failed, !nb.queued.isEmpty { append(.notebook(.queued([])), to: .block(block)) }
+        let line = nb.cell(id)?.source.split(separator: "\n").first.map(String.init) ?? ""
+        if failed {
+            report(block, .error, msg: status == 130 ? "Interrupted: \(line)" : "Exit \(status ?? -1): \(line)")
+        } else if (node.block(block)?.notebook?.queued ?? []).isEmpty {
+            report(block, .done, msg: line)
+        }
+        advanceNotebook(block)
+    }
+
     // MARK: Status (§3.7)
 
     /// The host's own report on a block it works for: its root record.
@@ -989,7 +1125,7 @@ final class Server {
     /// the host keeps quiet about the blocks it works for itself.
     private func reportsStatus(_ block: BlockID) -> Bool {
         guard let k = node.block(block)?.kind else { return false }
-        return k == .terminal || k == .agent
+        return k == .terminal || k == .agent || k == .notebook
     }
 
     private func report(_ block: BlockID, _ state: StatusState, msg: String? = nil) {
@@ -1274,6 +1410,9 @@ final class Server {
     private func exit(endSessions: Bool) {
         languageServers.stopAll()
         searches.stopAll()
+        // A notebook's shell goes with the server (its cells and outputs
+        // stay in the log; the next run starts a fresh shell).
+        for n in notebooks.values { n.terminate() }
         if endSessions {
             for s in sessions.values { s.terminate() }
         }

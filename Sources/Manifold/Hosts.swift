@@ -23,6 +23,7 @@ final class Hosts {
     var onShow: ((HostID, Int, Int, BlockID, BlockID?) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
+    var onNotebookLive: ((BlockID, String, String) -> Void)?
     var onLanguageServer: ((HostID, String, String, String) -> Void)?
     private var pushedLanguageServers: [HostID: [LanguageServerConfig]] = [:]
     private var editing: Set<BlockID> = []
@@ -112,6 +113,7 @@ final class Hosts {
         }
         client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
         client.onGutter = { [weak self] block in self?.onGutter?(block) }
+        client.onNotebookLive = { [weak self] block, cell, output in self?.onNotebookLive?(block, cell, output) }
         client.onLanguageServer = { [weak self, weak client] language, root, state in
             guard let self, let client else { return }
             self.onLanguageServer?(client.host, language, root, state)
@@ -325,7 +327,9 @@ final class Hosts {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
-             let .newAgent(block, _, _), let .readBytes(block), let .processes(block):
+             let .newAgent(block, _, _), let .readBytes(block), let .processes(block),
+             let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
+             let .restartNotebook(block), let .startNotebook(block):
             (client(of: block) ?? local).propose(proposal, done: done)
         case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .readPath:
             local.propose(proposal, done: done)

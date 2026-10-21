@@ -1,0 +1,865 @@
+import AppKit
+import ManifoldCore
+
+protocol NotebookViewDelegate: AnyObject {
+    func notebook(_ view: NotebookView, edit: NotebookEdit)
+    func notebook(_ view: NotebookView, run cells: [String])
+    func notebookInterrupt(_ view: NotebookView)
+    func notebookRestart(_ view: NotebookView)
+    /// The shell started, if it isn't running (the notebook came on screen).
+    func notebookStart(_ view: NotebookView)
+    /// A path or an address ⌘-clicked in an output.
+    func notebook(_ view: NotebookView, open target: String)
+}
+
+/// The shell notebook lens (§7.7): a column of cells, each a command to
+/// edit with what its last run printed beneath it, all run in one shell
+/// that lives on. ⌘↩ runs a cell; ⇧↩ runs it and goes to the next (made
+/// if it's the last); ⌥↩ runs it and makes one below; ⌘. interrupts, and
+/// again kills; ↑ and ↓ past a cell's edge go to the next one.
+final class NotebookView: NSView, PaneContent, KeepsViewState {
+    let keeper = ViewStateKeeper()
+    let placement: PlacementID
+    let block: BlockID
+    weak var delegate: NotebookViewDelegate?
+    var source: () -> Block? = { nil }
+    var codeFont: NSFont = .monospacedSystemFont(ofSize: 12.5, weight: .regular) {
+        didSet { if codeFont != oldValue { cells.values.forEach { $0.font = codeFont }; needsLayout = true } }
+    }
+
+    private let header = NSView()
+    private let dot = NSView()
+    private let status = NSTextField(labelWithString: "")
+    private var buttons: [NSButton] = []
+    private let runButton = NSButton(), runAllButton = NSButton(), stopButton = NSButton(), restartButton = NSButton(),
+                addButton = NSButton(), moreButton = NSButton()
+    private let scroll = NSScrollView()
+    private let stack = FlippedView()
+    private let addBelow = NSButton(title: "New Cell", target: nil, action: nil)
+    private var cells: [String: NotebookCellView] = [:]
+    private var order: [String] = []
+    /// Cells made here that the host hasn't written yet, and where.
+    private var pendingInserts: [String: Int] = [:]
+    private var shown: NotebookState?
+    private var shownHome: String?
+    private var focusedCell: String?
+    private var ticker: Timer?
+
+    var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
+    var isDead: Bool { false }
+    static let headerHeight: CGFloat = 38
+
+    init(placement: PlacementID, block: BlockID) {
+        self.placement = placement
+        self.block = block
+        super.init(frame: .zero)
+        wantsLayer = true
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 4
+        status.font = .systemFont(ofSize: 12)
+        status.textColor = Theme.secondaryText
+        status.lineBreakMode = .byTruncatingMiddle
+        header.addSubview(dot)
+        header.addSubview(status)
+        for (b, symbol, tip, action) in [
+            (runButton, "play.fill", "Run Cell (⌘↩)", #selector(runFocused)),
+            (runAllButton, "forward.end.fill", "Run All Cells", #selector(runAll)),
+            (stopButton, "stop.fill", "Interrupt (⌘.) — again to kill", #selector(interrupt)),
+            (restartButton, "arrow.clockwise", "Restart Shell", #selector(restart)),
+            (addButton, "plus", "New Cell Below", #selector(addCell)),
+            (moreButton, "ellipsis.circle", "More", #selector(more)),
+        ] {
+            b.isBordered = false
+            b.bezelStyle = .accessoryBarAction
+            b.image = Theme.symbol(symbol, size: 12, weight: .medium)
+            b.contentTintColor = Theme.secondaryText
+            b.toolTip = tip
+            b.target = self
+            b.action = action
+            header.addSubview(b)
+            buttons.append(b)
+        }
+        addSubview(header)
+        scroll.documentView = stack
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        addSubview(scroll)
+        addBelow.bezelStyle = .accessoryBarAction
+        addBelow.image = Theme.symbol("plus", size: 10, weight: .medium)
+        addBelow.imagePosition = .imageLeading
+        addBelow.controlSize = .small
+        addBelow.font = .systemFont(ofSize: 11)
+        addBelow.contentTintColor = Theme.secondaryText
+        addBelow.target = self
+        addBelow.action = #selector(addAtEnd)
+        stack.addSubview(addBelow)
+        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func destroy() {
+        ticker?.invalidate()
+        cells.values.forEach { $0.flushSource() }
+        keeper.flush()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { ticker?.invalidate(); return }
+        delegate?.notebookStart(self)
+        // A running cell's clock, kept going.
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let running = self.shown?.running else { return }
+            self.cells[running]?.tick()
+        }
+    }
+
+    // MARK: The block
+
+    func documentChanged() {
+        guard let b = source(), let nb = b.notebook else { return }
+        let first = shown == nil
+        guard nb != shown || b.home != shownHome else { return }
+        shown = nb
+        shownHome = b.home
+        // The host's order, with what was made here and isn't written yet in its place.
+        var ids = nb.cells.map(\.id)
+        for (id, _) in pendingInserts where ids.contains(id) { pendingInserts.removeValue(forKey: id) }
+        for (id, at) in pendingInserts.sorted(by: { $0.value < $1.value }) { ids.insert(id, at: min(at, ids.count)) }
+        for (id, view) in cells where !ids.contains(id) {
+            view.removeFromSuperview()
+            cells.removeValue(forKey: id)
+        }
+        for cell in nb.cells {
+            let v = cells[cell.id] ?? makeCell(cell.id)
+            v.update(cell, running: nb.running == cell.id, queued: nb.queued.contains(cell.id))
+        }
+        order = ids
+        updateHeader()
+        layoutCells()
+        if first { restore() }
+    }
+
+    private func makeCell(_ id: String) -> NotebookCellView {
+        let v = NotebookCellView(id: id, font: codeFont)
+        v.owner = self
+        stack.addSubview(v)
+        cells[id] = v
+        return v
+    }
+
+    private func restore() {
+        guard !keeper.restored else { return }
+        keeper.restored = true
+        if let f = keeper.value("focused"), cells[f] != nil { focusedCell = f }
+        cells.values.forEach { $0.focused = $0.id == focusedCell }
+        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+    }
+
+    /// What a running cell has printed so far, as the host sends it.
+    func live(cell: String, output: String) {
+        cells[cell]?.showLive(output)
+        layoutCells()
+        if focusedCell == cell { cells[cell]?.scrollOutputToEnd() }
+    }
+
+    private func updateHeader() {
+        let nb = shown
+        let place = source()?.home?.abbreviatingHome ?? "~"
+        let shell = nb?.shell ?? "shell"
+        let color: NSColor
+        if nb?.pid == nil {
+            color = Theme.secondaryText.withAlphaComponent(0.5)
+            status.stringValue = "No shell — a run starts one · \(place)"
+        } else if let r = nb?.running, let c = nb?.cell(r) {
+            color = NSColor.systemOrange
+            status.stringValue = "\(shell) · running [\(c.count ?? 0)]" + (nb!.queued.isEmpty ? "" : ", \(nb!.queued.count) waiting") + " · \(place)"
+        } else {
+            color = NSColor.systemGreen
+            status.stringValue = "\(shell) · idle · \(place)"
+        }
+        dot.layer?.backgroundColor = color.cgColor
+        stopButton.isEnabled = nb?.running != nil || !(nb?.queued.isEmpty ?? true)
+        stopButton.contentTintColor = stopButton.isEnabled ? Theme.statusError : Theme.secondaryText.withAlphaComponent(0.4)
+    }
+
+    // MARK: Layout
+
+    override func layout() {
+        super.layout()
+        let w = bounds.width, h = bounds.height
+        header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
+        let mid = Self.headerHeight / 2
+        dot.frame = NSRect(x: 14, y: mid - 4, width: 8, height: 8)
+        var x = w - 8
+        for b in buttons.reversed() {
+            x -= 28
+            b.frame = NSRect(x: x, y: mid - 12, width: 26, height: 24)
+        }
+        status.frame = NSRect(x: 28, y: mid - 8, width: max(0, x - 36), height: 16)
+        scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, h - Self.headerHeight))
+        layoutCells()
+    }
+
+    /// The cells down the column, each as tall as it needs.
+    func layoutCells() {
+        let w = scroll.contentSize.width
+        guard w > 0 else { return }
+        var y: CGFloat = 10
+        for id in order {
+            guard let v = cells[id] else { continue }
+            let h = v.height(forWidth: w)
+            v.frame = NSRect(x: 0, y: y, width: w, height: h)
+            y += h + 10
+        }
+        addBelow.sizeToFit()
+        addBelow.frame = NSRect(x: 52, y: y, width: addBelow.frame.width + 8, height: 22)
+        y += 40
+        stack.frame = NSRect(x: 0, y: 0, width: w, height: max(y, scroll.contentSize.height))
+    }
+
+    // MARK: Cells, from their views
+
+    func cellFocused(_ id: String) {
+        guard focusedCell != id else { return }
+        focusedCell = id
+        cells.values.forEach { $0.focused = $0.id == id }
+        keeper.note(["focused": id])
+    }
+
+    func cellEdited(_ id: String, source: String) {
+        delegate?.notebook(self, edit: .source(id, source))
+    }
+
+    func cellResized() { layoutCells() }
+
+    enum After { case stay, next, insert }
+
+    /// A cell run: its text sent first, then the run asked for.
+    func run(_ id: String, then after: After) {
+        cells[id]?.flushSource()
+        delegate?.notebook(self, run: [id])
+        guard let i = order.firstIndex(of: id) else { return }
+        switch after {
+        case .stay: break
+        case .next:
+            if i + 1 < order.count { focus(order[i + 1], atEnd: false) } else { insert(at: i + 1) }
+        case .insert: insert(at: i + 1)
+        }
+    }
+
+    /// A new, empty cell at an index, focused.
+    @discardableResult
+    func insert(at index: Int, source text: String = "") -> String {
+        let id = NotebookCell.newID()
+        var cell = NotebookCell(id: id)
+        cell.source = text
+        pendingInserts[id] = index
+        delegate?.notebook(self, edit: .insert(cell, at: index))
+        let v = makeCell(id)
+        v.update(cell, running: false, queued: false)
+        order.insert(id, at: min(index, order.count))
+        layoutCells()
+        focus(id, atEnd: false)
+        return id
+    }
+
+    func focus(_ id: String, atEnd: Bool) {
+        guard let v = cells[id] else { return }
+        window?.makeFirstResponder(v.editor)
+        v.editor.setSelectedRange(NSRange(location: atEnd ? (v.editor.string as NSString).length : 0, length: 0))
+        cellFocused(id)
+        stack.scrollToVisible(v.frame.insetBy(dx: 0, dy: -10))
+    }
+
+    /// ↑ from a cell's first line, ↓ from its last.
+    func leave(_ id: String, up: Bool) {
+        guard let i = order.firstIndex(of: id) else { return }
+        let j = up ? i - 1 : i + 1
+        guard j >= 0, j < order.count else { return }
+        focus(order[j], atEnd: up)
+    }
+
+    func move(_ id: String, by delta: Int) {
+        guard let i = order.firstIndex(of: id), case let j = i + delta, j >= 0, j < order.count else { return }
+        order.swapAt(i, j)
+        layoutCells()
+        delegate?.notebook(self, edit: .move(id, to: j))
+        focus(id, atEnd: false)
+    }
+
+    func delete(_ id: String) {
+        guard let i = order.firstIndex(of: id) else { return }
+        let next = i + 1 < order.count ? order[i + 1] : (i > 0 ? order[i - 1] : nil)
+        delegate?.notebook(self, edit: .remove(id))
+        pendingInserts.removeValue(forKey: id)
+        cells.removeValue(forKey: id)?.removeFromSuperview()
+        order.remove(at: i)
+        if order.isEmpty { insert(at: 0) } else if let next { focus(next, atEnd: false) }
+        layoutCells()
+    }
+
+    func clearOutput(_ id: String) { delegate?.notebook(self, edit: .clear(id)) }
+
+    func open(_ target: String) { delegate?.notebook(self, open: target) }
+
+    // MARK: The header's buttons and keys
+
+    @objc func runFocused() {
+        guard let id = focusedCell ?? order.first else { return }
+        run(id, then: .stay)
+    }
+
+    @objc func runAll() {
+        cells.values.forEach { $0.flushSource() }
+        delegate?.notebook(self, run: order.filter { !(cells[$0]?.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
+    }
+
+    @objc func interrupt() { delegate?.notebookInterrupt(self) }
+
+    @objc func restart() { delegate?.notebookRestart(self) }
+
+    @objc func addCell() {
+        let i = focusedCell.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? order.count
+        insert(at: i)
+    }
+
+    @objc private func addAtEnd() { insert(at: order.count) }
+
+    @objc private func more() {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() })
+        menu.addItem(ClosureMenuItem("Clear All Outputs", symbol: "eraser") { [weak self] in
+            guard let self else { return }
+            self.delegate?.notebook(self, edit: .clearAll)
+        })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Interrupt", symbol: "stop.fill") { [weak self] in self?.interrupt() })
+        menu.addItem(ClosureMenuItem("Restart Shell", symbol: "arrow.clockwise") { [weak self] in self?.restart() })
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: moreButton.bounds.height + 4), in: moreButton)
+    }
+
+    var pillItems: [NSMenuItem] {
+        [ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() },
+         ClosureMenuItem("Interrupt", symbol: "stop.fill") { [weak self] in self?.interrupt() },
+         ClosureMenuItem("Restart Shell", symbol: "arrow.clockwise") { [weak self] in self?.restart() },
+         ClosureMenuItem("Clear All Outputs", symbol: "eraser") { [weak self] in
+             guard let self else { return }
+             self.delegate?.notebook(self, edit: .clearAll)
+         }]
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard let r = window?.firstResponder as? NSView, r.isDescendant(of: self) else { return super.performKeyEquivalent(with: event) }
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if mods == .command, event.charactersIgnoringModifiers == "." {
+            interrupt()
+            return true
+        }
+        // The cell's keys with ⌘ go before the menus' (⌘↩ is Edit or View there).
+        if let editor = r as? CellEditor, let cell = editor.cellView {
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            if isReturn, mods == .command {
+                run(cell.id, then: .stay)
+                return true
+            }
+            if mods == [.command, .option], event.keyCode == 126 || event.keyCode == 125 {
+                move(cell.id, by: event.keyCode == 126 ? -1 : 1)
+                return true
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    // MARK: Debugging
+
+    /// "", "run <i>", "type <i> <text>", "add", "stop", "restart", "focus <i>",
+    /// "click <i> <text>" (⌘-click on that text in cell i's output).
+    func debug(_ arg: String) -> String {
+        let w = arg.split(separator: " ", maxSplits: 2).map(String.init)
+        func cell(_ s: String) -> String? { Int(s).flatMap { $0 < order.count ? order[$0] : nil } }
+        switch w.first {
+        case "run": if w.count > 1, let c = cell(w[1]) { run(c, then: .stay) }
+        case "runall": runAll()
+        case "type":
+            if w.count > 2, let c = cell(w[1]), let v = cells[c] {
+                v.editor.string = w[2].replacingOccurrences(of: "\\n", with: "\n")
+                v.editor.didChangeText()
+            }
+        case "add": addCell()
+        case "stop": interrupt()
+        case "restart": restart()
+        case "focus": if w.count > 1, let c = cell(w[1]) { focus(c, atEnd: true) }
+        case "click":
+            if w.count > 2, let c = cell(w[1]) { return cells[c]?.output.debugClick(w[2]) ?? "no cell" }
+        case "delete": if w.count > 1, let c = cell(w[1]) { delete(c) }
+        case "key":
+            // "key cmd|shift|opt return", "key cmd .": through the app as typed, menus first.
+            guard w.count > 2, let window else { break }
+            var mods: NSEvent.ModifierFlags = []
+            if w[1].contains("cmd") { mods.insert(.command) }
+            if w[1].contains("shift") { mods.insert(.shift) }
+            if w[1].contains("opt") { mods.insert(.option) }
+            let (chars, code): (String, UInt16) = w[2] == "return" ? ("\r", 36) : (w[2], 47)
+            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: window.windowNumber, context: nil, characters: chars,
+                                        charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                // As AppKit offers a key: the views' equivalents, the menus, then the responder.
+                if window.performKeyEquivalent(with: e) { return "taken by a view's key equivalent" }
+                if NSApp.mainMenu?.performKeyEquivalent(with: e) == true { return "taken by the menus" }
+                window.firstResponder?.keyDown(with: e)
+                return "to \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "nothing")'s keyDown"
+            }
+        default: break
+        }
+        var lines = [status.stringValue]
+        for (i, id) in order.enumerated() {
+            guard let v = cells[id] else { continue }
+            lines.append("[\(i)] \(v.debugSummary)")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+/// One cell: its run count (a spinner while it runs), its command in an
+/// editor that grows with it, what it printed (its own scroll past a
+/// screenful), and how it ended.
+final class NotebookCellView: NSView, NSTextViewDelegate {
+    let id: String
+    weak var owner: NotebookView?
+    let editor = CellEditor()
+    private let box = NSView()
+    let output = OutputTextView()
+    private let outputScroll = NSScrollView()
+    private let count = NSTextField(labelWithString: "")
+    private let spinner = NSProgressIndicator()
+    private let play = NSButton()
+    private let menuButton = NSButton()
+    private let footer = NSTextField(labelWithString: "")
+    private var cell = NotebookCell(id: "")
+    private var running = false
+    private var queued = false
+    private var hovered = false { didSet { refreshChrome() } }
+    private var pendingSource: String?
+    private var sendWork: DispatchWorkItem?
+    private var renderedOutput: String?
+    private var liveOutput: String?
+    var font: NSFont { didSet { editor.font = font; renderedOutput = nil; render() } }
+    var focused = false { didSet { refreshChrome() } }
+
+    static let gutter: CGFloat = 52
+    static let maxOutputHeight: CGFloat = 420
+
+    init(id: String, font: NSFont) {
+        self.id = id
+        self.font = font
+        super.init(frame: .zero)
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 7
+        box.layer?.borderWidth = 1
+        addSubview(box)
+        editor.font = font
+        editor.isRichText = false
+        editor.allowsUndo = true
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        editor.isAutomaticTextReplacementEnabled = false
+        editor.isAutomaticSpellingCorrectionEnabled = false
+        editor.isContinuousSpellCheckingEnabled = false
+        editor.drawsBackground = false
+        editor.textContainerInset = NSSize(width: 6, height: 7)
+        editor.textContainer?.widthTracksTextView = true
+        editor.delegate = self
+        editor.cellView = self
+        box.addSubview(editor)
+        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        count.textColor = Theme.secondaryText
+        count.alignment = .right
+        addSubview(count)
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        addSubview(spinner)
+        for (b, symbol, tip, action) in [(play, "play.fill", "Run (⌘↩)", #selector(playClicked)), (menuButton, "ellipsis", "Cell", #selector(menuClicked))] {
+            b.isBordered = false
+            b.bezelStyle = .accessoryBarAction
+            b.image = Theme.symbol(symbol, size: 11, weight: .semibold)
+            b.contentTintColor = Theme.secondaryText
+            b.toolTip = tip
+            b.target = self
+            b.action = action
+            addSubview(b)
+        }
+        output.isEditable = false
+        output.isSelectable = true
+        output.drawsBackground = false
+        output.textContainerInset = NSSize(width: 6, height: 4)
+        output.textContainer?.widthTracksTextView = true
+        output.isVerticallyResizable = true
+        output.isHorizontallyResizable = false
+        output.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        output.opened = { [weak self] target in self?.owner?.open(target) }
+        outputScroll.documentView = output
+        outputScroll.drawsBackground = false
+        outputScroll.hasVerticalScroller = true
+        outputScroll.autohidesScrollers = true
+        output.autoresizingMask = [.width]
+        addSubview(outputScroll)
+        footer.font = .systemFont(ofSize: 11)
+        footer.textColor = Theme.secondaryText
+        addSubview(footer)
+        refreshChrome()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        renderedOutput = nil
+        render()
+        refreshChrome()
+    }
+
+    private func refreshChrome() {
+        box.layer?.backgroundColor = Theme.codePage.cgColor
+        box.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.8) : Theme.divider).cgColor
+        box.layer?.borderWidth = focused ? 1.5 : 1
+        let showPlay = (hovered || focused) && !running
+        play.isHidden = !showPlay
+        count.isHidden = showPlay || running
+        menuButton.isHidden = !(hovered || focused)
+    }
+
+    // MARK: State
+
+    func update(_ c: NotebookCell, running r: Bool, queued q: Bool) {
+        let outputChanged = c.output != cell.output || c.ended != cell.ended
+        cell = c
+        running = r
+        queued = q
+        // The editor keeps what's typed in it: the host's text only when
+        // nothing typed here is on its way, and it isn't being typed in.
+        if pendingSource == nil, editor.string != c.source, editor.window?.firstResponder !== editor {
+            editor.string = c.source
+        }
+        if r { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        if !r { liveOutput = nil }
+        if outputChanged || !r { render() }
+        count.stringValue = q ? "…" : c.count.map { "[\($0)]" } ?? "[ ]"
+        tick()
+        refreshChrome()
+        needsLayout = true
+    }
+
+    func showLive(_ text: String) {
+        liveOutput = text
+        render()
+    }
+
+    /// The footer: how it ended, how long it took, when; a running one's clock.
+    func tick() {
+        var words: [String] = []
+        if running {
+            if let ran = cell.ran { words.append("running \(Self.duration(Date().timeIntervalSince(ran.date)))") }
+            footer.textColor = Theme.secondaryText
+        } else if queued {
+            words.append("waiting to run")
+            footer.textColor = Theme.secondaryText
+        } else if let ended = cell.ended {
+            if let s = cell.status { words.append(s == 0 ? "ok" : s == 130 ? "interrupted" : "exit \(s)") } else { words.append("the shell ended") }
+            if let ran = cell.ran { words.append(Self.duration(ended.date.timeIntervalSince(ran.date))) }
+            words.append(Age.ago(ended))
+            if cell.truncated == true { words.append("only the last megabyte kept") }
+            footer.textColor = (cell.status ?? 1) == 0 ? Theme.secondaryText : Theme.statusError
+        }
+        footer.stringValue = words.joined(separator: " · ")
+    }
+
+    static func duration(_ t: TimeInterval) -> String {
+        if t < 1 { return String(format: "%.0f ms", t * 1000) }
+        if t < 60 { return String(format: "%.1f s", t) }
+        return "\(Int(t) / 60) min \(Int(t) % 60) s"
+    }
+
+    private func render() {
+        let text = running ? (liveOutput ?? cell.output ?? "") : (cell.output ?? "")
+        guard text != renderedOutput else { return }
+        renderedOutput = text
+        // A long output: its end, as a terminal would show it.
+        let shown = text.utf8.count > 200_000 ? String(text.suffix(150_000)) : text
+        var trimmed = shown
+        while trimmed.hasSuffix("\n") || trimmed.hasSuffix("\r") { trimmed.removeLast() }
+        let rendered = ANSIText.render(trimmed, font: font, palette: TerminalPalette.current(for: self))
+        output.textStorage?.setAttributedString(rendered)
+        output.scanLinks()
+        needsLayout = true
+        owner?.cellResized()
+    }
+
+    func scrollOutputToEnd() {
+        output.scrollToEndOfDocument(nil)
+    }
+
+    private var hasOutput: Bool { !(output.textStorage?.length == 0) }
+
+    // MARK: Layout
+
+    private func editorHeight(_ width: CGFloat) -> CGFloat {
+        guard let lm = editor.layoutManager, let tc = editor.textContainer else { return 30 }
+        tc.containerSize = NSSize(width: max(10, width - 2 * editor.textContainerInset.width), height: .greatestFiniteMagnitude)
+        lm.ensureLayout(for: tc)
+        let used = lm.usedRect(for: tc).height
+        let line = font.ascender - font.descender + font.leading
+        return max(line, ceil(used)) + 2 * editor.textContainerInset.height
+    }
+
+    private func outputHeight(_ width: CGFloat) -> CGFloat {
+        guard hasOutput, let lm = output.layoutManager, let tc = output.textContainer else { return 0 }
+        tc.containerSize = NSSize(width: max(10, width - 2 * output.textContainerInset.width), height: .greatestFiniteMagnitude)
+        lm.ensureLayout(for: tc)
+        return min(Self.maxOutputHeight, ceil(lm.usedRect(for: tc).height) + 2 * output.textContainerInset.height)
+    }
+
+    func height(forWidth w: CGFloat) -> CGFloat {
+        let inner = w - Self.gutter - 16
+        let footerHeight: CGFloat = footer.stringValue.isEmpty ? 0 : 18
+        return editorHeight(inner) + 6 + outputHeight(inner) + footerHeight + 2
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        let x = Self.gutter, inner = bounds.width - Self.gutter - 16
+        let eh = editorHeight(inner)
+        box.frame = NSRect(x: x, y: 0, width: inner, height: eh)
+        editor.frame = box.bounds
+        count.frame = NSRect(x: 0, y: 7, width: x - 8, height: 15)
+        spinner.frame = NSRect(x: x - 26, y: 6, width: 16, height: 16)
+        play.frame = NSRect(x: x - 32, y: 3, width: 24, height: 22)
+        menuButton.frame = NSRect(x: box.frame.maxX - 26, y: 3, width: 24, height: 22)
+        let oh = outputHeight(inner)
+        outputScroll.isHidden = oh == 0
+        outputScroll.frame = NSRect(x: x, y: eh + 6, width: inner, height: oh)
+        output.frame.size.width = outputScroll.contentSize.width
+        output.sizeToFit()
+        footer.frame = NSRect(x: x + 6, y: eh + 6 + oh, width: inner - 6, height: 16)
+    }
+
+    // MARK: Editing
+
+    func textDidChange(_ notification: Notification) {
+        pendingSource = editor.string
+        sendWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.flushSource() }
+        sendWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: w)
+        owner?.cellResized()
+    }
+
+    /// What's typed sent to the host, now.
+    func flushSource() {
+        sendWork?.cancel()
+        sendWork = nil
+        guard let s = pendingSource else { return }
+        pendingSource = nil
+        owner?.cellEdited(id, source: s)
+    }
+
+    func editorFocused() { owner?.cellFocused(id) }
+
+    @objc private func playClicked() { owner?.run(id, then: .stay) }
+
+    @objc private func menuClicked() {
+        guard let owner else { return }
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Run Cell", symbol: "play.fill") { owner.run(self.id, then: .stay) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Insert Cell Above", symbol: "arrow.up.to.line") { [weak self] in
+            guard let self, let i = owner.indexOf(self.id) else { return }
+            owner.insert(at: i)
+        })
+        menu.addItem(ClosureMenuItem("Insert Cell Below", symbol: "arrow.down.to.line") { [weak self] in
+            guard let self, let i = owner.indexOf(self.id) else { return }
+            owner.insert(at: i + 1)
+        })
+        menu.addItem(ClosureMenuItem("Move Up", symbol: "chevron.up") { owner.move(self.id, by: -1) })
+        menu.addItem(ClosureMenuItem("Move Down", symbol: "chevron.down") { owner.move(self.id, by: 1) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Copy Output", symbol: "doc.on.doc") { [weak self] in
+            guard let self else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(self.output.string, forType: .string)
+        })
+        menu.addItem(ClosureMenuItem("Clear Output", symbol: "eraser") { owner.clearOutput(self.id) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Delete Cell", symbol: "trash") { owner.delete(self.id) })
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: menuButton.bounds.height + 4), in: menuButton)
+    }
+
+    var debugSummary: String {
+        let state = running ? "running" : queued ? "queued" : ""
+        return "\(count.stringValue) \(state) $ \(editor.string.replacingOccurrences(of: "\n", with: "⏎")) | \(footer.stringValue)\n    "
+            + output.string.replacingOccurrences(of: "\n", with: "\n    ").prefix(600)
+    }
+}
+
+extension NotebookView {
+    func indexOf(_ id: String) -> Int? { order.firstIndex(of: id) }
+}
+
+/// A cell's command: ⌘↩, ⇧↩ and ⌥↩ run it; ↑ and ↓ past its edges go to
+/// the cells beside it; ⌥⌘↑ and ⌥⌘↓ move it.
+final class CellEditor: NSTextView {
+    weak var cellView: NotebookCellView?
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { cellView?.editorFocused() }
+        return ok
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard let cellView, let owner = cellView.owner else { return super.keyDown(with: event) }
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isReturn, mods == .shift { return owner.run(cellView.id, then: .next) }
+        if isReturn, mods == .option { return owner.run(cellView.id, then: .insert) }
+        super.keyDown(with: event)
+    }
+
+    override func moveUp(_ sender: Any?) {
+        if onFirstLine, let cellView { cellView.owner?.leave(cellView.id, up: true) } else { super.moveUp(sender) }
+    }
+
+    override func moveDown(_ sender: Any?) {
+        if onLastLine, let cellView { cellView.owner?.leave(cellView.id, up: false) } else { super.moveDown(sender) }
+    }
+
+    private var onFirstLine: Bool {
+        let s = string as NSString
+        return selectedRange().length == 0 && s.lineRange(for: NSRange(location: 0, length: 0)).upperBound > selectedRange().location
+            || s.length == 0
+    }
+
+    private var onLastLine: Bool {
+        let s = string as NSString
+        let loc = selectedRange().location
+        return selectedRange().length == 0 && s.range(of: "\n", range: NSRange(location: loc, length: s.length - loc)).location == NSNotFound
+    }
+}
+
+/// A cell's output: read-only, and with ⌘ held, paths and addresses in it
+/// underlined under the pointer and opened when clicked — as in a
+/// terminal; a file's `:line:column` kept for where to open it.
+final class OutputTextView: NSTextView {
+    var opened: (String) -> Void = { _ in }
+    private var hoverRange: NSRange?
+
+    /// Nothing to find ahead of time: what's under the pointer is read
+    /// when ⌘ is held (kept as a hook, for when links are marked).
+    func scanLinks() { clearHover() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for t in trackingAreas where t.owner === self { removeTrackingArea(t) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        hover(event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        super.flagsChanged(with: event)
+        hover(event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        clearHover()
+    }
+
+    private func hover(_ event: NSEvent) {
+        guard event.modifierFlags.contains(.command), let window else { return clearHover() }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard let r = target(at: p)?.range else { return clearHover() }
+        guard r != hoverRange else { return NSCursor.pointingHand.set() }
+        clearHover()
+        hoverRange = r
+        layoutManager?.addTemporaryAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: Theme.accent], forCharacterRange: r)
+        NSCursor.pointingHand.set()
+    }
+
+    private func clearHover() {
+        guard let r = hoverRange else { return }
+        hoverRange = nil
+        layoutManager?.removeTemporaryAttribute(.underlineStyle, forCharacterRange: r)
+        layoutManager?.removeTemporaryAttribute(.foregroundColor, forCharacterRange: r)
+        NSCursor.iBeam.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), let t = target(at: convert(event.locationInWindow, from: nil)) {
+            clearHover()
+            return opened(t.text)
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// The path or address under a point: the run of characters around it
+    /// that aren't spaces, quotes or brackets, with trailing punctuation
+    /// left off; only something that looks like one (a scheme, a slash,
+    /// a name with an extension, `~`).
+    func target(at p: NSPoint) -> (text: String, range: NSRange)? {
+        guard let lm = layoutManager, let tc = textContainer else { return nil }
+        let q = NSPoint(x: p.x - textContainerOrigin.x, y: p.y - textContainerOrigin.y)
+        var fraction: CGFloat = 0
+        let g = lm.glyphIndex(for: q, in: tc, fractionOfDistanceThroughGlyph: &fraction)
+        guard g < lm.numberOfGlyphs, lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc).insetBy(dx: -2, dy: -2).contains(q) else { return nil }
+        return Self.token(in: string, at: lm.characterIndexForGlyph(at: g))
+    }
+
+    static func token(in string: String, at index: Int) -> (text: String, range: NSRange)? {
+        let s = string as NSString
+        guard index < s.length else { return nil }
+        let stops = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'`<>()[]{}|,;"))
+        func stop(_ i: Int) -> Bool { s.substring(with: NSRange(location: i, length: 1)).unicodeScalars.allSatisfy { stops.contains($0) } }
+        guard !stop(index) else { return nil }
+        var a = index, b = index
+        while a > 0, !stop(a - 1) { a -= 1 }
+        while b + 1 < s.length, !stop(b + 1) { b += 1 }
+        var range = NSRange(location: a, length: b - a + 1)
+        var text = s.substring(with: range)
+        while let last = text.last, ".:!?".contains(last) {
+            text.removeLast()
+            range.length -= 1
+        }
+        guard !text.isEmpty else { return nil }
+        let looksLikeOne = text.contains("://") || text.contains("/") || text.hasPrefix("~")
+            || text.range(of: #"^[\w.-]+\.[A-Za-z0-9]{1,8}(:\d+(:\d+)?)?$"#, options: .regularExpression) != nil
+        return looksLikeOne ? (text, range) : nil
+    }
+
+    /// Debugging: a ⌘-click on the first place the text appears.
+    func debugClick(_ text: String) -> String {
+        let r = (string as NSString).range(of: text)
+        guard r.location != NSNotFound, let t = Self.token(in: string, at: r.location) else { return "no link at \"\(text)\"" }
+        opened(t.text)
+        return "opened \(t.text)"
+    }
+}

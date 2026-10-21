@@ -39,6 +39,7 @@ struct Shown: Equatable {
         case .agent: .agent
         case .card: .arrangement
         case .output: .output
+        case .notebook: .notebook
         case .outline: .terminal
         }
     }

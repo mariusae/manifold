@@ -450,6 +450,29 @@ when you find it again.
   A scrubber shows as macOS shows its scroll bars: while you scroll,
   while the pointer rests on it, and a moment after, fading otherwise
   (and staying, if your scroll bars are set to always show).
+- **Shell notebooks** (File ▸ New Shell Notebook, ⌃⇧⌘N, or New Shell
+  Notebook in ⌘T) are Jupyter's notebooks for a shell: a column of cells,
+  each a command (as many lines as you like) with what its last run
+  printed beneath it, all run in one shell that lives on — your zsh or
+  bash, with your rc files, on the notebook's host, `TERM=dumb` — so a
+  variable exported, a directory changed into or an alias made in one
+  cell is there in the next. ⌘↩ runs a cell; ⇧↩ runs it and goes to the
+  next (made if it's the last); ⌥↩ runs it and makes one below; ↑ and ↓
+  past a cell's first or last line go to the cells beside it; ⌥⌘↑ and
+  ⌥⌘↓ move it. A run's output streams in as it comes and replaces the
+  last; beneath it, how it ended (ok, exit 1, interrupted), how long it
+  took and when; the gutter counts runs as Jupyter does, [3], with a
+  spinner while one runs. Cells run one at a time, in the order asked
+  (Run All runs them all); one that fails stops those waiting. ⌘. (or
+  the stop button) interrupts the running cell with ^C and drops those
+  waiting; again kills its program, for one that ignores ^C. Restart
+  Shell starts a fresh one. ⌘-click a path or an address in an output to
+  open it — a name from where the shell is now, `file:line:column` at
+  that place. The header says what the shell is doing and where; the
+  notebook's status (working, done, failed) shows in the sidebar and the
+  Inbox as a terminal's does. Cells, outputs and counts are kept in the
+  notebook's log; the shell itself goes with the host's server, and the
+  next run starts a new one.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

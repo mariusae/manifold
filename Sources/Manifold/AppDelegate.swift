@@ -138,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Terminal in a New Column", #selector(MainWindowController.newTerminalInNewColumn(_:)), "n", [.command, .option, .shift])
         item(file, "New Terminal in a New Workspace", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
+        item(file, "New Shell Notebook", #selector(MainWindowController.newShellNotebook(_:)), "n", [.command, .control, .shift])
         item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
         let agents = NSMenu(title: "Launch Agent Here")
         agents.delegate = agentMenu
