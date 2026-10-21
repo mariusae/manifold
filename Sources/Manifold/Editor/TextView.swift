@@ -528,9 +528,6 @@ final class TextView: NSView, NSTextInputClient {
             let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
             let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
             let r = NSRect(x: textLeft + start, y: rowTop + 1.5, width: width, height: lineHeight - 3)
-            // An archived block's pill is faded, as put away.
-            NSGraphicsContext.current?.cgContext.setAlpha(look.archived ? 0.5 : 1)
-            defer { NSGraphicsContext.current?.cgContext.setAlpha(1) }
             let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
             Theme.panel.setFill()
             capsule.fill()

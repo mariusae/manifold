@@ -483,13 +483,6 @@ final class HostClient {
         return id
     }
 
-    /// The outline block of another (§3.8): the one there is, else one made.
-    func outlineBlock(of subject: BlockID) -> BlockID {
-        if let b = node.blocks.first(where: { $0.kind == .outline && $0.outline?.subject == subject }) { return b.id }
-        let id = BlockID(host: host)
-        propose(.outline(block: id, of: subject))
-        return id
-    }
 
     func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
         guard from != to else { return }

@@ -5,15 +5,12 @@ import ManifoldCore
 /// arrangements and their columns; files under folders under roots,
 /// across hosts; what's linked to the focused block; blocks by day.
 enum Organization: String, CaseIterable {
-    case desk, files, links, time, status, inbox
+    case desk, files, inbox
 
     var title: String {
         switch self {
         case .desk: "Workspaces"
         case .files: "Files"
-        case .links: "Links"
-        case .time: "Time"
-        case .status: "Status"
         case .inbox: "Inbox"
         }
     }
@@ -22,9 +19,6 @@ enum Organization: String, CaseIterable {
         switch self {
         case .desk: "rectangle.3.group"
         case .files: "folder"
-        case .links: "link"
-        case .time: "clock"
-        case .status: "checkmark.circle"
         case .inbox: "tray"
         }
     }

@@ -6,8 +6,6 @@ struct PillLook: Equatable {
     var title: String
     var symbol: String
     var status: StatusGlyph.Look?
-    /// Put away: the pill drawn faded.
-    var archived = false
 }
 
 /// Markdown, shown richly in the editor while staying Markdown underneath

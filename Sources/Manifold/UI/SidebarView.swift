@@ -96,7 +96,7 @@ final class SidebarView: NSView {
         inboxButton.target = self
         inboxButton.action = #selector(inboxClicked)
         inboxButton.toolTip = "Inbox (⌥⌘6)"
-        counts.onClick = { [weak self] in self?.chooseOrganization(.status) }
+        counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
         for v in [searchButton, byButton, inboxButton, counts] { card.addSubview(v) }
         filter.isHidden = true
         filter.placeholderString = "Filter"
@@ -155,7 +155,6 @@ final class SidebarView: NSView {
         byButton.toolTip = org == .files ? "By Workspace (⌥⌘1)" : "By File (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
-        counts.emphasized = org == .status
         needsLayout = true
     }
 

@@ -58,20 +58,20 @@ public enum Leader: String, Codable, Sendable {
 }
 
 public enum LinkKind: String, Codable, Sendable {
-    case opened, found, output, cwd, source, mention, placed
-    /// A link made by hand (§3.5): a block ⇧-dragged onto another, from
-    /// the dragged to the target; a note made about a block, from the
+    /// A link made by the way (§3.4), weak: a file ⌘-clicked in a
+    /// terminal, a hit followed, a diff of a file, a `[[mention]]` in a
+    /// note — its `context` says how.
+    case opened
+    /// A link made by hand (§3.5), strong: a block ⇧-dragged onto another,
+    /// from the dragged to the target; a note made about a block, from the
     /// block to the note. One edge, read both ways: the source *links*,
     /// the target is *linked from*.
     case linked
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
-        // Once "about", from a note to its subject; now one kind for every link made by hand.
-        guard let k = LinkKind(rawValue: raw == "about" ? "linked" : raw) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown link kind \(raw)"))
-        }
-        self = k
+        // Once many kinds by the way, and "about" for a note's subject.
+        self = raw == "linked" || raw == "about" ? .linked : .opened
     }
 }
 
@@ -104,8 +104,6 @@ public struct RegistryEntry: Codable, Equatable, Sendable, Identifiable {
     public var path: String?
     public var created: Stamp
     public var lastSeen: Stamp
-    public var life: LifeState = .warm
-    public var held = false
 
     public init(id: BlockID, kind: BlockKind, title: String? = nil, path: String? = nil, created: Stamp, lastSeen: Stamp) {
         self.id = id
@@ -264,7 +262,6 @@ public enum Event: Codable, Equatable, Sendable {
     // Diff.
     case diffSubject(DiffSubject)
     /// An outline block's subject (§3.8).
-    case outlineSubject(BlockID)
     case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
 
     // Search.
@@ -301,11 +298,7 @@ public enum Event: Codable, Equatable, Sendable {
     // Status (§3.7): a record reported (replacing the last for its id),
     // or, with nil, cleared with everything under it.
     case status(id: String, StatusRecord?)
-    /// Put away, or taken out again (§3.7).
-    case archived(Bool)
-    /// Into the inbox, or out of it (§3.7).
-    case inbox(Bool)
-    /// Pinned (§4): a root of its own, never collected while it is.
+    /// Kept (§4): a root of its own, never collected while it is.
     case pinned(Bool)
 
     // Desk.
@@ -323,7 +316,6 @@ public enum Event: Codable, Equatable, Sendable {
     case step(Step)
     case register(RegistryEntry)
     case seen([BlockID], at: Stamp)
-    case life(BlockID, LifeState, held: Bool)
     case unregister(BlockID)
     /// Another host's standing reference to a block here (§4): a root
     /// on this host, until released.
@@ -395,19 +387,11 @@ extension Block {
             if let record {
                 if status == nil { status = [:] }
                 status![id] = record
-                // Something to attend to: into the inbox, until taken out by hand.
-                if id == rootStatusID, record.wantsAttention { inbox = true }
             } else {
                 for k in statusRecords(under: id) { status?.removeValue(forKey: k) }
                 if status?.isEmpty == true { status = nil }
-                if id == rootStatusID || id.isEmpty { inbox = nil }
             }
-        case let .archived(on): archived = on ? true : nil
         case let .pinned(on): pinned = on ? true : nil
-        case let .outlineSubject(b):
-            if outline == nil { outline = OutlineState() }
-            outline?.subject = b
-        case let .inbox(on): inbox = on ? true : nil
         case .shell(.ended), .shell(.dormant):
             // The process gone: what was working or blocked is no more;
             // done and error stay to be attended to.
@@ -798,9 +782,6 @@ extension Registry {
             }
         case let .seen(ids, at):
             for id in ids { blocks[id]?.lastSeen = at }
-        case let .life(id, life, held):
-            blocks[id]?.life = life
-            blocks[id]?.held = held
         case let .unregister(id):
             blocks.removeValue(forKey: id)
             holds = holds.filter { $0.value.block != id }

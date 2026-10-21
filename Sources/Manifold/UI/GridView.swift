@@ -1320,7 +1320,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: 11)
         }
-        let title = shown.title + (shown.block?.isArchived == true ? "  (archived)" : shown.isDormant ? "  (dormant)" : "")
+        let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
         if name.stringValue != title { name.stringValue = title }
         // Where it is, after the name, in grey: a folder, an address.
         let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""

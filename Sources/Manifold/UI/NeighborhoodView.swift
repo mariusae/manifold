@@ -282,10 +282,7 @@ final class GraphCanvas: NSView {
         switch kind {
         case .placed?, .contains?: Theme.secondaryText
         case .link(.opened)?: Theme.accent
-        case .link(.found)?: NSColor.systemOrange
-        case .link(.source)?: NSColor.systemTeal
-        case .link(.mention)?: NSColor.systemPurple
-        case .link?: Theme.secondaryText
+        case .link(.linked)?: NSColor.systemPurple
         case nil: Theme.secondaryText
         }
     }

@@ -131,7 +131,6 @@ case "state":
                         if let a = b.arrangement { line += " columns=\(a.columns.map(\.count)) focused=\(a.focused ?? "-")" }
                         if let t = b.text { line += " v\(t.version) clean\(t.cleanVersion)\(t.isDirty ? " dirty" : "")\(t.stale ? " stale" : "")" }
                         if let t = b.terminal { line += " cwd=\(t.cwd ?? "-")\(t.busy ? " busy" : "")\(t.dormantSince != nil ? " dormant" : "")" }
-                        if let r = node.registry(host).blocks[b.id] { line += " [\(r.life)\(r.held ? " held" : "")]" }
                         print(line)
                     }
                 }

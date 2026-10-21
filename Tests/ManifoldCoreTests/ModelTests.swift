@@ -83,7 +83,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     b = node.block(id)!
     #expect(b.text?.text.string == "hello world")
     #expect(b.text?.isDirty == true)
-    #expect(b.isHeld)
+    #expect(b.text?.isDirty == true)
     node.append(.clean(version: b.text!.version, fingerprint: "f2"), to: shard, at: stamp())
     #expect(node.block(id)?.text?.isDirty == false)
     #expect(node.seq(shard) == 4)
@@ -966,8 +966,9 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     var decoded: Link?
     do { decoded = try JSONDecoder().decode(Link.self, from: Data(json.utf8)) } catch {}
     if let decoded { #expect(decoded.kind == .linked) }
-    let kind = try JSONDecoder().decode([LinkKind].self, from: Data(#"["about","linked","mention"]"#.utf8))
-    #expect(kind == [.linked, .linked, .mention])
+    // Every kind by the way there once was reads as opened now.
+    let kind = try JSONDecoder().decode([LinkKind].self, from: Data(#"["about","linked","mention","found","opened"]"#.utf8))
+    #expect(kind == [.linked, .linked, .opened, .opened, .opened])
 }
 
 @Test func bringingAStashedTileRevealsIt() {
@@ -1031,23 +1032,24 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(file.place == "/Users/x/src/manifold")
 }
 
-@Test func aStatusThatNeedsAttentionPutsTheBlockInTheInbox() {
+@Test func aStatusThatNeedsAttentionIsWhatTheInboxLists() {
     var b = Block(id: BlockID(), kind: .terminal, created: Stamp(wall: 1, host: .local))
-    #expect(!b.isInInbox)
+    #expect(!b.needsAttention)
     b.apply(.status(id: rootStatusID, StatusRecord(state: .working, at: Stamp(wall: 2, host: .local))), at: Stamp(wall: 9, host: .local))
-    #expect(!b.isInInbox)
+    #expect(!b.needsAttention)
     b.apply(.status(id: rootStatusID, StatusRecord(state: .done, at: Stamp(wall: 3, host: .local))), at: Stamp(wall: 9, host: .local))
-    #expect(b.isInInbox)
-    b.apply(.inbox(false), at: Stamp(wall: 9, host: .local))
-    #expect(!b.isInInbox)
+    #expect(b.needsAttention)
+    // Read, it's attended to: out of the inbox, nothing to clear by hand.
+    b.apply(.status(id: rootStatusID, StatusRecord(state: .done, at: Stamp(wall: 3, host: .local), read: true)), at: Stamp(wall: 9, host: .local))
+    #expect(!b.needsAttention)
     b.apply(.status(id: rootStatusID, StatusRecord(state: .blocked, at: Stamp(wall: 4, host: .local))), at: Stamp(wall: 9, host: .local))
-    #expect(b.isInInbox)
+    #expect(b.needsAttention)
     b.apply(.status(id: rootStatusID, nil), at: Stamp(wall: 9, host: .local))
-    #expect(!b.isInInbox)
-    b.apply(.archived(true), at: Stamp(wall: 9, host: .local))
-    #expect(b.isArchived)
-    b.apply(.archived(false), at: Stamp(wall: 9, host: .local))
-    #expect(!b.isArchived)
+    #expect(!b.needsAttention)
+    b.apply(.pinned(true), at: Stamp(wall: 9, host: .local))
+    #expect(b.isPinned)
+    b.apply(.pinned(false), at: Stamp(wall: 9, host: .local))
+    #expect(!b.isPinned)
 }
 
 @Test func theFinderNamesThingsByTitleBeforeWhatIsAroundThem() {
@@ -1363,7 +1365,7 @@ private final class Seen: @unchecked Sendable {
     node.append(.create(kind: .arrangement, title: nil, path: nil), to: .block(arr), at: at(3))
     node.append(.place(Placement(block: a, lens: .editor), column: 0, at: 0), to: .block(arr), at: at(4))
     node.append(.link(Link(from: a, to: b, kind: .opened, at: at(5))), to: .links(host), at: at(5))
-    node.append(.link(Link(from: b, to: a, kind: .mention, at: at(6))), to: .links(host), at: at(6))
+    node.append(.link(Link(from: b, to: a, kind: .linked, at: at(6))), to: .links(host), at: at(6))
     node.append(.step(Step(block: a, at: at(7))), to: .registry(host), at: at(7))
     node.append(.step(Step(block: b, at: at(8))), to: .registry(host), at: at(8))
     #expect(node.links(host).links.count == 2)
@@ -1376,12 +1378,12 @@ private final class Seen: @unchecked Sendable {
     #expect(node.registry(host).trail.isEmpty)
     #expect(node.graph.stepCount == 0)
     #expect(node.graph.edges(from: a, kind: .link(.opened)).isEmpty)
-    #expect(node.graph.edges(from: b, kind: .link(.mention)).isEmpty)
+    #expect(node.graph.edges(from: b, kind: .link(.linked)).isEmpty)
     // What's placed stays.
     #expect(node.graph.edges(from: arr, kind: .placed).count == 1)
     // And a link made after comes back as ever.
-    node.append(.link(Link(from: a, to: b, kind: .found, at: at(11))), to: .links(host), at: at(11))
-    #expect(node.graph.edges(from: a, kind: .link(.found)).count == 1)
+    node.append(.link(Link(from: a, to: b, kind: .opened, at: at(11))), to: .links(host), at: at(11))
+    #expect(node.graph.edges(from: a, kind: .link(.opened)).count == 1)
 }
 
 @Test func reachabilityFollowsStrongEdgesFromRoots() {
@@ -1391,8 +1393,8 @@ private final class Seen: @unchecked Sendable {
     func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
     let desk = BlockID(host: host), named = BlockID(host: host), off = BlockID(host: host)
     let t = BlockID(host: host), f = BlockID(host: host), n = BlockID(host: host), g = BlockID(host: host)
-    let pinned = BlockID(host: host), archived = BlockID(host: host), held = BlockID(host: host), loose = BlockID(host: host)
-    for (id, kind) in [(t, BlockKind.terminal), (f, .text), (n, .text), (g, .text), (pinned, .text), (archived, .text), (held, .text), (loose, .text)] {
+    let pinned = BlockID(host: host), held = BlockID(host: host), loose = BlockID(host: host)
+    for (id, kind) in [(t, BlockKind.terminal), (f, .text), (n, .text), (g, .text), (pinned, .text), (held, .text), (loose, .text)] {
         put(.create(kind: kind, title: nil, path: nil), to: .block(id), at: 1)
     }
     put(.create(kind: .arrangement, title: nil, path: nil), to: .block(desk), at: 2)
@@ -1408,12 +1410,11 @@ private final class Seen: @unchecked Sendable {
     put(.place(Placement(block: n, lens: .editor), column: 0, at: 0), to: .block(named), at: 7)
     put(.place(Placement(block: loose, lens: .editor), column: 0, at: 0), to: .block(off), at: 8)
     put(.pinned(true), to: .block(pinned), at: 9)
-    put(.archived(true), to: .block(archived), at: 9)
     put(.hold(Hold(id: "x", block: held, holder: other, at: stamp(10))), to: .registry(host), at: 10)
 
-    #expect(node.roots(on: host) == [desk, named, pinned, archived, held])
+    #expect(node.roots(on: host) == [desk, named, pinned, held])
     let r = node.reachable(on: host)
-    #expect(r.contains(t) && r.contains(f) && r.contains(n) && r.contains(pinned) && r.contains(archived) && r.contains(held))
+    #expect(r.contains(t) && r.contains(f) && r.contains(n) && r.contains(pinned) && r.contains(held))
     #expect(!r.contains(g))      // only opened: weak
     #expect(!r.contains(off) && !r.contains(loose))
 

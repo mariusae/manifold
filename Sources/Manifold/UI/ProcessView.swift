@@ -36,8 +36,6 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private var timer: Timer?
     /// What to call a block (the host's blocks are the controller's to know).
     var blockTitle: (BlockID) -> String? = { _ in nil }
-    /// Whether a block is archived: its processes, if any linger, aren't listed.
-    var blockArchived: (BlockID) -> Bool = { _ in false }
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -177,7 +175,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         guard let b = source(), let p = b.processes else { return }
         guard p.listedAt != listedAt else { return }
         listedAt = p.listedAt
-        all = p.entries.filter { e in e.block.map { !blockArchived($0) } ?? true }
+        all = p.entries
         refilter()
     }
 

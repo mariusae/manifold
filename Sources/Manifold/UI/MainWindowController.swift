@@ -441,14 +441,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.delegate = self
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
-            pv.blockArchived = { [weak self] in self?.hosts.block($0)?.isArchived == true }
             v = pv
         case .outline:
-            // An outline block shows its subject's commands or headings;
-            // an older outline placed as a lens on the block itself still does.
+            // The block's commands or headings, as a list beside it (§3.8).
             let tv = OutlineLensView(placement: p.id, block: p.block)
             tv.delegate = self
-            let subject = hosts.block(p.block)?.outline?.subject ?? p.block
+            let subject = p.block
             tv.subject = subject
             tv.source = { [weak self] in self?.hosts.block(subject) }
             v = tv
@@ -493,7 +491,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
-                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b), archived: b.isArchived)
+                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b))
             }
             e.richMarkdown = viewState(of: p)["markdown"] != "raw"
             e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
@@ -759,38 +757,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A terminal's shell ended (not for dormancy): its placements go, as a
     /// closed window's would; the block stays, with its transcript.
-    /// ⇧⌘W: the focused block archived (§3.7) — put away as it is, its
-    /// tiles gone from every workspace, to be recalled from the sidebar's
-    /// Archived section; a terminal's shell ends and isn't started again.
-    @objc func archiveFocused(_ sender: Any?) {
+
+    /// ⇧⌘W: the focused block kept and closed (§4) — a root of its own,
+    /// off every workspace, under Kept in the sidebar until recalled.
+    @objc func keepAndClose(_ sender: Any?) {
         guard let b = focusedShown?.block else { return NSSound.beep() }
-        hosts.propose(.archive(b.id, true))
+        hosts.pin(b.id, true)
         withdraw(b.id)
     }
 
-    /// ⇧⌘I: the focused block into the inbox, or out of it (§3.7).
-    @objc func toggleInbox(_ sender: Any?) {
-        guard let b = focusedShown?.block else { return NSSound.beep() }
-        hosts.propose(.inbox(b.id, !b.isInInbox))
-    }
-
-    /// The menu's verbs for a block's being: archive or unarchive; into
-    /// the inbox or out of it.
+    /// The menu's verbs for a block's keeping: kept, or let go; kept and
+    /// closed.
     private func keepingItems(for b: Block) -> [NSMenuItem] {
-        [ClosureMenuItem(b.isArchived ? "Unarchive" : "Archive", symbol: b.isArchived ? "archivebox.fill" : "archivebox", key: b.isArchived ? "" : "W") { [weak self] in
-            self?.hosts.propose(.archive(b.id, !b.isArchived))
-            if !b.isArchived { self?.withdraw(b.id) }
-        }, ClosureMenuItem(b.isPinned ? "Unpin" : "Pin", symbol: b.isPinned ? "pin.slash" : "pin") { [weak self] in
+        var items = [ClosureMenuItem(b.isPinned ? "Let Go" : "Keep", symbol: b.isPinned ? "pin.slash" : "pin") { [weak self] in
             self?.hosts.pin(b.id, !b.isPinned)
-        }, ClosureMenuItem(b.isInInbox ? "Remove from Inbox" : "Add to Inbox", symbol: b.isInInbox ? "tray.and.arrow.up" : "tray.and.arrow.down", key: "I") { [weak self] in
-            self?.hosts.propose(.inbox(b.id, !b.isInInbox))
         }]
+        if !b.isPinned {
+            items.append(ClosureMenuItem("Keep and Close", symbol: "pin", key: "W") { [weak self] in
+                self?.hosts.pin(b.id, true)
+                self?.withdraw(b.id)
+            })
+        }
+        return items
     }
 
     private func terminalEnded(_ block: BlockID) { withdraw(block) }
 
     /// A block's tiles taken off every workspace (its shell ended, or it
-    /// was archived); an unnamed workspace left empty goes too.
+    /// was kept and closed); an unnamed workspace left empty goes too.
     private func withdraw(_ block: BlockID) {
         for id in allWorkspaces {
             guard let a = hosts.arrangement(id) else { continue }
@@ -800,7 +794,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             hosts.client(of: id)?.removeWorkspace(id)
             hosts.select(allWorkspaces.first { $0 != id })
         }
-        discardIfUnplaced(block)
     }
 
     // MARK: Sidebar
@@ -1354,13 +1347,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for c in hosts.all {
             for e in c.node.graph.edges(from: block, kind: .link(.linked)) where e.isLive {
                 guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true, archived: b.isArchived))
+                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true))
             }
         }
         for c in hosts.all {
             for e in c.node.graph.edges(to: block, kind: .link(.linked)) where e.isLive {
                 guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false, archived: b.isArchived))
+                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false))
             }
         }
         return cards
@@ -1449,7 +1442,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
-        discardIfUnplaced(block)
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
@@ -1499,7 +1491,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let block = a.placement(f)?.block
             noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
-            if let block { discardIfUnplaced(block) }
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
@@ -1895,7 +1886,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var organizationWork: DispatchWorkItem?
     /// The block the Links organization is centered on, when not the focused.
-    private var linksCenter: BlockID?
 
     var organization: Organization {
         Organization(rawValue: hosts.state.window.organization ?? "") ?? .desk
@@ -1903,9 +1893,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
-    @objc func organizeByLinks(_ sender: Any?) { setOrganization(.links) }
-    @objc func organizeByTime(_ sender: Any?) { setOrganization(.time) }
-    @objc func organizeByStatus(_ sender: Any?) { setOrganization(.status) }
     @objc func organizeByInbox(_ sender: Any?) { setOrganization(.inbox) }
 
     func setOrganization(_ org: Organization, show: Bool = true) {
@@ -1935,7 +1922,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
-            self.sidebar.organizationView.flat = [.desk, .inbox, .status].contains(org)
+            self.sidebar.organizationView.flat = true
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
         }
         organizationWork = work
@@ -1974,7 +1961,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func statusGroups(_ filter: String) -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
         var groups: [StatusGroup: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
-            for b in c.node.blocks where !b.isArchived {
+            for b in c.node.blocks {
                 guard let look = StatusGlyph.look(of: b) else { continue }
                 let r = b.statusRecord
                 guard matches(filter, [b.displayTitle, b.path, r?.msg, r?.app]) else { continue }
@@ -1997,7 +1984,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var nodes: [OrgNode] = []
         var open: Set<String> = []
         for c in hosts.all {
-            let blocks = c.node.blocks.filter { $0.isInInbox && !$0.isArchived && matches(filter, [$0.displayTitle, $0.path, $0.statusRecord?.msg, $0.statusRecord?.app]) }
+            let blocks = c.node.blocks.filter { $0.needsAttention && matches(filter, [$0.displayTitle, $0.path, $0.statusRecord?.msg, $0.statusRecord?.app]) }
             guard !blocks.isEmpty else { continue }
             // Which workspace holds each, the first that does; the rest elsewhere.
             var byWorkspace: [(BlockID?, [Block])] = []
@@ -2033,35 +2020,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             nodes.append(h)
         }
         if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing to attend to", symbol: "tray")], []) }
-        return (nodes, open)
-    }
-
-    private func statusTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        let groups = statusGroups(filter)
-        var open: Set<String> = []
-        let nodes = StatusGroup.allCases.compactMap { group -> OrgNode? in
-            guard let items = groups[group] else { return nil }
-            let (title, symbol) = (group.title, group.symbol)
-            let id = "status:\(group)"
-            if group != .inactive { open.insert(id) }
-            let children = items.map { block, r, at -> OrgNode in
-                var words: [String] = []
-                if let app = r?.app { words.append(app) }
-                if let msg = r?.msg, !msg.isEmpty { words.append(msg) } else if let t = r?.title, !t.isEmpty { words.append(t) }
-                let n = node(for: block, id: id + "/" + block.id.description, detail: words.joined(separator: " · "))
-                n.trailing = Age.short(at)
-                n.emphasis = r?.wantsAttention ?? false
-                n.age = group == .inactive ? 0.6 : nil
-                return n
-            }
-            let n = OrgNode(id: id, title: title, symbol: symbol, count: items.count, isGroup: true, children: children)
-            n.style = .section
-            // The group's row opens it in the surface as a state view (§3.6).
-            n.action = { [weak self] in self?.showStateView(group) }
-            n.emphasis = stateGroup == group
-            return n
-        }
-        if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing is doing anything", symbol: "circle.dashed")], []) }
         return (nodes, open)
     }
 
@@ -2145,9 +2103,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         switch org {
         case .desk: return deskTree(filter)
         case .files: return filesTree(filter)
-        case .links: return linksTree(filter)
-        case .time: return timeTree(filter)
-        case .status: return statusTree(filter)
         case .inbox: return inboxTree(filter)
         }
     }
@@ -2172,6 +2127,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
         let reachable = hosts.reachable()
+        let onDeskBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         func workspace(_ id: BlockID) -> OrgNode? {
             guard let a = hosts.arrangement(id) else { return nil }
             let aid = "arr/\(id)"
@@ -2236,31 +2192,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
                 .prefix(40)
             let recent = off.compactMap { workspace($0.id) }
-            let closed = c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) && $0.kind != .outline && matches(filter, [$0.displayTitle, $0.path]) }
+            let closed = c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) && matches(filter, [$0.displayTitle, $0.path]) }
                 .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
                 .prefix(40)
-            // Archived blocks (§3.7): put away, under their own section,
-            // the last seen first, each recalled as it was by a click.
-            let archived = c.node.blocks.filter { $0.isArchived && $0.kind != .arrangement && matches(filter, [$0.displayTitle, $0.path]) }
+            // Kept (§4): named workspaces off the desk, and kept blocks on
+            // no workspace of the desk — the last seen first, each brought
+            // back by a click.
+            let keptBlocks = c.node.blocks.filter { $0.isPinned && $0.kind != .arrangement && !onDeskBlocks.contains($0.id) && matches(filter, [$0.displayTitle, $0.path]) }
                 .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
                 .prefix(40)
-            if !archived.isEmpty {
-                let rid = "archived:desk:\(c.host.raw)"
-                let rows = archived.map { b -> OrgNode in
+            if !recent.isEmpty || !keptBlocks.isEmpty {
+                let rid = "kept:desk:\(c.host.raw)"
+                for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
+                let rows = recent + keptBlocks.map { b -> OrgNode in
                     let n = node(for: b, id: rid + "/" + b.id.description, detail: b.place?.abbreviatingHome ?? "")
                     n.dimmed = true
+                    n.detailSymbol = "pin"
                     n.trailing = (c.node.graph.seen(b.id)).map(Age.short)
                     return n
                 }
-                let group = OrgNode(id: rid, title: "Archived", symbol: "archivebox", count: rows.count, isGroup: true, children: rows)
-                group.style = .section
-                group.dimmed = true
-                nodes.append(group)
-            }
-            if !recent.isEmpty {
-                let rid = "kept:desk:\(c.host.raw)"
-                for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
-                let group = OrgNode(id: rid, title: "Kept", symbol: "bookmark", count: recent.count, isGroup: true, children: recent)
+                let group = OrgNode(id: rid, title: "Kept", symbol: "pin", count: rows.count, isGroup: true, children: rows)
                 group.style = .section
                 group.dimmed = true
                 if !filter.isEmpty { open.insert(rid) }
@@ -2419,86 +2370,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(hosts.directoryBlock(for: path, on: host), lens: .directory, .here)
     }
 
-    /// Links: around the focused block (or the one looked at), by edge kind.
-    private func linksTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        guard let center = linksCenter ?? focusedShown?.placement.block, let b = hosts.block(center) else {
-            return ([OrgNode(id: "none", title: "Nothing focused", symbol: "circle.dashed")], [])
-        }
-        var open: Set<String> = ["center"]
-        // Children are made as they're reached, so the walk must end: a
-        // few bunches deep, and never back to a block on the way here.
-        let deepest = 4
-        func bunches(of block: BlockID, prefix: String) -> [OrgNode] {
-            let path = prefix.split(separator: "/")
-            guard path.count / 2 < deepest else { return [] }
-            let onTheWay = Set(path.compactMap { BlockID(string: String($0)) }) .union([center])
-            return footBunches(of: block).compactMap { bunch -> OrgNode? in
-                let cards = bunch.cards.filter { !onTheWay.contains($0.block) && matches(filter, [$0.title, $0.detail]) }
-                guard !cards.isEmpty else { return nil }
-                let id = "\(prefix)/\(bunch.title)"
-                open.insert(id)
-                let children = cards.map { card -> OrgNode in
-                    let cid = "\(id)/\(card.block)"
-                    let node = OrgNode(id: cid, block: card.block, title: card.title, symbol: card.symbol,
-                                       detail: card.detail + (card.at.map { " · " + Age.ago($0) } ?? ""), age: Self.age(card.at))
-                    node.look = StatusGlyph.look(of: hosts.block(card.block))
-                    // An archived block, linked to: faded, as put away.
-                    node.dimmed = hosts.block(card.block)?.isArchived == true
-                    node.loadChildren = { bunches(of: card.block, prefix: cid) }
-                    return node
-                }
-                return OrgNode(id: id, title: bunch.title, symbol: bunch.symbol, count: cards.count, isGroup: true, children: children)
-            }
-        }
-        let root = node(for: b, id: "center", detail: linksCenter != nil ? "looked at" : "focused")
-        let groups = bunches(of: center, prefix: "center")
-        return ([root] + groups, open)
-    }
-
-    /// Time: blocks by the day they were last seen, today first.
-    private func timeTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        var byDay: [Date: [(Block, Stamp)]] = [:]
-        let cal = Calendar.current
-        for c in hosts.all {
-            for b in c.node.blocks where !b.isArchived && (b.kind != .arrangement || b.arrangement?.isNamed == true) {
-                guard let seen = c.node.graph.seen(b.id) else { continue }
-                guard matches(filter, [b.displayTitle, b.path]) else { continue }
-                byDay[cal.startOfDay(for: seen.date), default: []].append((b, seen))
-            }
-        }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        let today = cal.startOfDay(for: Date())
-        var open: Set<String> = []
-        let days = byDay.keys.sorted(by: >).prefix(60).map { day -> OrgNode in
-            let items = byDay[day]!.sorted { $0.1 > $1.1 }
-            let title: String
-            if day == today { title = "Today" } else if let y = cal.date(byAdding: .day, value: -1, to: today), day == y { title = "Yesterday" } else { title = f.string(from: day) }
-            let id = "day:\(day.timeIntervalSince1970)"
-            if day == today || !filter.isEmpty { open.insert(id) }
-            let children = items.map { block, seen in
-                node(for: block, id: id + "/" + block.id.description, detail: DateFormatter.localizedString(from: seen.date, dateStyle: .none, timeStyle: .short))
-            }
-            return OrgNode(id: id, title: title, symbol: "calendar", count: items.count, isGroup: true, children: children)
-        }
-        return (Array(days), open)
-    }
-
     // MARK: The neighborhood, in graph form
 
     private var neighborhoodView: NeighborhoodView?
 
-    /// ⌥⌘N: the sidebar on Links, around the focused block.
-    @objc func showLinks(_ sender: Any?) {
-        linksCenter = nil
-        setOrganization(.links)
-    }
+    /// ⌥⌘N: the neighborhood map, around the focused block.
+    @objc func showNeighborhood(_ sender: Any?) { showNeighborhood(around: nil) }
 
-    /// The neighborhood map: the focused block's neighborhood to distance
-    /// 2 as a picture, to look around and walk; ⌘-click or ⏎ goes to a block.
-    @objc func showNeighborhood(_ sender: Any?) {
+    /// The neighborhood map: a block's neighborhood to distance 2 as a
+    /// picture, to look around and walk; ⌘-click or ⏎ goes to a block.
+    /// The one big view of the links; the small one is the tile's badge.
+    func showNeighborhood(around block: BlockID?) {
         guard neighborhoodView == nil else { return hideNeighborhood() }
-        guard let center = focusedShown?.placement.block ?? selected else { return }
+        guard let center = block ?? focusedShown?.placement.block ?? selected else { return }
         let v = NeighborhoodView(frame: root.bounds)
         v.source = { [weak self] id in self?.neighborhoodModel(of: id) ?? NeighborhoodModel(center: id, nodes: [], edges: []) }
         v.onClose = { [weak self] in self?.hideNeighborhood() }
@@ -2808,7 +2692,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                        detail: "\(hit.path.abbreviatingHome):\(hit.line)", note: "",
                        run: { [weak self] in
                            guard let self else { return }
-                           self.open(path: hit.path, line: hit.line, column: hit.column, on: on, from: self.focusedShown?.placement.id, kind: .found, context: query)
+                           self.open(path: hit.path, line: hit.line, column: hit.column, on: on, from: self.focusedShown?.placement.id, kind: .opened, context: query)
                        })
         }
         if s.running || s.truncated || s.error != nil || !s.hits.isEmpty {
@@ -2930,8 +2814,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .diff:
                 secondary = "diff " + (block.path ?? "")
                 detail = "Diff, \(block.path?.deletingLastPathComponent.abbreviatingHome ?? "")"
-            case .outline:
-                continue
             case .web:
                 secondary = block.web?.url ?? ""
                 detail = block.web?.url ?? "Web page"
@@ -2948,14 +2830,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // How far from where you are: here is nearest, then by the
             // graph; what nothing reaches comes last of all.
             var distance = near[block.id] ?? 50
-            if block.isArchived {
-                note = "archived"
-            } else if !kept {
+            if !kept {
                 // Closed, not yet collected: chosen, it is brought back.
                 note = "recent"
                 distance = 100
             } else if block.isPinned, note.isEmpty {
-                note = "pinned"
+                note = "kept"
             } else if block.kind == .arrangement {
                 if allWorkspaces.contains(block.id) { distance = min(distance, 2) }
             } else if here.contains(block.id) {
@@ -2987,7 +2867,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for block in hosts.blocks where block.kind == .process {
                 let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
                 for e in block.processes?.entries ?? [] {
-                    guard let under = e.block, hosts.block(under)?.isArchived != true else { continue }
+                    guard let under = e.block else { continue }
                     let m = FileFinder.nameMatch(query, title: e.command, secondary: e.path ?? "")
                     guard m > 0 else { continue }
                     let command = e.command.count > 100 ? String(e.command.prefix(100)) + "…" : e.command
@@ -3342,7 +3222,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let f = focusedShown, let path = f.path, f.lens == .editor || f.lens == .preview,
               let client = hosts.client(f.placement.block.host) else { return }
         let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
-        hosts.link(from: block, to: f.placement.block, kind: .source, context: "HEAD → working tree")
+        hosts.link(from: block, to: f.placement.block, kind: .opened, context: "HEAD → working tree")
         show(block, lens: .diff, .besideOpener(f.id), context: "Compare with Last Commit")
     }
 
@@ -3531,7 +3411,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func editPreviewBeside(_ sender: Any?) {
         guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return }
         let other: Lens = f.lens == .preview ? .editor : .preview
-        show(f.placement.block, lens: other, .besideOpener(f.id), kind: .source, context: other == .editor ? "edited beside" : "viewed beside", exact: true)
+        show(f.placement.block, lens: other, .besideOpener(f.id), kind: .opened, context: other == .editor ? "edited beside" : "viewed beside", exact: true)
     }
 
     /// Opens what a link in a placement points at: Markdown files in a
@@ -3913,7 +3793,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let client = self.hosts.client(block.host) else { return }
             self.hideHistory()
             let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
-            self.hosts.link(from: diff, to: block, kind: .source, context: "then → now")
+            self.hosts.link(from: diff, to: block, kind: .opened, context: "then → now")
             self.show(diff, lens: .diff, .besideOpener(placement), context: "Compare with Now")
         }
         historyOf = block
@@ -4011,13 +3891,6 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarMoreMenu() -> NSMenu {
         let menu = NSMenu()
-        // The organizations the bar doesn't hold.
-        for org in [Organization.links, .time, .status] {
-            let item = ClosureMenuItem("Organize by \(org.title)", symbol: org.symbol) { [weak self] in self?.setOrganization(org) }
-            item.state = organization == org ? .on : .off
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar", symbol: "sidebar.left") { [weak self] in self?.sidebarTogglePinned() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Show Logs in Finder", symbol: "folder") {
@@ -4161,7 +4034,6 @@ extension MainWindowController: GridDelegate {
         var events: [Event] = a.full == placement ? [.full(nil)] : []
         events += stack.map { .remove($0.id) }
         appendToSelected(events)
-        for p in stack { discardIfUnplaced(p.block) }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
@@ -4314,9 +4186,8 @@ extension MainWindowController: GridDelegate {
         launch.setSymbol("sparkles", size: 12)
         launch.submenu = agents
         menu.addItem(launch)
-        menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
-            self?.linksCenter = block
-            self?.setOrganization(.links)
+        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
+            self?.showNeighborhood(around: block)
         })
         if let b = hosts.block(block), b.isNote {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.nameNote(placement) })
@@ -4353,14 +4224,8 @@ extension MainWindowController: GridDelegate {
         }
         bunch(.openedFrom, "opened from", "arrow.turn.up.left", n.inbound[.link(.opened)] ?? [], toward: \.from, fallback: "opened here")
         bunch(.openedHere, "opened here", "arrow.turn.down.right", n.outbound[.link(.opened)] ?? [], toward: \.to, fallback: "opened from here")
-        bunch(.found, "found by", "magnifyingglass", n.inbound[.link(.found)] ?? [], toward: \.from, fallback: "a hit")
-        bunch(.found, "found", "magnifyingglass", n.outbound[.link(.found)] ?? [], toward: \.to, fallback: "a hit")
-        bunch(.derived, "compared", "arrow.left.arrow.right", n.inbound[.link(.source)] ?? [], toward: \.from, fallback: "a diff of this")
-        bunch(.sources, "sources", "doc.text", n.outbound[.link(.source)] ?? [], toward: \.to, fallback: "compared here")
         bunch(.linked, "links", "arrow.right", n.outbound[.link(.linked)] ?? [], toward: \.to, fallback: "linked by hand")
         bunch(.linked, "linked from", "arrow.left", n.inbound[.link(.linked)] ?? [], toward: \.from, fallback: "linked by hand")
-        bunch(.mentions, "mentioned in", "link", n.inbound[.link(.mention)] ?? [], toward: \.from, fallback: "a link")
-        bunch(.mentions, "mentions", "link", n.outbound[.link(.mention)] ?? [], toward: \.to, fallback: "a link")
         // Other arrangements holding the block: not the one it's shown in.
         let elsewhere = (n.inbound[.placed] ?? []).filter { $0.from != selected }
         bunch(.placedIn, "also in", "rectangle.3.group", elsewhere, toward: \.from, fallback: "placed there")
@@ -4414,19 +4279,10 @@ extension MainWindowController: EditorViewDelegate {
         showOutline(of: f.placement.block, beside: f.id)
     }
 
-    /// An outline block of another (§3.8), beside its tile: a graph node
-    /// of its own, linked to its subject as its source, gone when closed.
+    /// A block through its outline lens (§3.8), beside its tile: its
+    /// commands or headings as a list, a view of the block itself.
     func showOutline(of block: BlockID, beside placement: PlacementID) {
-        guard let client = hosts.client(block.host) else { return }
-        show(client.outlineBlock(of: block), lens: .outline, .besideOpener(placement), kind: .opened, context: "outline")
-    }
-
-    /// An outline block whose last tile closed is discarded: it was only
-    /// ever a view of its subject.
-    private func discardIfUnplaced(_ block: BlockID) {
-        guard let b = hosts.block(block), b.kind == .outline,
-              !allWorkspaces.contains(where: { hosts.arrangement($0)?.placements(of: block).isEmpty == false }) else { return }
-        hosts.propose(.discard(block))
+        show(block, lens: .outline, .besideOpener(placement), exact: true)
     }
 
     func outline(_ view: OutlineLensView, go entry: OutlineLensView.Entry) {
@@ -4537,7 +4393,7 @@ extension MainWindowController: MarkdownViewDelegate {
             let over = modifiers.contains(.option)
             if Lens.isMarkdown(path), !modifiers.contains(.command) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
-                hosts.link(from: p.block, to: block, kind: .mention, context: path.lastPathComponent)
+                hosts.link(from: p.block, to: block, kind: .opened, context: "[[" + path.lastPathComponent + "]]")
                 // Page to page in the same tile, as a browser goes — or,
                 // with ⌥, the page over this one.
                 if over { showOver(block, lens: .preview, over: view.placement) } else { replace(view.placement, with: block, lens: .preview) }
@@ -4612,7 +4468,7 @@ extension MainWindowController: GitViewDelegate {
         switch subject {
         case let .sides(_, new):
             if let file = hosts.client(view.block.host)?.textBlock(path: new.path) {
-                hosts.link(from: block, to: file.id, kind: .source, context: "HEAD → working tree")
+                hosts.link(from: block, to: file.id, kind: .opened, context: "HEAD → working tree")
             }
             context = new.path.lastPathComponent
         case let .commit(_, sha): context = String(sha.prefix(7))
@@ -4652,7 +4508,7 @@ extension MainWindowController: SearchViewDelegate {
 
     func searchView(_ view: SearchView, open hit: SearchHit) {
         open(path: hit.path, line: hit.line, column: hit.column, on: view.block.host, from: view.placement,
-             kind: .found, context: hit.text.trimmingCharacters(in: .whitespaces))
+             kind: .opened, context: hit.text.trimmingCharacters(in: .whitespaces))
     }
 
     func searchViewCancel(_ view: SearchView) {
@@ -4794,7 +4650,6 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return hosts.select(block) }
         if bring { show(block, lens: Lens.default(for: b.kind, path: b.path), .here) } else { arrive(block, from: arrangement?.focused) }
-        if organization == .links, linksCenter != nil { linksCenter = block; refreshOrganization(now: true) }
     }
 
     /// Double-clicking an arrangement names it.
@@ -4897,9 +4752,8 @@ extension MainWindowController: OrganizationViewDelegate {
             }
             menu.addItem(.separator())
         }
-        menu.addItem(ClosureMenuItem("Links Around This", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
-            self?.linksCenter = id
-            self?.setOrganization(.links)
+        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
+            self?.showNeighborhood(around: id)
         })
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(id.host))
@@ -5009,7 +4863,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: self = .done
         case .failed: self = .failed
         case .working: self = .working
-        case .inactive, .connecting, .offline, .archived: self = .inactive
+        case .inactive, .connecting, .offline: self = .inactive
         }
     }
 

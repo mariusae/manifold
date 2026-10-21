@@ -161,9 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
-        item(file, "Archive Block", #selector(MainWindowController.archiveFocused(_:)), "w", [.command, .shift])
-        item(file, "Pin or Unpin Block", #selector(MainWindowController.togglePin(_:)), "")
-        item(file, "Add to or Remove from Inbox", #selector(MainWindowController.toggleInbox(_:)), "i", [.command, .shift])
+        item(file, "Keep and Close", #selector(MainWindowController.keepAndClose(_:)), "w", [.command, .shift])
+        item(file, "Keep or Let Go", #selector(MainWindowController.togglePin(_:)), "")
         item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
@@ -260,9 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(fontsItem)
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
-                                  ("Links", #selector(MainWindowController.organizeByLinks(_:)), "3"), ("Time", #selector(MainWindowController.organizeByTime(_:)), "4"),
-                                  ("Status", #selector(MainWindowController.organizeByStatus(_:)), "5"),
-                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "6")] {
+                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
@@ -325,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
         item(window, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
         window.addItem(.separator())
-        item(window, "Show Links", #selector(MainWindowController.showLinks(_:)), "n", [.command, .option])
+        item(window, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "n", [.command, .option])
         NSApp.windowsMenu = window
 
         return main

@@ -38,9 +38,9 @@ final class Mentions {
         }
         let have = mentions(block)
         for e in have where wanted[e.to] == nil { unlink?(e.id) }
-        for (to, words) in wanted where !have.contains(where: { $0.to == to && $0.context == words }) {
-            link?(Link(from: block, to: to, kind: .mention, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
-                       context: String(words.prefix(120))))
+        for (to, words) in wanted where !have.contains(where: { $0.to == to && $0.context == "[[" + String(words.prefix(118)) + "]]" }) {
+            link?(Link(from: block, to: to, kind: .opened, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
+                       context: "[[" + String(words.prefix(118)) + "]]"))
         }
     }
 

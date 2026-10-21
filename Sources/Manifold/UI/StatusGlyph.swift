@@ -18,8 +18,6 @@ final class StatusGlyph: NSView {
         case connecting
         /// A host that can't be reached now: what's shown is as last seen.
         case offline
-        /// Put away as it was (§3.7): an archive box.
-        case archived
     }
 
     var look: Look? {
@@ -37,7 +35,6 @@ final class StatusGlyph: NSView {
     /// ended for idleness, inactive; else nothing.
     static func look(of block: Block?) -> Look? {
         guard let block else { return nil }
-        if block.isArchived { return .archived }
         if let r = block.statusRecord {
             switch r.state {
             case .idle: break
@@ -57,7 +54,6 @@ final class StatusGlyph: NSView {
         guard let block, let look = look(of: block) else { return nil }
         switch look {
         case .inactive: return block.terminal?.dormantSince
-        case .archived: return nil
         default: return block.statusRecord?.at
         }
     }
@@ -71,7 +67,6 @@ final class StatusGlyph: NSView {
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
         case .inactive: words = ["Inactive: the shell ended while idle"]
-        case .archived: words = ["Archived: as it was" + (block.kind == .terminal ? "; no shell" : "")]
         case .connecting: words = ["Connecting to its host"]
         case .offline: words = ["Its host can't be reached: as last seen"]
         case .needsYou:
@@ -206,28 +201,6 @@ final class StatusGlyph: NSView {
             slash.move(to: NSPoint(x: center.x - radius * 0.6, y: center.y - radius * 0.6))
             slash.line(to: NSPoint(x: center.x + radius * 0.6, y: center.y + radius * 0.6))
             slash.stroke()
-        case .archived:
-            // An archive box: a lid across the top, the box beneath with a
-            // short handle on its front.
-            let grey = Theme.secondaryText.withAlphaComponent(0.85)
-            grey.setStroke()
-            let lid = NSBezierPath(roundedRect: NSRect(x: center.x - radius, y: center.y + radius * 0.3, width: 2 * radius, height: radius * 0.55), xRadius: 1, yRadius: 1)
-            lid.lineWidth = 1.3
-            lid.stroke()
-            let box = NSBezierPath()
-            box.lineWidth = 1.3
-            box.lineJoinStyle = .round
-            box.move(to: NSPoint(x: center.x - radius * 0.8, y: center.y + radius * 0.3))
-            box.line(to: NSPoint(x: center.x - radius * 0.8, y: center.y - radius))
-            box.line(to: NSPoint(x: center.x + radius * 0.8, y: center.y - radius))
-            box.line(to: NSPoint(x: center.x + radius * 0.8, y: center.y + radius * 0.3))
-            box.stroke()
-            let handle = NSBezierPath()
-            handle.lineWidth = 1.3
-            handle.lineCapStyle = .round
-            handle.move(to: NSPoint(x: center.x - radius * 0.3, y: center.y - radius * 0.25))
-            handle.line(to: NSPoint(x: center.x + radius * 0.3, y: center.y - radius * 0.25))
-            handle.stroke()
         case .inactive:
             // A crescent: the disc less a disc shifted up and right.
             let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))

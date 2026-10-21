@@ -14,9 +14,6 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case git
     case process
     case agent
-    /// An outline of another block (§3.8): its commands or headings as
-    /// a list, linked to it as its source; gone when its tile closes.
-    case outline
     /// Placements of other blocks, laid out (§3 of DESIGN.md).
     case arrangement
 
@@ -33,7 +30,6 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .git: "Git"
         case .process: "Processes"
         case .agent: "Agent"
-        case .outline: "Outline"
         case .arrangement: "Untitled"
         }
     }
@@ -85,7 +81,6 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .process: return .process
         case .agent: return .agent
         case .arrangement: return .card
-        case .outline: return .outline
         }
     }
 
@@ -119,11 +114,6 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
 /// the grey of a page of code (golang.org's) — code, or plain text.
 public enum ViewRendering: Sendable, Equatable {
     case markdown, code, plain
-}
-
-/// Where a block is on the ladder from on screen to only in its log (§4).
-public enum LifeState: String, Codable, Sendable {
-    case live, warm, dormant, held
 }
 
 // MARK: Text
@@ -434,12 +424,6 @@ public enum DiffSubject: Codable, Equatable, Sendable {
 
 /// A diff block: the subject, and the texts (or the patch) the host read
 /// for it, kept in the log so the block is a record of what was compared.
-/// An outline block's state (§3.8): the block it outlines.
-public struct OutlineState: Codable, Equatable, Sendable {
-    public var subject: BlockID?
-    public init(subject: BlockID? = nil) { self.subject = subject }
-}
-
 public struct DiffState: Codable, Equatable, Sendable {
     public var subject: DiffSubject?
     public var oldText: String?
@@ -639,7 +623,6 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var git: GitState?
     public var diff: DiffState?
     public var processes: ProcessState?
-    public var outline: OutlineState?
     public var arrangement: ArrangementState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
     public var status: [String: StatusRecord]?
@@ -648,19 +631,13 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// keeps it (§3.5): in the log, so it survives a restart and a move
     /// between lenses, like the editor's selection does.
     public var views: [PlacementID: [String: String]]?
-    /// Archived (§3.7): put away, to be recalled as it was — a terminal's
-    /// shell ended and not started again; off the sidebar but for the
-    /// Archived section.
-    public var archived: Bool?
-    /// In the inbox (§3.7): something to attend to — set when its status
-    /// comes to need attention, cleared by hand.
-    public var inbox: Bool?
-    /// Pinned (§4): kept whatever refers to it, until unpinned.
+    /// Kept (§4): a root of its own, whatever refers to it, until let go.
     public var pinned: Bool?
 
-    public var isArchived: Bool { archived == true }
-    public var isInInbox: Bool { inbox == true }
     public var isPinned: Bool { pinned == true }
+    /// Something to attend to (§3.7): its status needs you, or finished
+    /// and hasn't been read. What the Inbox lists.
+    public var needsAttention: Bool { statusRecord?.wantsAttention ?? false }
 
     public init(id: BlockID, kind: BlockKind, created: Stamp, title: String? = nil, path: String? = nil) {
         self.id = id
@@ -672,7 +649,6 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .text: text = TextState()
         case .terminal, .agent: terminal = TerminalState()
         case .process: processes = ProcessState()
-        case .outline: outline = OutlineState()
         case .directory: directory = DirectoryState()
         case .web: web = WebState()
         case .search: search = SearchState()
@@ -747,11 +723,6 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     }
 
     /// Not reconstructible from the log: never collected (§2.3).
-    public var isHeld: Bool {
-        if let text { return text.isDirty && path != nil }
-        if let terminal { return terminal.busy }
-        return false
-    }
 
     /// Where it is, for finding it, and where a new terminal from it
     /// starts: a file's folder; a listing's or a repository's own folder;

@@ -80,7 +80,7 @@ final class Server {
         mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
-        mentions.mentions = { [weak self] block in self?.node.graph.edges(from: block, kind: .link(.mention)) ?? [] }
+        mentions.mentions = { [weak self] block in (self?.node.graph.edges(from: block, kind: .link(.opened)) ?? []).filter { $0.context?.hasPrefix("[[") == true } }
         mentions.makeBlock = { [weak self] kind, path in
             guard let self else { return BlockID(host: HostID("none")) }
             let id = BlockID(host: self.host)
@@ -321,7 +321,7 @@ final class Server {
     }
 
     /// The collector (§4): what no root reaches over strong edges —
-    /// workspaces on the desk and named ones, archived and pinned
+    /// workspaces on the desk and named ones, kept
     /// blocks, other hosts' holds — is noted, and collected once it has
     /// been so for the grace the settings give. Reached again meanwhile,
     /// it is simply kept.
@@ -365,12 +365,6 @@ final class Server {
             entry.title = block.displayTitle
             entry.path = block.path
             append(.register(entry), to: .registry(host))
-        }
-        let held = block.isHeld
-        let dormant = block.terminal?.dormantSince != nil && block.terminal?.pid == nil
-        let life: LifeState = dormant ? .dormant : (held ? .held : .warm)
-        if current == nil || current!.held != held || current!.life != life {
-            append(.life(id, life, held: held), to: .registry(host))
         }
         if block.kind == .text { watch(block) }
     }
@@ -471,14 +465,6 @@ final class Server {
         case let .clearStatus(block):
             if node.block(block)?.status != nil { append(.status(id: rootStatusID, nil), to: .block(block)) }
             done()
-        case let .archive(block, on):
-            if let b = node.block(block), b.isArchived != on { append(.archived(on), to: .block(block)) }
-            // Archived, a terminal's shell ends; it isn't started again (attach replays).
-            if on, let s = sessions[block] { s.terminate() }
-            done()
-        case let .inbox(block, on):
-            if let b = node.block(block), b.isInInbox != on { append(.inbox(on), to: .block(block)) }
-            done()
         case let .pin(block, on):
             if let b = node.block(block), b.isPinned != on { append(.pinned(on), to: .block(block)) }
             done()
@@ -489,13 +475,6 @@ final class Server {
             done()
         case let .release(id):
             if node.registry(host).holds[id] != nil { append(.release(id), to: .registry(host)) }
-            done()
-        case let .outline(block, of):
-            if node.block(block) == nil {
-                append(.create(kind: .outline, title: nil, path: nil), to: .block(block))
-                append(.outlineSubject(of), to: .block(block))
-                append(.link(Link(from: block, to: of, kind: .source, at: clock.now(), context: "outline")), to: .links(host))
-            }
             done()
         case let .discard(block):
             discard(block)
@@ -604,9 +583,7 @@ final class Server {
     /// executable's path — kept to what descends from a terminal's or
     /// agent's shell, each tagged with its block, shells first.
     private func listProcesses(_ block: BlockID) {
-        // Under the live shells of blocks that aren't put away: an archived
-        // block's shell was told to go, and whatever lingers isn't yours to see here.
-        let shells = sessions.filter { node.block($0.key)?.isArchived != true }.map { ($0.key, $0.value.pid) }
+        let shells = sessions.map { ($0.key, $0.value.pid) }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
             var all: [Int32: ProcessEntry] = [:]
@@ -884,15 +861,6 @@ final class Server {
             conn.close()
             return
         }
-        if block.isArchived {
-            // Archived: the transcript as it was, and nothing more — no
-            // shell; what's typed goes nowhere.
-            let history = (try? Data(contentsOf: historyFile(id))) ?? Data()
-            conn.send(Frame(.data, history))
-            conn.send(Frame(.replayDone, Data([0])))
-            conn.onFrame = { _ in }
-            return
-        }
         let session: Session
         if let existing = sessions[id] {
             session = existing
@@ -1051,16 +1019,13 @@ final class Server {
 
     private func sessionExited(_ id: BlockID, status: Int32) {
         guard let s = sessions.removeValue(forKey: id) else { return }
-        // Its transcript whole, for the archived block to show as it was.
+        // Its transcript whole, to show as it was until a shell starts again.
         try? FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
         try? s.takeHistory().write(to: historyFile(id), options: .atomic)
         if s.endedForIdleness {
             append(.shell(.dormant(idleSeconds: s.idleSeconds)), to: .block(id))
         } else {
-            // The shell ended for good: the block is archived (§3.7) — kept
-            // as it was, its transcript to be recalled, no shell to start.
             append(.shell(.ended(status: status)), to: .block(id))
-            if node.block(id)?.isArchived != true { append(.archived(true), to: .block(id)) }
         }
     }
 
