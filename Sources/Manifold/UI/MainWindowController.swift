@@ -724,6 +724,41 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
 
+    /// The Inbox's blocks in its order: by host, by the workspace that
+    /// holds each, newest first.
+    func inboxOrder() -> [BlockID] {
+        func leaves(_ nodes: [OrgNode]) -> [BlockID] {
+            nodes.flatMap { n -> [BlockID] in n.isGroup ? leaves(n.children) : (n.block.map { [$0] } ?? []) }
+        }
+        return leaves(inboxTree("").0)
+    }
+
+    /// The Inbox as last gone through with ⌘J, to find what comes after a
+    /// block that has left it (attended to on the way).
+    private var inboxWalk: [BlockID] = []
+
+    /// ⌘J: to the next block in the Inbox — after the focused one, else the
+    /// first — warped to as a click in the sidebar goes, and attended to.
+    @objc func nextInInbox(_ sender: Any?) {
+        let order = inboxOrder()
+        guard !order.isEmpty else {
+            inboxWalk = []
+            return NSSound.beep()
+        }
+        let here = focusedShown?.placement.block
+        var next = order[0]
+        if let here, let i = order.firstIndex(of: here) {
+            if order.count == 1 { next = here } else { next = order[(i + 1) % order.count] }
+        } else if let here, let was = inboxWalk.firstIndex(of: here),
+                  let after = inboxWalk[(was + 1)...].first(where: { order.contains($0) }) {
+            // The focused block has left the Inbox: what came after it then.
+            next = after
+        }
+        inboxWalk = order
+        goTo(next)
+        hosts.propose(.attend(next))
+    }
+
     // MARK: Seen, and collection
 
     /// Tells the host what's on screen, so it knows what's unseen.
@@ -1718,6 +1753,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         switch item.action {
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
+        case #selector(nextInInbox(_:)):
+            return !inboxOrder().isEmpty
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
             guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
             let viewing = f.lens == .preview
@@ -3097,13 +3134,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The pointer to a view's text cursor, or its middle, now.
     func warpPointer(to view: PaneContent) {
-        guard !Pointer.held, let window, let rect = pointerTarget(in: view) else { return }
+        guard let window, let rect = pointerTarget(in: view) else { return }
         let screen = window.convertToScreen(rect)
-        // Core Graphics counts from the main display's top left.
-        guard let main = NSScreen.screens.first else { return }
-        let point = CGPoint(x: screen.midX + 2, y: main.frame.maxY - screen.midY)
-        CGWarpMouseCursorPosition(point)
-        CGAssociateMouseAndMouseCursorPosition(1)
+        Pointer.warp(to: NSPoint(x: screen.midX + 2, y: screen.midY))
     }
 
     /// Where in the window the pointer goes for a view: its text cursor,

@@ -224,7 +224,11 @@ and Mona Sans (bundled).
   foot) lists the blocks whose status wants attention — done or failed
   and not yet read, or needing you — by host and workspace, each with
   what it said and how long ago. Reading a block (focusing it) takes it
-  out; there is nothing to clear by hand.
+  out; there is nothing to clear by hand. **⌘J** (Window ▸ Next in
+  Inbox) goes through it in that order, from anywhere: to the next block
+  after the focused one (or the first), in whatever workspace holds it,
+  the pointer warped to its tile and the block marked read — a block
+  that needs you stays until it's answered; with nothing in it, a beep.
 - **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace off the
   desk, and an unnamed workspace unseen for three days drifts off by
   itself. A block is kept while something reaches it — a workspace on

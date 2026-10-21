@@ -418,6 +418,14 @@ enum DebugControl {
             guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
             let w = window.convertPoint(fromScreen: p)
             return "\(Int(w.x)) \(Int(window.contentView!.bounds.height - w.y))"
+        case "inbox":
+            // The Inbox in ⌘J's order; "inbox next": ⌘J.
+            guard let wc else { return "no window" }
+            if arg == "next" { wc.nextInInbox(nil) }
+            return wc.inboxOrder().map { b in
+                let block = wc.hosts.block(b)
+                return "\(block?.displayTitle ?? "?") \(block?.statusRecord.map { "\($0.state)\($0.read == true ? " read" : "")" } ?? "") \(b)"
+            }.joined(separator: "\n")
         case "nb":
             return wc?.debugNotebook(arg) ?? "no window"
         case "searchpreview":
