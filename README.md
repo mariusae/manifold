@@ -224,9 +224,9 @@ and Mona Sans (bundled).
   ⌘O, marked *recent*), then is collected: gone, with its history. An
   unnamed workspace taken off the desk goes the same way; a named one
   sits under **Kept**. **⇧⌘T** reopens the last thing closed where it
-  was. Closing the last reference to a text with unsaved edits, or to
-  a terminal with a job running, goes through, and a toast at the foot
-  of the window says so, with Restore. **Pin or Unpin Block** (File
+  was. Closing takes with it whatever only the closed block reached;
+  when any of that has unsaved edits or a job running, a toast at the
+  foot of the window names each, with Restore. **Pin or Unpin Block** (File
   menu, or Pin in a bar's or a row's menu) keeps a block whatever
   refers to it.
 

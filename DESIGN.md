@@ -506,10 +506,14 @@ skipping whatever has been collected meanwhile. The sidebar lists what
 exists and nothing reaches under **Recently Closed**, and the finder
 marks it *recent*; either brings it back by a click.
 
-Collection is never refused and never silent. Closing the last reference
-to a text with unsaved edits, or to a terminal with a job running (which
-collection will end), goes through, and a toast at the foot of the
-window says what was closed and offers Restore.
+Collection is never refused and never silent. Closing takes with it
+everything the closed block alone reached — what it placed, what it
+linked by hand, and onward — so the app compares what was reachable
+before and after, and when something on its way out would lose
+something — a text with unsaved edits, a terminal with a job running,
+which collection will end — a toast at the foot of the window names
+each of them and offers Restore, which reopens what was closed and so
+reaches them all again.
 
 **Holds, across hosts.** A host sees only its own shards, so a reference
 from another host — a workspace there placing a block here, a link by

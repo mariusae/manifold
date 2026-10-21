@@ -572,26 +572,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if closedStack.count > 100 { closedStack.removeFirst(closedStack.count - 100) }
     }
 
-    /// After tiles were taken off: a block none of them reaches any more
-    /// is on its way to collection; when that would lose something — a
-    /// text edited and unsaved, a terminal with a job running — a toast
-    /// says so, with Restore.
-    private func afterClosing(_ blocks: [BlockID]) {
-        let reachable = hosts.reachable()
-        for id in Set(blocks) where hosts.isUnreached(id, reachable: reachable) {
+    /// After tiles were taken off: whatever was reached before and isn't
+    /// now — the blocks closed, and everything only they reached through
+    /// what they placed and linked — is on its way to collection. When
+    /// that would lose something — a text edited and unsaved, a terminal
+    /// with a job running — a toast names each, with Restore.
+    private func afterClosing(reachedBefore before: Set<BlockID>) {
+        let after = hosts.reachable()
+        var lost: [String] = []
+        for id in before.subtracting(after) {
             guard let b = hosts.block(id) else { continue }
-            let why: String
             if b.kind == .text, b.text?.isDirty == true {
-                why = b.path == nil ? "a note with unsaved edits" : "edited and unsaved"
+                lost.append("“\(b.displayTitle)” (unsaved edits)")
             } else if (b.kind == .terminal || b.kind == .agent), b.terminal?.busy == true {
-                why = b.kind == .agent ? "its agent still running" : "a job still running"
-            } else { continue }
-            let minutes = hosts.local.desk.settings.collectAfterMinutes
-            let when = minutes > 0 ? "; it goes in \(minutes) min" : ""
-            toast.show("Closed “\(b.displayTitle)”, \(why)\(when)", action: "Restore ⇧⌘T") { [weak self] in self?.reopenClosed(nil) }
-            layoutViews()
-            return
+                lost.append("“\(b.displayTitle)” (\(b.kind == .agent ? "agent running" : "job running"))")
+            }
         }
+        guard !lost.isEmpty else { return }
+        lost.sort()
+        let minutes = hosts.local.desk.settings.collectAfterMinutes
+        let when = minutes > 0 ? "; gone in \(minutes) min" : ""
+        let text = lost.count == 1 ? "Closed \(lost[0])\(when)" : "Closed \(lost.count) blocks with something to lose: \(lost.joined(separator: ", "))\(when)"
+        toast.show(text, action: "Restore ⇧⌘T", for: 12) { [weak self] in self?.reopenClosed(nil) }
+        layoutViews()
     }
 
     /// ⇧⌘T: the last thing closed, back where it was — a tile into its
@@ -1432,11 +1435,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The bar's ×: the tile taken off, as ⌘W takes the focused one.
     func gridClose(_ placement: PlacementID) {
         guard let a = arrangement, let id = selected, let block = a.placement(placement)?.block else { return }
+        let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
         discardIfUnplaced(block)
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
-        afterClosing([block])
+        afterClosing(reachedBefore: before)
     }
 
     func gridLink(_ block: BlockID, to target: PlacementID) {
@@ -1476,7 +1480,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func closePaneOrTab(_ sender: Any?) {
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
-        var closed: [BlockID] = []
+        let before = hosts.reachable()
         if let f = a.focused {
             // Taken off, a tile's room goes to the first of the stack
             // behind it, if there is one, which comes back where it was
@@ -1484,20 +1488,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let block = a.placement(f)?.block
             noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
-            if let block { discardIfUnplaced(block); closed.append(block) }
+            if let block { discardIfUnplaced(block) }
         }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
             removeFromDesk(id)
         }
-        afterClosing(closed)
+        afterClosing(reachedBefore: before)
     }
 
     /// ⇧⌘W: the arrangement leaves the desk.
     @objc func closeTab(_ sender: Any?) {
         guard let id = selected else { return }
-        let blocks = hosts.arrangement(id)?.placements.map(\.block) ?? []
+        let before = hosts.reachable()
         removeFromDesk(id)
-        afterClosing(blocks)
+        afterClosing(reachedBefore: before)
     }
 
     /// Every workspace on every host, in the sidebar's order.
@@ -4141,13 +4145,14 @@ extension MainWindowController: GridDelegate {
         let stack = a.full == placement
             ? a.columns[c]
             : a.columns[c].filter { $0.id == placement || (a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement) }
+        let before = hosts.reachable()
         for p in stack { noteClosing(p.id, in: id) }
         var events: [Event] = a.full == placement ? [.full(nil)] : []
         events += stack.map { .remove($0.id) }
         appendToSelected(events)
         for p in stack { discardIfUnplaced(p.block) }
         if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
-        afterClosing(stack.map(\.block))
+        afterClosing(reachedBefore: before)
     }
 
     /// Unstack: every tile behind this one shows, sharing its room.
