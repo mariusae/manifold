@@ -355,7 +355,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A placement's block as seen from here: offline when its host is
     /// attached but can't be reached now.
     private func shown(_ p: Placement) -> Shown {
-        Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
+        var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
+        if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
+        return s
     }
 
     /// A text tile's font: the one its pill's menu chose; else, for code
@@ -549,7 +551,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let w = sidebarWidth, inset = Theme.sidebarInset
         let sidebarFrame = NSRect(x: sidebarShown ? inset : -w - 20, y: inset, width: w, height: b.height - 2 * inset)
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
-        let left = pinned ? w + 2 * inset : 0
+        let left = pinned ? w + inset : 0
         stage.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
         content.frame = stage.bounds
         stateView?.frame = stage.frame

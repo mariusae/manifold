@@ -29,7 +29,9 @@ final class StatusGlyph: NSView {
 
     static let size: CGFloat = 13
     private var timer: Timer?
-    private var phase: Double = 0
+    /// Where in its turning: by the clock, so every glyph turns together
+    /// and one made afresh (a row reloaded, a cell reused) doesn't jump.
+    private var phase: Double { Date.timeIntervalSinceReferenceDate }
 
     /// What a block shows: its status; else, for a terminal whose shell
     /// ended for idleness, inactive; else nothing.
@@ -102,9 +104,7 @@ final class StatusGlyph: NSView {
         if animates {
             guard timer == nil else { return }
             let t = Timer(timeInterval: 1 / 30, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                self.phase += 1 / 30
-                self.needsDisplay = true
+                self?.needsDisplay = true
             }
             RunLoop.main.add(t, forMode: .common)
             timer = t

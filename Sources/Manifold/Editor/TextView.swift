@@ -87,7 +87,7 @@ final class TextView: NSView, NSTextInputClient {
     /// The lines that are code fences, found once per text.
     private var fenceLines: Set<Int>?
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
-    private var pillPhase: Double = 0
+    private var pillPhase: Double { Date.timeIntervalSinceReferenceDate }
     private var pillTimer: Timer?
     var tabWidth = 4
     var isEditable = true
@@ -235,7 +235,6 @@ final class TextView: NSView, NSTextInputClient {
         if running, pillTimer == nil {
             let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
                 guard let self else { return }
-                self.pillPhase += 0.4
                 for n in self.pillLines.keys where n < self.text.lineCount {
                     self.setNeedsDisplay(NSRect(x: 0, y: self.top(ofLine: n), width: self.bounds.width, height: CGFloat(self.layout(line: n).rows.count) * self.lineHeight))
                 }

@@ -9,6 +9,9 @@ struct Shown: Equatable {
     /// The block's host can't be reached now (§8): the view is what was
     /// last seen, and takes no edits.
     var offline = false
+    /// The block lives on another host than the workspace it's in: that
+    /// host's name, said on its bar.
+    var foreignHost: String?
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

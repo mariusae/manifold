@@ -501,6 +501,7 @@ final class GridView: NSView, NSDraggingSource {
             if let pill = pills[full] {
                 pill.isHidden = false
                 pill.behind = 0
+                pill.collapsed = false
                 pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                 keep(pill, above: tile.view)
             }
@@ -548,12 +549,19 @@ final class GridView: NSView, NSDraggingSource {
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
                 let held = switching.contains(tile.shown.id)
                 let was = lastFrames[tile.shown.id]
-                frameNow[tile.shown.id] = body
-                if !held { settle(tile.view, body, was: was) }
+                // Less than a line of content under the bar: the tile is
+                // collapsed to its bar, a pill, its content out of sight.
+                let collapsed = body.height < 20
+                frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
+                if !held {
+                    settle(tile.view, body, was: was)
+                    if tile.view.isHidden != collapsed { tile.view.isHidden = collapsed }
+                }
                 // The switcher over the whole tile, its bar put away meanwhile.
                 if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
                 if let pill = pills[tile.shown.id] {
+                    pill.collapsed = collapsed
                     let bar = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                     settle(pill, bar, was: was.map { NSRect(x: $0.minX, y: $0.maxY, width: $0.width, height: Self.barHeight) })
                     if !held { keep(pill, above: tile.view) }
@@ -1205,6 +1213,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
     static let linkMinimal: CGFloat = 30
     /// The least the name is shown at, before anything else gives way.
     static let nameMinimum: CGFloat = 56
+    /// The tile shrunk to its bar alone: the bar rounded all round, a pill.
+    var collapsed = false {
+        didSet {
+            guard collapsed != oldValue else { return }
+            glass.layer?.maskedCorners = collapsed
+                ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+                : [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
+    }
     /// Maximize and close shown; off where the bar only names the tile.
     var showsButtons = true { didSet { if showsButtons != oldValue { needsLayout = true } } }
     private var downAt: NSPoint?
@@ -1378,8 +1395,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // type another.
         let tail = String(shown.title.drop(while: { $0 == "…" }))
         let said = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail))
-        let where_ = said && shown.block?.web == nil ? "" : place
+        var where_ = said && shown.block?.web == nil ? "" : place
+        // From another host than the workspace's: that host first, as ssh
+        // writes it ("box:~/src"), or the host alone.
+        if let host = shown.foreignHost {
+            where_ = where_.isEmpty ? host : shown.block?.web != nil ? host + " · " + where_ : host + ":" + where_
+        }
         if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
+        subtitle.toolTip = shown.foreignHost.map { "On \($0), not this workspace's host" }
         if close.isHidden != stashed { close.isHidden = stashed }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }
