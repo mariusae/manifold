@@ -174,8 +174,6 @@ public struct DeskState: Codable, Equatable, Sendable {
     /// Workspaces on this host, in the sidebar's order.
     public var order: [BlockID] = []
     public var selected: BlockID?
-    /// Arrangements most recently settled on first (⌃⇥'s order, the timeline).
-    public var settled: [BlockID] = []
     public var window = WindowState()
     public var appearance = Appearance()
     public var settings = Settings()
@@ -187,14 +185,13 @@ public struct DeskState: Codable, Equatable, Sendable {
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case order, selected, settled, window, appearance, settings, preferences, agents }
+    enum CodingKeys: String, CodingKey { case order, selected, window, appearance, settings, preferences, agents }
 
     // A desk saved before a field existed gets its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         order = (try? c.decodeIfPresent([BlockID].self, forKey: .order)) ?? []
         selected = try? c.decodeIfPresent(BlockID.self, forKey: .selected)
-        settled = (try? c.decodeIfPresent([BlockID].self, forKey: .settled)) ?? []
         window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
         appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
         settings = (try? c.decodeIfPresent(Settings.self, forKey: .settings)) ?? Settings()
@@ -304,7 +301,6 @@ public enum Event: Codable, Equatable, Sendable {
     // Desk.
     case order([BlockID])
     case select(BlockID?)
-    case settled(BlockID)
     case window(WindowState)
     case appearance(Appearance)
     case settings(Settings)
@@ -757,7 +753,6 @@ extension DeskState {
         switch event {
         case let .order(o): order = o
         case let .select(s): selected = s
-        case let .settled(id): settled = [id] + settled.filter { $0 != id }
         case let .window(w): window = w
         case let .appearance(a): appearance = a
         case let .settings(s): settings = s

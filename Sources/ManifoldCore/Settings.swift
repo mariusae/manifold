@@ -24,8 +24,6 @@ public struct WindowState: Codable, Equatable, Sendable {
 /// file beside the hosts file, not in any host's log.
 public struct ClientState: Codable, Equatable, Sendable {
     public var selected: BlockID?
-    /// Workspaces most recently settled on first (⌃⇥'s order).
-    public var settled: [BlockID] = []
     public var window = WindowState()
     public var appearance = Appearance()
     /// The hosts in the order the sidebar shows them, by session id;
@@ -37,13 +35,12 @@ public struct ClientState: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         selected = try? c.decodeIfPresent(BlockID.self, forKey: .selected)
-        settled = (try? c.decodeIfPresent([BlockID].self, forKey: .settled)) ?? []
         window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
         appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
         hostOrder = (try? c.decodeIfPresent([String].self, forKey: .hostOrder)) ?? []
     }
 
-    enum CodingKeys: String, CodingKey { case selected, settled, window, appearance, hostOrder }
+    enum CodingKeys: String, CodingKey { case selected, window, appearance, hostOrder }
 }
 
 /// How things look: the theme's fonts, and how terminals are colored.
@@ -81,6 +78,9 @@ public struct Settings: Codable, Equatable, Sendable {
     /// Hours after which a terminal off screen with an idle shell goes
     /// dormant (its shell ended, its transcript kept); 0 never.
     public var terminalDormantAfterHours: Int = 8
+    /// Days after which an unnamed workspace unseen leaves the desk (§4),
+    /// for collection; 0 never.
+    public var workspaceDriftDays: Int = 3
     /// Days of full-resolution history kept for text; 0 forever.
     public var textHistoryDays: Int = 0
     /// Days of transcript kept for terminals.
@@ -101,6 +101,7 @@ public struct Settings: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         collectAfterMinutes = (try? c.decodeIfPresent(Int.self, forKey: .collectAfterMinutes)) ?? 30
         terminalDormantAfterHours = (try? c.decodeIfPresent(Int.self, forKey: .terminalDormantAfterHours)) ?? 8
+        workspaceDriftDays = (try? c.decodeIfPresent(Int.self, forKey: .workspaceDriftDays)) ?? 3
         textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
         terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30
         undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0

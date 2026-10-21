@@ -230,9 +230,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             shownArrangement = selected
         }
         pendingSlide = nil
-        if walk == nil, let id = selected, hosts.state.settled.first != id {
-            hosts.settle(id)
-        }
 
         if let a = arrangement {
             // The grid (§3.1): every tile, in its column, top to bottom.
@@ -1709,7 +1706,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if walk == nil {
             guard let current = selected, allWorkspaces.count > 1 else { return }
             var order = [current]
-            for id in hosts.state.settled + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
+            for id in hosts.recentWorkspaces() + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
             walk = (order, 0)
             if NSEvent.modifierFlags.contains(.control) { watchWalk() }
         }
@@ -1741,9 +1738,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         walkMonitors = []
         guard let w = walk else { return }
         walk = nil
-        if settling {
-            hosts.append(.settled(w.ids[w.index]), to: .desk(host.host))
-        } else if let home = w.ids.first {
+        if !settling, let home = w.ids.first {
             show(arrangement: home, slidingFrom: -1)
         }
     }
@@ -2480,69 +2475,56 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Back and forward, by focus
 
     /// A place focus was, in this client's history: a tile in a workspace.
-    private struct FocusPlace: Equatable {
-        var workspace: BlockID
-        var placement: PlacementID
-        var block: BlockID
-    }
-
-    /// Where focus has been, this client's alone (§8.2), oldest first:
-    /// every move to a tile or a workspace, across workspaces, that
-    /// wasn't going back or forward.
-    private var focusHistory: [FocusPlace] = []
-    /// While going back and forward: the place gone to, by its index.
-    private var historyCursor: Int?
-    private var navigatingHistory = false
-    private var lastFocusPlace: FocusPlace?
+    /// Where focus is: the workspace and the tile, so a change is noticed.
+    private var lastFocusPlace: (BlockID?, PlacementID?)?
+    /// Going back and forward (§3.5) walks the trail every host keeps —
+    /// each block gone to, by which tile — as it stood when the walk
+    /// began, newest last, with the step gone to; nothing while not walking.
+    private var trailWalk: (steps: [Step], cursor: Int)?
     private var settleWork: DispatchWorkItem?
     private var settleMonitor: Any?
-    static let historyLimit = 500
 
-    /// The place focus is now, if a tile is focused.
-    private var currentFocusPlace: FocusPlace? {
-        guard let w = selected, let a = hosts.arrangement(w), let f = a.focused, let p = a.placement(f) else { return nil }
-        return FocusPlace(workspace: w, placement: f, block: p.block)
-    }
-
-    /// A move of focus is noted: a new place in the history, unless it's
-    /// going back or forward that moved it.
+    /// A move of focus takes the pen (§8.2): for the block, and the
+    /// workspace it sits in. (The host writes the trail from the focus
+    /// and the workspaces seen; nothing is kept here.)
     private func noteTrailFocus() {
-        let place = currentFocusPlace
-        if place != lastFocusPlace {
-            lastFocusPlace = place
-            if !navigatingHistory, let place {
-                // Moved elsewhere while going back: where it had gone is
-                // settled on first, so back comes to it again.
-                if historyCursor != nil { settle() }
-                record(place)
-            }
-            // Focusing takes the pen (§8.2): for the block, and the
-            // workspace it sits in.
-            if let b = focusedShown?.placement.block { hosts.own(b) }
-            if let w = selected { hosts.own(w) }
-        }
+        let place = (selected, arrangement?.focused)
+        guard place.0 != lastFocusPlace?.0 || place.1 != lastFocusPlace?.1 else { return }
+        lastFocusPlace = place
+        if let b = focusedShown?.placement.block { hosts.own(b) }
+        if let w = selected { hosts.own(w) }
     }
 
-    private func record(_ place: FocusPlace) {
-        if focusHistory.last != place { focusHistory.append(place) }
-        if focusHistory.count > Self.historyLimit { focusHistory.removeFirst(focusHistory.count - Self.historyLimit) }
+    /// Every host's trail, merged by time, oldest first.
+    private func trailSteps() -> [Step] {
+        var steps: [Step] = []
+        for c in hosts.all {
+            let g = c.node.graph
+            for i in 0..<g.stepCount { if let s = g.step(at: i) { steps.append(s) } }
+        }
+        return steps.sorted { $0.at < $1.at }
     }
 
     /// ⌘[ (or the mouse's back button): where focus was before, across
     /// workspaces, the pointer following.
-    @objc func goBack(_ sender: Any?) { walkHistory(-1) }
+    @objc func goBack(_ sender: Any?) { walkTrail(-1) }
     /// ⌘] (or the mouse's forward button): forward again, as far as where
     /// going back began.
-    @objc func goForward(_ sender: Any?) { walkHistory(1) }
+    @objc func goForward(_ sender: Any?) { walkTrail(1) }
 
-    private func walkHistory(_ direction: Int) {
-        guard !focusHistory.isEmpty else { return NSSound.beep() }
-        var i = (historyCursor ?? focusHistory.count - 1) + direction
-        let here = currentFocusPlace
-        while focusHistory.indices.contains(i) {
-            let place = focusHistory[i]
-            if place != here, go(to: place) {
-                historyCursor = i
+    private func walkTrail(_ direction: Int) {
+        var walk = trailWalk ?? (steps: trailSteps(), cursor: 0)
+        if trailWalk == nil { walk.cursor = walk.steps.count }
+        guard !walk.steps.isEmpty else { return NSSound.beep() }
+        let here = focusedShown?.placement.block ?? selected
+        var i = walk.cursor + direction
+        var passed: Set<BlockID> = here.map { [$0] } ?? []
+        while walk.steps.indices.contains(i) {
+            let s = walk.steps[i]
+            // Each block once on the way: a run of visits to one is one place.
+            if passed.insert(s.block).inserted, go(to: s) {
+                walk.cursor = i
+                trailWalk = walk
                 awaitSettling()
                 return
             }
@@ -2551,31 +2533,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSSound.beep()
     }
 
-    /// Goes to a place: its workspace, the tile out of its stack (or from
-    /// behind a maximized one) and focused; the tile gone, its block
-    /// wherever it is; nothing left of either, false.
-    private func go(to place: FocusPlace) -> Bool {
-        navigatingHistory = true
-        defer { navigatingHistory = false }
-        if let a = hosts.arrangement(place.workspace), allWorkspaces.contains(place.workspace), a.placement(place.placement) != nil {
-            if selected != place.workspace { hosts.select(place.workspace) }
-            if a.focused != place.placement || a.isStashed(place.placement) || (a.full != nil && a.full != place.placement) {
-                hosts.append(a.revealing(place.placement), to: .block(place.workspace))
+    /// Goes to a step: the tile it was focused by, if it still is anywhere
+    /// — its workspace selected, it out of its stack (or from behind a
+    /// maximized one) and focused; the tile gone, its block wherever it
+    /// is; nothing left of either, false.
+    private func go(to step: Step) -> Bool {
+        if let pid = step.placement,
+           let edge = hosts.all.lazy.compactMap({ $0.node.graph.edge(pid) }).first(where: \.isLive),
+           let a = hosts.arrangement(edge.from), allWorkspaces.contains(edge.from), a.placement(pid) != nil {
+            if selected != edge.from { hosts.select(edge.from) }
+            if a.focused != pid || a.isStashed(pid) || (a.full != nil && a.full != pid) {
+                hosts.append(a.revealing(pid), to: .block(edge.from))
             }
-        } else if hosts.block(place.block) != nil {
-            goTo(place.block)
+        } else if let b = hosts.block(step.block) {
+            if b.kind == .arrangement { guard allWorkspaces.contains(b.id) else { return false } }
+            goTo(step.block)
         } else {
             return false
         }
         render()
-        lastFocusPlace = currentFocusPlace
+        lastFocusPlace = (selected, arrangement?.focused)
         warpPointerToFocus()
         return true
     }
 
     /// After going back or forward, staying put (a couple of seconds), a
-    /// key typed or a click settles on where it went: it's a new place in
-    /// the history, and back from there goes where it was before.
+    /// key typed or a click settles on where it went: the walk is over,
+    /// and the next back starts from here.
     private func awaitSettling() {
         settleWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.settle() }
@@ -2596,9 +2580,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         settleWork = nil
         if let settleMonitor { NSEvent.removeMonitor(settleMonitor) }
         settleMonitor = nil
-        guard historyCursor != nil else { return }
-        historyCursor = nil
-        if let place = currentFocusPlace { record(place) }
+        trailWalk = nil
     }
 
     /// The mouse's back and forward buttons (3 and 4), wherever it is in
@@ -2624,10 +2606,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return String(format: "at %.2f,%.2f elevation %.1f° %.0f K cast r%.3f g%.3f b%.3f", p.latitude, p.longitude, c.elevation, c.kelvin, c.red, c.green, c.blue)
     }
 
-    /// Debugging: the history, the place gone to marked.
+    /// Debugging: the trail's last steps, the one gone to marked.
     func debugHistory() -> String {
-        focusHistory.enumerated().map { i, p in
-            "\(i == historyCursor ? ">" : " ")\(i) \(hosts.block(p.block)?.displayTitle ?? "?") in \(hosts.arrangement(p.workspace).map(title(of:)) ?? "?")"
+        let steps = trailWalk?.steps ?? trailSteps()
+        let cursor = trailWalk?.cursor
+        return steps.suffix(30).enumerated().map { k, s in
+            let i = steps.count - min(30, steps.count) + k
+            return "\(i == cursor ? ">" : " ")\(i) \(hosts.block(s.block)?.displayTitle ?? "?")\(s.placement == nil ? "" : " (tile)")"
         }.joined(separator: "\n")
     }
 
@@ -2985,7 +2970,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // tile, and focused.
             return hosts.append(revealing(t.id, in: a), to: .block(here))
         }
-        let order = hosts.state.settled + allWorkspaces.filter { !hosts.state.settled.contains($0) }
+        let recent = hosts.recentWorkspaces()
+        let order = recent + allWorkspaces.filter { !recent.contains($0) }
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
                 hosts.select(arr)

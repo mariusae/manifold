@@ -64,12 +64,34 @@ final class Server {
     /// Held for the life of the server: one per directory.
     private let lock: Int32
 
+    /// The shape of what's on disk. When it changes without a migration,
+    /// the logs, snapshots and transcripts are set aside and the host
+    /// starts afresh — its identity (the session file) kept, so clients
+    /// and other hosts still know it.
+    static let dataFormat = 2
+
+    private static func resetIfFormatChanged() {
+        let marker = Paths.directory.appendingPathComponent("format")
+        let found = (try? String(contentsOf: marker, encoding: .utf8)).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        guard found != dataFormat else { return }
+        let fm = FileManager.default
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        for name in ["logs", "history", "editors"] {
+            let url = Paths.directory.appendingPathComponent(name)
+            guard fm.fileExists(atPath: url.path) else { continue }
+            try? fm.moveItem(at: url, to: Paths.directory.appendingPathComponent("\(name).before-format-\(dataFormat)-\(stamp)"))
+        }
+        try? "\(dataFormat)\n".write(to: marker, atomically: true, encoding: .utf8)
+        log("data format \(found.map(String.init) ?? "none") → \(dataFormat): logs set aside, starting afresh")
+    }
+
     init() throws {
         Paths.ensureDirectory()
         // One server per directory: a second one exits quietly. Taken
         // before anything is read or rewritten.
         lock = open(Paths.directory.appendingPathComponent("manifoldd.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ServerError.alreadyRunning }
+        Server.resetIfFormatChanged()
         let session = HostSession.identify(directory: Paths.directory, logs: Paths.logs)
         host = session.id
         label = session.label
@@ -320,12 +342,33 @@ final class Server {
         append(.unregister(block), to: .registry(host))
     }
 
+    /// Unnamed workspaces drift (§3.3): one unseen for the days the
+    /// settings give leaves the desk, a root no longer, and is collected
+    /// with whatever only it held once the grace has passed.
+    private func drift() {
+        let days = node.desk(host).settings.workspaceDriftDays
+        guard days > 0 else { return }
+        let cutoff = Int64(Date().addingTimeInterval(-Double(days) * 86400).timeIntervalSince1970 * 1000)
+        let desk = node.desk(host)
+        let registry = node.registry(host)
+        let kept = desk.order.filter { id in
+            guard id.host == host, let b = node.block(id), let a = b.arrangement, !a.isNamed, (b.title ?? "").isEmpty else { return true }
+            let seen = registry.blocks[id]?.lastSeen.wall ?? b.created.wall
+            return seen >= cutoff
+        }
+        if kept != desk.order {
+            for id in desk.order where !kept.contains(id) { log("workspace \(id) unseen for \(days) days: off the desk") }
+            append(.order(kept), to: .desk(host))
+        }
+    }
+
     /// The collector (§4): what no root reaches over strong edges —
     /// workspaces on the desk and named ones, kept
     /// blocks, other hosts' holds — is noted, and collected once it has
     /// been so for the grace the settings give. Reached again meanwhile,
     /// it is simply kept.
     private func collect() {
+        drift()
         let minutes = node.desk(host).settings.collectAfterMinutes
         guard minutes > 0 else { return }
         let reachable = node.reachable(on: host)
@@ -454,6 +497,11 @@ final class Server {
         case let .seen(ids):
             let known = ids.filter { node.registry(host).blocks[$0] != nil }
             if !known.isEmpty { append(.seen(known, at: clock.now()), to: .registry(host)) }
+            // A workspace seen is one gone to: a step of the trail (its
+            // selection is the client's own, so this is how the host hears).
+            for id in known where node.block(id)?.kind == .arrangement && node.registry(host).trail.last?.block != id {
+                append(.step(Step(block: id, at: clock.now())), to: .registry(host))
+            }
             done()
         case let .attend(block):
             // Attended to: what was done or failed has been read (§3.7).

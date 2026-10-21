@@ -39,7 +39,6 @@ final class Hosts {
                 guard let self, !FileManager.default.fileExists(atPath: Self.stateURL.path) else { return }
                 let d = self.local.desk
                 self.state.selected = d.selected
-                self.state.settled = d.settled
                 self.state.window = d.window
                 self.state.appearance = d.appearance
                 self.saveState()
@@ -67,12 +66,15 @@ final class Hosts {
         change { $0.selected = workspace }
     }
 
-    func settle(_ workspace: BlockID) {
-        change { s in
-            s.settled.removeAll { $0 == workspace }
-            s.settled.insert(workspace, at: 0)
-            if s.settled.count > 50 { s.settled.removeLast(s.settled.count - 50) }
+    /// Workspaces as the trail has them (§3.5), the one gone to most
+    /// recently first: ⌃⇥'s order, and where a block is looked for first.
+    func recentWorkspaces() -> [BlockID] {
+        var steps: [Step] = []
+        for c in all {
+            for s in c.node.graph.recent(limit: 200) where c.block(s.block)?.kind == .arrangement { steps.append(s) }
         }
+        var seen: Set<BlockID> = []
+        return steps.sorted { $0.at > $1.at }.compactMap { seen.insert($0.block).inserted ? $0.block : nil }
     }
 
     /// This machine's host was `local` before it had a session (§8): the
@@ -83,7 +85,6 @@ final class Hosts {
         func moved(_ id: BlockID) -> BlockID { id.host == old ? BlockID(host: new, ulid: id.ulid) : id }
         change { s in
             s.selected = s.selected.map(moved)
-            s.settled = s.settled.map(moved)
         }
     }
 
