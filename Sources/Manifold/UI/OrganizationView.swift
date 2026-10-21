@@ -6,12 +6,17 @@ import ManifoldCore
 /// across hosts; what's linked to the focused block; blocks by day.
 enum Organization: String, CaseIterable {
     case desk, files, inbox
+    /// The two lists at the sidebar's foot (§4): what's kept off the
+    /// desk, and what's closed and not yet collected.
+    case kept, closed
 
     var title: String {
         switch self {
         case .desk: "Workspaces"
         case .files: "Files"
         case .inbox: "Inbox"
+        case .kept: "Kept"
+        case .closed: "Recently Closed"
         }
     }
 
@@ -20,6 +25,8 @@ enum Organization: String, CaseIterable {
         case .desk: "rectangle.3.group"
         case .files: "folder"
         case .inbox: "tray"
+        case .kept: "pin"
+        case .closed: "clock.arrow.circlepath"
         }
     }
 }
@@ -147,7 +154,14 @@ final class DeepOutlineView: NSOutlineView {
     /// Flat: no room kept for a chevron, every row from the left edge.
     var flat = false
 
-    override func frameOfOutlineCell(atRow row: Int) -> NSRect { flat ? .zero : super.frameOfOutlineCell(atRow: row) }
+    /// Flat, a chevron only on a section with rows under it (a workspace's
+    /// label), small, at the left: closed by hand, it stays closed.
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
+        guard flat else { return super.frameOfOutlineCell(atRow: row) }
+        guard let n = item(atRow: row) as? OrgNode, n.style == .section, n.hasChildren, !n.id.hasPrefix("back:") else { return .zero }
+        let r = rect(ofRow: row)
+        return NSRect(x: 4, y: r.minY + (r.height - 12) / 2, width: 12, height: 12)
+    }
 
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         guard flat, column == 0 else { return super.frameOfCell(atColumn: column, row: row) }
@@ -174,7 +188,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var roots: [OrgNode] = []
     private var expanded: Set<String> = []
     private var expandedByDefault: Set<String> = []
-    private var collapsedByHand: Set<String> = []
+    /// Rows closed by hand: remembered (the client's state keeps them).
+    var collapsedByHand: Set<String> = []
+    var onCollapsedChanged: ((Set<String>) -> Void)?
     private var trackedRow: Int = -1
     private var selecting = false
     /// Flat (§3.5): no chevrons and no indentation — sections (hosts,
@@ -278,14 +294,19 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let v = SelectionRowView()
+        // The current workspace's label wears a bar at its left edge.
+        if let n = item as? OrgNode { v.marked = n.style == .section && n.emphasis && n.arrangement != nil }
+        return v
+    }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
-        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.insert(n.id); collapsedByHand.remove(n.id) }
+        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.insert(n.id); if collapsedByHand.remove(n.id) != nil { onCollapsedChanged?(collapsedByHand) } }
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
-        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.remove(n.id); collapsedByHand.insert(n.id) }
+        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.remove(n.id); collapsedByHand.insert(n.id); onCollapsedChanged?(collapsedByHand) }
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
@@ -310,9 +331,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         if let action = node.action {
             action()
         } else if node.style == .section, node.block != nil, node.arrangement != nil, node.column == nil {
-            // A workspace's label: gone to (which opens it whole, the
-            // others folding to what peeks out), or, the current one,
-            // folded and opened again — the tree's to decide.
+            // A workspace's label: gone to. (Its chevron opens and closes it.)
             delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
         } else if node.style != .row, node.hasChildren {
             // A host's heading, a group's label: clicked, it opens or closes.
@@ -448,6 +467,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
         outline.expandItem(node, expandChildren: deep)
         return "expanded, \(outline.numberOfRows) rows"
+    }
+
+    /// As the chevron closing a row: remembered as closed by hand.
+    func debugCollapse(row: Int) -> String {
+        guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
+        outline.collapseItem(node)
+        return "collapsed, \(outline.numberOfRows) rows; by hand: \(collapsedByHand.sorted())"
     }
 
     /// As a click (or ⌘-click, or double-click) on a row would do.

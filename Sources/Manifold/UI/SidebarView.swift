@@ -49,6 +49,12 @@ final class SidebarView: NSView {
     private let byButton: IconButton
     private let inboxButton: IconButton
     private let counts = StatusCountsView()
+    /// Two quiet rows above the bar (§4): what's kept off the desk, and
+    /// what's closed and not yet collected; each opens its list in place
+    /// of the tree, and again puts the tree back.
+    private let keptRow = FootRowView(title: "Kept", symbol: "pin")
+    private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
+    static let footRowHeight: CGFloat = 22
     private var filterShown = false
 
     static let headerHeight: CGFloat = 40
@@ -97,7 +103,9 @@ final class SidebarView: NSView {
         inboxButton.action = #selector(inboxClicked)
         inboxButton.toolTip = "Inbox (⌥⌘6)"
         counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
-        for v in [searchButton, byButton, inboxButton, counts] { card.addSubview(v) }
+        for v in [searchButton, byButton, inboxButton, counts, keptRow, closedRow] { card.addSubview(v) }
+        keptRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .kept ? .desk : .kept) }
+        closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         filter.isHidden = true
         filter.placeholderString = "Filter"
         filter.controlSize = .small
@@ -141,7 +149,13 @@ final class SidebarView: NSView {
         }
         let cw = counts.wantedWidth
         counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
-        organizationView.frame = NSRect(x: 4, y: Self.barHeight, width: bounds.width - 8, height: max(0, top - Self.barHeight))
+        var bottom = Self.barHeight
+        for row in [closedRow, keptRow] where !row.isHidden {
+            row.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
+            bottom += Self.footRowHeight
+        }
+        if !keptRow.isHidden || !closedRow.isHidden { bottom += 6 }
+        organizationView.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: max(0, top - bottom))
         resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
     }
 
@@ -155,6 +169,18 @@ final class SidebarView: NSView {
         byButton.toolTip = org == .files ? "By Workspace (⌥⌘1)" : "By File (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
+        keptRow.current = org == .kept
+        closedRow.current = org == .closed
+        needsLayout = true
+    }
+
+    /// How many are kept off the desk, and closed awaiting collection:
+    /// the foot rows, each hidden at zero.
+    func setFoot(kept: Int, closed: Int) {
+        keptRow.count = kept
+        closedRow.count = closed
+        keptRow.isHidden = kept == 0 && organization != .kept
+        closedRow.isHidden = closed == 0 && organization != .closed
         needsLayout = true
     }
 
@@ -313,6 +339,60 @@ final class ClosureMenuItem: NSMenuItem {
 
     /// Debugging: as choosing the item.
     func debugRun() { handler() }
+}
+
+/// A row at the sidebar's foot: a symbol, a name, a count at the right;
+/// clicked, its list.
+final class FootRowView: NSView {
+    var onClick: (() -> Void)?
+    var count = 0 { didSet { countLabel.stringValue = count == 0 ? "" : "\(count)"; needsLayout = true } }
+    var current = false { didSet { label.textColor = current ? Theme.text : Theme.secondaryText; icon.contentTintColor = label.textColor } }
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private let countLabel = NSTextField(labelWithString: "")
+    private var hovering = false { didSet { needsDisplay = true } }
+
+    init(title: String, symbol: String) {
+        super.init(frame: .zero)
+        icon.image = Theme.symbol(symbol, size: 11)
+        icon.contentTintColor = Theme.secondaryText
+        label.stringValue = title
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = Theme.secondaryText
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        countLabel.textColor = Theme.secondaryText
+        countLabel.alignment = .right
+        for v in [icon, label, countLabel] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        icon.frame = NSRect(x: 12, y: (h - 12) / 2, width: 14, height: 12)
+        let cw = ceil(countLabel.intrinsicContentSize.width)
+        countLabel.frame = NSRect(x: bounds.width - 14 - cw, y: (h - 15) / 2, width: cw, height: 15)
+        label.frame = NSRect(x: 32, y: (h - 16) / 2, width: max(0, countLabel.frame.minX - 40), height: 16)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard hovering else { return }
+        Theme.hover.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
 
 /// The bar's counts of what's doing something (§3.7): needs you, working,

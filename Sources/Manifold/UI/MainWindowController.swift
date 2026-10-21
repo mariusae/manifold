@@ -110,6 +110,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebar.delegate = self
         sidebar.organizationView.delegate = self
+        sidebar.organizationView.collapsedByHand = Set(hosts.state.collapsedRows)
+        sidebar.organizationView.onCollapsedChanged = { [weak self] rows in self?.hosts.setCollapsedRows(rows) }
         for c in [content, outgoing] { c.delegate = self }
         sidebar.isHidden = true
 
@@ -1916,6 +1918,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let g = self.statusGroups("")
             let unread = (g[.done] ?? []).filter { $0.1?.read != true }.count + (g[.failed] ?? []).filter { $0.1?.read != true }.count
             self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
+            let reachable = self.hosts.reachable()
+            self.sidebar.setFoot(kept: self.hosts.all.reduce(0) { $0 + self.keptItems(on: $1).count },
+                                 closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
@@ -2100,43 +2105,107 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .desk: return deskTree(filter)
         case .files: return filesTree(filter)
         case .inbox: return inboxTree(filter)
+        case .kept: return keptTree(filter)
+        case .closed: return closedTree(filter)
         }
+    }
+
+    /// What's kept off the desk on a host (§4): named workspaces, and
+    /// kept blocks on no workspace of the desk — the last seen first.
+    private func keptItems(on c: HostClient) -> [Block] {
+        let onDesk = Set(c.desk.order)
+        let onDeskBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
+        let far = Stamp(wall: 0, logical: 0, host: c.host)
+        return c.node.blocks.filter { b in
+            b.id.host == c.host && (b.kind == .arrangement ? !onDesk.contains(b.id) && b.arrangement?.isNamed == true : b.isPinned && !onDeskBlocks.contains(b.id))
+        }.sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
+    }
+
+    /// What's closed and not yet collected on a host (§4): what exists
+    /// and nothing reaches — the last seen first.
+    private func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
+        let far = Stamp(wall: 0, logical: 0, host: c.host)
+        return c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) }
+            .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
+    }
+
+    /// A list's first row: back to the workspaces.
+    private func backRow() -> OrgNode {
+        let n = OrgNode(id: "back:desk", title: "Workspaces", symbol: "chevron.left")
+        n.style = .section
+        n.action = { [weak self] in self?.setOrganization(.desk) }
+        return n
+    }
+
+    /// Rows of blocks and workspaces under their hosts (when there is
+    /// more than one), each brought back by a click.
+    private func hostedRows(_ make: (HostClient) -> [OrgNode], prefix: String) -> ([OrgNode], Set<String>) {
+        var open: Set<String> = []
+        var byHost: [(HostClient, [OrgNode])] = []
+        for c in hosts.ordered {
+            let rows = make(c)
+            if !rows.isEmpty { byHost.append((c, rows)) }
+        }
+        if byHost.isEmpty { return ([backRow(), OrgNode(id: "\(prefix):none", title: "Nothing here", symbol: "circle.dashed")], []) }
+        if byHost.count == 1 { return ([backRow()] + byHost[0].1, open) }
+        let roots = byHost.map { c, rows -> OrgNode in
+            let id = "\(prefix):host:\(c.host.raw)"
+            open.insert(id)
+            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", isGroup: true, children: rows)
+            n.style = .host
+            return n
+        }
+        return ([backRow()] + roots, open)
+    }
+
+    /// Kept (§4), the list: named workspaces off the desk and kept blocks
+    /// off it, each with a pin, each brought back by a click.
+    private func keptTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        hostedRows({ c in
+            keptItems(on: c).filter { matches(filter, [$0.kind == .arrangement ? title(of: $0.arrangement!) : $0.displayTitle, $0.path]) }.map { b -> OrgNode in
+                let n = b.kind == .arrangement
+                    ? OrgNode(id: "kept/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: "rectangle.3.group", count: b.arrangement!.placements.count)
+                    : node(for: b, id: "kept/\(b.id)", detail: b.place?.abbreviatingHome ?? "")
+                n.detailSymbol = "pin"
+                n.trailing = c.node.graph.seen(b.id).map(Age.short)
+                return n
+            }
+        }, prefix: "kept")
+    }
+
+    /// Recently Closed (§4), the list: what exists and nothing reaches,
+    /// dimmed, each brought back by a click, until collected.
+    private func closedTree(_ filter: String) -> ([OrgNode], Set<String>) {
+        let reachable = hosts.reachable()
+        return hostedRows({ c in
+            closedItems(on: c, reachable: reachable).filter { matches(filter, [$0.kind == .arrangement ? title(of: $0.arrangement!) : $0.displayTitle, $0.path]) }.prefix(100).map { b -> OrgNode in
+                let n = b.kind == .arrangement
+                    ? OrgNode(id: "closed/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: "rectangle.3.group", count: b.arrangement!.placements.count)
+                    : node(for: b, id: "closed/\(b.id)", detail: b.place?.abbreviatingHome ?? "")
+                n.dimmed = true
+                n.trailing = c.node.graph.seen(b.id).map(Age.short)
+                return n
+            }
+        }, prefix: "closed")
     }
 
     /// Workspaces (§3.6): every attached host's, under its host when there
     /// is more than one, each expanding to its tiles in order (by column,
     /// top to bottom), the selected one open and the focused tile marked:
     /// the table of contents of the screen.
-    /// The current workspace folded in the sidebar, by a click on its
-    /// label: only what peeks out shows, until clicked again.
-    private var deskFolded = false
-
-    /// Whether a tile peeks out of a folded workspace (§3.5): it has a
-    /// status to attend to or to watch — working, needs you, done, failed.
-    private func peeks(_ b: Block?) -> Bool {
-        switch StatusGlyph.look(of: b) {
-        case .working, .needsYou, .done, .failed: true
-        default: false
-        }
-    }
-
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
-        let reachable = hosts.reachable()
-        let onDeskBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         func workspace(_ id: BlockID) -> OrgNode? {
             guard let a = hosts.arrangement(id) else { return nil }
             let aid = "arr/\(id)"
-            // The current workspace whole; the others folded to the tiles
-            // that peek out (as apex folds them), unless there's a filter.
-            let whole = (id == selected && !deskFolded) || !filter.isEmpty
+            // Every workspace whole (§3.6): nothing folds by itself; one
+            // closed by its chevron stays closed.
             var tiles: [OrgNode] = []
             for (c, column) in a.columns.enumerated() {
                 for p in column {
                     let b = hosts.block(p.block)
                     let title = b?.displayTitle ?? "On \(hosts.label(of: p.block.host))"
                     guard matches(filter, [title, b?.path]) else { continue }
-                    guard whole || peeks(b) else { continue }
                     // Its status, in words, with the glyph before them; else
                     // its state — stashed, maximized — as a small symbol.
                     var notes: [String] = []
@@ -2161,7 +2230,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let n = OrgNode(id: aid, block: id, title: title(of: a),
                             symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
-                            detail: a.isNamed ? "kept" : "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
+                            detail: "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
             n.style = .section
             n.emphasis = id == selected
@@ -2176,65 +2245,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for c in hosts.ordered {
             var ids = c.desk.order.filter { $0.host == c.host }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
-            var nodes = ids.compactMap(workspace)
-            // Named workspaces off the desk — kept — under Kept, the last
-            // seen first, opened by hovering; one chosen comes back onto
-            // the desk. What nothing keeps (§4) — unnamed workspaces taken
-            // off, blocks closed everywhere — under Recently Closed until
-            // collected, each brought back by a click.
-            let onDesk = Set(ids)
-            let far = Stamp(wall: 0, logical: 0, host: c.host)
-            let off = c.node.blocks.filter { $0.kind == .arrangement && !onDesk.contains($0.id) && $0.arrangement?.isNamed == true }
-                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
-                .prefix(40)
-            let recent = off.compactMap { workspace($0.id) }
-            let closed = c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) && matches(filter, [$0.displayTitle, $0.path]) }
-                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
-                .prefix(40)
-            // Kept (§4): named workspaces off the desk, and kept blocks on
-            // no workspace of the desk — the last seen first, each brought
-            // back by a click.
-            let keptBlocks = c.node.blocks.filter { $0.isPinned && $0.kind != .arrangement && !onDeskBlocks.contains($0.id) && matches(filter, [$0.displayTitle, $0.path]) }
-                .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
-                .prefix(40)
-            if !recent.isEmpty || !keptBlocks.isEmpty {
-                let rid = "kept:desk:\(c.host.raw)"
-                for n in recent { n.dimmed = true; n.emphasis = false; open.remove(n.id) }
-                let rows = recent + keptBlocks.map { b -> OrgNode in
-                    let n = node(for: b, id: rid + "/" + b.id.description, detail: b.place?.abbreviatingHome ?? "")
-                    n.dimmed = true
-                    n.detailSymbol = "pin"
-                    n.trailing = (c.node.graph.seen(b.id)).map(Age.short)
-                    return n
-                }
-                let group = OrgNode(id: rid, title: "Kept", symbol: "pin", count: rows.count, isGroup: true, children: rows)
-                group.style = .section
-                group.dimmed = true
-                if !filter.isEmpty { open.insert(rid) }
-                nodes.append(group)
-            }
-            if !closed.isEmpty {
-                let rid = "closed:desk:\(c.host.raw)"
-                let rows = closed.map { b -> OrgNode in
-                    if b.kind == .arrangement, let n = workspace(b.id) { n.dimmed = true; n.emphasis = false; open.remove(n.id); return n }
-                    let n = node(for: b, id: rid + "/" + b.id.description, detail: b.place?.abbreviatingHome ?? "")
-                    n.dimmed = true
-                    n.trailing = (c.node.graph.seen(b.id)).map(Age.short)
-                    return n
-                }
-                let group = OrgNode(id: rid, title: "Recently Closed", symbol: "clock.arrow.circlepath", count: rows.count, isGroup: true, children: rows)
-                group.style = .section
-                group.dimmed = true
-                if !filter.isEmpty { open.insert(rid) }
-                nodes.append(group)
-            }
+            let nodes = ids.compactMap(workspace)
             byHost.append((c, nodes))
         }
         guard byHost.count > 1 else { return (byHost.first?.1 ?? [], open) }
         let roots = byHost.map { c, nodes -> OrgNode in
             let id = "host:\(c.host.raw)"
             open.insert(id)
-            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", count: nodes.count, isGroup: true, children: nodes)
+            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", isGroup: true, children: nodes)
             n.style = .host
             hostStanding(n, c)
             return n
@@ -2247,25 +2265,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var open: Set<String> = []
         // What is on a workspace now comes first in every folder; what is
         // kept otherwise (§4) after, dimmed — a folder with something active
-        // among its blocks counts as active; what nothing keeps, closed and
-        // not yet collected, under Recently Closed.
+        // among its blocks counts as active. What nothing keeps isn't here:
+        // it's in Recently Closed, at the sidebar's foot.
         let placed = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         let reachable = hosts.reachable()
         var active: [ObjectIdentifier: Bool] = [:]
         func convert(_ f: FileNode) -> OrgNode? {
+            if let b = f.block, !f.isFolder, !reachable.contains(b) { return nil }
             let made = f.children.compactMap(convert)
             var children = made.filter { active[ObjectIdentifier($0)] == true }
-            let rest = made.filter { active[ObjectIdentifier($0)] != true }
-            let kept = rest.filter { $0.block.map { reachable.contains($0) } ?? true }
-            children += kept
-            let closed = rest.filter { $0.block.map { !reachable.contains($0) } ?? false }
-            if !closed.isEmpty {
-                let closedID = "closed:\(f.host.raw):\(f.path)"
-                let group = OrgNode(id: closedID, title: "Recently Closed", symbol: "clock.arrow.circlepath", count: closed.count, isGroup: true, children: closed)
-                group.dimmed = true
-                if !filter.isEmpty { open.insert(closedID) }
-                children.append(group)
-            }
+            children += made.filter { active[ObjectIdentifier($0)] != true }
             let block = f.block.flatMap { hosts.block($0) }
             if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
             let id = "file:\(f.host.raw):\(f.path)"
@@ -4666,16 +4675,7 @@ extension MainWindowController: OrganizationViewDelegate {
         let over = modifiers.contains(.option), beside = modifiers.contains(.command)
         if let arr = node.arrangement, !over, !beside {
             hideStateView()
-            if arr == selected, node.placement == nil, node.column == nil, node.style == .section {
-                // The current workspace's label: folded, or opened again.
-                deskFolded.toggle()
-                refreshOrganization(now: true)
-                return
-            }
-            if arr != selected {
-                deskFolded = false
-                hosts.select(arr)
-            }
+            if arr != selected { hosts.select(arr) }
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
                 // Out of its stack, from behind a maximized tile, focused,
                 // and the pointer on it.

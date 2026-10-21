@@ -446,7 +446,7 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Desk** | workspaces and what they place (§3), with Kept and Recently Closed (§4) at each host's foot | the desk's workspaces |
+| **Desk** | workspaces and what they place (§3): one shape, nothing folding by itself, the current workspace barred at its left, a workspace closed by its chevron staying closed | the desk's workspaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 | **Inbox** | the blocks whose status wants attention (§3.7), by host and workspace | hosts |
 
@@ -471,10 +471,12 @@ over it), a filter, a bar at the foot (search, by workspace or by file,
 the inbox, the counts), and the same row — symbol, name, a count, a
 detail, fading with age — with the same gestures everywhere (the one
 rule: click to go to, ⌘-click to show beside, ⌥-click to show over,
-§3.1), a card on hover, the Neighborhood Map in the menu. Under Desk, a workspace
-expands to its columns, in order, the focused one marked, so the sidebar
-is the table of contents of the screen; clicking a column row focuses
-it, and a block dragged onto one is shown there. Links follows focus.
+§3.1), a card on hover, the Neighborhood Map in the menu. Under Desk, every
+workspace shows its tiles, in order, the focused one marked, so the
+sidebar is the table of contents of the screen; clicking a tile row
+focuses it, and a block dragged onto a workspace is shown there. Two
+rows at the foot, Kept and Recently Closed (§4), each swap their list
+in for the tree.
 The workspace stays the working surface; organizations are how you
 reach blocks, never where they live. One exception is on purpose: a
 **state view** shows a status group's blocks themselves in the surface,
@@ -516,10 +518,12 @@ one off whole; and an unnamed workspace unseen for some days
 (`workspaceDriftDays`, 3 by default) drifts off the desk by itself. The app keeps what it closed on a stack, and **⇧⌘T**
 puts the last thing back where it was — a tile at its old column and
 place (here, if that workspace has gone), a workspace onto the desk —
-skipping whatever has been collected meanwhile. The sidebar lists what
-exists and nothing reaches under **Recently Closed**, and the finder
-marks it *recent*; either brings it back by a click. Kept blocks on no
-workspace of the desk, and named workspaces off it, sit under **Kept**.
+skipping whatever has been collected meanwhile. **Recently Closed**, a
+row at the sidebar's foot with a count, lists what exists and nothing
+reaches, and the finder marks it *recent*; either brings it back by a
+click. **Kept**, the row beside it, lists kept blocks on no workspace
+of the desk and named workspaces off it. Neither is in the tree: the
+tree is only what's on the desk.
 
 Collection is never refused and never silent. Closing takes with it
 everything the closed block alone reached — what it placed, what it

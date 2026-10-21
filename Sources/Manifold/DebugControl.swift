@@ -367,14 +367,17 @@ enum DebugControl {
             if let e = wc?.debugFocusedEditor { return e.debugScrub(a.first ?? "", a.count > 1 ? a[1] : "") }
             return "no terminal or editor focused"
         case "org":
-            // "org rows": the sidebar's rows; "org click <row> [cmd|double]".
+            // "org rows": the sidebar's rows; "org click <row> [cmd|double]";
+            // "org show kept|closed|desk|files|inbox".
             let a = arg.split(separator: " ").map(String.init)
             guard let wc else { return "no window" }
+            if a.first == "show", a.count >= 2, let org = Organization(rawValue: a[1]) { wc.setOrganization(org); return "ok" }
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
             if a.first == "expand", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row) }
+            if a.first == "collapse", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugCollapse(row: row) }
             if a.first == "deep", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row, deep: true) }
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
             if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }

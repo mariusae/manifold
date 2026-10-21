@@ -29,6 +29,9 @@ public struct ClientState: Codable, Equatable, Sendable {
     /// The hosts in the order the sidebar shows them, by session id;
     /// ones not in it after, as they come.
     public var hostOrder: [String] = []
+    /// Sidebar rows closed by hand (a workspace's), by row id: they stay
+    /// closed until opened again.
+    public var collapsedRows: [String] = []
 
     public init() {}
 
@@ -38,9 +41,10 @@ public struct ClientState: Codable, Equatable, Sendable {
         window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
         appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
         hostOrder = (try? c.decodeIfPresent([String].self, forKey: .hostOrder)) ?? []
+        collapsedRows = (try? c.decodeIfPresent([String].self, forKey: .collapsedRows)) ?? []
     }
 
-    enum CodingKeys: String, CodingKey { case selected, window, appearance, hostOrder }
+    enum CodingKeys: String, CodingKey { case selected, window, appearance, hostOrder, collapsedRows }
 }
 
 /// How things look: the theme's fonts, and how terminals are colored.

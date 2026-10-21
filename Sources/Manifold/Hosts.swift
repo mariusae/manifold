@@ -167,6 +167,7 @@ final class Hosts {
 
     /// The hosts' order in the sidebar, as this client arranges it.
     func setHostOrder(_ hosts: [HostID]) { change { $0.hostOrder = hosts.map(\.raw) } }
+    func setCollapsedRows(_ rows: Set<String>) { if Set(state.collapsedRows) != rows { change { $0.collapsedRows = rows.sorted() } } }
 
     func client(_ host: HostID) -> HostClient? {
         if host == local.host || host == .local { return local }

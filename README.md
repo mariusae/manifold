@@ -28,14 +28,17 @@ and Mona Sans (bundled).
   light's colour temperature, so the wash is a touch warmer while the
   sun is low, morning and evening, a touch cooler when it's high, and a
   dim cool blue at night, looked at again every five minutes and eased
-  into over a few seconds. The organizations are flat: a host's heading opens and closes its
-  workspaces, a workspace's label goes to it (the current one's folds
-  it, and opens it again), groups' labels open and close, and a block's
-  row has a second line for what it says. Only the current workspace
-  shows whole; the others fold to the tiles that peek out — working,
-  needing you, done or failed — as apex folds them. Under **Desk**, each workspace expands to
-  its tiles in order, the selected one open and the focused tile
-  highlighted, so the sidebar is the table of contents of the screen:
+  into over a few seconds. The tree is one shape, always: a host's
+  heading, then each of its workspaces, then every tile in it, in
+  order. Nothing folds by itself; the current workspace wears a bar at
+  its left edge, and a workspace's chevron closes it until you open it
+  again (remembered). Only tiles have icons; a workspace's label is its
+  name and a count of its tiles, a block's row has a second line for
+  what it says. Above the bar at the foot sit two quiet rows, **Kept**
+  and **Recently Closed**, each with a count; clicking one shows that
+  list in place of the tree (Workspaces at its top comes back), and
+  neither is in the tree itself. Under **Workspaces**, the sidebar is
+  the table of contents of the screen:
   click a tile to focus it, a workspace to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
   to bring it in beside, onto a workspace for its active column, or
@@ -209,9 +212,9 @@ and Mona Sans (bundled).
 - **Keep** (Keep in a bar's or a row's menu, or File ▸ Keep or Let Go)
   makes a block a root of its own: kept whatever refers to it, until
   let go. **Keep and Close** (⇧⌘W) keeps it and takes its tiles off
-  every workspace; it then sits under **Kept** at the end of its host
-  in the Workspaces sidebar, with the named workspaces off the desk, to
-  be recalled with a click. Dropping a block's bar on Kept keeps it too.
+  every workspace; it then sits in **Kept**, the list at the foot of the
+  sidebar, with the named workspaces off the desk, to be recalled with
+  a click. Dropping a block's bar on the Kept row keeps it too.
 - **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
   foot) lists the blocks whose status wants attention — done or failed
   and not yet read, or needing you — by host and workspace, each with
@@ -221,11 +224,11 @@ and Mona Sans (bundled).
   desk, and an unnamed workspace unseen for three days drifts off by
   itself. A block is kept while something reaches it — a workspace on
   the desk or a named one, a Keep, or a link by hand from a kept block
-  — and once nothing does it waits half an hour under
-  **Recently Closed** at the foot of its host in the sidebar (and in
+  — and once nothing does it waits half an hour in
+  **Recently Closed**, the list at the foot of the sidebar (and in
   ⌘O, marked *recent*), then is collected: gone, with its history. An
   unnamed workspace taken off the desk goes the same way; a named one
-  sits under **Kept**. **⇧⌘T** reopens the last thing closed where it
+  sits in **Kept**. **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
   foot of the window names each, with Restore.
@@ -446,8 +449,8 @@ when you find it again.
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
   across hosts, as a sparse tree; in every folder, what is on a
-  workspace now is listed first, what's kept otherwise after it, dimmed,
-  and what's closed and not yet collected under Recently Closed
+  workspace now is listed first, what's kept otherwise after it, dimmed;
+  what's closed and not yet collected is only in Recently Closed
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Inbox** — what wants
   attention (above). A filter narrows any of them. The rows work the
