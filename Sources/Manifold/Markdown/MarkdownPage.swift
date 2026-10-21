@@ -255,8 +255,8 @@ enum MarkdownPage {
         \(fontFaces)
         :root { color-scheme: light dark; \(themeVariables(.notes)) }
         /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
-           spacing, its code (in Menlo, as it comes out on a Mac) and its
-           links; the theme's font for the rest. */
+           spacing and its links; the theme's fonts for its text and its
+           code (Menlo where a theme has none of its own). */
         html { background: #ffffff; }
         body {
           margin: 0; color: #202224;
@@ -279,7 +279,7 @@ enum MarkdownPage {
         a[href^="manifold:"]:hover { text-decoration: none; background: rgba(127,127,127,0.24); }
         a { color: #007d9c; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
-          font-family: Menlo, monospace; font-size: 0.83rem;
+          font-family: var(--mono), Menlo, monospace; font-size: 0.83rem;
           font-feature-settings: var(--mono-features);
         }
         :not(pre) > code { font-size: 0.9em; }

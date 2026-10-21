@@ -178,7 +178,7 @@ final class OutlineLensRow: NSTableCellView {
     func show(_ e: OutlineLensView.Entry) {
         level = e.level
         title.stringValue = e.title
-        title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : FontTheme.code(11.5)
         detail.stringValue = e.detail
         detail.isHidden = e.detail.isEmpty
         mark.layer?.backgroundColor = (e.failed ? Theme.statusError : e.running ? Theme.accent : Theme.secondaryText.withAlphaComponent(0.6)).cgColor
@@ -199,4 +199,8 @@ final class OutlineLensRow: NSTableCellView {
         }
         title.frame = NSRect(x: x + 10, y: (h - 16) / 2, width: max(0, right - x - 10), height: 16)
     }
+}
+
+extension OutlineLensView: FollowsFontTheme {
+    func fontThemeChanged() { table.reloadData() }
 }

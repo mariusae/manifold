@@ -349,11 +349,12 @@ when you find it again.
   it plain text): Markdown rendered (cmark-gfm), a note's too, following
   the text as it's edited on the same block or saved by another
   program; code and plain text as they are, not taken in. Viewed, both
-  are set as go.dev sets the Go spec: code in Menlo on its pale grey,
-  lines at 1.4, its text and line numbers' colors; Markdown in its
-  colors, heading sizes and spacing, its links, and its code blocks,
-  each with a copy button at its corner on hover (the theme's font for
-  the rest). Code (by its extension) is set in
+  are set as go.dev sets the Go spec: code on its pale grey, lines at
+  1.4, its text and line numbers' colors; Markdown in its colors,
+  heading sizes and spacing, its links, and its code blocks, each with a
+  copy button at its corner on hover — in the theme's fonts, code in its
+  fixed-width one (as are a terminal's commands in its outline, and a
+  commit's hash). Code (by its extension) is set in
   the fixed-width font when edited too, unless the tile's menu says
   otherwise. ⌥⇧⌘P puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a

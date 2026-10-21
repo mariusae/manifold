@@ -239,7 +239,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             return c
         }()
         guard let f = cell.textField else { return cell }
-        let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        let mono = FontTheme.code(11.5)
         switch rows[row] {
         case let .section(title):
             f.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
@@ -265,4 +265,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         }
         return cell
     }
+}
+
+extension GitView: FollowsFontTheme {
+    func fontThemeChanged() { table.reloadData() }
 }

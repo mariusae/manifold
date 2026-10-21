@@ -515,8 +515,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: Fonts
 
     private var textFont: NSFont {
-        // Viewed, set as go.dev sets code: Menlo, at its 0.83rem.
-        if viewing { return NSFont(name: "Menlo-Regular", size: max(8, 13.3 + sizeAdjust)) ?? .monospacedSystemFont(ofSize: 13.3, weight: .regular) }
+        // Viewed, set as go.dev sets code — at its 0.83rem — in the theme's code face.
+        if viewing { return theme.font(.monospaced, size: max(8, 13.3 + sizeAdjust)) }
         return theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
     }
 

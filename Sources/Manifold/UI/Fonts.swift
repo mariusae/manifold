@@ -127,6 +127,21 @@ extension FontTheme {
         }
     }
 
+    /// The theme the window is set in, for what isn't handed one: a list
+    /// of commands, a commit's hash. Kept by the window as it renders.
+    nonisolated(unsafe) static var current: FontTheme = .notes
+
+    /// The current theme's code face: wherever code or a command is set.
+    static func code(_ size: CGFloat) -> NSFont { current.font(.monospaced, size: size) }
+}
+
+/// A view set in `FontTheme.current`, told when it changes.
+protocol FollowsFontTheme: AnyObject {
+    func fontThemeChanged()
+}
+
+extension FontTheme {
+
     /// CSS for the Markdown preview, set on its root element.
     var css: (sans: String, mono: String, features: String, sansFeatures: String) {
         let features = (["calt"] + monospacedFeatures).map { "\"\($0)\"" }.joined(separator: ", ")

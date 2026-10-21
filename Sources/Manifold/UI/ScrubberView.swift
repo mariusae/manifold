@@ -1,4 +1,5 @@
 import AppKit
+import ManifoldCore
 
 /// One mark on a scrubber: where it is in the content, and what it is.
 struct ScrubMark: Equatable {
@@ -305,7 +306,7 @@ final class ScrubTip: NSView {
         }()
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
-        label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        label.font = FontTheme.code(12)
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail

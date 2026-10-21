@@ -218,6 +218,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func renderNow() {
         guard let window else { return }
+        if FontTheme.current != hosts.state.appearance.theme {
+            FontTheme.current = hosts.state.appearance.theme
+            for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
+        }
         if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
