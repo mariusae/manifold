@@ -115,6 +115,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         setTrafficLights(visible: pinned, animated: false)
         watchClicks()
         watchHistoryButtons()
+        HostMenu.submenu = { [weak self] host in self?.hostSubmenu(host) }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
             self?.collect()
@@ -800,7 +801,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Debugging: the focused tile's pill menu, or the item so titled chosen.
     func debugPillMenu(_ title: String) -> String {
         guard let f = focusedShown, let menu = gridPillMenu(for: f.id) else { return "no menu" }
-        if title.isEmpty { return menu.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n") }
+        if title.isEmpty {
+            return menu.items.flatMap { i -> [String] in
+                [i.isSeparatorItem ? "---" : i.title] + (i.submenu?.items.map { "  " + $0.title + ($0.isEnabled ? "" : " (off)") } ?? [])
+            }.joined(separator: "\n")
+        }
         guard let item = menu.items.first(where: { $0.title == title }) as? ClosureMenuItem else { return "no such item" }
         item.debugRun()
         return "chose \(title)"
@@ -987,8 +992,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     self?.editPreferences(h)
                 })
             }
+            if client.isRemote {
+                items.append(PaletteItem(symbol: "arrow.triangle.2.circlepath", title: "Reset Server on \(hosts.label(of: h))…", subtitle: "reinstall, restart") { [weak self] in
+                    self?.resetServer(h)
+                })
+            }
             items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))…", subtitle: state) { [weak self] in
                 self?.detach(h)
+            })
+        }
+        for client in hosts.all where client.isConnected {
+            let h = client.host
+            items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Reset Graph on \(hosts.label(of: h))…", subtitle: "forget links and trail") { [weak self] in
+                self?.resetGraph(h)
             })
         }
         for (dest, error) in hosts.errors {
@@ -1371,6 +1387,55 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let rest = all.filter { $0 != id }
             hosts.select(rest.isEmpty ? nil : rest[min(i, rest.count - 1)])
         }
+    }
+
+    /// The host's own resets, for a menu of something on it: Reset Server
+    /// (a remote's) and Reset Graph — as items, in a host's own menu, or
+    /// as a submenu named for the host, in any other.
+    func hostItems(_ host: HostID) -> [NSMenuItem] {
+        let label = hosts.label(of: host)
+        var items: [NSMenuItem] = []
+        if let c = hosts.client(host), c.isRemote {
+            items.append(ClosureMenuItem("Reset Server on \(label)…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.resetServer(host) })
+        }
+        let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
+        graph.isEnabled = hosts.client(host)?.isConnected == true
+        items.append(graph)
+        return items
+    }
+
+    func hostSubmenu(_ host: HostID) -> NSMenuItem {
+        let sub = NSMenu()
+        for item in hostItems(host) { sub.addItem(item) }
+        let item = NSMenuItem(title: hosts.label(of: host), action: nil, keyEquivalent: "")
+        item.setSymbol("server.rack", size: 12)
+        item.submenu = sub
+        return item
+    }
+
+    /// Resets a host's graph, once asked: every link and the trail gone.
+    private func resetGraph(_ host: HostID) {
+        let alert = NSAlert()
+        alert.messageText = "Reset the graph on \(hosts.label(of: host))?"
+        alert.informativeText = "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each workspace stays. This can't be undone."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        hosts.resetGraph(on: host) { [weak self] error in
+            if let error { NSLog("reset graph on %@: %@", host.raw, error) }
+            self?.refreshOrganization(now: true)
+        }
+    }
+
+    /// Resets a host's server, once asked: put there afresh and restarted.
+    private func resetServer(_ host: HostID) {
+        let alert = NSAlert()
+        alert.messageText = "Reset the server on \(hosts.label(of: host))?"
+        alert.informativeText = "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and workspaces stay."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        hosts.resetServer(host)
     }
 
     /// Detaches from a host, once asked: it's forgotten here, and a
@@ -4128,6 +4193,7 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem(viewing ? "Edit" : "View", symbol: viewing ? "pencil" : "eye", key: "\r") { [weak self] in self?.toggleMode(placement) })
         }
         menu.addItem(.separator())
+        menu.addItem(hostSubmenu(block.host))
         menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
             self?.hosts.append(.remove(placement), to: .block(id))
         })
@@ -4629,6 +4695,10 @@ extension MainWindowController: OrganizationViewDelegate {
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
+        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), !c.isRemote {
+            for item in hostItems(c.host) { menu.addItem(item) }
+            return menu
+        }
         if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote {
             if c.link != .connected {
                 menu.addItem(ClosureMenuItem("Try Again Now", symbol: "arrow.clockwise") { [weak self] in
@@ -4651,6 +4721,7 @@ extension MainWindowController: OrganizationViewDelegate {
             preferences.isEnabled = c.link == .connected
             menu.addItem(preferences)
             menu.addItem(.separator())
+            for item in hostItems(c.host) { menu.addItem(item) }
             menu.addItem(ClosureMenuItem("Detach from \(hosts.label(of: c.host))…", symbol: "xmark") { [weak self] in
                 self?.detach(c.host)
             })
@@ -4660,6 +4731,8 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Take Off the Desk", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
+            menu.addItem(.separator())
+            menu.addItem(hostSubmenu(arr.host))
             return menu
         }
         if node.id.hasPrefix("status:"), let group = StatusGroup.allCases.first(where: { "status:\($0)" == node.id }), group != .inactive {
@@ -4695,6 +4768,8 @@ extension MainWindowController: OrganizationViewDelegate {
             self?.linksCenter = id
             self?.setOrganization(.links)
         })
+        menu.addItem(.separator())
+        menu.addItem(hostSubmenu(id.host))
         return menu
     }
 
@@ -4827,3 +4902,17 @@ enum StatusGroup: Int, CaseIterable {
 }
 
 extension MainWindowController: OutlineLensViewDelegate {}
+
+/// A menu of something on a host — a terminal's, an editor's — ends with
+/// the host's own (Reset Server, Reset Graph): the window controller says
+/// what that is.
+@MainActor
+enum HostMenu {
+    static var submenu: ((HostID) -> NSMenuItem?)?
+
+    static func append(for host: HostID, to menu: NSMenu) {
+        guard let item = submenu?(host) else { return }
+        menu.addItem(.separator())
+        menu.addItem(item)
+    }
+}

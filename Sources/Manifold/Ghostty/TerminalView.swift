@@ -693,6 +693,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return menu
     }
 
+    /// The host's own items, after the processes (which are filled in
+    /// later, so kept apart from them).
+    private func appendHostItems(_ menu: NSMenu) { HostMenu.append(for: block.host, to: menu) }
+
     /// The menu open now, to fill in when the listing comes.
     private weak var openMenu: NSMenu?
     private var processItemsStart = 0
@@ -707,6 +711,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             let pids = Set(entries.map(\.pid))
             for item in processItems(entries, under: nil, pids: pids) { menu.addItem(item) }
         }
+        appendHostItems(menu)
     }
 
     /// The host listed its processes: a menu open now shows them.

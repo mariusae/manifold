@@ -21,13 +21,51 @@ public enum AgentSkill {
     }
 
     /// The command a hook runs for `event`: nothing outside Manifold's
-    /// terminals, else `manifold agent`, which always succeeds.
-    static func command(_ event: String, agent: String) -> String {
-        "[ -z \"$MANIFOLD_BLOCK\" ] || manifold agent \(event) --agent \(agent)"
+    /// terminals, else `manifold agent` — this `manifold`, by its full
+    /// path, not whichever one comes first on the agent's PATH — which
+    /// always succeeds.
+    static func command(_ event: String, agent: String, tool: String = manifoldTool) -> String {
+        "[ -z \"$MANIFOLD_BLOCK\" ] || \(shellQuoted(tool)) agent \(event) --agent \(agent)"
     }
 
-    /// What marks a hook as ours, to replace or take out.
-    static let marker = "manifold agent "
+    /// Whether a hook's command is one of ours (bare `manifold`, as they
+    /// were once put in, or by its path), to replace or take out.
+    static func isOurs(_ command: String) -> Bool {
+        command.contains("manifold agent ") || command.contains("manifold' agent ")
+    }
+
+    /// The `manifold` command installing the hooks, by its full path: this
+    /// program if it is `manifold` (the app's, in its Helpers), else the
+    /// `manifold` beside it (on a remote host, the script that runs this
+    /// server); the bare name only if there's none to be found.
+    static var manifoldTool: String {
+        guard let exe = ownExecutable else { return "manifold" }
+        if exe.lastPathComponent == "manifold" { return exe.path }
+        let dir = exe.deletingLastPathComponent()
+        // The app's Helpers first; and the name exactly so, as the folder
+        // lists it — on a disk that ignores case, the app's own `Manifold`
+        // beside the server would answer to `manifold`.
+        for folder in [dir.deletingLastPathComponent().appendingPathComponent("Helpers"), dir] {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            let candidate = folder.appendingPathComponent("manifold")
+            if names.contains("manifold"), FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate.path }
+        }
+        return "manifold"
+    }
+
+    /// This program's own file, wherever it was run from (argv[0] is only
+    /// what was typed: `manifold`, found on the PATH).
+    static var ownExecutable: URL? {
+        #if os(Linux)
+        if let p = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe") { return URL(fileURLWithPath: p) }
+        #endif
+        return Bundle.main.executablePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath() }
+    }
+
+    /// A word for sh, in single quotes.
+    static func shellQuoted(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
 
     static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
@@ -147,7 +185,7 @@ public enum AgentSkill {
             guard let groups = value as? [[String: Any]] else { out[event] = value; continue }
             let kept: [[String: Any]] = groups.compactMap { group in
                 guard let list = group["hooks"] as? [[String: Any]] else { return group }
-                let others = list.filter { !(($0["command"] as? String)?.contains(marker) ?? false) }
+                let others = list.filter { !isOurs(($0["command"] as? String) ?? "") }
                 if others.isEmpty { return nil }
                 var g = group
                 g["hooks"] = others
@@ -185,7 +223,14 @@ public enum AgentSkill {
     /// Pi has no command hooks: an extension of its own, in TypeScript, in
     /// its user extensions, that runs `manifold agent` on its events
     /// without waiting for it (and does nothing outside Manifold).
-    static let piExtension = """
+    static func piExtension(tool: String = manifoldTool) -> String {
+        // The path as a JavaScript string.
+        let quoted = (try? String(data: JSONSerialization.data(withJSONObject: [tool], options: .withoutEscapingSlashes), encoding: .utf8))
+            .map { String($0.dropFirst().dropLast()) } ?? "\"manifold\""
+        return piExtensionTemplate.replacingOccurrences(of: "\"manifold\", [\"agent\"", with: "\(quoted), [\"agent\"")
+    }
+
+    static let piExtensionTemplate = """
         // Manifold's hooks for pi (manifold --install-skill): a Manifold terminal
         // shows pi's status and each of its turns on its scrubber and outline.
         // Put here by `manifold --install-skill`; `manifold --uninstall-skill`
@@ -211,7 +256,7 @@ public enum AgentSkill {
 
     static func installPiExtension(at url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(piExtension.utf8).write(to: url, options: .atomic)
+        try Data(piExtension().utf8).write(to: url, options: .atomic)
     }
 
     static func uninstallPiExtension(at url: URL) throws {

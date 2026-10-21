@@ -113,6 +113,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         textView.document = self
         textView.delegate = self
+        textView.menuHost = block.host
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)

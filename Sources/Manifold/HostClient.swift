@@ -556,7 +556,9 @@ final class HostClient {
     /// `step` is told each step as it begins, on this thread.
     /// `progress`, how much of the server has gone of how much, from
     /// another thread.
-    static func bootstrap(_ dest: Destination, name: String, step: (String) -> Void = { _ in },
+    /// `reset`: the server put there afresh whatever's there, and the one
+    /// running stopped, so the bridge starts the new one (Reset Server).
+    static func bootstrap(_ dest: Destination, name: String, reset: Bool = false, step: (String) -> Void = { _ in },
                           progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in }) throws -> Child {
         step("Asking the host what it is (\(dest.provider))")
         let probe = try Bootstrap.probe(dest)
@@ -571,11 +573,18 @@ final class HostClient {
         guard let data = FileManager.default.contents(atPath: binary.path) else {
             throw RemoteError.noBinary("\(probe.os) \(probe.arch)")
         }
-        if probe.hash != Bootstrap.sha256(data) {
-            NSLog("installing manifoldd on %@ (%@)", dest.description, binaryName)
+        if reset || probe.hash != Bootstrap.sha256(data) {
+            NSLog("installing manifoldd on %@ (%@)%@", dest.description, binaryName, reset ? ", reset" : "")
             step("Installing the server there" + (probe.gunzip ? ", compressed" : ""))
             let total = data.count
             try Bootstrap.upload(dest, binary: data, compressed: probe.gunzip) { progress($0, total) }
+        }
+        if reset {
+            // The new binary is in place; the old server goes, and the
+            // bridge below starts the new one.
+            step("Stopping the server there")
+            let (out, status) = try Child.run(dest.invocation(Bootstrap.stopCommand), timeout: 60)
+            if status != 0 { NSLog("stopping manifoldd on %@: status %d: %@", dest.description, status, String(decoding: out, as: UTF8.self)) }
         }
         return try Child.spawn(dest.invocation(Bootstrap.bridgeCommand(name: name)))
     }

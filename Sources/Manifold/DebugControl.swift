@@ -293,6 +293,22 @@ enum DebugControl {
             guard let e = NSEvent(cgEvent: cg) else { return "no event" }
             NSApp.postEvent(e, atStart: false)
             return "posted button \(e.buttonNumber) to window \(e.window === window ? "ok" : "none")"
+        case "resetserver":
+            // "resetserver <host label or id>": Reset Server, unasked.
+            guard let wc else { return "no window" }
+            guard let c = wc.hosts.remotes.values.first(where: { $0.host.raw == arg || wc.hosts.label(of: $0.host) == arg }) else { return "no such remote" }
+            wc.hosts.resetServer(c.host)
+            return "resetting \(c.host)"
+        case "resetgraph":
+            // "resetgraph <host label or id>": Reset Graph, unasked.
+            guard let wc else { return "no window" }
+            guard let c = wc.hosts.all.first(where: { $0.host.raw == arg || wc.hosts.label(of: $0.host) == arg }) else { return "no such host" }
+            // Answered on this thread, later: see graphcount.
+            wc.hosts.resetGraph(on: c.host) { e in if let e { NSLog("resetgraph: %@", e) } }
+            return "asked"
+        case "graphcount":
+            guard let wc else { return "no window" }
+            return wc.hosts.all.map { "\(wc.hosts.label(of: $0.host)): \($0.node.links($0.host).links.count) links, \($0.node.registry($0.host).trail.count) steps" }.joined(separator: "\n")
         case "pillmenu":
             // "pillmenu [title]": the focused tile's menu, or that item chosen.
             return wc?.debugPillMenu(arg) ?? "no window"

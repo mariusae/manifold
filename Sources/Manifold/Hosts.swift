@@ -272,6 +272,10 @@ final class Hosts {
         case .unlink:
             for c in all { c.propose(proposal) }
             done?(nil)
+        case .resetGraph:
+            // Said to a host's own client (resetGraph(on:)); here, every host's.
+            for c in all { c.propose(proposal) }
+            done?(nil)
         case let .history(shard):
             (client(shard.host) ?? local).propose(proposal, done: done)
         case .openDone, .editFile, .signal:
@@ -330,7 +334,8 @@ final class Hosts {
     /// `known`: a remembered host's id and label, so it stands in the
     /// app at once — connecting, then there, or unreachable with what
     /// was last seen — and is tried again every so often.
-    func attach(_ dest: Destination, known: HostID? = nil, label: String? = nil, completion: @escaping (Result<HostID, Error>) -> Void) {
+    func attach(_ dest: Destination, known: HostID? = nil, label: String? = nil, reset: Bool = false,
+                completion: @escaping (Result<HostID, Error>) -> Void) {
         let key = dest.description
         guard !attaching.contains(key) else { return }
         attaching.insert(key)
@@ -355,7 +360,7 @@ final class Hosts {
         DispatchQueue.global(qos: .userInitiated).async {
             let result: Result<Child, Error>
             do {
-                result = .success(try HostClient.bootstrap(dest, name: name, step: { [weak standing] what in
+                result = .success(try HostClient.bootstrap(dest, name: name, reset: reset, step: { [weak standing] what in
                     DispatchQueue.main.async { standing?.begin(what) }
                 }, progress: { [weak standing] done, total in
                     DispatchQueue.main.async { standing?.progress(done, of: total) }
@@ -409,6 +414,27 @@ final class Hosts {
                 }
             }
         }
+    }
+
+    /// Reset Server: the host's server uploaded afresh, whatever is
+    /// there, and restarted — its shells end, its terminals start new ones
+    /// in their folders. For a server that's wedged, or not the one it
+    /// should be. The host stays remembered; its client is made anew.
+    func resetServer(_ host: HostID) {
+        guard let client = remotes[host], let dest = client.destination else { return }
+        let label = HostsFile.load().hosts[host.raw]?.label ?? client.label ?? dest.suggestedHostName
+        remotes.removeValue(forKey: host)
+        client.disconnect()
+        attaching.remove(dest.description)
+        errors.removeValue(forKey: dest.description)
+        attach(dest, known: host, label: label, reset: true) { _ in }
+    }
+
+    /// Reset Graph: the host's links and trail forgotten, its graph left
+    /// empty (workspaces keep what's on them).
+    func resetGraph(on host: HostID, done: ((String?) -> Void)? = nil) {
+        guard let c = client(host), c.isConnected else { done?("The host isn't connected."); return }
+        c.propose(.resetGraph, done: done)
     }
 
     /// Attaches again to every host remembered.

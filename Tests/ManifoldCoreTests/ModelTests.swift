@@ -1250,7 +1250,7 @@ private final class Seen: @unchecked Sendable {
     let stop = (hooks["Stop"] as! [[String: Any]]).flatMap { $0["hooks"] as! [[String: Any]] }.map { $0["command"] as! String }
     // Theirs kept; ours once, however many times it's installed.
     #expect(stop.contains("say done"))
-    #expect(stop.filter { $0.contains("manifold agent stop --agent claude") }.count == 1)
+    #expect(stop.filter { $0.contains("agent stop --agent claude") && AgentSkill.isOurs($0) }.count == 1)
     #expect(Set(hooks.keys) == Set(AgentSkill.claudeEvents.map(\.hook)))
     #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("before-manifold").path))
     try AgentSkill.uninstallClaudeStyle(at: url)
@@ -1326,4 +1326,60 @@ private final class Seen: @unchecked Sendable {
     note.apply(.edit([TextEdit(TextRange(0, 0), "mine")]), at: at)
     note.apply(.path("/tmp/mine.md"), at: at)
     #expect(!note.needsRead)
+}
+
+@Test func hooksRunManifoldByItsFullPathAndReplaceTheOnesThatDidnt() throws {
+    let tool = "/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold"
+    let command = AgentSkill.command("stop", agent: "codex", tool: tool)
+    #expect(command == #"[ -z "$MANIFOLD_BLOCK" ] || '/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold' agent stop --agent codex"#)
+    #expect(AgentSkill.shellQuoted("it's") == #"'it'\''s'"#)
+    // Ours whether by path or bare, as they were once put in; not another's.
+    #expect(AgentSkill.isOurs(command))
+    #expect(AgentSkill.isOurs(#"[ -z "$MANIFOLD_BLOCK" ] || manifold agent stop --agent claude"#))
+    #expect(!AgentSkill.isOurs("say done"))
+    // An old bare hook is replaced, not kept beside the new one.
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-skill-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("settings.json")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let old = #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"[ -z \"$MANIFOLD_BLOCK\" ] || manifold agent stop --agent claude"}]}]}}"#
+    try Data(old.utf8).write(to: url)
+    try AgentSkill.installClaudeStyle(at: url, agent: "claude", events: AgentSkill.claudeEvents)
+    let hooks = try AgentSkill.readJSON(url)["hooks"] as! [String: Any]
+    let stop = (hooks["Stop"] as! [[String: Any]]).flatMap { $0["hooks"] as! [[String: Any]] }.map { $0["command"] as! String }
+    #expect(stop.count == 1 && !stop[0].contains("|| manifold agent"))
+    // Pi's extension runs it by the path too.
+    let pi = AgentSkill.piExtension(tool: tool)
+    #expect(pi.contains(#"pi.exec("/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold", ["agent""#))
+}
+
+@Test func resettingTheGraphForgetsEveryLinkAndTheTrailButNotWhatsPlaced() {
+    let node = Node()
+    let host = HostID("h")
+    func at(_ n: Int64) -> Stamp { Stamp(wall: 1000 + n, host: host) }
+    let a = BlockID(host: host), b = BlockID(host: host), arr = BlockID(host: host)
+    node.append(.create(kind: .text, title: nil, path: "/a"), to: .block(a), at: at(1))
+    node.append(.create(kind: .text, title: nil, path: "/b"), to: .block(b), at: at(2))
+    node.append(.create(kind: .arrangement, title: nil, path: nil), to: .block(arr), at: at(3))
+    node.append(.place(Placement(block: a, lens: .editor), column: 0, at: 0), to: .block(arr), at: at(4))
+    node.append(.link(Link(from: a, to: b, kind: .opened, at: at(5))), to: .links(host), at: at(5))
+    node.append(.link(Link(from: b, to: a, kind: .mention, at: at(6))), to: .links(host), at: at(6))
+    node.append(.step(Step(block: a, at: at(7))), to: .registry(host), at: at(7))
+    node.append(.step(Step(block: b, at: at(8))), to: .registry(host), at: at(8))
+    #expect(node.links(host).links.count == 2)
+    #expect(node.graph.stepCount == 2)
+    #expect(node.graph.edges(from: a, kind: .link(.opened)).count == 1)
+
+    node.append(.clearGraph, to: .links(host), at: at(9))
+    node.append(.clearGraph, to: .registry(host), at: at(10))
+    #expect(node.links(host).links.isEmpty)
+    #expect(node.registry(host).trail.isEmpty)
+    #expect(node.graph.stepCount == 0)
+    #expect(node.graph.edges(from: a, kind: .link(.opened)).isEmpty)
+    #expect(node.graph.edges(from: b, kind: .link(.mention)).isEmpty)
+    // What's placed stays.
+    #expect(node.graph.edges(from: arr, kind: .placed).count == 1)
+    // And a link made after comes back as ever.
+    node.append(.link(Link(from: a, to: b, kind: .found, at: at(11))), to: .links(host), at: at(11))
+    #expect(node.graph.edges(from: a, kind: .link(.found)).count == 1)
 }

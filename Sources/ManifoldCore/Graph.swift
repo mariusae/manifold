@@ -525,6 +525,10 @@ public final class Graph {
             add(Edge(kind: .link(l.kind), from: l.from, to: l.to, at: l.at, context: l.context, id: l.id, shard: shard))
         case let (.links, .unlink(id)):
             if let e = byID[id] { removeEdge(e) }
+        case (.links, .clearGraph):
+            forgetEdges(of: shard)
+        case (.registry, .clearGraph):
+            forgetSteps(of: shard)
         default:
             break
         }
@@ -532,25 +536,32 @@ public final class Graph {
 
     /// Forgets a shard's edges and steps: before its state is replaced.
     public func remove(_ shard: ShardID) {
-        for id in byShard[shard] ?? [] {
-            if let e = byID[id] { removeEdge(e) }
-        }
-        byShard.removeValue(forKey: shard)
+        forgetEdges(of: shard)
         if case .block(let id) = shard {
             if let (_, kind) = pathOf[id] { setPath(id, nil, kind: kind) }
             setPlace(id, nil)
             createdOf.removeValue(forKey: id)
         }
-        if stepShards.contains(shard) {
-            var kept: [Step] = [], keptShards: [ShardID] = []
-            for (s, sh) in zip(steps, stepShards) where sh != shard {
-                kept.append(s)
-                keptShards.append(sh)
-            }
-            steps = kept
-            stepShards = keptShards
-            stepIndexValid = false
+        forgetSteps(of: shard)
+    }
+
+    private func forgetEdges(of shard: ShardID) {
+        for id in byShard[shard] ?? [] {
+            if let e = byID[id] { removeEdge(e) }
         }
+        byShard.removeValue(forKey: shard)
+    }
+
+    private func forgetSteps(of shard: ShardID) {
+        guard stepShards.contains(shard) else { return }
+        var kept: [Step] = [], keptShards: [ShardID] = []
+        for (s, sh) in zip(steps, stepShards) where sh != shard {
+            kept.append(s)
+            keptShards.append(sh)
+        }
+        steps = kept
+        stepShards = keptShards
+        stepIndexValid = false
     }
 
     /// Indexes a shard from its state and its kept entries: the entries

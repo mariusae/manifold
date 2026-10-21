@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 28
+public let protocolVersion = 29
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -134,6 +134,8 @@ public enum Proposal: Codable, Sendable {
     case discard(BlockID)
     case link(Link)
     case unlink(String)
+    /// Reset Graph: every link on the host and its trail forgotten.
+    case resetGraph
     /// The whole history of a shard, for scrubbing.
     case history(ShardID)
     /// The command's `open --wait` is done: what it opened was put away.

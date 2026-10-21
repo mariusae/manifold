@@ -548,7 +548,10 @@ when you find it again.
   (start, prompt, working, waiting, stop, end), which tells the host
   over its socket and does nothing outside Manifold's terminals; status
   goes working on a prompt or a tool, blocked on a permission, done (with
-  the agent's last words) when the turn ends. Installed for whichever of
+  the agent's last words) when the turn ends. Each hook runs the
+  `manifold` that installed it, by its full path (the app's Helpers, a
+  remote host's `~/.manifold/bin`), never another `manifold` an agent
+  finds first on its PATH. Installed for whichever of
   these are found (or those named): Claude Code (`~/.claude/settings.json`;
   MetaCode reads these too, and is told apart), Codex
   (`~/.codex/hooks.json`; Codex asks to review new hooks once), Muse
@@ -638,7 +641,17 @@ is migrated into logs on first run.
   bridge that hangs is noticed and made again. **Detach from *host*…**
   (in the row's menu, or New…, ⌘T) forgets it here, even while it's still
   being reached: it isn't attached again at start, and its server,
-  shells and blocks stay there for attaching again. A bridge that keeps
+  shells and blocks stay there for attaching again. **Reset Server on
+  *host*…** (the same menu, or the palette) installs the server there
+  again whatever is there, stops the one running and starts the new one:
+  its shells end and its terminals start fresh ones, its blocks and
+  workspaces stay. **Reset Graph on *host*…** forgets every link between
+  the host's blocks — opened from, found by, mentions, compared, made by
+  hand — and its trail, leaving the graph empty (what's on each
+  workspace stays; mentions come back as texts change). Both are in
+  every menu of something on a host, under the host's name: a tile's,
+  a terminal's or an editor's right-click, a workspace's or a block's
+  row in the sidebar; the host's own row has them as they are. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an

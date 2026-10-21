@@ -455,6 +455,11 @@ final class Server {
         case let .unlink(linkID):
             append(.unlink(linkID), to: .links(host))
             done()
+        case .resetGraph:
+            append(.clearGraph, to: .links(host))
+            append(.clearGraph, to: .registry(host))
+            log("graph reset: links and trail forgotten")
+            done()
         case let .history(shard):
             let h = store.history(shard)
             conn.send(.message(ServerMessage.history(shard: shard, base: h.base, entries: h.entries)))

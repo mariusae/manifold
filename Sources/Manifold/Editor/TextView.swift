@@ -1761,8 +1761,12 @@ final class TextView: NSView, NSTextInputClient {
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "")
+        if let host = menuHost { HostMenu.append(for: host, to: menu) }
         return menu
     }
+
+    /// The host of the block shown, for its own items in the menu.
+    var menuHost: HostID?
 
     // MARK: Pasteboard
 

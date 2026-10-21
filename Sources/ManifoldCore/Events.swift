@@ -302,6 +302,9 @@ public enum Event: Codable, Equatable, Sendable {
     // Links.
     case link(Link)
     case unlink(String)
+    /// Reset Graph: on the links shard, every link gone; on the registry,
+    /// the trail. What's placed in workspaces stays.
+    case clearGraph
 }
 
 /// An entry in a log.
@@ -771,6 +774,8 @@ extension Registry {
         case let .step(s):
             if trail.last?.block != s.block { trail.append(s) }
             if trail.count > Self.trailLimit { trail.removeFirst(trail.count - Self.trailLimit) }
+        case .clearGraph:
+            trail = []
         default: break
         }
     }
@@ -785,6 +790,8 @@ extension Links {
             links.append(l)
         case let .unlink(id):
             links.removeAll { $0.id == id }
+        case .clearGraph:
+            links = []
         default: break
         }
     }

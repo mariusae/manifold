@@ -323,6 +323,10 @@ public enum Bootstrap {
         "sh -c '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
+    /// The command that stops the destination's server, its sessions
+    /// with it (and waits until it has).
+    public static let stopCommand = "~/.manifold/bin/manifoldd stop"
+
     /// The command that bridges stdio to the destination's server.
     public static func bridgeCommand(name: String) -> String {
         "~/.manifold/bin/manifoldd bridge --name \(name)"
