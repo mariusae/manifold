@@ -413,10 +413,15 @@ when you find it again.
   their outcome and when) or the headings, each clicked to go there in
   the block's tile — or, with none shown, in one opened beside. A
   terminal's command clicked there also opens its output as a block of
-  its own: a note whose first line is a pill linking back to that
-  command (clicked, the terminal scrolls to it) and the command and what
-  it printed beneath as code, opened as a page to read (⌘↩ edits it).
-  One per command; clicked again, the same note comes back.
+  its own: the command line, how it ended and when, and what it printed
+  as the terminal drew it — its colours, faces and carriage returns, in
+  the terminal's palette and font — read-only, with Copy (the command
+  and its output, as text) and Show in Terminal (back to the command).
+  The bytes are the host's, kept from the command's start to its end, so
+  a command scrolled off the screen or run before the window opened
+  still shows whole; one from before the host kept them shows the
+  screen's text instead. One per command; clicked again, the same block
+  comes back.
 - **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
   the tile's right edge, the knob where you are, and a tick for each
   command the shell ran (the shells Manifold starts say so; red for one

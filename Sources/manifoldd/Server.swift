@@ -433,6 +433,27 @@ final class Server {
                 append(.command(command), to: .block(block))
             }
             done()
+        case let .captureOutput(block, terminal, command, fallback):
+            // A command's output as a block of its own (§3.8): the bytes the
+            // terminal received for it, from this host's buffer — or the
+            // screen's text, when they've gone from it.
+            if node.block(block) == nil {
+                let c = node.block(terminal)?.terminal?.commands?.first { $0.id == command }
+                var state = OutputState(source: terminal, command: command, line: c?.text ?? "", status: c?.status, ran: c?.at, ended: c?.ended)
+                if let data = sessions[terminal]?.output(ofCommand: command), !data.isEmpty {
+                    // A megabyte at most: the end of it, which is what a terminal shows.
+                    let kept = data.count > 1 << 20 ? data.suffix(1 << 20) : data
+                    state.output = OutputState.trimmed(String(decoding: kept, as: UTF8.self))
+                } else {
+                    state.output = fallback
+                    state.plain = true
+                }
+                append(.create(kind: .output, title: c?.text, path: nil), to: .block(block))
+                if let cwd = node.block(terminal)?.terminal?.cwd { append(.cwd(cwd), to: .block(block)) }
+                append(.output(state), to: .block(block))
+                append(.link(Link(from: terminal, to: block, kind: .opened, at: clock.now(), context: "command \(command)")), to: .links(host))
+            }
+            done()
         case let .readBytes(block):
             guard let b = node.block(block), let path = b.path else { return done("not a file") }
             let data = try? Data(contentsOf: URL(fileURLWithPath: path))
@@ -982,12 +1003,15 @@ final class Server {
                 // A command the shell is about to run (§3.8), after the ones
                 // before it.
                 let list = node.block(block)?.terminal?.commands ?? []
-                append(.ran(id: (list.last?.id ?? 0) + 1, text, at: clock.now()), to: .block(block))
+                let id = (list.last?.id ?? 0) + 1
+                append(.ran(id: id, text, at: clock.now()), to: .block(block))
+                sessions[block]?.beginCapture(id)
             case let .commandEnded(status):
                 // The shell's command, not an agent's turn within it.
                 let turns = agentTurns[block] ?? []
                 if let open = node.block(block)?.terminal?.commands?.last(where: { $0.ended == nil && !turns.contains($0.id) }) {
                     append(.exited(id: open.id, status: status ?? 0, at: clock.now()), to: .block(block))
+                    sessions[block]?.endCapture(open.id)
                 }
             case let .directory(host, path):
                 // The shell says where it is (OSC 7): taken when it's on

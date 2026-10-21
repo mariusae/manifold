@@ -272,6 +272,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let t as OutlineLensView in views.values { t.documentChanged() }
+            for case let o as OutputView in views.values { o.refresh() }
             for case let d as DirectoryView in views.values { d.documentChanged() }
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.documentChanged() }
@@ -482,6 +483,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             g.delegate = self
             g.source = { [weak self] in self?.hosts.block(p.block) }
             v = g
+        case .output:
+            let o = OutputView(placement: p.id, block: p.block)
+            o.delegate = self
+            o.source = { [weak self] in self?.hosts.block(p.block) }
+            o.font = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            o.refresh()
+            v = o
         case .diff:
             let d = DiffView(placement: p.id, block: p.block, theme: hosts.state.appearance.theme)
             d.delegate = self
@@ -999,7 +1007,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugSidebarView: SidebarView { sidebar }
-    var debugOutlineLens: OutlineLensView? { content.views.compactMap { $0 as? OutlineLensView }.first }
+    /// Debugging: the output tiles, as shown; "raw", what each holds,
+    /// escaped; "copy" and "back", the focused one's buttons pressed.
+    func debugOutputs(_ verb: String) -> String {
+        let focused = arrangement?.focused.flatMap { views[$0] as? OutputView }
+        if verb == "copy" { return focused?.debugCopy() ?? "no output focused" }
+        if verb == "back" { focused?.debugBack(); return focused == nil ? "no output focused" : "ok" }
+        return views.values.compactMap { v -> String? in
+            guard let o = v as? OutputView else { return nil }
+            guard verb == "raw" else { return o.debugDescription_ }
+            return hosts.block(o.block)?.output.map { $0.line + ": " + $0.output.debugDescription } ?? "?"
+        }.joined(separator: "\n---\n")
+    }
+    /// The outline lens made last (placement ids sort by time).
+    var debugOutlineLens: OutlineLensView? { content.views.compactMap { $0 as? OutlineLensView }.max { $0.placement < $1.placement } }
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
     var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
 
@@ -2146,14 +2167,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 var hits: [OrgNode] = []
                 let id = b.id
                 let prefix = "search/\(id)"
-                if let text = b.text?.text.string {
+                // A text's lines; an output's, its escapes taken out.
+                let searched = b.text?.text.string ?? b.output.map { o in
+                    o.plain ? o.output : o.output
+                        .replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
+                        .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+                }
+                if let text = searched {
                     var n = 0
                     for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
                         n += 1
                         guard hits.count < 40, raw.lowercased().contains(q) else { continue }
                         let line = n
                         let hit = OrgNode(id: "\(prefix)/\(line)", title: snippet(raw), symbol: "text.alignleft", detail: "line \(line)")
-                        hit.action = { [weak self] in self?.goToLine(line, in: id) }
+                        hit.action = b.kind == .output ? { [weak self] in self?.goTo(id) } : { [weak self] in self?.goToLine(line, in: id) }
                         hits.append(hit)
                     }
                 }
@@ -2940,6 +2967,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .web:
                 secondary = block.web?.url ?? ""
                 detail = block.web?.url ?? "Web page"
+            case .output:
+                secondary = "output " + (block.place ?? "")
+                detail = "Output" + (block.output?.status.map { $0 == 0 ? ", ok" : ", exit \($0)" } ?? "") + (block.place.map { " · " + $0.abbreviatingHome } ?? "")
             }
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
@@ -4673,34 +4703,27 @@ extension MainWindowController: TerminalViewDelegate {
 
     /// A command from a terminal's scrubber (§3.8): a note of it and its
     /// output, as the screen showed it, opened from the terminal.
-    /// A command and its output as a block (§3.8): a note whose first
-    /// line links back to the command in the terminal (its pill, which
-    /// scrolls the terminal there), and the output beneath as code, shown
-    /// as a page to read (⌘↩ edits it). One per command: asked again, the
-    /// one there is is shown.
+    /// A command's output as a block of its own (§3.8): the host captures
+    /// what the terminal received for it — colours and all — into an
+    /// output block, linked from the terminal; shown read-only, with Copy
+    /// and the way back. One per command: asked again, the one there is.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
-        // From an outline: where a new tile goes (half the column's biggest
-        // tile), an outline being too small to halve; else below the
-        // terminal, or over it with ⌥.
         let place: Where = beside != nil ? .here : (Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .besideOpener(view.placement))
         let context = "command \(command.id)"
-        if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to) != nil }) {
-            return show(made.to, lens: .preview, place, kind: .opened, context: context)
+        if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output }) {
+            return show(made.to, lens: .output, place, kind: .opened, context: context)
         }
-        let client = hosts.client(view.block.host) ?? host
-        let note = client.newNote(home: hosts.block(view.block)?.terminal?.cwd)
-        // A fence longer than any run of backticks in what it holds.
-        let ticks = (output + command.text).split(separator: "\n").map { line in line.split(whereSeparator: { $0 != "`" }).map(\.count).max() ?? 0 }.max() ?? 0
-        let fence = String(repeating: "`", count: max(3, ticks + 1))
-        let back = "[\(command.text)](manifold:\(view.block)#command=\(command.id))"
-        let text = back + "\n\n" + fence + "console\n$ " + command.text + "\n" + output + "\n" + fence + "\n"
-        client.append(.title(command.text), to: .block(note))
-        client.append(.content(text, encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(note))
-        // Its text is the terminal's, not yours: nothing to save.
-        if let v = client.block(note)?.text?.version { client.append(.clean(version: v, fingerprint: nil), to: .block(note)) }
-        hosts.link(from: view.block, to: note, kind: .opened, context: context)
-        // Read first, as a page; ⌘↩ edits it.
-        show(note, lens: .preview, place, kind: .opened, context: context)
+        let id = BlockID(host: view.block.host)
+        hosts.propose(.captureOutput(block: id, terminal: view.block, command: command.id, fallback: output))
+        // Shown once the host has made it (a moment).
+        showWhenMade(id, lens: .output, place: place)
+    }
+
+    /// A block the host is making, shown as soon as it exists here.
+    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, tries: Int = 40) {
+        if hosts.block(id) != nil { return show(id, lens: lens, place) }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showWhenMade(id, lens: lens, place: place, tries: tries - 1) }
     }
 
     func terminalDidFocus(_ view: TerminalView) {
@@ -5067,6 +5090,13 @@ enum StatusGroup: Int, CaseIterable {
 }
 
 extension MainWindowController: OutlineLensViewDelegate {}
+
+extension MainWindowController: OutputViewDelegate {
+    func output(_ view: OutputView, showSource source: BlockID, command: Int) {
+        arrive(source, from: view.placement, over: false)
+        goToCommand(command, in: source)
+    }
+}
 
 /// A menu of something on a host — a terminal's, an editor's — ends with
 /// the host's own (Reset Server, Reset Graph): the window controller says

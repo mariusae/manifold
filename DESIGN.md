@@ -436,9 +436,23 @@ through a patch that lets `read_text` reach the history) and each
 command is matched, in order, to the first row after the one before
 that ends in its line (or begins with it, wrapped). A row found stays
 found until the screen is cleared or trimmed under it, when all are
-found again. A tick clicked scrolls to its row (`scroll_to_row`); opened,
-the rows from it to the next command's become a note, titled with the
-command, linked from the terminal as `opened`.
+found again. A tick clicked scrolls to its row (`scroll_to_row`).
+
+Opened — a tick's, or an outline entry's — a command's output becomes
+an `output` block, titled with the command and linked from the terminal
+as `opened` (context `command N`, so it is found again rather than made
+twice). The host keeps it: the session notes where in its replay buffer
+each `7502` mark began and where the next `133 D` ended, and asked
+(`captureOutput`), the block gets those bytes, escapes and all — the
+last megabyte at most, less zsh's partial-line mark at the end, which
+the prompt draws over. A command whose bytes have left the buffer, or
+that ran before the host kept marks, takes the screen's rows the app
+sends along instead, marked as such. The app draws it as the terminal
+did — SGR colours (16, 256, true) and faces in the terminal's palette,
+carriage returns and backspaces overwriting, erased lines erased — with
+the command line and its outcome above, read-only, Copy putting the
+command and the text on the clipboard and Show in Terminal going back
+to the command.
 
 ### 3.6 Organizations: views over the graph
 

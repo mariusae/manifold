@@ -14,6 +14,9 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case git
     case process
     case agent
+    /// A terminal command's output, captured as the terminal received it
+    /// (§3.8): read-only, linked back to the command.
+    case output
     /// Placements of other blocks, laid out (§3 of DESIGN.md).
     case arrangement
 
@@ -30,6 +33,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .git: "Git"
         case .process: "Processes"
         case .agent: "Agent"
+        case .output: "Output"
         case .arrangement: "Untitled"
         }
     }
@@ -52,6 +56,8 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case agent
     /// An arrangement as a card: its title and a small live picture.
     case card
+    /// A command's output, as the terminal showed it (§3.8).
+    case output
     /// What a block's scrubber marks — a terminal's commands, a text's
     /// headings — as a list to steer the block's tile by (§3.8).
     case outline
@@ -80,6 +86,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .git: return .git
         case .process: return .process
         case .agent: return .agent
+        case .output: return .output
         case .arrangement: return .card
         }
     }
@@ -436,6 +443,47 @@ public struct DiffState: Codable, Equatable, Sendable {
 
 // MARK: Web
 
+/// A command's output (§3.8): which terminal and command it came from,
+/// the command line, how it ended, and what it printed — the bytes as the
+/// terminal received them, colours and all.
+public struct OutputState: Codable, Equatable, Sendable {
+    public var source: BlockID?
+    public var command: Int?
+    public var line: String = ""
+    public var status: Int32?
+    public var ran: Stamp?
+    public var ended: Stamp?
+    /// What it printed, escape sequences and all (as UTF-8, invalid bytes
+    /// replaced); `plain` says it was taken as plain text instead.
+    public var output: String = ""
+    public var plain = false
+
+    public init(source: BlockID? = nil, command: Int? = nil, line: String = "", status: Int32? = nil, ran: Stamp? = nil, ended: Stamp? = nil, output: String = "", plain: Bool = false) {
+        self.source = source
+        self.command = command
+        self.line = line
+        self.status = status
+        self.ran = ran
+        self.ended = ended
+        self.output = output
+        self.plain = plain
+    }
+
+    /// What a command wrote, without what its shell wrote around it: zsh's
+    /// mark for output that didn't end its line (an inverse `%` or `#`, a
+    /// row of spaces and carriage returns, which the prompt then draws
+    /// over), at the end.
+    public static func trimmed(_ raw: String) -> String {
+        guard raw.hasSuffix("\r \r") else { return raw }
+        // Led only by attributes being set, so the output's own reset stays.
+        let set = "(?:\u{1B}\\[[1-9][0-9;]*m)*", any = "(?:\u{1B}\\[[0-9;]*m)*"
+        guard let r = try? NSRegularExpression(pattern: set + "[%#]" + any + " +\r \r\\z") else { return raw }
+        let ns = raw as NSString
+        guard let m = r.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)) else { return raw }
+        return ns.substring(to: m.range.location)
+    }
+}
+
 public struct WebState: Codable, Equatable, Sendable {
     public var url: String?
     /// Loaded from the client's network, or through the host (§7.6).
@@ -622,6 +670,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var search: SearchState?
     public var git: GitState?
     public var diff: DiffState?
+    public var output: OutputState?
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
@@ -654,6 +703,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .search: search = SearchState()
         case .git: git = GitState()
         case .diff: diff = DiffState()
+        case .output: output = OutputState()
         case .arrangement: arrangement = ArrangementState()
         default: break
         }

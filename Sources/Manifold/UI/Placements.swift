@@ -38,6 +38,7 @@ struct Shown: Equatable {
         case .process: .process
         case .agent: .agent
         case .card: .arrangement
+        case .output: .output
         case .outline: .terminal
         }
     }

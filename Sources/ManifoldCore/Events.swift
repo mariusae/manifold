@@ -258,6 +258,8 @@ public enum Event: Codable, Equatable, Sendable {
 
     // Diff.
     case diffSubject(DiffSubject)
+    /// An output block's whole state, as captured (§3.8).
+    case output(OutputState)
     /// An outline block's subject (§3.8).
     case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
 
@@ -403,6 +405,7 @@ extension Block {
         if search != nil { search!.apply(event) }
         if git != nil { git!.apply(event) }
         if diff != nil { diff!.apply(event) }
+        if case let .output(o) = event { output = o }
         if processes != nil { processes!.apply(event) }
         if arrangement != nil { arrangement!.apply(event, at: at) }
     }

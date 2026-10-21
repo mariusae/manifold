@@ -29,9 +29,16 @@ public struct ReplayBuffer: Sendable {
     /// The buffered output, for saving.
     public var contents: Data { bytes }
 
+    /// Every byte ever appended, counted: where the buffer ends, as an
+    /// offset that doesn't move as the front is trimmed.
+    public private(set) var end: Int64 = 0
+    /// Where the buffer begins, as such an offset.
+    public var start: Int64 { end - Int64(bytes.count) }
+
     public mutating func append(_ data: Data) {
         scanModes(data)
         bytes.append(data)
+        end += Int64(data.count)
         if bytes.count > limit {
             // Cut at a line break, so the replay doesn't start in the middle
             // of an escape sequence.
@@ -41,6 +48,13 @@ public struct ReplayBuffer: Sendable {
             bytes = Data(bytes)
             trimmed = true
         }
+    }
+
+    /// The bytes between two offsets, if they're still here.
+    public func slice(from a: Int64, to b: Int64) -> Data? {
+        guard a >= start, b <= end, a <= b else { return nil }
+        let i = bytes.startIndex + Int(a - start), j = bytes.startIndex + Int(b - start)
+        return bytes.subdata(in: i..<j)
     }
 
     /// What to send an attaching terminal.

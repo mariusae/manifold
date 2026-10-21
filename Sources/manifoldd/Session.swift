@@ -38,6 +38,14 @@ final class Session {
     /// What the program says of its status (§3.7), as it says it.
     var onStatus: (([StatusSignal]) -> Void)?
     private var statuses = StatusScanner()
+    /// Where each command's output lies in the replay buffer (§3.8), by
+    /// the command's id: from just after the shell said it would run it
+    /// (OSC 7502) to where it said it had ended (OSC 133;D).
+    private var captures: [Int: (start: Int64, end: Int64?)] = [:]
+    private var pendingStart: Int64?
+    private var pendingEnd: Int64?
+    /// The last few bytes of the last read, for a mark split across two.
+    private var markTail: [UInt8] = []
     /// The shell has said where it is (OSC 7): its directory isn't polled.
     var reportsDirectory = false
 
@@ -167,6 +175,55 @@ final class Session {
     }
 
     /// The recent output, to save; marks it saved.
+    /// The shell's own marks in the stream, by where they fall: a command
+    /// about to run (output starts after the mark's end), and one ended
+    /// (output stops where the mark begins).
+    private func scanMarks(_ data: Data) {
+        let base = replay.end - Int64(markTail.count)
+        let hay = markTail + [UInt8](data)
+        let run: [UInt8] = Array("\u{1b}]7502;".utf8), done: [UInt8] = Array("\u{1b}]133;D".utf8)
+        var i = 0
+        while i < hay.count {
+            if hay[i] == 0x1B {
+                if hay.count - i >= run.count, Array(hay[i..<i + run.count]) == run {
+                    // Past its terminator: BEL, or ESC \.
+                    var j = i + run.count
+                    while j < hay.count, hay[j] != 0x07, !(hay[j] == 0x1B && j + 1 < hay.count && hay[j + 1] == 0x5C) { j += 1 }
+                    if j < hay.count { pendingStart = base + Int64(j + (hay[j] == 0x07 ? 1 : 2)) }
+                    i = j
+                    continue
+                }
+                if hay.count - i >= done.count, Array(hay[i..<i + done.count]) == done {
+                    pendingEnd = base + Int64(i)
+                }
+            }
+            i += 1
+        }
+        markTail = Array(hay.suffix(16))
+    }
+
+    /// The shell said a command (this id) would run: its output begins at
+    /// the mark just seen.
+    func beginCapture(_ id: Int) {
+        captures[id] = (pendingStart ?? replay.end, nil)
+        pendingStart = nil
+        if captures.count > 2000, let oldest = captures.keys.min() { captures.removeValue(forKey: oldest) }
+    }
+
+    /// The command (this id) ended: its output stops at the mark just seen.
+    func endCapture(_ id: Int) {
+        guard let c = captures[id] else { return }
+        captures[id] = (c.start, max(c.start, pendingEnd ?? replay.end))
+        pendingEnd = nil
+    }
+
+    /// What a command printed, as the terminal received it, if it's still
+    /// in the buffer; so far, if it hasn't ended.
+    func output(ofCommand id: Int) -> Data? {
+        guard let c = captures[id] else { return nil }
+        return replay.slice(from: c.start, to: c.end ?? replay.end)
+    }
+
     func takeHistory() -> Data {
         unsaved = false
         return replay.contents
@@ -201,6 +258,7 @@ final class Session {
             return
         }
         let data = Data(buf[0..<n])
+        scanMarks(data)
         replay.append(data)
         unsaved = true
         if let title = titles.feed(data) { onTitle?(title) }

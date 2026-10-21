@@ -1423,3 +1423,13 @@ private final class Seen: @unchecked Sendable {
     #expect(!r2.contains(f) && !r2.contains(held) && r2.contains(t))
     #expect(EdgeKind.placed.isStrong && EdgeKind.link(.linked).isStrong && !EdgeKind.link(.opened).isStrong && !EdgeKind.contains.isStrong)
 }
+
+// MARK: Output
+
+@Test func outputTrimsZshPartialLineMark() {
+    let mark = "\u{1B}[1m\u{1B}[7m%\u{1B}[27m\u{1B}[1m\u{1B}[0m" + String(repeating: " ", count: 29) + "\r \r"
+    #expect(OutputState.trimmed("done\r\n" + mark) == "done\r\n")
+    #expect(OutputState.trimmed("\u{1B}[31mred\u{1B}[0m" + mark) == "\u{1B}[31mred\u{1B}[0m")
+    #expect(OutputState.trimmed("100%\r \r") == "100%\r \r")
+    #expect(OutputState.trimmed("plain\n") == "plain\n")
+}

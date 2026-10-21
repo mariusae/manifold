@@ -210,8 +210,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// A command's output as a block of its own (§3.8), beside a placement.
     @discardableResult
     func showOutput(ofCommand id: Int, beside: PlacementID?) -> Bool {
-        guard let (c, output) = transcript(ofCommand: id) else { return false }
-        delegate?.terminal(self, show: c, output: output, beside: beside)
+        // The host keeps what the command wrote; the screen's rows are only
+        // a fallback, for a command it didn't see (one from before).
+        guard let c = commands.first(where: { $0.id == id }) else { return false }
+        delegate?.terminal(self, show: c, output: transcript(ofCommand: id)?.1 ?? "", beside: beside)
         return true
     }
 

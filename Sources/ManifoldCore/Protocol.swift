@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 30
+public let protocolVersion = 31
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -161,6 +161,10 @@ public enum Proposal: Codable, Sendable {
     /// A diff block (made if new), its texts read.
     case diff(block: BlockID, subject: DiffSubject)
     case reloadDiff(block: BlockID)
+    /// A terminal command's output captured as a block of its own (§3.8):
+    /// the host's copy of what the terminal received for it, or, gone
+    /// from the host's buffer, `fallback` (the text as the screen shows it).
+    case captureOutput(block: BlockID, terminal: BlockID, command: Int, fallback: String)
     /// An agent: a terminal block that runs `command` instead of a shell.
     case newAgent(block: BlockID, cwd: String?, command: String)
     /// A file's bytes (an image, a PDF), answered with `bytes`.
