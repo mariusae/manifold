@@ -625,11 +625,13 @@ extension ArrangementState {
                 let c = max(column, 0)
                 let i = min(max(at, 0), columns[c].count)
                 // The new tile takes the lower half of the one above it (acme's
-                // coladd), or the upper half of the first when it comes first.
+                // coladd), or the upper half of the first when it comes first —
+                // a tile that shows: one stashed above it has no room to give.
                 if columns[c].isEmpty {
                     heights[p.id] = 1
                 } else {
-                    let donor = columns[c][i > 0 ? i - 1 : 0].id
+                    let above = columns[c][..<i].last { !isStashed($0.id) } ?? columns[c].first { !isStashed($0.id) } ?? columns[c][0]
+                    let donor = above.id
                     let h = heights[donor] ?? 1 / Double(columns[c].count)
                     heights[donor] = h / 2
                     heights[p.id] = h / 2

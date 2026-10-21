@@ -2015,6 +2015,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// and it is focused.
     private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] { a.revealing(placement) }
 
+    /// Going to a tile of the workspace shown (⌘\'s outline): revealed —
+    /// to the top of its stack, if it's in one — grown a little if it's
+    /// down to its bar, and the pointer on it.
+    func arrive(atTile placement: PlacementID) {
+        guard let a = arrangement, a.placement(placement) != nil else { return }
+        appendToSelected(arriving(placement, in: a))
+        warpPointerToFocus()
+    }
+
     /// Arriving at a tile (a link followed, a block gone to, a step back,
     /// a row of the sidebar): revealed, and grown if it's down to its bar.
     private func arriving(_ placement: PlacementID, in a: ArrangementState) -> [Event] {
@@ -2386,16 +2395,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func goToLine(_ line: Int, in block: BlockID) {
         guard let b = hosts.block(block) else { return }
         if let a = arrangement, let p = a.placements(of: block).first(where: { $0.lens == .editor }), let e = views[p.id] as? EditorView {
-            focus(p.id)
+            arrive(atTile: p.id)
             e.select(line: line)
-            warpPointerToFocus()
             return
         }
         // Shown as a page here: the page scrolled to the line.
         if let a = arrangement, let p = a.placements(of: block).first(where: { $0.lens == .preview }), let m = views[p.id] as? MarkdownView {
-            focus(p.id)
+            arrive(atTile: p.id)
             m.reveal(line: line)
-            warpPointerToFocus()
             return
         }
         pendingJump = (b.path ?? "", line, nil)
@@ -3025,9 +3032,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                             guard let self else { return }
                                             if self.arrangement?.placement(id) != nil, self.hosts.block(block)?.kind == .text {
                                                 if let e = self.views[id] as? EditorView {
-                                                    self.focus(id)
+                                                    self.arrive(atTile: id)
                                                     e.select(line: at)
-                                                    self.warpPointerToFocus()
                                                     return
                                                 }
                                             }
@@ -3402,8 +3408,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return arrangement?.tile(of: block, lens: lens)?.id
         }
         if !again, let t = a.tile(of: block, lens: lens) {
-            focus(t.id)
-            warpPointerToFocus()
+            // Already here: gone to, as anything already here is.
+            arrive(atTile: t.id)
             return t.id
         }
         let p = Placement(block: block, lens: lens)
@@ -3640,7 +3646,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
                 items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
                                         detail: detail.filter { !$0.isEmpty }.joined(separator: " · "), note: notes.joined(separator: " · "),
-                                        run: { [weak self] in self?.focus(id); self?.warpPointerToFocus() }))
+                                        run: { [weak self] in self?.arrive(atTile: id) }))
                 // A text's headings, as Markdown has them, each gone to in
                 // its editor by line, in its preview by index.
                 guard b.kind == .text, let text = b.text?.text.string, Lens.viewRendering(for: b.path) == .markdown else { continue }
@@ -3659,10 +3665,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     items.append(FinderItem(symbol: "number", title: heading, detail: b.displayTitle, note: "", level: level,
                                             run: { [weak self] in
                         guard let self else { return }
-                        self.focus(id)
+                        self.arrive(atTile: id)
                         if let e = self.views[id] as? EditorView { e.select(line: at) }
                         else if let m = self.views[id] as? MarkdownView { m.scroll(toHeading: nth) }
-                        self.warpPointerToFocus()
                     }))
                     index += 1
                 }
@@ -4358,8 +4363,8 @@ extension MainWindowController: GridDelegate {
     /// ⌥-click on a stashed pill: that tile shows where the stack's top
     /// did, and the top goes behind it.
     func gridSwap(_ placement: PlacementID) {
-        guard let a = arrangement, a.isStashed(placement), let top = a.tile(behind: placement) else { return gridUnstash(placement) }
-        appendToSelected(a.unstashing(placement) + [.stash(top.id, behind: placement), .focus(placement)])
+        guard let a = arrangement, a.isStashed(placement), a.tile(behind: placement) != nil else { return gridUnstash(placement) }
+        appendToSelected(a.toppingStack(placement))
     }
 
     /// A pill clicked: its tile grows a step, as acme's does.

@@ -418,6 +418,11 @@ enum DebugControl {
             guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
             let w = window.convertPoint(fromScreen: p)
             return "\(Int(w.x)) \(Int(window.contentView!.bounds.height - w.y))"
+        case "openfile":
+            // "openfile <path>": opened as ⌘O opens a file it found.
+            guard let wc else { return "no window" }
+            wc.open(arg, from: nil)
+            return "ok"
         case "over":
             // "over <path or address>": opened over the focused tile, as ⌥-click does.
             guard let wc, let f = wc.debugFocusedPlacement else { return "nothing focused" }

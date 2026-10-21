@@ -1466,3 +1466,46 @@ private final class Seen: @unchecked Sendable {
     #expect(nb.cells.map(\.id) == ["a"])
     #expect(NotebookEdit.source("a", "x").isUsers && !NotebookEdit.started("a", count: 1, at: t).isUsers)
 }
+
+// MARK: Going to a block
+
+@Test func aNewTileGoesAfterAStackNotIntoIt() {
+    // A file opened with a stack's top focused: a tile of its own, the stack untouched.
+    var a = ArrangementState()
+    let top = Placement(id: "top", block: BlockID(host: .local), lens: .editor)
+    let s1 = Placement(id: "s1", block: BlockID(host: .local), lens: .editor)
+    let s2 = Placement(id: "s2", block: BlockID(host: .local), lens: .editor)
+    let other = Placement(id: "other", block: BlockID(host: .local), lens: .terminal)
+    for (p, i) in [(other, 0), (top, 1), (s1, 2), (s2, 3)] { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.heights(["other": 0.3, "top": 0.7, "s1": 0, "s2": 0]))
+    a.apply(.focus("top"))
+    let file = BlockID(host: .local)
+    for e in a.bringing(file, lens: .preview, inColumn: 0, newPlacement: { "new" }) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == ["other", "top", "s1", "s2", "new"])
+    #expect(a.tile(behind: "s1")?.id == "top" && a.tile(behind: "s2")?.id == "top")
+    #expect(!a.isStashed("new") && a.focused == "new")
+    // Its room from the stack's top (the tile that shows above it), halved.
+    #expect(abs(a.height(of: "new") - a.height(of: "top")) < 0.001)
+    #expect(abs(a.height(of: "other") / (a.height(of: "other") + a.height(of: "top") + a.height(of: "new")) - 0.3) < 0.001)
+}
+
+@Test func goingToAStackedTileBringsItToTheTop() {
+    // ⌘J, a link, the finder: a tile in a stack comes to its top, the rest behind it.
+    var a = ArrangementState()
+    let top = Placement(id: "top", block: BlockID(host: .local), lens: .editor)
+    let s1 = Placement(id: "s1", block: BlockID(host: .local), lens: .editor)
+    let s2 = Placement(id: "s2", block: BlockID(host: .local), lens: .editor)
+    let other = Placement(id: "other", block: BlockID(host: .local), lens: .terminal)
+    for (p, i) in [(top, 0), (s1, 1), (s2, 2), (other, 3)] { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.heights(["top": 0.6, "s1": 0, "s2": 0, "other": 0.4]))
+    a.apply(.focus("other"))
+    for e in a.revealing("s2") { a.apply(e) }
+    #expect(a.focused == "s2" && !a.isStashed("s2"))
+    #expect(a.isStashed("top") && a.isStashed("s1"))
+    #expect(a.tile(behind: "top")?.id == "s2" && a.tile(behind: "s1")?.id == "s2")
+    #expect(a.shownTiles(inColumn: 0).map(\.id) == ["s2", "other"])
+    // In the stack's place and room.
+    #expect(abs(a.height(of: "s2") / (a.height(of: "s2") + a.height(of: "other")) - 0.6) < 0.001)
+    // The tile already showing: focused, nothing moved.
+    #expect(a.revealing("other") == [.focus("other")])
+}

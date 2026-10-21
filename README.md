@@ -82,8 +82,12 @@ and Mona Sans (bundled).
   Unstack in the pill's menu lays the whole stack out in the column;
   Close Stack takes the tile and its stack off the workspace (from a
   maximized tile, Close Column takes the column).
-  Going to a stashed block from the sidebar or the
-  finder brings it out too, and the pointer follows. Going to a tile
+  Opening a block that isn't in the workspace always makes it a tile of
+  its own (below the biggest tile, after that tile's stack, never into
+  it); going to one that is — a link, the sidebar, the finder, ⌘J,
+  ⌘\, Back, a found line, opening it again — goes there: a tile on its
+  own is focused, one in a stack comes to the top of it (the rest
+  behind it, as they were), and the pointer follows. Going to a tile
   squeezed down to its bar — by a link, the sidebar, the finder, ⌘J,
   Back, or opening what's already there (Browse This Folder on a
   folder shown) — grows it a little, to show some of what's in it (160

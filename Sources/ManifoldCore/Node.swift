@@ -209,7 +209,9 @@ extension ArrangementState {
         }
         let anchor = below.flatMap { id in columns[c].firstIndex { $0.id == id } }
             ?? biggestTile(inColumn: c).flatMap { b in columns[c].firstIndex { $0.id == b.id } }
-        let at = anchor.map { $0 + 1 } ?? columns[c].count
+        // After the anchor's stack, not inside it: placed straight after
+        // the top, the new tile would take the stack behind it as its own.
+        let at = anchor.map { $0 + 1 + followers(of: columns[c][$0].id).count } ?? columns[c].count
         return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: c, at: at)]
     }
 
@@ -262,17 +264,25 @@ extension ArrangementState {
         return [.heights([id: 0, heir.id: height(of: heir.id) + height(of: id)])]
     }
 
-    /// Heights after a stashed tile comes back: the lower half of the tile
-    /// it was behind.
-    /// Events that bring a tile into view and focus: a maximized other
-    /// tile gives way, a stashed one comes back (as its tile's lower
-    /// half), and it is focused.
+    /// Events that bring a tile into view and focus, as going to its
+    /// block does (a link, the finder, the sidebar, ⌘J, Back): a maximized
+    /// other tile gives way, a stashed one comes to the top of its stack
+    /// (the rest of the stack behind it, as it was), and it's focused.
     public func revealing(_ id: PlacementID) -> [Event] {
-        var events: [Event] = isStashed(id) ? unstashing(id) : [.focus(id)]
+        var events: [Event] = isStashed(id) ? toppingStack(id) : [.focus(id)]
         if let full, full != id { events.insert(.full(nil), at: 0) }
         return events
     }
 
+    /// A stashed tile to the top of its stack, in the stack's place and
+    /// room; the tile that was on top, and its stack, behind it.
+    public func toppingStack(_ id: PlacementID) -> [Event] {
+        guard isStashed(id), let top = tile(behind: id) else { return isStashed(id) ? unstashing(id) : [.focus(id)] }
+        return unstashing(id) + [.stash(top.id, behind: id), .focus(id)]
+    }
+
+    /// Heights after a stashed tile comes back on its own: the lower half
+    /// of the tile it was behind.
     public func unstashing(_ id: PlacementID) -> [Event] {
         guard let (c, i) = locate(id), isStashed(id) else { return [] }
         guard let top = tile(behind: id) else { return [.heights([id: 1])] }
