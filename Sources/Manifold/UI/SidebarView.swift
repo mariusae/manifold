@@ -382,11 +382,15 @@ final class ClosureMenuItem: NSMenuItem {
 /// clicked, its list.
 final class FootRowView: NSView {
     var onClick: (() -> Void)?
-    var count = 0 { didSet { countLabel.stringValue = count == 0 ? "" : "\(count)"; needsLayout = true } }
+    var count = 0 { didSet { countLabel.stringValue = count == 0 ? "" : "\(count)"; countLabel.isHidden = count == 0; needsLayout = true } }
     var current = false { didSet { label.textColor = current ? Theme.text : Theme.secondaryText; icon.contentTintColor = label.textColor } }
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
-    private let countLabel = NSTextField(labelWithString: "")
+    /// The count in the same capsule as the tree's, its right edge on
+    /// theirs (the row sits in the sidebar as the tree's rows do, less
+    /// the room the tree keeps at its right).
+    private let countLabel = CountPill()
+    static let countRightInset: CGFloat = 18
     private var hovering = false { didSet { needsDisplay = true } }
 
     init(title: String, symbol: String) {
@@ -396,9 +400,6 @@ final class FootRowView: NSView {
         label.stringValue = title
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = Theme.secondaryText
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        countLabel.textColor = Theme.secondaryText
-        countLabel.alignment = .right
         for v in [icon, label, countLabel] { addSubview(v) }
     }
 
@@ -408,8 +409,8 @@ final class FootRowView: NSView {
         super.layout()
         let h = bounds.height
         icon.frame = NSRect(x: 12, y: (h - 12) / 2, width: 14, height: 12)
-        let cw = ceil(countLabel.intrinsicContentSize.width) + 6
-        countLabel.frame = NSRect(x: bounds.width - 10 - cw, y: (h - 15) / 2, width: cw, height: 15)
+        let cw = countLabel.wantedWidth
+        countLabel.frame = NSRect(x: bounds.width - Self.countRightInset - cw, y: ((h - CountPill.height) / 2).rounded(), width: cw, height: CountPill.height)
         label.frame = NSRect(x: 32, y: (h - 16) / 2, width: max(0, countLabel.frame.minX - 40), height: 16)
     }
 
