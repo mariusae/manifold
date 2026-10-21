@@ -75,6 +75,18 @@ done
 github_file tonsky/FiraCode $fira LICENSE "$out/LICENSE"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
 
+# JetBrains Mono (OFL), for the Tiempos/JetBrains theme.
+jb=2.304
+out=Frameworks/jetbrainsmono
+mkdir -p "$out"
+zip=vendor/JetBrainsMono-$jb.zip
+[ -f "$zip" ] || curl -sSfL -o "$zip" "https://github.com/JetBrains/JetBrainsMono/releases/download/v$jb/JetBrainsMono-$jb.zip"
+for face in Regular Italic Medium MediumItalic SemiBold SemiBoldItalic Bold BoldItalic; do
+  [ -s "$out/JetBrainsMono-$face.ttf" ] || unzip -qjo "$zip" "fonts/ttf/JetBrainsMono-$face.ttf" -d "$out"
+done
+[ -s "$out/OFL.txt" ] || unzip -qjo "$zip" "OFL.txt" -d "$out"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+
 # Tiempos Text, for the Tiempos themes: copied, not fetched.
 tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
 out=Frameworks/tiempos

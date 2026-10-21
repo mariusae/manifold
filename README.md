@@ -338,7 +338,8 @@ when you find it again.
   width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
   width, the system font for the UI), Tiempos (Tiempos Text, Menlo),
-  Tiempos/Fira (Tiempos Text, Fira Code), Mona (Mona Sans, Monaspace),
+  Tiempos/Fira (Tiempos Text, Fira Code), Tiempos/JetBrains (Tiempos
+  Text, JetBrains Mono), Mona (Mona Sans, Monaspace),
   Recursive, Go, or System (SF, SF Mono). All but SF are bundled;
   Tiempos Text is licensed, so the build copies it from your own fonts
   (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts)
@@ -727,7 +728,7 @@ is migrated into logs on first run.
 
 ```
 scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds Frameworks/
-scripts/fetch-fonts.sh      # once: fetches Monaspace, Mona Sans, Recursive and Go into Frameworks/; copies Tiempos Text and Berkeley Mono
+scripts/fetch-fonts.sh      # once: fetches Monaspace, Mona Sans, Recursive, Go, Fira Code and JetBrains Mono into Frameworks/; copies Tiempos Text and Berkeley Mono
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```
