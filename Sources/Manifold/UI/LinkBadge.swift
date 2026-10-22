@@ -189,14 +189,16 @@ final class LinkBadge: NSView {
                 }
             }
         }
-        layoutSheets()
+        // Where the first pill is going, not where it is mid-animation:
+        // the sheets and the folding pills go by that.
+        layoutSheets(around: first)
         for (i, p) in pills.enumerated() {
             let pw = common
             let y = fansDown ? capsuleY - 4 - CGFloat(i + 1) * Self.step + (Self.step - Self.capsuleHeight) : Self.capsuleHeight + 4 + CGFloat(i) * Self.step
             let target = NSRect(x: right - pw, y: y, width: pw, height: Self.capsuleHeight)
             if fanned {
                 if p.isHidden {
-                    p.frame = badge.frame
+                    p.frame = first
                     p.isHidden = false
                     NSAnimationContext.runAnimationGroup { ctx in
                         ctx.duration = 0.16
@@ -209,7 +211,7 @@ final class LinkBadge: NSView {
             } else if !p.isHidden {
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.12
-                    p.animator().frame = self.badge.frame
+                    p.animator().frame = first
                 }, completionHandler: { [weak self, weak p] in
                     guard let self, let p, !self.fanned else { return }
                     p.isHidden = true
@@ -225,7 +227,7 @@ final class LinkBadge: NSView {
     /// at most), each peeking out a little further to its right and a
     /// little shorter than the one before, as a stack of cards; gone while
     /// the rest are fanned out.
-    private func layoutSheets() {
+    private func layoutSheets(around first: NSRect) {
         let wanted = fanned ? 0 : min(pills.count, 2)
         while sheets.count > wanted { sheets.removeLast().removeFromSuperlayer() }
         while sheets.count < wanted {
@@ -239,7 +241,7 @@ final class LinkBadge: NSView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (i, l) in sheets.enumerated() {
                 let level = CGFloat(i + 1)
-                let r = badge.frame.insetBy(dx: 0, dy: 1.5 * level).offsetBy(dx: Self.sheetStep * level, dy: 0)
+                let r = first.insetBy(dx: 0, dy: 1.5 * level).offsetBy(dx: Self.sheetStep * level, dy: 0)
                 l.zPosition = -level
                 l.path = CGPath(roundedRect: r, cornerWidth: r.height / 2, cornerHeight: r.height / 2, transform: nil)
                 l.fillColor = Theme.sheet(level: i + 1).cgColor
@@ -281,6 +283,10 @@ final class LinkBadge: NSView {
     func debugFan(_ open: Bool) { fanned = open && !pills.isEmpty }
     var debugTitles: [String] { ([badge] + pills).map { ($0.direction == "arrow.right" ? "→ " : "← ") + $0.title } }
     var debugSheets: Int { sheets.count }
+    /// Debugging: the first pill's frame and each sheet's, in the badge.
+    var debugGeometry: String {
+        "pill \(NSStringFromRect(badge.frame)) sheets " + sheets.map { NSStringFromRect($0.path?.boundingBox ?? .zero) }.joined(separator: " ")
+    }
     /// Debugging: the first link's pill's middle, in the window from its top left.
     var debugCapsuleCenter: NSPoint? {
         guard let frameView = window?.contentView?.superview else { return nil }

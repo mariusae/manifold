@@ -469,6 +469,7 @@ final class GridView: NSView, NSDraggingSource {
         b.layoutSubtreeIfNeeded()
         let folded = b.debugSheets
         if arg == "fold" { return "folded, sheets \(folded)" + (b.debugCapsuleCenter.map { " at \(Int($0.x)) \(Int($0.y))" } ?? "") }
+        if arg == "geometry" { return b.debugGeometry }
         b.debugFan(true)
         b.layoutSubtreeIfNeeded()
         let words = arg.split(separator: " ")
