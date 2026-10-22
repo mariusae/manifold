@@ -434,6 +434,13 @@ when you find it again.
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
   preview).
+- **A block's address**, `manifold:host/id`, opens it from any app on
+  the Mac — pasted in Slack, a note in Notes, a commit message, or
+  `open manifold:…` in a shell — going there as a link in a note does
+  (a terminal's `#command=N` to that command). Copy Link in a tile's
+  menu puts it on the clipboard: a link where links are taken, named
+  for the block; text elsewhere; the block's pill in a note. Copy Path
+  and Reveal in Finder are beside it.
 - **Links** go by the click: ⌘-click a web address — in a terminal, an
   editor, a preview or a web page — and the system's browser opens it;
   ⇧⌘-click and it opens in Manifold's own web lens beside (a plain click

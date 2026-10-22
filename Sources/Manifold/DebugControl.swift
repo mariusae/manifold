@@ -327,6 +327,16 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "openlink":
+            // "openlink manifold:host/ulid[#command=N]": as from another app.
+            wc?.openLink(arg)
+            return "ok"
+        case "copylink":
+            // The focused block's link copied: what the clipboard holds.
+            guard let wc, let b = wc.debugFocusedBlock else { return "nothing focused" }
+            wc.copyLink(to: b)
+            let pb = NSPasteboard.general
+            return (pb.types ?? []).map { "\($0.rawValue): \(pb.string(forType: $0) ?? "")" }.joined(separator: "\n")
         case "gridpath":
             return wc?.debugGridPath(arg) ?? "no window"
         case "dockopen":

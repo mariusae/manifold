@@ -4722,11 +4722,56 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem(viewing ? "Edit" : "View", symbol: viewing ? "pencil" : "eye", key: "\r") { [weak self] in self?.toggleMode(placement) })
         }
         menu.addItem(.separator())
+        for item in copyItems(for: block) { menu.addItem(item) }
+        menu.addItem(.separator())
         menu.addItem(hostSubmenu(block.host))
         menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
             self?.hosts.append(.remove(placement), to: .block(id))
         })
         return menu
+    }
+
+    /// Copy Link (a `manifold:` address that opens the block from any app
+    /// on this Mac — Slack, Notes, a commit message); Copy Path and Reveal
+    /// in Finder for what has a place.
+    func copyItems(for block: BlockID) -> [NSMenuItem] {
+        guard let b = hosts.block(block) else { return [] }
+        var items: [NSMenuItem] = [ClosureMenuItem("Copy Link", symbol: "link") { [weak self] in self?.copyLink(to: block) }]
+        if let path = b.path ?? b.terminal?.cwd ?? b.place {
+            items.append(ClosureMenuItem("Copy Path", symbol: "doc.on.clipboard") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(path, forType: .string)
+            })
+            if block.host == host.host, FileManager.default.fileExists(atPath: path) {
+                items.append(ClosureMenuItem("Reveal in Finder", symbol: "folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                })
+            }
+        }
+        return items
+    }
+
+    /// The block's address on the clipboard: as a link where links are
+    /// taken (its name over it), as text elsewhere, as a block's link in a note.
+    func copyLink(to block: BlockID, fragment: String? = nil) {
+        guard let b = hosts.block(block) else { return }
+        let address = "manifold:\(block.description)" + (fragment.map { "#" + $0 } ?? "")
+        let title = b.displayTitle.replacingOccurrences(of: "]", with: "\\]")
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        let item = NSPasteboardItem()
+        item.setString(address, forType: .string)
+        item.setString(address, forType: .URL)
+        item.setString("<a href=\"\(address)\">\(b.displayTitle.replacingOccurrences(of: "<", with: "&lt;"))</a>", forType: .html)
+        item.setString("[\(title)](\(address))", forType: .manifoldBlockLink)
+        pb.writeObjects([item])
+    }
+
+    /// A `manifold:` address opened from another app (or the command
+    /// line): the block gone to, as a link in a note goes.
+    func openLink(_ address: String) {
+        guard BlockID.link(address) != nil else { return NSSound.beep() }
+        open(address, from: arrangement?.focused)
     }
 
     /// A block's neighborhood (§3.5), each edge kind and direction that

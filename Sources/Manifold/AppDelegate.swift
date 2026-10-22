@@ -45,10 +45,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             wc.showWindow(nil)
             NSApp.activate()
-            if !openWhenReady.isEmpty {
-                let paths = openWhenReady
+            if !openWhenReady.isEmpty || !linksWhenReady.isEmpty {
+                let paths = openWhenReady, links = linksWhenReady
                 openWhenReady = []
-                DispatchQueue.main.async { wc.openPaths(paths) }
+                linksWhenReady = []
+                // Once the hosts have said what blocks there are.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    wc.openPaths(paths)
+                    links.forEach(wc.openLink)
+                }
             }
         }
         windowController?.render()
@@ -61,12 +66,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openWhenReady: [String] = []
 
     func application(_ sender: NSApplication, open urls: [URL]) {
+        // manifold: addresses, from another app: the blocks gone to.
+        let links = urls.filter { $0.scheme == "manifold" }.map(\.absoluteString)
         let paths = urls.filter(\.isFileURL).map(\.path)
-        guard let wc = windowController else { openWhenReady += paths; return }
+        guard let wc = windowController else { openWhenReady += paths; linksWhenReady += links; return }
         NSApp.activate()
         wc.window?.makeKeyAndOrderFront(nil)
         wc.openPaths(paths)
+        links.forEach(wc.openLink)
     }
+    private var linksWhenReady: [String] = []
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         windowController?.dockMenu()
