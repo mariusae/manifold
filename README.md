@@ -346,7 +346,8 @@ when you find it again.
   the app with no pty or process of its own: what the shell prints goes
   straight into it, off the main thread, and what's typed goes up the
   stream. A terminal whose host goes away keeps what it showed, and
-  attaches again when the host is back; a remote host is one ssh session
+  picks up where it was when the host is back — its history, scroll and
+  selection kept, caught up with the screen; a remote host is one ssh session
   however many terminals it has. The host keeps each terminal itself, in
   the same emulator (Ghostty's, built into the server): a terminal
   attaching is sent a snapshot of it — screen, modes, cursor, a full-

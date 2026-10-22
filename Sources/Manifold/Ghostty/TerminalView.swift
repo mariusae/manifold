@@ -40,9 +40,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     var focusView: NSView { self }
     /// A surface can't be made while no display is awake; one that failed
-    /// is made again after a moment. One whose host went away keeps what it
-    /// showed until the host is back, then is made again (and attaches anew).
-    var isDead: Bool { (surface == nil && Date().timeIntervalSince(created) >= 2) || (linkLost && link.linkUp) }
+    /// is made again after a moment.
+    var isDead: Bool { surface == nil && Date().timeIntervalSince(created) >= 2 }
 
     /// Its stream to the shell (§8).
     let link: TerminalLink
@@ -95,9 +94,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// The stream closed: the shell ended (or the server let it go), and
     /// the tile closes, to be made again; or the host went, and what it
-    /// shows stays until the host is back.
+    /// shows stays until the host is back (`resumeIfLinkBack`).
     private func linkClosed() {
         if link.linkUp { surfaceClosed() } else { linkLost = true }
+    }
+
+    /// Its host is back: attached again where it was — its history, its
+    /// scroll, its selection kept — and caught up with the screen.
+    func resumeIfLinkBack() {
+        guard linkLost, link.linkUp else { return }
+        linkLost = false
+        link.resume()
     }
 
     required init?(coder: NSCoder) { fatalError() }

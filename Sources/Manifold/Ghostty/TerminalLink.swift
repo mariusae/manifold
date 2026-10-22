@@ -22,6 +22,8 @@ final class TerminalLink {
     private var size: (cols: UInt16, rows: UInt16) = (80, 24)
     private var attaching = false
     private var attached = false
+    /// Attached once: what it shows is its own, kept when it resumes.
+    private var everAttached = false
     /// Typing waits until the shell's recent output has been replayed (its
     /// queries answered by the terminal as it was, not typed now).
     private var acceptInput = false
@@ -81,7 +83,18 @@ final class TerminalLink {
 
     // MARK: The stream
 
-    private func attach() {
+    /// The host's link is back: attached again, the terminal as it is —
+    /// what it showed kept, caught up with the screen now.
+    func resume() {
+        let go: (Bool, resume: Bool) = lock.withLock {
+            guard !attached, !attaching else { return (false, false) }
+            attaching = true
+            return (true, everAttached)
+        }
+        if go.0 { attach(resume: go.resume) }
+    }
+
+    private func attach(resume: Bool = false) {
         guard let mux = client?.mux else {
             // No link yet: closed now, made again once there is one.
             lock.withLock { attaching = false }
@@ -92,15 +105,21 @@ final class TerminalLink {
         let stream = mux.open(bulk: true, urgent: true, callbackQueue: queue)
         stream.onFrame = { [weak self] frame in self?.received(frame) }
         stream.onClose = { [weak self] in
+            self?.lock.withLock {
+                self?.stream = nil
+                self?.attached = false
+                self?.acceptInput = false
+            }
             DispatchQueue.main.async { self?.onClosed?() }
         }
         let size: (cols: UInt16, rows: UInt16) = lock.withLock {
             self.stream = stream
             attaching = false
             attached = true
+            everAttached = true
             return self.size
         }
-        stream.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment))))
+        stream.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume))))
     }
 
     /// On `queue`.

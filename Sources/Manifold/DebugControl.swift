@@ -80,7 +80,8 @@ enum DebugControl {
         case "screen":
             // What the focused terminal shows, as text.
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
-            return t.visibleText
+            // Its identity first: whether it's the same view as before.
+            return "view \(UInt(bitPattern: ObjectIdentifier(t).hashValue))\n" + t.visibleText
         case "text":
             guard let t = wc?.debugFocusedTerminal, let s = t.surface else { return "no terminal focused" }
             let text = arg.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\n", with: "\n")

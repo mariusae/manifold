@@ -168,7 +168,7 @@ final class Session {
     /// answers it is still waiting for — and the attachment is told so.
     private var replayShown = false
 
-    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16) {
+    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16, resume: Bool = false) {
         attachments.append(conn)
         sizes[ObjectIdentifier(conn)] = (cols, rows)
         // At its size first, so the snapshot is drawn for it.
@@ -176,7 +176,7 @@ final class Session {
         if let screen {
             // The terminal as it is: its queries were answered when they came,
             // so what's typed now goes straight through.
-            conn.send(Frame(.data, screen.attaching))
+            conn.send(Frame(.data, resume ? screen.catchUp : screen.attaching))
             conn.send(Frame(.replayDone, Data([1])))
         } else {
             conn.send(Frame(.data, replay.replay))

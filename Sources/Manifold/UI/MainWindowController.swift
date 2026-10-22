@@ -489,7 +489,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.viewing = p.lens == .preview
             }
             if let d = v as? DiffView { d.theme = hosts.state.appearance.theme }
-            if let t = v as? TerminalView { t.commands = hosts.block(p.block)?.terminal?.commands ?? [] }
+            if let t = v as? TerminalView {
+                t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+                t.resumeIfLinkBack()
+            }
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()

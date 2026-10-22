@@ -1148,7 +1148,7 @@ final class Server {
         }
         conn.onFrame = { [weak session, unowned conn] frame in session?.handle(frame, from: conn) }
         conn.onClose = { [weak session, unowned conn] in session?.detach(conn) }
-        session.attach(conn, cols: req.cols, rows: req.rows)
+        session.attach(conn, cols: req.cols, rows: req.rows, resume: req.resume == true)
     }
 
     // MARK: Forwarded ports (§8)

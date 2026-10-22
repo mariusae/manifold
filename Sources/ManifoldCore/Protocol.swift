@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 44
+public let protocolVersion = 45
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -284,12 +284,17 @@ public struct AttachRequest: Codable, Sendable {
     /// Terminal-related variables from the attaching terminal (TERM and the
     /// like), used if the attach starts a new session.
     public var env: [String: String]
+    /// The terminal was attached before and still shows what it did (its
+    /// host's link went and came back): it's caught up with the screen as
+    /// it is, its own history kept, not sent a whole snapshot.
+    public var resume: Bool?
 
-    public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String]) {
+    public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String], resume: Bool = false) {
         self.block = block
         self.cols = cols
         self.rows = rows
         self.env = env
+        self.resume = resume ? true : nil
     }
 }
 
