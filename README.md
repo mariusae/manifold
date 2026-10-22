@@ -631,7 +631,11 @@ when you find it again.
   terminal gone inactive — at the right of each tile's bar and of the
   sidebar's rows, with how long ago beside it there, and in the
   finder; the Dock badge counts the blocks that need you or are
-  done and unread. The **Inbox** (⌥⌘3, or the counts at the foot of
+  done and unread. Out of sight — Manifold not in front, or the tile
+  not showing — the Mac's **notifications** say so: a terminal, agent or
+  notebook that comes to need you, finishes or fails, and a terminal's
+  command that ran ten seconds or more ending (how long, and its exit
+  status if it failed); clicked, one goes to the block, and the command. The **Inbox** (⌥⌘3, or the counts at the foot of
   the sidebar) lists what wants attention, the unread first and how
   long ago at the right. Overview (⌘') shows a workspace's blocks
   themselves, live, as a **state view**: a list, stacked down one

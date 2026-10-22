@@ -1052,6 +1052,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "chose \(title)"
     }
 
+    /// Whether a block is in sight: Manifold in front, its window shown,
+    /// and a tile of it showing in the workspace (not stashed, not behind
+    /// a maximized one).
+    func inSight(_ block: BlockID) -> Bool {
+        guard NSApp.isActive, let window, window.isVisible, !window.isMiniaturized, stateView == nil, let a = arrangement else { return false }
+        return a.placements(of: block).contains { !a.isStashed($0.id) && (a.full == nil || a.full == $0.id) }
+    }
+
+    /// A notification clicked: to the block, and the command if one.
+    func openFromNotification(_ block: BlockID, command: Int?) {
+        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+        goTo(block)
+        if let command { goToCommand(command, in: block) }
+    }
+
     /// Paths from outside (the Dock icon, Open With): each opened in the
     /// workspace shown, from the focused tile, as a path clicked there is.
     func openPaths(_ paths: [String]) {
@@ -3434,7 +3450,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A terminal scrolled to one of its commands, once its tile is up and
     /// it has found the command's row (a moment, for a tile just made).
-    private func goToCommand(_ id: Int, in block: BlockID, tries: Int = 20) {
+    func goToCommand(_ id: Int, in block: BlockID, tries: Int = 20) {
         if let t = content.views.compactMap({ $0 as? TerminalView }).first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }), t.go(toCommand: id) { return }
         guard tries > 0 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToCommand(id, in: block, tries: tries - 1) }

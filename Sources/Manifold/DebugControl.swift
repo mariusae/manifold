@@ -327,6 +327,8 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "notifications":
+            return (NSApp.delegate as? AppDelegate)?.debugNotifications ?? "?"
         case "nudge":
             // As if the Mac woke: the hosts tried or checked now.
             wc?.hosts.nudgeHosts(after: 0)

@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: MainWindowController?
     private let agentMenu = LiveMenu()
     private var createdFirst = false
+    private let notifier = Notifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         signal(SIGPIPE, SIG_IGN)
@@ -58,7 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         windowController?.render()
+        if let wc = windowController {
+            notifier.inSight = { [weak wc] b in wc?.inSight(b) ?? false }
+            notifier.onOpen = { [weak wc] b, command in wc?.openFromNotification(b, command: command) }
+            notifier.update(hosts.blocks)
+        }
     }
+
+    var debugNotifications: String { notifier.posted.joined(separator: "\n") }
 
     /// Files and folders dropped on the Dock icon (or opened with
     /// Manifold): each opened in the workspace shown, as a path is — a
