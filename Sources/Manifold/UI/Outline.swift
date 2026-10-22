@@ -279,6 +279,8 @@ final class FloatingList: NSView {
     func hideNow() {
         hideWork?.cancel()
         hideWork = nil
+        // Its rows are used again for the next list: none left marked.
+        for r in rowViews { r.hovering = false }
         removeFromSuperview()
         opener = nil
     }
@@ -327,6 +329,7 @@ final class FloatingList: NSView {
         }
         while rowViews.count > fresh.count { rowViews.removeLast().removeFromSuperview() }
         for (i, row) in fresh.enumerated() { rowViews[i].show(row) }
+        updateHover()
     }
 
     private func position(in root: NSView) {
@@ -359,12 +362,36 @@ final class FloatingList: NSView {
         super.updateTrackingAreas()
     }
 
-    override func mouseEntered(with event: NSEvent) { hideWork?.cancel() }
-    override func mouseExited(with event: NSEvent) { scheduleHide() }
-    override func mouseMoved(with event: NSEvent) { hideWork?.cancel() }
+    override func mouseEntered(with event: NSEvent) {
+        hideWork?.cancel()
+        updateHover()
+    }
+    override func mouseExited(with event: NSEvent) {
+        scheduleHide()
+        updateHover()
+    }
+    override func mouseMoved(with event: NSEvent) {
+        hideWork?.cancel()
+        updateHover()
+    }
     // The pointer on it is its own: nothing under it hears of it.
     override func mouseDown(with event: NSEvent) {}
-    override func scrollWheel(with event: NSEvent) { scroll.scrollWheel(with: event) }
+    override func scrollWheel(with event: NSEvent) {
+        scroll.scrollWheel(with: event)
+        updateHover()
+    }
+
+    /// The one row under the pointer, from where the pointer is: rows
+    /// scrolled or filled afresh under a pointer that didn't move are told
+    /// so (each row's own tracking would leave the ones it left marked).
+    private func updateHover() {
+        guard let window else { return }
+        let p = debugPointer ?? window.mouseLocationOutsideOfEventStream
+        let inClip = scroll.contentView.convert(p, from: nil)
+        let inStack = stack.convert(p, from: nil)
+        let row = scroll.contentView.bounds.contains(inClip) ? rowViews.firstIndex { $0.frame.contains(inStack) } : nil
+        for (i, r) in rowViews.enumerated() { r.hovering = i == row }
+    }
 
     /// Debugging: where the pointer is taken to be (in the window), in place
     /// of where it is.
@@ -380,13 +407,17 @@ final class FloatingList: NSView {
         }
         let xy = words.dropFirst().compactMap { Double($0) }
         debugPointer = xy.count == 2 ? NSPoint(x: xy[0], y: xy[1]) : nil
+        updateHover()
         return "pointer \(debugPointer.map { NSStringFromPoint($0) } ?? "real") panel \(NSStringFromRect(convert(bounds, to: nil)))"
     }
 
     /// Debugging: the rows, the current one starred.
     var debugRows: String {
         guard isShown else { return "not shown" }
-        return "frame \(NSStringFromRect(frame))\n" + rows.map { "\($0.current ? "*" : " ")\($0.header ? "# " : "")\(String(repeating: "  ", count: $0.level))\($0.symbol.map { "[\($0)] " } ?? "")\($0.title)\($0.menu == nil ? "" : " ⋯")" }.joined(separator: "\n")
+        return "frame \(NSStringFromRect(frame))\n" + rows.enumerated().map { i, r in
+            (rowViews[i].hovering ? "h" : " ") + (r.current ? "*" : " ") + (r.header ? "# " : "") + String(repeating: "  ", count: r.level)
+                + (r.symbol.map { "[\($0)] " } ?? "") + r.title + (r.menu == nil ? "" : " ⋯")
+        }.joined(separator: "\n")
     }
 
     /// Debugging: as a click on a row; "menu N", its menu's items.
@@ -411,7 +442,8 @@ final class FloatingListRow: NSView {
     private let icon = NSImageView()
     private let more = IconButton(symbol: "ellipsis", size: 11, weight: .semibold, target: nil, action: nil)
     private var row = FloatingList.Row(title: "")
-    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true; more.isHidden = !hovering || row.menu == nil } } }
+    /// The pointer is on it (the list says, for one row at a time).
+    var hovering = false { didSet { if hovering != oldValue { needsDisplay = true; more.isHidden = !hovering || row.menu == nil } } }
 
     override var isFlipped: Bool { true }
 
@@ -486,15 +518,7 @@ final class FloatingListRow: NSView {
         NSBezierPath(roundedRect: NSRect(x: 10 + indent, y: (bounds.height - 2) / 2, width: length, height: 2), xRadius: 1, yRadius: 1).fill()
     }
 
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
     override func resetCursorRects() { if !row.header { addCursorRect(bounds, cursor: .pointingHand) } }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseDown(with event: NSEvent) {}
 
     override func mouseUp(with event: NSEvent) {
