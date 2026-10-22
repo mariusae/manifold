@@ -25,7 +25,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private let status = NSTextField(labelWithString: "")
     private let end = NSButton(title: "End", target: nil, action: nil)
     private let kill = NSButton(title: "Force End", target: nil, action: nil)
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let rowMenu = NSMenu()
     private var all: [ProcessEntry] = []

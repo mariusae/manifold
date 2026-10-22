@@ -204,7 +204,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private let panel: PickerPanel
     private let field = NSTextField()
     private let table = NSTableView()
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let hint = NSTextField(labelWithString: "")
     private var root = ""
     private var shown: [FinderItem] = []

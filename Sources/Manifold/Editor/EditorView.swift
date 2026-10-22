@@ -48,7 +48,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private(set) var path: String
     weak var delegate: EditorViewDelegate?
 
-    let scroll = NSScrollView()
+    let scroll = ClippingScrollView()
     let textView = TextView()
     private var banner: EditorBanner?
     private lazy var finder = FindHost(view: self, target: self)

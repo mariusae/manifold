@@ -193,13 +193,36 @@ final class IconButton: NSButton {
 /// left, instead of the system's hue — colorblind-safe, and the row's
 /// text and highlights keep their colors (`interiorBackgroundStyle`
 /// stays normal). Every table and outline makes its rows from this.
+/// A scroll view whose content ends at its edges. Without this, the
+/// content ran on past the frame — a list's rows drawn over the header
+/// above it and the rows below — since nothing here is meant to show
+/// through under bars the way the system's own lists do.
+final class ClippingScrollView: NSScrollView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        clipsToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        clipsToBounds = true
+    }
+}
+
 final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
+    override var isFloating: Bool { didSet { needsDisplay = true } }
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
+        // A section's header kept at the top as its rows scroll under it:
+        // a background of its own, so they don't show through it.
+        if isGroupRowStyle, isFloating {
+            Theme.windowBackground.setFill()
+            bounds.fill()
+        }
         guard marked else { return }
         Theme.accent.withAlphaComponent(0.85).setFill()
         NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: 3, height: bounds.height - 10), xRadius: 1.5, yRadius: 1.5).fill()

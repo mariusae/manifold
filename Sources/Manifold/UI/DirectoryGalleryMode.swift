@@ -9,7 +9,7 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
     private let preview = FilePreviewView()
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let strip = GalleryStrip()
     private let divider = NSBox()
     private var items: [BrowserNode] = []

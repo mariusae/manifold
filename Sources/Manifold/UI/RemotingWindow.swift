@@ -29,7 +29,7 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
 
     private func build() {
         guard let content = window?.contentView else { return }
-        let scroll = NSScrollView()
+        let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false

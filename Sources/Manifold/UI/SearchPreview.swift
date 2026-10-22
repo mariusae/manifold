@@ -40,7 +40,7 @@ final class SearchPreviewView: NSView {
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
 
     private let title = NSTextField(labelWithString: "")
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let text = PreviewTextView()
     private let empty = NSTextField(labelWithString: "")
     private let divider = NSBox()

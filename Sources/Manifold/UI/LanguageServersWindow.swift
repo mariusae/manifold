@@ -30,7 +30,7 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
 
     private func build() {
         guard let content = window?.contentView else { return }
-        let scroll = NSScrollView()
+        let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false

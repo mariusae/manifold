@@ -30,7 +30,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let regexButton = NSButton(title: ".*", target: nil, action: nil)
     private let rootLabel = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let preview = SearchPreviewView()
     private let split = NSBox()

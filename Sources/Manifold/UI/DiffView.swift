@@ -23,7 +23,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let rowsView = DiffRowsView()
     fileprivate var printableRows: [DiffRow] { rowsView.rows }
     private var loadedAt: Stamp?

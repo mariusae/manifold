@@ -8,7 +8,7 @@ import ManifoldCore
 final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let outline = NSOutlineView()
     /// Open folders, relative to the root (without a filter).
     private var expanded: Set<String>

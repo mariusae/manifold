@@ -39,7 +39,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private let status = NSTextField(labelWithString: "")
     private let runs = ActionCapsule()
     private let tools = ActionCapsule()
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let stack = FlippedView()
     private let addBelow = HoverLink(title: "New Cell", symbol: "plus")
     private var cells: [String: NotebookCellView] = [:]
@@ -448,7 +448,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
     let editor = CellEditor()
     private let box = NSView()
     let output = OutputTextView()
-    private let outputScroll = NSScrollView()
+    private let outputScroll = ClippingScrollView()
     private let count = NSTextField(labelWithString: "")
     private let queuedIcon = NSImageView()
     private let play = HoverIcon(symbol: "play.fill", tip: "Run (⌘↩)")

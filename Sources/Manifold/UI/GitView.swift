@@ -22,7 +22,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let header = NSTextField(labelWithString: "")
     private let branchLabel = NSTextField(labelWithString: "")
     private let refresh = NSButton(title: "", target: nil, action: nil)
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let table = NSTableView()
 
     private enum Row {

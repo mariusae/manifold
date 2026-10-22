@@ -315,7 +315,7 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
             $0.layer?.backgroundColor = Theme.panel.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
         }
-        let scroll = NSScrollView(frame: box.bounds)
+        let scroll = ClippingScrollView(frame: box.bounds)
         scroll.autoresizingMask = [.width, .height]
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true

@@ -33,7 +33,7 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
     weak var delegate: OutlineLensViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let empty = NSTextField(labelWithString: "Nothing yet")
     private var entries: [Entry] = []

@@ -25,7 +25,7 @@ final class StateView: NSView {
     private let count = NSTextField(labelWithString: "")
     private let modes = NSSegmentedControl(images: [Theme.symbol("list.bullet", size: 11)!, Theme.symbol("square.grid.2x2", size: 11)!], trackingMode: .selectOne, target: nil, action: nil)
     private let leave = IconButton(symbol: "xmark", size: 12, weight: .medium, target: nil, action: nil)
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let document = FlippedView()
     private var items: [Item] = []
     private var pills: [BlockID: TilePill] = [:]

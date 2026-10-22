@@ -23,7 +23,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
     private let scroll: NSScrollView = {
-        let s = NSScrollView()
+        let s = ClippingScrollView()
         s.contentView = CenteringClipView()
         return s
     }()

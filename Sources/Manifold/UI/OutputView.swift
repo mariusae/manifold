@@ -23,7 +23,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private let outcome = NSTextField(labelWithString: "")
     private let back = NSButton(title: "Show in Terminal", target: nil, action: nil)
     private let copy = NSButton(title: "Copy", target: nil, action: nil)
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let text = OutputFindTextView()
     private var shown: OutputState?
     private var plainText = ""

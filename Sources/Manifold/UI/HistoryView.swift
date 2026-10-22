@@ -19,7 +19,7 @@ final class HistoryView: NSView {
     private let panel = NSView()
     private let slider = NSSlider()
     private let when = NSTextField(labelWithString: "")
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let textView = TextView()
     private let textDocument = StaticDocument()
     private let compare = NSButton(title: "Compare with Now", target: nil, action: nil)

@@ -49,7 +49,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     }
 
     private(set) var entries: [Entry] = []
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let empty = NSTextField(labelWithString: "")
     private let tabs: NSSegmentedControl?

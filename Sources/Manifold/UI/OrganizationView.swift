@@ -194,7 +194,7 @@ final class DeepOutlineView: NSOutlineView {
 
 final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     weak var delegate: OrganizationViewDelegate?
-    private let scroll = NSScrollView()
+    private let scroll = ClippingScrollView()
     private let outline = DeepOutlineView()
     private var roots: [OrgNode] = []
     private var expanded: Set<String> = []
@@ -245,9 +245,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
         addSubview(scroll)
-        // Its rows end at its edge: below it are the copies on their way and
-        // the Kept and Closed rows, which they'd otherwise run on under.
-        clipsToBounds = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
