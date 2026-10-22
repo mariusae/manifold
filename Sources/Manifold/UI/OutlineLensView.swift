@@ -55,6 +55,7 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
         table.target = self
         table.action = #selector(rowClicked)
         table.dataSource = self
+        table.setDraggingSourceOperationMask([.copy, .generic], forLocal: false)
         table.delegate = self
         table.rowHeight = 22
         table.style = .plain
@@ -140,6 +141,14 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
+
+    /// A command dragged out: its text. (A heading: its words.)
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard entries.indices.contains(row) else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(entries[row].title, forType: .string)
+        return item
+    }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

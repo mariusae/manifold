@@ -1616,7 +1616,9 @@ final class TextView: NSView, NSTextInputClient {
     /// A link alone (⌥⇧-dragged) isn't put in: the grid links the tile
     /// it's dropped on, as it does over any tile.
     private func linkOnlyGrid(_ sender: NSDraggingInfo?) -> GridView? {
-        guard sender?.draggingPasteboard.types?.contains(.manifoldLinkOnly) == true else { return nil }
+        // Nor does a text that can't be edited take anything: a file dropped
+        // opens, a ⇧-dragged block links, as over any tile.
+        guard sender?.draggingPasteboard.types?.contains(.manifoldLinkOnly) == true || !isEditable else { return nil }
         var v = superview
         while let s = v, !(s is GridView) { v = s.superview }
         return v as? GridView
@@ -1706,6 +1708,14 @@ final class TextView: NSView, NSTextInputClient {
             dragAnchor = Selection(last.anchor, offset)
             return
         }
+        // Pressed in the selection: it may be dragged out (as a text view's
+        // is); let go without moving, and it's a click.
+        if event.clickCount == 1, flags.isDisjoint(with: [.option, .command]),
+           selections.contains(where: { !$0.isCaret && $0.min <= offset && offset < $0.max }) {
+            pressedInSelection = (event.locationInWindow, offset)
+            dragAnchor = nil
+            return
+        }
         var sel: Selection
         switch dragMode {
         case 2: sel = Selection(wordStart(offset), wordEnd(offset))
@@ -1723,7 +1733,17 @@ final class TextView: NSView, NSTextInputClient {
         dragAnchor = sel
     }
 
+    /// Where the mouse went down in the selection, while it may yet drag it.
+    private var pressedInSelection: (at: NSPoint, offset: Int)?
+
     override func mouseDragged(with event: NSEvent) {
+        if let pressed = pressedInSelection {
+            let p = event.locationInWindow
+            guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
+            pressedInSelection = nil
+            dragSelection(event)
+            return
+        }
         guard let anchor = dragAnchor else { return }
         let p = convert(event.locationInWindow, from: nil)
         autoscroll(with: event)
@@ -1745,7 +1765,35 @@ final class TextView: NSView, NSTextInputClient {
         setSelections(selections.dropLast() + [s], scroll: false)
     }
 
-    override func mouseUp(with event: NSEvent) { dragAnchor = nil }
+    override func mouseUp(with event: NSEvent) {
+        // Pressed in the selection and let go: a click there, the caret put down.
+        if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
+        pressedInSelection = nil
+        dragAnchor = nil
+    }
+
+    /// The selected text, dragged: to another app, a terminal, a note, or
+    /// elsewhere here (where it's put as a copy).
+    private func dragSelection(_ event: NSEvent) {
+        let s = selectedText
+        guard !s.isEmpty else { return }
+        let item = NSPasteboardItem()
+        item.setString(s, forType: .string)
+        let drag = NSDraggingItem(pasteboardWriter: item)
+        let shown = String(s.prefix(200)).replacingOccurrences(of: "\t", with: "  ")
+        let label = NSAttributedString(string: shown.split(separator: "\n", omittingEmptySubsequences: false).prefix(6).joined(separator: "\n"),
+                                       attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor])
+        let size = NSSize(width: min(ceil(label.size().width) + 12, 420), height: min(ceil(label.size().height) + 8, 140))
+        let image = NSImage(size: size, flipped: false) { r in
+            NSColor.windowBackgroundColor.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5).fill()
+            label.draw(in: r.insetBy(dx: 6, dy: 4))
+            return true
+        }
+        let p = convert(event.locationInWindow, from: nil)
+        drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
+        beginDraggingSession(with: [drag], event: event, source: self)
+    }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 
@@ -2014,5 +2062,11 @@ final class TextView: NSView, NSTextInputClient {
         let n = caretLine
         let lineText = text.lineText(n)
         return utf16Index(in: lineText, byteOffset: primarySelection.head - text.offset(ofLine: n)) + 1
+    }
+}
+
+extension TextView: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .generic]
     }
 }

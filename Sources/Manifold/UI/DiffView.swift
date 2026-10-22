@@ -166,6 +166,11 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
                 self.rowsView.scroll(NSPoint(x: 0, y: max(r.minY - 4, 0)))
                 self.sidebar?.current = i
             }
+            // A file (or a change in it) dragged out: the file, on the diff's host.
+            s.writerFor = { [weak self] i in
+                guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
+                return Drags.path?(path, false, self.block.host, Drags.modifiers)
+            }
             s.isHidden = true
             addSubview(s)
             sidebar = s
@@ -197,6 +202,17 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+
+    /// The file a row is in, as a path on the diff's host.
+    func filePath(ofRow i: Int) -> String? {
+        guard let subject = source()?.diff?.subject, rowsView.rows.indices.contains(i) else { return nil }
+        switch subject {
+        case let .sides(_, new): return new.path
+        case .versions: return source()?.path
+        case let .commit(root, _), let .patch(root, _), let .uncommitted(root), let .since(root, _, _), let .trees(root, _, _, _):
+            return rowsView.file(of: rowsView.rows[i]).map { root + "/" + $0 }
+        }
+    }
 
     private func markCurrent() {
         guard let sidebar, !sidebar.isHidden else { return }

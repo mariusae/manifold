@@ -67,6 +67,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         table.addTableColumn(column)
         table.headerView = nil
         table.dataSource = self
+        table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
         table.rowHeight = 22
         table.style = .plain
@@ -196,6 +197,12 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    /// A change dragged out: its file, as a folder's entry is.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard rows.indices.contains(row), case let .change(entry) = rows[row] else { return nil }
+        return Drags.path?(root + "/" + entry.path, false, block.host, Drags.modifiers)
+    }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {

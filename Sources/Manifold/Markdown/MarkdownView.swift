@@ -8,6 +8,8 @@ protocol MarkdownViewDelegate: AnyObject {
     func markdownView(_ view: MarkdownView, follow url: URL, modifiers: NSEvent.ModifierFlags)
     /// A heading was gone to and is at the top (the pointer may follow).
     func markdownViewDidReveal(_ view: MarkdownView)
+    /// An image dropped on the page, for the text to show.
+    func markdownView(_ view: MarkdownView, image data: Data, kind: String)
 }
 
 /// The preview lens on a text block: its Markdown rendered by cmark-gfm into
@@ -121,6 +123,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         web.unregisterDraggedTypes()
+        // Images dropped on the page go into the text (at its end).
+        registerForDraggedTypes([.fileURL, .png, .tiff])
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)
@@ -180,6 +184,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private var sidebar: TileSidebar?
     private var headingLevels: [(title: String, level: Int)] = []
     private var sidebarRestored = false
+    /// The page shows a note or a Markdown file, which images dropped go into.
+    var acceptsImages = false
     /// How far down the page is, as last seen.
     private var scrollY: Double = 0
     var navLocation: NavLocation? { .offset(scrollY) }
@@ -448,4 +454,30 @@ extension MarkdownView: Searchable {
 extension MarkdownView: Printable {
     /// The page as rendered.
     func printOperation() -> NSPrintOperation? { webPrint }
+}
+
+extension MarkdownView {
+    /// Images, for a text that takes them; anything else is the grid's
+    /// (a file opened where it lands, a link made), handed on.
+    private func takesImages(_ sender: NSDraggingInfo?) -> Bool {
+        guard acceptsImages, let pb = sender?.draggingPasteboard else { return false }
+        return !TextView.images(on: pb).isEmpty
+    }
+
+    private var grid: GridView? {
+        var v = superview
+        while let s = v, !(s is GridView) { v = s.superview }
+        return v as? GridView
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        takesImages(sender) ? .copy : grid?.draggingUpdated(sender) ?? []
+    }
+    override func draggingExited(_ sender: NSDraggingInfo?) { grid?.draggingExited(sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard takesImages(sender) else { return grid?.performDragOperation(sender) ?? false }
+        for (data, kind) in TextView.images(on: sender.draggingPasteboard) { delegate?.markdownView(self, image: data, kind: kind) }
+        return true
+    }
 }

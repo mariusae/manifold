@@ -13,6 +13,9 @@ protocol GridDelegate: AnyObject {
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
     /// Files dropped from outside: opened where they landed.
     func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool)
+    /// Something from another app dropped on the grid: a web address, an
+    /// image, text — made a block of its own where it lands.
+    func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool)
     /// Entries dragged from a folder's tile, on its host (another's too).
     func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool)
     /// Another arrangement dropped: its columns come over at `column`.
@@ -152,10 +155,33 @@ final class GridView: NSView, NSDraggingSource {
         wantsLayer = true
         layer?.backgroundColor = .clear
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath, .URL, .string, .png, .tiff])
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// What another app drags that the grid makes a block of.
+    enum Dropped {
+        case web(URL)
+        case image(Data, String)
+        case text(String)
+    }
+
+    /// A web address, an image or text from another app (none of ours, no
+    /// files): what it becomes.
+    static func dropped(_ pb: NSPasteboard) -> Dropped? {
+        let ours: [NSPasteboard.PasteboardType] = [.manifoldPlacement, .manifoldBlock, .manifoldArrangement, .manifoldBlockLink, .manifoldPath, .fileURL]
+        guard !(pb.types ?? []).contains(where: ours.contains) else { return nil }
+        if let url = (pb.readObjects(forClasses: [NSURL.self]) as? [URL])?.first, url.scheme == "http" || url.scheme == "https" { return .web(url) }
+        if let png = pb.data(forType: .png) { return .image(png, "png") }
+        if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) { return .image(png, "png") }
+        if let s = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            if !s.contains(" "), !s.contains("\n"), let url = URL(string: s), url.scheme == "http" || url.scheme == "https" { return .web(url) }
+            return .text(s)
+        }
+        return nil
+    }
+    private var dropOther: Dropped?
 
     /// A folder's entries being dragged, on their host.
     private static func droppedPaths(_ pb: NSPasteboard) -> [(host: HostID, path: String, isDirectory: Bool)] {
@@ -977,6 +1003,15 @@ final class GridView: NSView, NSDraggingSource {
             return .copy
         }
         dropFiles = false
+        dropOther = nil
+        if !pathDrag, let thing = Self.dropped(pb), let target = dropTarget(at: point, dragged: nil) {
+            // From another app: a page, a picture, words — a block of its own where it lands.
+            showDrop(target.rect)
+            drop = target
+            dropOther = thing
+            dropLinks = false
+            return .copy
+        }
         if pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil,
            let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
             // ⇧-drag: a block's link, over a tile whose view didn't take it
@@ -1162,6 +1197,11 @@ final class GridView: NSView, NSDraggingSource {
         defer { hideDrop() }
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
+        if let thing = dropOther {
+            dropOther = nil
+            delegate?.gridOpenDropped(thing, column: target.column, at: target.at, newColumn: target.newColumn)
+            return true
+        }
         if dropFiles {
             dropFiles = false
             // A folder's entries on their host, another's too; else files.

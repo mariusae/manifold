@@ -121,6 +121,9 @@ enum OrgDragItem {
 }
 
 protocol OrganizationViewDelegate: AnyObject {
+    /// A row ⇧-dragged: not the block to move but what it stands for (its
+    /// path, its file, its link), as a tile's ⇧-dragged pill is.
+    func organizationPathItem(for block: BlockID, modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?
     /// A row was clicked: show its block here, or beside (§3.1); go to
     /// an arrangement; focus a column.
     func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags)
@@ -367,6 +370,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             return pb
         }
         guard let node = item as? OrgNode, let block = node.block else { return nil }
+        // ⇧: what it stands for, for a terminal, an editor, a note, a tile, the Finder.
+        let mods = NSEvent.modifierFlags
+        if mods.contains(.shift) {
+            pathDrag = true
+            return delegate?.organizationPathItem(for: block, modifiers: mods)
+        }
+        pathDrag = false
         let pb = NSPasteboardItem()
         pb.setString(block.description, forType: .manifoldBlock)
         if let a = node.arrangement, node.column == nil { pb.setString(a.description, forType: .manifoldArrangement) }
@@ -374,19 +384,25 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return pb
     }
 
+    /// The drag under way is a ⇧-drag (a path, a link): the views under the
+    /// grid take it, so the grid's catcher stays out of the way.
+    private var pathDrag = false
+
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
         HoverCard.shared.hide()
-        delegate?.organizationDragChanged(true)
+        if !pathDrag { delegate?.organizationDragChanged(true) }
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         springWork?.cancel()
         springNode = nil
         delegate?.organizationDragChanged(false)
+        pathDrag = false
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .withinApplication ? [.move, .copy] : []
+        if pathDrag { return [.copy, .link, .generic] }
+        return context == .withinApplication ? [.move, .copy] : []
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {

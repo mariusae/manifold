@@ -72,10 +72,32 @@ final class LinkBadge: NSView {
             self.onBreak?(c.link)
         }
         badge.onMenu = { [weak self] in self?.showMenu() }
+        badge.onDragStart = { [weak self] event in
+            guard let self, let c = self.cards.first else { return }
+            self.drag(c.block, from: self.badge, event)
+        }
         addSubview(badge)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A link's pill dragged: the block, to bring where it's dropped; with
+    /// ⇧ what it stands for (its path, its link), as a tile's pill is.
+    private func drag(_ block: BlockID, from view: NSView, _ event: NSEvent) {
+        guard let item = Drags.block?(block, event.modifierFlags) else { return }
+        let drag = NSDraggingItem(pasteboardWriter: item)
+        // The pill itself, under the pointer.
+        let picture = NSImage(size: view.bounds.size)
+        if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+            view.cacheDisplay(in: view.bounds, to: rep)
+            picture.addRepresentation(rep)
+        }
+        drag.setDraggingFrame(view.bounds, contents: picture)
+        dragIsPath = event.modifierFlags.contains(.shift)
+        view.beginDraggingSession(with: [drag], event: event, source: self)
+    }
+
+    private var dragIsPath = false
 
     /// The capsule's menu: the map, and the link broken.
     private func showMenu() {
@@ -128,6 +150,10 @@ final class LinkBadge: NSView {
             let block = card.block, link = card.link
             p.onClick = { [weak self] over in self?.onOpen?(block, over) }
             p.onBreak = { [weak self] in self?.onBreak?(link) }
+            p.onDragStart = { [weak self, weak p] event in
+                guard let self, let p else { return }
+                self.drag(block, from: p, event)
+            }
             addSubview(p)
             return p
         }
@@ -381,5 +407,11 @@ final class LinkBadge: NSView {
             guard bounds.contains(p) else { return }
             if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags.contains(.option)) }
         }
+    }
+}
+
+extension LinkBadge: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        dragIsPath ? [.copy, .link, .generic] : (context == .withinApplication ? [.copy, .move] : [])
     }
 }

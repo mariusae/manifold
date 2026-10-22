@@ -16,6 +16,9 @@ struct FinderItem {
     /// (two lines' worth shown), and the query, marked wherever it is.
     var excerpt: String? = nil
     var marked: String? = nil
+    /// Dragged out of the list: the block (to bring; with ⇧ its path and
+    /// link), or the file.
+    var drag: (() -> NSPasteboardWriting?)? = nil
 }
 
 /// Something to be found (§3.5): taken when the finder opens, and ranked
@@ -40,8 +43,11 @@ struct FinderCandidate: Sendable {
     /// Which of the finder's actions it runs; -1 for a file, opened by `path`.
     var action: Int
     var path: String?
+    /// The block it is, if one.
+    var block: BlockID?
 
-    init(symbol: String, title: String, detail: String, note: String, name: String, aliases: [String] = [], around: String, distance: Int, recency: Int64, action: Int, path: String? = nil) {
+    init(symbol: String, title: String, detail: String, note: String, name: String, aliases: [String] = [], around: String, distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil) {
+        self.block = block
         self.aliases = aliases.map { $0.lowercased() }
         self.symbol = symbol
         self.title = title
@@ -260,6 +266,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         table.selectionHighlightStyle = .regular
         table.addTableColumn(NSTableColumn(identifier: .init("item")))
         table.dataSource = self
+        table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
         table.target = self
         table.action = #selector(clicked(_:))
@@ -483,7 +490,11 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             let run: () -> Void
             if let path = c.path, c.action < 0 { run = { [weak self] in self?.openFile?(path) } }
             else { let a = actions[c.action]; run = a }
-            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run)
+            let drag: (() -> NSPasteboardWriting?)?
+            if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
+            else if let path = c.path, c.action < 0 { drag = { Drags.path?(path, false, .local, Drags.modifiers) } }
+            else { drag = nil }
+            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run, drag: drag)
         }
         if let first = special?(query) { items.insert(first, at: 0) }
         return items
@@ -546,6 +557,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        shown.indices.contains(row) ? shown[row].drag?() : nil
+    }
+
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         shown.indices.contains(row) && shown[row].excerpt != nil ? Self.excerptHeight : Self.rowHeight
     }

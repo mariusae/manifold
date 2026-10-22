@@ -93,6 +93,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.addTableColumn(column)
         table.headerView = nil
         table.dataSource = self
+        table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
         table.rowHeight = 20
         table.style = .plain
@@ -342,6 +343,15 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    /// A file or a hit dragged out: the file, as a folder's entry is.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard rows.indices.contains(row) else { return nil }
+        switch rows[row] {
+        case let .file(path, _): return Drags.path?(path, false, block.host, Drags.modifiers)
+        case let .hit(hit): return Drags.path?(hit.path, false, block.host, Drags.modifiers)
+        }
+    }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if case .file = rows[row] { return FileHeaderRowView() }
         return SelectionRowView()

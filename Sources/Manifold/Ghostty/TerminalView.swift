@@ -245,6 +245,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 _ = self.showOutput(ofCommand: id, beside: self.placement)
                 self.sidebar?.current = i
             }
+            // A command dragged out: its text (to type again, to keep in a note).
+            s.writerFor = { [weak self] i in
+                guard let self, self.commands.indices.contains(i) else { return nil }
+                let item = NSPasteboardItem()
+                item.setString(self.commands[i].text, forType: .string)
+                return item
+            }
             s.menuFor = { [weak self] i in
                 guard let self, self.commands.indices.contains(i) else { return nil }
                 return self.delegate?.terminal(self, menuFor: self.commands[i])

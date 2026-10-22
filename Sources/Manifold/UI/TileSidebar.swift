@@ -22,6 +22,18 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     /// An entry clicked (or ⏎ on it): its index.
     var onPick: ((Int) -> Void)?
     var onPageChange: ((Page) -> Void)?
+    /// An entry dragged out: what it carries (a file, a command's text).
+    var writerFor: ((Int) -> NSPasteboardWriting?)? {
+        didSet {
+            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
+            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        entries.indices.contains(row) ? writerFor?(row) : nil
+    }
+
     /// An entry right-clicked: its menu.
     var menuFor: ((Int) -> NSMenu?)? {
         didSet {

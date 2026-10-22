@@ -200,3 +200,14 @@ extension String {
 
 /// AppKit has a `TextRange` of its own; ours is the core's.
 typealias TextRange = ManifoldCore.TextRange
+
+/// What a row or a pill writes when dragged (§3.4), the same everywhere: a
+/// path on a host — a file or folder found, changed or listed — as a
+/// folder's entry is; a block as a ⇧-dragged pill is (plain: the block
+/// itself, to bring). Given by the window, which knows the blocks.
+enum Drags {
+    static var path: ((_ path: String, _ isDirectory: Bool, _ host: HostID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem)?
+    static var block: ((_ block: BlockID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
+
+    static var modifiers: NSEvent.ModifierFlags { NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags }
+}

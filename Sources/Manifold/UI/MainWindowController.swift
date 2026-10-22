@@ -516,6 +516,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = t
         case .image, .pdf:
             let m = MediaView(placement: p.id, block: p.block, kind: p.lens)
+            m.isLocal = p.block.host == host.host
             m.delegate = self
             m.source = { [weak self] in self?.hosts.block(p.block) }
             v = m
@@ -537,6 +538,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.imageSource = { [weak self] id in self?.imageSource(id) }
             m.delegate = self
+            m.acceptsImages = shown.block?.kind == .text
             m.source = { [weak self] in
                 guard let t = self?.hosts.block(p.block)?.text else { return nil }
                 return (t.text.string, t.version)
@@ -3225,6 +3227,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var navKeysMonitor: Any?
     private func watchHistoryButtons() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
+        Drags.path = { [weak self] path, isDir, host, mods in self?.entryDragItem(path, isDirectory: isDir, on: host, modifiers: mods) ?? NSPasteboardItem() }
+        Drags.block = { [weak self] id, mods in
+            guard let self else { return nil }
+            if mods.contains(.shift) { return self.pathDragItem(for: id, linkOnly: mods.contains(.option)) }
+            // Plain: the block, to bring where it's dropped (nothing a text
+            // view would take for text to put in).
+            let item = NSPasteboardItem()
+            item.setString(id.description, forType: .manifoldBlock)
+            return item
+        }
         navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window, event.keyCode == 27 else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -3355,7 +3367,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                   self.open(path: first.path, line: first.line, column: first.column, on: on, from: nil, kind: .opened, context: query)
                                   self.hosts.link(from: id, to: self.hosts.textBlock(for: first.path, on: on), kind: .opened, context: "found “\(query)”")
                               },
-                              excerpt: Self.excerpt(hits.map(\.text)), marked: query)
+                              excerpt: Self.excerpt(hits.map(\.text)), marked: query,
+                              drag: { Drags.path?(path, false, on, Drags.modifiers) })
         }
         if s.running || s.truncated || s.error != nil || !s.hits.isEmpty {
             items.append(FinderItem(symbol: "magnifyingglass", title: s.running ? "Looking…" : s.error ?? "\(s.hits.count)\(s.truncated ? "+" : "") lines", detail: "As a search block", note: "",
@@ -3405,7 +3418,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                         self.show(block, lens: Lens.default(for: .text, path: b.path), .here)
                                         self.warpPointerToFocus()
                                     },
-                                    excerpt: Self.excerpt(matches), marked: query))
+                                    excerpt: Self.excerpt(matches), marked: query,
+                                    drag: { Drags.block?(block, Drags.modifiers) }))
             if items.count >= 100 { break }
         }
         // Agents' turns: what was asked and what each said.
@@ -3555,7 +3569,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let id = block.id
             corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block.kind, path: block.path), title: title, detail: detail + remote, note: note,
                                           name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
-                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count))
+                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id))
             actions.append { [weak self] in self?.recall(id) }
         }
         // Agents' turns (§3.8), by what was asked: found as the turn, which
@@ -4904,6 +4918,27 @@ extension MainWindowController: GridDelegate {
         }
     }
 
+    func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool) {
+        let place: Where = newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
+        switch thing {
+        case let .web(url):
+            show(host.newWeb(url: url.absoluteString), lens: .web, place, context: "dropped")
+        case let .text(text):
+            // Words dropped: a note of them, at home where the focused block is.
+            show(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: text), lens: .editor, place)
+        case let .image(data, kind):
+            // A picture dropped: kept as an image block (in Manifold's folder).
+            let id = BlockID(host: host.host)
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd-HHmmss"
+            host.propose(.saveImage(block: id, data: data, name: "image-\(f.string(from: Date())).\(kind)", folder: nil)) { [weak self] error in
+                guard let self else { return }
+                if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
+                self.showWhenMade(id, lens: .image, place: place)
+            }
+        }
+    }
+
     func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool) {
         for (i, p) in paths.enumerated() {
             guard let (block, lens) = pathBlock(p.path, isDirectory: p.isDirectory, on: p.host) else {
@@ -5047,6 +5082,56 @@ extension MainWindowController: GridDelegate {
             self?.hosts.append(.remove(placement), to: .block(id))
         })
         return menu
+    }
+
+    /// A path on a host dragged from a row (a hit, a change, a file in a
+    /// diff), as a folder's entry is: its path, its place on its host, its
+    /// file here; with ⇧ its block's link too; ⌥⇧ the link alone.
+    func entryDragItem(_ path: String, isDirectory: Bool, on h: HostID, modifiers mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        let link = mods.contains(.shift) ? pathBlock(path, isDirectory: isDirectory, on: h).map { id, _ -> String in
+            let title = (hosts.block(id)?.displayTitle ?? path.lastPathComponent).replacingOccurrences(of: "]", with: "\\]")
+            return "[\(title)](manifold:\(id.description))"
+        } : nil
+        if let link, mods.contains(.option) {
+            item.setString(link, forType: .manifoldBlockLink)
+            item.setString("1", forType: .manifoldLinkOnly)
+            return item
+        }
+        item.setString(path, forType: .string)
+        item.setString("\(h.raw)\t\(path)\t\(isDirectory ? "d" : "f")", forType: .manifoldPath)
+        if h == host.host, !(isDirectory && link != nil) { item.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL) }
+        if let link { item.setString(link, forType: .manifoldBlockLink) }
+        return item
+    }
+
+    /// What a block stands for when ⇧-dragged from anywhere (§3.4) — a
+    /// tile's pill, a sidebar row, a finder row, a link's pill: its path
+    /// (a terminal's folder, a page's address) for what types or inserts
+    /// text, its file (here, not a folder) for the grid or another app, its
+    /// place on its host for a folder tile, and its link for a note, a
+    /// terminal or a tile to be linked. `linkOnly` (⌥⇧): the link alone.
+    func pathDragItem(for id: BlockID, linkOnly: Bool) -> NSPasteboardItem? {
+        guard let b = hosts.block(id) else { return nil }
+        let item = NSPasteboardItem()
+        let title = b.displayTitle.replacingOccurrences(of: "]", with: "\\]")
+        item.setString("[\(title)](manifold:\(id.description))", forType: .manifoldBlockLink)
+        if linkOnly {
+            item.setString("1", forType: .manifoldLinkOnly)
+            return item
+        }
+        guard let text = b.path ?? b.web?.url ?? b.terminal?.cwd ?? b.place else { return item }
+        item.setString(text, forType: .string)
+        if text.hasPrefix("/") {
+            // Its place on its host, for a folder tile to copy — a file's or
+            // a folder's own, not a terminal's working directory.
+            if let path = b.path { item.setString("\(id.host.raw)\t\(path)\t\(b.kind == .directory ? "d" : "f")", forType: .manifoldPath) }
+            var dir: ObjCBool = false
+            if id.host == host.host, FileManager.default.fileExists(atPath: text, isDirectory: &dir), !dir.boolValue {
+                item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
+            }
+        }
+        return item
     }
 
     /// Copy Link (a `manifold:` address that opens the block from any app
@@ -5281,20 +5366,38 @@ extension MainWindowController: EditorViewDelegate {
     /// `![](manifold:…)` in a note. The text then embeds it (§3.6), a
     /// strong edge: the image is kept while a text shows it.
     func editor(_ view: EditorView, image data: Data, kind: String) {
-        guard let b = hosts.block(view.block), let c = hosts.client(view.block.host) else { return NSSound.beep() }
+        keepImage(data, kind: kind, for: view.block) { [weak view] markdown in view?.textView.insert(markdown, typing: false) }
+    }
+
+    /// An image dropped on a Markdown preview: kept as an editor keeps one,
+    /// and shown at the end of the text.
+    func markdownView(_ view: MarkdownView, image data: Data, kind: String) {
+        let block = view.block
+        keepImage(data, kind: kind, for: block) { [weak self] markdown in
+            guard let self, let t = self.hosts.block(block)?.text else { return }
+            let end = t.text.count
+            let lead = t.text.string.hasSuffix("\n") || t.text.string.isEmpty ? "" : "\n"
+            self.hosts.append(.edit([TextEdit(TextRange(end, end), lead + "\n" + markdown + "\n")]), to: .block(block))
+        }
+    }
+
+    /// An image kept for a text, on its host: written as an image block,
+    /// then `insert` given the Markdown that shows it.
+    func keepImage(_ data: Data, kind: String, for text: BlockID, insert: @escaping (String) -> Void) {
+        guard let b = hosts.block(text), let c = hosts.client(text.host) else { return NSSound.beep() }
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd-HHmmss"
         imageCount += 1
         let name = "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
         let folder = b.path.map { $0.deletingLastPathComponent }
-        let id = BlockID(host: view.block.host)
-        c.propose(.saveImage(block: id, data: data, name: name, folder: folder)) { [weak self, weak view] error in
-            guard let self, let view else { return }
+        let id = BlockID(host: text.host)
+        c.propose(.saveImage(block: id, data: data, name: name, folder: folder)) { [weak self] error in
+            guard let self else { return }
             if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
             let target = folder != nil
                 ? (self.hosts.block(id)?.path?.lastPathComponent ?? name).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
                 : "manifold:\(id.description)"
-            view.textView.insert("![](\(target))", typing: false)
+            insert("![](\(target))")
         }
     }
 
@@ -6351,6 +6454,10 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+
+    func organizationPathItem(for block: BlockID, modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem? {
+        pathDragItem(for: block, linkOnly: modifiers.contains(.option))
+    }
 }
 
 
