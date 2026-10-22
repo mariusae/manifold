@@ -505,10 +505,13 @@ when you find it again.
   text. ⌘C copies an image (or a PDF's selected text) as other views
   copy theirs, and every tile's menu has Copy Link and, where it has a
   place, Copy Path and Reveal in Finder.
-- **A tile's own outline**: a Markdown text (in the editor or the
-  preview), a PDF, a diff (its files, each change under them, by the
-  function it's in or its line) and a web page (its headings) have a
-  sidebar of their own at the tile's left —
+- **A tile's own outline**: a terminal (its commands, an agent's turns,
+  each with how it ended and when — clicked, the terminal goes there and
+  the command's whole output opens beside as a block of its own), a
+  Markdown text (in the editor or the preview), a PDF, a diff (its
+  files, each change under them, by the function it's in or its line)
+  and a web page (its headings) have a sidebar of their own at the
+  tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as

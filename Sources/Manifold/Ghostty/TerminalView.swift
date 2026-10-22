@@ -146,7 +146,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         layoutScroller()
     }
 
-    override var isHidden: Bool { didSet { finder.layout(in: bounds); layoutScroller() } }
+    override var isHidden: Bool {
+        didSet {
+            finder.layout(in: bounds)
+            layoutScroller()
+            // The outline hides with the terminal (stashed, out of sight), and comes back with it.
+            sidebar?.isHidden = isHidden || !sidebarOn
+        }
+    }
+    /// The outline asked for, shown or not just now.
+    private var sidebarOn = false
 
     private func sizeDidChange(_ size: NSSize) {
         contentSize = size
@@ -198,8 +207,82 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         scrollbar = (total, offset, len)
         layoutScroller()
         updateMarks()
+        markCurrentCommand()
         if grew { scheduleLocate() }
     }
+
+    // MARK: The outline (§7.5)
+
+    /// The commands (an agent's turns) at the tile's left, each with how
+    /// it ended; clicked, the terminal goes there and the command's whole
+    /// output opens beside as a block of its own. In the superview, as the
+    /// scrubber is (Ghostty's layer is this view's): the terminal moves
+    /// over to make room for it.
+    private var sidebar: TileSidebar?
+    /// The frame the grid gave, the sidebar's room taken from it.
+    private var given: NSRect?
+    var hasSidebar: Bool { true }
+    var sidebarShown: Bool { sidebarOn }
+    /// Kept with the tile: shown or not.
+    var onToggleSidebar: ((Bool) -> Void)?
+
+    func toggleSidebar() {
+        setSidebar(!sidebarShown)
+        onToggleSidebar?(sidebarShown)
+    }
+
+    func setSidebar(_ shown: Bool) {
+        guard shown != sidebarShown else { return }
+        if shown, sidebar == nil {
+            let s = TileSidebar(emptyText: "No commands yet")
+            s.layer?.zPosition = 5
+            s.onPick = { [weak self] i in
+                guard let self, self.commands.indices.contains(i) else { return }
+                let id = self.commands[i].id
+                self.go(toCommand: id)
+                _ = self.showOutput(ofCommand: id, beside: self.placement)
+                self.sidebar?.current = i
+            }
+            sidebar = s
+        }
+        sidebarOn = shown
+        sidebar?.isHidden = !shown || isHidden
+        if let given { frame = given }
+        fillSidebar()
+    }
+
+    override var frame: NSRect {
+        get { super.frame }
+        set {
+            given = newValue
+            guard let sidebar, sidebarOn, let parent = superview else { return super.frame = newValue }
+            let w = min(TileSidebar.width, (newValue.width / 3).rounded())
+            if sidebar.superview !== parent { parent.addSubview(sidebar) }
+            sidebar.frame = NSRect(x: newValue.minX, y: newValue.minY, width: w, height: newValue.height)
+            super.frame = NSRect(x: newValue.minX + w, y: newValue.minY, width: newValue.width - w, height: newValue.height)
+        }
+    }
+
+    private func fillSidebar() {
+        guard let sidebar, sidebarOn else { return }
+        sidebar.set(commands.map { c in
+            var detail: String
+            if let st = c.status { detail = st == 0 ? Age.short(c.at) : "exit \(st) · \(Age.short(c.at))" } else { detail = c.id == commands.last?.id ? "running" : Age.short(c.at) }
+            if detail == "now" { detail = "just now" }
+            return TileSidebar.Entry(title: c.text, detail: detail, failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: true)
+        })
+        markCurrentCommand()
+    }
+
+    /// The last command at or above the top of what shows.
+    private func markCurrentCommand() {
+        guard let sidebar, sidebarOn else { return }
+        let top = scrollbar.offset + 1
+        sidebar.current = commands.lastIndex { (located[$0.id] ?? Int.max) <= top } ?? (commands.isEmpty ? nil : 0)
+    }
+
+    var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+    func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
 
     private func layoutScroller() {
         guard let parent = superview else { return }
@@ -329,6 +412,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             guard commands != oldValue else { return }
             scheduleLocate()
             updateMarks()
+            fillSidebar()
         }
     }
     /// Each command's row on the screen, once found.
@@ -503,6 +587,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         syncFocus()
         finder.layout(in: bounds)
         if superview == nil { scrubber.removeFromSuperview(); tip.removeFromSuperview() } else { layoutScroller() }
+        // The outline goes with it (lent to a card, put back).
+        if superview == nil { sidebar?.removeFromSuperview() } else if let given { frame = given }
     }
 
     override func becomeFirstResponder() -> Bool {

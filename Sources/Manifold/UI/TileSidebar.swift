@@ -8,6 +8,12 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     struct Entry: Equatable {
         var title: String
         var level = 0
+        /// At the right, in grey: how a command ended, and when.
+        var detail = ""
+        var failed = false
+        var running = false
+        /// In the code font: a command, not a heading.
+        var code = false
     }
 
     enum Page: String { case contents, pages }
@@ -164,7 +170,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
             return r
         }()
         let e = entries[row]
-        cell.show(OutlineLensView.Entry(id: row, line: 0, title: e.title, detail: "", level: e.level))
+        cell.show(OutlineLensView.Entry(id: row, line: e.code ? nil : 0, title: e.title, detail: e.detail, level: e.level, failed: e.failed, running: e.running))
         return cell
     }
 

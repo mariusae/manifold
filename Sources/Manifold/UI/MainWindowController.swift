@@ -496,6 +496,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
             t.readingPassword = SecureInput.shared.reading.contains(p.block)
+            t.setSidebar(viewState(of: p)["outline"] == "1")
+            t.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
             SecureInput.shared.onChange = { [weak self] block in
                 for case let v as TerminalView in self?.views.values.map({ $0 }) ?? [] where v.block == block {
                     v.readingPassword = SecureInput.shared.reading.contains(block)
@@ -1246,6 +1248,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return p.debugPDF(pick.map { "pick \($0)" } ?? "")
         case let d as DiffView:
             return d.debugSidebar
+        case let t as TerminalView:
+            if let pick { _ = t.debugSidebarPick(pick) }
+            return t.debugSidebar
         case let w as WebView:
             return w.debugSidebar
         default:
