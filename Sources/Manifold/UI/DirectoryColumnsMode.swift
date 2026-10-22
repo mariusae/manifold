@@ -88,12 +88,41 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
         for item in m.items { m.removeItem(item); menu.addItem(item) }
     }
 
+    /// A browser's drags are the old kind, written to the pasteboard here:
+    /// a file promise can't be (it needs a drag session of the new kind —
+    /// written, it failed, and nothing of another host's could be dragged).
+    /// So each entry's item as the other modes write it (its path, link and
+    /// text, which a terminal or a tile takes), and, for another host's, the
+    /// old kind of promise too, kept when the Finder asks (below).
     func browser(_ browser: NSBrowser, writeRowsWith rowIndexes: IndexSet, inColumn column: Int, to pasteboard: NSPasteboard) -> Bool {
         let nodes = rowIndexes.compactMap { browser.item(atRow: $0, inColumn: column) as? BrowserNode }
         guard !nodes.isEmpty else { return false }
         pasteboard.clearContents()
-        // As the other modes write them: another host's entries as promises, for the Finder.
-        return pasteboard.writeObjects(nodes.map(owner.pasteboardWriter))
+        guard pasteboard.writeObjects(nodes.map(owner.pasteboardItem)) else { return false }
+        if !owner.isLocal {
+            let types = nodes.map { $0.isDirectory ? "public.folder" : ($0.name.pathExtension.isEmpty ? "public.data" : $0.name.pathExtension) }
+            pasteboard.addTypes([Self.promiseType], owner: nil)
+            pasteboard.setPropertyList(types, forType: Self.promiseType)
+        }
+        return true
+    }
+
+    private static let promiseType = NSPasteboard.PasteboardType("Apple files promise pasteboard type")
+
+    /// Another host's entries dropped in the Finder: fetched there, each under
+    /// a name of its own (what's there already isn't written over).
+    func browser(_ browser: NSBrowser, namesOfPromisedFilesDroppedAtDestination dropDestination: URL,
+                 forDraggedRowsWith rowIndexes: IndexSet, inColumn column: Int) -> [String] {
+        let nodes = rowIndexes.compactMap { browser.item(atRow: $0, inColumn: column) as? BrowserNode }
+        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dropDestination.path)) ?? [])
+        var names: [String] = []
+        for node in nodes {
+            let name = MainWindowController.freeName(node.name, taken: taken.union(names))
+            names.append(name)
+            owner.delegate?.directoryView(owner, download: node.path, isDirectory: node.isDirectory,
+                                          to: dropDestination.appendingPathComponent(name)) { _ in }
+        }
+        return names
     }
 
     func browser(_ sender: NSBrowser, willDisplayCell cell: Any, atRow row: Int, column: Int) {
@@ -189,6 +218,17 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
         select(keep)
     }
 
+    /// Debugging: the selection dragged, as the browser would write it, to a
+    /// pasteboard of its own; its types (and its path).
+    func debugDragWrite() -> String {
+        let c = browser.selectedColumn
+        guard c >= 0, case let r = browser.selectedRow(inColumn: c), r >= 0 else { return "nothing selected" }
+        let pb = NSPasteboard(name: .init("manifold-debug-drag"))
+        let ok = self.browser(browser, writeRowsWith: [r], inColumn: c, to: pb)
+        return "wrote \(ok): " + (pb.types ?? []).map(\.rawValue).joined(separator: ", ")
+            + "\npath: " + (pb.string(forType: .manifoldPath) ?? "-")
+    }
+
     var debugRows: String {
         guard browser.lastColumn >= 0 else { return "" }
         return (0...browser.lastColumn).map { c -> String in
@@ -208,11 +248,42 @@ final class BrowserCell: NSBrowserCell {
             i.size = NSSize(width: 16, height: 16)
             image = i
             isLeaf = !node.isDirectory
-            attributedStringValue = NSAttributedString(string: node.name, attributes: [
-                .font: NSFont.systemFont(ofSize: 13),
-                .foregroundColor: Theme.text.withAlphaComponent(node.isMuted ? 0.5 : 1),
-            ])
+            restyle(selected: false)
         }
+    }
+
+    /// The name, shortened in the middle (its ending kept, "…" where it's
+    /// cut) when the column is narrow; in the strong selection's text when
+    /// it's chosen, and not dimmed then.
+    private func restyle(selected: Bool) {
+        guard let node else { return }
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingMiddle
+        attributedStringValue = NSAttributedString(string: node.name, attributes: [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: selected ? Theme.strongSelectionText : Theme.text.withAlphaComponent(node.isMuted ? 0.5 : 1),
+            .paragraphStyle: p,
+        ])
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+        let selected = isHighlighted || state == .on
+        restyle(selected: selected)
+        guard selected, let fill = highlightColor(in: controlView) else { return super.draw(withFrame: cellFrame, in: controlView) }
+        // The whole row in the strong selection, drawn here (not the
+        // browser's paler band around a fill of the text alone).
+        fill.setFill()
+        let band = NSRect(x: cellFrame.minX - 7, y: cellFrame.minY, width: cellFrame.width + 17, height: cellFrame.height)
+        NSBezierPath(roundedRect: band, xRadius: 5, yRadius: 5).fill()
+        drawInterior(withFrame: cellFrame, in: controlView)
+    }
+
+    /// The strong selection (§7.4): blue while the browser has the keyboard,
+    /// grey while it doesn't — told apart from the background by lightness.
+    override func highlightColor(in controlView: NSView) -> NSColor? {
+        let focused = controlView.window?.isKeyWindow == true
+            && (controlView.window?.firstResponder as? NSView)?.isDescendant(of: controlView) == true
+        return focused ? Theme.strongSelection : Theme.strongSelectionInactive
     }
 
     override init(textCell string: String) { super.init(textCell: string) }

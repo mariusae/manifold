@@ -558,6 +558,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
             if arg.contains("opt") { mods.insert(.option) }
             let item = pasteboardItem(for: node, mods: mods)
             return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? "")" }.joined(separator: "\n")
+        case "browserdrag":
+            // What the columns' browser writes when its selection is dragged.
+            return (content as? DirectoryColumnsMode)?.debugDragWrite() ?? "not in columns"
         default: break
         }
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]

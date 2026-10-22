@@ -1306,6 +1306,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func debugDirectory(_ arg: String) -> String {
+        // "dir show <host>:<path>": a folder tile of that host's, made here.
+        if arg.hasPrefix("show ") {
+            let parts = arg.dropFirst(5).split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return "usage: dir show <host>:<path>" }
+            show(hosts.directoryBlock(for: parts[1], on: HostID(parts[0])), lens: .directory, .here)
+            return "ok"
+        }
         guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }
         return d.debug(arg)
     }

@@ -211,9 +211,10 @@ final class GalleryItem: NSCollectionViewItem {
 
     override var isSelected: Bool {
         didSet {
+            // The strong selection's ring, thick enough to see without its hue.
             view.layer?.backgroundColor = isSelected ? Theme.selection.cgColor : nil
-            view.layer?.borderWidth = isSelected ? 2 : 0
-            view.layer?.borderColor = Theme.accent.cgColor
+            view.layer?.borderWidth = isSelected ? 3 : 0
+            view.layer?.borderColor = Theme.strongSelection.cgColor
         }
     }
 }

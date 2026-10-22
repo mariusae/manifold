@@ -108,7 +108,7 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { kids(item)[index] }
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? BrowserNode)?.isDirectory == true }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { StrongSelectionRowView() }
 
     func folder(at point: NSPoint) -> String? {
         let row = outline.row(at: outline.convert(point, from: self))
@@ -129,29 +129,29 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let n = item as? BrowserNode else { return nil }
         let id = tableColumn?.identifier.rawValue ?? "name"
-        let cell = outlineView.makeView(withIdentifier: .init("cell-" + id), owner: nil) as? NSTableCellView ?? Self.makeCell(id)
+        let cell = outlineView.makeView(withIdentifier: .init("cell-" + id), owner: nil) as? StrongSelectionCellView ?? Self.makeCell(id)
         let f = cell.textField!
         switch id {
         case "name":
             f.stringValue = n.name
-            f.textColor = Theme.text
+            cell.textColor = Theme.text
             cell.imageView?.image = n.icon
         case "modified":
             f.stringValue = n.modifiedText
-            f.textColor = Theme.secondaryText
+            cell.textColor = Theme.secondaryText
         case "size":
             f.stringValue = n.sizeText
-            f.textColor = Theme.secondaryText
+            cell.textColor = Theme.secondaryText
         default:
             f.stringValue = n.kind
-            f.textColor = Theme.secondaryText
+            cell.textColor = Theme.secondaryText
         }
-        cell.alphaValue = n.isMuted ? 0.5 : 1
+        cell.muted = n.isMuted
         return cell
     }
 
-    private static func makeCell(_ id: String) -> NSTableCellView {
-        let c = NSTableCellView()
+    private static func makeCell(_ id: String) -> StrongSelectionCellView {
+        let c = StrongSelectionCellView()
         c.identifier = .init("cell-" + id)
         let f = NSTextField(labelWithString: "")
         f.font = .systemFont(ofSize: id == "name" ? 13 : 12)

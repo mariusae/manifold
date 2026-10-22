@@ -18,6 +18,14 @@ enum Theme {
     static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
     /// A block that failed (§3.7).
     static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
+    /// A folder tile's selection (§7.4), for eyes that don't tell colors
+    /// apart: it stands off the background by lightness, not hue, and its
+    /// text off it, about 7:1 or more either way — blue while the tile has
+    /// the keyboard, grey while it doesn't.
+    static let strongSelection = NSColor.dynamic(NSColor(srgbRed: 0.10, green: 0.30, blue: 0.75, alpha: 1),
+                                                 NSColor(srgbRed: 0.55, green: 0.72, blue: 1.0, alpha: 1))
+    static let strongSelectionInactive = NSColor.dynamic(NSColor(white: 0.40, alpha: 1), NSColor(white: 0.72, alpha: 1))
+    static let strongSelectionText = NSColor.dynamic(.white, .black)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
     /// Floating panels: the palette, a stack's list.
     /// A text in view mode, as go.dev's docs (the Go spec) set code: on
@@ -193,6 +201,35 @@ final class IconButton: NSButton {
 /// left, instead of the system's hue — colorblind-safe, and the row's
 /// text and highlights keep their colors (`interiorBackgroundStyle`
 /// stays normal). Every table and outline makes its rows from this.
+/// A folder tile's list row: selected, filled with the strong selection
+/// (`Theme.strongSelection`), its cells told so (their text turns to
+/// `strongSelectionText`).
+final class StrongSelectionRowView: NSTableRowView {
+    override var isSelected: Bool { didSet { needsDisplay = true } }
+    override var isEmphasized: Bool { didSet { needsDisplay = true } }
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { isSelected ? .emphasized : .normal }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        (isEmphasized ? Theme.strongSelection : Theme.strongSelectionInactive).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 5, yRadius: 5).fill()
+    }
+}
+
+/// A list cell whose text turns to the strong selection's when its row is
+/// selected, and isn't dimmed then (a hidden file's name stays legible).
+final class StrongSelectionCellView: NSTableCellView {
+    var textColor: NSColor = Theme.text { didSet { restyle() } }
+    var muted = false { didSet { restyle() } }
+    override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
+
+    private func restyle() {
+        let selected = backgroundStyle == .emphasized
+        textField?.textColor = selected ? Theme.strongSelectionText : textColor
+        alphaValue = muted && !selected ? 0.5 : 1
+    }
+}
+
 /// A scroll view whose content ends at its edges. Without this, the
 /// content ran on past the frame — a list's rows drawn over the header
 /// above it and the rows below — since nothing here is meant to show
