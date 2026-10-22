@@ -94,6 +94,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     private let search = NSSearchField()
     private let pill = ModePill(symbols: Mode.allCases.map(\.symbol), tips: Mode.allCases.map { "Show " + $0.title })
     private let footer = NSTextField(labelWithString: "")
+    /// Over the files: "Reading…" until the folder's listed, why if it
+    /// can't be, or that there's nothing in it.
+    private let note = BusyNote()
+    private var footerWork: DispatchWorkItem?
     private(set) var mode = Mode.list
     private var content: DirectoryMode?
     private var listedAt: Stamp?
@@ -136,6 +140,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         footer.alignment = .center
         footer.isHidden = true
         addSubview(footer)
+        addSubview(note)
         registerForDraggedTypes([.fileURL, .manifoldPath] + Promises.types)
         documentChanged()
     }
@@ -160,6 +165,17 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
             listedAt = d.listedAt
             model?.setRootEntries(d.entries)
         }
+        updateNote()
+    }
+
+    /// What's said over the files, if anything.
+    private func updateNote() {
+        guard let model, !model.filtering else { return note.set(.idle) }
+        guard let d = source()?.directory, d.listedAt != nil else { return note.set(.busy("Reading…")) }
+        if let e = d.error { return note.set(.message(e)) }
+        if d.entries.isEmpty { return note.set(.message("Empty folder")) }
+        if model.children(of: model.root)?.isEmpty == true { return note.set(.message("Only hidden files")) }
+        note.set(.idle)
     }
 
     /// Kept current while it's on screen and the app in use: the folder
@@ -188,11 +204,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
             guard let self, let d = self.delegate else { return done(nil, false) }
             d.directoryView(self, tree: p, done: done)
         }
-        m.changed = { [weak self] folder in self?.content?.folderChanged(folder) }
+        m.changed = { [weak self] folder in
+            self?.content?.folderChanged(folder)
+            self?.updateFooter()
+        }
         m.filterChanged = { [weak self] in
             self?.content?.reloadAll()
             self?.updateFooter()
+            self?.updateNote()
         }
+        m.readingChanged = { [weak self] in self?.updateFooter() }
         // As it was left.
         m.showHidden = keeper.value("hidden") == "1"
         if let s = keeper.value("sort")?.split(separator: ":"), s.count == 2, let k = DirectoryModel.SortKey(rawValue: String(s[0])) {
@@ -442,6 +463,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         model.setFilter(model.filter)  // the matches again, hidden ones in or out
         content?.reloadAll()
         updateFooter()
+        updateNote()
     }
 
     func sortChanged(_ key: DirectoryModel.SortKey, ascending: Bool) {
@@ -496,9 +518,31 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     }
 
     private func updateFooter() {
-        guard let model, model.filtering else {
-            footer.isHidden = true
-            return needsLayout = true
+        guard let model else { return }
+        // Not filtering: "Reading…" while folders opened are listed the first
+        // time (a moment late, so a quick listing shows nothing).
+        guard model.filtering else {
+            if model.readingFolders {
+                guard footer.isHidden, footerWork == nil else { return }
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.footerWork = nil
+                    guard let m = self.model, !m.filtering, m.readingFolders else { return }
+                    self.footer.stringValue = "Reading…"
+                    self.footer.isHidden = false
+                    self.needsLayout = true
+                }
+                footerWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + BusyNote.delay, execute: work)
+                return
+            }
+            footerWork?.cancel()
+            footerWork = nil
+            if !footer.isHidden {
+                footer.isHidden = true
+                needsLayout = true
+            }
+            return
         }
         footer.isHidden = false
         if model.isLoadingTree {
@@ -527,6 +571,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
         footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
         content?.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
+        note.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
     }
 
     // MARK: Debugging
@@ -565,6 +610,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         }
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
+        lines.append("note \(note.debugState)")
         if let d = content as? DebugDescribing { lines.append(d.debugRows) }
         return lines.joined(separator: "\n")
     }

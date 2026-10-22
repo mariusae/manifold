@@ -562,6 +562,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let t = self?.hosts.block(p.block)?.text else { return nil }
                 return (t.text.string, t.version)
             }
+            m.isUnread = { [weak self] in
+                guard let b = self?.hosts.block(p.block), b.path != nil else { return false }
+                return b.text?.isUnread ?? true
+            }
             v = m
         case .directory:
             let d = DirectoryView(placement: p.id, block: p.block)
@@ -1733,7 +1737,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let client = hosts.client(focusedHost) ?? host
         let id = BlockID(host: client.host)
         client.propose(.newNotebook(block: id, cwd: focusedCwd))
-        showWhenMade(id, lens: .notebook, place: .here)
+        showWhenMade(id, lens: .notebook, place: .here, what: "the notebook")
     }
 
     /// New Note from Selection: what's selected in the focused editor or
@@ -2056,7 +2060,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// port here given back.
     func forward(_ port: Int, on h: HostID, done: @escaping (Int?) -> Void) {
         guard let c = hosts.client(h) else { return done(nil) }
+        // Under way, a moment in: said, so the click isn't taken for nothing.
+        var finished = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, !finished else { return }
+            self.toast.show("Forwarding \(port) from \(self.hosts.label(of: h))…", action: "", for: 30) {}
+        }
         c.forwards.forward(port) { [weak self] local in
+            finished = true
             guard let self else { return }
             if let local {
                 let same = local == port ? "" : " (\(port) is taken here)"
@@ -5212,7 +5223,7 @@ extension MainWindowController: GridDelegate {
             } then: { [weak self] error in
                 guard let self else { return }
                 if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
-                self.showWhenMade(id, lens: .image, place: place)
+                self.showWhenMade(id, lens: .image, place: place, what: "the image")
             }
         }
     }
@@ -6294,7 +6305,7 @@ extension MainWindowController: GitViewDelegate {
         client.propose(.showRevision(block: id, repo: repo, path: path, revision: revision, title: title)) { [weak self] error in
             guard let self else { return }
             if let error { return self.toast.show(error, action: "OK", for: 6) {} }
-            self.showWhenMade(id, lens: .output, place: .besideOpener(view.placement), context: "version \(short)")
+            self.showWhenMade(id, lens: .output, place: .besideOpener(view.placement), context: "version \(short)", what: "that version")
         }
     }
 
@@ -6405,7 +6416,7 @@ extension MainWindowController: TerminalViewDelegate {
         let context = "command \(command.id)"
         if made { return show(id, lens: .output, place, kind: .opened, context: context) }
         // Shown once the host has made it (a moment).
-        showWhenMade(id, lens: .output, place: place, context: context)
+        showWhenMade(id, lens: .output, place: place, context: context, what: "the command's output")
     }
 
     func terminal(_ view: TerminalView, blockFor command: ShellCommand, output: String) -> BlockID {
@@ -6449,10 +6460,10 @@ extension MainWindowController: TerminalViewDelegate {
     /// `context`: the link the host made for it ("turn N"), said again —
     /// a link of another context would take its place, and the turn's
     /// block then not be found to show again.
-    private func showTurnWhenMade(_ id: BlockID, place: Where, context: String, tries: Int = 60) {
-        if hosts.block(id)?.output?.markdown != nil { return show(id, lens: .output, place, kind: .opened, context: context) }
-        guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showTurnWhenMade(id, place: place, context: context, tries: tries - 1) }
+    private func showTurnWhenMade(_ id: BlockID, place: Where, context: String) {
+        whenMade(id, what: "the turn", made: { [weak self] in self?.hosts.block(id)?.output?.markdown != nil }) { [weak self] in
+            self?.show(id, lens: .output, place, kind: .opened, context: context)
+        }
     }
 
     /// Changes in This Turn: the working tree between the turn's two
@@ -6502,10 +6513,35 @@ extension MainWindowController: TerminalViewDelegate {
 
     /// A block the host is making, shown as soon as it exists here.
     /// `context`: the link the host made for it, said again (see showTurnWhenMade).
-    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, tries: Int = 40) {
-        if hosts.block(id) != nil { return show(id, lens: lens, place, kind: .opened, context: context) }
-        guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showWhenMade(id, lens: lens, place: place, context: context, tries: tries - 1) }
+    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
+        whenMade(id, what: what, made: { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
+            self?.show(id, lens: lens, place, kind: .opened, context: context)
+        }
+    }
+
+    /// Something a host is making for a click (a command's output, a turn,
+    /// a notebook): done once it's made. A moment in, a word at the foot
+    /// of the window says what's awaited, and from where, so the click
+    /// isn't taken for nothing; after half a minute it's given up, saying so.
+    private func whenMade(_ id: BlockID, what: String, made: @escaping () -> Bool, started: Date = Date(), said: Bool = false,
+                          then: @escaping () -> Void) {
+        if made() {
+            if said { toast.hide() }
+            return then()
+        }
+        let waited = Date().timeIntervalSince(started)
+        let host = hosts.label(of: id.host)
+        if waited > 30 {
+            return toast.show("\(host) didn't make \(what) in time", action: "OK", for: 8) {}
+        }
+        var said = said
+        if !said, waited > 0.5 {
+            said = true
+            toast.show("Getting \(what) from \(host)…", action: "", for: 31) {}
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.whenMade(id, what: what, made: made, started: started, said: said, then: then)
+        }
     }
 
     func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {

@@ -33,6 +33,8 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     enum Row { case group(BlockID), process(ProcessEntry, depth: Int) }
     private var shown: [Row] = []
     private var listedAt: Stamp?
+    /// "Reading…" until the host first lists them.
+    private let note = BusyNote()
     private var timer: Timer?
     /// What to call a block (the host's blocks are the controller's to know).
     var blockTitle: (BlockID) -> String? = { _ in nil }
@@ -92,6 +94,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        addSubview(note)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
@@ -141,6 +144,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         status.frame = NSRect(x: field.frame.maxX + 12, y: top - 18, width: max(0, statusWidth), height: 15)
         let bottom = (wide ? field.frame.minY : end.frame.minY) - 6
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
+        note.frame = scroll.frame
     }
 
     override func viewDidMoveToWindow() {
@@ -172,6 +176,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     func documentChanged() {
+        note.set(source()?.processes?.listedAt == nil ? .busy("Reading…") : .idle)
         guard let b = source(), let p = b.processes else { return }
         guard p.listedAt != listedAt else { return }
         listedAt = p.listedAt

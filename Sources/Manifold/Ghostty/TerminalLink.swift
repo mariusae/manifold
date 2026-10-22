@@ -31,6 +31,11 @@ final class TerminalLink {
     /// The stream closed (the shell ended, or the link went): on the main
     /// thread.
     var onClosed: (() -> Void)?
+    /// The first of the shell's output arrived (on the main thread): the
+    /// terminal is reached.
+    var onFirstOutput: (() -> Void)?
+    /// On `queue`.
+    private var sawOutput = false
 
     init(block: BlockID, client: HostClient?) {
         self.block = block
@@ -126,6 +131,10 @@ final class TerminalLink {
     private func received(_ frame: Frame) {
         switch frame.kind {
         case .data:
+            if !sawOutput {
+                sawOutput = true
+                DispatchQueue.main.async { [weak self] in self?.onFirstOutput?() }
+            }
             guard let surface else { return }
             frame.payload.withUnsafeBytes { raw in
                 guard let base = raw.baseAddress else { return }

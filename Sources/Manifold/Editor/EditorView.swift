@@ -108,6 +108,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             self.scroll(toY: f * span)
         }
         addSubview(scrubber)
+        addSubview(note)
         // A heading chosen in the outline: the text there, the caret at it.
         headingsOutline.onPick = { [weak self] i in
             guard let self, self.headingLines.indices.contains(i) else { return }
@@ -285,6 +286,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             sidebar.frame = NSRect(x: 0, y: bottom, width: left, height: top - bottom)
         }
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
+        note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
         updateScrubber()
@@ -300,6 +302,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: The scrubber (§3.1)
 
     private let scrubber = ScrubberView(frame: .zero)
+    /// "Reading…" over the page until the file's text is in, so the empty
+    /// page isn't taken for an empty file.
+    private let note = BusyNote()
     /// Each heading's line (0-based), in the outline's order.
     private var headingLines: [Int] = []
     private var headingsWork: DispatchWorkItem?
@@ -439,6 +444,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         if external { textView.savedUndoDepth = textView.undoDepth }
         textView.isEditable = !doc.unreadable && !offline && !viewing && isLoaded
         loadingMessage = isLoaded ? nil : "Reading the file…"
+        note.set(isLoaded ? .idle : .busy("Reading…"))
         if doc.stale, banner == nil { showBanner() }
         if !doc.stale, banner != nil { hideBanner() }
         if doc.isDirty != isEdited {

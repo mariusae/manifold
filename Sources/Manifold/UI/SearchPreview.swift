@@ -43,6 +43,8 @@ final class SearchPreviewView: NSView {
     private let scroll = ClippingScrollView()
     private let text = PreviewTextView()
     private let empty = NSTextField(labelWithString: "")
+    /// "Reading…" while a match's file comes from its host.
+    private let note = BusyNote()
     private let divider = NSBox()
     private let gutter = LineGutter()
     private var cache: [String: String?] = [:]
@@ -96,6 +98,7 @@ final class SearchPreviewView: NSView {
         empty.textColor = Theme.secondaryText
         empty.alignment = .center
         addSubview(empty)
+        addSubview(note)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -115,6 +118,7 @@ final class SearchPreviewView: NSView {
             if let hit, let query, let cached = cache[hit.path] { DispatchQueue.main.async { [weak self] in self?.present(cached, hit: hit, query: query) } }
         }
         empty.frame = NSRect(x: 0, y: bounds.midY - 10, width: bounds.width, height: 20)
+        note.frame = bounds
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -132,6 +136,7 @@ final class SearchPreviewView: NSView {
         self.root = root
         token += 1
         guard let hit, let query else {
+            note.set(.idle)
             title.stringValue = ""
             scroll.isHidden = true
             gutter.isHidden = true
@@ -143,7 +148,16 @@ final class SearchPreviewView: NSView {
         if shown.hasPrefix(root + "/") { shown = String(shown.dropFirst(root.count + 1)) }
         title.stringValue = "\(shown)  ·  line \(hit.line)"
         if let cached = cache[hit.path] { return present(cached, hit: hit, query: query) }
+        // Not the last file's text under this one's name, if it takes a
+        // while to come (as the note shows, a moment on).
+        note.set(.busy("Reading…"))
         let t = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + BusyNote.delay) { [weak self] in
+            guard let self, self.token == t, case .busy = self.note.state else { return }
+            self.scroll.isHidden = true
+            self.gutter.isHidden = true
+            self.empty.isHidden = true
+        }
         read(hit.path) { [weak self] contents in
             guard let self else { return }
             self.cache[hit.path] = contents
@@ -153,6 +167,7 @@ final class SearchPreviewView: NSView {
     }
 
     private func present(_ contents: String?, hit: SearchHit, query: SearchQuery) {
+        note.set(.idle)
         guard let contents else {
             scroll.isHidden = true
             gutter.isHidden = true

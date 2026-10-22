@@ -160,6 +160,11 @@ public struct TextState: Codable, Equatable, Sendable {
     public init() {}
 
     public var isDirty: Bool { version != cleanVersion }
+
+    /// A file's text not yet read by its host: nothing in it, not even an
+    /// empty file's (a read records the file's fingerprint, a new file's
+    /// an empty one), and not found unreadable.
+    public var isUnread: Bool { version == 0 && diskFingerprint == nil && !unreadable }
 }
 
 // MARK: Terminal
@@ -325,6 +330,9 @@ public struct DirectoryEntry: Codable, Equatable, Sendable {
 public struct DirectoryState: Codable, Equatable, Sendable {
     public var entries: [DirectoryEntry] = []
     public var listedAt: Stamp?
+    /// Why it couldn't be listed when last tried (it isn't there, it can't
+    /// be read); nil once it is.
+    public var error: String?
     public init() {}
 }
 

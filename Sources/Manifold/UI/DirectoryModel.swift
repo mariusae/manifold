@@ -72,6 +72,8 @@ final class DirectoryModel {
     var changed: (String) -> Void = { _ in }
     /// What the filter shows changed.
     var filterChanged: () -> Void = {}
+    /// Folders began or finished being listed for the first time.
+    var readingChanged: () -> Void = {}
 
     private var listed: [String: [DirectoryEntry]] = [:]
     private var asking: Set<String> = []
@@ -109,6 +111,10 @@ final class DirectoryModel {
         changed(root)
     }
 
+    /// Whether folders asked for are still being listed the first time (not
+    /// those listed again to keep current, which show as they are).
+    var readingFolders: Bool { asking.contains { listed[$0] == nil } }
+
     /// Whether a folder's entries are in hand.
     func isListed(_ folder: String) -> Bool { filtering ? treeChildren != nil : listed[folder] != nil }
 
@@ -122,6 +128,8 @@ final class DirectoryModel {
             raw = (tree[rel] ?? []).filter { isVisible(rel.isEmpty ? $0.name : rel + "/" + $0.name) }
         } else {
             guard let l = listed[folder] else {
+                // (The root comes with its block's listing, `setRootEntries`:
+                // not asked for again, twice over a slow link.)
                 load(folder)
                 return nil
             }
@@ -133,15 +141,20 @@ final class DirectoryModel {
     func shown(_ e: DirectoryEntry) -> Bool { showHidden || (!e.isHidden && e.isIgnored != true) }
 
     private func load(_ folder: String) {
-        guard !asking.contains(folder) else { return }
+        // The root is its block's, listed by the host and kept current there.
+        guard folder != root, !asking.contains(folder) else { return }
+        let first = listed[folder] == nil
         asking.insert(folder)
+        if first { readingChanged() }
         list(folder) { [weak self] entries in
             guard let self else { return }
             self.asking.remove(folder)
             let fresh = entries ?? []
-            guard self.listed[folder] != fresh else { return }
-            self.listed[folder] = fresh
-            self.changed(folder)
+            if self.listed[folder] != fresh {
+                self.listed[folder] = fresh
+                self.changed(folder)
+            }
+            if first { self.readingChanged() }
         }
     }
 

@@ -967,7 +967,17 @@ is migrated into logs on first run.
   its network comes back or changes (another Wi-Fi, a VPN), every host
   is tried at once and every connected one asked straight away whether
   it's still there — given up on and made again in five seconds if not
-  — so remote terminals come back as the lid opens. **Detach from *host*…**
+  — so remote terminals come back as the lid opens. **What waits on a
+  host says so**, a moment in (a quick answer shows nothing): a folder
+  being listed, a file being read (in its editor or preview), a
+  repository's status, the processes, a search match's file, a terminal
+  being reached each show a spinner and "Reading…" (or "Connecting…") where
+  their contents will be; a subfolder opened in a listing, "Reading…" at its
+  foot; a folder that's empty, hidden-files-only, missing or unreadable
+  says which, rather than showing nothing. A click that waits for a host
+  to make something (a command's output, a turn, a version, a notebook,
+  a port forwarded) says what it's getting from where, and if the host
+  doesn't answer in half a minute, that too. **Detach from *host*…**
   (in the row's menu, or the box, ⌘T) forgets it here, even while it's still
   being reached: it isn't attached again at start, and its server,
   shells and blocks stay there for attaching again. **Reset Server on

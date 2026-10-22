@@ -39,10 +39,12 @@ final class ToastView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Says something, offering an action, for a few seconds.
+    /// Says something, offering an action, for a few seconds (an empty
+    /// name: no action, only the word — something under way).
     func show(_ text: String, action name: String = "Restore", for seconds: Double = 8, _ action: @escaping () -> Void) {
         label.stringValue = text
         button.title = name
+        button.isHidden = name.isEmpty
         self.action = action
         hideWork?.cancel()
         isHidden = false
@@ -75,16 +77,16 @@ final class ToastView: NSView {
 
     var wantedSize: NSSize {
         let lw = min(ceil(label.intrinsicContentSize.width), 520)
-        let bw = ceil(button.intrinsicContentSize.width) + 8
+        let bw = button.isHidden ? -12 : ceil(button.intrinsicContentSize.width) + 8
         return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
     }
 
     override func layout() {
         super.layout()
         let h = bounds.height
-        let bw = ceil(button.intrinsicContentSize.width) + 8
+        let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width) + 8
         button.frame = NSRect(x: bounds.width - 10 - bw, y: (h - 22) / 2, width: bw, height: 22)
-        label.frame = NSRect(x: 14, y: (h - 17) / 2, width: max(0, button.frame.minX - 12 - 14), height: 17)
+        label.frame = NSRect(x: 14, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - 10 : button.frame.minX - 12) - 14), height: 17)
     }
 
     /// Debugging: what it says, if shown.

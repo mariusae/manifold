@@ -850,10 +850,20 @@ final class Server {
         // only a change is written, so a listing asked for again and again
         // (a folder view keeping current) doesn't grow the log.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let entries = FolderListing.children(of: path) else { return }
+            guard let entries = FolderListing.children(of: path) else {
+                // Said why, once: the folder isn't left waiting to be listed.
+                var isDir: ObjCBool = false
+                let why = !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) ? "This folder isn't there"
+                    : !isDir.boolValue ? "This isn't a folder" : "This folder can't be read"
+                self?.queue.async {
+                    guard let self, let d = self.node.block(block)?.directory, d.error != why else { return }
+                    self.append(.listingFailed(why, at: self.clock.now()), to: .block(block))
+                }
+                return
+            }
             self?.queue.async {
                 guard let self, let d = self.node.block(block)?.directory else { return }
-                if entries != d.entries || d.listedAt == nil { self.append(.entries(entries, at: self.clock.now()), to: .block(block)) }
+                if entries != d.entries || d.listedAt == nil || d.error != nil { self.append(.entries(entries, at: self.clock.now()), to: .block(block)) }
             }
         }
     }

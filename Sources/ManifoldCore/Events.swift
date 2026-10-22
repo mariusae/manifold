@@ -255,6 +255,8 @@ public enum Event: Codable, Equatable, Sendable {
 
     // Directory.
     case entries([DirectoryEntry], at: Stamp)
+    /// A folder couldn't be listed: why.
+    case listingFailed(String, at: Stamp)
 
     // Web.
     case url(String?, viaHost: Bool)
@@ -586,9 +588,17 @@ extension TerminalState {
 
 extension DirectoryState {
     public mutating func apply(_ event: Event) {
-        if case let .entries(e, at) = event {
+        switch event {
+        case let .entries(e, at):
             entries = e
             listedAt = at
+            error = nil
+        case let .listingFailed(why, at):
+            entries = []
+            listedAt = at
+            error = why
+        default:
+            break
         }
     }
 }

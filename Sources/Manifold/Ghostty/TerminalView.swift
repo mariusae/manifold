@@ -95,6 +95,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         link.onClosed = { [weak self] in self?.linkClosed() }
         dots.layer?.zPosition = 5
+        connecting.wantsLayer = true
+        connecting.layer?.zPosition = 5
+        connecting.set(surface == nil ? .idle : .busy("Connecting…"))
+        link.onFirstOutput = { [weak self] in self?.connecting.set(.idle) }
         dots.onHover = { [weak self] id, rect in self?.showActions(ofCommand: id, at: rect) }
         dots.onLeave = { [weak dots] in
             guard let dots else { return }
@@ -125,6 +129,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         finder.hide()
         scrubber.removeFromSuperview()
         dots.removeFromSuperview()
+        connecting.removeFromSuperview()
         locateWork?.cancel()
         link.stop()
         guard let surface else { return }
@@ -225,6 +230,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// A dot beside each command's prompt, a shell's (§3.8), in the same
     /// way over the terminal's left padding.
     private let dots = CommandDots(frame: .zero)
+    /// "Connecting…" until the shell's first output comes (a host far off,
+    /// a shell slow to start), over it in the same way.
+    private let connecting = BusyNote()
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
     /// What the core says of the screen and its history: how many rows,
@@ -356,6 +364,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard let parent = superview else { return }
         if scrubber.superview !== parent { parent.addSubview(scrubber) }
         if dots.superview !== parent { parent.addSubview(dots) }
+        if connecting.superview !== parent { parent.addSubview(connecting) }
+        connecting.frame = frame
+        connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
         scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len
         scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
@@ -588,7 +599,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Debugging
 
     var debugScrubber: String {
-        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent)\n" + dots.debugDots
+        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState)\n" + dots.debugDots
     }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
@@ -649,6 +660,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if superview == nil {
             scrubber.removeFromSuperview()
             dots.removeFromSuperview()
+            connecting.removeFromSuperview()
             FloatingList.shared.hide(for: dots)
         } else {
             layoutScroller()

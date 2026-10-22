@@ -35,6 +35,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
     private var rows: [Row] = []
     private var refreshedAt: Stamp?
+    /// "Reading…" until the host first says how the repository stands.
+    private let note = BusyNote()
     private var root = ""
     private var vcs: VCS = .git
 
@@ -81,6 +83,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        addSubview(note)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
@@ -119,6 +122,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 26, width: 20, height: 20)
         branchLabel.frame = NSRect(x: w * 0.55 + 16, y: bounds.height - 24, width: w * 0.45 - 16 - 36, height: 16)
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 32)
+        note.frame = scroll.frame
         table.tableColumns[0].width = scroll.contentSize.width
     }
 
@@ -128,6 +132,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     func documentChanged() {
+        note.set(source()?.git?.refreshedAt == nil && source()?.git?.error == nil ? .busy("Reading…") : .idle)
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
         vcs = g.vcs ?? .git

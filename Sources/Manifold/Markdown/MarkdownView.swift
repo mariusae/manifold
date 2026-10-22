@@ -89,6 +89,9 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private var renderWork: DispatchWorkItem?
     /// Where the text comes from.
     var source: () -> (text: String, version: Int)? = { nil }
+    /// Whether its file is still to be read by its host: "Reading…" meanwhile.
+    var isUnread: () -> Bool = { false }
+    private let note = BusyNote()
     var theme: FontTheme {
         didSet { if theme != oldValue, loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) } }
     }
@@ -133,6 +136,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             self?.web.evaluateJavaScript("window.scrollTo(0, \(f) * Math.max(document.documentElement.scrollHeight - window.innerHeight, 0));")
         }
         addSubview(scrubber)
+        addSubview(note)
         headingsOutline.onPick = { [weak self] i in
             self?.scroll(toHeading: i, warping: false)
             self?.headingsOutline.current = i
@@ -240,6 +244,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     /// The block's text may have changed: render it again, soon.
     func textChanged() {
+        note.set(isUnread() ? .busy("Reading…") : .idle)
         guard let (_, version) = source(), version != renderedVersion else { return }
         renderWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.render(scrollToTop: false) }
@@ -262,6 +267,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         }
         web.frame = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: 0, width: ScrubberView.width, height: bounds.height)
+        note.frame = web.frame
+        note.set(isUnread() ? .busy("Reading…") : .idle)
         finder.layout(in: web.frame)
         scheduleOutline()
     }
