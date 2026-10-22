@@ -3351,6 +3351,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                     excerpt: Self.excerpt(matches), marked: query))
             if items.count >= 100 { break }
         }
+        // Agents' turns: what was asked and what each said.
+        for block in hosts.blocks {
+            for turn in (block.terminal?.turns ?? []).reversed() {
+                let said = [turn.prompt, turn.message ?? ""].joined(separator: "\n")
+                guard said.lowercased().contains(q) else { continue }
+                let lines = said.split(separator: "\n").map(String.init).filter { $0.lowercased().contains(q) }
+                let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+                let agentID = block.id, turnID = turn.id
+                items.append(FinderItem(symbol: "text.bubble", title: String(first.prefix(120)), detail: "Turn of \(block.displayTitle) · \(Age.short(turn.began))",
+                                        note: (turn.files?.count).map { "\($0) file\($0 == 1 ? "" : "s")" } ?? "",
+                                        run: { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) },
+                                        excerpt: Self.excerpt(lines), marked: query))
+                if items.count >= 150 { return items }
+            }
+        }
         return items
     }
 
@@ -3485,6 +3500,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                           name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
                                           distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count))
             actions.append { [weak self] in self?.recall(id) }
+        }
+        // Agents' turns (§3.8), by what was asked: found as the turn, which
+        // opens as its own block.
+        for block in hosts.blocks {
+            for turn in block.terminal?.turns ?? [] {
+                let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+                guard !first.isEmpty else { continue }
+                let agentID = block.id, turnID = turn.id
+                let files = (turn.files ?? []).prefix(3).joined(separator: ", ")
+                corpus.append(FinderCandidate(symbol: "text.bubble", title: String(first.prefix(120)),
+                                              detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
+                                              note: Age.short(turn.began), name: first + " turn " + turn.agent,
+                                              around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
+                                              distance: 60, recency: turn.began.wall, action: actions.count))
+                actions.append { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) }
+            }
         }
         if verbs {
             for item in paletteItems() where item.title != "Find Anything…" {

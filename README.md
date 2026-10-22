@@ -748,6 +748,8 @@ when you find it again.
   menu ▸ Last Turn) for **Changes in This Turn** and **Undo This Turn**:
   what the turn changed taken back, later work kept — or, where later
   work touched the same lines, nothing touched and Manifold says so.
+  Turns are found with ⌘O — by what was asked among the names, by what
+  was asked or said In Blocks — each opening as its block.
   An agent's **to-do list** (Claude Code's) is a checklist note of its
   own, linked from it and kept by it, rewritten as the list changes:
   done ticked, the item at work in bold. Launch
