@@ -133,11 +133,20 @@ final class HostClient {
         DispatchQueue.main.async(execute: item)
     }
     private var pingTimer: Timer?
+    private var pongWaiters: [() -> Void] = []
+
+    /// Debugging: how long a ping takes to be answered now, and how the
+    /// pacing stands.
+    func debugRoundTrip(_ done: @escaping (TimeInterval?, String) -> Void) {
+        guard let conn, let mux else { return done(nil, "not connected") }
+        let sent = Date()
+        pongWaiters.append { done(Date().timeIntervalSince(sent), mux.debugPacing) }
+        conn.send(.message(ClientMessage.ping))
+    }
     private var pingSent: Date?
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
-    private var pendingBytes: [Int: (Data?) -> Void] = [:]
     private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
@@ -262,13 +271,7 @@ final class HostClient {
         if let done { pendingProposals[id] = done }
         // A link broken can be made again at once.
         if case .unlink = proposal { recentLinks = [:] }
-        let frame = Frame.message(ClientMessage.propose(id: id, proposal))
-        // An upload's piece, an image's bytes: in the bulk lane, around
-        // whatever else is said meanwhile.
-        switch proposal {
-        case .writePath, .saveImage: conn?.sendBulk(frame)
-        default: conn?.send(frame)
-        }
+        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
     }
 
     /// Asks the block's host's language server something.
@@ -278,21 +281,6 @@ final class HostClient {
         nextProposal += 1
         pendingLSP[id] = done
         conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
-    }
-
-    /// A file block's bytes from this host (an image, a PDF), in pieces,
-    /// as big as it is.
-    func readBytes(_ block: BlockID, done: @escaping (Data?) -> Void) {
-        guard conn != nil, let path = node.block(block)?.path else { return done(nil) }
-        var whole = Data()
-        func next() {
-            readRange(path: path, offset: Int64(whole.count), length: Transfer.piece) { data in
-                guard let data else { return done(nil) }
-                whole.append(data)
-                if data.count < Transfer.piece { done(whole) } else { next() }
-            }
-        }
-        next()
     }
 
     /// A folder's entries, ignored ones marked (§7.4).
@@ -311,24 +299,6 @@ final class HostClient {
         nextProposal += 1
         pendingListings[id] = done
         conn?.send(.message(ClientMessage.propose(id: id, proposal)))
-    }
-
-    /// A file's bytes by its path, nil past `limit`.
-    func readBytes(path: String, limit: Int, done: @escaping (Data?) -> Void) {
-        guard conn != nil else { return done(nil) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingBytes[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .readPath(path: path, limit: limit))))
-    }
-
-    /// A piece of a file: `length` bytes from `offset` (fewer at its end).
-    func readRange(path: String, offset: Int64, length: Int, done: @escaping (Data?) -> Void) {
-        guard conn != nil else { return done(nil) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingBytes[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .readRange(path: path, offset: offset, length: length))))
     }
 
     // MARK: Conveniences
@@ -854,6 +824,9 @@ final class HostClient {
         case .pong:
             pingSent = nil
             lastHeard = Date()
+            let waiting = pongWaiters
+            pongWaiters = []
+            for w in waiting { w() }
         case let .entries(shard, entries):
             for e in entries { clock.observe(e.at) }
             if !node.apply(entries, to: shard) {
@@ -903,8 +876,8 @@ final class HostClient {
             onGutter?(block)
         case let .lspResult(id, result):
             pendingLSP.removeValue(forKey: id)?(result)
-        case let .bytes(id, data):
-            pendingBytes.removeValue(forKey: id)?(data)
+        case .end:
+            break // only on a file's stream
         case let .notebookLive(block, cell, output):
             onNotebookLive?(block, cell, output)
         case let .passwordInput(block, on):

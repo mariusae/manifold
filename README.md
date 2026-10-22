@@ -464,12 +464,14 @@ when you find it again.
   Mail and it's fetched there. Right-click an entry (or a file tile's
   menu) for **Open With** — on another host, **Open Locally With**: a
   copy opened by the app here, sent back each time it's saved — and
-  **Download**, to Downloads. Files go in four-megabyte pieces, so a
-  big one isn't held all at once, and each piece in small fragments
-  between everything else the host says: a file on its way, an image
-  or a PDF opening, holds up no edit, search or answer for long, on a
-  slow link or a fast one. The host reads and writes them aside from
-  its terminals and other clients.
+  **Download**, to Downloads. Each file goes on a stream of its own in
+  the host's one connection, paced to what the link can take: no more
+  of it on the way at once than the link holds (its rate and its
+  round trip, measured as it goes), so a file on its way — an image or
+  a PDF opening too — leaves a keystroke, an edit or an answer behind
+  at most a piece of it, on a slow link or a fast one. The host reads
+  and writes them aside from its terminals and other clients, and a
+  file being replaced is only put in place once all of it has come.
 - **Another host's ports come here**: open a `localhost` address from
   its tiles — ⌘-click `http://localhost:3000` in a remote terminal, a
   dev server's banner — and the port is forwarded through the host's
@@ -478,10 +480,11 @@ when you find it again.
   `ssh -L`. **Forward a Port from *host*…** in the host's menu asks for
   one; each forward is listed there, to open or stop. A forward keeps
   listening while the host is away, and its connections go again when
-  it's back. A forwarded connection keeps no more than a megabyte on the
-  way at a time each way, so a fast server and a slow reader (or the
-  other way round) fill nothing but themselves; and one side done
-  sending still hears the other's answer.
+  it's back. Each forwarded connection is a stream of the host's
+  connection, paced as files are, and keeps no more than a megabyte on
+  the way each way, so a fast server and a slow reader (or the other
+  way round) fill nothing but themselves; and one side done sending
+  still hears the other's answer.
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does

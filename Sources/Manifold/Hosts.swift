@@ -328,11 +328,11 @@ final class Hosts {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
              let .git(block, _), let .refreshGit(block), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
-             let .newAgent(block, _, _), let .readBytes(block), let .processes(block),
+             let .newAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _):
             (client(of: block) ?? local).propose(proposal, done: done)
-        case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .readPath, .readRange, .writePath, .makeFolder, .saveImage, .movePath, .showRevision:
+        case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .makeFolder, .movePath, .showRevision:
             local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {

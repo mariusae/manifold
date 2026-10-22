@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 43
+public let protocolVersion = 44
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -19,10 +19,6 @@ public enum FrameKind: UInt8, Sendable {
     case resize = 3
     /// Sent by the server after it has replayed a session's recent output.
     case replayDone = 4
-    /// A piece of a bulk frame (`Connection.sendBulk`): a 4-byte bulk id,
-    /// a byte that's 1 on the last piece, then the next bytes of the
-    /// frame's own encoding.
-    case fragment = 6
     /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
     /// op (open, a frame, close, credit), then the op's bytes — for a
     /// frame, the stream's own frame, encoded.
@@ -178,8 +174,6 @@ public enum Proposal: Codable, Sendable {
     case captureOutput(block: BlockID, terminal: BlockID, command: Int, fallback: String)
     /// An agent: a terminal block that runs `command` instead of a shell.
     case newAgent(block: BlockID, cwd: String?, command: String)
-    /// A file's bytes (an image, a PDF), answered with `bytes`.
-    case readBytes(block: BlockID)
     /// A process block (made if new), listed; listed again.
     case processes(block: BlockID)
     /// Send a signal to a process on the host.
@@ -189,16 +183,6 @@ public enum Proposal: Codable, Sendable {
     /// The tree under a folder, less what's ignored, as paths relative to
     /// it: `limit` files at most; answered with `listing`.
     case listTree(path: String, limit: Int)
-    /// A file's bytes by its path, `limit` at most, answered with `bytes`
-    /// (nil when it's bigger, or unreadable).
-    case readPath(path: String, limit: Int)
-    /// A file's bytes from `offset`, `length` at most (fewer at its end),
-    /// answered with `bytes`: a big file fetched in pieces.
-    case readRange(path: String, offset: Int64, length: Int)
-    /// Bytes written to a path (a file dropped on a folder, sent back from
-    /// an app on this Mac), the folders on the way made; `mode` says
-    /// whether it may be there already, or is being added to.
-    case writePath(path: String, data: Data, mode: WriteMode)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
     /// A file as a revision (a commit, a tree) has it, as a block of its own
@@ -207,10 +191,6 @@ public enum Proposal: Codable, Sendable {
     /// A file or folder moved (renamed) on the host; `replace`: over what's
     /// there, else failing ("exists").
     case movePath(from: String, to: String, replace: Bool)
-    /// An image put in a text (pasted, dropped, from an iPhone's camera):
-    /// its bytes written as `name` in `folder` (beside a Markdown file), or
-    /// in Manifold's own folder for a note, and an image block made for it.
-    case saveImage(block: BlockID, data: Data, name: String, folder: String?)
     /// An agent's turn as a block of its own (§3.8), linked from the agent
     /// and to what the turn changed; made if new, refreshed if not.
     case captureTurn(block: BlockID, agent: BlockID, turn: Int)
@@ -233,10 +213,11 @@ public enum Proposal: Codable, Sendable {
     case startNotebook(block: BlockID)
 }
 
-/// How `writePath` writes: a new file (failing if one is there), over
-/// whatever is there, or onto the end of what a previous piece wrote.
+/// How `writeFile` writes: a new file (failing if one is there), over
+/// whatever is there, onto the end of what's there, or a new file under
+/// the name or, taken, the first free "name 2", "name 3"…
 public enum WriteMode: String, Codable, Sendable {
-    case create, replace, append
+    case create, replace, append, unique
 }
 
 /// What a host asks the leader of a shard to append.
@@ -278,6 +259,21 @@ public enum ClientMessage: Codable, Sendable {
     /// connects to `port` on its own loopback, and `data` frames carry the
     /// bytes both ways; an empty one says that side is done sending.
     case tunnel(port: Int)
+    /// A stream's first frame: a file's bytes from `offset`, `length` of
+    /// them at most (all, if nil), come down it as `data` frames, then
+    /// `end` — or only `end`, saying why not (unreadable; bigger than
+    /// `limit`, if given).
+    case readFile(path: String, offset: Int64, length: Int64?, limit: Int64?)
+    /// A stream's first frame: a file's bytes go up it as `data` frames,
+    /// an empty one last, and come to `path` (the folders on the way made)
+    /// as `mode` says; answered with `end`, the path written.
+    case writeFile(path: String, mode: WriteMode)
+    /// A stream's first frame: an image put in a text (pasted, dropped,
+    /// from an iPhone's camera), its bytes up the stream as `writeFile`'s,
+    /// kept as `name` in `folder` (beside a Markdown file) or in
+    /// Manifold's own folder for a note — "name 2" if it's taken — and an
+    /// image block made for it.
+    case saveImage(block: BlockID, name: String, folder: String?)
 }
 
 public struct AttachRequest: Codable, Sendable {
@@ -329,8 +325,9 @@ public enum ServerMessage: Codable, Sendable {
     case languageServer(language: String, root: String, state: String)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
-    /// A file's bytes, for `readBytes`; nil if it couldn't be read.
-    case bytes(id: Int, Data?)
+    /// A file stream's last word: done (`path`, the file written, for a
+    /// write), or why not.
+    case end(error: String?, path: String?)
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)

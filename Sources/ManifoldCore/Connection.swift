@@ -14,16 +14,7 @@ private func sysListen(_ fd: Int32, _ backlog: Int32) -> Int32 { listen(fd, back
 /// A framed, non-blocking connection over a socket, or over a pair of
 /// pipes (a remote host's bridge, by its stdio), driven by dispatch
 /// sources on one queue. All methods must be called on that queue.
-///
-/// Frames go in two lanes. `send` is the ordered one: frames arrive as
-/// they were sent. `sendBulk` is for big things whose order doesn't matter
-/// (a file's bytes, a piece of an upload): each is cut into fragments
-/// that go out between the ordered frames, one fragment at a time and in
-/// turn with other bulk sends, so a file on its way holds up nothing
-/// else for longer than a fragment takes.
 public final class Connection {
-    /// How much of a bulk send goes at a time.
-    public static let fragmentSize = 64 << 10
     /// Read from here...
     public let fd: Int32
     /// ...and written to here (the same, for a socket).
@@ -35,11 +26,6 @@ public final class Connection {
     /// Ordered bytes to write, from `sent` on.
     private var outbox = Data()
     private var sent = 0
-    /// Bulk sends on their way: their encoded frames, and how far each is.
-    private var bulk: [(id: UInt32, data: Data, offset: Int)] = []
-    private var nextBulk: UInt32 = 1
-    /// Bulk frames coming in, by id, until their last fragment.
-    private var fragments: [UInt32: Data] = [:]
     private var decoder = FrameDecoder()
     /// When bytes last came in, and last went out.
     public private(set) var lastRead = Date()
@@ -88,20 +74,8 @@ public final class Connection {
         flush()
     }
 
-    /// A frame in the bulk lane: whole when it arrives, but not in order
-    /// with the frames around it.
-    public func sendBulk(_ frame: Frame) {
-        guard !isClosed else { return }
-        let data = frame.encoded
-        guard data.count > Self.fragmentSize else { return send(frame) }
-        bulk.append((nextBulk, data, 0))
-        nextBulk &+= 1
-        guard !stalled else { return close() }
-        flush()
-    }
-
     /// Bytes waiting to be written.
-    public var pending: Int { outbox.count - sent + bulk.reduce(0) { $0 + $1.data.count - $1.offset } }
+    public var pending: Int { outbox.count - sent }
 
     /// A peer that stopped reading doesn't get to hold unbounded memory:
     /// a lot waiting and none of it taken for half a minute (a slow link
@@ -139,46 +113,10 @@ public final class Connection {
         decoder.append(Data(buf[0..<n]))
         do {
             while !isClosed, let frame = try decoder.next() {
-                if frame.kind == .fragment {
-                    if let whole = try reassemble(frame) { onFrame?(whole) }
-                } else {
-                    onFrame?(frame)
-                }
+                onFrame?(frame)
             }
         } catch {
             close()
-        }
-    }
-
-    /// A bulk frame's fragment: kept until the last, which makes it whole.
-    private func reassemble(_ fragment: Frame) throws -> Frame? {
-        let p = fragment.payload
-        guard p.count >= 5 else { throw ProtocolError.badFrameKind }
-        let s = p.startIndex
-        let id = p[s..<s + 4].reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
-        fragments[id, default: Data()].append(p[(s + 5)...])
-        guard fragments[id]!.count <= 1 << 30 else { throw ProtocolError.frameTooLarge }
-        guard p[s + 4] != 0, let whole = fragments.removeValue(forKey: id) else { return nil }
-        var d = FrameDecoder()
-        d.append(whole)
-        guard let frame = try d.next() else { throw ProtocolError.badFrameKind }
-        return frame
-    }
-
-    /// The next bulk send's next fragment, onto the ordered bytes; the
-    /// send goes to the back of the line, if there's more of it.
-    private func nextFragment() {
-        var b = bulk.removeFirst()
-        let end = min(b.offset + Self.fragmentSize, b.data.count)
-        let last = end == b.data.count
-        var p = Data(capacity: 5 + end - b.offset)
-        withUnsafeBytes(of: b.id.bigEndian) { p.append(contentsOf: $0) }
-        p.append(last ? 1 : 0)
-        p.append(b.data[(b.data.startIndex + b.offset)..<(b.data.startIndex + end)])
-        outbox.append(Frame(.fragment, p).encoded)
-        if !last {
-            b.offset = end
-            bulk.append(b)
         }
     }
 
@@ -193,11 +131,9 @@ public final class Connection {
         }
         while true {
             if sent == outbox.count {
-                // The ordered bytes all gone: a bulk send's next piece.
                 outbox.removeAll(keepingCapacity: outbox.count <= 1 << 20)
                 sent = 0
-                guard !bulk.isEmpty else { break }
-                nextFragment()
+                break
             }
             let n = outbox.withUnsafeBytes { write(writeFD, $0.baseAddress! + sent, $0.count - sent) }
             if n > 0 {

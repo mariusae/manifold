@@ -5050,7 +5050,7 @@ extension MainWindowController: GridDelegate {
             let id = BlockID(host: host.host)
             let f = DateFormatter()
             f.dateFormat = "yyyy-MM-dd-HHmmss"
-            host.propose(.saveImage(block: id, data: data, name: "image-\(f.string(from: Date())).\(kind)", folder: nil)) { [weak self] error in
+            host.saveImage(data, block: id, name: "image-\(f.string(from: Date())).\(kind)", folder: nil) { [weak self] error, _ in
                 guard let self else { return }
                 if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
                 self.showWhenMade(id, lens: .image, place: place)
@@ -5516,11 +5516,11 @@ extension MainWindowController: EditorViewDelegate {
         let name = "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
         let folder = b.path.map { $0.deletingLastPathComponent }
         let id = BlockID(host: text.host)
-        c.propose(.saveImage(block: id, data: data, name: name, folder: folder)) { [weak self] error in
+        c.saveImage(data, block: id, name: name, folder: folder) { [weak self] error, path in
             guard let self else { return }
             if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
             let target = folder != nil
-                ? (self.hosts.block(id)?.path?.lastPathComponent ?? name).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+                ? (path?.lastPathComponent ?? name).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
                 : "manifold:\(id.description)"
             insert("![](\(target))")
         }

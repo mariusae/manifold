@@ -427,6 +427,13 @@ enum DebugControl {
             FileManager.default.fileExists(atPath: a[1], isDirectory: &dir)
             wc.copy([.entry(host: wc.hosts.local.host, path: a[1], isDirectory: dir.boolValue)], into: a[0], on: wc.hosts.local.host, moving: true)
             return "moving"
+        case "rtt":
+            // "rtt <host>": a ping's round trip on the control stream now, and
+            // the pacing, said in the log when the pong comes (the link is
+            // served on this thread: it can't be waited for here).
+            guard let wc, let c = wc.hosts.client(HostID(arg)) else { return "no such host" }
+            c.debugRoundTrip { t, pacing in NSLog("rtt %@: %@ · %@", arg, t.map { String(format: "%.0f ms", $0 * 1000) } ?? "-", pacing) }
+            return "measuring (see the log)"
         case "fetch":
             // "fetch <remote path> <local path> [host]": in pieces, from this
             // host's server (or another's).

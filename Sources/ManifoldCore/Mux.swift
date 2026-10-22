@@ -9,12 +9,6 @@ public protocol Channel: AnyObject {
     var isClosed: Bool { get }
     var onFrame: ((Frame) -> Void)? { get set }
     var onClose: (() -> Void)? { get set }
-    /// A big frame whose order with the others doesn't matter.
-    func sendBulk(_ frame: Frame)
-}
-
-extension Channel {
-    public func sendBulk(_ frame: Frame) { send(frame) }
 }
 
 extension Connection: Channel {}
@@ -58,9 +52,16 @@ public final class Mux {
     private var bulkReceived: UInt64 = 0
     /// Sends remembered until acknowledged: how far, when, and how much
     /// was acknowledged by then — a round trip, and a delivery rate.
-    private var marks: [(sent: UInt64, at: Date, acked: UInt64, ackedAt: Date)] = []
+    private var marks: [(sent: UInt64, size: Int, at: Date, acked: UInt64, ackedAt: Date)] = []
     private var lastAckAt = Date()
-    private var rtts: [(at: Date, rtt: TimeInterval)] = []
+    /// The shortest round trip, and when it was seen. Measured while our
+    /// own bytes are queued, a round trip is longer than the link's; so when
+    /// the shortest is ten seconds old the paced streams stop until what's
+    /// in flight has arrived (`probing`), and one piece sent into the empty
+    /// queue measures it again (`probe`).
+    private var minRTT: (rtt: TimeInterval, at: Date)?
+    private var probing = false
+    private var probe: UInt64?
     private var rates: [(at: Date, rate: Double)] = []
     public private(set) var budget = 256 << 10
 
@@ -189,7 +190,11 @@ public final class Mux {
     private func pumpBulk() {
         guard !pumping else { return }
         pumping = true
+        if let m = minRTT, !probing, Date().timeIntervalSince(m.at) > 10 { probing = true }
         while !ready.isEmpty, connection.pending < Self.bulkPiece, bulkSent - bulkAcked < UInt64(budget) {
+            // Probing: nothing more until all that's out has arrived, then
+            // one piece alone.
+            if probing, probe != nil || bulkSent != bulkAcked { break }
             let s = ready.removeFirst()
             guard let f = s.next() else {
                 s.drainedIfEmpty()
@@ -197,7 +202,8 @@ public final class Mux {
             }
             let frame = Self.opFrame(s.id, .frame, f)
             bulkSent &+= UInt64(frame.payload.count + 5)
-            marks.append((bulkSent, Date(), bulkAcked, lastAckAt))
+            marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
+            if probing { probe = bulkSent }
             connection.send(frame)
             // Its producer may send more now (onto its queue, not out).
             s.drainedIfEmpty()
@@ -212,19 +218,30 @@ public final class Mux {
         guard total > bulkAcked else { return }
         let now = Date()
         bulkAcked = total
+        let rate = rates.map(\.rate).max()
         while let m = marks.first, m.sent <= total {
             marks.removeFirst()
-            rtts.append((now, now.timeIntervalSince(m.at)))
+            // Less the time the piece itself took to go out: on a slow link
+            // that's most of it, and it isn't the link's round trip.
+            let rtt = max(0.0005, now.timeIntervalSince(m.at) - (rate.map { Double(m.size) / $0 } ?? 0))
+            if m.sent == probe {
+                // Sent into an empty queue: the link's round trip, now.
+                minRTT = (rtt, now)
+                probe = nil
+                probing = false
+            } else if minRTT == nil || rtt <= minRTT!.rtt {
+                minRTT = (rtt, now)
+            }
             let span = now.timeIntervalSince(m.ackedAt)
             if span > 0.001 { rates.append((now, Double(total - m.acked) / span)) }
         }
         lastAckAt = now
-        // The shortest round trip of the last ten seconds, the best rate
-        // of the last five: what the link is, apart from its queues.
-        rtts.removeAll { now.timeIntervalSince($0.at) > 10 }
+        // The best rate of the last five seconds and the shortest round
+        // trip: what the link is, apart from its queues.
         rates.removeAll { now.timeIntervalSince($0.at) > 5 }
-        if let rtt = rtts.map(\.rtt).min(), let rate = rates.map(\.rate).max() {
-            budget = min(32 << 20, max(64 << 10, Int(2 * rate * rtt)))
+        // What the link holds, and a half again; never less than a piece.
+        if let rtt = minRTT?.rtt, let rate = rates.map(\.rate).max() {
+            budget = min(32 << 20, max(Self.bulkPiece, Int(1.5 * rate * rtt)))
         }
         pumpBulk()
     }
@@ -243,7 +260,7 @@ public final class Mux {
 
     /// Debugging: the pacing's state.
     public var debugPacing: String {
-        let rtt = rtts.map(\.rtt).min().map { String(format: "%.1f ms", $0 * 1000) } ?? "?"
+        let rtt = minRTT.map { String(format: "%.1f ms", $0.rtt * 1000) } ?? "?"
         let rate = rates.map(\.rate).max().map { String(format: "%.0f KB/s", $0 / 1024) } ?? "?"
         return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), rate \(rate), streams \(streams.count)"
     }
@@ -256,7 +273,6 @@ public final class ControlChannel: Channel {
     public var onClose: (() -> Void)?
     public var isClosed: Bool { mux?.connection.isClosed ?? true }
     public func send(_ frame: Frame) { mux?.connection.send(frame) }
-    public func sendBulk(_ frame: Frame) { mux?.connection.sendBulk(frame) }
     public func close() { mux?.connection.close() }
 
     fileprivate func closed() {
