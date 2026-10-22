@@ -30,6 +30,21 @@ public struct LanguageServerConfig: Codable, Equatable, Sendable, Identifiable {
         LanguageServerConfig(id: "zig", extensions: ["zig"], command: "zls", rootMarkers: ["build.zig"]),
     ]
 
+    /// The table as a host's preferences change it (§7.2, `HostPreferences.lsp`):
+    /// a language's command, and the markers that find its workspace root —
+    /// the language's own setting, else "root" for every language. A marker
+    /// may be a list, separated by commas.
+    public static func applying(_ configs: [LanguageServerConfig], _ settings: [String: String]) -> [LanguageServerConfig] {
+        configs.map { config in
+            var c = config
+            if let command = settings[c.id], !command.isEmpty { c.command = command }
+            if let markers = settings[c.id + ".root"] ?? settings["root"], !markers.isEmpty {
+                c.rootMarkers = markers.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            }
+            return c
+        }
+    }
+
     /// The language a file is in, by its extension.
     public static func language(for path: String, in configs: [LanguageServerConfig]) -> LanguageServerConfig? {
         let ext = path.pathExtension.lowercased()

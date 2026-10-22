@@ -436,7 +436,13 @@ when you find it again.
   Language Servers… is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
-  off; it's a setting on the desk, so every host runs the same.
+  off; it's a setting on the desk, so every host runs the same — unless a
+  host's own preferences (Preferences for *host*…, in its menu, This Mac's
+  too) say otherwise, one setting a line as apex takes them:
+  `lsp.rust ~/.apex/fblsp-server rust` runs that for Rust there,
+  `lsp.root .hg` makes the folder holding `.hg` every language's workspace
+  root (a monorepo one workspace), `lsp.rust.root …` one language's. A
+  change restarts the servers it touches, their open files with them.
 - **⌘-click** a file's name in a terminal to open it below the terminal,
   in its column: Markdown in a preview, folders in a listing (a folder's
   bare name too, as `ls` prints it, if there's a folder by that name where
@@ -668,8 +674,8 @@ when you find it again.
   running), and the tile shows what it serves, with nothing of a browser
   about it; a link out of it (a pull request) opens in the browser. On
   another host it comes through the host's connection; its theme follows
-  the app's. Where there's no Sapling checkout, or no `sl`, the tile says
-  so. The servers look for tools (`git`, `sl`, `rg`, language servers)
+  the app's. It works on a git repository as well as a Sapling one;
+  outside any repository, or with no `sl`, the tile says so. The servers look for tools (`git`, `sl`, `rg`, language servers)
   where they're commonly installed — Homebrew's and Linuxbrew's folders,
   `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize

@@ -1470,6 +1470,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "magnifyingglass", title: "Find Anything…", subtitle: "⌘O") { [weak self] in
             self?.openDocument(nil)
         })
+        items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: host.host))…", subtitle: "shell, language servers") { [weak self] in
+            guard let self else { return }
+            self.editPreferences(self.host.host)
+        })
         for client in hosts.all where client.isRemote {
             let h = client.host
             let state = client.isConnected ? "connected" : "offline"
@@ -1478,7 +1482,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.newWorkspace(on: h, cwd: nil)
             })
             if client.link == .connected {
-                items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: h))…", subtitle: "shell") { [weak self] in
+                items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: h))…", subtitle: "shell, language servers") { [weak self] in
                     self?.editPreferences(h)
                 })
             }
@@ -1977,6 +1981,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 items.append(open)
             }
             items.append(ClosureMenuItem("Reset Server on \(label)…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.resetServer(host) })
+        }
+        if hosts.client(host)?.isRemote == false {
+            // This Mac's own (another host's are in its own menu).
+            items.append(ClosureMenuItem("Preferences for \(label)…", symbol: "gearshape") { [weak self] in self?.editPreferences(host) })
         }
         let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
         graph.isEnabled = hosts.client(host)?.isConnected == true
@@ -4501,34 +4509,71 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// attached to it shares them; the host says if it can't do as asked.
     func editPreferences(_ host: HostID) {
         guard let window, let c = hosts.client(host) else { return }
+        let prefs = c.desk.preferences
+        let languages = desk.settings.languageServers.map(\.id)
         let alert = NSAlert()
         alert.messageText = "Preferences for \(hosts.label(of: host))"
-        alert.informativeText = "The shell new terminals there start: a name on the host's PATH, or a path; empty for your login shell. Shells already running keep theirs. Every Mac attached to the host shares these."
-        let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
-        let label = NSTextField(labelWithString: "Shell")
-        label.frame = NSRect(x: 0, y: 6, width: 44, height: 17)
-        let field = NSTextField(frame: NSRect(x: 50, y: 2, width: 250, height: 24))
-        field.placeholderString = "Login shell"
-        field.stringValue = c.desk.preferences.shell ?? ""
-        box.addSubview(label)
-        box.addSubview(field)
+        alert.informativeText = "Every Mac attached to the host shares these."
+        let w: CGFloat = 420
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 236))
+        func label(_ text: String, y: CGFloat, small: Bool = false) {
+            let l = NSTextField(wrappingLabelWithString: text)
+            l.font = small ? .systemFont(ofSize: 11) : .systemFont(ofSize: 13, weight: .medium)
+            l.textColor = small ? .secondaryLabelColor : .labelColor
+            let h = l.sizeThatFits(NSSize(width: w, height: 200)).height
+            l.frame = NSRect(x: 0, y: y, width: w, height: h)
+            box.addSubview(l)
+        }
+        // The shell new terminals start.
+        label("Shell", y: 214)
+        let shell = NSTextField(frame: NSRect(x: 0, y: 186, width: w, height: 24))
+        shell.placeholderString = "Login shell"
+        shell.stringValue = prefs.shell ?? ""
+        box.addSubview(shell)
+        label("A name on the host's PATH, or a path. Shells already running keep theirs.", y: 168, small: true)
+        // Its language servers, over the desk's table, as apex's are set.
+        label("Language servers", y: 142)
+        let scroll = NSTextView.scrollableTextView()
+        scroll.frame = NSRect(x: 0, y: 46, width: w, height: 92)
+        scroll.borderType = .bezelBorder
+        let text = scroll.documentView as! NSTextView
+        text.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        text.isAutomaticQuoteSubstitutionEnabled = false
+        text.isAutomaticDashSubstitutionEnabled = false
+        text.isAutomaticTextReplacementEnabled = false
+        text.string = prefs.lspLines
+        box.addSubview(scroll)
+        label("""
+            One a line: lsp.LANG COMMAND runs a language's server; lsp.root MARKER makes \
+            the folder holding MARKER (.hg, say) every language's workspace root; \
+            lsp.LANG.root MARKER, one language's. LANG: \(languages.joined(separator: ", ")).
+            """, y: 0, small: true)
         alert.accessoryView = box
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
+        alert.window.initialFirstResponder = shell
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            var p = c.desk.preferences
-            let shell = field.stringValue.trimmingCharacters(in: .whitespaces)
-            p.shell = shell.isEmpty ? nil : shell
+            var p = prefs
+            let typed = shell.stringValue.trimmingCharacters(in: .whitespaces)
+            p.shell = typed.isEmpty ? nil : typed
+            switch HostPreferences.parseLSP(text.string, languages: languages) {
+            case .success(let lsp): p.lsp = lsp
+            case .failure(let error): return self.preferencesRefused(host, error.message)
+            }
             self.hosts.setPreferences(p, on: host) { [weak self] error in
-                guard let self, let error, let window = self.window else { return }
-                let failed = NSAlert()
-                failed.messageText = "\(self.hosts.label(of: host)) kept its preferences"
-                failed.informativeText = error
-                failed.beginSheetModal(for: window)
+                guard let self, let error else { return }
+                self.preferencesRefused(host, error)
             }
         }
+    }
+
+    private func preferencesRefused(_ host: HostID, _ why: String) {
+        guard let window else { return }
+        let failed = NSAlert()
+        failed.messageText = "\(hosts.label(of: host)) kept its preferences"
+        failed.informativeText = why
+        failed.beginSheetModal(for: window)
     }
 
     func attach(_ dest: Destination) {

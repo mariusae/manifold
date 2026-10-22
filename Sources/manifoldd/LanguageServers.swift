@@ -32,13 +32,23 @@ final class LanguageServers {
 
     func configure(_ configs: [LanguageServerConfig]) {
         guard configs != self.configs else { return }
+        let before = self.configs
         self.configs = configs
-        // Servers whose command changed are started afresh next time.
-        for (key, server) in servers where configs.first(where: { $0.id == server.language })?.command != server.command {
+        // Servers whose command or root markers changed are started afresh
+        // next time (another root may be found for their files).
+        func same(_ id: String) -> Bool {
+            let a = before.first { $0.id == id }, b = configs.first { $0.id == id }
+            return a?.command == b?.command && a?.rootMarkers == b?.rootMarkers
+        }
+        var reopen: [BlockID] = []
+        for (key, server) in servers where configs.first(where: { $0.id == server.language })?.command != server.command || !same(server.language) {
             server.stop()
             servers.removeValue(forKey: key)
+            reopen += opened.filter { $0.value.server == key }.map(\.key)
             opened = opened.filter { $0.value.server != key }
         }
+        // Their files, open with the servers as they are now, at once.
+        for block in reopen { textChanged(block) }
     }
 
     /// The server for a block's file, started if need be.

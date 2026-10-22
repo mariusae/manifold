@@ -164,17 +164,57 @@ public struct HostPreferences: Codable, Equatable, Sendable {
     /// The shell new terminals start (a name on the host's PATH, or a
     /// path); nil for the user's login shell.
     public var shell: String?
+    /// Its language servers, as apex's are set (§7.2), over the desk's
+    /// table: "rust" the command for a language, "root" a marker whose
+    /// folder is every language's workspace root, "rust.root" one
+    /// language's (`lsp.rust`, `lsp.root`, `lsp.rust.root` as written).
+    public var lsp: [String: String] = [:]
 
-    public init(shell: String? = nil) {
+    public init(shell: String? = nil, lsp: [String: String] = [:]) {
         self.shell = shell
+        self.lsp = lsp
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         shell = try? c.decodeIfPresent(String.self, forKey: .shell)
+        lsp = (try? c.decodeIfPresent([String: String].self, forKey: .lsp)) ?? [:]
     }
 
-    enum CodingKeys: String, CodingKey { case shell }
+    enum CodingKeys: String, CodingKey { case shell, lsp }
+
+    /// The language server settings as lines ("lsp.rust ~/bin/server rust").
+    public var lspLines: String {
+        lsp.keys.sorted().map { "lsp.\($0) \(lsp[$0]!)" }.joined(separator: "\n")
+    }
+
+    /// Lines read back (blank ones and "#" ones skipped): the settings, or
+    /// why not — a setting for no language there is, among `languages`.
+    public static func parseLSP(_ text: String, languages: [String]) -> Result<[String: String], LSPSettingError> {
+        var out: [String: String] = [:]
+        for raw in text.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            let parts = line.split(maxSplits: 1, whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            var key = parts[0]
+            if key.hasPrefix("lsp.") { key = String(key.dropFirst(4)) }
+            let lang = key.hasSuffix(".root") ? String(key.dropLast(5)) : key
+            guard key == "root" || languages.contains(lang) else {
+                return .failure(LSPSettingError(message: "No language “\(lang)”: one of \(languages.joined(separator: ", ")), or root"))
+            }
+            // Quotes around the value ("…", “…”, '…'), taken off as a shell would.
+            var value = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
+            for (open, close) in [("\"", "\""), ("“", "”"), ("'", "'")] where value.count > 1 && value.hasPrefix(open) && value.hasSuffix(close) {
+                value = String(value.dropFirst().dropLast())
+            }
+            out[key] = value.isEmpty ? nil : value
+        }
+        return .success(out)
+    }
+}
+
+public struct LSPSettingError: Error, Sendable {
+    public let message: String
 }
 
 /// The fonts everything is set in, a proportional one and a fixed-width

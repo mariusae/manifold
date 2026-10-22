@@ -173,12 +173,19 @@ enum DebugControl {
                 fields.first?.stringValue = String(arg.dropFirst(5))
                 return "ok"
             }
+            if arg.hasPrefix("text ") {
+                // "sheet text <text>": into its text area ("\n" a new line).
+                guard let tv = allSubviews(sheet.contentView).compactMap({ $0 as? NSTextView }).first(where: { !$0.isFieldEditor }) else { return "no text area" }
+                tv.string = String(arg.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n")
+                return "ok"
+            }
             if arg.hasPrefix("press ") {
                 guard let b = buttons.first(where: { $0.title == String(arg.dropFirst(6)) }) else { return "no button" }
                 b.performClick(nil)
                 return "ok"
             }
-            return "fields: \(fields.map(\.stringValue)) buttons: \(buttons.map(\.title))"
+            let words = allSubviews(sheet.contentView).compactMap { $0 as? NSTextField }.filter { !$0.isEditable && !$0.stringValue.isEmpty }.map(\.stringValue)
+            return "fields: \(fields.map(\.stringValue)) buttons: \(buttons.map(\.title)) says: \(words)"
         case "open":
             // As if the target were command-clicked in the focused terminal.
             guard let wc, let t = wc.debugFocusedTerminal else { return "no terminal focused" }

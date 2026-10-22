@@ -27,6 +27,9 @@ final class Server {
     /// What the host calls itself, for clients to show.
     let label: String?
     private let queue = DispatchQueue(label: "manifoldd")
+    /// The language servers' table as the app last gave it (the desk's),
+    /// before this host's own settings are put over it.
+    private var deskLanguageServers = LanguageServerConfig.defaults
     private let node = Node()
     private let store: LogStore
     private let clock: Clock
@@ -154,6 +157,8 @@ final class Server {
     func run() throws {
         load()
         pruneHistory()
+        // Its language servers as its own settings say, from the start.
+        languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
         let fd = try UnixSocket.listen(path: Paths.socket)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let listener = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -682,6 +687,8 @@ final class Server {
                 append(.preferences(p), to: .desk(host))
                 // Another shell may find other agents.
                 indexAgents(again: true)
+                // Its language servers as its settings now say.
+                languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, p.lsp))
             }
             done()
         case .indexAgents:
@@ -741,7 +748,9 @@ final class Server {
             }
             done()
         case let .languageServers(configs):
-            languageServers.configure(configs)
+            // The desk's table, with this host's own settings over it.
+            deskLanguageServers = configs
+            languageServers.configure(LanguageServerConfig.applying(configs, node.desk(host).preferences.lsp))
             done()
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
@@ -760,7 +769,7 @@ final class Server {
             refreshGit(block)
             done()
         case let .smartlog(block, path):
-            // The Sapling repository holding the path (ISL is Sapling's alone).
+            // The repository holding the path.
             let full = path.expandingTildeInPath
             let repo = git.repository(of: full)
             if node.block(block) == nil {
@@ -769,8 +778,9 @@ final class Server {
                 let folder = FileManager.default.fileExists(atPath: full, isDirectory: &isDir) && !isDir.boolValue ? full.deletingLastPathComponent : full
                 append(.create(kind: .smartlog, title: nil, path: repo?.root ?? folder), to: .block(block))
             }
-            guard let repo, repo.vcs == .sapling else {
-                append(.smartlog(url: nil, error: repo.map { "\($0.root.lastPathComponent) is a git repository, not a Sapling one" } ?? "Not in a Sapling repository", at: clock.now()), to: .block(block))
+            // Sapling's or git's: sl web serves either.
+            guard let repo else {
+                append(.smartlog(url: nil, error: "Not in a repository", at: clock.now()), to: .block(block))
                 return done()
             }
             report(block, .working, msg: "Starting Interactive Smartlog")
