@@ -5846,7 +5846,7 @@ extension MainWindowController: TerminalViewDelegate {
         let id = BlockID(host: view.block.host)
         hosts.propose(.captureOutput(block: id, terminal: view.block, command: command.id, fallback: output))
         // Shown once the host has made it (a moment).
-        showWhenMade(id, lens: .output, place: place)
+        showWhenMade(id, lens: .output, place: place, context: context)
     }
 
     /// An agent's turn as its own block (§3.8): the one made before, brought
@@ -5857,13 +5857,16 @@ extension MainWindowController: TerminalViewDelegate {
         let id = made ?? BlockID(host: agent.host)
         hosts.propose(.captureTurn(block: id, agent: agent, turn: turn))
         if made != nil { return show(id, lens: .output, place, kind: .opened, context: context) }
-        showTurnWhenMade(id, place: place)
+        showTurnWhenMade(id, place: place, context: context)
     }
 
-    private func showTurnWhenMade(_ id: BlockID, place: Where, tries: Int = 60) {
-        if hosts.block(id)?.output?.markdown != nil { return show(id, lens: .output, place) }
+    /// `context`: the link the host made for it ("turn N"), said again —
+    /// a link of another context would take its place, and the turn's
+    /// block then not be found to show again.
+    private func showTurnWhenMade(_ id: BlockID, place: Where, context: String, tries: Int = 60) {
+        if hosts.block(id)?.output?.markdown != nil { return show(id, lens: .output, place, kind: .opened, context: context) }
         guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showTurnWhenMade(id, place: place, tries: tries - 1) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showTurnWhenMade(id, place: place, context: context, tries: tries - 1) }
     }
 
     /// Changes in This Turn: the working tree between the turn's two
@@ -5912,10 +5915,11 @@ extension MainWindowController: TerminalViewDelegate {
     }
 
     /// A block the host is making, shown as soon as it exists here.
-    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, tries: Int = 40) {
-        if hosts.block(id) != nil { return show(id, lens: lens, place) }
+    /// `context`: the link the host made for it, said again (see showTurnWhenMade).
+    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, tries: Int = 40) {
+        if hosts.block(id) != nil { return show(id, lens: lens, place, kind: .opened, context: context) }
         guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showWhenMade(id, lens: lens, place: place, tries: tries - 1) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showWhenMade(id, lens: lens, place: place, context: context, tries: tries - 1) }
     }
 
     func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {

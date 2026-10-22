@@ -371,6 +371,9 @@ enum DebugControl {
                     let note = wc.hosts.links.first { $0.from == id && $0.context == "to-do list" }?.to
                     return note.flatMap { n in wc.hosts.block(n).map { "\($0.displayTitle)\n" + ($0.text?.text.string ?? "") } } ?? "no to-do note"
                 }
+                if a[1] == "count" {
+                    return "\(wc.hosts.blocks.filter { $0.output?.source == id && $0.output?.command == n }.count) blocks"
+                }
                 if a[1] == "md" {
                     return wc.hosts.blocks.first { $0.output?.source == id && $0.output?.command == n }?.output?.markdown ?? "no block"
                 }
