@@ -587,7 +587,9 @@ when you find it again.
   notebook's status (working, done, failed) shows in the sidebar and the
   Inbox as a terminal's does. Cells, outputs and counts are kept in the
   notebook's log; the shell itself goes with the host's server, and the
-  next run starts a new one.
+  next run starts a new one. A cell's menu has Open Output as Block: what it
+  printed, as a command's output block, beside the notebook and linked
+  from it.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
   its project (the nearest folder up with `.git`), placed beside it; the

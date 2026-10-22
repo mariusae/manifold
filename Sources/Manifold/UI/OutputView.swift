@@ -107,7 +107,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     func refresh() {
         guard let o = source()?.output, o != shown else { return }
         shown = o
-        // A file's old version (§3.6) is no command: no prompt, no terminal.
+        // A file's old version (§3.6) is no command: no prompt.
         let ran = o.source != nil
         prompt.attributedStringValue = NSAttributedString(string: (ran ? "$ " : "") + o.line, attributes: [
             .font: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask), .foregroundColor: Theme.text])
@@ -117,8 +117,8 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         if o.plain, ran { words.append("from the screen") }
         outcome.stringValue = words.joined(separator: " · ")
         outcome.textColor = (o.status ?? 0) == 0 ? Theme.secondaryText : Theme.statusError
-        back.isEnabled = ran && o.command != nil
-        back.isHidden = !ran
+        // A notebook's cell has no terminal to go back to.
+        back.isHidden = o.source == nil || o.command == nil
         let palette = TerminalPalette.current(for: self)
         let rendered = o.plain
             ? NSAttributedString(string: o.output, attributes: [.font: font, .foregroundColor: palette.foreground])

@@ -12,6 +12,8 @@ protocol NotebookViewDelegate: AnyObject {
     func notebook(_ view: NotebookView, open target: String)
     /// A block ⇧-dragged into a cell: its path typed, and linked.
     func notebook(_ view: NotebookView, linkedFrom block: BlockID)
+    /// A cell's output, as a block of its own beside the notebook.
+    func notebook(_ view: NotebookView, openOutput cell: NotebookCell)
 }
 
 /// The shell notebook lens (§7.7): a column of cells, each a command to
@@ -311,6 +313,11 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     func clearOutput(_ id: String) { delegate?.notebook(self, edit: .clear(id)) }
 
+    func openOutput(_ id: String) {
+        guard let cell = source()?.notebook?.cell(id), cell.output != nil else { return NSSound.beep() }
+        delegate?.notebook(self, openOutput: cell)
+    }
+
     func open(_ target: String) { delegate?.notebook(self, open: target) }
 
     // MARK: The header's buttons and keys
@@ -403,6 +410,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         case "click":
             if w.count > 2, let c = cell(w[1]) { return cells[c]?.output.debugClick(w[2]) ?? "no cell" }
         case "delete": if w.count > 1, let c = cell(w[1]) { delete(c) }
+        case "openoutput": if w.count > 1, let c = cell(w[1]) { openOutput(c) }
         case "key":
             // "key cmd|shift|opt return", "key cmd .": through the app as typed, menus first.
             guard w.count > 2, let window else { break }
@@ -753,6 +761,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(self.output.string, forType: .string)
         })
+        menu.addItem(ClosureMenuItem("Open Output as Block", symbol: "rectangle.portrait.on.rectangle.portrait") { owner.openOutput(self.id) })
         menu.addItem(ClosureMenuItem("Clear Output", symbol: "eraser") { owner.clearOutput(self.id) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Delete Cell", symbol: "trash") { owner.delete(self.id) })

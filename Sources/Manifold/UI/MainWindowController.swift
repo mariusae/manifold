@@ -5968,6 +5968,22 @@ extension MainWindowController: NotebookViewDelegate {
     }
 
     func notebook(_ view: NotebookView, linkedFrom block: BlockID) { link(block, to: view.block) }
+
+    /// A cell's output as an output block, as a terminal's command's is:
+    /// the one made for this run of it again, if there is one.
+    func notebook(_ view: NotebookView, openOutput cell: NotebookCell) {
+        guard let client = hosts.client(view.block.host) else { return }
+        let line = cell.source.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        let state = OutputState(source: view.block, line: line, status: cell.status, ran: cell.ran, ended: cell.ended, output: cell.output ?? "")
+        let context = "cell \(cell.count.map(String.init) ?? "output")"
+        if let b = client.node.blocks.first(where: { $0.kind == .output && $0.output?.source == view.block && $0.output?.line == line && $0.output?.ran == cell.ran }) {
+            if b.output != state { client.append([.output(state)], to: .block(b.id)) }
+            return show(b.id, lens: .output, .besideOpener(view.placement), context: context)
+        }
+        let id = BlockID(host: view.block.host)
+        client.append([.create(kind: .output, title: nil, path: nil), .output(state)], to: .block(id))
+        show(id, lens: .output, .besideOpener(view.placement), context: context)
+    }
 }
 
 extension MainWindowController: MediaViewDelegate {
