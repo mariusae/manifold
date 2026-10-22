@@ -174,10 +174,24 @@ final class LinkBadge: NSView {
         let capsuleY = fansDown ? bounds.height - Self.capsuleHeight : 0
         // Its sheets to its right, the stack ending where a lone pill would.
         let right = w - sheetRoom
-        badge.frame = NSRect(x: right - bw, y: capsuleY, width: bw, height: Self.capsuleHeight)
+        // Fanned out, every pill (the first too) as wide as the widest, so
+        // the stack reads as one; folded, the first as the bar has room for.
+        let common = min(max(bw, pills.map(\.wantedWidth).max() ?? 0), right)
+        let first = NSRect(x: right - (fanned ? common : bw), y: capsuleY, width: fanned ? common : bw, height: Self.capsuleHeight)
+        if badge.frame != first {
+            if badge.frame.isEmpty || !(badge.layer?.animationKeys()?.isEmpty ?? true) {
+                badge.frame = first
+            } else {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.16
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    badge.animator().frame = first
+                }
+            }
+        }
         layoutSheets()
         for (i, p) in pills.enumerated() {
-            let pw = min(p.wantedWidth, right)
+            let pw = common
             let y = fansDown ? capsuleY - 4 - CGFloat(i + 1) * Self.step + (Self.step - Self.capsuleHeight) : Self.capsuleHeight + 4 + CGFloat(i) * Self.step
             let target = NSRect(x: right - pw, y: y, width: pw, height: Self.capsuleHeight)
             if fanned {
