@@ -1528,6 +1528,17 @@ private final class Seen: @unchecked Sendable {
     }
 }
 
+@Test func anImageShownInATextIsEmbeddedAndKeptByIt() {
+    // `![](…)` embeds (a strong edge, keeping the image); `[](…)` only mentions.
+    let id = BlockID(host: HostID("h"), ulid: "01IMAGE")
+    let found = Mention.find(in: "see ![](manifold:h/01IMAGE) and [it](other.md) and ![pic](pics/a.png)")
+    #expect(found.count == 3)
+    #expect(found[0].target == .block(id) && found[0].embeds)
+    #expect(found[1].target == .path("other.md") && !found[1].embeds)
+    #expect(found[2].target == .path("pics/a.png") && found[2].embeds)
+    #expect(EdgeKind.link(.embeds).isStrong && !EdgeKind.link(.opened).isStrong)
+}
+
 @Test func openingAFolderSaysItIsOne() throws {
     // `manifold DIR` on another host: the app can't look there, so the path says it.
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("open-\(UUID().uuidString)").path

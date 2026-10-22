@@ -292,7 +292,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         let body: String
         if let (text, version) = source() {
             renderedVersion = version
-            body = MarkdownRenderer.html(text, sourcePositions: true)
+            body = resolvingImages(MarkdownRenderer.html(text, sourcePositions: true))
         } else {
             body = "<p class=\"missing\">\(escape(path)) can't be read.</p>"
         }
@@ -313,6 +313,30 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         }
         web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
     }
+
+    /// Where a block's image is, for the page: this Mac's file, or another
+    /// host's bytes once fetched (nil until then; `imagesArrived` after).
+    var imageSource: ((BlockID) -> String?)?
+
+    /// `<img src="manifold:…">`, an image a note shows by its block: the
+    /// source the page can load.
+    private func resolvingImages(_ html: String) -> String {
+        guard html.contains("src=\"manifold:"), let imageSource else { return html }
+        var out = ""
+        var rest = Substring(html)
+        while let r = rest.range(of: "src=\"manifold:") {
+            out += rest[..<r.lowerBound]
+            guard let end = rest[r.upperBound...].firstIndex(of: "\"") else { break }
+            let address = String(rest[r.upperBound..<end])
+            let source = BlockID.link("manifold:" + address).flatMap { imageSource($0.block) } ?? ""
+            out += "src=\"" + source.replacingOccurrences(of: "\"", with: "%22") + "\""
+            rest = rest[rest.index(after: end)...]
+        }
+        return out + rest
+    }
+
+    /// Another host's images came: the page drawn again with them.
+    func imagesArrived() { render(scrollToTop: false) }
 
     private func json(_ s: String) -> String {
         let data = try! JSONSerialization.data(withJSONObject: [s])

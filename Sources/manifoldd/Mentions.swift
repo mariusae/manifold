@@ -31,16 +31,20 @@ final class Mentions {
         pending.removeValue(forKey: block)
         let all = blocks()
         guard let b = all.first(where: { $0.id == block }), let text = b.text?.text.string else { return }
-        var wanted: [BlockID: String] = [:]
+        // Each block the text names: an image it shows (`![…](…)`) is
+        // embedded, kept by the text; the rest mentioned.
+        var wanted: [BlockID: (context: String, kind: LinkKind)] = [:]
         for m in Mention.find(in: text) {
             guard let target = resolve(m.target, from: b, among: all), target != block else { continue }
-            if wanted[target] == nil { wanted[target] = m.text }
+            let words = String(m.text.prefix(118))
+            let embeds = m.embeds && all.first(where: { $0.id == target })?.kind == .image
+            if embeds || wanted[target] == nil { wanted[target] = embeds ? ("![" + words + "]", .embeds) : ("[[" + words + "]]", .opened) }
         }
         let have = mentions(block)
-        for e in have where wanted[e.to] == nil { unlink?(e.id) }
-        for (to, words) in wanted where !have.contains(where: { $0.to == to && $0.context == "[[" + String(words.prefix(118)) + "]]" }) {
-            link?(Link(from: block, to: to, kind: .opened, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
-                       context: "[[" + String(words.prefix(118)) + "]]"))
+        for e in have where wanted[e.to].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true { unlink?(e.id) }
+        for (to, w) in wanted where !have.contains(where: { $0.to == to && $0.context == w.context && $0.kind == .link(w.kind) }) {
+            link?(Link(from: block, to: to, kind: w.kind, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
+                       context: w.context))
         }
     }
 

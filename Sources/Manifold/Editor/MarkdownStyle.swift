@@ -122,6 +122,8 @@ enum MarkdownStyle {
                     let first = NSRange(location: m.range.location, length: 1)
                     a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: width, font: base)], range: first)
                     hide(NSRange(location: m.range.location + 1, length: m.range.length - 1))
+                    // An image shown (`![](manifold:…)`): its pill, the mark gone too.
+                    if m.range.location > 0, s.character(at: m.range.location - 1) == 0x21 { hide(NSRange(location: m.range.location - 1, length: 1)) }
                 } else {
                     a.addAttributes([.foregroundColor: palette.text, chip: palette.chipTint], range: words)
                     dim(m.range(at: 1)); dim(rest)

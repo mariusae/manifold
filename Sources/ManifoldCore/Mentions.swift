@@ -17,6 +17,8 @@ public struct Mention: Equatable, Sendable {
     public var target: Target
     /// The words of the link.
     public var text: String
+    /// Shown, not only named: `![words](target)`, an image in the text.
+    public var embeds = false
 
     public static func find(in text: String) -> [Mention] {
         var out: [Mention] = []
@@ -46,10 +48,15 @@ public struct Mention: Equatable, Sendable {
                 var target = String(s[s.index(closeBracket, offsetBy: 2)..<closeParen])
                 if let space = target.firstIndex(of: " ") { target = String(target[..<space]) }
                 if let hash = target.firstIndex(of: "#") { target = String(target[..<hash]) }
+                let shown = i > s.startIndex && s[s.index(before: i)] == "!"
                 if target.hasPrefix("manifold:"), let id = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
-                    add(Mention(target: .block(id), text: words))
+                    var m = Mention(target: .block(id), text: words)
+                    m.embeds = shown
+                    add(m)
                 } else if !target.isEmpty, !target.contains("://"), !target.hasPrefix("mailto:"), !words.contains("\n") {
-                    add(Mention(target: .path(target.removingPercentEncoding ?? target), text: words))
+                    var m = Mention(target: .path(target.removingPercentEncoding ?? target), text: words)
+                    m.embeds = shown
+                    add(m)
                 }
                 i = s.index(after: closeParen)
                 continue

@@ -527,6 +527,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = tv
         case .preview where Lens.viewRendering(for: shown.path) == .markdown:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
+            m.imageSource = { [weak self] id in self?.imageSource(id) }
             m.delegate = self
             m.source = { [weak self] in
                 guard let t = self?.hosts.block(p.block)?.text else { return nil }
@@ -665,6 +666,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var closedStack: [Closed] = []
     private let toast = ToastView()
+    /// Other hosts' images shown in notes, as data the page can load.
+    private var remoteImages: [BlockID: String] = [:]
+    private var fetchingImages: Set<BlockID> = []
+    /// Images kept this second, so two get names of their own.
+    private var imageCount = 0 { didSet { if imageCount == 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in self?.imageCount = 0 } } } }
 
     /// A tile about to be taken off: remembered, so ⇧⌘T can put it back.
     private func noteClosing(_ placement: PlacementID, in workspace: BlockID) {
@@ -5035,6 +5041,50 @@ extension MainWindowController: EditorViewDelegate {
     /// A block ⇧-dragged into the editor: linked to the note (the host's
     /// mention scan sees the link in the text too, as a mention).
     func editor(_ view: EditorView, linkedFrom block: BlockID) { link(block, to: view.block) }
+
+    /// A block's image for a page: this Mac's file as it is; another
+    /// host's fetched once (20 MB at most) and kept as data, the pages that
+    /// show it drawn again when it's in.
+    func imageSource(_ id: BlockID) -> String? {
+        guard let b = hosts.block(id), b.kind == .image, let path = b.path else { return nil }
+        if id.host == host.host { return URL(fileURLWithPath: path).absoluteString }
+        if let data = remoteImages[id] { return data }
+        guard !fetchingImages.contains(id), let c = hosts.client(id.host) else { return nil }
+        fetchingImages.insert(id)
+        c.readBytes(path: path, limit: 20 << 20) { [weak self] data in
+            guard let self else { return }
+            self.fetchingImages.remove(id)
+            guard let data else { return }
+            let type = UTType(filenameExtension: path.pathExtension)?.preferredMIMEType ?? "image/png"
+            self.remoteImages[id] = "data:\(type);base64," + data.base64EncodedString()
+            for case let m as MarkdownView in self.views.values { m.imagesArrived() }
+        }
+        return nil
+    }
+
+    /// An image put in a note or a Markdown file: written on the text's
+    /// host — beside the file, named so other Markdown readers find it, or
+    /// in Manifold's own folder for a note — as an image block, and shown
+    /// in the text where the caret was: `![](name)` beside a file,
+    /// `![](manifold:…)` in a note. The text then embeds it (§3.6), a
+    /// strong edge: the image is kept while a text shows it.
+    func editor(_ view: EditorView, image data: Data, kind: String) {
+        guard let b = hosts.block(view.block), let c = hosts.client(view.block.host) else { return NSSound.beep() }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        imageCount += 1
+        let name = "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
+        let folder = b.path.map { $0.deletingLastPathComponent }
+        let id = BlockID(host: view.block.host)
+        c.propose(.saveImage(block: id, data: data, name: name, folder: folder)) { [weak self, weak view] error in
+            guard let self, let view else { return }
+            if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
+            let target = folder != nil
+                ? (self.hosts.block(id)?.path?.lastPathComponent ?? name).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+                : "manifold:\(id.description)"
+            view.textView.insert("![](\(target))", typing: false)
+        }
+    }
 
     /// A block ⇧-dragged onto a terminal: its path typed, and linked.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }

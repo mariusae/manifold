@@ -221,6 +221,16 @@ and Mona Sans (bundled).
   clicked to go to the block; the note then *mentions* it too. So a
   web of annotations grows: notes about blocks, blocks in notes,
   blocks linked to blocks.
+- **Images in notes**: paste one (a screenshot, a picture copied), drop
+  image files, or right-click ▸ Insert from iPhone or iPad (a photo, a
+  scan, a sketch) in a note or a Markdown file, and it's kept as an
+  image block on the text's host — beside a Markdown file, named so any
+  Markdown reader finds it (`![](image-2026-10-21-225841.png)`), or for
+  a note in Manifold's own folder (`![](manifold:…)`) — and shown where
+  the caret was: in the preview as the picture, in the editor as its
+  pill. The text *embeds* it, a strong link: the image is kept while a
+  text shows it, and once none does it's collected like anything else
+  nothing keeps (a note's own copy with it).
 - **Notes are Markdown, shown richly** as you write, the markers out
   of sight as in Prism: headings bold, `**bold**` and `*italic*` in
   their faces, `` `code` `` in its font on a tint, fenced code blocks

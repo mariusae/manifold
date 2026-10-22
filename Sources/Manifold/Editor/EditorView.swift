@@ -8,6 +8,9 @@ protocol EditorViewDelegate: AnyObject {
     func editorDidReveal(_ view: EditorView)
     /// The editor asks the host for something (a save, a reload).
     func editor(_ view: EditorView, propose proposal: Proposal)
+    /// An image put in the text (pasted, dropped, from an iPhone): kept as
+    /// an image block, and shown where the caret is.
+    func editor(_ view: EditorView, image data: Data, kind: String)
     /// A web address was ⌘-clicked.
     func editor(_ view: EditorView, open url: URL)
     /// A block was ⇧-dragged in as a link: linked to this one.
@@ -118,6 +121,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
         textView.markdown = hasOutline
+        if hasOutline {
+            textView.onImage = { [weak self] data, kind in
+                guard let self else { return }
+                self.delegate?.editor(self, image: data, kind: kind)
+            }
+        }
         textView.showsLineNumbers = !hasOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
         status.font = .systemFont(ofSize: 11.5)

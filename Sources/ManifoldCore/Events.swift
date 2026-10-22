@@ -67,11 +67,14 @@ public enum LinkKind: String, Codable, Sendable {
     /// block to the note. One edge, read both ways: the source *links*,
     /// the target is *linked from*.
     case linked
+    /// An image shown in a text (`![words](image)`), strong: the image is
+    /// kept while a text shows it, and goes with the last one that did.
+    case embeds
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         // Once many kinds by the way, and "about" for a note's subject.
-        self = raw == "linked" || raw == "about" ? .linked : .opened
+        self = raw == "embeds" ? .embeds : raw == "linked" || raw == "about" ? .linked : .opened
     }
 }
 

@@ -112,7 +112,11 @@ final class Server {
         mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
-        mentions.mentions = { [weak self] block in (self?.node.graph.edges(from: block, kind: .link(.opened)) ?? []).filter { $0.context?.hasPrefix("[[") == true } }
+        mentions.mentions = { [weak self] block in
+            guard let g = self?.node.graph else { return [] }
+            return g.edges(from: block, kind: .link(.opened)).filter { $0.context?.hasPrefix("[[") == true }
+                + g.edges(from: block, kind: .link(.embeds)).filter { $0.context?.hasPrefix("![") == true }
+        }
         mentions.makeBlock = { [weak self] kind, path in
             guard let self else { return BlockID(host: HostID("none")) }
             let id = BlockID(host: self.host)
@@ -340,6 +344,9 @@ final class Server {
         return entry
     }
 
+    /// Where a note's images are kept: Manifold's own, on this host.
+    static var imagesFolder: String { Paths.directory.appendingPathComponent("Images").path }
+
     // MARK: Collection (§4)
 
     /// When each block was first found unreachable; forgotten when it is
@@ -354,7 +361,9 @@ final class Server {
         notebooks.removeValue(forKey: block)?.terminate()
         watchers.removeValue(forKey: block)
         unreachableSince.removeValue(forKey: block)
-        guard node.block(block) != nil else { return }
+        guard let b = node.block(block) else { return }
+        // An image Manifold kept for a note goes with its block.
+        if b.kind == .image, let path = b.path, path.hasPrefix(Self.imagesFolder + "/") { try? FileManager.default.removeItem(atPath: path) }
         for l in node.links(host).links where l.from == block || l.to == block { append(.unlink(l.id), to: .links(host)) }
         node.remove(.block(block))
         store.delete(.block(block))
@@ -577,6 +586,24 @@ final class Server {
             }
             relays[key, default: [:]][id32] = relay
             done()
+        case let .saveImage(block, data, name, folder):
+            // Beside a Markdown file; for a note, in Manifold's own folder.
+            let dir = folder ?? Self.imagesFolder
+            do {
+                try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                var path = dir + "/" + name
+                let ext = name.pathExtension, base = (name as NSString).deletingPathExtension
+                var n = 2
+                while FileManager.default.fileExists(atPath: path) {
+                    path = dir + "/" + base + " \(n)" + (ext.isEmpty ? "" : "." + ext)
+                    n += 1
+                }
+                try data.write(to: URL(fileURLWithPath: path))
+                if node.block(block) == nil { append(.create(kind: .image, title: nil, path: path), to: .block(block)) }
+                done()
+            } catch {
+                done(error.localizedDescription)
+            }
         case let .makeFolder(path):
             do {
                 try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)

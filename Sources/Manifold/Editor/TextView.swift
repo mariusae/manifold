@@ -1650,6 +1650,13 @@ final class TextView: NSView, NSTextInputClient {
     /// What a drop does: the text in where the point is; a block's link
     /// noted as a mention.
     func drop(_ pb: NSPasteboard, at p: NSPoint) -> Bool {
+        // Image files dropped on Markdown: kept as images and shown where they land.
+        if isEditable, let onImage, pb.types?.contains(.manifoldBlockLink) != true, case let images = Self.images(on: pb), !images.isEmpty {
+            window?.makeFirstResponder(self)
+            setSelections([Selection(at: offset(at: p))], scroll: false)
+            images.forEach(onImage)
+            return true
+        }
         guard isEditable, let text = Self.droppedText(pb, links: acceptsBlockLinks) else { return false }
         window?.makeFirstResponder(self)
         setSelections([Selection(at: offset(at: p))], scroll: false)
@@ -1772,8 +1779,38 @@ final class TextView: NSView, NSTextInputClient {
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "")
+        // Insert from iPhone or iPad (Continuity Camera): a photo, a scan,
+        // a sketch, put in the text as an image.
+        if onImage != nil, isEditable {
+            menu.addItem(.separator())
+            let item = NSMenuItem()
+            item.identifier = NSMenuItem.importFromDeviceIdentifier
+            menu.addItem(item)
+        }
         if let host = menuHost { HostMenu.append(for: host, to: menu) }
         return menu
+    }
+
+    /// In Markdown: an image pasted, dropped or brought from an iPhone,
+    /// its bytes and their kind ("png", "jpeg"), to be kept as an image
+    /// block and shown in the text.
+    var onImage: ((Data, String) -> Void)?
+
+    /// The image a pasteboard holds, as bytes to keep: a file's as it is
+    /// (a photo stays a JPEG), else PNG.
+    static func images(on pb: NSPasteboard) -> [(Data, String)] {
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            let images = urls.filter { BlockKind.forFile($0.path) == .image }
+            guard images.count == urls.count else { return [] }
+            return images.compactMap { u in (try? Data(contentsOf: u)).map { ($0, u.pathExtension.lowercased()) } }
+        }
+        if let png = pb.data(forType: .png) { return [(png, "png")] }
+        if let jpeg = pb.data(forType: NSPasteboard.PasteboardType("public.jpeg")) { return [(jpeg, "jpeg")] }
+        if let heic = pb.data(forType: NSPasteboard.PasteboardType("public.heic")) { return [(heic, "heic")] }
+        if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
+            return [(png, "png")]
+        }
+        return []
     }
 
     /// The host of the block shown, for its own items in the menu.
@@ -1799,6 +1836,11 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     @objc func paste(_ sender: Any?) {
+        // An image (a screenshot copied, a picture from Preview): kept, and shown.
+        if isEditable, let onImage, NSPasteboard.general.string(forType: .string) == nil || NSPasteboard.general.types?.contains(.fileURL) == true {
+            let images = Self.images(on: NSPasteboard.general)
+            if !images.isEmpty { images.forEach(onImage); return }
+        }
         guard isEditable, let s = NSPasteboard.general.string(forType: .string) else { return }
         // In Markdown, an address pasted over words links them: [words](address).
         if acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
@@ -1919,6 +1961,7 @@ final class TextView: NSView, NSTextInputClient {
     override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
         if sendType == .string, !selectedText.isEmpty { return self }
         if returnType == .string, isEditable { return self }
+        if let returnType, isEditable, onImage != nil, [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")].contains(returnType) { return self }
         return super.validRequestor(forSendType: sendType, returnType: returnType)
     }
 
@@ -1928,6 +1971,11 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     func readSelection(from pboard: NSPasteboard) -> Bool {
+        // From an iPhone or iPad (Continuity Camera): an image.
+        if let onImage, case let images = Self.images(on: pboard), !images.isEmpty {
+            images.forEach(onImage)
+            return true
+        }
         guard let s = pboard.string(forType: .string) else { return false }
         insert(s, typing: false)
         return true

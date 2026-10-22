@@ -332,7 +332,7 @@ final class Hosts {
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block):
             (client(of: block) ?? local).propose(proposal, done: done)
-        case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .readPath, .readRange, .writePath, .makeFolder, .openTunnel:
+        case .workspaces, .settings, .preferences, .indexAgents, .listFolder, .listTree, .readPath, .readRange, .writePath, .makeFolder, .openTunnel, .saveImage:
             local.propose(proposal, done: done)
         case let .seen(ids):
             for (host, group) in Dictionary(grouping: ids, by: \.host) {

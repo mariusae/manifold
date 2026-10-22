@@ -327,6 +327,11 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "noteimage":
+            // "noteimage <file>": the image put in the focused editor, as a paste would.
+            guard let e = wc?.debugFocusedEditor, let data = try? Data(contentsOf: URL(fileURLWithPath: arg)) else { return "no editor focused, or no file" }
+            e.textView.onImage?(data, arg.pathExtension.lowercased())
+            return "kept"
         case "handlers":
             return CrashGuard.debugHandlers
         case "crash":
