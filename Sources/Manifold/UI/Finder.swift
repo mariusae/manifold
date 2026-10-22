@@ -12,6 +12,10 @@ struct FinderItem {
     /// How far in, in an outline (⌘\): 0 at the top.
     var level: Int = 0
     var run: () -> Void
+    /// Found in its content: the lines holding the query, run together
+    /// (two lines' worth shown), and the query, marked wherever it is.
+    var excerpt: String? = nil
+    var marked: String? = nil
 }
 
 /// Something to be found (§3.5): taken when the finder opens, and ranked
@@ -203,6 +207,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private static let width: CGFloat = 640
     private static let fieldHeight: CGFloat = 56
     private static let rowHeight: CGFloat = 46
+    private static let excerptHeight: CGFloat = 88
     private static let visibleRows = 9
 
     override init() {
@@ -373,7 +378,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.stringValue = query
         if outline == nil { onQueryChanged?(query, scope) }
         refreshNow()
-        return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") }
+        return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") + ($0.excerpt.map { " «\($0.prefix(80))»" } ?? "") }
     }
 
     /// Debugging: how long ranking a query takes, over how much.
@@ -386,6 +391,13 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Chooses the selected row, or moves the selection (for DebugControl).
     func debugChoose() { openSelected() }
+    /// Debugging: the panel as it looks, to a PNG.
+    func debugPicture(_ path: String) -> String {
+        guard let view = panel.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return "no panel" }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        return "wrote \(path)"
+    }
     func debugScope(_ n: Int) {
         scope = Scope(rawValue: n) ?? .names
         scopes.selectedSegment = scope.rawValue
@@ -410,7 +422,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             : fileCandidates.isEmpty ? "Blocks, workspaces, and files in \(folder) (looking…)    ↩ Open    ⎋ Close"
             : "Blocks, workspaces, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
         case .contents: "Lines in the files under the project    ⇥ Scope    ↩ Open    ⎋ Close"
-        case .blocks: "Lines in the workspace's texts    ⇥ Scope    ↩ Go    ⎋ Close"
+        case .blocks: "The blocks' texts, this workspace's first    ⇥ Scope    ↩ Go    ⎋ Close"
         }
     }
 
@@ -418,7 +430,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func layout() {
         tallest = max(tallest, min(shown.count, Self.visibleRows))
         let rows = tallest
-        let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + 12
+        // Rows with an excerpt are taller: the panel is as tall as the first
+        // rows it has room for.
+        let excerpts = shown.prefix(rows).filter { $0.excerpt != nil }.count
+        let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + CGFloat(excerpts) * (Self.excerptHeight - Self.rowHeight) + 12
         let hintHeight: CGFloat = 24
         let height = Self.fieldHeight + listHeight + hintHeight
         var frame = panel.frame
@@ -476,7 +491,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Rows shown: reloaded only if they changed, the first selected.
     private func show(_ items: [FinderItem], query: String) {
-        let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note }
+        let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note && $0.excerpt == $1.excerpt }
         shown = items
         if !same { table.reloadData() }
         if !shown.isEmpty, !same || table.selectedRow < 0 {
@@ -531,10 +546,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        shown.indices.contains(row) && shown[row].excerpt != nil ? Self.excerptHeight : Self.rowHeight
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
         let item = shown[row]
+        if let excerpt = item.excerpt {
+            let cell = tableView.makeView(withIdentifier: ExcerptCell.identifier, owner: nil) as? ExcerptCell ?? ExcerptCell()
+            cell.show(item, excerpt: excerpt)
+            return cell
+        }
+        let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
         cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level)
         return cell
     }
@@ -619,6 +642,78 @@ final class FileCell: NSTableCellView {
             title.frame = NSRect(x: textX, y: h - 5 - 19, width: textWidth, height: 19)
             detail.frame = NSRect(x: textX, y: h - 5 - 19 - 1 - 16, width: textWidth, height: 16)
         }
+    }
+}
+
+/// What's found in a file's or a block's content, as a search of a
+/// site shows it: the name (the query marked in it), where it is, the
+/// matching lines — two lines' worth at most — each match marked.
+final class ExcerptCell: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("ExcerptCell")
+    private let symbol = NSImageView()
+    private let title = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
+    private let excerpt = NSTextField(wrappingLabelWithString: "")
+    private let note = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+        symbol.symbolConfiguration = .init(pointSize: 15, weight: .regular)
+        symbol.contentTintColor = .secondaryLabelColor
+        title.lineBreakMode = .byTruncatingTail
+        title.maximumNumberOfLines = 1
+        detail.font = .systemFont(ofSize: 11, weight: .medium)
+        detail.textColor = .tertiaryLabelColor
+        detail.lineBreakMode = .byTruncatingMiddle
+        excerpt.maximumNumberOfLines = 2
+        excerpt.lineBreakMode = .byTruncatingTail
+        excerpt.cell?.truncatesLastVisibleLine = true
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .tertiaryLabelColor
+        note.alignment = .right
+        for v in [symbol, title, detail, excerpt, note] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Text with each occurrence of `query` (any case) in the accent, bold.
+    static func marking(_ text: String, _ query: String?, font: NSFont, bold: NSFont, color: NSColor) -> NSAttributedString {
+        let s = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
+        guard let query, !query.isEmpty else { return s }
+        let ns = text as NSString
+        var range = NSRange(location: 0, length: ns.length)
+        while true {
+            let r = ns.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: range)
+            guard r.location != NSNotFound else { break }
+            s.addAttributes([.font: bold, .foregroundColor: NSColor.controlAccentColor], range: r)
+            range = NSRange(location: r.upperBound, length: ns.length - r.upperBound)
+        }
+        return s
+    }
+
+    func show(_ item: FinderItem, excerpt text: String) {
+        symbol.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
+        title.attributedStringValue = Self.marking(item.title, item.marked, font: .systemFont(ofSize: 14, weight: .semibold),
+                                                   bold: .systemFont(ofSize: 14, weight: .bold), color: .labelColor)
+        detail.stringValue = item.detail.uppercased()
+        excerpt.attributedStringValue = Self.marking(text, item.marked, font: .systemFont(ofSize: 12.5),
+                                                     bold: .systemFont(ofSize: 12.5, weight: .semibold), color: .secondaryLabelColor)
+        note.stringValue = item.note
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height, w = bounds.width
+        symbol.frame = NSRect(x: 8, y: h - 8 - 20, width: 22, height: 20)
+        let noteWidth = min(120, ceil(note.attributedStringValue.size().width) + 4)
+        note.frame = NSRect(x: w - 12 - noteWidth, y: h - 8 - 17, width: noteWidth, height: 15)
+        let x: CGFloat = 40, right = w - 14
+        title.frame = NSRect(x: x, y: h - 7 - 19, width: max(0, note.frame.minX - 8 - x), height: 19)
+        detail.frame = NSRect(x: x, y: title.frame.minY - 15, width: max(0, right - x), height: 14)
+        excerpt.preferredMaxLayoutWidth = max(0, right - x)
+        excerpt.frame = NSRect(x: x, y: 6, width: max(0, right - x), height: detail.frame.minY - 8)
     }
 }
 

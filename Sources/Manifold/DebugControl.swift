@@ -789,6 +789,7 @@ enum DebugControl {
                 return "ok"
             }
             if arg == "graph" { wc?.newTab(nil); return "ok" }
+            if arg.hasPrefix("picture ") { return wc?.debugFinderPicture(String(arg.dropFirst(8))) ?? "no window" }
             if arg.hasPrefix("time ") { return wc?.debugFinderTime(String(arg.dropFirst(5))) ?? "no window" }
             if arg.hasPrefix("scope "), let n = Int(arg.dropFirst(6)) {
                 wc?.debugFinderScope(n)

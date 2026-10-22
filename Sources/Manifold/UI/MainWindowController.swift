@@ -3196,6 +3196,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Finding and opening
 
     func debugFinder(_ query: String) -> [String] { finder.debugQuery(query) }
+    func debugFinderPicture(_ path: String) -> String { finder.debugPicture(path) }
     func debugFinderTime(_ query: String) -> String {
         if query == "open" {
             let start = Date()
@@ -3264,13 +3265,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func finderContentItems(_ query: String) -> [FinderItem] {
         guard query.count >= 2, let id = finderSearch, let s = hosts.block(id)?.search, s.query?.text == query else { return [] }
         let on = id.host
-        var items: [FinderItem] = s.hits.prefix(200).map { hit in
-            FinderItem(symbol: Finder.symbol(forFile: hit.path.lastPathComponent), title: hit.text.trimmingCharacters(in: .whitespaces),
-                       detail: "\(hit.path.abbreviatingHome):\(hit.line)", note: "",
-                       run: { [weak self] in
-                           guard let self else { return }
-                           self.open(path: hit.path, line: hit.line, column: hit.column, on: on, from: self.focusedShown?.placement.id, kind: .opened, context: query)
-                       })
+        // A row a file, as a site's search lists pages: its name, its folder,
+        // the lines that hold the query run together, each match marked.
+        var order: [String] = []
+        var byPath: [String: [SearchHit]] = [:]
+        for hit in s.hits.prefix(400) {
+            if byPath[hit.path] == nil { order.append(hit.path) }
+            byPath[hit.path, default: []].append(hit)
+        }
+        var items: [FinderItem] = order.map { path in
+            let hits = byPath[path]!
+            let first = hits[0]
+            return FinderItem(symbol: Finder.symbol(forFile: path.lastPathComponent), title: path.lastPathComponent,
+                              detail: path.deletingLastPathComponent.abbreviatingHome,
+                              note: hits.count == 1 ? "line \(first.line)" : "\(hits.count) lines",
+                              run: { [weak self] in
+                                  guard let self else { return }
+                                  self.open(path: first.path, line: first.line, column: first.column, on: on, from: self.focusedShown?.placement.id, kind: .opened, context: query)
+                              },
+                              excerpt: Self.excerpt(hits.map(\.text)), marked: query)
         }
         if s.running || s.truncated || s.error != nil || !s.hits.isEmpty {
             items.append(FinderItem(symbol: "magnifyingglass", title: s.running ? "Looking…" : s.error ?? "\(s.hits.count)\(s.truncated ? "+" : "") lines", detail: "As a search block", note: "",
@@ -3279,37 +3292,49 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return items
     }
 
-    /// "In Blocks": lines holding the query in the texts of the selected
-    /// workspace's blocks, each going to the block and the line.
+    /// The lines that hold a query, as one excerpt: trimmed, run together.
+    static func excerpt(_ lines: [String]) -> String {
+        lines.prefix(6).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: "  ·  ")
+    }
+
+    /// "In Blocks": the texts of the blocks — the selected workspace's
+    /// first, then every other note and file kept as a block — a row each,
+    /// its name, where it is, the lines that hold the query marked, going
+    /// to the first of them.
     private func finderBlockItems(_ query: String) -> [FinderItem] {
-        guard !query.isEmpty, let a = arrangement else { return [] }
+        guard !query.isEmpty else { return [] }
         let q = query.lowercased()
         var items: [FinderItem] = []
         var seen = Set<BlockID>()
-        for p in a.placements where seen.insert(p.block).inserted {
-            guard let b = hosts.block(p.block), let text = b.text?.text.string else { continue }
-            var line = 0
+        let here = arrangement.map { a in a.placements.map { ($0.block, Optional($0.id)) } } ?? []
+        let rest = hosts.blocks.filter { $0.kind == .text }.map { ($0.id, PlacementID?.none) }
+        for (blockID, placement) in here + rest where seen.insert(blockID).inserted {
+            guard let b = hosts.block(blockID), let text = b.text?.text.string, text.lowercased().contains(q) else { continue }
+            var line = 0, firstLine = 0
+            var matches: [String] = []
             for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
                 line += 1
                 guard raw.lowercased().contains(q) else { continue }
-                let at = line, id = p.id, block = b.id
-                items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: raw.trimmingCharacters(in: .whitespaces),
-                                        detail: "\(b.displayTitle):\(at)", note: "",
-                                        run: { [weak self] in
-                                            guard let self else { return }
-                                            if self.arrangement?.placement(id) != nil, self.hosts.block(block)?.kind == .text {
-                                                if let e = self.views[id] as? EditorView {
-                                                    self.arrive(atTile: id)
-                                                    e.select(line: at)
-                                                    return
-                                                }
-                                            }
-                                            self.pendingJump = (b.path ?? "", at, nil)
-                                            self.show(block, lens: Lens.default(for: .text, path: b.path), .here)
-                                            self.warpPointerToFocus()
-                                        }))
-                if items.count >= 300 { return items }
+                if firstLine == 0 { firstLine = line }
+                matches.append(String(raw))
             }
+            let at = firstLine, block = b.id
+            let place = b.path.map { $0.deletingLastPathComponent.abbreviatingHome } ?? (b.place.map { "Note · " + $0.abbreviatingHome } ?? "Note")
+            items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle, detail: place,
+                                    note: matches.count == 1 ? "line \(at)" : "\(matches.count) lines",
+                                    run: { [weak self] in
+                                        guard let self else { return }
+                                        if let id = placement, self.arrangement?.placement(id) != nil, let e = self.views[id] as? EditorView {
+                                            self.arrive(atTile: id)
+                                            e.select(line: at)
+                                            return
+                                        }
+                                        self.pendingJump = (b.path ?? "", at, nil)
+                                        self.show(block, lens: Lens.default(for: .text, path: b.path), .here)
+                                        self.warpPointerToFocus()
+                                    },
+                                    excerpt: Self.excerpt(matches), marked: query))
+            if items.count >= 100 { break }
         }
         return items
     }

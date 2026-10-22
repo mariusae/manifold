@@ -311,9 +311,12 @@ when you find it again.
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host
   look for the words in the files under the project (as Find in Files
-  does; ↩ opens the file at the line, and the last row makes it a search
-  block); **In Blocks** finds lines in the texts of the workspace's
-  blocks and goes to them.
+  does; the last row makes it a search block); **In Blocks** looks in
+  the texts of the blocks — the workspace's first, then every note and
+  file kept as a block. Either lists what it finds as a site's search
+  does: a row a file or block, its name, where it is, and the lines that
+  hold the words, two lines' worth, each match marked; ↩ goes to the
+  first of them.
   A typed URL opens as a web page.
 - **⌘\ goes through the workspace as an outline**, as Prism's Move to
   Heading does: its tiles by column, and under a Markdown tile its
