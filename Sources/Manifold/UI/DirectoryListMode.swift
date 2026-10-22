@@ -49,6 +49,8 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
         outline.backgroundColor = .clear
         outline.target = self
         outline.doubleAction = #selector(doubleClicked)
+        outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
+        outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         outline.sortDescriptors = [NSSortDescriptor(key: model.sortKey.rawValue, ascending: model.ascending)]
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
@@ -104,6 +106,10 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? BrowserNode)?.isDirectory == true }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        (item as? BrowserNode).map(owner.pasteboardItem)
+    }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let n = item as? BrowserNode else { return nil }

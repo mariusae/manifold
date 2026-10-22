@@ -67,6 +67,15 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool { (item as? BrowserNode)?.isDirectory == false }
     func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? { (item as? BrowserNode)?.name }
 
+    func browser(_ browser: NSBrowser, canDragRowsWith rowIndexes: IndexSet, inColumn column: Int, with event: NSEvent) -> Bool { true }
+
+    func browser(_ browser: NSBrowser, writeRowsWith rowIndexes: IndexSet, inColumn column: Int, to pasteboard: NSPasteboard) -> Bool {
+        let nodes = rowIndexes.compactMap { browser.item(atRow: $0, inColumn: column) as? BrowserNode }
+        guard !nodes.isEmpty else { return false }
+        pasteboard.clearContents()
+        return pasteboard.writeObjects(nodes.map(owner.pasteboardItem))
+    }
+
     func browser(_ sender: NSBrowser, willDisplayCell cell: Any, atRow row: Int, column: Int) {
         guard let cell = cell as? BrowserCell, let n = sender.item(atRow: row, inColumn: column) as? BrowserNode else { return }
         cell.node = n

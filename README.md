@@ -108,6 +108,8 @@ and Mona Sans (bundled).
   carry but its path (a terminal's folder, a page's address): dropped on
   a terminal it's typed there, quoted for the shell; on an editor,
   inserted where the pointer is; on another app, as a file or text.
+  It carries the block too, linking it to where it lands (below);
+  ⌥⇧-drag for the path alone, linking nothing.
   Stash Tile (⌘M, or Stash in a pill's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
@@ -418,7 +420,11 @@ when you find it again.
   clear it. Along the bar, the path: each folder in it clicked, or the
   arrow, ⌘↑, goes up. ⏎ or a double-click opens an entry — a folder in
   the same tile, as a browser goes; ⌘-double-click for a listing beside,
-  this one staying; ⌥-double-click for one over it. The mode, the
+  this one staying; ⌥-double-click for one over it. Drag an entry out
+  and it's its path — a terminal types it, an editor inserts it, the
+  grid opens it where it lands, another app takes the file; ⇧-drag it
+  and it's its block too, as a pill ⇧-dragged is: a note mentions it, a
+  terminal or a tile it's dropped on is linked to it. The mode, the
   selection, the folders left open, the sort and the filter are kept
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its

@@ -158,6 +158,7 @@ final class GridView: NSView, NSDraggingSource {
     /// Files from the Finder (or anywhere) being dragged: their paths.
     private static func droppedFiles(_ pb: NSPasteboard) -> [String] {
         guard pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil, pb.string(forType: .manifoldArrangement) == nil,
+              pb.string(forType: .manifoldBlockLink) == nil,
               let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return [] }
         return urls.map(\.path)
     }
@@ -826,10 +827,13 @@ final class GridView: NSView, NSDraggingSource {
             if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
                 item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
             }
-            // And the block as a link a note takes: [title](manifold:id).
+            // And the block as a link a note takes: [title](manifold:id) —
+            // not with ⌥ too, which drags the path alone, linking nothing.
             // Not as a block: the grid takes no ⇧-drag, the views under it do.
-            let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
-            item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
+            if !event.modifierFlags.contains(.option) {
+                let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
+                item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
+            }
             pathDrag = true
         } else {
             item.setString(placement, forType: .manifoldPlacement)
@@ -935,7 +939,8 @@ final class GridView: NSView, NSDraggingSource {
         let point = convert(sender.draggingLocation, from: nil)
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
-        if !Self.droppedFiles(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
+        // (Not a pill's own ⌥⇧-drag, its file already a tile here.)
+        if !pathDrag, !Self.droppedFiles(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
             // Files from outside: opened where they land, as a block is brought.
             showDrop(target.rect)
             drop = target

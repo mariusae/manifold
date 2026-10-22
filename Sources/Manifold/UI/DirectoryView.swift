@@ -12,6 +12,9 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void)
     /// Whether the block's host is this machine.
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool
+    /// An entry dragged with ⇧: its block (made if need be), as the link
+    /// a note takes, `[title](manifold:id)`; nil for a file no block shows.
+    func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String?
 }
 
 /// What each way of showing a folder does (§7.4).
@@ -242,6 +245,32 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         delegate.directoryView(self, localURLFor: path, done: done)
     }
 
+    // MARK: Dragging
+
+    /// An entry dragged out, as a tile's pill is with ⇧: its path, for a
+    /// terminal to type or an editor to insert; its file, on this machine,
+    /// for the grid to open where it lands (or another app to take); and,
+    /// with ⇧, its block as a link — a note mentions it, a terminal or a
+    /// tile it's dropped on is linked to it. ⌥⇧, the path alone.
+    func pasteboardItem(for node: BrowserNode) -> NSPasteboardItem {
+        pasteboardItem(for: node, mods: NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags)
+    }
+
+    func pasteboardItem(for node: BrowserNode, mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        item.setString(node.path, forType: .string)
+        let link = mods.contains(.shift) && !mods.contains(.option)
+        // A folder's URL only for a plain drag: a web view in the way
+        // takes a dragged folder for a file list and reads it.
+        if delegate?.directoryViewIsLocal(self) == true, !mods.contains(.shift) || !node.isDirectory {
+            item.setString(URL(fileURLWithPath: node.path).absoluteString, forType: .fileURL)
+        }
+        if link, let text = delegate?.directoryView(self, linkFor: node.path, isDirectory: node.isDirectory) {
+            item.setString(text, forType: .manifoldBlockLink)
+        }
+        return item
+    }
+
     // MARK: Going places
 
     /// A file opened beside; a folder gone into, in this tile.
@@ -396,6 +425,18 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
         case "focusfilter": performTextFinderAction(nil)
+        case "drag":
+            // "drag [shift] [opt]": what dragging the selection carries.
+            guard let path = content?.selectedPath else { return "nothing selected" }
+            var isDir: ObjCBool = false
+            let local = delegate?.directoryViewIsLocal(self) == true && FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+            let node = BrowserNode(path: path, entry: DirectoryEntry(name: path.lastPathComponent, isDirectory: local && isDir.boolValue,
+                                                                     size: 0, modified: 0, isHidden: false))
+            var mods: NSEvent.ModifierFlags = []
+            if arg.contains("shift") { mods.insert(.shift) }
+            if arg.contains("opt") { mods.insert(.option) }
+            let item = pasteboardItem(for: node, mods: mods)
+            return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? "")" }.joined(separator: "\n")
         default: break
         }
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]

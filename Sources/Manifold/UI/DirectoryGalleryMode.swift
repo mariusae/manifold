@@ -42,6 +42,8 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
         strip.allowsEmptySelection = true
         strip.backgroundColors = [.clear]
         strip.dataSource = self
+        strip.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
+        strip.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         strip.delegate = self
         strip.register(GalleryItem.self, forItemWithIdentifier: GalleryItem.id)
         strip.opened = { [weak self] i in
@@ -80,6 +82,12 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionMoved() }
+
+    func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool { true }
+
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        items.indices.contains(indexPath.item) ? owner.pasteboardItem(for: items[indexPath.item]) : nil
+    }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionMoved() }
 
     private func selectionMoved() {

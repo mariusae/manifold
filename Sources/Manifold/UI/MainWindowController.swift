@@ -3846,19 +3846,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
-        if isDir.boolValue {
-            show(hosts.directoryBlock(for: path, on: on), lens: .directory, place, context: target)
-        } else if Lens.isMarkdown(path) {
-            show(hosts.textBlock(for: path, on: on), lens: .preview, place, context: target)
-        } else if Self.isHTML(path), on == host.host {
-            show(host.webBlock(forFile: path), lens: .web, place, context: target)
-        } else if Self.isEditable(path) {
-            show(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
-        } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
+        if let (block, lens) = pathBlock(path, isDirectory: isDir.boolValue, on: on) {
+            show(block, lens: lens, place, context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
+    }
+
+    /// The block a file or folder shows as, made if there's none yet, and
+    /// the lens it opens in; nil for a file of this machine Manifold leaves
+    /// to another app. Another host's file is told by its name alone.
+    func pathBlock(_ path: String, isDirectory: Bool, on: HostID) -> (BlockID, Lens)? {
+        let local = on == host.host
+        if isDirectory { return (hosts.directoryBlock(for: path, on: on), .directory) }
+        if Lens.isMarkdown(path) { return (hosts.textBlock(for: path, on: on), .preview) }
+        if Self.isHTML(path), local { return (host.webBlock(forFile: path), .web) }
+        if let kind = Self.mediaKind(path), let client = hosts.client(on) {
+            if !local || !Self.isEditable(path) { return (client.mediaBlock(for: path, kind: kind), kind == .pdf ? .pdf : .image) }
+        }
+        if !local || Self.isEditable(path) { return (hosts.textBlock(for: path, on: on), Lens.default(for: .text, path: path)) }
+        return nil
     }
 
     /// Opens a path on another host, where it can't be looked at from
@@ -4906,6 +4913,12 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool {
         hosts.client(view.block.host)?.transport.isLocal ?? true
+    }
+
+    func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String? {
+        guard let (id, _) = pathBlock(path, isDirectory: isDirectory, on: view.block.host) else { return nil }
+        let title = (hosts.block(id)?.displayTitle ?? path.lastPathComponent).replacingOccurrences(of: "]", with: "\\]")
+        return "[\(title)](manifold:\(id.description))"
     }
 
     /// A file here, as it is; one on another host, fetched afresh (20 MB at
