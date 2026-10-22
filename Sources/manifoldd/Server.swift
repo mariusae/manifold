@@ -576,6 +576,14 @@ final class Server {
             } catch {
                 done(error.localizedDescription)
             }
+        case let .captureTurn(block, agent, turn):
+            writeTurn(block, agent: agent, turn: turn)
+            done(node.block(block) == nil ? "no such turn" : nil)
+        case let .undoTurn(agent, turn):
+            undoTurn(agent, turn: turn) { [weak self] error in
+                guard let self else { return }
+                self.queue.async { done(error) }
+            }
         case let .openTunnel(tid, port):
             let key = ObjectIdentifier(conn), id32 = UInt32(truncatingIfNeeded: tid)
             guard let relay = PortRelay(port: port, queue: queue) else { return done("nothing is listening on port \(port)") }
@@ -757,7 +765,7 @@ final class Server {
                 case let .versions(id, _, _): path = node.block(id)?.path
                 case let .patch(root, _): path = root
                 case let .uncommitted(repo): path = repo
-                case let .since(repo, _, _): path = repo
+                case let .since(repo, _, _), let .trees(repo, _, _, _): path = repo
                 }
                 append(.create(kind: .diff, title: nil, path: path), to: .block(block))
             }
@@ -911,6 +919,7 @@ final class Server {
             switch d.diff?.subject {
             case .uncommitted(root)?: loadDiff(d.id)
             case let .since(repo, _, _)? where repo == root: loadDiff(d.id)
+            case let .trees(repo, _, nil, _)? where repo == root: loadDiff(d.id)
             default: break
             }
         }
@@ -1009,7 +1018,10 @@ final class Server {
                     self.report(block, .error, msg: e.message)
                 }
             }
-        case let .since(repo, tree, _):
+        case let .trees(repo, from, to?, _):
+            // Two snapshots: a turn that has ended.
+            showTreeDiff(block, repo: repo, from: from, to: to)
+        case let .since(repo, tree, _), let .trees(repo, tree, nil, _):
             // The tree now, against the one then: everything, new files too.
             watchRepo(repo, .git)
             git.snapshotTree(repo) { [weak self] now in
@@ -1346,27 +1358,205 @@ final class Server {
         switch event {
         case .started:
             status(.idle, msg: nil)
-        case let .prompt(_, text):
+        case let .prompt(agent, text, transcript):
             endTurn()
+            finishTurns(block, message: nil, transcript: nil)
             if let mark = line(text) {
                 let id = (node.block(block)?.terminal?.commands?.last?.id ?? 0) + 1
                 append(.ran(id: id, mark, at: clock.now()), to: .block(block))
                 agentTurns[block, default: []].insert(id)
+                beginTurn(block, id: id, agent: agent, prompt: text, transcript: transcript)
             }
             status(.working, msg: line(text))
         case .working:
             // After a permission or a tool: working on what it was.
             let current = b.status?[rootStatusID]
             if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
-        case let .finished(_, message):
+        case let .finished(_, message, transcript):
             endTurn()
+            finishTurns(block, message: message, transcript: transcript)
             status(.done, msg: line(message))
+        case let .todos(_, items):
+            keepTodos(block, items)
+            let current = b.status?[rootStatusID]
+            if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
         case let .waiting(_, message):
             status(.blocked, kind: .permission, msg: line(message))
         case .ended:
             endTurn()
+            finishTurns(block, message: nil, transcript: nil)
             agentTurns[block] = nil
             append(.status(id: rootStatusID, nil), to: .block(block))
+        }
+    }
+
+    /// A diff block of the changes between two trees of a repository.
+    private func showTreeDiff(_ block: BlockID, repo: String, from: String, to: String) {
+        git.run(.git, ["diff", "--no-color", from, to], in: repo) { [weak self] result in
+            guard let self, self.node.block(block) != nil else { return }
+            switch result {
+            case .success(let patch):
+                if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
+                    return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                }
+                self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+            case .failure(let e):
+                self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
+                self.report(block, .error, msg: e.message)
+            }
+        }
+    }
+
+    // MARK: Agents' turns (§3.8)
+
+    /// A turn begun: its record, and the working tree as it begins (in a
+    /// git repository) — the checkpoint undoing it goes back to.
+    private func beginTurn(_ block: BlockID, id: Int, agent: String, prompt: String, transcript: String?) {
+        var turn = AgentTurn(id: id, agent: agent, prompt: String(prompt.prefix(20_000)), began: clock.now())
+        turn.transcript = transcript
+        append(.turn(turn), to: .block(block))
+        guard let cwd = node.block(block)?.terminal?.cwd, let (root, vcs) = git.repository(of: cwd), vcs == .git else { return }
+        git.snapshotTree(root) { [weak self] tree in
+            guard let self, let tree, var t = self.node.block(block)?.terminal?.turns?.first(where: { $0.id == id }) else { return }
+            t.repo = root
+            t.before = tree
+            self.append(.turn(t), to: .block(block))
+        }
+    }
+
+    /// The turns still open, ended: the working tree as each ends, what it
+    /// changed, the agent's last words.
+    private func finishTurns(_ block: BlockID, message: String?, transcript: String?) {
+        for var t in node.block(block)?.terminal?.turns ?? [] where t.ended == nil {
+            t.ended = clock.now()
+            if let message, !message.isEmpty { t.message = String(message.prefix(20_000)) }
+            if let transcript { t.transcript = transcript }
+            append(.turn(t), to: .block(block))
+            guard let repo = t.repo, let before = t.before else { continue }
+            let id = t.id
+            git.snapshotTree(repo) { [weak self] after in
+                guard let self, let after else { return }
+                self.git.run(.git, ["diff", "--name-only", before, after], in: repo) { [weak self] result in
+                    guard let self, var t = self.node.block(block)?.terminal?.turns?.first(where: { $0.id == id }) else { return }
+                    t.after = after
+                    if case .success(let out) = result { t.files = out.split(separator: "\n").map(String.init).filter { !$0.isEmpty } }
+                    self.append(.turn(t), to: .block(block))
+                    // Its block, if made, says the turn as it ended.
+                    for b in self.node.blocks where b.kind == .output && b.output?.source == block && b.output?.command == id && b.output?.markdown != nil {
+                        self.writeTurn(b.id, agent: block, turn: id)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A turn's block: the turn in Markdown, linked from the agent and to
+    /// the files it changed and its diff.
+    private func writeTurn(_ block: BlockID, agent: BlockID, turn id: Int) {
+        guard let a = node.block(agent), let t = a.terminal?.turns?.first(where: { $0.id == id }) else { return }
+        let firstLine = t.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+        if node.block(block) == nil {
+            append(.create(kind: .output, title: "Turn: " + String(firstLine.prefix(80)), path: nil), to: .block(block))
+            if let cwd = a.terminal?.cwd { append(.cwd(cwd), to: .block(block)) }
+            append(.link(Link(from: agent, to: block, kind: .opened, at: clock.now(), context: "turn \(id)")), to: .links(host))
+        }
+        var md = "# " + firstLine.replacingOccurrences(of: "#", with: "") + "\n\n"
+        let took = t.ended.map { " · took " + Self.duration(Double($0.wall - t.began.wall) / 1000) } ?? " · still working"
+        md += "*\(t.agent) · \(a.displayTitle)\(took)*\n\n"
+        md += "## Asked\n\n" + t.prompt + "\n\n"
+        var did = ""
+        if let path = t.transcript, let done = TurnTranscript.render(path: path, prompt: t.prompt), !done.isEmpty {
+            did = done
+            md += "## What it did\n\n" + done + "\n\n"
+        }
+        // Its last words, unless what it did ends with them already.
+        if let m = t.message?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty, !did.hasSuffix(m) { md += "## Said\n\n" + m + "\n\n" }
+        if let repo = t.repo, let before = t.before {
+            let files = t.files ?? []
+            md += "## Changed\n\n"
+            if t.after != nil, files.isEmpty { md += "Nothing in \(repo.lastPathComponent).\n\n" }
+            for f in files.prefix(200) {
+                let path = repo + "/" + f
+                let fileBlock = textBlock(for: path)
+                md += "- [\(f)](manifold:\(fileBlock.description))\n"
+                if !node.links(host).links.contains(where: { $0.from == block && $0.to == fileBlock }) {
+                    append(.link(Link(from: block, to: fileBlock, kind: .opened, at: clock.now(), context: "changed in this turn")), to: .links(host))
+                }
+            }
+            let subject = DiffSubject.trees(repo: repo, from: before, to: t.after, title: "Turn: " + String(firstLine.prefix(60)))
+            let diff = node.blocks.first { $0.kind == .diff && $0.diff?.subject == subject }?.id ?? {
+                let d = BlockID(host: host)
+                append(.create(kind: .diff, title: nil, path: repo), to: .block(d))
+                append(.diffSubject(subject), to: .block(d))
+                loadDiff(d)
+                return d
+            }()
+            if !node.links(host).links.contains(where: { $0.from == block && $0.to == diff }) {
+                append(.link(Link(from: block, to: diff, kind: .opened, at: clock.now(), context: "changes in this turn")), to: .links(host))
+            }
+            md += "\n[Changes in this turn](manifold:\(diff.description))\n"
+        }
+        var state = OutputState(source: agent, command: id, line: firstLine, status: t.ended == nil ? nil : 0, ran: t.began, ended: t.ended)
+        state.markdown = md
+        if node.block(block)?.output != state { append(.output(state), to: .block(block)) }
+    }
+
+    /// An agent's to-do list (Claude Code's TodoWrite) as a checklist note
+    /// of its own, linked from the agent — by hand's kind, so the agent
+    /// keeps it — rewritten as the list changes: done ticked, the item at
+    /// work in bold.
+    private func keepTodos(_ agent: BlockID, _ items: [AgentTodo]) {
+        let name = node.block(agent)?.displayTitle ?? "Agent"
+        let title = "To-do · " + name
+        let existing = node.links(host).links.first { $0.from == agent && $0.context == "to-do list" && node.block($0.to) != nil }?.to
+        let note = existing ?? {
+            let id = BlockID(host: host)
+            append(.create(kind: .text, title: title, path: nil), to: .block(id))
+            if let cwd = node.block(agent)?.terminal?.cwd { append(.cwd(cwd), to: .block(id)) }
+            append(.link(Link(from: agent, to: id, kind: .linked, at: clock.now(), context: "to-do list")), to: .links(host))
+            return id
+        }()
+        let done = items.filter { $0.status == "completed" }.count
+        var text = "# \(title)\n\n\(done) of \(items.count) done\n\n"
+        for i in items {
+            let words = i.text.replacingOccurrences(of: "\n", with: " ")
+            text += "- [\(i.status == "completed" ? "x" : " ")] " + (i.status == "in_progress" ? "**\(words)**" : words) + "\n"
+        }
+        guard node.block(note)?.text?.text.string != text else { return }
+        append(.content(text, encoding: "utf-8", lineEnding: "\n", fingerprint: nil), to: .block(note))
+    }
+
+    /// The text block for a file here: the one there is, else one made.
+    private func textBlock(for path: String) -> BlockID {
+        if let b = node.blocks.first(where: { $0.kind == .text && $0.path == path }) { return b.id }
+        let id = BlockID(host: host)
+        append(.create(kind: .text, title: nil, path: path), to: .block(id))
+        return id
+    }
+
+    static func duration(_ s: Double) -> String {
+        if s < 60 { return "\(Int(s)) s" }
+        if s < 3600 { return "\(Int(s) / 60) min \(Int(s) % 60) s" }
+        return "\(Int(s) / 3600) h \(Int(s) % 3600 / 60) min"
+    }
+
+    /// A turn's changes, taken back: the patch from its end to its start
+    /// applied to the working tree as it is.
+    private func undoTurn(_ agent: BlockID, turn id: Int, done: @escaping (String?) -> Void) {
+        guard let t = node.block(agent)?.terminal?.turns?.first(where: { $0.id == id }) else { return done("no such turn") }
+        guard let repo = t.repo, let before = t.before, let after = t.after else { return done("the turn has no checkpoint (not in a git repository, or not ended)") }
+        git.run(.git, ["diff", "--binary", after, before], in: repo) { [weak self] result in
+            guard let self else { return }
+            guard case .success(let patch) = result else { return done("couldn't read the turn's changes") }
+            guard !patch.isEmpty else { return done(nil) }
+            let file = NSTemporaryDirectory() + "manifold-undo-\(UUID().uuidString).patch"
+            try? patch.write(toFile: file, atomically: true, encoding: .utf8)
+            self.git.run(.git, ["apply", "--whitespace=nowarn", file], in: repo) { result in
+                try? FileManager.default.removeItem(atPath: file)
+                if case .failure = result { return done("later changes are in the way: the turn's changes couldn't be taken back cleanly") }
+                done(nil)
+            }
         }
     }
 

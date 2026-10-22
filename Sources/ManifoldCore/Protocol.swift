@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 38
+public let protocolVersion = 39
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -212,6 +212,12 @@ public enum Proposal: Codable, Sendable {
     /// its bytes written as `name` in `folder` (beside a Markdown file), or
     /// in Manifold's own folder for a note, and an image block made for it.
     case saveImage(block: BlockID, data: Data, name: String, folder: String?)
+    /// An agent's turn as a block of its own (§3.8), linked from the agent
+    /// and to what the turn changed; made if new, refreshed if not.
+    case captureTurn(block: BlockID, agent: BlockID, turn: Int)
+    /// An agent's turn undone: its changes to the working tree applied in
+    /// reverse (failing, and saying so, where later work is in the way).
+    case undoTurn(agent: BlockID, turn: Int)
     /// A forwarded port's connection (§8): the host connects to `port` on
     /// its own loopback, and `tunnel` frames carry the bytes as `id`.
     case openTunnel(id: Int, port: Int)

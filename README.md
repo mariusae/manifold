@@ -736,7 +736,21 @@ when you find it again.
   **Changes Since It Started** in its tile's menu shows everything it
   has changed since as a diff block of its own, linked from it: edits,
   new files, commits, but nothing that was already changed before it
-  began. Launch
+  began. **Each turn** is noted too (with the hooks Manifold installs,
+  `manifold --install-skill`): what was asked, the working tree as the
+  turn began and as it ended (a checkpoint, in a git repository), the
+  files it changed, its last words. Its tick on the scrubber, its line in
+  the terminal's outline or the outline lens opens the turn as a block
+  of its own: what was asked, what it did (its words and each tool it
+  used, from Claude Code's transcript), what it said, the files it
+  changed and **Changes in this turn** as links — a block linked from
+  the agent and to each of them. Right-click the turn (or the agent's
+  menu ▸ Last Turn) for **Changes in This Turn** and **Undo This Turn**:
+  what the turn changed taken back, later work kept — or, where later
+  work touched the same lines, nothing touched and Manifold says so.
+  An agent's **to-do list** (Claude Code's) is a checklist note of its
+  own, linked from it and kept by it, rewritten as the list changes:
+  done ticked, the item at work in bold. Launch
   Agent Here (in the File menu, a tile's menu, or the box, ⌘T) offers each
   agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
   opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's

@@ -24,6 +24,8 @@ protocol TerminalViewDelegate: AnyObject {
     func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry]
     /// A process in the menu's tree is to be ended or killed.
     func terminal(_ view: TerminalView, signal pid: Int32, _ signal: Int32)
+    /// A command right-clicked in the outline: its menu (an agent's turn's).
+    func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu?
 }
 
 /// A terminal block's view: a ghostty surface running `manifoldd attach
@@ -242,6 +244,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 self.go(toCommand: id)
                 _ = self.showOutput(ofCommand: id, beside: self.placement)
                 self.sidebar?.current = i
+            }
+            s.menuFor = { [weak self] i in
+                guard let self, self.commands.indices.contains(i) else { return nil }
+                return self.delegate?.terminal(self, menuFor: self.commands[i])
             }
             sidebar = s
         }

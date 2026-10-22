@@ -170,6 +170,32 @@ public struct TreeSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// One turn of an agent (§3.8): what was asked, the repository's working
+/// tree as it began and as it ended (when it's in one), what changed, the
+/// agent's last words, and where its transcript is.
+public struct AgentTurn: Codable, Equatable, Sendable {
+    /// The command it is, on the terminal's scrubber.
+    public var id: Int
+    public var agent: String
+    public var prompt: String
+    public var repo: String?
+    public var before: String?
+    public var after: String?
+    /// The files it changed, relative to the repository.
+    public var files: [String]?
+    public var message: String?
+    public var transcript: String?
+    public var began: Stamp
+    public var ended: Stamp?
+
+    public init(id: Int, agent: String, prompt: String, began: Stamp) {
+        self.id = id
+        self.agent = agent
+        self.prompt = prompt
+        self.began = began
+    }
+}
+
 public struct TerminalState: Codable, Equatable, Sendable {
     public var cwd: String?
     /// The title the program in it last set.
@@ -187,6 +213,8 @@ public struct TerminalState: Codable, Equatable, Sendable {
     /// For an agent started in a repository: its working tree then, the
     /// whole of it, to show what the agent changed since.
     public var snapshot: TreeSnapshot?
+    /// An agent's turns (§3.8), by the command each is on the scrubber.
+    public var turns: [AgentTurn]?
     /// How long the last shell had been idle when it was ended, in seconds.
     public var dormantAfter: Int?
     /// The commands the shell ran (§3.8), the last `commandLimit` of them:
@@ -456,6 +484,9 @@ public enum DiffSubject: Codable, Equatable, Sendable {
     /// snapshot of it (`tree`, the whole tree, untracked files too, as an
     /// agent started): committed since or not, new files included.
     case since(repo: String, tree: String, title: String)
+    /// A repository's working tree between two snapshots (`to` nil: as it
+    /// is now): an agent's turn.
+    case trees(repo: String, from: String, to: String?, title: String)
 }
 
 /// A diff block: the subject, and the texts (or the patch) the host read
@@ -486,6 +517,9 @@ public struct OutputState: Codable, Equatable, Sendable {
     /// replaced); `plain` says it was taken as plain text instead.
     public var output: String = ""
     public var plain = false
+    /// An agent's turn, as Markdown (§3.8): what was asked, what it did,
+    /// what it said, what it changed — shown rendered, not as a terminal's.
+    public var markdown: String?
 
     public init(source: BlockID? = nil, command: Int? = nil, line: String = "", status: Int32? = nil, ran: Stamp? = nil, ended: Stamp? = nil, output: String = "", plain: Bool = false) {
         self.source = source
@@ -924,7 +958,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
                 return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
             case let .uncommitted(repo):
                 return "Changes in \(repo.lastPathComponent)"
-            case let .since(_, _, title):
+            case let .since(_, _, title), let .trees(_, _, _, title):
                 return title
             case let .patch(_, title):
                 if let title, !title.isEmpty { return title }

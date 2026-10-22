@@ -4,7 +4,7 @@ import AppKit
 /// steer by — a Markdown text's headings, a PDF's table of contents —
 /// each clicked to go there, the one you're in marked; and, for a PDF,
 /// its pages as thumbnails, the other page of the sidebar.
-final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
+final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     struct Entry: Equatable {
         var title: String
         var level = 0
@@ -22,6 +22,19 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     /// An entry clicked (or ⏎ on it): its index.
     var onPick: ((Int) -> Void)?
     var onPageChange: ((Page) -> Void)?
+    /// An entry right-clicked: its menu.
+    var menuFor: ((Int) -> NSMenu?)? {
+        didSet {
+            table.menu = menuFor == nil ? nil : NSMenu()
+            table.menu?.delegate = self
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard entries.indices.contains(table.clickedRow), let m = menuFor?(table.clickedRow) else { return }
+        for item in m.items { m.removeItem(item); menu.addItem(item) }
+    }
 
     private(set) var entries: [Entry] = []
     private let scroll = NSScrollView()

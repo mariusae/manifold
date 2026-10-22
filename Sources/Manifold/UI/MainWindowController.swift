@@ -553,6 +553,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             n.documentChanged()
             v = n
+        case .output where shown.block?.output?.markdown != nil:
+            // An agent's turn: its Markdown, rendered (links to what it changed live).
+            let m = MarkdownView(placement: p.id, block: p.block, path: "", theme: hosts.state.appearance.theme)
+            m.delegate = self
+            m.imageSource = { [weak self] id in self?.imageSource(id) }
+            m.source = { [weak self] in
+                guard let md = self?.hosts.block(p.block)?.output?.markdown else { return nil }
+                return (md, md.hashValue)
+            }
+            v = m
         case .output:
             let o = OutputView(placement: p.id, block: p.block)
             o.delegate = self
@@ -4904,6 +4914,18 @@ extension MainWindowController: GridDelegate {
         if hosts.block(block)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
         }
+        if let last = hosts.block(block)?.terminal?.turns?.last {
+            let sub = NSMenu()
+            for item in turnItems(last, of: block, beside: placement) { sub.addItem(item) }
+            let item = NSMenuItem(title: "Last Turn", action: nil, keyEquivalent: "")
+            item.setSymbol("text.bubble", size: 12)
+            item.submenu = sub
+            menu.addItem(item)
+        }
+        if let o = hosts.block(block)?.output, o.markdown != nil, let agent = o.source, let id = o.command,
+           let turn = hosts.block(agent)?.terminal?.turns?.first(where: { $0.id == id }) {
+            for item in turnItems(turn, of: agent, beside: placement).dropFirst() { menu.addItem(item) }
+        }
         if let snap = hosts.block(block)?.terminal?.snapshot {
             menu.addItem(ClosureMenuItem("Changes Since It Started", symbol: "plusminus") { [weak self] in
                 self?.showAgentChanges(block, snap, beside: placement)
@@ -5640,7 +5662,7 @@ extension MainWindowController: GitViewDelegate {
             context = new.path.lastPathComponent
         case let .commit(_, sha): context = String(sha.prefix(7))
         case .uncommitted: context = "uncommitted"
-        case .versions, .patch, .since: break
+        case .versions, .patch, .since, .trees: break
         }
         show(block, lens: .diff, opener(view.placement), context: context)
     }
@@ -5727,6 +5749,10 @@ extension MainWindowController: TerminalViewDelegate {
     /// and the way back. One per command: asked again, the one there is.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
         let place: Where = beside != nil ? .here : (Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .besideOpener(view.placement))
+        // An agent's turn: the turn, as a block of its own, not the TUI's bytes.
+        if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
+            return showTurn(command.id, of: view.block, place: place)
+        }
         let context = "command \(command.id)"
         if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output }) {
             return show(made.to, lens: .output, place, kind: .opened, context: context)
@@ -5737,11 +5763,87 @@ extension MainWindowController: TerminalViewDelegate {
         showWhenMade(id, lens: .output, place: place)
     }
 
+    /// An agent's turn as its own block (§3.8): the one made before, brought
+    /// up to date, else one the host makes now.
+    func showTurn(_ turn: Int, of agent: BlockID, place: Where) {
+        let context = "turn \(turn)"
+        let made = hosts.neighborhood(of: agent).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output })?.to
+        let id = made ?? BlockID(host: agent.host)
+        hosts.propose(.captureTurn(block: id, agent: agent, turn: turn))
+        if made != nil { return show(id, lens: .output, place, kind: .opened, context: context) }
+        showTurnWhenMade(id, place: place)
+    }
+
+    private func showTurnWhenMade(_ id: BlockID, place: Where, tries: Int = 60) {
+        if hosts.block(id)?.output?.markdown != nil { return show(id, lens: .output, place) }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showTurnWhenMade(id, place: place, tries: tries - 1) }
+    }
+
+    /// Changes in This Turn: the working tree between the turn's two
+    /// checkpoints (as it is now, while it runs), as a diff block.
+    func showTurnChanges(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) {
+        guard let repo = turn.repo, let before = turn.before, let client = hosts.client(agent.host) else { return NSSound.beep() }
+        let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+        let diff = client.diffBlock(.trees(repo: repo, from: before, to: turn.after, title: "Turn: " + String(first.prefix(60))))
+        hosts.link(from: agent, to: diff, kind: .opened, context: "changes in turn \(turn.id)")
+        show(diff, lens: .diff, placement.map { .besideOpener($0) } ?? .here, context: "changes in turn \(turn.id)")
+    }
+
+    /// Undo This Turn: asked first; then the turn's changes taken back.
+    func undoTurn(_ turn: AgentTurn, of agent: BlockID) {
+        guard turn.before != nil, turn.after != nil else { return NSSound.beep() }
+        let alert = NSAlert()
+        let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "the turn"
+        alert.messageText = "Undo “\(first.prefix(80))”?"
+        let n = turn.files?.count ?? 0
+        alert.informativeText = "What the turn changed in \(turn.repo?.lastPathComponent ?? "the repository") (\(n) file\(n == 1 ? "" : "s")) is taken back, as the working tree was before it — later changes kept. If later work changed the same lines, nothing is touched and Manifold says so."
+        alert.addButton(withTitle: "Undo Turn")
+        alert.addButton(withTitle: "Cancel")
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] r in
+            guard r == .alertFirstButtonReturn else { return }
+            self?.hosts.propose(.undoTurn(agent: agent, turn: turn.id)) { error in
+                DispatchQueue.main.async {
+                    self?.toast.show(error.map { "Couldn't undo the turn: \($0)" } ?? "Turn undone", action: "OK", for: error == nil ? 4 : 10) {}
+                }
+            }
+        }
+    }
+
+    /// The menu of an agent's turn: shown, its changes, undone.
+    func turnItems(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) -> [NSMenuItem] {
+        var items: [NSMenuItem] = [ClosureMenuItem("Show Turn", symbol: "text.bubble") { [weak self] in
+            self?.showTurn(turn.id, of: agent, place: placement.map { .besideOpener($0) } ?? .here)
+        }]
+        if turn.before != nil {
+            items.append(ClosureMenuItem("Changes in This Turn", symbol: "plusminus") { [weak self] in self?.showTurnChanges(turn, of: agent, beside: placement) })
+        }
+        let undo = ClosureMenuItem("Undo This Turn…", symbol: "arrow.uturn.backward") { [weak self] in self?.undoTurn(turn, of: agent) }
+        undo.isEnabled = turn.before != nil && turn.after != nil
+        items.append(undo)
+        return items
+    }
+
     /// A block the host is making, shown as soon as it exists here.
     private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, tries: Int = 40) {
         if hosts.block(id) != nil { return show(id, lens: lens, place) }
         guard tries > 0 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.showWhenMade(id, lens: lens, place: place, tries: tries - 1) }
+    }
+
+    func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {
+        let menu = NSMenu()
+        if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {
+            for item in turnItems(turn, of: view.block, beside: view.placement) { menu.addItem(item) }
+        } else {
+            menu.addItem(ClosureMenuItem("Show Output", symbol: "text.alignleft") { [weak view] in _ = view?.showOutput(ofCommand: command.id, beside: view?.placement) })
+            menu.addItem(ClosureMenuItem("Copy Command", symbol: "doc.on.clipboard") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command.text, forType: .string)
+            })
+        }
+        return menu
     }
 
     func terminalDidFocus(_ view: TerminalView) {

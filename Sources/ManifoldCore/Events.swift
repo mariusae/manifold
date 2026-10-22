@@ -242,6 +242,9 @@ public enum Event: Codable, Equatable, Sendable {
     case command(String?)
     /// An agent's repository as it started (§7.5).
     case snapshot(TreeSnapshot)
+    /// An agent's turn, as it began or as it now stands (replacing the
+    /// record of the same id).
+    case turn(AgentTurn)
     /// The shell ran a command (§3.8): its line, as it started.
     case ran(id: Int, String, at: Stamp)
     /// A command the shell ran ended, with its status.
@@ -534,6 +537,11 @@ extension TerminalState {
         case let .cwd(c): cwd = c
         case let .command(c): command = c
         case let .snapshot(s): snapshot = s
+        case let .turn(t):
+            var list = turns ?? []
+            if let i = list.firstIndex(where: { $0.id == t.id }) { list[i] = t } else { list.append(t) }
+            if list.count > Self.commandLimit { list.removeFirst(list.count - Self.commandLimit) }
+            turns = list
         case let .ran(id, text, at):
             var list = commands ?? []
             list.append(ShellCommand(id: id, text: text, at: at))

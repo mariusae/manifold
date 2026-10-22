@@ -1224,15 +1224,49 @@ private final class Seen: @unchecked Sendable {
 // MARK: Agents' hooks
 
 @Test func aHooksInputSaysWhatHappenedInTheAgent() {
-    #expect(AgentHookCommand.event("prompt", agent: "claude", input: ["prompt": "fix the bug\nplease"]) == .prompt(agent: "claude", text: "fix the bug\nplease"))
-    #expect(AgentHookCommand.event("prompt", agent: "codex", input: ["input-messages": ["first", "second"]]) == .prompt(agent: "codex", text: "second"))
-    #expect(AgentHookCommand.event("stop", agent: "claude", input: ["last_assistant_message": "Done."]) == .finished(agent: "claude", message: "Done."))
+    #expect(AgentHookCommand.event("prompt", agent: "claude", input: ["prompt": "fix the bug\nplease", "transcript_path": "/t.jsonl"]) == .prompt(agent: "claude", text: "fix the bug\nplease", transcript: "/t.jsonl"))
+    #expect(AgentHookCommand.event("prompt", agent: "codex", input: ["input-messages": ["first", "second"]]) == .prompt(agent: "codex", text: "second", transcript: nil))
+    #expect(AgentHookCommand.event("stop", agent: "claude", input: ["last_assistant_message": "Done."]) == .finished(agent: "claude", message: "Done.", transcript: nil))
+    // The to-do list, when the tool that ran was the one that keeps it.
+    let todos: [String: Any] = ["tool_name": "TodoWrite", "tool_input": ["todos": [["content": "Read it", "status": "completed"], ["content": "Fix it", "status": "in_progress"]]]]
+    #expect(AgentHookCommand.event("working", agent: "claude", input: todos) == .todos(agent: "claude", [AgentTodo(text: "Read it", status: "completed"), AgentTodo(text: "Fix it", status: "in_progress")]))
+    #expect(AgentHookCommand.event("working", agent: "claude", input: ["tool_name": "Edit"]) == .working(agent: "claude"))
     #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["message": "Claude needs your permission to use Bash"]) == .waiting(agent: "claude", message: "Claude needs your permission to use Bash"))
     // A reminder that it's idle is no one waiting on anything.
     #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["notification_type": "idle_prompt", "message": "x"]) == nil)
     #expect(AgentHookCommand.event("waiting", agent: "claude", input: ["message": "Claude is waiting for your input"]) == nil)
     #expect(AgentHookCommand.event("start", agent: "pi", input: [:]) == .started(agent: "pi"))
     #expect(AgentHookCommand.event("bogus", agent: "pi", input: [:]) == nil)
+}
+
+@Test func aTurnIsReadFromItsTranscriptFromItsPromptToTheNext() throws {
+    // Claude Code's lines: the turn's prompt, what it said and the tools it used, then the next prompt.
+    let lines: [[String: Any]] = [
+        ["type": "user", "message": ["role": "user", "content": "an earlier ask"]],
+        ["type": "assistant", "message": ["content": [["type": "text", "text": "not this"]]]],
+        ["type": "user", "message": ["role": "user", "content": [["type": "text", "text": "fix the socket path"]]]],
+        ["type": "assistant", "message": ["content": [["type": "text", "text": "Looking."], ["type": "tool_use", "name": "Read", "input": ["file_path": "/a/b.swift"]]]]],
+        ["type": "user", "message": ["role": "user", "content": [["type": "tool_result", "content": "…"]]]],
+        ["type": "assistant", "message": ["content": [["type": "tool_use", "name": "Bash", "input": ["command": "swift build\nmore"]], ["type": "text", "text": "Fixed."]]]],
+        ["type": "user", "message": ["role": "user", "content": "the next ask"]],
+        ["type": "assistant", "message": ["content": [["type": "text", "text": "nor this"]]]],
+    ]
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("turn-\(UUID().uuidString).jsonl")
+    defer { try? FileManager.default.removeItem(at: file) }
+    try lines.map { String(decoding: try JSONSerialization.data(withJSONObject: $0), as: UTF8.self) }.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+    let turn = TurnTranscript.render(path: file.path, prompt: "fix the socket path")
+    #expect(turn == "Looking.\n\n- `Read` `/a/b.swift`\n- `Bash` `swift build`\n\nFixed.")
+    #expect(TurnTranscript.render(path: file.path, prompt: "never asked") == nil)
+}
+
+@Test func anAgentsTurnsAreKeptByTheirCommand() {
+    var t = TerminalState()
+    var turn = AgentTurn(id: 3, agent: "claude", prompt: "do it", began: Stamp(wall: 1))
+    t.apply(.turn(turn), at: Stamp(wall: 1))
+    turn.after = "abc"
+    turn.files = ["a.swift"]
+    t.apply(.turn(turn), at: Stamp(wall: 2))
+    #expect(t.turns?.count == 1 && t.turns?.first?.after == "abc" && t.turns?.first?.files == ["a.swift"])
 }
 
 @Test func installingHooksKeepsTheRestOfTheSettingsAndReplacesOnlyManifolds() throws {

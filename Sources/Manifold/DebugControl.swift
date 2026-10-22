@@ -349,6 +349,35 @@ enum DebugControl {
             // A deliberate crash (a Swift trap), for the crash guard.
             let nothing: Int? = arg == "never" ? 1 : nil
             return "\(nothing!)"
+        case "turns":
+            // "turns <agent>": its turns; "turns <agent> show N": the turn's block, its Markdown;
+            // "turns <agent> undo N": undone, no asking.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, let first = a.first, let id = BlockID(string: first), let b = wc.hosts.block(id) else { return "no such block" }
+            if a.count == 2, a[1] == "todo" {
+                let note = wc.hosts.links.first { $0.from == id && $0.context == "to-do list" }?.to
+                return note.flatMap { n in wc.hosts.block(n).map { "\($0.displayTitle)\n" + ($0.text?.text.string ?? "") } } ?? "no to-do note"
+            }
+            if a.count == 3, let n = Int(a[2]) {
+                if a[1] == "show" {
+                    wc.showTurn(n, of: id, place: .here)
+                    return "showing"
+                }
+                if a[1] == "undo" {
+                    wc.hosts.propose(.undoTurn(agent: id, turn: n)) { e in NSLog("undo turn: %@", e ?? "ok") }
+                    return "undoing"
+                }
+                if a[1] == "todo" {
+                    let note = wc.hosts.links.first { $0.from == id && $0.context == "to-do list" }?.to
+                    return note.flatMap { n in wc.hosts.block(n).map { "\($0.displayTitle)\n" + ($0.text?.text.string ?? "") } } ?? "no to-do note"
+                }
+                if a[1] == "md" {
+                    return wc.hosts.blocks.first { $0.output?.source == id && $0.output?.command == n }?.output?.markdown ?? "no block"
+                }
+            }
+            return (b.terminal?.turns ?? []).map { t in
+                "\(t.id) \(t.prompt.prefix(40)) repo=\(t.repo ?? "-") before=\(t.before?.prefix(7) ?? "-") after=\(t.after?.prefix(7) ?? "-") files=\(t.files ?? []) said=\(t.message?.prefix(30) ?? "-")"
+            }.joined(separator: "\n")
         case "agenttest":
             // "agenttest <repo>": an agent running `sleep 600` there; its id.
             guard let wc else { return "no window" }

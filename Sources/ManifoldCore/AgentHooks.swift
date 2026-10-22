@@ -14,12 +14,15 @@ import Musl
 public enum AgentEvent: Codable, Equatable, Sendable {
     /// A session began: the agent is there, waiting.
     case started(agent: String)
-    /// The user's prompt: a turn begins, named by it.
-    case prompt(agent: String, text: String)
+    /// The user's prompt: a turn begins, named by it; where the agent's
+    /// transcript is, if it says.
+    case prompt(agent: String, text: String, transcript: String?)
     /// Working again (a tool ran, a permission was given).
     case working(agent: String)
     /// The turn is over: its last words, if the hook has them.
-    case finished(agent: String, message: String?)
+    case finished(agent: String, message: String?, transcript: String?)
+    /// The agent's to-do list as it now stands (Claude Code's TodoWrite).
+    case todos(agent: String, [AgentTodo])
     /// Waiting on the user: a permission, a question.
     case waiting(agent: String, message: String?)
     /// The session ended.
@@ -27,7 +30,7 @@ public enum AgentEvent: Codable, Equatable, Sendable {
 
     public var agent: String {
         switch self {
-        case let .started(a), let .prompt(a, _), let .working(a), let .finished(a, _), let .waiting(a, _), let .ended(a): a
+        case let .started(a), let .prompt(a, _, _), let .working(a), let .finished(a, _, _), let .todos(a, _), let .waiting(a, _), let .ended(a): a
         }
     }
 }
@@ -37,6 +40,17 @@ public enum AgentEvent: Codable, Equatable, Sendable {
 /// last argument, as Codex's notify has it), tells the host the block it
 /// runs in what happened, and gets out of the way: it prints nothing and
 /// always succeeds, so no agent ever waits on it or shows its errors.
+/// An item of an agent's to-do list.
+public struct AgentTodo: Codable, Equatable, Sendable {
+    public var text: String
+    /// "pending", "in_progress" or "completed".
+    public var status: String
+    public init(text: String, status: String) {
+        self.text = text
+        self.status = status
+    }
+}
+
 public enum AgentHookCommand {
     public static let usage = """
         usage: manifold agent <start|prompt|working|stop|waiting|end> [--agent name]
@@ -89,10 +103,17 @@ public enum AgentHookCommand {
             // Codex's notify names the turn's input messages; hooks, the prompt.
             let text = string("prompt", "user_prompt", "input")
                 ?? (input["input-messages"] as? [String])?.last ?? (input["input_messages"] as? [String])?.last
-            return .prompt(agent: agent, text: text ?? "")
-        case "working": return .working(agent: agent)
+            return .prompt(agent: agent, text: text ?? "", transcript: string("transcript_path"))
+        case "working":
+            // A tool ran; the to-do list one (TodoWrite), with the list.
+            if string("tool_name") == "TodoWrite", let tool = input["tool_input"] as? [String: Any], let items = tool["todos"] as? [[String: Any]] {
+                return .todos(agent: agent, items.compactMap { i in
+                    (i["content"] as? String).map { AgentTodo(text: $0, status: i["status"] as? String ?? "pending") }
+                })
+            }
+            return .working(agent: agent)
         case "stop":
-            return .finished(agent: agent, message: string("last_assistant_message", "last-assistant-message", "message", "response"))
+            return .finished(agent: agent, message: string("last_assistant_message", "last-assistant-message", "message", "response"), transcript: string("transcript_path"))
         case "waiting":
             // A reminder that the agent is idle isn't waiting on anything.
             let kind = string("notification_type", "type") ?? ""
