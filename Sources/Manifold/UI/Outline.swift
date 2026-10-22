@@ -294,11 +294,28 @@ final class FloatingList: NSView {
         if opener === owner { hideWork?.cancel() }
     }
 
+    /// Gone in a moment — unless by then the pointer is on it, or back on
+    /// what opened it, when it's looked at again a moment later. (It opens
+    /// under the pointer, over the ticks: the pointer is on it without
+    /// ever having come onto it, so its own tracking can't be relied on.)
     private func scheduleHide() {
         hideWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.hideNow() }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.pointerOnIt { self.scheduleHide() } else { self.hideNow() }
+        }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    /// Whether the pointer is on the list, or on what opened it.
+    private var pointerOnIt: Bool {
+        guard isShown, let window else { return false }
+        let p = debugPointer ?? window.mouseLocationOutsideOfEventStream
+        let opener: NSRect = switch place {
+        case let .overTopRight(r), let .rightOf(r): r
+        }
+        return convert(bounds, to: nil).insetBy(dx: -2, dy: -2).contains(p) || opener.insetBy(dx: -2, dy: -2).contains(p)
     }
 
     private func fill(_ fresh: [Row]) {
@@ -338,15 +355,33 @@ final class FloatingList: NSView {
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
 
     override func mouseEntered(with event: NSEvent) { hideWork?.cancel() }
     override func mouseExited(with event: NSEvent) { scheduleHide() }
+    override func mouseMoved(with event: NSEvent) { hideWork?.cancel() }
     // The pointer on it is its own: nothing under it hears of it.
     override func mouseDown(with event: NSEvent) {}
     override func scrollWheel(with event: NSEvent) { scroll.scrollWheel(with: event) }
+
+    /// Debugging: where the pointer is taken to be (in the window), in place
+    /// of where it is.
+    var debugPointer: NSPoint?
+
+    /// Debugging: "pointer x y" (in the window, from the bottom left; "pointer"
+    /// alone, the real one again), "leave" (the pointer off what opened it).
+    func debugPointer(_ arg: String) -> String {
+        let words = arg.split(separator: " ")
+        if words.first == "leave" {
+            if let o = opener { openerLeft(o) }
+            return "left"
+        }
+        let xy = words.dropFirst().compactMap { Double($0) }
+        debugPointer = xy.count == 2 ? NSPoint(x: xy[0], y: xy[1]) : nil
+        return "pointer \(debugPointer.map { NSStringFromPoint($0) } ?? "real") panel \(NSStringFromRect(convert(bounds, to: nil)))"
+    }
 
     /// Debugging: the rows, the current one starred.
     var debugRows: String {

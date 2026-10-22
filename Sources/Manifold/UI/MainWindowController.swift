@@ -1298,6 +1298,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         switch words.first {
         case "rows": return FloatingList.shared.debugRows
         case "click": return FloatingList.shared.debugClick(words.count > 1 ? words[1] : "")
+        case "pointer": return FloatingList.shared.debugPointer(arg)
+        case "leave": return FloatingList.shared.debugPointer("leave")
         default: break
         }
         guard let f = arrangement?.focused else { return "no tile focused" }
