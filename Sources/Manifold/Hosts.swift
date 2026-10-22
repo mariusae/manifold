@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldCore
+import Network
 
 /// Every host the app is attached to: this machine's, and any reached
 /// through a provider (DESIGN.md §8). Blocks are found by their id's host;
@@ -515,6 +516,43 @@ final class Hosts {
     func resetGraph(on host: HostID, done: ((String?) -> Void)? = nil) {
         guard let c = client(host), c.isConnected else { done?("The host isn't connected."); return }
         c.propose(.resetGraph, done: done)
+    }
+
+    // MARK: Waking and moving networks
+
+    private var pathMonitor: NWPathMonitor?
+    private var lastPath: String?
+    private var nudgeWork: DispatchWorkItem?
+
+    /// After sleep, or when the network comes back or changes (another
+    /// Wi-Fi, a VPN up or down), the hosts are tried at once rather than
+    /// when their back-off ends: remote terminals come back as the lid opens.
+    func watchNetwork() {
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.nudgeHosts(after: 2)
+        }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let key = "\(path.status) " + path.availableInterfaces.map(\.name).joined(separator: ",")
+            DispatchQueue.main.async {
+                guard let self else { return }
+                defer { self.lastPath = key }
+                guard let last = self.lastPath, last != key, path.status == .satisfied else { return }
+                self.nudgeHosts(after: 1)
+            }
+        }
+        monitor.start(queue: .global(qos: .utility))
+        pathMonitor = monitor
+    }
+
+    /// Each host asked to try (or check) now, once things have settled.
+    func nudgeHosts(after delay: TimeInterval) {
+        nudgeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            for c in self?.all ?? [] { c.networkMayHaveChanged() }
+        }
+        nudgeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// Attaches again to every host remembered.

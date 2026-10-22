@@ -651,6 +651,26 @@ final class HostClient {
         if let child { kill(child.pid, SIGTERM) }
     }
 
+    /// The Mac woke, or its network came back or changed: a host waiting
+    /// to try again tries now; one connected is asked at once whether it's
+    /// still there (a link from before sleep is often dead without saying),
+    /// and given up on in a few seconds if it doesn't answer.
+    func networkMayHaveChanged() {
+        guard !disconnected else { return }
+        if retryWork != nil { return retryNow() }
+        guard isRemote, let conn else { return }
+        let sent = Date()
+        pingSent = sent
+        conn.send(.message(ClientMessage.ping))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, self.pingSent == sent, self.conn === conn else { return }
+            NSLog("host %@: no answer after waking; dropping the connection", self.host.raw)
+            self.pingSent = nil
+            self.link = .unreachable("not answering")
+            conn.close()
+        }
+    }
+
     /// Every so often, a ping over a remote bridge; no pong in time, and
     /// the connection is given up on, to be made again.
     private func startPinging() {

@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
         host.connect()
         hosts.reattachRemembered()
+        hosts.watchNetwork()
         DebugControl.start { [weak self] in self?.windowController }
     }
 

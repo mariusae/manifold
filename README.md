@@ -783,7 +783,11 @@ is migrated into logs on first run.
   seconds, then four, eight, up to two minutes between tries (the
   tooltip says when the next is; **Try Again Now** in the row's menu
   hurries it), and once connected, pinged every fifteen seconds so a
-  bridge that hangs is noticed and made again. **Detach from *host*…**
+  bridge that hangs is noticed and made again. When the Mac wakes, or
+  its network comes back or changes (another Wi-Fi, a VPN), every host
+  is tried at once and every connected one asked straight away whether
+  it's still there — given up on and made again in five seconds if not
+  — so remote terminals come back as the lid opens. **Detach from *host*…**
   (in the row's menu, or the box, ⌘T) forgets it here, even while it's still
   being reached: it isn't attached again at start, and its server,
   shells and blocks stay there for attaching again. **Reset Server on

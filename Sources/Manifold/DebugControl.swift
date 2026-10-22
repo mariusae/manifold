@@ -327,6 +327,10 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "nudge":
+            // As if the Mac woke: the hosts tried or checked now.
+            wc?.hosts.nudgeHosts(after: 0)
+            return "nudged"
         case "openlink":
             // "openlink manifold:host/ulid[#command=N]": as from another app.
             wc?.openLink(arg)
