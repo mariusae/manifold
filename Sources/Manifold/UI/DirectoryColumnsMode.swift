@@ -34,6 +34,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
         browser.action = #selector(chosen)
         browser.doubleAction = #selector(doubleClicked)
         browser.cellPrototype = BrowserCell()
+        browser.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
+        browser.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         addSubview(browser)
     }
 

@@ -13,6 +13,8 @@ protocol GridDelegate: AnyObject {
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
     /// Files dropped from outside: opened where they landed.
     func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool)
+    /// Entries dragged from a folder's tile, on its host (another's too).
+    func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool)
     /// Another arrangement dropped: its columns come over at `column`.
     func gridDropArrangement(_ arrangement: BlockID, column: Int)
     func gridCanDrop(_ arrangement: BlockID) -> Bool
@@ -150,10 +152,20 @@ final class GridView: NSView, NSDraggingSource {
         wantsLayer = true
         layer?.backgroundColor = .clear
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath])
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A folder's entries being dragged, on their host.
+    private static func droppedPaths(_ pb: NSPasteboard) -> [(host: HostID, path: String, isDirectory: Bool)] {
+        guard pb.string(forType: .manifoldBlockLink) == nil else { return [] }
+        return (pb.pasteboardItems ?? []).compactMap { item in
+            let f = item.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) ?? []
+            guard f.count == 3 else { return nil }
+            return (HostID(String(f[0])), String(f[1]), f[2] == "d")
+        }
+    }
 
     /// Files from the Finder (or anywhere) being dragged: their paths.
     private static func droppedFiles(_ pb: NSPasteboard) -> [String] {
@@ -956,7 +968,7 @@ final class GridView: NSView, NSDraggingSource {
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
         // (Not a pill's own ⌥⇧-drag, its file already a tile here.)
-        if !pathDrag, !Self.droppedFiles(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
+        if !pathDrag, !Self.droppedFiles(pb).isEmpty || !Self.droppedPaths(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
             // Files from outside: opened where they land, as a block is brought.
             showDrop(target.rect)
             drop = target
@@ -1152,6 +1164,12 @@ final class GridView: NSView, NSDraggingSource {
         let pb = sender.draggingPasteboard
         if dropFiles {
             dropFiles = false
+            // A folder's entries on their host, another's too; else files.
+            let paths = Self.droppedPaths(pb)
+            if !paths.isEmpty {
+                delegate?.gridOpenPaths(paths, column: target.column, at: target.at, newColumn: target.newColumn)
+                return true
+            }
             let files = Self.droppedFiles(pb)
             guard !files.isEmpty else { return false }
             delegate?.gridOpenFiles(files, column: target.column, at: target.at, newColumn: target.newColumn)

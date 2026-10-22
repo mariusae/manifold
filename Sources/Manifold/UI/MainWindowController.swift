@@ -1060,6 +1060,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for path in paths { open(path, from: from, here: false, over: false) }
     }
 
+    /// Debugging: "host path d|f" as if a folder's entry were dropped
+    /// at the end of the first column.
+    func debugGridPath(_ arg: String) -> String {
+        let f = arg.split(separator: " ").map(String.init)
+        guard f.count == 3 else { return "usage: gridpath <host> <path> d|f" }
+        gridOpenPaths([(HostID(f[0]), f[1], f[2] == "d")], column: 0, at: 99, newColumn: false)
+        return "opened"
+    }
+
     func debugOpenPaths(_ arg: String) -> String {
         openPaths(arg.split(separator: " ").map(String.init))
         return "opened"
@@ -4589,6 +4598,17 @@ extension MainWindowController: GridDelegate {
             let block = isDir ? hosts.directoryBlock(for: path, on: host.host)
                 : media.flatMap { kind in host.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: host.host)
             let lens: Lens = isDir ? .directory : media == .pdf ? .pdf : media == .image ? .image : Lens.default(for: .text, path: path)
+            let place: Where = i == 0 && newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
+            show(block, lens: lens, place)
+        }
+    }
+
+    func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool) {
+        for (i, p) in paths.enumerated() {
+            guard let (block, lens) = pathBlock(p.path, isDirectory: p.isDirectory, on: p.host) else {
+                if p.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: p.path)) }
+                continue
+            }
             let place: Where = i == 0 && newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
             show(block, lens: lens, place)
         }

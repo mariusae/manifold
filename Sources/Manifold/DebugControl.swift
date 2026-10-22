@@ -327,6 +327,8 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "gridpath":
+            return wc?.debugGridPath(arg) ?? "no window"
         case "dockopen":
             // "dockopen <path> …": as if dropped on the Dock icon.
             return wc?.debugOpenPaths(arg) ?? "no window"

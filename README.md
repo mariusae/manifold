@@ -425,7 +425,8 @@ when you find it again.
   the same tile, as a browser goes; ⌘-double-click for a listing beside,
   this one staying; ⌥-double-click for one over it. Drag an entry out
   and it's its path — a terminal types it, an editor inserts it, the
-  grid opens it where it lands, another app takes the file; ⇧-drag it
+  grid opens it where it lands (on its host, another's too), another
+  app takes the file (one of this Mac's); ⇧-drag it
   and it's its block too, as a pill ⇧-dragged is: a note mentions it, a
   terminal or a tile it's dropped on is linked to it; ⌥⇧-drag it for
   the link alone. The mode, the

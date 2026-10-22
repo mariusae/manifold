@@ -266,6 +266,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
             return item
         }
         item.setString(node.path, forType: .string)
+        item.setString("\(block.host.raw)\t\(node.path)\t\(node.isDirectory ? "d" : "f")", forType: .manifoldPath)
         // A folder's URL only for a plain drag: a web view in the way
         // takes a dragged folder for a file list and reads it.
         if delegate?.directoryViewIsLocal(self) == true, !mods.contains(.shift) || !node.isDirectory {
