@@ -410,6 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Navigate Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
         item(window, "Navigate Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
         item(window, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
+        item(window, "Agents", #selector(MainWindowController.showAgents(_:)), "a", [.command, .control])
         item(window, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
         item(window, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
         window.addItem(.separator())

@@ -250,7 +250,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 stateBlocks.append((b, b.statusRecord, b.statusRecord?.at ?? b.created))
             }
         }
-        if stateGroup != nil || stateWorkspace != nil {
+        if stateAgents {
+            // Every agent on every host: those that need you first, then
+            // those at work, those done, those idle or ended.
+            stateBlocks = agentBlocks().map { ($0, $0.statusRecord, $0.statusRecord?.at ?? $0.created) }
+            stateMembers = stateBlocks.map(\.0.id)
+        } else if stateGroup != nil || stateWorkspace != nil {
             // Membership sticks while the view is up: a block that leaves
             // the state for a moment (a diff reloading, a repository
             // refreshing) keeps its place rather than its view being torn
@@ -335,14 +340,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.clear()
             window.title = "Manifold"
         }
-        if let stateView, stateGroup != nil || stateWorkspace != nil {
+        if let stateView, stateGroup != nil || stateWorkspace != nil || stateAgents {
             let items = stateBlocks.map { block, _, _ -> StateView.Item in
                 let lens = stateLenses[block.id] ?? Lens.default(for: block.kind, path: block.path)
                 let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: lens)
-                let shown = Shown(placement: p, block: block)
+                var shown = Shown(placement: p, block: block)
+                if stateAgents { shown.caption = agentCaption(block) }
                 return StateView.Item(shown: shown, view: view(for: shown))
             }
-            let title = stateGroup?.title ?? "Overview"
+            let title = stateAgents ? "Agents" : stateGroup?.title ?? "Overview"
             stateView.show(items, title: title, mode: stateMode)
             window.title = title
         }
@@ -2461,6 +2467,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func showWorkspaceOverview(_ sender: Any?) {
         guard let id = selected, hosts.arrangement(id) != nil else { return NSSound.beep() }
         if stateWorkspace == id { return hideStateView() }
+        stateAgents = false
         stateGroup = nil
         stateWorkspace = id
         stateMode = .overview
@@ -2473,7 +2480,54 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func showStateView(_ group: StatusGroup) {
         stateGroup = group
         stateWorkspace = nil
+        stateAgents = false
         presentStateView()
+    }
+
+    /// The agents' view, up.
+    private var stateAgents = false
+
+    /// Window ▸ Agents (⌃⌘A): every agent on every host at once, live, as
+    /// a list or an overview — those that need you first — each bar saying
+    /// what it's on, for how long, and what it has changed; clicked, gone
+    /// to. Again, or ⎋, back.
+    @objc func showAgents(_ sender: Any?) {
+        if stateAgents { return hideStateView() }
+        stateGroup = nil
+        stateWorkspace = nil
+        stateAgents = true
+        presentStateView()
+    }
+
+    /// The agents: agent blocks, and terminals with an agent at work in
+    /// them (or that had turns), by how much they want you.
+    func agentBlocks() -> [Block] {
+        let all = hosts.blocks.filter { $0.kind == .agent || ($0.kind == .terminal && ($0.agent != nil || $0.terminal?.turns?.isEmpty == false)) }
+        func rank(_ b: Block) -> Int {
+            switch StatusGlyph.look(of: b) {
+            case .needsYou?: 0
+            case .working?: 1
+            case .failed?: 2
+            case .done?: 3
+            default: b.terminal?.pid == nil ? 5 : 4
+            }
+        }
+        return all.sorted { (rank($0), -($0.statusRecord?.at.wall ?? 0)) < (rank($1), -($1.statusRecord?.at.wall ?? 0)) }
+    }
+
+    /// What an agent's bar says: its name, what it's on (its last turn's
+    /// ask), how long that has run or took, and how many files it changed.
+    func agentCaption(_ b: Block) -> String {
+        var parts = [b.displayTitle]
+        if let t = b.terminal?.turns?.last {
+            parts.append("“" + String((t.prompt.split(whereSeparator: \.isNewline).first ?? "").prefix(60)) + "”")
+            let secs = Double((t.ended?.wall ?? Int64(Date().timeIntervalSince1970 * 1000)) - t.began.wall) / 1000
+            parts.append((t.ended == nil ? "for " : "took ") + Notifier.duration(Int64(secs * 1000)))
+            if let n = t.files?.count, n > 0 { parts.append("\(n) file\(n == 1 ? "" : "s")") }
+        } else if let m = b.statusRecord?.msg {
+            parts.append(m)
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func presentStateView() {
@@ -2504,6 +2558,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stateView = nil
         stateGroup = nil
         stateWorkspace = nil
+        stateAgents = false
         content.isHidden = false
         render()
     }

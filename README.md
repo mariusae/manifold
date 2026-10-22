@@ -749,7 +749,12 @@ when you find it again.
   what the turn changed taken back, later work kept — or, where later
   work touched the same lines, nothing touched and Manifold says so.
   Turns are found with ⌘O — by what was asked among the names, by what
-  was asked or said In Blocks — each opening as its block.
+  was asked or said In Blocks — each opening as its block. **Window ▸
+  Agents** (⌃⌘A) shows every agent on every host at once, live, as a
+  list or an overview — those that need you first, then those at work,
+  done, idle — each bar saying what it's on, for how long (or how long
+  it took) and how many files it changed; click one to go there, ⎋ to
+  come back.
   An agent's **to-do list** (Claude Code's) is a checklist note of its
   own, linked from it and kept by it, rewritten as the list changes:
   done ticked, the item at work in bold. Launch

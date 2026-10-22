@@ -16,7 +16,10 @@ struct Shown: Equatable {
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }
     var kind: BlockKind { block?.kind ?? kindOf(lens) }
-    var title: String { block?.displayTitle ?? kind.defaultTitle }
+    var title: String { caption ?? block?.displayTitle ?? kind.defaultTitle }
+    /// Said on the bar instead of the block's name (the agents' view: what
+    /// each is doing).
+    var caption: String?
     var path: String? { block?.path }
     var symbol: String { block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil) }
     /// Where it is, for subtitles: a folder, or a working directory.
