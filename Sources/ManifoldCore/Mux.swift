@@ -70,6 +70,11 @@ public final class Mux {
     /// queue measures it again (`probe`).
     private var minRTT: (rtt: TimeInterval, at: Date)?
     private var probing = false
+    /// When probing began, or last saw an acknowledgment: one that waits
+    /// longer than `probeWait` for the rest is given up, so the paced
+    /// streams can't be stopped for good by anything that never comes.
+    private var probingSince = Date()
+    static let probeWait: TimeInterval = 5
     private var probe: UInt64?
     private var rates: [(at: Date, rate: Double)] = []
     public private(set) var budget = 256 << 10
@@ -136,7 +141,12 @@ public final class Mux {
 
     // MARK: The wire
 
-    enum Op: UInt8 { case open = 0, frame = 1, close = 2, credit = 3 }
+    /// A paced stream's frames are `pacedFrame`s, acknowledged (`linkAck`)
+    /// as they arrive whether or not their stream is still open here: one
+    /// closed at this end while the other was sending on it still has
+    /// what was on its way counted, or the sender's pacing would wait for
+    /// it forever.
+    enum Op: UInt8 { case open = 0, frame = 1, close = 2, credit = 3, pacedFrame = 4 }
 
     private func sendOp(_ id: UInt32, _ op: Op, _ rest: Data) {
         connection.send(Self.opFrame(id, op, rest))
@@ -173,15 +183,16 @@ public final class Mux {
             let s = MuxStream(id: id, bulk: rest.first == 1 || rest.first == 2, urgent: rest.first == 2, mux: self)
             streams[id] = s
             onStream?(s)
-        case .frame:
-            guard let s = streams[id] else { return }
-            // Received, whether or not it's taken yet: the link has it.
-            if s.bulk {
+        case .frame, .pacedFrame:
+            // Received, whether or not it's taken yet (or its stream is
+            // still here to take it): the link has it.
+            if op == .pacedFrame {
                 bulkReceived &+= UInt64(wire)
                 var d = Data(capacity: 8)
                 withUnsafeBytes(of: bulkReceived.bigEndian) { d.append(contentsOf: $0) }
                 connection.send(Frame(.linkAck, d))
             }
+            guard let s = streams[id] else { return }
             var decoder = FrameDecoder()
             decoder.append(rest)
             guard let inner = try? decoder.next() else { return connection.close() }
@@ -225,7 +236,16 @@ public final class Mux {
     private func pumpBulk() {
         guard !pumping else { return }
         pumping = true
-        if let m = minRTT, !probing, Date().timeIntervalSince(m.at) > 10 { probing = true }
+        let now = Date()
+        if let m = minRTT, !probing, now.timeIntervalSince(m.at) > 10 {
+            probing = true
+            probingSince = now
+        } else if probing, now.timeIntervalSince(probingSince) > Self.probeWait, let m = minRTT {
+            // No measurement this time: the last one kept, for another ten seconds.
+            probing = false
+            probe = nil
+            minRTT = (m.rtt, now)
+        }
         while !ready.isEmpty, connection.pending < Self.bulkPiece, bulkSent - bulkAcked < UInt64(budget) {
             // Probing: nothing more until all that's out has arrived, then
             // one piece alone.
@@ -236,7 +256,7 @@ public final class Mux {
                 s.drainedIfEmpty()
                 continue
             }
-            let frame = Self.opFrame(s.id, .frame, f)
+            let frame = Self.opFrame(s.id, .pacedFrame, f)
             bulkSent &+= UInt64(frame.payload.count + 5)
             marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
             if probing { probe = bulkSent }
@@ -255,6 +275,7 @@ public final class Mux {
         let now = Date()
         bulkAcked = total
         let rate = rates.map(\.rate).max()
+        if probing { probingSince = now }
         while let m = marks.first, m.sent <= total {
             marks.removeFirst()
             // Less the time the piece itself took to go out: on a slow link
@@ -293,6 +314,9 @@ public final class Mux {
         ready.removeAll { $0 === s }
         sendOp(s.id, .close, Data())
     }
+
+    /// Paced bytes sent and not yet acknowledged (from anywhere).
+    var inFlight: UInt64 { onQueueNow { bulkSent - bulkAcked } }
 
     /// Debugging: the pacing's state (from anywhere).
     public var debugPacing: String { onQueueNow { pacing } }

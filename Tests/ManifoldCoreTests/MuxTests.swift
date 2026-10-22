@@ -118,3 +118,38 @@ private final class Inbox: @unchecked Sendable {
     #expect(inbox.isClosed("stream"))
     #expect(inbox.isClosed("control"))
 }
+
+/// A paced stream closed at one end while the other is still sending on
+/// it (a terminal closed as its shell prints): what was on its way is
+/// still acknowledged, so the sender's count of bytes in flight comes back
+/// to nothing — else its pacing, waiting for that count to empty before
+/// measuring the round trip, would stop every paced stream for good.
+@Test func pacedBytesToAStreamClosedOnTheWayAreStillAcknowledged() {
+    let queue = DispatchQueue(label: "mux-test")
+    let (client, server) = muxPair(queue)
+    let inbox = Inbox()
+    // The server's side prints as a shell would, a lot, as fast as it may.
+    server.onStream = { s in
+        s.onFrame = { [unowned s] _ in
+            for _ in 0..<64 { s.send(Frame(.data, Data(repeating: 65, count: 16 << 10))) }
+        }
+    }
+    var t: MuxStream!
+    queue.sync {
+        client.start()
+        server.start()
+        let stream = client.open(bulk: true, urgent: true)
+        // Closed as soon as its first output arrives.
+        stream.onFrame = { [unowned stream] f in
+            inbox.add("terminal", f)
+            stream.abort()
+        }
+        t = stream
+        t.send(Frame(.data, Data("attach".utf8)))
+    }
+    wait { !inbox.get("terminal").isEmpty }
+    // Everything the server sent has arrived somewhere by now.
+    wait { server.inFlight == 0 }
+    #expect(server.inFlight == 0)
+    #expect(client.inFlight == 0)
+}
