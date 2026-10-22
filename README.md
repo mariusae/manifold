@@ -1,11 +1,15 @@
 # Manifold
 
-A Mac app that is a desk rather than a set of windows. Terminals (drawn by
-[libghostty](https://github.com/ghostty-org/ghostty)), files, notes,
-folders and web pages are **blocks**; you arrange blocks to work, and an
-workspace is itself a block you can name and come back to. Nothing is
-closed: what isn't in use is tidied out of the way, and anything can be
-found and recalled, with its history. Light or dark, in SF Pro and Menlo
+A Mac app that works like a wiki rather than a set of windows. Terminals
+(drawn by [libghostty](https://github.com/ghostty-org/ghostty)), files,
+notes, folders and web pages are **blocks**, and everything is linked: a
+workspace links the blocks it shows, a note the blocks it mentions, and
+what you do leaves links behind (this terminal opened that file). A block
+stays alive as long as it is reachable in that graph — from a workspace,
+a name, a Keep, a link by hand — and what nothing reaches any more is
+collected, after a while to bring it back. A workspace is itself a block
+you can name and come back to, and anything reachable can be found and
+followed, with its history. Light or dark, in SF Pro and Menlo
 as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
 and Mona Sans (bundled).
 [DESIGN.md](DESIGN.md) says where it's going.
@@ -278,11 +282,11 @@ and Mona Sans (bundled).
   when any of that has unsaved edits or a job running, a toast at the
   foot of the window names each, with Restore.
 
-## Nothing is closed
+## Finding and following
 
 Every block has a log: its edits, where it was placed, what it was named.
-What you aren't using is tidied away rather than closed, and comes back
-when you find it again.
+Whatever the graph still reaches can be found, by name or by what's
+around it, and comes back with its history.
 
 - **⌘T finds the graph**: every block and workspace kept, and what can
   be made (new terminal, new note, attach a host, launch an agent),

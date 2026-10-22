@@ -1,11 +1,16 @@
 # Manifold — design
 
-Manifold is a desk, not a set of windows. Terminals, files, notes, folders,
-web pages and searches are **blocks**; you arrange blocks to work, and an
-workspace is itself a block you can name and come back to. Nothing is
-closed. What isn't in use is collected out of the way, and anything can be
-found and recalled from history. Blocks live on hosts — this Mac, a dev
-box, a server — and one window shows blocks from several at once.
+Manifold is a wiki, not a set of windows. Terminals, files, notes,
+folders, web pages and searches are **blocks**, and everything is linked:
+a workspace links the blocks it shows, a note the blocks it mentions, and
+what you do leaves links behind — this terminal opened that file, this
+search found that line. It is all one graph, and the graph is what keeps
+things: a block stays alive as long as it is reachable, from a workspace,
+a name, a Keep or a link by hand, and what nothing reaches any more is
+collected. Nothing is filed or put away; you link, and you follow links
+back. A workspace, the blocks you've arranged to work in, is itself a block
+you can name and come back to. Blocks live on hosts — this Mac, a dev box,
+a server — and one window shows, and links, blocks from several at once.
 
 This document describes where Manifold is going. The app as it stands
 (README.md) is the first sketch of it: sheets that are cheap and put
@@ -14,12 +19,18 @@ themselves away, state on a server, the UI only a renderer.
 It borrows heavily from apex (~/src/apex/DESIGN.md, sections cited as
 apex §n): its replicated logs, leases, exec entries and wire protocol. What
 differs is the shape of the thing: apex is one session per host with acme's
-windows; Manifold is blocks from many hosts, linked, in workspaces.
+windows; Manifold is a graph of blocks from many hosts, kept alive by what
+links to them, and arranged in workspaces.
 
 ---
 
 ## 1. Principles
 
+- **Everything is linked.** Actions leave links behind (this terminal opened
+  that file; this search found that line), so recall can walk from one
+  thing to what was around it. The links you make — a workspace placing a
+  block, a link by hand — are what keep things (§3.4); the ones actions
+  leave are history and keep nothing.
 - **What nothing refers to goes.** A block is kept while a workspace, a
   named workspace, a Keep, or a link by hand reaches it (§4);
   closed everywhere, it waits half an hour to be brought back, then is
@@ -28,9 +39,6 @@ windows; Manifold is blocks from many hosts, linked, in workspaces.
 - **Losing something is said, never silent.** Closing the last reference
   to a block with unsaved edits or a running job goes through, and a
   toast says what was closed, with Restore (⇧⌘T) beside it.
-- **Everything is linked.** Actions leave links behind (this terminal opened
-  that file; this search found that line), so recall can walk from one
-  thing to what was around it.
 - **State on hosts, rendering on the client.** A host runs a server that
   owns its blocks' effects (files, processes) and their logs. The client
   mirrors what it shows and leads what you edit, so typing never waits on a
