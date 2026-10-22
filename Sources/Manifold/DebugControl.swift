@@ -327,6 +327,9 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "dockopen":
+            // "dockopen <path> …": as if dropped on the Dock icon.
+            return wc?.debugOpenPaths(arg) ?? "no window"
         case "dockmenu":
             // "dockmenu [title]": the Dock icon's menu, or that workspace chosen.
             return wc?.debugDockMenu(arg) ?? "no window"
@@ -516,7 +519,9 @@ enum DebugControl {
             if words.contains("cmd") { mods.insert(.command) }
             if words.contains("shift") { mods.insert(.shift) }
             if words.contains("alt") { mods.insert(.option) }
-            for n in 1...count {
+            // "only": the one click, the count-th in a row (as a click
+            // in place after others is).
+            for n in (words.contains("only") ? count...count : 1...count) {
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                                   windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: n, pressure: 1) {

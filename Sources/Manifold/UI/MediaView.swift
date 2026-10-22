@@ -440,8 +440,6 @@ extension MediaView: Searchable {
     func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
         guard let p = pdfView, let doc = p.document else { return done(nil) }
         found = query.isEmpty ? [] : doc.findString(query, withOptions: caseSensitive ? [] : [.caseInsensitive])
-        for s in found { s.color = TextView.matchColor }
-        p.highlightedSelections = found.isEmpty ? nil : found
         // From the page showing on.
         let here = p.currentPage.map { doc.index(for: $0) } ?? 0
         foundAt = found.firstIndex { s in s.pages.first.map { doc.index(for: $0) >= here } ?? false } ?? 0
@@ -455,17 +453,23 @@ extension MediaView: Searchable {
         showFound()
     }
 
+    /// A page is paper whatever the appearance: every match a strong
+    /// yellow, the one gone to a blue — apart by hue and lightness both,
+    /// for eyes that don't tell red from green.
+    static let pdfMatch = NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)
+    static let pdfCurrentMatch = NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7)
+
     fileprivate func showFound() {
-        guard let p = pdfView, found.indices.contains(foundAt) else { return }
-        let s = found[foundAt]
-        p.setCurrentSelection(s, animate: false)
-        p.go(to: s)
+        guard let p = pdfView else { return }
+        for (i, s) in found.enumerated() { s.color = i == foundAt ? Self.pdfCurrentMatch : Self.pdfMatch }
+        p.highlightedSelections = found.isEmpty ? nil : found
+        guard found.indices.contains(foundAt) else { return }
+        p.go(to: found[foundAt])
     }
 
     func endSearch() {
         found = []
         pdfView?.highlightedSelections = nil
-        pdfView?.setCurrentSelection(nil, animate: false)
         if let p = pdfView { window?.makeFirstResponder(p) }
     }
 

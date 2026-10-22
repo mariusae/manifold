@@ -45,8 +45,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             wc.showWindow(nil)
             NSApp.activate()
+            if !openWhenReady.isEmpty {
+                let paths = openWhenReady
+                openWhenReady = []
+                DispatchQueue.main.async { wc.openPaths(paths) }
+            }
         }
         windowController?.render()
+    }
+
+    /// Files and folders dropped on the Dock icon (or opened with
+    /// Manifold): each opened in the workspace shown, as a path is — a
+    /// tile of its own, or gone to where it already is. Before the window
+    /// is up, once it is.
+    private var openWhenReady: [String] = []
+
+    func application(_ sender: NSApplication, open urls: [URL]) {
+        let paths = urls.filter(\.isFileURL).map(\.path)
+        guard let wc = windowController else { openWhenReady += paths; return }
+        NSApp.activate()
+        wc.window?.makeKeyAndOrderFront(nil)
+        wc.openPaths(paths)
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

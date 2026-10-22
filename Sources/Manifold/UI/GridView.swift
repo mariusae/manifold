@@ -825,21 +825,25 @@ final class GridView: NSView, NSDraggingSource {
             // ⇧-drag: not the tile but what it stands for — its path (a
             // terminal's folder, a page's address) — for wherever text or
             // files are taken: a terminal types it, an editor inserts it.
-            guard let block = shown?.block, let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
-            item.setString(text, forType: .string)
-            // A file's URL too — not a folder's: a web view in the drag's
-            // way takes a dragged folder for a file list and reads it.
-            var isDir: ObjCBool = false
-            if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
-                item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
+            // With ⌥ too, the link alone: nothing typed or put in.
+            let linkOnly = event.modifierFlags.contains(.option)
+            guard let block = shown?.block else { return }
+            if !linkOnly {
+                guard let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
+                item.setString(text, forType: .string)
+                // A file's URL too — not a folder's: a web view in the drag's
+                // way takes a dragged folder for a file list and reads it.
+                var isDir: ObjCBool = false
+                if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
+                    item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
+                }
+            } else {
+                item.setString("1", forType: .manifoldLinkOnly)
             }
-            // And the block as a link a note takes: [title](manifold:id) —
-            // not with ⌥ too, which drags the path alone, linking nothing.
+            // And the block as a link a note takes: [title](manifold:id).
             // Not as a block: the grid takes no ⇧-drag, the views under it do.
-            if !event.modifierFlags.contains(.option) {
-                let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
-                item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
-            }
+            let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
+            item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
             pathDrag = true
         } else {
             item.setString(placement, forType: .manifoldPlacement)
@@ -889,7 +893,7 @@ final class GridView: NSView, NSDraggingSource {
     private var pathDrag = false
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        if pathDrag { return .copy }
+        if pathDrag { return [.copy, .link, .generic] }
         // ⌥ copies to another workspace (as a file is copied).
         return context == .withinApplication ? [.move, .copy] : []
     }

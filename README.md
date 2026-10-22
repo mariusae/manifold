@@ -109,7 +109,8 @@ and Mona Sans (bundled).
   a terminal it's typed there, quoted for the shell; on an editor,
   inserted where the pointer is; on another app, as a file or text.
   It carries the block too, linking it to where it lands (below);
-  ⌥⇧-drag for the path alone, linking nothing.
+  ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
+  note) is linked to it, nothing typed or put in.
   Stash Tile (⌘M, or Stash in a pill's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
@@ -188,7 +189,9 @@ and Mona Sans (bundled).
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
   workspaces too, as does the Dock icon's menu: every workspace, under
-  its host when there are several, the one shown checked.
+  its host when there are several, the one shown checked. A file or
+  folder dropped on the Dock icon opens in the workspace shown, as a
+  path clicked there does: a tile of its own, or gone to where it is.
 - Drag a tile by its pill: between two tiles to put it there, near a
   column's side for a new column there, onto a workspace in the
   sidebar for its active column, or between workspaces for one of
@@ -424,7 +427,8 @@ when you find it again.
   and it's its path — a terminal types it, an editor inserts it, the
   grid opens it where it lands, another app takes the file; ⇧-drag it
   and it's its block too, as a pill ⇧-dragged is: a note mentions it, a
-  terminal or a tile it's dropped on is linked to it. The mode, the
+  terminal or a tile it's dropped on is linked to it; ⌥⇧-drag it for
+  the link alone. The mode, the
   selection, the folders left open, the sort and the filter are kept
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
@@ -451,9 +455,9 @@ when you find it again.
   preview) and a PDF have a sidebar of their own at the tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
   listing the headings (a PDF's table of contents), each clicked to go
-  there, the one you're in marked as you scroll; a PDF's has its pages
-  too, as thumbnails (Contents and Pages at its top). Shown or not, it's
-  kept with the tile.
+  there (the pointer staying where it is), the one you're in marked as
+  you scroll; a PDF's has its pages too, as thumbnails (the two buttons
+  at its top). Shown or not, it's kept with the tile.
 - **An outline** is a scrubber's marks as a list: Show Outline Beside
   (⇧⌘O, or in a terminal's, editor's or preview's bar menu) shows the
   block through its outline lens beside it, listing the commands (with
@@ -659,7 +663,8 @@ when you find it again.
   page (type a number to go there) of how many, ‹ › back and forward,
   the zoom (− + and ⌘+/−), and a menu of layouts — single page or two,
   scrolling or not, as a book — with Actual Size, Zoom to Fit and
-  rotating; ⌘F finds in the text, every match marked. A file named .pdf
+  rotating; ⌘F finds in the text, every match a strong yellow and the
+  one gone to blue, apart for colour-blind eyes too. A file named .pdf
   is one, whatever is inside it.
 - **Agents** (File ▸ New Agent, ⌥⌘A) are terminal blocks that run the
   agent command (`claude` unless the settings say otherwise) in a login

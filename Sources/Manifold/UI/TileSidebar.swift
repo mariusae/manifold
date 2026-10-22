@@ -32,7 +32,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     /// sidebar's other page; `emptyText`, what the list says with nothing in it.
     init(pages: NSView? = nil, emptyText: String = "No headings") {
         pagesView = pages
-        tabs = pages == nil ? nil : NSSegmentedControl(labels: ["Contents", "Pages"], trackingMode: .selectOne, target: nil, action: nil)
+        tabs = pages == nil ? nil : NSSegmentedControl(images: ["list.bullet.indent", "rectangle.grid.1x2"].compactMap { Theme.symbol($0, size: 12) },
+                                                       trackingMode: .selectOne, target: nil, action: nil)
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
@@ -63,6 +64,9 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
             tabs.segmentStyle = .automatic
             tabs.target = self
             tabs.action = #selector(tabChosen)
+            tabs.setToolTip("Table of Contents", forSegment: 0)
+            tabs.setToolTip("Pages", forSegment: 1)
+            for i in 0..<2 { tabs.setWidth(34, forSegment: i) }
             tabs.selectedSegment = 0
             addSubview(tabs)
         }

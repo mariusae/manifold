@@ -59,10 +59,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     private var pendingTopLine: Double?
 
-    /// Scrolls to the page's `index`th heading (⌘\).
-    func scroll(toHeading index: Int) {
+    /// Scrolls to the page's `index`th heading (⌘\), the pointer
+    /// following — not from the tile's own outline, where it stays.
+    func scroll(toHeading index: Int, warping: Bool = true) {
         web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()") { [weak self] _, _ in
-            guard let self else { return }
+            guard let self, warping else { return }
             self.delegate?.markdownViewDidReveal(self)
         }
     }
@@ -177,7 +178,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         if shown, sidebar == nil {
             let s = TileSidebar()
             s.onPick = { [weak self] i in
-                self?.scroll(toHeading: i)
+                self?.scroll(toHeading: i, warping: false)
                 self?.sidebar?.current = i
             }
             addSubview(s)

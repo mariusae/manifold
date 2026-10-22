@@ -1613,7 +1613,21 @@ final class TextView: NSView, NSTextInputClient {
     /// the pointer is.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
+    /// A link alone (⌥⇧-dragged) isn't put in: the grid links the tile
+    /// it's dropped on, as it does over any tile.
+    private func linkOnlyGrid(_ sender: NSDraggingInfo?) -> GridView? {
+        guard sender?.draggingPasteboard.types?.contains(.manifoldLinkOnly) == true else { return nil }
+        var v = superview
+        while let s = v, !(s is GridView) { v = s.superview }
+        return v as? GridView
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        if let grid = linkOnlyGrid(sender) { grid.draggingExited(sender) }
+    }
+
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if let grid = linkOnlyGrid(sender) { return grid.draggingUpdated(sender) }
         guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
         let at = offset(at: p)
@@ -1629,7 +1643,8 @@ final class TextView: NSView, NSTextInputClient {
     var acceptsBlockLinks = false
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        drop(sender.draggingPasteboard, at: convert(sender.draggingLocation, from: nil))
+        if let grid = linkOnlyGrid(sender) { return grid.performDragOperation(sender) }
+        return drop(sender.draggingPasteboard, at: convert(sender.draggingLocation, from: nil))
     }
 
     /// What a drop does: the text in where the point is; a block's link

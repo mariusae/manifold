@@ -1052,6 +1052,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "chose \(title)"
     }
 
+    /// Paths from outside (the Dock icon, Open With): each opened in the
+    /// workspace shown, from the focused tile, as a path clicked there is.
+    func openPaths(_ paths: [String]) {
+        // They're this Mac's: from the focused tile only if it's here too.
+        let from = arrangement?.focused.flatMap { f in shown(f)?.placement.block.host == host.host ? f : nil }
+        for path in paths { open(path, from: from, here: false, over: false) }
+    }
+
+    func debugOpenPaths(_ arg: String) -> String {
+        openPaths(arg.split(separator: " ").map(String.init))
+        return "opened"
+    }
+
     /// The Dock icon's menu: every workspace on the desk, under its host's
     /// name when there's more than one, the one shown checked; chosen, it's
     /// gone to, Manifold coming to the front.
@@ -4425,7 +4438,9 @@ extension MainWindowController: GridDelegate {
     /// they were; letting go of ⌥ settles on the one come to.
     func gridSwapNext(_ placement: PlacementID) {
         guard let a = arrangement else { return }
-        if let w = stackWalk, w.workspace == selected, w.order.indices.contains(w.index), w.order[w.index] == placement {
+        // Any of the stack's bars: clicked fast, the one that was on top
+        // a moment ago may still be under the pointer.
+        if let w = stackWalk, w.workspace == selected, w.order.contains(placement) {
             return walkStack(to: (w.index + 1) % w.order.count)
         }
         guard let order = stackOrder(of: placement, in: a), order.count > 1 else { return NSSound.beep() }
@@ -5179,6 +5194,30 @@ final class MainWindow: NSWindow {
         rect.origin.y = 0
         rect.size.height = frame.height
         return rect
+    }
+
+    // Even so, a second click in a row up there (⌥-clicks walking a
+    // stack whose bar is at the window's top, clicks growing a tile) is
+    // taken for a double click on the title bar and never reaches the
+    // bar: on a tile's bar, which takes every click as one, it goes as one.
+    override func sendEvent(_ event: NSEvent) {
+        if [.leftMouseDown, .leftMouseUp].contains(event.type), event.clickCount > 1,
+           event.locationInWindow.y > frame.height - 40, onTileBar(event.locationInWindow),
+           let single = NSEvent.mouseEvent(with: event.type, location: event.locationInWindow, modifierFlags: event.modifierFlags,
+                                           timestamp: event.timestamp, windowNumber: event.windowNumber, context: nil,
+                                           eventNumber: event.eventNumber, clickCount: 1, pressure: event.pressure) {
+            return super.sendEvent(single)
+        }
+        super.sendEvent(event)
+    }
+
+    private func onTileBar(_ p: NSPoint) -> Bool {
+        guard let content = contentView, var v = content.hitTest(content.superview?.convert(p, from: nil) ?? p) else { return false }
+        while true {
+            if v is TilePill { return true }
+            guard let up = v.superview else { return false }
+            v = up
+        }
     }
 }
 

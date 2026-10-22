@@ -251,15 +251,21 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     /// terminal to type or an editor to insert; its file, on this machine,
     /// for the grid to open where it lands (or another app to take); and,
     /// with ⇧, its block as a link — a note mentions it, a terminal or a
-    /// tile it's dropped on is linked to it. ⌥⇧, the path alone.
+    /// tile it's dropped on is linked to it. ⌥⇧, the link alone.
     func pasteboardItem(for node: BrowserNode) -> NSPasteboardItem {
         pasteboardItem(for: node, mods: NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags)
     }
 
     func pasteboardItem(for node: BrowserNode, mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
         let item = NSPasteboardItem()
+        let link = mods.contains(.shift)
+        // ⌥⇧: the link alone, nothing typed or put in.
+        if link, mods.contains(.option), let text = delegate?.directoryView(self, linkFor: node.path, isDirectory: node.isDirectory) {
+            item.setString(text, forType: .manifoldBlockLink)
+            item.setString("1", forType: .manifoldLinkOnly)
+            return item
+        }
         item.setString(node.path, forType: .string)
-        let link = mods.contains(.shift) && !mods.contains(.option)
         // A folder's URL only for a plain drag: a web view in the way
         // takes a dragged folder for a file list and reads it.
         if delegate?.directoryViewIsLocal(self) == true, !mods.contains(.shift) || !node.isDirectory {

@@ -24,7 +24,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private let back = NSButton(title: "Show in Terminal", target: nil, action: nil)
     private let copy = NSButton(title: "Copy", target: nil, action: nil)
     private let scroll = NSScrollView()
-    private let text = NSTextView()
+    private let text = OutputFindTextView()
     private var shown: OutputState?
     private var plainText = ""
     private lazy var finder: FindHost = {
@@ -406,5 +406,26 @@ enum ANSIText {
             i += 1
         }
         return s
+    }
+}
+
+/// The output's text: the Find menu's actions (⌘F, ⌘G, ⌘E) go to the
+/// tile's find pill, as an editor's do; a plain text view without a find
+/// bar would only beep.
+final class OutputFindTextView: NSTextView {
+    override func performTextFinderAction(_ sender: Any?) {
+        guard let host = enclosingOutput else { return super.performTextFinderAction(sender) }
+        host.performTextFinderAction(sender)
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(performTextFinderAction(_:)), enclosingOutput != nil { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    private var enclosingOutput: OutputView? {
+        var v = superview
+        while let s = v, !(s is OutputView) { v = s.superview }
+        return v as? OutputView
     }
 }
