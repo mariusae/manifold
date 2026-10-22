@@ -65,6 +65,8 @@ protocol PaneContent: NSView {
     /// The view's own verbs for its pill's menu (a page's back, forward
     /// and address), before the tile's.
     var pillItems: [NSMenuItem] { get }
+    /// The view's own buttons on its bar (a page's back, forward, reload).
+    var barButtons: [BarButton] { get }
     /// What the pill edits in place when clicked (§3.1): a page's
     /// address. The pill widens to show it; ⏎ commits, ⎋ leaves it.
     var pillEdit: PillEdit? { get }
@@ -104,7 +106,21 @@ enum NavJumps {
     static var willJump: ((PaneContent) -> Void)?
 }
 
+/// A button a view puts on its tile's bar: its symbol, what it says when
+/// pointed at, whether it can be pressed now, and what it does.
+struct BarButton: Equatable {
+    let symbol: String
+    let tooltip: String
+    let enabled: Bool
+    let action: () -> Void
+
+    static func == (a: BarButton, b: BarButton) -> Bool {
+        a.symbol == b.symbol && a.tooltip == b.tooltip && a.enabled == b.enabled
+    }
+}
+
 extension PaneContent {
+    var barButtons: [BarButton] { [] }
     var caretRectInWindow: NSRect? { nil }
     var pillItems: [NSMenuItem] { [] }
     var pillEdit: PillEdit? { nil }

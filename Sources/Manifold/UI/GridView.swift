@@ -242,6 +242,12 @@ final class GridView: NSView, NSDraggingSource {
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
+                pill.viewButtons = tile.view.barButtons
+                pill.onViewButton = { [weak view = tile.view, weak self] i in
+                    guard let view, i < view.barButtons.count else { return }
+                    view.barButtons[i].action()
+                    self?.barChanged(id)
+                }
                 pill.onToggleSidebar = { [weak view = tile.view, weak pill] in
                     guard let view else { return }
                     view.toggleSidebar()
@@ -908,6 +914,13 @@ final class GridView: NSView, NSDraggingSource {
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
+    /// A tile's own buttons changed (a page could go back, or loads): its bar
+    /// shows them as they are.
+    func barChanged(_ id: PlacementID) {
+        guard let view = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view else { return }
+        pills[id]?.viewButtons = view.barButtons
+    }
+
     /// A tile's own sidebar shown or put away: its bar's button says so.
     func sidebarChanged(_ id: PlacementID) {
         guard let view = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view else { return }
@@ -1458,6 +1471,33 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
     var onToggleSidebar: (() -> Void)?
 
+    /// The view's own buttons (a page's back, forward and reload), before
+    /// the bar's: as they look, the first to go when the bar is narrow.
+    var viewButtons: [BarButton] = [] {
+        didSet {
+            guard viewButtons != oldValue else { return }
+            while ownButtons.count < viewButtons.count {
+                let b = IconButton(symbol: "circle", size: 10, weight: .medium, target: self, action: #selector(ownButtonClicked(_:)))
+                addSubview(b)
+                ownButtons.append(b)
+            }
+            for (i, b) in ownButtons.enumerated() {
+                guard i < viewButtons.count else { b.isHidden = true; continue }
+                let spec = viewButtons[i]
+                b.tag = i
+                b.image = Theme.symbol(spec.symbol, size: 11, weight: .medium)
+                b.toolTip = spec.tooltip
+                b.isEnabled = spec.enabled
+                b.contentTintColor = spec.enabled ? Theme.secondaryText : Theme.secondaryText.withAlphaComponent(0.35)
+            }
+            needsLayout = true
+        }
+    }
+    var onViewButton: ((Int) -> Void)?
+    private var ownButtons: [IconButton] = []
+
+    @objc private func ownButtonClicked(_ sender: NSButton) { onViewButton?(sender.tag) }
+
     static let height: CGFloat = GridView.barHeight
     /// What the bar's right end takes: close, maximize, and room.
     static let rightChrome: CGFloat = 54
@@ -1467,6 +1507,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
         if !sidebarButton.isHidden { w += 22 }
+        w += CGFloat(ownButtons.filter { !$0.isHidden }.count) * 22
         if !glyph.isHidden { w += StatusGlyph.size + 8 }
         return w
     }
@@ -1682,6 +1723,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let showClose = !stashed && showsButtons
         var showCorner = !stashed && showsButtons
         var showSidebar = showCorner && sidebar != nil
+        var showOwn = showCorner && !viewButtons.isEmpty
+        let ownWidth = CGFloat(viewButtons.count) * 22 + 4
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
         let nameWanted = ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
@@ -1692,9 +1735,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if showClose { used += 22 }
             if showCorner { used += 22 }
             if showSidebar { used += 22 }
+            if showOwn { used += ownWidth }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
             return bounds.width - used
         }
+        // The view's own buttons go first of all: what the tile is matters more.
+        if spare() < nameNeed, showOwn { showOwn = false }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
         if spare() < nameNeed, showSidebar { showSidebar = false }
@@ -1722,6 +1768,17 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if showSidebar {
             sidebarButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
+        }
+        // The view's own, a little apart from the bar's.
+        for (i, b) in ownButtons.enumerated() {
+            b.isHidden = !showOwn || i >= viewButtons.count
+        }
+        if showOwn {
+            right -= 4
+            for b in ownButtons.prefix(viewButtons.count).reversed() {
+                b.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+                right -= 22
+            }
         }
         if !glyph.isHidden {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)

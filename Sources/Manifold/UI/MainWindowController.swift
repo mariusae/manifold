@@ -5709,6 +5709,8 @@ extension MainWindowController: WebViewDelegate {
         hosts.append(events, to: .block(view.block))
     }
 
+    func webViewBarChanged(_ view: WebView) { content.barChanged(view.placement) }
+
     func webView(_ view: WebView, open url: URL, over: Bool) {
         open(url.absoluteString, from: view.placement, here: true, over: over)
     }

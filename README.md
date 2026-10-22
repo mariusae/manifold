@@ -784,8 +784,11 @@ when you find it again.
   Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: the page
-  has the whole tile, its pill has the address (click it, or ⌘L), ⌘[ and
-  ⌘] go back and forward, and its pages are in its log. A link that
+  has the whole tile, its pill has the address (click it, or ⌘L), and
+  back, forward and reload (stop, while it loads) are buttons on its bar
+  as well as ⌘[ and ⌘]; its pages are in its log. It's known to sites as
+  the Safari that's installed (a site that doesn't know it by WebKit's name
+  alone — Google — would serve an old, plain page). A link that
   opens a new window (`target=_blank`, `window.open`) opens a web block
   beside, linked from the page; a page's alerts, confirmations and
   questions are sheets over the window, and a file input opens the

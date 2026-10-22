@@ -84,7 +84,9 @@ final class PortForwards {
     /// bytes piped both ways.
     private func accepted(_ c: NWConnection, for remote: Int) {
         guard let mux = client?.mux else { return c.cancel() }
-        let stream = mux.open(bulk: true)
+        // Its handlers on the main thread, where the connections here and
+        // this bookkeeping are (the link's own queue would race them).
+        let stream = mux.open(bulk: true, callbackQueue: .main)
         let key = nextKey
         nextKey += 1
         streams[key] = (c, stream)

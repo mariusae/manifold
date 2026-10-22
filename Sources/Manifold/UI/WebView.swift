@@ -9,6 +9,9 @@ protocol WebViewDelegate: AnyObject {
     /// A link was ⇧⌘-clicked: opened as a block of its own, beside — or,
     /// with ⌥ too (`over`), over this one.
     func webView(_ view: WebView, open url: URL, over: Bool)
+    /// Whether it can go back or forward, or loads, changed: its bar's
+    /// buttons say so.
+    func webViewBarChanged(_ view: WebView)
 }
 
 /// The web lens: an embedded browser on a web block, with an address bar,
@@ -36,6 +39,9 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         self.placement = placement
         self.block = block
         let config = WKWebViewConfiguration()
+        // Safari's name and version after WebKit's: a page that doesn't know
+        // a browser by the one alone (Google's) serves an old, plain version.
+        config.applicationNameForUserAgent = Self.safari
         // Scrolling is told of, so the page's state is kept as it moves.
         let watch = WKUserScript(source: """
             (function () { var t; window.addEventListener('scroll', function () {
@@ -54,6 +60,12 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         web.navigationDelegate = self
         web.uiDelegate = self
+        // Its bar's buttons follow where it can go, and whether it loads.
+        watching = [\WKWebView.canGoBack, \WKWebView.canGoForward, \WKWebView.isLoading].map { key in
+            web.observe(key, options: []) { [weak self] _, _ in
+                DispatchQueue.main.async { if let self { self.delegate?.webViewBarChanged(self) } }
+            }
+        }
         web.allowsBackForwardNavigationGestures = true
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
@@ -169,6 +181,26 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     @objc func goBack(_ sender: Any?) { web.goBack() }
     @objc func goForward(_ sender: Any?) { web.goForward() }
     @objc func reloadPage(_ sender: Any?) { web.reload() }
+    @objc func stopLoading(_ sender: Any?) { web.stopLoading() }
+
+    private var watching: [NSKeyValueObservation] = []
+
+    /// Back, forward, and reload — stop, while it loads — on its bar.
+    var barButtons: [BarButton] {
+        [BarButton(symbol: "chevron.left", tooltip: "Back (⌘[)", enabled: web.canGoBack) { [weak self] in self?.web.goBack() },
+         BarButton(symbol: "chevron.right", tooltip: "Forward (⌘])", enabled: web.canGoForward) { [weak self] in self?.web.goForward() },
+         web.isLoading
+            ? BarButton(symbol: "xmark", tooltip: "Stop Loading", enabled: true) { [weak self] in self?.web.stopLoading() }
+            : BarButton(symbol: "arrow.clockwise", tooltip: "Reload", enabled: true) { [weak self] in self?.web.reload() }]
+    }
+
+    /// "Version/26.1 Safari/605.1.15", from the Safari that's installed.
+    static let safari: String = {
+        let info = NSDictionary(contentsOfFile: "/Applications/Safari.app/Contents/Info.plist")
+            ?? NSDictionary(contentsOfFile: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/Info.plist")
+        let version = info?["CFBundleShortVersionString"] as? String ?? "26.0"
+        return "Version/\(version) Safari/605.1.15"
+    }()
 
     /// The pill, clicked, is the address to type over (⌘L too).
     var pillEdit: PillEdit? {

@@ -764,7 +764,10 @@ final class Server {
             let full = path.expandingTildeInPath
             let repo = git.repository(of: full)
             if node.block(block) == nil {
-                append(.create(kind: .smartlog, title: nil, path: repo?.root ?? full), to: .block(block))
+                // Named for its repository, or, with none, the folder it was asked in.
+                var isDir: ObjCBool = false
+                let folder = FileManager.default.fileExists(atPath: full, isDirectory: &isDir) && !isDir.boolValue ? full.deletingLastPathComponent : full
+                append(.create(kind: .smartlog, title: nil, path: repo?.root ?? folder), to: .block(block))
             }
             guard let repo, repo.vcs == .sapling else {
                 append(.smartlog(url: nil, error: repo.map { "\($0.root.lastPathComponent) is a git repository, not a Sapling one" } ?? "Not in a Sapling repository", at: clock.now()), to: .block(block))
