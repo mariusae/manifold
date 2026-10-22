@@ -97,6 +97,10 @@ public enum OpenCommand {
             if !FileManager.default.fileExists(atPath: path), !FileManager.default.fileExists(atPath: path.deletingLastPathComponent) {
                 return .failure(ResolveError(message: "no such file: \(arg)"))
             }
+            // A folder says so (a trailing slash): the app, on another
+            // machine, can't look, and would take it for a file to edit.
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue, !path.hasSuffix("/") { path += "/" }
             out.append(path)
         }
         return .success(out)

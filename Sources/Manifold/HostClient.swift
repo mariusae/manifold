@@ -444,7 +444,9 @@ final class HostClient {
         conn?.send(.message(ClientMessage.resync(shard: shard)))
     }
 
-    func directoryBlock(for path: String) -> BlockID {
+    func directoryBlock(for spelled: String) -> BlockID {
+        // Spelled with a trailing slash (a folder `manifold` said was one), kept without.
+        let path = spelled.count > 1 && spelled.hasSuffix("/") ? String(spelled.dropLast()) : spelled
         if let b = directoryBlock(path: path) { return b.id }
         let id = BlockID(host: host)
         propose(.directory(block: id, path: path))

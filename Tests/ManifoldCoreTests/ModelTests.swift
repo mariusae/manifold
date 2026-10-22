@@ -1509,3 +1509,13 @@ private final class Seen: @unchecked Sendable {
     // The tile already showing: focused, nothing moved.
     #expect(a.revealing("other") == [.focus("other")])
 }
+
+@Test func openingAFolderSaysItIsOne() throws {
+    // `manifold DIR` on another host: the app can't look there, so the path says it.
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("open-\(UUID().uuidString)").path
+    try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(atPath: dir) }
+    try "x".write(toFile: dir + "/f.txt", atomically: true, encoding: .utf8)
+    guard case let .success(paths) = OpenCommand.resolve([dir, dir + "/f.txt", dir + "/new.md"]) else { Issue.record("no paths"); return }
+    #expect(paths[0].hasSuffix("/") && !paths[1].hasSuffix("/") && !paths[2].hasSuffix("/"))
+}
