@@ -216,6 +216,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         rendering = true
         defer {
+            // The keyboard kept from other apps while a focused terminal reads a password.
+            SecureInput.shared.focused = focusedShown.flatMap { [.terminal, .agent].contains($0.lens) ? $0.placement.block : nil }
             rendering = false
             if renderAgain {
                 renderAgain = false
@@ -493,6 +495,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+            t.readingPassword = SecureInput.shared.reading.contains(p.block)
+            SecureInput.shared.onChange = { [weak self] block in
+                for case let v as TerminalView in self?.views.values.map({ $0 }) ?? [] where v.block == block {
+                    v.readingPassword = SecureInput.shared.reading.contains(block)
+                }
+            }
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
             }

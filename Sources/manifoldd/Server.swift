@@ -1122,6 +1122,10 @@ final class Server {
                 self?.append(.title(title), to: .block(id))
             }
             s.onStatus = { [weak self] signals in self?.status(id, signals) }
+            s.onPasswordInput = { [weak self] on in
+                let frame = Frame.message(ServerMessage.passwordInput(block: id, on))
+                for c in self?.clients ?? [] { c.send(frame) }
+            }
             sessions[id] = s
             session = s
             append(.shell(.started(pid: s.pid)), to: .block(id))

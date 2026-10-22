@@ -103,6 +103,41 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.setFrameSize(newSize)
         sizeDidChange(newSize)
         finder.layout(in: NSRect(origin: .zero, size: newSize))
+        layoutLock()
+    }
+
+    /// The program is reading a password: a lock at the lower right says
+    /// the keyboard is kept from other apps (Secure Keyboard Entry).
+    var readingPassword = false {
+        didSet {
+            guard readingPassword != oldValue else { return }
+            if readingPassword, lock == nil {
+                let l = NSTextField(labelWithString: "")
+                let text = NSMutableAttributedString()
+                let a = NSTextAttachment()
+                a.image = Theme.symbol("lock.fill", size: 10, weight: .semibold)
+                text.append(NSAttributedString(attachment: a))
+                text.append(NSAttributedString(string: " Secure Input", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]))
+                l.attributedStringValue = text
+                l.textColor = Theme.text
+                l.wantsLayer = true
+                l.layer?.cornerRadius = 9
+                l.layer?.backgroundColor = Theme.panel.cgColor
+                l.toolTip = "A password is being read: other apps can't see what you type"
+                addSubview(l)
+                lock = l
+            }
+            lock?.isHidden = !readingPassword
+            layoutLock()
+        }
+    }
+    private var lock: NSTextField?
+
+    private func layoutLock() {
+        guard let lock, !lock.isHidden else { return }
+        let size = lock.fittingSize
+        lock.frame = NSRect(x: bounds.width - size.width - 28, y: 10, width: size.width + 16, height: 18)
+        lock.alignment = .center
     }
 
     override func setFrameOrigin(_ newOrigin: NSPoint) {

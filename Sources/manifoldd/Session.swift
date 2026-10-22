@@ -37,6 +37,21 @@ final class Session {
     var onTitle: ((String) -> Void)?
     /// What the program says of its status (§3.7), as it says it.
     var onStatus: (([StatusSignal]) -> Void)?
+    /// The program is reading a password, or has stopped.
+    var onPasswordInput: ((Bool) -> Void)?
+    private(set) var readingPassword = false
+    private var passwordCheck: DispatchWorkItem?
+
+    /// Echo off with lines still edited: a password being read (a full-
+    /// screen program turns both off).
+    private func checkPassword() {
+        var t = termios()
+        guard tcgetattr(master, &t) == 0 else { return }
+        let password = t.c_lflag & tcflag_t(ECHO) == 0 && t.c_lflag & tcflag_t(ICANON) != 0
+        guard password != readingPassword else { return }
+        readingPassword = password
+        onPasswordInput?(password)
+    }
     private var statuses = StatusScanner()
     /// Where each command's output lies in the replay buffer (§3.8), by
     /// the command's id: from just after the shell said it would run it
@@ -272,6 +287,14 @@ final class Session {
             writeInput()
         }
         if !signals.isEmpty { onStatus?(signals) }
+        // A prompt for a password: looked at as output comes (sudo and ssh
+        // set the terminal, then write the prompt), and again a moment after
+        // (a script that writes its prompt first).
+        checkPassword()
+        passwordCheck?.cancel()
+        let again = DispatchWorkItem { [weak self] in self?.checkPassword() }
+        passwordCheck = again
+        queue.asyncAfter(deadline: .now() + 0.2, execute: again)
         let frame = Frame(.data, data)
         for conn in attachments { conn.send(frame) }
     }

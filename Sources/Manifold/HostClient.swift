@@ -870,6 +870,8 @@ final class HostClient {
             pendingBytes.removeValue(forKey: id)?(data)
         case let .notebookLive(block, cell, output):
             onNotebookLive?(block, cell, output)
+        case let .passwordInput(block, on):
+            SecureInput.shared.set(block, readingPassword: on)
         case let .listing(id, entries, complete):
             pendingListings.removeValue(forKey: id)?(entries, complete)
         case let .languageServer(language, root, state):

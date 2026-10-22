@@ -904,6 +904,12 @@ is migrated into logs on first run.
   [DebugControl.swift](Sources/Manifold/DebugControl.swift)).
   `MANIFOLD_NO_NOTIFY` keeps such an instance from posting notifications
   (it shares the app's identity, and so its permission).
+- **Secure Keyboard Entry** keeps what you type from other apps (as
+  Terminal's does): on by hand in the Manifold menu, and on by itself
+  while the focused terminal's program reads a password — `sudo`, `ssh`,
+  any prompt that turns the terminal's echo off — on this Mac or another
+  host (its server says so), a lock at the terminal's lower right while
+  it lasts. Only while Manifold is in front.
 - **When Manifold crashes**, it leaves word: the system's crash report
   (in ~/Library/Logs/DiagnosticReports — Ghostty's own reporter, which
   quit quietly, no longer takes the crash first), and a report of its own

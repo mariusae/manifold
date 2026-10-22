@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 36
+public let protocolVersion = 37
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -328,4 +328,8 @@ public enum ServerMessage: Codable, Sendable {
     /// long): sent as it comes, not kept; the cell's output is written
     /// when it ends (§7.7).
     case notebookLive(block: BlockID, cell: String, output: String)
+    /// A terminal's program is reading a password (its terminal not
+    /// echoing, lines edited): the Mac's keyboard kept from other apps
+    /// while it is (§9). Said as it changes, not kept.
+    case passwordInput(block: BlockID, Bool)
 }

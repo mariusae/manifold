@@ -120,6 +120,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    /// Secure Keyboard Entry, by hand: on while Manifold is in front.
+    @objc func toggleSecureInput(_ sender: Any?) { SecureInput.shared.always.toggle() }
+
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleSecureInput(_:)) { item.state = SecureInput.shared.always ? .on : .off }
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         CrashGuard.launchedFine()
     }
@@ -197,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(app, "Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])
         app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         app.addItem(.separator())
+        item(app, "Secure Keyboard Entry", #selector(toggleSecureInput(_:)), "")
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
         item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
         item(app, "Remoting…", #selector(MainWindowController.showRemoting(_:)), "")
