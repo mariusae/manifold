@@ -30,6 +30,8 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
     func editor(_ view: EditorView, open path: String, line: Int, column: Int)
+    /// The places the language server says use `word`, as a block of them.
+    func editor(_ view: EditorView, references places: [LSPLocation], of word: String)
     /// Applies a server's edits to files other than this one.
     func editor(_ view: EditorView, apply edits: [LSPFileEdit])
 }

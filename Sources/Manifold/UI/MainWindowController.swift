@@ -5531,6 +5531,41 @@ extension MainWindowController: EditorViewDelegate {
         show(block, lens: Lens.default(for: .text, path: path), opener(view.placement), context: view.lineAtCaret)
     }
 
+    /// References as a search block: each place's line read from its file
+    /// (this editor's own from its text, edits and all), the word marked.
+    func editor(_ view: EditorView, references places: [LSPLocation], of word: String) {
+        guard let client = hosts.client(view.block.host) else { return }
+        let sorted = places.sorted { ($0.path == view.path ? 0 : 1, $0.path, $0.line) < ($1.path == view.path ? 0 : 1, $1.path, $1.line) }
+        var paths: [String] = []
+        for p in sorted where p.path != view.path && !paths.contains(p.path) { paths.append(p.path) }
+        var lines: [String: [Substring]] = [:]
+        let read = DispatchGroup()
+        for path in paths.prefix(200) {
+            read.enter()
+            client.readBytes(path: path, limit: 4 << 20) { data in
+                lines[path] = data.map { String(decoding: $0, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false) }
+                read.leave()
+            }
+        }
+        read.notify(queue: .main) { [weak self, weak view] in
+            guard let self, let view else { return }
+            let text = view.textView.text
+            let hits = sorted.map { p -> SearchHit in
+                var line = ""
+                if p.path == view.path, p.line < text.lineCount { line = text.lineText(p.line) }
+                else if let file = lines[p.path], p.line < file.count { line = String(file[p.line]) }
+                line = line.trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+                return SearchHit(path: p.path, line: p.line + 1, column: p.character + 1, text: line.count > 400 ? String(line.prefix(400)) + "…" : line)
+            }
+            let root = self.projectRoot(from: view.path.deletingLastPathComponent, on: view.block.host)
+            let id = BlockID(host: view.block.host)
+            client.append([.create(kind: .search, title: "References to “\(word)”", path: nil),
+                           .search(SearchQuery(text: word, caseSensitive: true, root: root), at: client.clock.now()),
+                           .hits(hits, done: true, truncated: false, error: nil)], to: .block(id))
+            self.show(id, lens: .search, .besideOpener(view.placement), context: "references to “\(word)”")
+        }
+    }
+
     /// A server's edits to other files on the block's host: files that are
     /// blocks through their logs (the server saw the block's text), the
     /// rest written on the host.

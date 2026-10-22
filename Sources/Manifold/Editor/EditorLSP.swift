@@ -82,45 +82,16 @@ extension EditorView {
         }
     }
 
+    /// Find References: a block of every place that uses the word at the
+    /// caret, as a search's hits, beside this one.
     @objc func findReferences(_ sender: Any?) {
         let at = caret
+        let word = textView.text[textView.wordRange(at: at)]
         ask(.references(block, offset: at), busy: "Looking for references…") { [weak self] result in
             guard let self, case .locations(let places) = result else { return }
             guard !places.isEmpty else { return self.flash("No references found") }
-            self.showPlaces(places, at: at)
+            self.delegate?.editor(self, references: places, of: word)
         }
-    }
-
-    /// Places, in a menu at the caret: one is chosen to go there.
-    private func showPlaces(_ places: [LSPLocation], at offset: Int) {
-        let menu = NSMenu()
-        let home = NSHomeDirectory()
-        for place in places.prefix(60) {
-            var shown = place.path
-            if shown.hasPrefix(path.deletingLastPathComponent + "/") { shown = String(shown.dropFirst(path.deletingLastPathComponent.count + 1)) }
-            else if shown.hasPrefix(home) { shown = "~" + shown.dropFirst(home.count) }
-            let item = NSMenuItem(title: "\(shown):\(place.line + 1)", action: #selector(placeChosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = place
-            if place.path == path {
-                let lineText = textView.text.lineText(min(place.line, textView.text.lineCount - 1)).trimmingCharacters(in: .whitespaces)
-                if !lineText.isEmpty {
-                    let a = NSMutableAttributedString(string: item.title + "   ", attributes: [.font: NSFont.menuFont(ofSize: 0)])
-                    a.append(NSAttributedString(string: String(lineText.prefix(60)), attributes: [.font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.secondaryLabelColor]))
-                    item.attributedTitle = a
-                }
-            }
-            menu.addItem(item)
-        }
-        if places.count > 60 { menu.addItem(NSMenuItem(title: "\(places.count - 60) more…", action: nil, keyEquivalent: "")) }
-        let r = textView.caretRectInWindow(offset)
-        let p = textView.convert(NSPoint(x: r.minX, y: r.maxY), from: nil)
-        menu.popUp(positioning: nil, at: p, in: textView)
-    }
-
-    @objc private func placeChosen(_ sender: NSMenuItem) {
-        guard let place = sender.representedObject as? LSPLocation else { return }
-        go(to: place)
     }
 
     @objc func showDocumentation(_ sender: Any?) {

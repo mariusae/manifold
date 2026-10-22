@@ -415,7 +415,9 @@ when you find it again.
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
   Definition (⌃⌘J, or ⌘-click: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
-  color, the one under the pointer underlined), Find References (⌃⌘R), Show Documentation
+  color, the one under the pointer underlined), Find References (⌃⌘R: a
+  block of every use, beside, as a search's hits are shown — this file's
+  first, each line previewed), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
   on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
   Language Servers… is the table: the languages by extension, the command
