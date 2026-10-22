@@ -1140,9 +1140,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// What a drop types: each file's path, quoted if the shell would
     /// need it, a space between; else the text as it is.
     static func dropText(_ pb: NSPasteboard) -> String? {
+        // A folder tile's entries (a folder, another host's file: no file
+        // URL) by their paths, each quoted.
+        let entries = (pb.pasteboardItems ?? []).compactMap { $0.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) }
+            .filter { $0.count == 3 }.map { String($0[1]) }
+        if !entries.isEmpty { return entries.map(shellQuoted).joined(separator: " ") }
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             return urls.map { shellQuoted($0.path) }.joined(separator: " ")
         }
+        // A tile ⇧-dragged: its path (or address), quoted as one word.
+        if pb.types?.contains(.manifoldBlockLink) == true, let s = pb.string(forType: .string), !s.isEmpty { return shellQuoted(s) }
         if let s = pb.string(forType: .string), !s.isEmpty { return s }
         return nil
     }

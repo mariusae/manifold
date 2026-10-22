@@ -1115,9 +1115,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Paths from outside (the Dock icon, Open With): each opened in the
     /// workspace shown, from the focused tile, as a path clicked there is.
     func openPaths(_ paths: [String]) {
-        // They're this Mac's: from the focused tile only if it's here too.
-        let from = arrangement?.focused.flatMap { f in shown(f)?.placement.block.host == host.host ? f : nil }
-        for path in paths { open(path, from: from, here: false, over: false) }
+        // From outside: placed here, linked from nothing (the focused tile
+        // has nothing to do with them).
+        for path in paths { open(path, from: nil, here: false, over: false) }
     }
 
     /// Debugging: "host path d|f" as if a folder's entry were dropped
@@ -3293,7 +3293,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // A web address typed: opened as a page, first.
             guard query.hasPrefix("http://") || query.hasPrefix("https://") || (query.contains(".") && !query.contains(" ") && !query.contains("/") && query.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true) else { return nil }
             let url = query.contains("://") ? query : "https://" + query
-            return FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web", run: { [weak self] in self?.open(url, from: self?.focusedShown?.id) })
+            return FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web", run: { [weak self] in self?.open(url, from: nil) })
         }
         f.openFile = { [weak self] path in self?.open(path, from: nil) }
         f.onQueryChanged = { [weak self] query, scope in self?.finderQueryChanged(query, scope) }
@@ -3351,7 +3351,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                               note: hits.count == 1 ? "line \(first.line)" : "\(hits.count) lines",
                               run: { [weak self] in
                                   guard let self else { return }
-                                  self.open(path: first.path, line: first.line, column: first.column, on: on, from: self.focusedShown?.placement.id, kind: .opened, context: query)
+                                  // Found by the finder's search block: linked from it, not the focused tile.
+                                  self.open(path: first.path, line: first.line, column: first.column, on: on, from: nil, kind: .opened, context: query)
+                                  self.hosts.link(from: id, to: self.hosts.textBlock(for: first.path, on: on), kind: .opened, context: "found “\(query)”")
                               },
                               excerpt: Self.excerpt(hits.map(\.text)), marked: query)
         }
@@ -5354,7 +5356,8 @@ extension MainWindowController: MarkdownViewDelegate {
             let over = modifiers.contains(.option)
             if Lens.isMarkdown(path), !modifiers.contains(.command) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
-                hosts.link(from: p.block, to: block, kind: .opened, context: "[[" + path.lastPathComponent + "]]")
+                // Not "[[…]]": that's the mention scan's, which would take it for its own.
+                hosts.link(from: p.block, to: block, kind: .opened, context: "followed in the preview")
                 // Page to page in the same tile, as a browser goes — or,
                 // with ⌥, the page over this one.
                 if over { showOver(block, lens: .preview, over: view.placement) } else { replace(view.placement, with: block, lens: .preview) }
