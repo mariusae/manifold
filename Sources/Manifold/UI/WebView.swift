@@ -102,6 +102,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     /// tile's upper right, and in the sidebar at its left.
     private lazy var headingsOutline: Outline = {
         let o = Outline()
+        o.block = block
         o.onPick = { [weak self, weak o] i in
             self?.web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(i)]; if(h){h.scrollIntoView({block:'start'});}})()")
             o?.current = i

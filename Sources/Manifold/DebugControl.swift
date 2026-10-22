@@ -250,7 +250,9 @@ enum DebugControl {
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
         case "drop":
-            // "drop <block>": a block ⇧-dragged into the focused editor.
+            // "drop <block>": a block ⇧-dragged into the focused editor;
+            // "drop row N": the shown outline's item N, ⇧-dragged there.
+            if arg.hasPrefix("row "), let i = Int(arg.dropFirst(4)) { return wc?.debugDropRow(i) ?? "no window" }
             guard let id = BlockID(string: arg) else { return "usage: drop <host/ulid>" }
             return wc?.debugDrop(id) ?? "no window"
         case "pills":

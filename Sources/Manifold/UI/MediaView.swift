@@ -63,6 +63,11 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
             return Drags.linkMenu("Copy Link to This Page", self.block, "page=\(page + 1)")
         }
+        o.block = block
+        o.placeFor = { [weak self] i in
+            guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
+            return "page=\(page + 1)"
+        }
         return o
     }()
     fileprivate lazy var finder: FindHost = {

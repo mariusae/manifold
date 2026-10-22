@@ -118,6 +118,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             self.window?.makeFirstResponder(self.textView)
             self.headingsOutline.current = i
         }
+        headingsOutline.block = block
+        headingsOutline.placeFor = { [weak self] i in
+            guard let self, self.headingLines.indices.contains(i) else { return nil }
+            return "line=\(self.headingLines[i] + 1)"
+        }
         headingsOutline.menuFor = { [weak self] i in
             guard let self, self.headingLines.indices.contains(i) else { return nil }
             return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(self.headingLines[i] + 1)")

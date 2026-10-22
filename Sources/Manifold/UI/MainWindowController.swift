@@ -1854,6 +1854,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return e.debugDrop(pb) ? "dropped" : "refused"
     }
 
+    func debugDropRow(_ i: Int) -> String {
+        guard let e = debugFocusedEditor else { return "no editor focused" }
+        let rows = FloatingList.shared.rows
+        guard rows.indices.contains(i), let item = rows[i].drag?([.shift]) as? NSPasteboardItem else { return "no row \(i)" }
+        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
+        pb.clearContents()
+        for t in item.types { if let s = item.string(forType: t) { pb.setString(s, forType: t) } }
+        return e.debugDrop(pb) ? "dropped" : "refused"
+    }
+
     /// What to call a note: its title, else its first line, else "Note".
     static func noteTitle(_ b: Block) -> String {
         if let t = b.title, !t.isEmpty { return t }
@@ -3368,6 +3378,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: fragment) }
         Drags.path = { [weak self] path, isDir, host, mods in self?.entryDragItem(path, isDirectory: isDir, on: host, modifiers: mods) ?? NSPasteboardItem() }
+        Drags.place = { [weak self] id, fragment, title, mods in
+            self?.pathDragItem(for: id, linkOnly: mods.contains(.option), place: fragment.map { ($0, title) })
+        }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
             if mods.contains(.shift) { return self.pathDragItem(for: id, linkOnly: mods.contains(.option)) }
@@ -5368,11 +5381,13 @@ extension MainWindowController: GridDelegate {
     /// text, its file (here, not a folder) for the grid or another app, its
     /// place on its host for a folder tile, and its link for a note, a
     /// terminal or a tile to be linked. `linkOnly` (⌥⇧): the link alone.
-    func pathDragItem(for id: BlockID, linkOnly: Bool) -> NSPasteboardItem? {
+    /// `place`: a place in it (an outline's item: "line=12", and its
+    /// title), which the link names.
+    func pathDragItem(for id: BlockID, linkOnly: Bool, place: (fragment: String, title: String)? = nil) -> NSPasteboardItem? {
         guard let b = hosts.block(id) else { return nil }
         let item = NSPasteboardItem()
-        let title = b.displayTitle.replacingOccurrences(of: "]", with: "\\]")
-        item.setString("[\(title)](manifold:\(id.description))", forType: .manifoldBlockLink)
+        let title = (place?.title ?? b.displayTitle).replacingOccurrences(of: "]", with: "\\]")
+        item.setString("[\(title)](manifold:\(id.description)\(place.map { "#" + $0.fragment } ?? ""))", forType: .manifoldBlockLink)
         if linkOnly {
             item.setString("1", forType: .manifoldLinkOnly)
             return item

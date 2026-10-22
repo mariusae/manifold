@@ -137,7 +137,13 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             self?.scroll(toHeading: i, warping: false)
             self?.headingsOutline.current = i
         }
-        // A heading's link: the line it's on in the text.
+        // A heading's place: the line it's on in the text.
+        headingsOutline.block = block
+        headingsOutline.placeFor = { [weak self] i in
+            guard let text = self?.source()?.text else { return nil }
+            let lines = MarkdownOutline.headings(in: text).map(\.line)
+            return lines.indices.contains(i) ? "line=\(lines[i] + 1)" : nil
+        }
         headingsOutline.menuFor = { [weak self] i in
             guard let self, let text = self.source()?.text else { return nil }
             let lines = MarkdownOutline.headings(in: text).map(\.line)

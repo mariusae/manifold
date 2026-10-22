@@ -262,6 +262,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             guard let self, self.outlined.indices.contains(i) else { return nil }
             return self.delegate?.terminal(self, menuFor: self.outlined[i])
         }
+        o.block = block
+        o.placeFor = { [weak self] i in
+            guard let self, self.outlined.indices.contains(i) else { return nil }
+            return "command=\(self.outlined[i].id)"
+        }
         return o
     }()
     /// An agent's terminal: its turns are its outline, and its commands

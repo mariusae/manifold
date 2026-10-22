@@ -565,7 +565,13 @@ when you find it again.
   and the whole outline opens over them, indented by level, where you are
   marked: click an item to go there, or its ⋯ (or right-click it) for what
   else it can do — copy a link to a heading or a page, a turn's changes,
-  undo a turn. A **shell's commands** have a dot each instead, beside the
+  undo a turn. **⇧-drag an item** and it carries what the block's pill
+  ⇧-dragged does, its link naming the item's place (`#line=`, `#page=`,
+  `#command=`): into a note it's a link to that heading, page or turn; on
+  a tile, the blocks are linked; on a terminal or an editor, the block's
+  path; ⌥⇧-drag for the link alone. A diff's file carries itself, as a
+  file ⇧-dragged from a listing does; dragged plainly, an item carries
+  what it does from the sidebar (a command's text, a diff's file). A **shell's commands** have a dot each instead, beside the
   prompt (red for one that failed, the accent for one still running):
   rest the pointer on a dot for **Copy Command and Output** and **Show as
   Block**.

@@ -32,6 +32,10 @@ final class Outline {
     var menuFor: ((Int) -> NSMenu?)?
     /// What an item carries, dragged out (a file, a command's text).
     var writerFor: ((Int) -> NSPasteboardWriting?)?
+    /// The block it's the outline of, and each item's place in it ("line=12",
+    /// "page=3", "command=7"): what a link to an item says.
+    var block: BlockID?
+    var placeFor: ((Int) -> String?)?
 
     func set(_ fresh: [Item]) {
         guard fresh != items else { return }
@@ -44,6 +48,23 @@ final class Outline {
         guard items.indices.contains(i) else { return }
         onPick?(i)
     }
+
+    /// What an item carries dragged. ⇧: the block as a pill ⇧-dragged
+    /// carries it — its path, and its link, here to the item's place in it —
+    /// so a note mentions the place and a tile it's dropped on is linked
+    /// (⌥⇧, the link alone); an item without a place of its own carries what
+    /// the view gives (a diff's file, as its block). Plain: what the view gives.
+    func dragItem(_ i: Int, modifiers: NSEvent.ModifierFlags) -> NSPasteboardWriting? {
+        guard items.indices.contains(i) else { return nil }
+        if modifiers.contains(.shift), let block, let place = Drags.place {
+            if let fragment = placeFor?(i) { return place(block, fragment, items[i].title, modifiers) }
+            if writerFor == nil { return place(block, nil, items[i].title, modifiers) }
+        }
+        return writerFor?(i)
+    }
+
+    /// Whether an item can be dragged at all.
+    var draggable: Bool { block != nil || writerFor != nil }
 
     /// Headings as items, the shallowest at the left (a text whose
     /// headings all begin at ## isn't indented a step for nothing).
@@ -135,7 +156,8 @@ final class OutlineTicks: NSView {
                                  FloatingList.shared.hideNow()
                                  outline?.pick(i)
                              },
-                             menu: outline.menuFor == nil ? nil : { [weak outline] in outline?.menuFor?(i) })
+                             menu: outline.menuFor == nil ? nil : { [weak outline] in outline?.menuFor?(i) },
+                             drag: !outline.draggable ? nil : { [weak outline] mods in outline?.dragItem(i, modifiers: mods) })
         }
     }
 
@@ -202,6 +224,8 @@ final class FloatingList: NSView {
         var header = false
         var action: (() -> Void)?
         var menu: (() -> NSMenu?)?
+        /// What it carries dragged, with the modifiers held.
+        var drag: ((NSEvent.ModifierFlags) -> NSPasteboardWriting?)?
     }
 
     enum Place {
@@ -454,6 +478,12 @@ final class FloatingList: NSView {
     /// Debugging: as a click on a row; "menu N", its menu's items.
     func debugClick(_ arg: String) -> String {
         let words = arg.split(separator: " ")
+        if words.first == "drag", words.count > 1, let i = Int(words[1]), rows.indices.contains(i) {
+            // "drag N [shift|optshift]": what the row would carry.
+            let mods: NSEvent.ModifierFlags = words.count > 2 ? (words[2] == "optshift" ? [.shift, .option] : [.shift]) : []
+            guard let item = rows[i].drag?(mods) as? NSPasteboardItem else { return "nothing" }
+            return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? "-")" }.joined(separator: "\n")
+        }
         if words.first == "menu", words.count > 1, let i = Int(words[1]), rows.indices.contains(i) {
             guard let menu = rows[i].menu?() else { return "no menu" }
             return menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: "\n")
@@ -467,7 +497,7 @@ final class FloatingList: NSView {
 /// A row of a floating list: a dash (or an action's symbol), indented by
 /// its level, its title, its detail at the right; on hover, a background
 /// and its ⋯.
-final class FloatingListRow: NSView {
+final class FloatingListRow: NSView, NSDraggingSource {
     private let label = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let icon = NSImageView()
@@ -550,11 +580,43 @@ final class FloatingListRow: NSView {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) {}
+
+    /// Where a press began, and whether it became a drag.
+    private var pressedAt: NSPoint?
+    private var dragged = false
+
+    override func mouseDown(with event: NSEvent) {
+        pressedAt = event.locationInWindow
+        dragged = false
+    }
+
+    /// Dragged out (⇧ for its link, as a pill is): what it carries, its
+    /// picture under the pointer; the list goes, out of the way of where it
+    /// will be dropped.
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged, let start = pressedAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4,
+              let writer = row.drag?(event.modifierFlags) else { return }
+        dragged = true
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        let image = bitmapImageRepForCachingDisplay(in: bounds).map { rep -> NSImage in
+            cacheDisplay(in: bounds, to: rep)
+            let i = NSImage(size: bounds.size)
+            i.addRepresentation(rep)
+            return i
+        }
+        item.setDraggingFrame(bounds, contents: image)
+        beginDraggingSession(with: [item], event: event, source: self)
+        FloatingList.shared.hideNow()
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
 
     override func mouseUp(with event: NSEvent) {
+        defer { pressedAt = nil }
         let p = convert(event.locationInWindow, from: nil)
-        guard bounds.contains(p), !row.header, more.isHidden || !more.frame.contains(p) else { return }
+        guard !dragged, bounds.contains(p), !row.header, more.isHidden || !more.frame.contains(p) else { return }
         row.action?()
     }
 

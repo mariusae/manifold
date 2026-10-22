@@ -177,6 +177,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
             return self.delegate?.diffView(self, menuFor: path)
         }
+        o.block = block
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.markCurrent() }
         return o

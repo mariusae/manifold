@@ -16,7 +16,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     var onPageChange: ((Page) -> Void)?
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        entries.indices.contains(row) ? outline.writerFor?(row) : nil
+        entries.indices.contains(row) ? outline.dragItem(row, modifiers: Drags.modifiers) : nil
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -80,7 +80,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             addSubview(tabs)
         }
         if let pagesView { addSubview(pagesView) }
-        if outline.writerFor != nil {
+        if outline.draggable {
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         }
