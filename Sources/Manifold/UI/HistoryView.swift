@@ -10,6 +10,8 @@ final class HistoryView: NSView {
     var onRestoreText: ((String) -> Void)?
     /// Compare the text then with now.
     var onCompare: ((Stamp) -> Void)?
+    /// The text then, as a block of its own.
+    var onOpen: ((String, Stamp) -> Void)?
     var titleOf: (BlockID) -> String = { $0.description }
     var symbolOf: (Lens) -> String = { _ in "doc" }
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -21,6 +23,7 @@ final class HistoryView: NSView {
     private let textView = TextView()
     private let textDocument = StaticDocument()
     private let compare = NSButton(title: "Compare with Now", target: nil, action: nil)
+    private let open = NSButton(title: "Open This Version", target: nil, action: nil)
     private let restore = NSButton(title: "Restore This Text", target: nil, action: nil)
     private let close = NSButton(title: "Done", target: nil, action: nil)
     private var entries: [Entry] = []
@@ -56,6 +59,9 @@ final class HistoryView: NSView {
         compare.target = self
         compare.action = #selector(compareClicked)
         compare.bezelStyle = .rounded
+        open.target = self
+        open.action = #selector(openClicked)
+        open.bezelStyle = .rounded
         textView.document = textDocument
         textView.isEditable = false
         textView.autoresizingMask = [.width]
@@ -67,7 +73,7 @@ final class HistoryView: NSView {
         scroll.automaticallyAdjustsContentInsets = false
         scroll.wantsLayer = true
         scroll.layer?.cornerRadius = 8
-        for v in [slider, when, scroll, compare, restore, close] { panel.addSubview(v) }
+        for v in [slider, when, scroll, open, compare, restore, close] { panel.addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -106,6 +112,7 @@ final class HistoryView: NSView {
         textView.documentChanged()
         restore.isEnabled = i < texts.count - 1
         compare.isEnabled = i < texts.count - 1
+        open.isEnabled = i < texts.count - 1
         when.stringValue = note
     }
 
@@ -119,6 +126,12 @@ final class HistoryView: NSView {
         let i = index
         guard i >= 0, i < entries.count else { return }
         onCompare?(entries[i].at)
+    }
+
+    @objc private func openClicked() {
+        let i = index
+        guard i >= 0, i < entries.count, i < texts.count else { return }
+        onOpen?(texts[i], entries[i].at)
     }
 
     @objc private func closeClicked() { onClose?() }
@@ -135,6 +148,8 @@ final class HistoryView: NSView {
         let restoreWidth: CGFloat = 150
         restore.frame = NSRect(x: w - 108 - restoreWidth, y: 16, width: restoreWidth, height: 28)
         compare.frame = NSRect(x: restore.frame.minX - 160, y: 16, width: 150, height: 28)
+        open.frame = NSRect(x: compare.frame.minX - 160, y: 16, width: 150, height: 28)
+        open.isHidden = open.frame.minX < 20
     }
 
     override func mouseDown(with event: NSEvent) {

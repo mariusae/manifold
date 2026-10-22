@@ -731,7 +731,8 @@ when you find it again.
   after it was closed, brought to another workspace) starts there.
 - **History of This File…** (⌥⌘Y) scrubs the focused file through every change it's had
   in Manifold: Restore This Text puts a version back (one undoable edit);
-  Compare with Now opens a diff block of then against now.
+  Compare with Now opens a diff block of then against now. Open This
+  Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: the page
   has the whole tile, its pill has the address (click it, or ⌘L), ⌘[ and

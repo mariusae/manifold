@@ -4626,6 +4626,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.hosts.link(from: diff, to: block, kind: .opened, context: "then → now")
             self.show(diff, lens: .diff, .besideOpener(placement), context: "Compare with Now")
         }
+        h.onOpen = { [weak self] text, moment in
+            guard let self, let client = self.hosts.client(block.host) else { return }
+            self.hideHistory()
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            f.timeStyle = .short
+            let title = "\(self.hosts.block(block)?.displayTitle ?? "Text") as of \(f.string(from: moment.date))"
+            let id = BlockID(host: block.host)
+            client.append([.create(kind: .output, title: title, path: nil),
+                           .output(OutputState(line: title, ended: moment, output: text, plain: true))], to: .block(id))
+            self.show(id, lens: .output, .besideOpener(placement), context: "as of \(f.string(from: moment.date))")
+        }
         historyOf = block
         hosts.propose(.history(.block(block)))
     }
