@@ -281,6 +281,21 @@ extension ArrangementState {
         return unstashing(id) + [.stash(top.id, behind: id), .focus(id)]
     }
 
+    /// A stack walked with ⌥ held (⌥-clicks): `order` is the stack as it
+    /// was when the walk began, its top first; the tile at `index` comes to
+    /// the top, and the rest go behind it in that order, the one that
+    /// showed first — so the tiles passed on the way are as they were, and
+    /// where the walk stops is what one ⌥-click there would have made.
+    public func walkingStack(_ order: [PlacementID], to index: Int) -> [Event] {
+        guard order.indices.contains(index), locate(order[index]) != nil else { return [] }
+        let chosen = order[index]
+        var events = isStashed(chosen) ? toppingStack(chosen) : [Event]()
+        // Each put straight behind the top, the last first.
+        for id in order.reversed() where id != chosen && locate(id) != nil { events.append(.stash(id, behind: chosen)) }
+        events.append(.focus(chosen))
+        return events
+    }
+
     /// Heights after a stashed tile comes back on its own: the lower half
     /// of the tile it was behind.
     public func unstashing(_ id: PlacementID) -> [Event] {

@@ -212,9 +212,14 @@ enum DebugControl {
             // "stack": the focused tile's column, each tile with its share
             // (0: stashed); "stack swap": the first stashed tile behind the
             // focused one takes the top, as ⇧-click on its pill does.
+            // "stack next": ⌥-click on the focused tile's pill; "stack hold"
+            // and "stack release": ⌥ taken as held, or let go.
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
-            return wc.debugStack(swap: a.first == "swap", index: a.count > 1 ? Int(a[1]) ?? 0 : 0)
+            if a.first == "hold" || a.first == "release" { wc.debugOptionHeld = a.first == "hold" }
+            // "stack focus <placement suffix>": that tile focused.
+            if a.first == "focus", a.count > 1, !wc.debugFocus(placementEndingIn: a[1]) { return "no \(a[1])" }
+            return wc.debugStack(swap: a.first == "swap" || a.first == "next", index: a.first == "next" ? -1 : a.count > 1 ? Int(a[1]) ?? 0 : 0)
         case "type":
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
@@ -322,6 +327,9 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "dockmenu":
+            // "dockmenu [title]": the Dock icon's menu, or that workspace chosen.
+            return wc?.debugDockMenu(arg) ?? "no window"
         case "blockdrop":
             // "blockdrop <placement> <workspace|new> [copy]": dropped on the sidebar.
             let a = arg.split(separator: " ").map(String.init)

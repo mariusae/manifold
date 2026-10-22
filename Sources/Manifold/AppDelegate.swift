@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController?.render()
     }
 
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        windowController?.dockMenu()
+    }
+
     private var askedAboutStaleServer = false
 
     /// The server running is from another build of Manifold. It keeps the

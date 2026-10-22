@@ -1510,6 +1510,24 @@ private final class Seen: @unchecked Sendable {
     #expect(a.revealing("other") == [.focus("other")])
 }
 
+@Test func aStackWalkedWithOptionHeldKeepsItsOrderUntilLetGo() {
+    // ⌥-clicks with ⌥ held: each brings the next up; the ones passed stay where they were.
+    var a = ArrangementState()
+    let ids: [PlacementID] = ["a", "b", "c", "d"]
+    for (i, id) in ids.enumerated() { a.apply(.place(Placement(id: id, block: BlockID(host: .local), lens: .editor), column: 0, at: i)) }
+    a.apply(.place(Placement(id: "other", block: BlockID(host: .local), lens: .terminal), column: 0, at: 4))
+    a.apply(.heights(["a": 0.6, "b": 0, "c": 0, "d": 0, "other": 0.4]))
+    func stack() -> [PlacementID] { a.columns[0].map(\.id).filter { $0 != "other" } }
+    for (k, want) in [(1, ["b", "a", "c", "d"]), (2, ["c", "a", "b", "d"]), (3, ["d", "a", "b", "c"]), (0, ["a", "b", "c", "d"])] {
+        for e in a.walkingStack(ids, to: k) { a.apply(e) }
+        #expect(stack() == want)
+        #expect(a.focused == want[0] && !a.isStashed(want[0]))
+        #expect(want.dropFirst().allSatisfy { a.isStashed($0) && a.tile(behind: $0)?.id == want[0] })
+        #expect(a.shownTiles(inColumn: 0).map(\.id) == [want[0], "other"])
+        #expect(abs(a.height(of: want[0]) / (a.height(of: want[0]) + a.height(of: "other")) - 0.6) < 0.001)
+    }
+}
+
 @Test func openingAFolderSaysItIsOne() throws {
     // `manifold DIR` on another host: the app can't look there, so the path says it.
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("open-\(UUID().uuidString)").path

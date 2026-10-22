@@ -1050,6 +1050,55 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "chose \(title)"
     }
 
+    /// The Dock icon's menu: every workspace on the desk, under its host's
+    /// name when there's more than one, the one shown checked; chosen, it's
+    /// gone to, Manifold coming to the front.
+    func dockMenu() -> NSMenu {
+        let menu = NSMenu()
+        let byHost = hosts.ordered.map { c in (c, c.desk.order.filter { $0.host == c.host }.filter { hosts.arrangement($0) != nil }) }.filter { !$0.1.isEmpty }
+        // Titles alike (a few workspaces in ~) told apart by what's focused in each.
+        var seen: [String: Int] = [:]
+        for id in byHost.flatMap(\.1) { if let a = hosts.arrangement(id) { seen[title(of: a), default: 0] += 1 } }
+        func name(_ a: ArrangementState) -> String {
+            let t = title(of: a)
+            guard seen[t, default: 0] > 1, let f = a.focusedPlacement, let b = hosts.block(f.block), b.displayTitle != t else { return t }
+            return "\(t) — \(b.displayTitle)"
+        }
+        for (c, ids) in byHost {
+            if byHost.count > 1 {
+                if menu.numberOfItems > 0 { menu.addItem(.separator()) }
+                menu.addItem(NSMenuItem.sectionHeader(title: hosts.label(of: c.host)))
+            }
+            for id in ids {
+                guard let a = hosts.arrangement(id) else { continue }
+                let item = NSMenuItem(title: name(a), action: #selector(dockChoose(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = id
+                item.state = id == selected ? .on : .off
+                menu.addItem(item)
+            }
+        }
+        return menu
+    }
+
+    @objc private func dockChoose(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? BlockID else { return }
+        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+        goTo(id)
+    }
+
+    /// Debugging: the Dock menu's items, or the one titled so chosen.
+    func debugDockMenu(_ title: String) -> String {
+        let menu = dockMenu()
+        if !title.isEmpty {
+            guard let item = menu.items.first(where: { $0.title == title && $0.action != nil }) else { return "no \(title)" }
+            dockChoose(item)
+            return "chose \(title)"
+        }
+        return menu.items.map { $0.isSeparatorItem ? "—" : $0.isSectionHeader ? "[\($0.title)]" : ($0.state == .on ? "✓ " : "  ") + $0.title }.joined(separator: "\n")
+    }
+
     /// Debugging: every workspace on the desk, its tiles' placements and titles.
     func debugWorkspaces() -> String {
         allWorkspaces.compactMap { id -> String? in
@@ -1177,12 +1226,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return content.debugBadge(f, arg)
     }
 
+    func debugFocus(placementEndingIn suffix: String) -> Bool {
+        guard let p = arrangement?.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return false }
+        gridFocus(p.id)
+        return true
+    }
+
     func debugStack(swap: Bool, index: Int = 0) -> String {
         guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
         // The stack as the fan shows it: those stashed above the first
         // shown tile count as behind it, then those under the tile.
         let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
-        if swap, index < behind.count { gridSwap(behind[index].id) }
+        if swap, index >= 0, index < behind.count { gridSwap(behind[index].id) }
+        if swap, index < 0 { gridSwapNext(f) }
         guard let b = arrangement else { return "gone" }
         return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?")#\($0.id.suffix(4)) \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
     }
@@ -2225,6 +2281,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: State views (§3.6)
 
+    /// An ⌥-click walk through a stack (gridSwapNext): the stack's order
+    /// when it began, and where it has come to.
+    var stackWalk: (workspace: BlockID?, order: [PlacementID], index: Int, monitor: Any?)?
+    /// Debugging: ⌥ taken as held for a stack walk, or let go.
+    var debugOptionHeld = false {
+        didSet { if !debugOptionHeld { endOptionWalk() } }
+    }
     private var stateView: StateView?
     private var stateGroup: StatusGroup?
     private var stateMode: StateView.Mode = .list
@@ -4320,12 +4383,67 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.unstashing(placement))
     }
 
-    /// ⌥-click on a shown tile's pill: the first tile behind it takes its place.
+    /// ⌥-click on a shown tile's pill: the first tile behind it takes its
+    /// place. With ⌥ held, clicked again (as ⌃⇥ walks workspaces) the next
+    /// behind that, and so on round the stack, the ones passed staying as
+    /// they were; letting go of ⌥ settles on the one come to.
     func gridSwapNext(_ placement: PlacementID) {
-        guard let a = arrangement, let (c, _) = a.locate(placement),
-              let next = a.columns[c].first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }) else { return NSSound.beep() }
-        gridSwap(next.id)
+        guard let a = arrangement else { return }
+        if let w = stackWalk, w.workspace == selected, w.order.indices.contains(w.index), w.order[w.index] == placement {
+            return walkStack(to: (w.index + 1) % w.order.count)
+        }
+        guard let order = stackOrder(of: placement, in: a), order.count > 1 else { return NSSound.beep() }
+        beginStackWalk(order)
+        walkStack(to: 1)
     }
+
+    /// ⌥-click on a stashed pill, peeking out above its stack: it to the
+    /// top — in a walk, as one of its steps.
+    func gridSwap(_ placement: PlacementID) {
+        guard let a = arrangement, a.isStashed(placement), let top = a.tile(behind: placement) else { return gridUnstash(placement) }
+        if let w = stackWalk, w.workspace == selected, let k = w.order.firstIndex(of: placement) { return walkStack(to: k) }
+        guard let order = stackOrder(of: top.id, in: a), let k = order.firstIndex(of: placement) else { return }
+        beginStackWalk(order)
+        walkStack(to: k)
+    }
+
+    /// A shown tile and the tiles behind it, in order (those stashed above
+    /// a column's first shown tile are behind it too).
+    private func stackOrder(of top: PlacementID, in a: ArrangementState) -> [PlacementID]? {
+        guard let (c, _) = a.locate(top), !a.isStashed(top) else { return nil }
+        return [top] + a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }.map(\.id)
+    }
+
+    private func beginStackWalk(_ order: [PlacementID]) {
+        endOptionWalk()
+        // Only with ⌥ held is there a walk to go on with.
+        guard NSEvent.modifierFlags.contains(.option) || debugOptionHeld else {
+            stackWalk = (selected, order, 0, nil)
+            return
+        }
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            if !event.modifierFlags.contains(.option) { self?.endOptionWalk() }
+            return event
+        }
+        stackWalk = (selected, order, 0, monitor)
+    }
+
+    private func walkStack(to k: Int) {
+        guard let a = arrangement, var w = stackWalk else { return }
+        w.order = w.order.filter { a.placement($0) != nil }
+        guard w.order.indices.contains(k) else { return endOptionWalk() }
+        w.index = k
+        stackWalk = w
+        appendToSelected(a.walkingStack(w.order, to: k))
+        // Not held: one step, settled.
+        if w.monitor == nil { stackWalk = nil }
+    }
+
+    func endOptionWalk() {
+        if let m = stackWalk?.monitor { NSEvent.removeMonitor(m) }
+        stackWalk = nil
+    }
+
 
     /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
     /// stack going behind it.
@@ -4362,13 +4480,6 @@ extension MainWindowController: GridDelegate {
         var heights: [PlacementID: Double] = [placement: share]
         for t in behind { heights[t.id] = share }
         appendToSelected([.heights(heights)])
-    }
-
-    /// ⌥-click on a stashed pill: that tile shows where the stack's top
-    /// did, and the top goes behind it.
-    func gridSwap(_ placement: PlacementID) {
-        guard let a = arrangement, a.isStashed(placement), a.tile(behind: placement) != nil else { return gridUnstash(placement) }
-        appendToSelected(a.toppingStack(placement))
     }
 
     /// A pill clicked: its tile grows a step, as acme's does.

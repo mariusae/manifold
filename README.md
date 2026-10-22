@@ -76,7 +76,10 @@ and Mona Sans (bundled).
   back up), and letting go of ⌘ brings the chosen one forward to the
   top (Escape leaves things be); without a stack, ⌘E finds the word at
   hand. ⌥-click the top tile's own pill and it swaps with the next
-  behind it. A stack is one
+  behind it; keep ⌥ held and click again, as ⌃⇥ walks workspaces, and
+  the next behind that comes up, round the stack, the tiles passed
+  staying where they were — letting go of ⌥ settles on the one come to
+  (⌥-clicking a pill peeking out above the stack goes straight to it). A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it.
   Unstack in the pill's menu lays the whole stack out in the column;
@@ -182,7 +185,8 @@ and Mona Sans (bundled).
 - **⌃⇥** walks the workspaces most recently gone to first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
-  workspaces too.
+  workspaces too, as does the Dock icon's menu: every workspace, under
+  its host when there are several, the one shown checked.
 - Drag a tile by its pill: between two tiles to put it there, near a
   column's side for a new column there, onto a workspace in the
   sidebar for its active column, or between workspaces for one of
