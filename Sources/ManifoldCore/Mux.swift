@@ -22,8 +22,8 @@ extension Connection: Channel {}
 /// Each stream has a window: no more than `window` bytes of it on the
 /// way and not yet taken by the other end, which gives credit back as it
 /// takes them. Interactive streams' frames go out as they're sent, in
-/// order with the control stream's. Bulk streams' (files, forwarded
-/// ports) go out only as the link takes them — no more of them in flight
+/// order with the control stream's. Paced streams' (files, forwarded
+/// ports, terminals — these first) go out only as the link takes them — no more of them in flight
 /// at once than the link holds (its rate times its shortest round trip,
 /// measured from the other end's `linkAck`s, twice over) — so what's
 /// queued below us (ssh's window, the sockets' buffers) stays small and
@@ -107,19 +107,20 @@ public final class Mux {
         DispatchQueue.getSpecific(key: Self.queueKey) === token ? work() : queue.sync(execute: work)
     }
 
-    /// A new stream (the client's side): `bulk` ones paced; handlers run
-    /// on `callbackQueue` (nil: the mux's queue).
-    public func open(bulk: Bool, callbackQueue: DispatchQueue? = nil) -> MuxStream {
+    /// A new stream (the client's side): `bulk` ones paced, `urgent` ones
+    /// (a terminal's) paced too but ahead of the others; handlers run on
+    /// `callbackQueue` (nil: the mux's queue).
+    public func open(bulk: Bool, urgent: Bool = false, callbackQueue: DispatchQueue? = nil) -> MuxStream {
         lock.lock()
         let id = nextID
         nextID &+= 1
         lock.unlock()
-        let s = MuxStream(id: id, bulk: bulk, mux: self)
+        let s = MuxStream(id: id, bulk: bulk || urgent, urgent: urgent, mux: self)
         s.callbackQueue = callbackQueue
         onQueue { [self] in
             if connection.isClosed { return s.peerClosed() }
             streams[id] = s
-            sendOp(id, .open, Data([bulk ? 1 : 0]))
+            sendOp(id, .open, Data([urgent ? 2 : bulk ? 1 : 0]))
         }
         return s
     }
@@ -169,7 +170,7 @@ public final class Mux {
         switch op {
         case .open:
             guard streams[id] == nil else { return }
-            let s = MuxStream(id: id, bulk: rest.first == 1, mux: self)
+            let s = MuxStream(id: id, bulk: rest.first == 1 || rest.first == 2, urgent: rest.first == 2, mux: self)
             streams[id] = s
             onStream?(s)
         case .frame:
@@ -229,7 +230,8 @@ public final class Mux {
             // Probing: nothing more until all that's out has arrived, then
             // one piece alone.
             if probing, probe != nil || bulkSent != bulkAcked { break }
-            let s = ready.removeFirst()
+            // An urgent stream (a terminal's) first, then the others in turn.
+            let s = ready.remove(at: ready.firstIndex { $0.urgent } ?? 0)
             guard let f = s.next() else {
                 s.drainedIfEmpty()
                 continue
@@ -333,8 +335,14 @@ public final class ControlChannel: Channel {
 /// One stream of a `Mux`: frames, in order, both ways, as a connection's.
 public final class MuxStream: Channel {
     public let id: UInt32
-    /// Paced, as the link takes it (a file, a forwarded port).
+    /// Paced, as the link takes it (a file, a forwarded port, a terminal).
     public let bulk: Bool
+    /// Paced, but ahead of the others (a terminal's).
+    public let urgent: Bool
+    /// How much may wait to go before a producer is told to hold off
+    /// (`wantsMore`): a terminal's is small, so one that falls behind is
+    /// caught up with its screen, not left to drain what it missed.
+    public var highWater = Mux.window / 2
     private weak var mux: Mux?
     public var onFrame: ((Frame) -> Void)?
     public var onClose: (() -> Void)?
@@ -359,9 +367,10 @@ public final class MuxStream: Channel {
     private var outbox: [Data] = []
     private var uncredited = 0
 
-    init(id: UInt32, bulk: Bool, mux: Mux) {
+    init(id: UInt32, bulk: Bool, urgent: Bool = false, mux: Mux) {
         self.id = id
         self.bulk = bulk
+        self.urgent = urgent
         self.mux = mux
     }
 
@@ -369,7 +378,7 @@ public final class MuxStream: Channel {
     var queued: Int { lock.withLock { _queued } }
 
     /// Whether a producer should send more now: little waiting.
-    public var wantsMore: Bool { lock.withLock { !_closed && !_closing && _queued < Mux.window / 2 } }
+    public var wantsMore: Bool { lock.withLock { !_closed && !_closing && _queued < highWater } }
 
     public func send(_ frame: Frame) {
         let data = frame.encoded

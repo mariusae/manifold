@@ -57,7 +57,10 @@ sdk=$("$SWIFTLY" run +"$V" swift sdk list 2>/dev/null | grep "^swift-$V-RELEASE_
 # stripped: the symbols and debug info are most of the binary (148 MB of
 # it, 58 without), and every host it's installed on gets it over the wire.
 # The unstripped one stays where it was built, for symbolicating.
+[ -f Frameworks/manifold-vt/linux-x86_64/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
 for t in x86_64 aarch64; do
+  # The host's terminal emulator, for this arch (Package.swift links linux/).
+  cp "Frameworks/manifold-vt/linux-$t/libmanifoldvt.a" Frameworks/manifold-vt/linux/
   log=$(mktemp)
   if ! "$SWIFTLY" run +"$V" swift build -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd > "$log" 2>&1; then
     grep -v target-arch-variant "$log" | grep -E "error" | head -20 >&2

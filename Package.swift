@@ -11,6 +11,16 @@ let package = Package(
         // Built by scripts/build-ghostty.sh.
         .binaryTarget(name: "GhosttyKit", path: "Frameworks/GhosttyKit.xcframework"),
         .target(name: "CPTY"),
+        // The host's terminal emulator (Ghostty's, built by
+        // scripts/build-manifold-vt.sh), for manifoldd.
+        .target(
+            name: "CManifoldVT",
+            linkerSettings: [
+                .linkedLibrary("manifoldvt"),
+                .unsafeFlags(["-L", Context.packageDirectory + "/Frameworks/manifold-vt/macos"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-L", Context.packageDirectory + "/Frameworks/manifold-vt/linux"], .when(platforms: [.linux])),
+            ]
+        ),
         .target(name: "ManifoldCore"),
         .target(
             name: "ManifoldMarkdown",
@@ -21,7 +31,7 @@ let package = Package(
         ),
         // The `manifold` command (named so in the app bundle).
         .executableTarget(name: "ManifoldCLI", dependencies: ["ManifoldCore"]),
-        .executableTarget(name: "manifoldd", dependencies: ["ManifoldCore", "CPTY"]),
+        .executableTarget(name: "manifoldd", dependencies: ["ManifoldCore", "CPTY", "CManifoldVT"]),
         .executableTarget(
             name: "Manifold",
             dependencies: ["ManifoldCore", "ManifoldMarkdown", "CPTY", "GhosttyKit"],

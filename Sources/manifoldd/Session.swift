@@ -10,7 +10,9 @@ import Musl
 #endif
 
 /// A shell running on a pseudo-terminal the server owns, so it outlives the
-/// app. Terminals in the app attach to it through `manifoldd attach`.
+/// app. Terminals in the app attach to it on streams of their connection
+/// (§8): each is sent what the shell prints as it comes, beginning from a
+/// snapshot of the terminal as the host keeps it (`screen`).
 final class Session {
     let id: BlockID
     let pid: pid_t
@@ -19,6 +21,12 @@ final class Session {
     private let readSource: DispatchSourceRead
     private let exitWatch: ProcessWatch
     private var replay: ReplayBuffer
+    /// The terminal as the host keeps it: what an attaching terminal is
+    /// sent, and one that fell behind.
+    private let screen: TerminalScreen?
+    /// Attachments that fell behind (their streams full, on a slow link):
+    /// sent nothing until they've caught up, then the screen as it is.
+    private var behind: Set<ObjectIdentifier> = []
     /// Whether there's output not yet saved to disk.
     private(set) var unsaved = false
     private var titles = TitleScanner()
@@ -107,6 +115,8 @@ final class Session {
 
         self.id = id
         self.replay = ReplayBuffer(restoring: history)
+        screen = TerminalScreen(cols: cols, rows: rows)
+        screen?.feed(replay.contents)
         self.pid = pid
         self.master = master
         self.queue = queue
@@ -161,14 +171,31 @@ final class Session {
     func attach(_ conn: any Channel, cols: UInt16, rows: UInt16) {
         attachments.append(conn)
         sizes[ObjectIdentifier(conn)] = (cols, rows)
-        conn.send(Frame(.data, replay.replay))
-        conn.send(Frame(.replayDone, Data([replayShown ? 0 : 1])))
-        replayShown = true
+        // At its size first, so the snapshot is drawn for it.
         resize(cols: cols, rows: rows)
+        if let screen {
+            // The terminal as it is: its queries were answered when they came,
+            // so what's typed now goes straight through.
+            conn.send(Frame(.data, screen.attaching))
+            conn.send(Frame(.replayDone, Data([1])))
+        } else {
+            conn.send(Frame(.data, replay.replay))
+            conn.send(Frame(.replayDone, Data([replayShown ? 0 : 1])))
+        }
+        replayShown = true
+        if let stream = conn as? MuxStream {
+            // Behind once a piece waits: then caught up with the screen.
+            stream.highWater = Mux.bulkPiece
+            stream.onDrain = { [weak self, weak stream] in
+                guard let self, let stream else { return }
+                self.caughtUp(stream)
+            }
+        }
     }
 
     func detach(_ conn: any Channel) {
         attachments.removeAll { $0 === conn }
+        behind.remove(ObjectIdentifier(conn))
         sizes.removeValue(forKey: ObjectIdentifier(conn))
         if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
     }
@@ -261,6 +288,30 @@ final class Session {
         guard cols > 0, rows > 0, (cols, rows) != size else { return }
         size = (cols, rows)
         _ = mf_pty_resize(master, cols, rows)
+        screen?.resize(cols: cols, rows: rows)
+    }
+
+    /// Output to each attachment, as it comes — but not to one whose stream
+    /// is full (a slow link, a flood): that one waits, and is sent the
+    /// screen as it is once its stream has room (`caughtUp`), skipping what
+    /// it would never have caught up with.
+    private func passOn(_ data: Data) {
+        screen?.feed(data)
+        let frame = Frame(.data, data)
+        for conn in attachments {
+            let key = ObjectIdentifier(conn)
+            if behind.contains(key) { continue }
+            if let stream = conn as? MuxStream, screen != nil, !stream.wantsMore {
+                behind.insert(key)
+                continue
+            }
+            conn.send(frame)
+        }
+    }
+
+    private func caughtUp(_ stream: MuxStream) {
+        guard behind.remove(ObjectIdentifier(stream)) != nil, let screen else { return }
+        stream.send(Frame(.data, screen.catchUp))
     }
 
     private func readOutput() {
@@ -295,8 +346,7 @@ final class Session {
         let again = DispatchWorkItem { [weak self] in self?.checkPassword() }
         passwordCheck = again
         queue.asyncAfter(deadline: .now() + 0.2, execute: again)
-        let frame = Frame(.data, data)
-        for conn in attachments { conn.send(frame) }
+        passOn(data)
     }
 
     private func writeInput() {
@@ -341,8 +391,7 @@ final class Session {
             let data = Data(buf[0..<n])
             replay.append(data)
             unsaved = true
-            let frame = Frame(.data, data)
-            for conn in attachments { conn.send(frame) }
+            passOn(data)
         }
         if let inputSource {
             if !inputSourceActive { inputSource.resume() }

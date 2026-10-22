@@ -347,7 +347,14 @@ when you find it again.
   straight into it, off the main thread, and what's typed goes up the
   stream. A terminal whose host goes away keeps what it showed, and
   attaches again when the host is back; a remote host is one ssh session
-  however many terminals it has. A terminal's
+  however many terminals it has. The host keeps each terminal itself, in
+  the same emulator (Ghostty's, built into the server): a terminal
+  attaching is sent a snapshot of it — screen, modes, cursor, a full-
+  screen program on its own screen, and the last 5,000 lines of history —
+  not the output that made it; and one that falls behind (a flood of
+  output on a slow link) skips to the screen as it is now, as mosh does,
+  instead of draining all it missed. Terminals are paced to the link as
+  files are, but ahead of them. A terminal's
   menu (right-click) has, under Copy, Paste and Clear, the tree of what
   runs under its shell, the shell first, each process a submenu of End,
   Force End and what runs under it.

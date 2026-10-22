@@ -116,3 +116,6 @@ rm -rf Frameworks/ghostty-share
 mkdir -p Frameworks/ghostty-share
 cp -R vendor/ghostty/zig-out/share/ghostty vendor/ghostty/zig-out/share/terminfo Frameworks/ghostty-share/
 echo "built $out"
+
+# The host's terminal emulator, from the same source.
+scripts/build-manifold-vt.sh

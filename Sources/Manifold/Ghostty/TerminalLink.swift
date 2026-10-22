@@ -88,7 +88,8 @@ final class TerminalLink {
             onClosed?()
             return
         }
-        let stream = mux.open(bulk: false, callbackQueue: queue)
+        // Paced, ahead of files: a flood of output doesn't fill the link.
+        let stream = mux.open(bulk: true, urgent: true, callbackQueue: queue)
         stream.onFrame = { [weak self] frame in self?.received(frame) }
         stream.onClose = { [weak self] in
             DispatchQueue.main.async { self?.onClosed?() }

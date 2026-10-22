@@ -1,3 +1,34 @@
+diff --git a/build.zig b/build.zig
+index f9d861b..6b5d4f7 100644
+--- a/build.zig
++++ b/build.zig
+@@ -118,6 +118,26 @@ pub fn build(b: *std.Build) !void {
+     libghostty_vt_shared.install(libvt_step);
+     libghostty_vt_shared.install(b.getInstallStep());
+ 
++    // Manifold: the host's terminal emulator (src/manifold_vt.zig), a
++    // static library linked into manifoldd, for each OS its server runs on.
++    {
++        const manifold_vt_step = b.step("manifold-vt", "Build Manifold's host terminal library");
++        const m = b.createModule(.{
++            .root_source_file = b.path("src/manifold_vt.zig"),
++            .target = config.target,
++            .optimize = config.optimize,
++            .pic = true,
++        });
++        m.addImport("ghostty-vt", mod.vt);
++        const lib = b.addLibrary(.{
++            .name = "manifoldvt",
++            .linkage = .static,
++            .root_module = m,
++        });
++        lib.bundle_compiler_rt = true;
++        manifold_vt_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
++    }
++
+     // Helpgen
+     if (config.emit_helpgen) deps.help_strings.install();
+ 
 diff --git a/include/ghostty.h b/include/ghostty.h
 index 40ff55c..6521f72 100644
 --- a/include/ghostty.h
@@ -287,6 +318,124 @@ index e7cf860..5ee7919 100644
          .{
              .input = "open ~/Documents/notes.md please",
              .expect = "~/Documents/notes.md",
+diff --git a/src/manifold_vt.zig b/src/manifold_vt.zig
+new file mode 100644
+index 0000000..e97a26a
+--- /dev/null
++++ b/src/manifold_vt.zig
+@@ -0,0 +1,112 @@
++//! Manifold: a terminal kept on the host for each shell (in manifoldd), by
++//! the same emulator the app draws with. It's fed the shell's output as it
++//! comes and resized with the shell's pty, and is written out on asking as
++//! a snapshot: escape sequences that make the same screen, scrollback,
++//! modes and cursor again — what a terminal attaching is sent, or one that
++//! fell behind, in place of everything it missed.
++const std = @import("std");
++const vt = @import("ghostty-vt");
++
++const alloc = std.heap.smp_allocator;
++
++const Handle = struct {
++    terminal: vt.Terminal,
++    stream: vt.ReadonlyStream,
++};
++
++/// A terminal of this size, keeping `max_scrollback` bytes of history.
++export fn mvt_new(cols: u16, rows: u16, max_scrollback: usize) ?*Handle {
++    const h = alloc.create(Handle) catch return null;
++    h.terminal = vt.Terminal.init(alloc, .{
++        .cols = @max(cols, 1),
++        .rows = @max(rows, 1),
++        .max_scrollback = max_scrollback,
++    }) catch {
++        alloc.destroy(h);
++        return null;
++    };
++    h.stream = h.terminal.vtStream();
++    return h;
++}
++
++export fn mvt_free(h: *Handle) void {
++    h.stream.deinit();
++    h.terminal.deinit(alloc);
++    alloc.destroy(h);
++}
++
++/// The shell's output, as it came.
++export fn mvt_feed(h: *Handle, bytes: [*]const u8, len: usize) void {
++    h.stream.nextSlice(bytes[0..len]) catch {};
++}
++
++export fn mvt_resize(h: *Handle, cols: u16, rows: u16) void {
++    h.terminal.resize(alloc, @max(cols, 1), @max(rows, 1)) catch {};
++}
++
++/// Whether a full-screen program (the alternate screen) is showing.
++export fn mvt_alternate(h: *Handle) bool {
++    return h.terminal.screens.active_key == .alternate;
++}
++
++/// The terminal as escape sequences that make it again, from a fresh
++/// terminal of the same size: the primary screen's last `history` rows of
++/// history (all of it, if negative) and its screen, then (if a full-screen
++/// program shows) the alternate screen; the modes, scrolling region, tab
++/// stops, working directory, keyboard modes, cursor and its style. Not the
++/// palette: the app's own colors stay. The bytes are freed with
++/// `mvt_free_bytes`; null if it couldn't be made.
++export fn mvt_snapshot(h: *Handle, history: isize, out_len: *usize) ?[*]u8 {
++    var w: std.Io.Writer.Allocating = .init(alloc);
++    errdefer w.deinit();
++    write(h, history, &w.writer) catch {
++        w.deinit();
++        return null;
++    };
++    const bytes = w.toOwnedSlice() catch {
++        w.deinit();
++        return null;
++    };
++    out_len.* = bytes.len;
++    return bytes.ptr;
++}
++
++/// A screen's last `history` rows of history and the screen itself (all of
++/// its history, if negative).
++fn content(screen: *const vt.Screen, history: isize) vt.formatter.ScreenFormatter.Content {
++    if (history < 0) return .{ .selection = null };
++    const pages = &screen.pages;
++    const keep = @min(pages.total_rows, @as(usize, pages.rows) + @as(usize, @intCast(history)));
++    const start = pages.pin(.{ .screen = .{ .x = 0, .y = @intCast(pages.total_rows - keep) } }) orelse
++        return .{ .selection = null };
++    const end = pages.getBottomRight(.screen) orelse return .{ .selection = null };
++    return .{ .selection = vt.Selection.init(start, end, false) };
++}
++
++fn write(h: *Handle, history: isize, writer: *std.Io.Writer) !void {
++    const t = &h.terminal;
++    var extra: vt.formatter.TerminalFormatter.Extra = .all;
++    extra.palette = false;
++
++    // A full-screen program showing: the primary screen's history and
++    // screen first (as a shell left them), then the terminal's own state,
++    // which switches to the alternate screen, and what's on it.
++    if (t.screens.active_key == .alternate) {
++        if (t.screens.get(.primary)) |primary| {
++            var pf: vt.formatter.ScreenFormatter = .init(primary, .vt);
++            pf.content = content(primary, history);
++            pf.extra = .styles;
++            try pf.format(writer);
++            try writer.writeAll("\x1b[0m");
++        }
++    }
++
++    var f: vt.formatter.TerminalFormatter = .init(t, .vt);
++    f.content = content(t.screens.active, history);
++    f.extra = extra;
++    try f.format(writer);
++}
++
++export fn mvt_free_bytes(bytes: [*]u8, len: usize) void {
++    alloc.free(bytes[0..len]);
++}
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
 index ff632f6..5ebee40 100644
 --- a/src/renderer/generic.zig
