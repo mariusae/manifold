@@ -23,6 +23,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     private let note = NSTextField(labelWithString: "")
     private let scroll = NSScrollView()
     private let rowsView = DiffRowsView()
+    fileprivate var printableRows: [DiffRow] { rowsView.rows }
     private var loadedAt: Stamp?
     private var unfolded = false
 
@@ -88,6 +89,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     private func restoreState() {
         guard !keeper.restored, !rowsView.rows.isEmpty else { return }
         keeper.restored = true
+        if keeper.value("outline") == "1", !sidebarShown { toggleSidebar() }
         if keeper.value("unfolded") == "1", !unfolded {
             unfolded = true
             rebuild()
@@ -100,7 +102,12 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         super.layout()
         header.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width * 0.6, height: 16)
         note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
-        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - 32)
+        var left: CGFloat = 0
+        if let sidebar, !sidebar.isHidden {
+            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - 32)
+        }
+        scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height - 32)
         rowsView.minWidth = scroll.contentSize.width
         rowsView.relayout()
         finder.layout(in: bounds)
@@ -138,6 +145,63 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         rowsView.rows = rows
         rowsView.relayout()
         if d.loadedAt != nil { restoreState() }
+        fillSidebar()
+    }
+
+    // MARK: The outline (§7.5)
+
+    /// The files at the tile's left, their hunks under them, each clicked
+    /// to go there; the one you're in marked.
+    private var sidebar: TileSidebar?
+    private var marks: [Int] = []
+    var hasSidebar: Bool { true }
+    var sidebarShown: Bool { sidebar?.isHidden == false }
+
+    func toggleSidebar() {
+        if sidebar == nil {
+            let s = TileSidebar(emptyText: "One file")
+            s.onPick = { [weak self] i in
+                guard let self, self.marks.indices.contains(i) else { return }
+                let r = self.rowsView.rect(ofRow: self.marks[i])
+                self.rowsView.scroll(NSPoint(x: 0, y: max(r.minY - 4, 0)))
+                self.sidebar?.current = i
+            }
+            s.isHidden = true
+            addSubview(s)
+            sidebar = s
+            scroll.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.markCurrent() }
+        }
+        sidebar?.isHidden.toggle()
+        keeper.note(["outline": sidebarShown ? "1" : "0"], after: 0)
+        fillSidebar()
+        needsLayout = true
+    }
+
+    private func fillSidebar() {
+        guard let sidebar, !sidebar.isHidden else { return }
+        var entries: [TileSidebar.Entry] = []
+        marks = []
+        for (i, r) in rowsView.rows.enumerated() {
+            switch r.kind {
+            case let .file(name): entries.append(.init(title: name, level: 0)); marks.append(i)
+            case .hunk:
+                // The hunk by what it's in (the function a patch names), else its line.
+                let heading = r.text.trimmingCharacters(in: .whitespaces)
+                entries.append(.init(title: heading.isEmpty ? "Line \(r.newLine ?? r.oldLine ?? 1)" : heading, level: 1)); marks.append(i)
+            default: break
+            }
+        }
+        sidebar.set(entries)
+        markCurrent()
+    }
+
+    var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+
+    private func markCurrent() {
+        guard let sidebar, !sidebar.isHidden else { return }
+        let y = scroll.contentView.bounds.minY + 8
+        sidebar.current = marks.lastIndex { rowsView.rect(ofRow: $0).minY <= y } ?? (marks.isEmpty ? nil : 0)
     }
 }
 
@@ -407,4 +471,21 @@ extension DiffView: Searchable {
     }
 
     func textForFind(_ done: @escaping (String?) -> Void) { done(nil) }
+}
+
+extension DiffView: Printable {
+    /// The changes as a patch reads: each file, its hunks, + and − lines.
+    func printOperation() -> NSPrintOperation? {
+        let lines = printableRows.map { r -> String in
+            switch r.kind {
+            case let .file(name): "\n=== " + name
+            case .hunk: r.text
+            case .added: "+ " + r.text
+            case .removed: "- " + r.text
+            case .context: "  " + r.text
+            case let .fold(n): "  … \(n) lines"
+            }
+        }
+        return TextPrint.operation(lines.joined(separator: "\n"), title: source()?.displayTitle ?? "Diff", font: TextPrint.codeFont)
+    }
 }

@@ -327,6 +327,17 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "print":
+            // "print <out.pdf>": the focused tile printed to a PDF, no panel.
+            guard let wc, let op = wc.debugPrintOperation else { return "not printable" }
+            op.printInfo.jobDisposition = .save
+            op.printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = URL(fileURLWithPath: arg)
+            op.showsPrintPanel = false
+            op.showsProgressPanel = false
+            // As ⌘P runs it (a web page's must be): modal for the window.
+            guard let window = wc.window else { return "no window" }
+            op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+            return "printing"
         case "noteimage":
             // "noteimage <file>": the image put in the focused editor, as a paste would.
             guard let e = wc?.debugFocusedEditor, let data = try? Data(contentsOf: URL(fileURLWithPath: arg)) else { return "no editor focused, or no file" }

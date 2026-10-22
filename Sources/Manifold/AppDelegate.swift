@@ -244,6 +244,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         item(file, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         file.addItem(.separator())
+        item(file, "Print…", #selector(MainWindowController.printTile(_:)), "p")
+        file.addItem(.separator())
         item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
         item(file, "Keep and Close", #selector(MainWindowController.keepAndClose(_:)), "w", [.command, .shift])

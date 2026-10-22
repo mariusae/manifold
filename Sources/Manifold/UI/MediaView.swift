@@ -31,6 +31,9 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     private var pdfView: PDFView?
     private var loaded = false
     private var fitted = false
+    fileprivate var pdfDocument: PDFDocument? { pdfView?.document }
+    fileprivate var pdfSelectionText: String? { pdfView?.currentSelection?.string }
+    fileprivate var shownImage: NSImage? { pdfView == nil ? imageView.image : nil }
 
     // A PDF's controls, along the top (see the extension below).
     fileprivate let previousButton = IconButton(symbol: "chevron.left", size: 11, target: nil, action: nil)
@@ -505,6 +508,35 @@ extension MediaView: Searchable {
         lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " ") + " header \(Int(header.frame.width))")
         if let sidebar, !sidebar.isHidden { lines.append(sidebar.debugEntries) } else { lines.append("sidebar hidden") }
         return lines.joined(separator: "\n")
+    }
+}
+
+extension MediaView: Printable {
+    /// A PDF's pages, fitted to the paper; an image, fitted to a page.
+    func printOperation() -> NSPrintOperation? {
+        let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
+        if let doc = pdfDocument { return doc.printOperation(for: info, scalingMode: .pageScaleToFit, autoRotate: true) }
+        guard let image = shownImage else { return nil }
+        info.horizontalPagination = .fit
+        info.verticalPagination = .fit
+        let view = NSImageView(frame: NSRect(origin: .zero, size: image.size))
+        view.image = image
+        view.imageScaling = .scaleProportionallyUpOrDown
+        return NSPrintOperation(view: view, printInfo: info)
+    }
+
+    /// ⌘C: the image, or the PDF's selected text, on the clipboard.
+    @objc func copy(_ sender: Any?) {
+        if let pdf = pdfDocument, let s = pdfSelectionText {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(s, forType: .string)
+            _ = pdf
+        } else if let image = shownImage {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([image])
+        } else {
+            NSSound.beep()
+        }
     }
 }
 

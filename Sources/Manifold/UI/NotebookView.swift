@@ -40,6 +40,9 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private let addBelow = HoverLink(title: "New Cell", symbol: "plus")
     private var cells: [String: NotebookCellView] = [:]
     private var order: [String] = []
+    fileprivate var printableCells: [(source: String, output: String)] {
+        order.compactMap { cells[$0] }.map { ($0.editor.string, $0.output.string) }
+    }
     /// Cells made here that the host hasn't written yet, and where.
     private var pendingInserts: [String: Int] = [:]
     private var shown: NotebookState?
@@ -1120,5 +1123,15 @@ final class HoverIcon: NSView {
     override func mouseUp(with event: NSEvent) {
         pressed = false
         if bounds.contains(convert(event.locationInWindow, from: nil)) { clicked(self) }
+    }
+}
+
+extension NotebookView: Printable {
+    /// Each cell, its command and what it printed, in order.
+    func printOperation() -> NSPrintOperation? {
+        let text = printableCells.map { c in
+            "$ " + c.source.replacingOccurrences(of: "\n", with: "\n  ") + (c.output.isEmpty ? "" : "\n" + c.output)
+        }.joined(separator: "\n\n")
+        return TextPrint.operation(text, title: source()?.displayTitle ?? "Shell Notebook", font: TextPrint.codeFont)
     }
 }

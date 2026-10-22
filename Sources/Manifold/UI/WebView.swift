@@ -21,6 +21,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     weak var delegate: WebViewDelegate?
     var source: () -> Block? = { nil }
     private let web: WKWebView
+    fileprivate var webForPrinting: WKWebView { web }
 
     /// A picture of the page as it is now, when it's ready (for a card).
     func snapshot(_ done: @escaping (NSImage?) -> Void) {
@@ -73,8 +74,52 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     /// The page has the whole tile; the pill is its address (§3.1).
     override func layout() {
         super.layout()
-        web.frame = bounds
-        finder.layout(in: bounds)
+        var left: CGFloat = 0
+        if let sidebar, !sidebar.isHidden {
+            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
+        }
+        web.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height)
+        finder.layout(in: web.frame)
+    }
+
+    // MARK: The outline (§7.5)
+
+    /// The page's headings at the tile's left, each clicked to go there.
+    private var sidebar: TileSidebar?
+    var hasSidebar: Bool { true }
+    var sidebarShown: Bool { sidebar?.isHidden == false }
+
+    func toggleSidebar() {
+        if sidebar == nil {
+            let s = TileSidebar(emptyText: "No headings")
+            s.onPick = { [weak self] i in
+                self?.web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(i)]; if(h){h.scrollIntoView({block:'start'});}})()")
+                self?.sidebar?.current = i
+            }
+            s.isHidden = true
+            addSubview(s)
+            sidebar = s
+        }
+        sidebar?.isHidden.toggle()
+        readHeadings()
+        needsLayout = true
+    }
+
+    var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+
+    /// The headings as the page has them now (after each load, too).
+    private func readHeadings() {
+        guard let sidebar, !sidebar.isHidden else { return }
+        let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return m;})()"
+        web.evaluateJavaScript(js) { [weak self] r, _ in
+            let rows = (r as? [[Any]]) ?? []
+            let headings = rows.compactMap { row -> (title: String, level: Int)? in
+                guard row.count == 2, let tag = row[0] as? String, let text = row[1] as? String, !text.isEmpty else { return nil }
+                return (text, Int(tag.dropFirst()) ?? 1)
+            }
+            self?.sidebar?.set(TileSidebar.entries(headings))
+        }
     }
 
     // MARK: Find
@@ -160,6 +205,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let url = web.url?.absoluteString ?? ""
         keepInteraction()
+        readHeadings()
         var events: [Event] = []
         if url != shownURL {
             shownURL = url
@@ -189,5 +235,16 @@ extension WebView: Searchable {
 
     func textForFind(_ done: @escaping (String?) -> Void) {
         web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+}
+
+extension WebView: Printable {
+    /// The page as it shows.
+    func printOperation() -> NSPrintOperation? {
+        let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
+        info.isVerticallyCentered = false
+        let op = webForPrinting.printOperation(with: info)
+        op.view?.frame = webForPrinting.bounds
+        return op
     }
 }

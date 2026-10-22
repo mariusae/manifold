@@ -204,6 +204,13 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     }
 }
 
+extension OutputView: Printable {
+    /// The command, how it ended, and what it printed, as text.
+    func printOperation() -> NSPrintOperation? {
+        TextPrint.operation(text.string, title: "$ " + prompt.stringValue.replacingOccurrences(of: "$ ", with: "") + "  (" + outcome.stringValue + ")", font: TextPrint.codeFont)
+    }
+}
+
 extension OutputView: Searchable {
     /// ⌘F, ⌘G, ⌘E: the find pill, over what the command printed.
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }

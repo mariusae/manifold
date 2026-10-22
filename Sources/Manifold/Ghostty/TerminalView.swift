@@ -337,6 +337,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// row it starts on. Ghostty joins soft-wrapped rows (and reaches the
     /// history only for the whole screen), so a line's rows are counted
     /// from its width.
+    fileprivate var transcriptLines: String? { screenLines()?.map { String($0.text) }.joined(separator: "\n") }
+
     private func screenLines() -> [(row: Int, text: Substring)]? {
         guard let surface else { return nil }
         let cols = max(Int(ghostty_surface_size(surface).columns), 1)
@@ -1188,4 +1190,12 @@ extension TerminalView: Searchable {
     }
 
     func textForFind(_ done: @escaping (String?) -> Void) { done(selectedText) }
+}
+
+extension TerminalView: Printable {
+    /// The transcript as the terminal has it, history and all, as text.
+    func printOperation() -> NSPrintOperation? {
+        guard let lines = transcriptLines else { return nil }
+        return TextPrint.operation(lines, title: "Terminal", font: TextPrint.codeFont)
+    }
 }

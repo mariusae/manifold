@@ -1241,6 +1241,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return m.debugSidebar
         case let p as MediaView:
             return p.debugPDF(pick.map { "pick \($0)" } ?? "")
+        case let d as DiffView:
+            return d.debugSidebar
+        case let w as WebView:
+            return w.debugSidebar
         default:
             return "no sidebar here"
         }
@@ -1989,6 +1993,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
             return !inboxOrder().isEmpty
+        case #selector(printTile(_:)):
+            return arrangement?.focused.flatMap { views[$0] } is Printable
         case #selector(toggleTileSidebar(_:)):
             guard let v = arrangement?.focused.flatMap({ views[$0] }), v.hasSidebar else { item.title = "Show Outline"; return false }
             item.title = v.sidebarShown ? "Hide Outline" : "Show Outline"
@@ -4970,6 +4976,17 @@ extension MainWindowController: EditorViewDelegate {
     /// An outline's entry clicked: the block's tile goes there — its
     /// terminal to the command's row, its editor or preview to the
     /// heading; with no tile of it shown, one is opened beside the outline.
+    /// ⌘P: the focused tile on paper (or a PDF), as it best prints: a
+    /// text as text, a page as rendered, a PDF's pages, an image.
+    @objc func printTile(_ sender: Any?) {
+        guard let f = arrangement?.focused, let p = views[f] as? Printable, let op = p.printOperation(), let window else { return NSSound.beep() }
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
+    var debugPrintOperation: NSPrintOperation? { (arrangement?.focused.flatMap { views[$0] } as? Printable)?.printOperation() }
+
     /// ⌥⌘S: the focused tile's own sidebar, shown or put away — a
     /// Markdown text's headings, a PDF's contents and pages (§7.5).
     @objc func toggleTileSidebar(_ sender: Any?) {

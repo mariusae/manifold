@@ -289,7 +289,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private var headings: [ScrubMark] = []
     private var headingsWork: DispatchWorkItem?
     /// Whether the text is an outline's kind: Markdown, or a note.
-    private var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
+    fileprivate var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
 
     @objc private func scrolled() {
         updateScrubber()
@@ -915,4 +915,11 @@ final class EditorBanner: NSView {
 
     @objc private func reloadClicked() { onReload?() }
     @objc private func keepClicked() { onKeep?() }
+}
+
+extension EditorView: Printable {
+    /// The text as it is, in the code font (a note's too: its Markdown).
+    func printOperation() -> NSPrintOperation? {
+        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: hasOutline ? .systemFont(ofSize: 10.5) : TextPrint.codeFont)
+    }
 }

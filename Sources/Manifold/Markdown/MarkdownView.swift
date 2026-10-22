@@ -25,6 +25,16 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     weak var delegate: MarkdownViewDelegate?
     private let web: WKWebView
 
+    /// The page for printing, fitted to the paper's width.
+    var webPrint: NSPrintOperation {
+        let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
+        info.isVerticallyCentered = false
+        let op = web.printOperation(with: info)
+        op.view?.frame = web.bounds
+        op.jobTitle = path.isEmpty ? "Note" : path.lastPathComponent
+        return op
+    }
+
     /// A picture of the page as it is now, when it's ready (for a card).
     func snapshot(_ done: @escaping (NSImage?) -> Void) {
         web.takeSnapshot(with: nil) { image, _ in done(image) }
@@ -422,4 +432,9 @@ extension MarkdownView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) {
         web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
+}
+
+extension MarkdownView: Printable {
+    /// The page as rendered.
+    func printOperation() -> NSPrintOperation? { webPrint }
 }

@@ -490,8 +490,17 @@ when you find it again.
   the clipboard at once, the selection pulsing once to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
+- **Every tile prints** (File ▸ Print…, ⌘P), as it best goes on paper:
+  a text or code as text, in its font; a Markdown preview or a web page
+  as rendered; a PDF's pages and an image, fitted; a command's output, a
+  terminal's transcript, a diff's changes and a notebook's cells as
+  text. ⌘C copies an image (or a PDF's selected text) as other views
+  copy theirs, and every tile's menu has Copy Link and, where it has a
+  place, Copy Path and Reveal in Finder.
 - **A tile's own outline**: a Markdown text (in the editor or the
-  preview) and a PDF have a sidebar of their own at the tile's left —
+  preview), a PDF, a diff (its files, each change under them, by the
+  function it's in or its line) and a web page (its headings) have a
+  sidebar of their own at the tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as
