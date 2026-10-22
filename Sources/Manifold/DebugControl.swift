@@ -327,6 +327,12 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "handlers":
+            return CrashGuard.debugHandlers
+        case "crash":
+            // A deliberate crash (a Swift trap), for the crash guard.
+            let nothing: Int? = arg == "never" ? 1 : nil
+            return "\(nothing!)"
         case "agenttest":
             // "agenttest <repo>": an agent running `sleep 600` there; its id.
             guard let wc else { return "no window" }

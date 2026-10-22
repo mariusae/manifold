@@ -11,8 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         signal(SIGPIPE, SIG_IGN)
+        CrashGuard.start()
+        safeMode = CrashGuard.unfinished >= 2 && askSafeMode()
         MemoryWatch.start()
         _ = GhosttyRuntime.shared
+        // After Ghostty's, so ours writes the report and then hands on to it.
+        CrashGuard.armHandler()
         NSApp.mainMenu = makeMainMenu()
         AppearanceWatcher.shared.start()
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
@@ -24,7 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosts.onChange = { [weak self] in self?.stateChanged() }
         host.onVersionMismatch = { [weak self] version in self?.serverIsStale(version) }
         host.connect()
-        hosts.reattachRemembered()
+        // Safe: other hosts left until asked for (one may be what crashed).
+        if !safeMode { hosts.reattachRemembered() }
         hosts.watchNetwork()
         DebugControl.start { [weak self] in self?.windowController }
     }
@@ -39,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let wc = MainWindowController(hosts: hosts)
             windowController = wc
             hosts.onWorkspaceChange = { [weak wc] id, before, events in wc?.noteWorkspaceChange(id, before: before, events: events) }
+            // Safe: a workspace of its own shown, not the one that crashed.
+            if safeMode {
+                let a = host.newArrangement(title: "Safe Mode")
+                hosts.select(a)
+            }
             // The very first time, start with a terminal rather than an empty
             // window.
             if hosts.all.allSatisfy({ $0.desk.order.isEmpty }) && !createdFirst && host.node.blocks.isEmpty {
@@ -47,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             wc.showWindow(nil)
             NSApp.activate()
+            if let report = CrashGuard.lastReport {
+                wc.notice("Manifold quit unexpectedly last time; a report was kept", action: "Show") {
+                    NSWorkspace.shared.activateFileViewerSelecting([report])
+                }
+            } else if safeMode {
+                wc.notice("Started safely: other hosts aren't attached, and a new workspace is shown", action: "OK") {}
+            }
             if !openWhenReady.isEmpty || !linksWhenReady.isEmpty {
                 let paths = openWhenReady, links = linksWhenReady
                 openWhenReady = []
@@ -88,6 +105,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         windowController?.dockMenu()
+    }
+
+    private var safeMode = false
+
+    /// Two launches in a row ended within half a minute: start as usual,
+    /// or safely — a new, empty workspace shown, other hosts not attached.
+    private func askSafeMode() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Manifold quit unexpectedly as it started"
+        alert.informativeText = "It happened \(CrashGuard.unfinished) times in a row. Started safely, Manifold shows a new, empty workspace instead of the last one, and doesn't attach other hosts until you ask; everything is kept. Reports are in ~/Library/Logs/Manifold."
+        alert.addButton(withTitle: "Start Safely")
+        alert.addButton(withTitle: "Start as Usual")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        CrashGuard.launchedFine()
     }
 
     private var askedAboutStaleServer = false

@@ -902,6 +902,19 @@ is migrated into logs on first run.
   driven by a script); with `MANIFOLD_DEBUG` set too, the app listens on
   `$MANIFOLD_DIR/app-debug.sock` for scripted commands (see
   [DebugControl.swift](Sources/Manifold/DebugControl.swift)).
+  `MANIFOLD_NO_NOTIFY` keeps such an instance from posting notifications
+  (it shares the app's identity, and so its permission).
+- **When Manifold crashes**, it leaves word: the system's crash report
+  (in ~/Library/Logs/DiagnosticReports — Ghostty's own reporter, which
+  quit quietly, no longer takes the crash first), and a report of its own
+  in ~/Library/Logs/Manifold — the signal and a backtrace, written from a
+  stack of its own, so a stack overflow is caught too — beside
+  Manifold.log, the app's error output when it isn't started from a
+  terminal (Swift's "Fatal error" says what went wrong). The next launch
+  says a report was kept. If Manifold dies within half a minute of
+  starting twice in a row, it asks to **start safely**: a new, empty
+  workspace shown instead of the last one, and other hosts left until
+  you attach them — everything else as it was.
 
 ## Building
 

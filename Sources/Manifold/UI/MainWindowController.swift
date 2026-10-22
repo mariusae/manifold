@@ -743,6 +743,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugToast: String { toast.debugText ?? "none" }
 
+    /// A word at the window's foot, with a button.
+    func notice(_ text: String, action: String, _ act: @escaping () -> Void) {
+        toast.show(text, action: action, for: 12, act)
+    }
+
     /// Pin or Unpin: the focused block made a root of its own (§4), kept
     /// whatever refers to it.
     @objc func togglePin(_ sender: Any?) {
