@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 42
+public let protocolVersion = 43
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -19,17 +19,10 @@ public enum FrameKind: UInt8, Sendable {
     case resize = 3
     /// Sent by the server after it has replayed a session's recent output.
     case replayDone = 4
-    /// A forwarded port's bytes (§8), either way: a 4-byte big-endian
-    /// tunnel id, then the bytes; none, the tunnel closed.
-    case tunnel = 5
     /// A piece of a bulk frame (`Connection.sendBulk`): a 4-byte bulk id,
     /// a byte that's 1 on the last piece, then the next bytes of the
     /// frame's own encoding.
     case fragment = 6
-    /// A tunnel's bytes taken by the other end (written on to its
-    /// connection there): a 4-byte tunnel id, then a 4-byte count. Each
-    /// end has at most `Frame.tunnelWindow` bytes of a tunnel on the way.
-    case tunnelAck = 7
     /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
     /// op (open, a frame, close, credit), then the op's bytes — for a
     /// frame, the stream's own frame, encoded.
@@ -66,41 +59,6 @@ public struct Frame: Sendable {
         withUnsafeBytes(of: cols.bigEndian) { d.append(contentsOf: $0) }
         withUnsafeBytes(of: rows.bigEndian) { d.append(contentsOf: $0) }
         return Frame(.resize, d)
-    }
-
-    public static func tunnel(_ id: UInt32, _ data: Data) -> Frame {
-        var d = Data(capacity: 4 + data.count)
-        withUnsafeBytes(of: id.bigEndian) { d.append(contentsOf: $0) }
-        d.append(data)
-        return Frame(.tunnel, d)
-    }
-
-    /// Bytes of a tunnel's that may be sent and not yet taken: past it, the
-    /// sending end stops reading its side until the other says it took some.
-    public static let tunnelWindow = 1 << 20
-
-    public static func tunnelAck(_ id: UInt32, _ count: Int) -> Frame {
-        var d = Data(capacity: 8)
-        withUnsafeBytes(of: id.bigEndian) { d.append(contentsOf: $0) }
-        withUnsafeBytes(of: UInt32(clamping: count).bigEndian) { d.append(contentsOf: $0) }
-        return Frame(.tunnelAck, d)
-    }
-
-    /// A tunnel ack's id and count.
-    public var tunnelAck: (id: UInt32, count: Int)? {
-        guard kind == .tunnelAck, payload.count == 8 else { return nil }
-        let b = [UInt8](payload)
-        let id = UInt32(b[0]) << 24 | UInt32(b[1]) << 16 | UInt32(b[2]) << 8 | UInt32(b[3])
-        let n = UInt32(b[4]) << 24 | UInt32(b[5]) << 16 | UInt32(b[6]) << 8 | UInt32(b[7])
-        return (id, Int(n))
-    }
-
-    /// A tunnel frame's id and bytes.
-    public var tunnel: (id: UInt32, data: Data)? {
-        guard kind == .tunnel, payload.count >= 4 else { return nil }
-        let b = [UInt8](payload.prefix(4))
-        let id = UInt32(b[0]) << 24 | UInt32(b[1]) << 16 | UInt32(b[2]) << 8 | UInt32(b[3])
-        return (id, payload.count > 4 ? payload.subdata(in: payload.startIndex + 4..<payload.endIndex) : Data())
     }
 
     public var size: (cols: UInt16, rows: UInt16)? {
@@ -259,9 +217,6 @@ public enum Proposal: Codable, Sendable {
     /// An agent's turn undone: its changes to the working tree applied in
     /// reverse (failing, and saying so, where later work is in the way).
     case undoTurn(agent: BlockID, turn: Int)
-    /// A forwarded port's connection (§8): the host connects to `port` on
-    /// its own loopback, and `tunnel` frames carry the bytes as `id`.
-    case openTunnel(id: Int, port: Int)
     /// A shell notebook made, one empty cell in it, its shell started in
     /// `cwd` (§7.7).
     case newNotebook(block: BlockID, cwd: String?)
@@ -319,6 +274,10 @@ public enum ClientMessage: Codable, Sendable {
     /// An agent's hook (`manifold agent`): what happened in the agent
     /// running in `block`. A connection's one message, with no hello.
     case agent(block: BlockID, AgentEvent)
+    /// A stream's first frame: a forwarded port's connection (§8). The host
+    /// connects to `port` on its own loopback, and `data` frames carry the
+    /// bytes both ways; an empty one says that side is done sending.
+    case tunnel(port: Int)
 }
 
 public struct AttachRequest: Codable, Sendable {

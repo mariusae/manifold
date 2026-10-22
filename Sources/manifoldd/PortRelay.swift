@@ -14,18 +14,14 @@ private func relayConnect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>, _ len: s
 /// One forwarded connection, on the host (§8): a socket to a port on the
 /// host's own loopback — IPv4, else IPv6, as servers bind one or the
 /// other — its bytes handed up as they come, and written as they're sent.
-/// No more than a window of its bytes is on the way to the client at
-/// once: past it, the socket isn't read until the client says it took
-/// some (a fast server and a slow link fill nothing but the socket).
+/// Its stream says when to stop reading (`pause`) and go on (`resume`):
+/// a fast server and a slow link fill nothing but the socket.
 final class PortRelay {
     private let fd: Int32
     private let source: DispatchSourceRead
     private let queue: DispatchQueue
     private let writes = DispatchQueue(label: "manifoldd.relay")
     private var ended = false
-    /// Bytes handed up and not yet taken by the client; reading stopped
-    /// while they're a window's worth.
-    private var unacked = 0
     private var paused = false
     var onData: ((Data) -> Void)?
     var onClose: (() -> Void)?
@@ -77,28 +73,26 @@ final class PortRelay {
     }
 
     private func readAvailable() {
-        var buf = [UInt8](repeating: 0, count: 65536)
+        var buf = [UInt8](repeating: 0, count: Mux.bulkPiece)
         let n = read(fd, &buf, buf.count)
         if n > 0 {
             onData?(Data(buf[0..<n]))
-            unacked += n
-            if unacked >= Frame.tunnelWindow, !paused {
-                paused = true
-                source.suspend()
-            }
         } else if n == 0 || (errno != EAGAIN && errno != EINTR) {
             end()
         }
     }
 
-    /// The client took `count` of the bytes handed up: reading goes on,
-    /// if it had stopped.
-    func acked(_ count: Int) {
-        unacked = max(0, unacked - count)
-        if paused, unacked < Frame.tunnelWindow, !ended {
-            paused = false
-            source.resume()
-        }
+    /// Reading stopped, until `resume`.
+    func pause() {
+        guard !paused, !ended else { return }
+        paused = true
+        source.suspend()
+    }
+
+    func resume() {
+        guard paused, !ended else { return }
+        paused = false
+        source.resume()
     }
 
     /// Written in order, off the server's queue (a slow reader there

@@ -48,7 +48,6 @@ final class Server {
     /// that the clients haven't been sent yet.
     private var notebooks: [BlockID: NotebookShell] = [:]
     /// Forwarded ports' connections (§8), by the client they're for and id.
-    private var relays: [ObjectIdentifier: [UInt32: PortRelay]] = [:]
     private var notebookLive: [BlockID: (cell: String, output: Data)] = [:]
     private var notebookLiveScheduled: Set<BlockID> = []
     /// When each notebook's running cell was last interrupted: asked again
@@ -233,14 +232,15 @@ final class Server {
                 self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
                 self?.appClients.remove(ObjectIdentifier(conn))
                 self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
-                // Its forwarded connections go with it.
-                for relay in self?.relays.removeValue(forKey: ObjectIdentifier(conn))?.values ?? [:].values { relay.onClose = nil; relay.end() }
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots)))
         case .attach(let req)?:
             attach(conn, req)
+        case let .tunnel(port)?:
+            guard let stream = conn as? MuxStream else { return conn.close() }
+            tunnel(stream, to: port)
         case let .agent(block, event)?:
             agentEvent(block, event)
             conn.close()
@@ -252,18 +252,6 @@ final class Server {
     }
 
     private func clientFrame(_ frame: Frame, from conn: any Channel) {
-        // A forwarded port's bytes, on to its connection here; none, the
-        // client's side is done sending.
-        if let (id, data) = frame.tunnel {
-            guard let relay = relays[ObjectIdentifier(conn)]?[id] else { return }
-            if data.isEmpty { relay.finishWriting() } else { relay.write(data) }
-            return
-        }
-        // The client took some of a tunnel's bytes: more may come.
-        if let (id, count) = frame.tunnelAck {
-            relays[ObjectIdentifier(conn)]?[id]?.acked(count)
-            return
-        }
         switch frame.decode(ClientMessage.self) {
         case .ping?:
             conn.send(.message(ServerMessage.pong))
@@ -598,17 +586,6 @@ final class Server {
                 guard let self else { return }
                 self.queue.async { done(error) }
             }
-        case let .openTunnel(tid, port):
-            let key = ObjectIdentifier(conn), id32 = UInt32(truncatingIfNeeded: tid)
-            guard let relay = PortRelay(port: port, queue: queue) else { return done("nothing is listening on port \(port)") }
-            relay.onData = { [unowned conn] data in conn.send(.tunnel(id32, data)) }
-            relay.onWritten = { [unowned conn] count in conn.send(.tunnelAck(id32, count)) }
-            relay.onClose = { [weak self, unowned conn] in
-                self?.relays[key]?.removeValue(forKey: id32)
-                conn.send(.tunnel(id32, Data()))
-            }
-            relays[key, default: [:]][id32] = relay
-            done()
         case let .saveImage(block, data, name, folder):
             // Beside a Markdown file; for a note, in Manifold's own folder.
             // Written off the queue; the block made back on it.
@@ -1237,6 +1214,38 @@ final class Server {
         conn.onFrame = { [weak session, unowned conn] frame in session?.handle(frame, from: conn) }
         conn.onClose = { [weak session, unowned conn] in session?.detach(conn) }
         session.attach(conn, cols: req.cols, rows: req.rows)
+    }
+
+    // MARK: Forwarded ports (§8)
+
+    /// A forwarded port's connection, on its own stream: the host's
+    /// loopback port's bytes up it, and its bytes written there. The
+    /// relay stops reading while the stream has enough on its way, and
+    /// what's written is credited only once it is, so neither side's
+    /// slowness piles up anywhere but in itself.
+    private func tunnel(_ stream: MuxStream, to port: Int) {
+        guard let relay = PortRelay(port: port, queue: queue) else { return stream.close() }
+        stream.manualCredit = true
+        relay.onData = { [weak relay, weak stream] data in
+            guard let stream else { return }
+            stream.send(Frame(.data, data))
+            if !stream.wantsMore { relay?.pause() }
+        }
+        stream.onDrain = { [weak relay] in relay?.resume() }
+        relay.onWritten = { [weak stream] count in stream?.consumed(count + 5) }
+        // The port's side closed: the stream with it (after what it sent).
+        relay.onClose = { [weak stream] in stream?.close() }
+        // The stream keeps the relay, until it closes.
+        stream.onFrame = { frame in
+            guard frame.kind == .data else { return }
+            // Empty: the client's side is done sending; its answer still comes.
+            if frame.payload.isEmpty { relay.finishWriting() } else { relay.write(frame.payload) }
+        }
+        // (Held here too: the stream lets go of its frame handler first.)
+        stream.onClose = {
+            relay.onClose = nil
+            relay.end()
+        }
     }
 
     // MARK: Shell notebooks (§7.7)

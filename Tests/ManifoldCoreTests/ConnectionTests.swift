@@ -62,12 +62,3 @@ private func wait(until done: () -> Bool) {
     // The small one, sent second, isn't held up by all of the first.
     #expect(got.map(\.payload.count) == [second.count, first.count])
 }
-
-@Test func tunnelAcksRoundTrip() {
-    let f = Frame.tunnelAck(7, 65536)
-    var d = FrameDecoder()
-    d.append(f.encoded)
-    let back = try? d.next()
-    #expect(back?.tunnelAck?.id == 7)
-    #expect(back?.tunnelAck?.count == 65536)
-}
