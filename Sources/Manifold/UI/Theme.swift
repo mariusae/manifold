@@ -83,6 +83,7 @@ enum Theme {
         case .search: "magnifyingglass"
         case .diff: "arrow.left.arrow.right"
         case .git: "arrow.triangle.branch"
+        case .smartlog: "arrow.triangle.pull"
         case .process: "cpu"
         case .agent: "sparkles"
         case .card: "rectangle.3.group"
@@ -115,6 +116,7 @@ enum Theme {
         "arrow.up.left.and.arrow.down.right": ["arrow.up.left.and.down.right.magnifyingglass", "arrow.up.and.down"],
         "arrow.down.right.and.arrow.up.left": ["arrow.down.right.and.arrow.up.left.circle", "arrow.up.and.down"],
         "cpu": ["cpu.fill", "memorychip"],
+        "arrow.triangle.pull": ["arrow.triangle.branch"],
         "number": ["number.square", "textformat"],
         "apple.terminal": ["terminal"],
         "text.and.command.macwindow": ["apple.terminal.on.rectangle", "terminal"],

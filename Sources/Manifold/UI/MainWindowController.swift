@@ -504,6 +504,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 t.commands = hosts.block(p.block)?.terminal?.commands ?? []
                 t.resumeIfLinkBack()
             }
+            (v as? SmartlogView)?.refresh()
             if !v.isDead { return v }
             v.removeFromSuperview()
             v.destroy()
@@ -568,6 +569,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             g.delegate = self
             g.source = { [weak self] in self?.hosts.block(p.block) }
             v = g
+        case .smartlog:
+            let s = SmartlogView(placement: p.id, block: p.block)
+            s.delegate = self
+            s.source = { [weak self] in self?.hosts.block(p.block) }
+            s.refresh()
+            // The host's smartlog may have stopped since (a restart): asked for.
+            smartlogStart(s)
+            v = s
         case .notebook:
             let n = NotebookView(placement: p.id, block: p.block)
             n.delegate = self
@@ -1954,7 +1963,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let fwd = ClosureMenuItem("Forward a Port from \(label)…", symbol: "arrow.left.arrow.right") { [weak self] in self?.askForwardPort(host) }
             fwd.isEnabled = c.isConnected
             items.append(fwd)
-            for f in c.forwards.forwards.values.sorted(by: { $0.remote < $1.remote }) {
+            for f in c.forwards.forwards.values.filter({ !$0.hidden }).sorted(by: { $0.remote < $1.remote }) {
                 let local = f.local.map(String.init) ?? "…"
                 let open = ClosureMenuItem("localhost:\(local) → \(label):\(f.remote)", symbol: "network") { [weak self] in
                     self?.openWeb(URL(string: "http://localhost:\(local)/")!, place: .here, here: true)
@@ -3623,6 +3632,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .git:
                 secondary = "git " + (block.path ?? "")
                 detail = "Git, \(block.path?.abbreviatingHome ?? "")"
+            case .smartlog:
+                secondary = "smartlog isl sapling " + (block.path ?? "")
+                detail = "Interactive Smartlog, \(block.path?.abbreviatingHome ?? "")"
             case .diff:
                 secondary = "diff " + (block.path ?? "")
                 detail = "Diff, \(block.path?.deletingLastPathComponent.abbreviatingHome ?? "")"
@@ -4059,6 +4071,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         shown = block
         show(block, lens: .git, .here)
+    }
+
+    /// Interactive Smartlog (⌥⌘I): Sapling's, for the repository the focused
+    /// block is in, as a block of its own (§7.6) — the one there is, else
+    /// a new one; if there's no Sapling there, its tile says why.
+    @objc func showSmartlog(_ sender: Any?) {
+        let on = focusedHost
+        guard let client = hosts.client(on) else { return NSSound.beep() }
+        let path = focusedShown?.path ?? focusedCwd ?? NSHomeDirectory()
+        let block = client.smartlogBlock(for: path)
+        show(block, lens: .smartlog, focusedShown.map { .besideOpener($0.id) } ?? .here, context: "smartlog")
     }
 
     /// Compare with Last Commit: the focused file against HEAD, beside it.
@@ -5689,6 +5712,29 @@ extension MainWindowController: WebViewDelegate {
     func webView(_ view: WebView, open url: URL, over: Bool) {
         open(url.absoluteString, from: view.placement, here: true, over: over)
     }
+}
+
+extension MainWindowController: SmartlogViewDelegate {
+    func smartlogStart(_ view: SmartlogView) {
+        guard let c = hosts.client(view.block.host), let b = hosts.block(view.block), let path = b.path else { return }
+        c.propose(.smartlog(block: view.block, path: path))
+    }
+
+    /// This Mac's as the host gives it; another host's through its port,
+    /// forwarded here (not listed with the forwards asked for).
+    func smartlog(_ view: SmartlogView, localURL url: String, done: @escaping (URL?) -> Void) {
+        guard var parts = URLComponents(string: url), let c = hosts.client(view.block.host) else { return done(nil) }
+        if c.transport.isLocal { return done(parts.url) }
+        guard let port = parts.port else { return done(nil) }
+        c.forwards.forward(port, hidden: true) { local in
+            guard let local else { return done(nil) }
+            parts.host = "localhost"
+            parts.port = local
+            done(parts.url)
+        }
+    }
+
+    func smartlog(_ view: SmartlogView, open url: URL) { NSWorkspace.shared.open(url) }
 }
 
 extension MainWindowController: DirectoryViewDelegate {

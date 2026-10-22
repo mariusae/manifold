@@ -12,6 +12,9 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case search
     case diff
     case git
+    /// Sapling's Interactive Smartlog for a repository (§7.6): the host's
+    /// `sl web`, shown as a block of its own.
+    case smartlog
     case process
     case agent
     /// A terminal command's output, captured as the terminal received it
@@ -34,6 +37,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .search: "Search"
         case .diff: "Diff"
         case .git: "Git"
+        case .smartlog: "Smartlog"
         case .process: "Processes"
         case .agent: "Agent"
         case .output: "Output"
@@ -56,6 +60,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case search
     case diff
     case git
+    case smartlog
     case process
     case agent
     /// An arrangement as a card: its title and a small live picture.
@@ -90,6 +95,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .search: return .search
         case .diff: return .diff
         case .git: return .git
+        case .smartlog: return .smartlog
         case .process: return .process
         case .agent: return .agent
         case .output: return .output
@@ -438,6 +444,16 @@ public struct GitCommit: Codable, Equatable, Sendable {
         self.date = date
         self.summary = summary
     }
+}
+
+/// An Interactive Smartlog block (§7.6): a Sapling repository (the block's
+/// path) and where the host's `sl web` serves its smartlog — a URL on the
+/// host's own loopback — or why it can't.
+public struct SmartlogState: Codable, Equatable, Sendable {
+    public var url: String?
+    public var error: String?
+    public var startedAt: Stamp?
+    public init() {}
 }
 
 /// A git block: a repository (the block's path), its branch, what's
@@ -869,6 +885,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var web: WebState?
     public var search: SearchState?
     public var git: GitState?
+    public var smartlog: SmartlogState?
     public var diff: DiffState?
     public var output: OutputState?
     public var notebook: NotebookState?
@@ -903,6 +920,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .web: web = WebState()
         case .search: search = SearchState()
         case .git: git = GitState()
+        case .smartlog: smartlog = SmartlogState()
         case .diff: diff = DiffState()
         case .output: output = OutputState()
         case .notebook: notebook = NotebookState()
@@ -944,6 +962,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
         if kind == .git, let path { return path.lastPathComponent + (git?.branch.map { " (\($0))" } ?? "") }
+        if kind == .smartlog, let path { return "Smartlog · " + path.lastPathComponent }
         if let subject = diff?.subject {
             switch subject {
             case let .sides(old, new):

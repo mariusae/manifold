@@ -759,6 +759,26 @@ final class Server {
         case let .refreshGit(block):
             refreshGit(block)
             done()
+        case let .smartlog(block, path):
+            // The Sapling repository holding the path (ISL is Sapling's alone).
+            let full = path.expandingTildeInPath
+            let repo = git.repository(of: full)
+            if node.block(block) == nil {
+                append(.create(kind: .smartlog, title: nil, path: repo?.root ?? full), to: .block(block))
+            }
+            guard let repo, repo.vcs == .sapling else {
+                append(.smartlog(url: nil, error: repo.map { "\($0.root.lastPathComponent) is a git repository, not a Sapling one" } ?? "Not in a Sapling repository", at: clock.now()), to: .block(block))
+                return done()
+            }
+            report(block, .working, msg: "Starting Interactive Smartlog")
+            Smartlog.start(in: repo.root) { [weak self] url, error in
+                self?.queue.async {
+                    guard let self, self.node.block(block) != nil else { return }
+                    self.append(.smartlog(url: url, error: error, at: self.clock.now()), to: .block(block))
+                    self.report(block, error == nil ? .done : .error, msg: error ?? "Interactive Smartlog")
+                    done()
+                }
+            }
         case let .diff(block, subject):
             if node.block(block) == nil {
                 let path: String?

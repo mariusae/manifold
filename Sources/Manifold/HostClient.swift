@@ -456,6 +456,19 @@ final class HostClient {
         return id
     }
 
+    /// An Interactive Smartlog block for the repository holding `path`: the
+    /// one there is, its host's smartlog asked for again, else a new one.
+    func smartlogBlock(for path: String, done: ((String?) -> Void)? = nil) -> BlockID {
+        let roots = node.blocks.filter { $0.kind == .smartlog && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
+        if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
+            propose(.smartlog(block: b.id, path: b.path!), done: done)
+            return b.id
+        }
+        let id = BlockID(host: host)
+        propose(.smartlog(block: id, path: path), done: done)
+        return id
+    }
+
     /// A diff block comparing something: the one that already does, reloaded,
     /// else a new one.
     func diffBlock(_ subject: DiffSubject) -> BlockID {

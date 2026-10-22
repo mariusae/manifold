@@ -14,6 +14,8 @@ final class PortForwards {
         let remote: Int
         var local: Int?
         let listener: NWListener
+        /// Made for a block (a smartlog's), not asked for: not listed.
+        var hidden = false
     }
 
     private weak var client: HostClient?
@@ -28,9 +30,12 @@ final class PortForwards {
 
     /// The host's `port` forwarded here; `done` with the port here once
     /// it's listening (nil if it couldn't be).
-    func forward(_ port: Int, done: @escaping (Int?) -> Void) {
+    func forward(_ port: Int, hidden: Bool = false, done: @escaping (Int?) -> Void) {
         if let f = forwards[port], let local = f.local { return done(local) }
-        listen(port, preferring: port, done: done)
+        listen(port, preferring: port) { [weak self] local in
+            if hidden { self?.forwards[port]?.hidden = true }
+            done(local)
+        }
     }
 
     private func listen(_ remote: Int, preferring wanted: Int?, done: @escaping (Int?) -> Void) {

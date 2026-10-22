@@ -661,6 +661,17 @@ when you find it again.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
+- **Interactive Smartlog** (File ▸ Interactive Smartlog, ⌥⌘I): Sapling's
+  own smartlog for the repository the focused block is in — its commits
+  and stacks, to commit, amend, rebase and split by hand — as a block of
+  its own, beside, like any other: the host runs `sl web` (or finds the one
+  running), and the tile shows what it serves, with nothing of a browser
+  about it; a link out of it (a pull request) opens in the browser. On
+  another host it comes through the host's connection; its theme follows
+  the app's. Where there's no Sapling checkout, or no `sl`, the tile says
+  so. The servers look for tools (`git`, `sl`, `rg`, language servers)
+  where they're commonly installed — Homebrew's and Linuxbrew's folders,
+  `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize
   By, ⌥⌘1–3): **Workspaces** — the desk, each workspace named by what it
   holds unless you name it (its blocks' folder, with the branch when a

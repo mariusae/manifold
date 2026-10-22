@@ -240,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Go to Tile or Heading…", #selector(MainWindowController.goToTile(_:)), "\\")
         file.addItem(.separator())
         item(file, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
+        item(file, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "i", [.command, .option])
         item(file, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option])
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")

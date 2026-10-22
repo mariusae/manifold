@@ -38,6 +38,7 @@ struct Shown: Equatable {
         case .search: .search
         case .diff: .diff
         case .git: .git
+        case .smartlog: .smartlog
         case .process: .process
         case .agent: .agent
         case .card: .arrangement

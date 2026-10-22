@@ -74,6 +74,7 @@ case "open":
 case "serve":
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
+    ToolPath.extend()
     var server: Server?
     do {
         server = try Server()

@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 46
+public let protocolVersion = 47
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -166,6 +166,10 @@ public enum Proposal: Codable, Sendable {
     /// refreshed.
     case git(block: BlockID, path: String)
     case refreshGit(block: BlockID)
+    /// An Interactive Smartlog block for the Sapling repository holding
+    /// `path` (made if new): the host's `sl web` started (or the one
+    /// running found), and where it serves said in the block.
+    case smartlog(block: BlockID, path: String)
     /// A diff block (made if new), its texts read.
     case diff(block: BlockID, subject: DiffSubject)
     case reloadDiff(block: BlockID)

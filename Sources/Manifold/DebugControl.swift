@@ -80,6 +80,10 @@ enum DebugControl {
             let start: NSResponder? = wc?.window?.firstResponder ?? wc?.window
             let ok = start?.tryToPerform(sel, with: nil) ?? false
             return ok ? "ok" : "not handled"
+        case "smartlog":
+            // The focused smartlog tile: what it shows.
+            guard let s = wc?.debugFocusedView as? SmartlogView else { return "no smartlog focused" }
+            return s.debugState
         case "screen":
             // What the focused terminal shows, as text.
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
@@ -198,7 +202,12 @@ enum DebugControl {
             var out = ""
             web.evaluateJavaScript(arg) { r, e in out = e.map { "error: \($0.localizedDescription)" } ?? "\(r ?? "")"; done.signal() }
             // Pumped on the main thread: the socket is handled there too.
-            while done.wait(timeout: .now()) != .success { RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02)) }
+            // Five seconds at most: a page that never answers (not loaded) isn't waited on forever.
+            let end = Date().addingTimeInterval(5)
+            while done.wait(timeout: .now()) != .success {
+                guard Date() < end else { return "no answer in 5 s" }
+                RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
+            }
             return out
         case "views":
             // The focused placement's kept lens state.

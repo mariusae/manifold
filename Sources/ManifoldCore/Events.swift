@@ -263,6 +263,8 @@ public enum Event: Codable, Equatable, Sendable {
     /// Which system the repository is under.
     case vcs(VCS)
     case gitRefreshed(branch: String?, status: [GitStatusEntry], log: [GitCommit], ahead: Int, behind: Int, error: String?, at: Stamp)
+    /// Where the host serves a smartlog block's Interactive Smartlog, or why not.
+    case smartlog(url: String?, error: String?, at: Stamp)
 
     // Diff.
     case diffSubject(DiffSubject)
@@ -414,6 +416,12 @@ extension Block {
         if web != nil { web!.apply(event) }
         if search != nil { search!.apply(event) }
         if git != nil { git!.apply(event) }
+        if case let .smartlog(url, error, at) = event {
+            smartlog = SmartlogState()
+            smartlog!.url = url
+            smartlog!.error = error
+            smartlog!.startedAt = at
+        }
         if diff != nil { diff!.apply(event) }
         if case let .output(o) = event { output = o }
         if case let .notebook(edit) = event { notebook?.apply(edit) }
