@@ -25,15 +25,31 @@ if [ ! -d vendor/ghostty ]; then
   git -C vendor/ghostty apply "$root/patches/ghostty.patch"
 fi
 
-# Zig 0.15 can't read the arm64e-only .tbd stubs in the macOS 26+ SDKs, so
-# point its SDK lookups at an older SDK where one is installed (the 15.x
-# SDK from the Command Line Tools); else at whatever xcrun names, and hope.
+# Zig 0.15 can't read the arm64e-only .tbd stubs in the macOS 27 SDKs (and
+# some 26 ones), so point its SDK lookups at an older SDK where one is
+# installed (from the Command Line Tools: a 15.x, else the 26, whose
+# libSystem still names arm64); else at whatever xcrun names, and hope.
 sdk=""
 for candidate in /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk \
-                 /Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk; do
+                 /Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk; do
   if [ -d "$candidate" ]; then sdk=$candidate; break; fi
 done
 [ -n "$sdk" ] || sdk=$(/usr/bin/xcrun --show-sdk-path)
+# An SDK whose system libraries name only arm64e: a copy of it (cloned, so
+# it takes no room) whose .tbd stubs also name arm64, which Zig reads.
+if ! grep -q "arm64-macos" "$sdk/usr/lib/system/libsystem_c.tbd" 2>/dev/null; then
+  shimmed=vendor/sdk-arm64/$(basename "$sdk")
+  if [ ! -f "$shimmed/.manifold-done" ]; then
+    echo "Making $shimmed (its stubs naming arm64 too)"
+    rm -rf "$shimmed"
+    mkdir -p "$(dirname "$shimmed")"
+    cp -c -R "$(cd "$sdk" && pwd -P)" "$shimmed"
+    find "$shimmed" -name '*.tbd' -type f -print0 | xargs -0 perl -0pi -e \
+      's/(targets:\s*\[)([^\]]*)\]/my ($h, $t) = ($1, $2); ($t =~ \/arm64e-macos\/ && $t !~ \/\barm64-macos\/) ? "$h$t, arm64-macos ]" : "$h$t]"/ge'
+    touch "$shimmed/.manifold-done"
+  fi
+  sdk=$PWD/$shimmed
+fi
 echo "SDK: $sdk"
 shim=vendor/xcrun-shim
 mkdir -p "$shim"

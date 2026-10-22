@@ -77,6 +77,10 @@ enum DebugControl {
             let start: NSResponder? = wc?.window?.firstResponder ?? wc?.window
             let ok = start?.tryToPerform(sel, with: nil) ?? false
             return ok ? "ok" : "not handled"
+        case "screen":
+            // What the focused terminal shows, as text.
+            guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
+            return t.visibleText
         case "text":
             guard let t = wc?.debugFocusedTerminal, let s = t.surface else { return "no terminal focused" }
             let text = arg.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\n", with: "\n")

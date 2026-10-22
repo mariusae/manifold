@@ -22,7 +22,12 @@ final class HostClient {
     private(set) var host = HostID.local
     /// What the host calls itself (§8), once it has said.
     private(set) var label: String?
-    private var conn: Connection?
+    /// The control stream of the host's one connection (§8): sent to from
+    /// the main thread, its frames handled there.
+    private var conn: ControlChannel?
+    /// The connection's own thread: frames read and written, streams
+    /// carried (a terminal's straight to it), off the main thread.
+    private lazy var linkQueue = DispatchQueue(label: "manifold.link.\(host.raw)", qos: .userInteractive)
     /// The connection's streams (§8): its own frames are the control
     /// stream; terminals, forwarded ports and files have streams of their own.
     private(set) var mux: Mux?
@@ -200,19 +205,6 @@ final class HostClient {
     /// The server executable: next to ours in the app bundle.
     static var serverExecutable: String {
         Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("manifoldd").path
-    }
-
-    /// The command a terminal runs to attach to a block's shell. Ghostty
-    /// splits commands on spaces, so a path with spaces goes through a symlink.
-    static func attachCommand(block: BlockID) -> String {
-        var exe = serverExecutable
-        if exe.contains(" ") {
-            let link = NSTemporaryDirectory() + "manifoldd-\(getuid())"
-            unlink(link)
-            symlink(exe, link)
-            exe = link
-        }
-        return "direct:\(exe) attach \(block.description)"
     }
 
     // MARK: Reading
@@ -531,7 +523,7 @@ final class HostClient {
         guard case .local = transport else { return reconnectRemote() }
         Paths.ensureDirectory()
         if let fd = try? UnixSocket.connect(path: Paths.socket) {
-            attach(Connection(fd: fd, queue: .main))
+            attach(Connection(fd: fd, queue: linkQueue))
             return
         }
         begin("Starting the server")
@@ -540,7 +532,7 @@ final class HostClient {
         func retry() {
             attempts += 1
             if let fd = try? UnixSocket.connect(path: Paths.socket) {
-                attach(Connection(fd: fd, queue: .main))
+                attach(Connection(fd: fd, queue: linkQueue))
             } else if attempts < 100 || (pid > 0 && kill(pid, 0) == 0) {
                 // As long as the server lives, it's coming: it may be
                 // rewriting its logs first.
@@ -619,7 +611,7 @@ final class HostClient {
     /// Takes a bridge just spawned as the connection.
     func adopt(_ child: Child) {
         self.child = child
-        attach(Connection(fd: child.output, writeFD: child.input, queue: .main))
+        attach(Connection(fd: child.output, writeFD: child.input, queue: linkQueue))
     }
 
     private func reconnectRemote() {
@@ -667,7 +659,7 @@ final class HostClient {
         pingSent = sent
         conn.send(.message(ClientMessage.ping))
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self, self.pingSent == sent, self.conn === conn, !self.busy(conn, within: 5) else { return }
+            guard let self, self.pingSent == sent, self.conn === conn, !self.busy(within: 5) else { return }
             NSLog("host %@: no answer after waking; dropping the connection", self.host.raw)
             self.pingSent = nil
             self.link = .unreachable("not answering")
@@ -686,7 +678,7 @@ final class HostClient {
                 if let sent = self.pingSent, Date().timeIntervalSince(sent) > 12 {
                     // Still busy (a file coming, one going): the pong is
                     // behind it; asked again when it's quiet.
-                    if self.busy(conn, within: 12) { return }
+                    if self.busy(within: 12) { return }
                     NSLog("host %@: no answer to a ping; dropping the connection", self.host.raw)
                     self.pingSent = nil
                     self.link = .unreachable("not answering")
@@ -706,14 +698,17 @@ final class HostClient {
     /// Whether the link is plainly alive without its pong: bytes came in
     /// lately, or what's being sent is still being taken. A big piece
     /// ahead of the pong on a slow link isn't the host gone.
-    private func busy(_ conn: Connection, within seconds: TimeInterval) -> Bool {
+    private func busy(within seconds: TimeInterval) -> Bool {
+        guard let link = mux?.linkState() else { return false }
         let now = Date()
-        return now.timeIntervalSince(conn.lastRead) < seconds || (conn.pending > 0 && now.timeIntervalSince(conn.lastWrite) < seconds)
+        return now.timeIntervalSince(link.lastRead) < seconds || (link.pending > 0 && now.timeIntervalSince(link.lastWrite) < seconds)
     }
 
-    private func attach(_ conn: Connection) {
-        let mux = Mux(conn)
-        mux.control.onFrame = { [weak self] frame in
+    private func attach(_ connection: Connection) {
+        let mux = Mux(connection)
+        let conn = mux.control
+        conn.callbackQueue = .main
+        conn.onFrame = { [weak self] frame in
             guard let self else { return }
             guard let message = frame.decode(ServerMessage.self) else {
                 NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", self.host.raw, frame.kind.rawValue, frame.payload.count)
@@ -724,7 +719,7 @@ final class HostClient {
             }
             self.handle(message)
         }
-        mux.control.onClose = { [weak self] in
+        conn.onClose = { [weak self] in
             guard let self else { return }
             NSLog("host %@: connection closed", self.host.raw)
             self.conn = nil
@@ -763,10 +758,12 @@ final class HostClient {
         }
         // Until the host has answered: what of its answer has come.
         received = 0
-        conn.onRead = { [weak self] n in
-            guard let self, self.link == .connecting else { return }
-            if self.received == 0 { self.begin("Receiving the host's state") }
-            self.received += n
+        connection.onRead = { [weak self] n in
+            DispatchQueue.main.async {
+                guard let self, self.link == .connecting else { return }
+                if self.received == 0 { self.begin("Receiving the host's state") }
+                self.received += n
+            }
         }
         mux.start()
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))

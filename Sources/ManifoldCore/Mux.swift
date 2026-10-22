@@ -29,13 +29,22 @@ extension Connection: Channel {}
 /// queued below us (ssh's window, the sockets' buffers) stays small and
 /// a keystroke isn't left behind megabytes of a file.
 ///
-/// All of it on the connection's queue.
+/// It runs on its connection's queue. `open`, and a stream's or the
+/// control channel's `send`, `close` and `consumed`, may be called from
+/// any thread: they go to the queue, in the order made. A stream's (or
+/// the control channel's) handlers run on its `callbackQueue` if it has
+/// one, else on the queue; set them before its first `send`.
 public final class Mux {
     public static let window = 1 << 20
     /// The most a bulk stream's frame carries, so frames interleave.
     public static let bulkPiece = 64 << 10
 
     public let connection: Connection
+    public var queue: DispatchQueue { connection.queue }
+    /// The queue's own mark, to know when we're on it.
+    private let token: QueueToken
+    private static let queueKey = DispatchSpecificKey<QueueToken>()
+    private let lock = NSLock()
     /// The control stream: frames on the connection itself.
     public let control: ControlChannel
     /// A stream the other end opened (the server's side).
@@ -67,6 +76,12 @@ public final class Mux {
 
     public init(_ connection: Connection) {
         self.connection = connection
+        if let t = connection.queue.getSpecific(key: Self.queueKey) {
+            token = t
+        } else {
+            token = QueueToken()
+            connection.queue.setSpecific(key: Self.queueKey, value: token)
+        }
         control = ControlChannel()
         control.mux = self
         connection.onFrame = { [weak self] frame in self?.received(frame) }
@@ -82,22 +97,41 @@ public final class Mux {
         connection.start()
     }
 
-    /// A new stream (the client's side): `bulk` ones paced.
-    public func open(bulk: Bool) -> MuxStream {
+    /// On the queue: now if we're there, else as soon as it gets to it.
+    func onQueue(_ work: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: Self.queueKey) === token { work() } else { queue.async(execute: work) }
+    }
+
+    /// Now, on the queue (waiting for it if we're elsewhere).
+    func onQueueNow<T>(_ work: () -> T) -> T {
+        DispatchQueue.getSpecific(key: Self.queueKey) === token ? work() : queue.sync(execute: work)
+    }
+
+    /// A new stream (the client's side): `bulk` ones paced; handlers run
+    /// on `callbackQueue` (nil: the mux's queue).
+    public func open(bulk: Bool, callbackQueue: DispatchQueue? = nil) -> MuxStream {
+        lock.lock()
         let id = nextID
         nextID &+= 1
+        lock.unlock()
         let s = MuxStream(id: id, bulk: bulk, mux: self)
-        if connection.isClosed {
-            s.peerClosed()
-            return s
+        s.callbackQueue = callbackQueue
+        onQueue { [self] in
+            if connection.isClosed { return s.peerClosed() }
+            streams[id] = s
+            sendOp(id, .open, Data([bulk ? 1 : 0]))
         }
-        streams[id] = s
-        sendOp(id, .open, Data([bulk ? 1 : 0]))
         return s
     }
 
-    /// Bytes waiting to be written, every stream's.
-    public var pending: Int { connection.pending + ready.reduce(0) { $0 + $1.queued } }
+    /// Closes the connection (from anywhere).
+    public func close() { onQueue { [connection] in connection.close() } }
+
+    /// How the link stands (from anywhere): when bytes last came in and
+    /// went out, and how many wait to go.
+    public func linkState() -> (lastRead: Date, lastWrite: Date, pending: Int) {
+        onQueueNow { (connection.lastRead, connection.lastWrite, connection.pending + ready.reduce(0) { $0 + $1.queued }) }
+    }
 
     // MARK: The wire
 
@@ -127,7 +161,7 @@ public final class Mux {
             guard frame.payload.count == 8 else { return }
             acked(frame.payload.reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
         default:
-            control.onFrame?(frame)
+            control.deliver(frame)
         }
     }
 
@@ -258,28 +292,41 @@ public final class Mux {
         sendOp(s.id, .close, Data())
     }
 
-    /// Debugging: the pacing's state.
-    public var debugPacing: String {
+    /// Debugging: the pacing's state (from anywhere).
+    public var debugPacing: String { onQueueNow { pacing } }
+
+    private var pacing: String {
         let rtt = minRTT.map { String(format: "%.1f ms", $0.rtt * 1000) } ?? "?"
         let rate = rates.map(\.rate).max().map { String(format: "%.0f KB/s", $0 / 1024) } ?? "?"
         return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), rate \(rate), streams \(streams.count)"
     }
 }
 
+final class QueueToken {}
+
 /// The control stream: the connection's own frames.
 public final class ControlChannel: Channel {
     fileprivate weak var mux: Mux?
     public var onFrame: ((Frame) -> Void)?
     public var onClose: (() -> Void)?
-    public var isClosed: Bool { mux?.connection.isClosed ?? true }
-    public func send(_ frame: Frame) { mux?.connection.send(frame) }
-    public func close() { mux?.connection.close() }
+    /// Where its handlers run (nil: the mux's queue).
+    public var callbackQueue: DispatchQueue?
+    public var isClosed: Bool { mux?.onQueueNow { mux?.connection.isClosed ?? true } ?? true }
+    public func send(_ frame: Frame) { mux?.onQueue { [weak mux] in mux?.connection.send(frame) } }
+    public func close() { mux?.close() }
+
+    fileprivate func deliver(_ frame: Frame) {
+        if let q = callbackQueue { q.async { [self] in onFrame?(frame) } } else { onFrame?(frame) }
+    }
 
     fileprivate func closed() {
-        let f = onClose
-        onClose = nil
-        onFrame = nil
-        f?()
+        let go = { [self] in
+            let f = onClose
+            onClose = nil
+            onFrame = nil
+            f?()
+        }
+        if let q = callbackQueue { q.async(execute: go) } else { go() }
     }
 }
 
@@ -294,15 +341,22 @@ public final class MuxStream: Channel {
     /// Told when what was sent has gone and the window is open again: a
     /// producer that waited (`wantsMore` false) goes on.
     public var onDrain: (() -> Void)?
-    public private(set) var isClosed = false
+    /// Where its handlers run (nil: the mux's queue).
+    public var callbackQueue: DispatchQueue?
+    /// Taken by the consumer as it chooses (`consumed`), not on delivery.
+    public var manualCredit = false
 
+    /// Read from anywhere, under the lock: how much waits to go, and
+    /// whether it's done (closed, or closing).
+    private let lock = NSLock()
+    private var _queued = 0
+    private var _closed = false
+    private var _closing = false
+
+    // On the mux's queue:
     /// What may be sent before the other end gives credit.
     private var window = Mux.window
     private var outbox: [Data] = []
-    private(set) var queued = 0
-    private var closing = false
-    /// Taken by the consumer as it chooses (`consumed`), not on delivery.
-    public var manualCredit = false
     private var uncredited = 0
 
     init(id: UInt32, bulk: Bool, mux: Mux) {
@@ -311,33 +365,48 @@ public final class MuxStream: Channel {
         self.mux = mux
     }
 
+    public var isClosed: Bool { lock.withLock { _closed } }
+    var queued: Int { lock.withLock { _queued } }
+
     /// Whether a producer should send more now: little waiting.
-    public var wantsMore: Bool { !isClosed && queued < Mux.window / 2 }
+    public var wantsMore: Bool { lock.withLock { !_closed && !_closing && _queued < Mux.window / 2 } }
 
     public func send(_ frame: Frame) {
-        guard !isClosed, !closing else { return }
         let data = frame.encoded
-        outbox.append(data)
-        queued += data.count
-        mux?.pump(self)
+        let ok: Bool = lock.withLock {
+            guard !_closed, !_closing else { return false }
+            _queued += data.count
+            return true
+        }
+        guard ok, let mux else { return }
+        mux.onQueue { [self] in
+            outbox.append(data)
+            self.mux?.pump(self)
+        }
     }
 
     /// Closed once what was sent before has gone.
     public func close() {
-        guard !isClosed, !closing else { return }
-        closing = true
-        finishClose()
+        let first: Bool = lock.withLock {
+            guard !_closed, !_closing else { return false }
+            _closing = true
+            return true
+        }
+        guard first else { return }
+        mux?.onQueue { [self] in finishClose() }
     }
 
     /// The consumer took `n` bytes (with `manualCredit`): the other end may
     /// send as much again.
     public func consumed(_ n: Int) {
-        guard !isClosed else { return }
-        uncredited += n
-        // In batches, not a credit per frame.
-        if uncredited >= Mux.window / 8 {
-            mux?.sendCredit(self, uncredited)
-            uncredited = 0
+        mux?.onQueue { [self] in
+            guard !isClosed else { return }
+            uncredited += n
+            // In batches, not a credit per frame.
+            if uncredited >= Mux.window / 8 {
+                mux?.sendCredit(self, uncredited)
+                uncredited = 0
+            }
         }
     }
 
@@ -349,30 +418,50 @@ public final class MuxStream: Channel {
     func next() -> Data? {
         guard hasNext else { return nil }
         let d = outbox.removeFirst()
-        queued -= d.count
+        lock.withLock { _queued -= d.count }
         window -= d.count
         return d
     }
 
+    private func onCallbacks(_ work: @escaping () -> Void) {
+        if let q = callbackQueue { q.async(execute: work) } else { work() }
+    }
+
     func drainedIfEmpty() {
-        if closing { return finishClose() }
-        if wantsMore { onDrain?() }
+        if lock.withLock({ _closing }) { return finishClose() }
+        if wantsMore, onDrain != nil { onCallbacks { [self] in onDrain?() } }
     }
 
     private func finishClose() {
-        guard outbox.isEmpty, !isClosed else { return }
-        isClosed = true
+        guard outbox.isEmpty else { return }
+        let first: Bool = lock.withLock {
+            guard !_closed else { return false }
+            _closed = true
+            return true
+        }
+        guard first else { return }
         mux?.sendClose(self)
-        let f = onClose
-        onClose = nil
-        onFrame = nil
-        onDrain = nil
-        f?()
+        onCallbacks { [self] in
+            let f = onClose
+            onClose = nil
+            onFrame = nil
+            onDrain = nil
+            f?()
+        }
     }
 
     func delivered(_ frame: Frame, size: Int) {
-        onFrame?(frame)
-        if !manualCredit { consumed(size) }
+        if callbackQueue == nil {
+            onFrame?(frame)
+            if !manualCredit { consumed(size) }
+        } else {
+            onCallbacks { [self] in
+                onFrame?(frame)
+                // Taken once its handler has had it: a consumer slower than
+                // the link holds the sender back, not its own memory.
+                if !manualCredit { consumed(size) }
+            }
+        }
     }
 
     func credited(_ n: Int) {
@@ -381,14 +470,20 @@ public final class MuxStream: Channel {
     }
 
     func peerClosed() {
-        guard !isClosed else { return }
-        isClosed = true
+        let first: Bool = lock.withLock {
+            guard !_closed else { return false }
+            _closed = true
+            _queued = 0
+            return true
+        }
+        guard first else { return }
         outbox = []
-        queued = 0
-        let f = onClose
-        onClose = nil
-        onFrame = nil
-        onDrain = nil
-        f?()
+        onCallbacks { [self] in
+            let f = onClose
+            onClose = nil
+            onFrame = nil
+            onDrain = nil
+            f?()
+        }
     }
 }

@@ -40,8 +40,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     var focusView: NSView { self }
     /// A surface can't be made while no display is awake; one that failed
-    /// is made again after a moment.
-    var isDead: Bool { surface == nil && Date().timeIntervalSince(created) >= 2 }
+    /// is made again after a moment. One whose host went away keeps what it
+    /// showed until the host is back, then is made again (and attaches anew).
+    var isDead: Bool { (surface == nil && Date().timeIntervalSince(created) >= 2) || (linkLost && link.linkUp) }
+
+    /// Its stream to the shell (§8).
+    let link: TerminalLink
+    /// The stream closed while the host was away.
+    private var linkLost = false
 
     private var markedText = NSMutableAttributedString()
     private var keyTextAccumulator: [String]?
@@ -54,9 +60,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return Unmanaged<TerminalView>.fromOpaque(userdata).takeUnretainedValue()
     }
 
-    init(placement: PlacementID, block: BlockID, command: String) {
+    init(placement: PlacementID, block: BlockID, client: HostClient?) {
         self.placement = placement
         self.block = block
+        link = TerminalLink(block: block, client: client)
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
         registerForDraggedTypes([.fileURL, .string])
@@ -68,22 +75,41 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         config.userdata = Unmanaged.passUnretained(self).toOpaque()
         config.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2)
         config.context = GHOSTTY_SURFACE_CONTEXT_TAB
-        surface = command.withCString { cmd in
-            config.command = cmd
-            return ghostty_surface_new(GhosttyRuntime.shared.app, &config)
+        // No command, no pty: the bytes come and go on the link (from
+        // Ghostty's own threads).
+        config.io_write = { userdata, bytes, count in
+            guard let bytes, let view = TerminalView.from(userdata) else { return }
+            view.link.typed(Data(bytes: bytes, count: Int(count)))
         }
-        if surface == nil { NSLog("manifold: could not create a terminal surface for %@", block.description) }
+        config.io_resize = { userdata, cols, rows, _, _ in
+            TerminalView.from(userdata)?.link.resized(cols: cols, rows: rows)
+        }
+        surface = ghostty_surface_new(GhosttyRuntime.shared.app, &config)
+        if let surface {
+            link.start(surface)
+        } else {
+            NSLog("manifold: could not create a terminal surface for %@", block.description)
+        }
+        link.onClosed = { [weak self] in self?.linkClosed() }
+    }
+
+    /// The stream closed: the shell ended (or the server let it go), and
+    /// the tile closes, to be made again; or the host went, and what it
+    /// shows stays until the host is back.
+    private func linkClosed() {
+        if link.linkUp { surfaceClosed() } else { linkLost = true }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Frees the surface, which hangs up on the attach helper; the session
-    /// itself lives on in the server.
+    /// Frees the surface, and closes its stream; the session itself lives
+    /// on in the server.
     func destroy() {
         finder.hide()
         scrubber.removeFromSuperview()
         tip.removeFromSuperview()
         locateWork?.cancel()
+        link.stop()
         guard let surface else { return }
         self.surface = nil
         ghostty_surface_free(surface)

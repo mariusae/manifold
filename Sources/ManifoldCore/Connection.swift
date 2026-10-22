@@ -19,7 +19,7 @@ public final class Connection {
     public let fd: Int32
     /// ...and written to here (the same, for a socket).
     public let writeFD: Int32
-    private let queue: DispatchQueue
+    public let queue: DispatchQueue
     private let readSource: DispatchSourceRead
     private var writeSource: DispatchSourceWrite?
     private var writeSourceActive = false

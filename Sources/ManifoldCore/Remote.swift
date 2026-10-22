@@ -104,7 +104,7 @@ public struct RemoteProvider: Codable, Equatable, Sendable, Identifiable {
 
 /// Where each remote host attached from this machine is reached, and the
 /// providers that reach them, kept in the local directory for the app,
-/// the attach helper and the command.
+/// `manifoldd attach` and the command.
 public struct HostsFile: Codable {
     /// By session id.
     public var hosts: [String: HostEntry] = [:]

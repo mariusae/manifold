@@ -6,14 +6,15 @@ import Foundation
 /// every client that default back, so the app asks for it to be restarted.
 public let protocolVersion = 44
 
-/// The app and the attach helper both talk to the server over its Unix
+/// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
-/// the payload. The first frame on a connection says which kind it is: a
-/// `hello` (the app) or an `attach` (a terminal's byte stream).
+/// the payload. The first frame on a connection, or on one of its streams
+/// (`Mux`), says what it is: a `hello` (the app), an `attach` (a terminal),
+/// a `tunnel`, a file.
 public enum FrameKind: UInt8, Sendable {
     /// A `ClientMessage` or `ServerMessage`, as `Codec` encodes it.
     case message = 1
-    /// Terminal bytes: input from the attach helper, output from the server.
+    /// Terminal bytes: what's typed, from the app; output, from the server.
     case data = 2
     /// A terminal size: cols then rows, 2 bytes each, big-endian.
     case resize = 3

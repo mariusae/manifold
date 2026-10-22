@@ -498,7 +498,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let v: PaneContent
         switch p.lens {
         case .terminal, .agent:
-            let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
+            let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(p.block.host))
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
             t.readingPassword = SecureInput.shared.reading.contains(p.block)

@@ -340,9 +340,14 @@ when you find it again.
 
 ## Blocks
 
-- **Terminals** run `manifoldd attach <block>`, which connects them to a
+- **Terminals** are streams of their host's one connection, attached to a
   shell the server owns, so quitting and reopening the app brings every
-  terminal back with the same processes still running. A terminal's
+  terminal back with the same processes still running. Ghostty runs in
+  the app with no pty or process of its own: what the shell prints goes
+  straight into it, off the main thread, and what's typed goes up the
+  stream. A terminal whose host goes away keeps what it showed, and
+  attaches again when the host is back; a remote host is one ssh session
+  however many terminals it has. A terminal's
   menu (right-click) has, under Copy, Paste and Clear, the tree of what
   runs under its shell, the shell first, each process a submenu of End,
   Force End and what runs under it.
@@ -1021,5 +1026,9 @@ swift test
 Ghostty is pinned to v1.3.1 with [a small patch](patches/ghostty.patch): Metal
 shaders compile at runtime (no Metal toolchain needed), archives are merged in
 a way Apple's current `libtool` accepts, a surface can run a command
-directly (without `login(1)`), which the attach helper needs, and the
-contrast correction above.
+directly (without `login(1)`), a surface can have its bytes carried by the
+app (a "manual" I/O backend: no pty, no process — output fed in, typing and
+sizes handed out), which is how terminals reach their hosts, and the
+contrast correction above. Zig 0.15 can't read the stubs of the newest
+macOS SDKs, so `scripts/build-ghostty.sh` builds against a cloned copy of
+the SDK whose stubs also name arm64.
