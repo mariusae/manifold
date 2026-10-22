@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldCore
+import UniformTypeIdentifiers
 
 protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool)
@@ -15,6 +16,21 @@ protocol DirectoryViewDelegate: AnyObject {
     /// An entry dragged with ⇧: its block (made if need be), as the link
     /// a note takes, `[title](manifold:id)`; nil for a file no block shows.
     func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String?
+    /// Files dropped on the folder — this Mac's, or a folder tile's entries
+    /// on any host — put in `folder`, on the block's host.
+    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String)
+    /// An entry of another host's dragged out to another app: brought to
+    /// `url` on this Mac.
+    func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void)
+    /// An entry right-clicked: what can be done with it.
+    func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu?
+}
+
+/// What's dropped on a folder's tile: a file or folder of this Mac's, or
+/// an entry of a folder's tile, on its host.
+enum DroppedItem {
+    case local(URL)
+    case entry(host: HostID, path: String, isDirectory: Bool)
 }
 
 /// What each way of showing a folder does (§7.4).
@@ -113,6 +129,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         footer.alignment = .center
         footer.isHidden = true
         addSubview(footer)
+        registerForDraggedTypes([.fileURL, .manifoldPath])
         documentChanged()
     }
 
@@ -255,6 +272,72 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     func pasteboardItem(for node: BrowserNode) -> NSPasteboardItem {
         pasteboardItem(for: node, mods: NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags)
     }
+
+    /// What dragging an entry writes: on this Mac, its item (the file's URL
+    /// in it); on another host, the same carried by a promise of the file,
+    /// so the Finder or Mail can have it — fetched when it's dropped there.
+    func pasteboardWriter(for node: BrowserNode) -> NSPasteboardWriting {
+        let item = pasteboardItem(for: node)
+        guard delegate?.directoryViewIsLocal(self) == false, item.types.contains(.string) else { return item }
+        let type = node.isDirectory ? UTType.folder : (UTType(filenameExtension: node.name.pathExtension) ?? .data)
+        let promise = EntryPromise(fileType: type.identifier, delegate: promiseKeeper)
+        promise.userInfo = node
+        promise.extra = item
+        return promise
+    }
+
+    private lazy var promiseKeeper = PromiseKeeper(view: self)
+
+    // MARK: Drops on the folder
+
+    /// The folder taking a drop: outlined in the accent, as the Finder does.
+    private var dropping = false {
+        didSet {
+            guard dropping != oldValue else { return }
+            layer?.borderWidth = dropping ? 2.5 : 0
+            layer?.borderColor = Theme.accent.cgColor
+        }
+    }
+
+    /// What's dragged, as it would land here: none of what's already in
+    /// this folder (an entry dragged within its own listing).
+    private func dropped(_ pb: NSPasteboard) -> [DroppedItem] {
+        guard let model else { return [] }
+        let entries: [DroppedItem] = (pb.pasteboardItems ?? []).compactMap { item in
+            let f = item.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) ?? []
+            guard f.count == 3 else { return nil }
+            let host = HostID(String(f[0])), path = String(f[1])
+            if host == block.host, path.deletingLastPathComponent == model.root || path == model.root { return nil }
+            return .entry(host: host, path: path, isDirectory: f[2] == "d")
+        }
+        if !entries.isEmpty || pb.types?.contains(.manifoldPath) == true { return entries }
+        // A link alone (⌥⇧) or a tile's path isn't a file to put here.
+        if pb.types?.contains(.manifoldLinkOnly) == true || pb.types?.contains(.manifoldBlockLink) == true { return [] }
+        let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let local = delegate?.directoryViewIsLocal(self) == true
+        return urls.filter { !(local && $0.deletingLastPathComponent().standardizedFileURL.path == model.root) }.map { .local($0) }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropping = !dropped(sender.draggingPasteboard).isEmpty
+        return dropping ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { dropping = false }
+    override func draggingEnded(_ sender: NSDraggingInfo) { dropping = false }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        dropping = false
+        let items = dropped(sender.draggingPasteboard)
+        guard !items.isEmpty, let root = model?.root else { return false }
+        delegate?.directoryView(self, receive: items, into: root)
+        return true
+    }
+
+    /// An entry right-clicked, by its path.
+    func menu(for node: BrowserNode) -> NSMenu? { delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory) }
 
     func pasteboardItem(for node: BrowserNode, mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
         let item = NSPasteboardItem()
@@ -632,4 +715,46 @@ extension NSImage {
         out.isTemplate = false
         return out
     }
+}
+
+/// A promise of another host's file or folder, carrying the entry's own
+/// drag (its path, its block's link) too, for drops in Manifold.
+final class EntryPromise: NSFilePromiseProvider {
+    var extra: NSPasteboardItem?
+
+    override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        super.writableTypes(for: pasteboard) + (extra?.types ?? [])
+    }
+
+    override func writingOptions(forType type: NSPasteboard.PasteboardType, pasteboard: NSPasteboard) -> NSPasteboard.WritingOptions {
+        extra?.types.contains(type) == true ? [] : super.writingOptions(forType: type, pasteboard: pasteboard)
+    }
+
+    override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        if let extra, extra.types.contains(type) { return extra.string(forType: type) }
+        return super.pasteboardPropertyList(forType: type)
+    }
+}
+
+/// Keeps a folder tile's promises: the file named, and fetched from the
+/// host when the Finder (or whatever took it) asks for it.
+final class PromiseKeeper: NSObject, NSFilePromiseProviderDelegate {
+    private weak var view: DirectoryView?
+    init(view: DirectoryView) { self.view = view }
+
+    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+        (provider.userInfo as? BrowserNode)?.name ?? "file"
+    }
+
+    func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void) {
+        guard let node = provider.userInfo as? BrowserNode, let view, let delegate = view.delegate else {
+            return completionHandler(CocoaError(.fileWriteUnknown))
+        }
+        delegate.directoryView(view, download: node.path, isDirectory: node.isDirectory, to: url) { error in
+            completionHandler(error.map { NSError(domain: "Manifold", code: 1, userInfo: [NSLocalizedDescriptionKey: $0]) })
+        }
+    }
+
+    /// Fetched on the main queue, where the host's answers come.
+    func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { .main }
 }

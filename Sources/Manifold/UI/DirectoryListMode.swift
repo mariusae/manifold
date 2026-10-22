@@ -5,7 +5,7 @@ import ManifoldCore
 /// by any of them (folders kept on top), each folder opening in place into
 /// what's in it — the tree under the root — and, under a filter, open on
 /// the way to each match. Which folders are open is kept with the tile.
-final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
     private let scroll = NSScrollView()
@@ -49,6 +49,9 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
         outline.backgroundColor = .clear
         outline.target = self
         outline.doubleAction = #selector(doubleClicked)
+        // An entry right-clicked: its menu, made then.
+        outline.menu = NSMenu()
+        outline.menu?.delegate = self
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         outline.sortDescriptors = [NSSortDescriptor(key: model.sortKey.rawValue, ascending: model.ascending)]
@@ -107,8 +110,14 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard outline.clickedRow >= 0, let node = outline.item(atRow: outline.clickedRow) as? BrowserNode, let m = owner.menu(for: node) else { return }
+        for item in m.items { m.removeItem(item); menu.addItem(item) }
+    }
+
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        (item as? BrowserNode).map(owner.pasteboardItem)
+        (item as? BrowserNode).map(owner.pasteboardWriter)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {

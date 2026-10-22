@@ -519,6 +519,44 @@ final class Server {
                 let tree = readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
                 self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false))) }
             }
+        case let .readRange(path, offset, length):
+            DispatchQueue.global(qos: .userInitiated).async {
+                var data: Data?
+                if let h = FileHandle(forReadingAtPath: path) {
+                    try? h.seek(toOffset: UInt64(max(offset, 0)))
+                    data = (try? h.read(upToCount: max(length, 0))) ?? Data()
+                    try? h.close()
+                }
+                conn.send(.message(ServerMessage.bytes(id: id, data)))
+            }
+        case let .writePath(path, data, mode):
+            let url = URL(fileURLWithPath: path)
+            let fm = FileManager.default
+            do {
+                try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                switch mode {
+                case .create:
+                    if fm.fileExists(atPath: path) { return done("exists") }
+                    try data.write(to: url)
+                case .replace:
+                    try data.write(to: url, options: .atomic)
+                case .append:
+                    let h = try FileHandle(forWritingTo: url)
+                    try h.seekToEnd()
+                    try h.write(contentsOf: data)
+                    try h.close()
+                }
+                done()
+            } catch {
+                done(error.localizedDescription)
+            }
+        case let .makeFolder(path):
+            do {
+                try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+                done()
+            } catch {
+                done(error.localizedDescription)
+            }
         case let .readPath(path, limit):
             let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
             let data = size.map { $0 <= Int64(limit) } == true ? try? Data(contentsOf: URL(fileURLWithPath: path)) : nil

@@ -5,7 +5,7 @@ import ManifoldCore
 /// Quick Look's view of it, with its name, kind, size and date — over a
 /// strip of thumbnails of the folder's files (under a filter, of every
 /// file that matched), ← and → going along it.
-final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSCollectionViewDataSource, NSCollectionViewDelegate {
+final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSCollectionViewDataSource, NSCollectionViewDelegate, NSMenuDelegate {
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
     private let preview = FilePreviewView()
@@ -42,6 +42,8 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
         strip.allowsEmptySelection = true
         strip.backgroundColors = [.clear]
         strip.dataSource = self
+        strip.menu = NSMenu()
+        strip.menu?.delegate = self
         strip.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         strip.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         strip.delegate = self
@@ -83,10 +85,18 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionMoved() }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let window = strip.window,
+              let i = strip.indexPathForItem(at: strip.convert(window.mouseLocationOutsideOfEventStream, from: nil))?.item,
+              items.indices.contains(i), let m = owner.menu(for: items[i]) else { return }
+        for item in m.items { m.removeItem(item); menu.addItem(item) }
+    }
+
     func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool { true }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        items.indices.contains(indexPath.item) ? owner.pasteboardItem(for: items[indexPath.item]) : nil
+        items.indices.contains(indexPath.item) ? owner.pasteboardWriter(for: items[indexPath.item]) : nil
     }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionMoved() }
 

@@ -4,7 +4,7 @@ import ManifoldCore
 /// A folder as columns (§7.4), as the Finder's: each folder chosen opens
 /// in the next column, and a file chosen is previewed in the last — Quick
 /// Look's view of it, its name, kind, size and date.
-final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrowserDelegate {
+final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrowserDelegate, NSMenuDelegate {
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
     private let browser = NSBrowser()
@@ -34,6 +34,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
         browser.action = #selector(chosen)
         browser.doubleAction = #selector(doubleClicked)
         browser.cellPrototype = BrowserCell()
+        browser.menu = NSMenu()
+        browser.menu?.delegate = self
         browser.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         browser.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         addSubview(browser)
@@ -70,6 +72,13 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
     func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? { (item as? BrowserNode)?.name }
 
     func browser(_ browser: NSBrowser, canDragRowsWith rowIndexes: IndexSet, inColumn column: Int, with event: NSEvent) -> Bool { true }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard browser.clickedColumn >= 0, browser.clickedRow >= 0,
+              let node = browser.item(atRow: browser.clickedRow, inColumn: browser.clickedColumn) as? BrowserNode, let m = owner.menu(for: node) else { return }
+        for item in m.items { m.removeItem(item); menu.addItem(item) }
+    }
 
     func browser(_ browser: NSBrowser, writeRowsWith rowIndexes: IndexSet, inColumn column: Int, to pasteboard: NSPasteboard) -> Bool {
         let nodes = rowIndexes.compactMap { browser.item(atRow: $0, inColumn: column) as? BrowserNode }

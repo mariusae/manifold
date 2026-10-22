@@ -434,6 +434,18 @@ when you find it again.
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
   preview).
+- **Files cross between hosts** as they would between folders: drop
+  files from the Finder (or entries from another folder's tile, another
+  host's too) on a folder's tile and they're copied into it, there —
+  what's there already asked about before it's replaced; drop this
+  Mac's files on another host's terminal and they're sent to its
+  shell's folder (a name of their own if one's taken) and their paths
+  there typed. Drag another host's entry to the Finder, the Desktop or
+  Mail and it's fetched there. Right-click an entry (or a file tile's
+  menu) for **Open With** — on another host, **Open Locally With**: a
+  copy opened by the app here, sent back each time it's saved — and
+  **Download**, to Downloads. Files go in four-megabyte pieces, so a
+  big one isn't held all at once.
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does

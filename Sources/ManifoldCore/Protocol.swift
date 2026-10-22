@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 33
+public let protocolVersion = 34
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -181,6 +181,15 @@ public enum Proposal: Codable, Sendable {
     /// A file's bytes by its path, `limit` at most, answered with `bytes`
     /// (nil when it's bigger, or unreadable).
     case readPath(path: String, limit: Int)
+    /// A file's bytes from `offset`, `length` at most (fewer at its end),
+    /// answered with `bytes`: a big file fetched in pieces.
+    case readRange(path: String, offset: Int64, length: Int)
+    /// Bytes written to a path (a file dropped on a folder, sent back from
+    /// an app on this Mac), the folders on the way made; `mode` says
+    /// whether it may be there already, or is being added to.
+    case writePath(path: String, data: Data, mode: WriteMode)
+    /// A folder made, with those on the way.
+    case makeFolder(path: String)
     /// A shell notebook made, one empty cell in it, its shell started in
     /// `cwd` (§7.7).
     case newNotebook(block: BlockID, cwd: String?)
@@ -195,6 +204,12 @@ public enum Proposal: Codable, Sendable {
     case restartNotebook(block: BlockID)
     /// The notebook's shell started if it isn't running.
     case startNotebook(block: BlockID)
+}
+
+/// How `writePath` writes: a new file (failing if one is there), over
+/// whatever is there, or onto the end of what a previous piece wrote.
+public enum WriteMode: String, Codable, Sendable {
+    case create, replace, append
 }
 
 /// What a host asks the leader of a shard to append.

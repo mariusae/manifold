@@ -327,6 +327,24 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "copyinto":
+            // "copyinto <folder> <local path>…": as if dropped on the folder (this host).
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count >= 2 else { return "usage: copyinto <folder> <path>…" }
+            wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: a[0], on: wc.hosts.local.host)
+            return "copying"
+        case "fetch":
+            // "fetch <remote path> <local path>": in pieces, from this host's server.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count == 2 else { return "usage: fetch <remote> <local>" }
+            Transfer.download(a[0], isDirectory: false, on: wc.hosts.local, to: URL(fileURLWithPath: a[1])) { e in NSLog("fetch: %@", e ?? "ok") }
+            return "fetching"
+        case "localcopy":
+            // "localcopy <path>": fetched to a watched copy (no app opened); says where.
+            guard let wc else { return "no window" }
+            LocalCopies.shared.onSentBack = { name, _, e in NSLog("sent back %@: %@", name, e ?? "ok") }
+            LocalCopies.shared.open(arg, on: wc.hosts.local, label: "here") { url, e in NSLog("local copy: %@", url?.path ?? (e ?? "?")) }
+            return "fetching (see the log)"
         case "notifications":
             return (NSApp.delegate as? AppDelegate)?.debugNotifications ?? "?"
         case "nudge":

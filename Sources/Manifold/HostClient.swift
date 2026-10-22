@@ -305,6 +305,15 @@ final class HostClient {
         conn?.send(.message(ClientMessage.propose(id: id, .readPath(path: path, limit: limit))))
     }
 
+    /// A piece of a file: `length` bytes from `offset` (fewer at its end).
+    func readRange(path: String, offset: Int64, length: Int, done: @escaping (Data?) -> Void) {
+        guard conn != nil else { return done(nil) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingBytes[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .readRange(path: path, offset: offset, length: length))))
+    }
+
     // MARK: Conveniences
 
     /// A new, empty arrangement on the desk, selected.

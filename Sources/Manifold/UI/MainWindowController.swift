@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import ManifoldCore
+import UniformTypeIdentifiers
 
 /// The window: the selected arrangement filling it, the sidebar (the desk)
 /// floating over its left edge when the mouse goes there (or docked, when
@@ -492,6 +493,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let t = TerminalView(placement: p.id, block: p.block, command: HostClient.attachCommand(block: p.block))
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+            if p.block.host != host.host {
+                t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
+            }
             TerminalView.copyOnSelect = desk.settings.copyOnSelect
             v = t
         case .image, .pdf:
@@ -4764,6 +4768,16 @@ extension MainWindowController: GridDelegate {
                 })
             }
         }
+        // A file: opened with an app here (another host's, a copy sent
+        // back when saved), or fetched to Downloads.
+        if let path = b.path, [.text, .image, .pdf, .directory].contains(b.kind) {
+            if b.kind != .directory { items.append(openWithItem(path, on: block.host)) }
+            if block.host != host.host {
+                items.append(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in
+                    self?.download(path, isDirectory: b.kind == .directory, on: block.host)
+                })
+            }
+        }
         return items
     }
 
@@ -5052,6 +5066,218 @@ extension MainWindowController: DirectoryViewDelegate {
         guard let (id, _) = pathBlock(path, isDirectory: isDirectory, on: view.block.host) else { return nil }
         let title = (hosts.block(id)?.displayTitle ?? path.lastPathComponent).replacingOccurrences(of: "]", with: "\\]")
         return "[\(title)](manifold:\(id.description))"
+    }
+
+    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String) {
+        copy(items, into: folder, on: view.block.host)
+    }
+
+    func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void) {
+        guard let c = hosts.client(view.block.host) else { return done("the host isn't attached") }
+        Transfer.download(path, isDirectory: isDirectory, on: c, to: url, done: done)
+    }
+
+    func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu? {
+        let on = view.block.host
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open", symbol: "arrow.up.forward.app") { [weak self, weak view] in
+            guard let view else { return }
+            self?.directoryView(view, open: path, isDirectory: isDirectory)
+        })
+        if let (block, lens) = pathBlock(path, isDirectory: isDirectory, on: on) {
+            menu.addItem(ClosureMenuItem("Open Beside", symbol: "rectangle.split.2x1") { [weak self, weak view] in
+                guard let view else { return }
+                self?.show(block, lens: lens, .besideOpener(view.placement))
+            })
+        }
+        menu.addItem(.separator())
+        if !isDirectory { menu.addItem(openWithItem(path, on: on)) }
+        if on == host.host {
+            menu.addItem(ClosureMenuItem("Reveal in Finder", symbol: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            })
+        } else {
+            menu.addItem(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in self?.download(path, isDirectory: isDirectory, on: on) })
+        }
+        menu.addItem(ClosureMenuItem("Copy Path", symbol: "doc.on.clipboard") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(path, forType: .string)
+        })
+        return menu
+    }
+
+    // MARK: Files between hosts
+
+    /// Files and folders put in a folder on a host: this Mac's, or entries
+    /// of any host's (fetched here, then sent on). What's there already
+    /// is asked about, once for all, before it's written over.
+    func copy(_ items: [DroppedItem], into folder: String, on target: HostID, replacing: Bool = false) {
+        guard let c = hosts.client(target) else { return NSSound.beep() }
+        let label = hosts.label(of: target) + ":" + folder.abbreviatingHome
+        let n = items.count
+        toast.show("Copying \(n) item\(n == 1 ? "" : "s") to \(label)…", action: "OK", for: 60) {}
+        var existing: [DroppedItem] = []
+        var failure: String?
+        func finish() {
+            if let failure {
+                toast.show("Couldn't copy to \(label): \(failure)", action: "OK", for: 10) {}
+            } else if !existing.isEmpty {
+                toast.show("Copied \(n - existing.count) of \(n)", action: "OK", for: 4) {}
+                let alert = NSAlert()
+                alert.messageText = existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)"
+                alert.informativeText = "Replace what's there with what was dropped?"
+                alert.addButton(withTitle: "Replace")
+                alert.addButton(withTitle: "Leave Them")
+                if let window { alert.beginSheetModal(for: window) { [weak self] r in
+                    if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true) }
+                } }
+            } else {
+                toast.show("Copied \(n) item\(n == 1 ? "" : "s") to \(label)", action: "OK", for: 4) {}
+            }
+            hosts.client(target).map { _ in hosts.propose(.listDirectory(hosts.directoryBlock(for: folder, on: target))) }
+        }
+        func next(_ i: Int) {
+            guard i < items.count else { return finish() }
+            let item = items[i]
+            let dest = folder + "/" + Self.name(of: item)
+            let after: (String?) -> Void = { error in
+                if error == "exists" { existing.append(item) } else if let error { failure = error; return finish() }
+                next(i + 1)
+            }
+            switch item {
+            case let .local(url):
+                Transfer.upload(url, to: dest, on: c, replace: replacing, done: after)
+            case let .entry(host, path, isDirectory):
+                // Another tile's entry: fetched to a scratch folder here, then sent.
+                guard let source = hosts.client(host) else { return after("its host isn't attached") }
+                let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-copy-\(UUID().uuidString)")
+                try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+                let local = scratch.appendingPathComponent(path.lastPathComponent)
+                Transfer.download(path, isDirectory: isDirectory, on: source, to: local) { error in
+                    guard error == nil else { try? FileManager.default.removeItem(at: scratch); return after(error) }
+                    Transfer.upload(local, to: dest, on: c, replace: replacing) { error in
+                        try? FileManager.default.removeItem(at: scratch)
+                        after(error)
+                    }
+                }
+            }
+        }
+        next(0)
+    }
+
+    /// This Mac's files dropped on another host's terminal: sent to the
+    /// shell's folder (each a name of its own there, nothing written over),
+    /// their paths there given back to be typed.
+    func upload(_ urls: [URL], toShellOf block: BlockID, done: @escaping ([String]) -> Void) {
+        guard let c = hosts.client(block.host), let folder = hosts.block(block)?.terminal?.cwd else { return NSSound.beep() }
+        let label = hosts.label(of: block.host)
+        toast.show("Sending \(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) items") to \(label)…", action: "OK", for: 60) {}
+        c.listFolder(folder) { [weak self] entries in
+            var taken = Set((entries ?? []).map(\.name))
+            var sent: [String] = []
+            func next(_ i: Int) {
+                guard i < urls.count else {
+                    self?.toast.show("Sent to \(label):\(folder.abbreviatingHome)", action: "OK", for: 4) {}
+                    return done(sent)
+                }
+                let name = Self.freeName(urls[i].lastPathComponent, taken: taken)
+                taken.insert(name)
+                let dest = folder + "/" + name
+                Transfer.upload(urls[i], to: dest, on: c, replace: false) { error in
+                    if let error {
+                        self?.toast.show("Couldn't send \(urls[i].lastPathComponent): \(error)", action: "OK", for: 10) {}
+                        return done(sent)
+                    }
+                    sent.append(dest)
+                    next(i + 1)
+                }
+            }
+            next(0)
+        }
+    }
+
+    /// A name not among `taken`: as it is, else "name 2.ext", "name 3.ext"…
+    static func freeName(_ name: String, taken: Set<String>) -> String {
+        guard taken.contains(name) else { return name }
+        let ext = name.pathExtension, base = (name as NSString).deletingPathExtension
+        var n = 2
+        while true {
+            let candidate = base + " \(n)" + (ext.isEmpty ? "" : "." + ext)
+            if !taken.contains(candidate) { return candidate }
+            n += 1
+        }
+    }
+
+    private static func name(of item: DroppedItem) -> String {
+        switch item {
+        case let .local(url): url.lastPathComponent
+        case let .entry(_, path, _): path.lastPathComponent
+        }
+    }
+
+    /// Another host's file or folder, fetched to Downloads (a name of its
+    /// own if one's there), shown in the Finder when it's in.
+    func download(_ path: String, isDirectory: Bool, on h: HostID) {
+        guard let c = hosts.client(h), let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return NSSound.beep() }
+        var url = downloads.appendingPathComponent(path.lastPathComponent)
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            let ext = path.pathExtension
+            url = downloads.appendingPathComponent((path.lastPathComponent as NSString).deletingPathExtension + " \(n)" + (ext.isEmpty ? "" : "." + ext))
+            n += 1
+        }
+        toast.show("Downloading \(path.lastPathComponent)…", action: "OK", for: 60) {}
+        Transfer.download(path, isDirectory: isDirectory, on: c, to: url) { [weak self] error in
+            if let error {
+                self?.toast.show("Couldn't download \(path.lastPathComponent): \(error)", action: "OK", for: 10) {}
+            } else {
+                self?.toast.show("Downloaded \(url.lastPathComponent)", action: "Show in Finder", for: 8) {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }
+        }
+    }
+
+    /// Open With ▸: the apps that open the file, its default first; on
+    /// another host, a copy opened here and sent back when it's saved.
+    func openWithItem(_ path: String, on h: HostID) -> NSMenuItem {
+        let local = h == host.host
+        let item = NSMenuItem(title: local ? "Open With" : "Open Locally With", action: nil, keyEquivalent: "")
+        item.setSymbol("arrow.up.right.square", size: 12)
+        let menu = NSMenu()
+        let type = UTType(filenameExtension: path.pathExtension) ?? .data
+        let ws = NSWorkspace.shared
+        var apps = ws.urlsForApplications(toOpen: type)
+        if let def = ws.urlForApplication(toOpen: type) { apps.removeAll { $0 == def }; apps.insert(def, at: 0) }
+        for (i, app) in apps.prefix(20).enumerated() {
+            let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+            let entry = ClosureMenuItem(i == 0 ? "\(name) (default)" : name, symbol: nil) { [weak self] in self?.openWith(app, path, on: h) }
+            entry.image = ws.icon(forFile: app.path)
+            entry.image?.size = NSSize(width: 16, height: 16)
+            menu.addItem(entry)
+            if i == 0, apps.count > 1 { menu.addItem(.separator()) }
+        }
+        if apps.isEmpty { menu.addItem(NSMenuItem(title: "No App Opens It", action: nil, keyEquivalent: "")) }
+        item.submenu = menu
+        return item
+    }
+
+    func openWith(_ app: URL, _ path: String, on h: HostID) {
+        let config = NSWorkspace.OpenConfiguration()
+        guard h != host.host else {
+            NSWorkspace.shared.open([URL(fileURLWithPath: path)], withApplicationAt: app, configuration: config)
+            return
+        }
+        guard let c = hosts.client(h) else { return NSSound.beep() }
+        toast.show("Fetching \(path.lastPathComponent)…", action: "OK", for: 60) {}
+        LocalCopies.shared.open(path, on: c, label: hosts.label(of: h)) { [weak self] url, error in
+            guard let url else { self?.toast.show("Couldn't fetch \(path.lastPathComponent): \(error ?? "")", action: "OK", for: 10) {}; return }
+            self?.toast.show("\(path.lastPathComponent) opened here; saved, it goes back to \(self?.hosts.label(of: h) ?? "its host")", action: "OK", for: 6) {}
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config)
+        }
+        LocalCopies.shared.onSentBack = { [weak self] name, label, error in
+            self?.toast.show(error.map { "Couldn't send \(name) back to \(label): \($0)" } ?? "Sent \(name) back to \(label)", action: "OK", for: 4) {}
+        }
     }
 
     /// A file here, as it is; one on another host, fetched afresh (20 MB at

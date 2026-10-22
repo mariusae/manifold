@@ -973,8 +973,23 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
 
+    /// On another host: this Mac's files dropped are sent to the shell's
+    /// folder there, and their paths there typed (what they're called
+    /// there, given back when they're in).
+    var uploadDrop: (([URL], @escaping ([String]) -> Void) -> Void)?
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let pb = sender.draggingPasteboard
+        if let uploadDrop, pb.types?.contains(.manifoldPath) != true,
+           let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            window?.makeFirstResponder(self)
+            uploadDrop(urls) { [weak self] paths in
+                guard let self, let surface = self.surface, !paths.isEmpty else { return }
+                let text = paths.map(Self.shellQuoted).joined(separator: " ")
+                text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+            }
+            return true
+        }
         guard let surface, let text = Self.dropText(pb) else { return false }
         window?.makeFirstResponder(self)
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
