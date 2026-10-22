@@ -573,6 +573,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             e.richMarkdown = viewState(of: p)["markdown"] != "raw"
             e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
+            e.setSidebar(viewState(of: p)["outline"] == "1")
+            e.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
             // Viewed, not edited: a file that isn't Markdown, on its grey.
             e.viewing = p.lens == .preview
             v = e
@@ -1162,6 +1164,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
+    /// Debugging: the focused tile's own sidebar — "toggle", "pick N",
+    /// or nothing: what it lists. "pdf …": the focused PDF's controls.
+    func debugTileSidebar(_ arg: String) -> String {
+        guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
+        if arg.hasPrefix("pdf") { return (v as? MediaView)?.debugPDF(String(arg.dropFirst(3)).trimmingCharacters(in: .whitespaces)) ?? "no PDF focused" }
+        if arg == "toggle" { toggleTileSidebar(nil) }
+        let pick = arg.hasPrefix("pick ") ? Int(arg.dropFirst(5)) : nil
+        switch v {
+        case let e as EditorView:
+            if let pick { _ = e.debugSidebarPick(pick) }
+            return e.debugSidebar
+        case let m as MarkdownView:
+            if let pick { _ = m.debugSidebarPick(pick) }
+            return m.debugSidebar
+        case let p as MediaView:
+            return p.debugPDF(pick.map { "pick \($0)" } ?? "")
+        default:
+            return "no sidebar here"
+        }
+    }
+
     func debugDirectory(_ arg: String) -> String {
         guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }
         return d.debug(arg)
@@ -1854,6 +1877,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
             return !inboxOrder().isEmpty
+        case #selector(toggleTileSidebar(_:)):
+            guard let v = arrangement?.focused.flatMap({ views[$0] }), v.hasSidebar else { item.title = "Show Outline"; return false }
+            item.title = v.sidebarShown ? "Hide Outline" : "Show Outline"
+            return true
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
             guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
             let viewing = f.lens == .preview
@@ -3861,8 +3888,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if isDirectory { return (hosts.directoryBlock(for: path, on: on), .directory) }
         if Lens.isMarkdown(path) { return (hosts.textBlock(for: path, on: on), .preview) }
         if Self.isHTML(path), local { return (host.webBlock(forFile: path), .web) }
-        if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            if !local || !Self.isEditable(path) { return (client.mediaBlock(for: path, kind: kind), kind == .pdf ? .pdf : .image) }
+        // A PDF is one even when it's plain text inside; an image that's
+        // text (an SVG) is edited here.
+        if let kind = Self.mediaKind(path), let client = hosts.client(on), !local || kind == .pdf || !Self.isEditable(path) {
+            return (client.mediaBlock(for: path, kind: kind), kind == .pdf ? .pdf : .image)
         }
         if !local || Self.isEditable(path) { return (hosts.textBlock(for: path, on: on), Lens.default(for: .text, path: path)) }
         return nil
@@ -4734,6 +4763,14 @@ extension MainWindowController: EditorViewDelegate {
     /// An outline's entry clicked: the block's tile goes there — its
     /// terminal to the command's row, its editor or preview to the
     /// heading; with no tile of it shown, one is opened beside the outline.
+    /// ⌥⌘S: the focused tile's own sidebar, shown or put away — a
+    /// Markdown text's headings, a PDF's contents and pages (§7.5).
+    @objc func toggleTileSidebar(_ sender: Any?) {
+        guard let f = arrangement?.focused, let v = views[f], v.hasSidebar else { return NSSound.beep() }
+        v.toggleSidebar()
+        content.sidebarChanged(f)
+    }
+
     /// ⇧⌘O: the focused tile's outline beside it.
     @objc func showOutlineBeside(_ sender: Any?) {
         guard let f = focusedShown, [.terminal, .agent, .editor, .preview].contains(f.lens) else { return NSSound.beep() }

@@ -9,7 +9,9 @@ protocol MediaViewDelegate: AnyObject {
 
 /// The image and PDF lenses (DESIGN.md §7.5): the file as its host has
 /// it, read again each time it's shown. Images fit the view and zoom with
-/// a pinch or ⌘+/−; PDFs page in PDFKit.
+/// a pinch or ⌘+/−; PDFs page in PDFKit, as Preview shows them: the page
+/// and how many, back and forward, the zoom, how pages are laid out, ⌘F
+/// to find, and a sidebar of the contents and the pages.
 final class MediaView: NSView, PaneContent, KeepsViewState {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
@@ -29,6 +31,28 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     private var pdfView: PDFView?
     private var loaded = false
     private var fitted = false
+
+    // A PDF's controls, along the top (see the extension below).
+    fileprivate let previousButton = IconButton(symbol: "chevron.left", size: 11, target: nil, action: nil)
+    fileprivate let nextButton = IconButton(symbol: "chevron.right", size: 11, target: nil, action: nil)
+    fileprivate let pageField = NSTextField()
+    fileprivate let pageCount = NSTextField(labelWithString: "")
+    fileprivate let zoomOutButton = IconButton(symbol: "minus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
+    fileprivate let zoomInButton = IconButton(symbol: "plus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
+    fileprivate let zoomLabel = NSTextField(labelWithString: "")
+    fileprivate let layoutButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
+    fileprivate var sidebar: TileSidebar?
+    fileprivate var sidebarRestored = false
+    /// The table of contents, flattened: each entry's item and its page.
+    fileprivate var contents: [(item: PDFOutline, page: Int?)] = []
+    fileprivate lazy var finder: FindHost = {
+        let f = FindHost(view: self, target: self)
+        // Below the controls, over the pages.
+        f.area = { [weak self] in self?.pdfView?.frame ?? .zero }
+        return f
+    }()
+    fileprivate var found: [PDFSelection] = []
+    fileprivate var foundAt = 0
 
     var focusView: NSView { pdfView ?? scroll }
     var isDead: Bool { false }
@@ -77,10 +101,13 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: p, queue: .main) { [weak self] _ in
                 guard let self, let doc = p.document, let page = p.currentPage else { return }
                 self.keeper.note(["page": "\(doc.index(for: page))"])
+                self.pageChanged()
             }
             NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: p, queue: .main) { [weak self] _ in
                 self?.keeper.note(["zoom": "\(p.scaleFactor)", "autoscale": p.autoScales ? "1" : "0"])
+                self?.scaleChanged()
             }
+            makeControls()
         }
     }
 
@@ -93,6 +120,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         guard !keeper.restored else { return }
         keeper.restored = true
         if let p = pdfView, let doc = p.document {
+            if let m = keeper.int("display").flatMap(PDFDisplayMode.init(rawValue:)) { p.displayMode = m }
+            if keeper.value("book") == "1" { p.displaysAsBook = true }
             if keeper.value("autoscale") == "0", let z = keeper.double("zoom") {
                 p.autoScales = false
                 p.scaleFactor = z
@@ -108,11 +137,26 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
     override func layout() {
         super.layout()
-        header.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width * 0.6, height: 16)
-        note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
-        let content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - 32)
+        var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - 32)
+        if pdfView != nil {
+            layoutControls()
+            if !sidebarRestored {
+                sidebarRestored = true
+                if keeper.value("outline") == "1" { setSidebar(true) }
+            }
+            if let sidebar, !sidebar.isHidden {
+                let w = min(TileSidebar.width, (bounds.width / 3).rounded())
+                sidebar.frame = NSRect(x: 0, y: 0, width: w, height: content.height)
+                content.origin.x = w
+                content.size.width -= w
+            }
+        } else {
+            header.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width * 0.6, height: 16)
+            note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
+        }
         pdfView?.frame = content
         scroll.frame = content
+        if pdfView != nil { finder.layout(in: content) }
         if !fitted { fit() }
     }
 
@@ -139,8 +183,9 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             if let pdfView = self.pdfView {
                 let doc = PDFDocument(data: data)
                 pdfView.document = doc
-                self.note.stringValue = doc.map { "\($0.pageCount) page\($0.pageCount == 1 ? "" : "s")" } ?? "Not a PDF"
+                self.note.stringValue = doc == nil ? "Not a PDF" : ""
                 self.restoreState()
+                self.documentLoaded()
             } else if let image = NSImage(data: data) {
                 self.imageView.image = image
                 let size = image.representations.first.map { NSSize(width: $0.pixelsWide, height: $0.pixelsHigh) } ?? image.size
@@ -168,9 +213,9 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         _ = image
     }
 
-    @objc func increaseFontSize(_ sender: Any?) { scroll.magnification *= 1.25 }
-    @objc func decreaseFontSize(_ sender: Any?) { scroll.magnification /= 1.25 }
-    @objc func resetFontSize(_ sender: Any?) { fitted = false; fit() }
+    @objc func increaseFontSize(_ sender: Any?) { if let p = pdfView { p.zoomIn(nil) } else { scroll.magnification *= 1.25 } }
+    @objc func decreaseFontSize(_ sender: Any?) { if let p = pdfView { p.zoomOut(nil) } else { scroll.magnification /= 1.25 } }
+    @objc func resetFontSize(_ sender: Any?) { if let p = pdfView { p.autoScales = true } else { fitted = false; fit() } }
 
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2, pdfView == nil {
@@ -178,6 +223,284 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             if abs(scroll.magnification - 1) < 0.01 { fitted = false; fit() } else { scroll.magnification = 1 }
         }
         super.mouseDown(with: event)
+    }
+}
+
+// MARK: A PDF, as Preview shows it
+
+extension MediaView: Searchable {
+    fileprivate func makeControls() {
+        previousButton.toolTip = "Previous Page"
+        nextButton.toolTip = "Next Page"
+        zoomOutButton.toolTip = "Zoom Out (⌘−)"
+        zoomInButton.toolTip = "Zoom In (⌘+)"
+        layoutButton.toolTip = "Page Layout"
+        for (b, sel) in [(previousButton, #selector(previousPage)), (nextButton, #selector(nextPage)), (zoomOutButton, #selector(zoomOutClicked)),
+                         (zoomInButton, #selector(zoomInClicked)), (layoutButton, #selector(layoutClicked))] {
+            b.target = self
+            b.action = sel
+        }
+        pageField.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
+        pageField.alignment = .center
+        pageField.bezelStyle = .roundedBezel
+        pageField.controlSize = .small
+        pageField.target = self
+        pageField.action = #selector(pageEntered)
+        pageField.toolTip = "Go to Page"
+        pageCount.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
+        pageCount.textColor = Theme.secondaryText
+        zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        zoomLabel.textColor = Theme.secondaryText
+        zoomLabel.alignment = .center
+        for v in [previousButton, nextButton, pageField, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] {
+            v.isHidden = true
+            addSubview(v)
+        }
+    }
+
+    /// Along the top: the path at the left; the page, the zoom and the
+    /// layout at the right, the zoom going first as the tile narrows.
+    fileprivate func layoutControls() {
+        let y = bounds.height - 28
+        let mid = y + 10
+        var right = bounds.width - 10
+        let ready = pdfView?.document != nil
+        func place(_ v: NSView, width: CGFloat, height: CGFloat = 20) {
+            v.frame = NSRect(x: right - width, y: (mid - height / 2).rounded(), width: width, height: height)
+            right -= width
+        }
+        for v in [previousButton, nextButton, pageField, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] { v.isHidden = !ready }
+        let showZoom = ready && bounds.width >= 420
+        let showPages = ready && bounds.width >= 260
+        layoutButton.isHidden = !showZoom
+        for v in [zoomOutButton, zoomInButton, zoomLabel] { v.isHidden = !showZoom }
+        for v in [previousButton, nextButton, pageField, pageCount] { v.isHidden = !showPages }
+        if showZoom {
+            place(layoutButton, width: 22)
+            right -= 10
+            place(zoomInButton, width: 22)
+            place(zoomLabel, width: 44, height: 14)
+            place(zoomOutButton, width: 22)
+            right -= 12
+        }
+        if showPages {
+            place(nextButton, width: 22)
+            let cw = ceil(pageCount.intrinsicContentSize.width)
+            place(pageCount, width: cw, height: 14)
+            right -= 4
+            let digits = CGFloat(max(String(pdfView?.document?.pageCount ?? 1).count, 2))
+            place(pageField, width: 16 + digits * 8, height: 20)
+            right -= 2
+            place(previousButton, width: 22)
+            right -= 8
+        }
+        header.frame = NSRect(x: 12, y: bounds.height - 24, width: max(0, right - 12), height: 16)
+        note.frame = .zero
+    }
+
+    /// The document in: its pages counted, its contents read, the
+    /// sidebar filled.
+    fileprivate func documentLoaded() {
+        guard let p = pdfView, let doc = p.document else { return }
+        pageCount.stringValue = "of \(doc.pageCount)"
+        contents = []
+        func walk(_ o: PDFOutline, _ level: Int) {
+            for i in 0..<o.numberOfChildren {
+                guard let c = o.child(at: i) else { continue }
+                contents.append((c, c.destination?.page.map { doc.index(for: $0) }))
+                levels.append(level)
+                walk(c, level + 1)
+            }
+        }
+        var levels: [Int] = []
+        if let root = doc.outlineRoot { walk(root, 0) }
+        sidebar?.set(zip(contents, levels).map { TileSidebar.Entry(title: $0.0.item.label ?? "Untitled", level: min($0.1, 4)) })
+        // The contents first when there are any, unless the pages were chosen.
+        if keeper.value("sidebarPage") == nil { sidebar?.show(page: contents.isEmpty ? .pages : .contents) }
+        pageChanged()
+        scaleChanged()
+        needsLayout = true
+    }
+
+    fileprivate func pageChanged() {
+        guard let p = pdfView, let doc = p.document, let page = p.currentPage else { return }
+        let i = doc.index(for: page)
+        if pageField.currentEditor() == nil { pageField.stringValue = "\(i + 1)" }
+        previousButton.isEnabled = p.canGoToPreviousPage
+        nextButton.isEnabled = p.canGoToNextPage
+        sidebar?.current = contents.lastIndex { ($0.page ?? .max) <= i }
+    }
+
+    fileprivate func scaleChanged() {
+        guard let p = pdfView else { return }
+        zoomLabel.stringValue = "\(Int((p.scaleFactor * 100).rounded()))%"
+        zoomLabel.toolTip = p.autoScales ? "Fits the tile" : nil
+    }
+
+    @objc fileprivate func previousPage() { pdfView?.goToPreviousPage(nil) }
+    @objc fileprivate func nextPage() { pdfView?.goToNextPage(nil) }
+    @objc fileprivate func zoomInClicked() { pdfView?.zoomIn(nil) }
+    @objc fileprivate func zoomOutClicked() { pdfView?.zoomOut(nil) }
+
+    @objc fileprivate func pageEntered() {
+        guard let p = pdfView, let doc = p.document else { return }
+        if let n = Int(pageField.stringValue.trimmingCharacters(in: .whitespaces)), let page = doc.page(at: min(max(n, 1), doc.pageCount) - 1) {
+            p.go(to: page)
+        }
+        pageChanged()
+        window?.makeFirstResponder(p)
+    }
+
+    /// How pages are laid out, as Preview's View menu has it, and the zoom.
+    @objc fileprivate func layoutClicked() {
+        guard let p = pdfView else { return }
+        let menu = NSMenu()
+        for (title, mode) in [("Single Page", PDFDisplayMode.singlePage), ("Continuous Scroll", .singlePageContinuous),
+                              ("Two Pages", .twoUp), ("Two Pages, Continuous", .twoUpContinuous)] {
+            let item = ClosureMenuItem(title, symbol: nil) { [weak self] in self?.setDisplay(mode) }
+            item.state = p.displayMode == mode ? .on : .off
+            menu.addItem(item)
+        }
+        let book = ClosureMenuItem("Book Layout", symbol: nil) { [weak self] in
+            guard let p = self?.pdfView else { return }
+            p.displaysAsBook.toggle()
+            self?.keeper.note(["book": p.displaysAsBook ? "1" : "0"])
+        }
+        book.state = p.displaysAsBook ? .on : .off
+        menu.addItem(book)
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Actual Size", symbol: nil) { [weak self] in
+            self?.pdfView?.autoScales = false
+            self?.pdfView?.scaleFactor = 1
+        })
+        menu.addItem(ClosureMenuItem("Zoom to Fit", symbol: nil) { [weak self] in self?.pdfView?.autoScales = true })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Rotate Left", symbol: nil) { [weak self] in self?.rotate(-90) })
+        menu.addItem(ClosureMenuItem("Rotate Right", symbol: nil) { [weak self] in self?.rotate(90) })
+        menu.popUp(positioning: nil, at: NSPoint(x: layoutButton.frame.minX, y: layoutButton.frame.minY - 4), in: self)
+    }
+
+    fileprivate func setDisplay(_ mode: PDFDisplayMode) {
+        pdfView?.displayMode = mode
+        keeper.note(["display": "\(mode.rawValue)"])
+    }
+
+    /// Every page turned, as shown here (the file isn't changed).
+    fileprivate func rotate(_ degrees: Int) {
+        guard let p = pdfView, let doc = p.document else { return }
+        let at = p.currentPage
+        for i in 0..<doc.pageCount { doc.page(at: i)?.rotation += degrees }
+        p.layoutDocumentView()
+        if let at { p.go(to: at) }
+    }
+
+    // MARK: The sidebar
+
+    var hasSidebar: Bool { pdfView != nil }
+    var sidebarShown: Bool { sidebar?.isHidden == false }
+
+    func toggleSidebar() {
+        setSidebar(!sidebarShown)
+        keeper.note(["outline": sidebarShown ? "1" : "0"], after: 0)
+    }
+
+    /// The contents and the pages at the tile's left: the contents first
+    /// when there are any, else the pages.
+    fileprivate func setSidebar(_ shown: Bool) {
+        guard let p = pdfView, shown != sidebarShown else { return }
+        if shown, sidebar == nil {
+            let thumbs = PDFThumbnailView()
+            thumbs.pdfView = p
+            thumbs.thumbnailSize = NSSize(width: 120, height: 150)
+            thumbs.backgroundColor = .clear
+            let s = TileSidebar(pages: thumbs, emptyText: "No table of contents")
+            s.onPick = { [weak self] i in
+                guard let self, self.contents.indices.contains(i), let d = self.contents[i].item.destination else { return }
+                self.pdfView?.go(to: d)
+                self.sidebar?.current = i
+                self.window?.makeFirstResponder(self.pdfView)
+            }
+            s.onPageChange = { [weak self] page in self?.keeper.note(["sidebarPage": page.rawValue]) }
+            addSubview(s)
+            sidebar = s
+            if let kept = keeper.value("sidebarPage").flatMap(TileSidebar.Page.init(rawValue:)) { s.show(page: kept) }
+            if pdfView?.document != nil { documentLoaded() }
+        }
+        sidebar?.isHidden = !shown
+        needsLayout = true
+    }
+
+    // MARK: Find (⌘F)
+
+    @objc override func performTextFinderAction(_ sender: Any?) {
+        guard pdfView != nil else { return super.performTextFinderAction(sender) }
+        finder.perform(sender)
+    }
+
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        guard let p = pdfView, let doc = p.document else { return done(nil) }
+        found = query.isEmpty ? [] : doc.findString(query, withOptions: caseSensitive ? [] : [.caseInsensitive])
+        for s in found { s.color = TextView.matchColor }
+        p.highlightedSelections = found.isEmpty ? nil : found
+        // From the page showing on.
+        let here = p.currentPage.map { doc.index(for: $0) } ?? 0
+        foundAt = found.firstIndex { s in s.pages.first.map { doc.index(for: $0) >= here } ?? false } ?? 0
+        showFound()
+        done(found.count)
+    }
+
+    func findNext(forward: Bool) {
+        guard !found.isEmpty else { return }
+        foundAt = (foundAt + (forward ? 1 : -1) + found.count) % found.count
+        showFound()
+    }
+
+    fileprivate func showFound() {
+        guard let p = pdfView, found.indices.contains(foundAt) else { return }
+        let s = found[foundAt]
+        p.setCurrentSelection(s, animate: false)
+        p.go(to: s)
+    }
+
+    func endSearch() {
+        found = []
+        pdfView?.highlightedSelections = nil
+        pdfView?.setCurrentSelection(nil, animate: false)
+        if let p = pdfView { window?.makeFirstResponder(p) }
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) { done(pdfView?.currentSelection?.string) }
+
+    // MARK: Debugging
+
+    /// "page N", "next", "previous", "zoom in|out|fit", "display N",
+    /// "sidebar", "pages", "contents", "pick N", "find <query>",
+    /// "findnext": done, then how it stands.
+    func debugPDF(_ arg: String) -> String {
+        guard let p = pdfView else { return "not a PDF" }
+        let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        switch words.first {
+        case "page": if let n = words.count > 1 ? Int(words[1]) : nil { pageField.stringValue = "\(n)"; pageEntered() }
+        case "next": nextPage()
+        case "previous": previousPage()
+        case "zoom":
+            if words.count > 1 { words[1] == "in" ? p.zoomIn(nil) : words[1] == "out" ? p.zoomOut(nil) : (p.autoScales = true) }
+        case "display": if let n = words.count > 1 ? Int(words[1]) : nil, let m = PDFDisplayMode(rawValue: n) { setDisplay(m) }
+        case "sidebar": toggleSidebar()
+        case "pages": sidebar?.show(page: .pages)
+        case "contents": sidebar?.show(page: .contents)
+        case "pick": _ = sidebar?.debugPick(words.count > 1 ? Int(words[1]) ?? 0 : 0)
+        case "find": search(words.count > 1 ? words[1] : "", caseSensitive: false) { _ in }
+        case "findnext": findNext(forward: true)
+        default: break
+        }
+        layoutSubtreeIfNeeded()
+        let page = p.currentPage.flatMap { pg in p.document.map { $0.index(for: pg) + 1 } } ?? 0
+        var lines = ["page \(page) \(pageCount.stringValue) field \(pageField.stringValue) zoom \(zoomLabel.stringValue) display \(p.displayMode.rawValue) found \(found.count) at \(foundAt)"]
+        let shown: [(String, NSView)] = [("prev", previousButton), ("field", pageField), ("zoom", zoomLabel), ("layout", layoutButton)]
+        lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " ") + " header \(Int(header.frame.width))")
+        if let sidebar, !sidebar.isHidden { lines.append(sidebar.debugEntries) } else { lines.append("sidebar hidden") }
+        return lines.joined(separator: "\n")
     }
 }
 

@@ -254,7 +254,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             status.frame = NSRect(x: 10, y: 3, width: bounds.width - 20, height: Self.statusHeight - 6)
             bottom = Self.statusHeight
         }
-        scroll.frame = NSRect(x: 0, y: bottom, width: bounds.width - ScrubberView.width, height: top - bottom)
+        // The outline at the left, a third of the tile at most.
+        var left: CGFloat = 0
+        if let sidebar, !sidebar.isHidden {
+            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            sidebar.frame = NSRect(x: 0, y: bottom, width: left, height: top - bottom)
+        }
+        scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
         textView.frame.size.width = scroll.contentSize.width
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
         updateScrubber()
@@ -276,7 +282,61 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// Whether the text is an outline's kind: Markdown, or a note.
     private var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
 
-    @objc private func scrolled() { updateScrubber() }
+    @objc private func scrolled() {
+        updateScrubber()
+        markCurrentHeading()
+    }
+
+    // MARK: The outline (§7.5)
+
+    /// The headings at the tile's left, each clicked to go there, the one
+    /// you're in marked (a Markdown text, a note).
+    private var sidebar: TileSidebar?
+    /// Shown or put away: kept with the tile.
+    var onToggleSidebar: ((Bool) -> Void)?
+    var hasSidebar: Bool { hasOutline }
+    var sidebarShown: Bool { sidebar?.isHidden == false }
+
+    func toggleSidebar() {
+        setSidebar(!sidebarShown)
+        onToggleSidebar?(sidebarShown)
+    }
+
+    func setSidebar(_ shown: Bool) {
+        guard hasOutline, shown != sidebarShown else { return }
+        if shown, sidebar == nil {
+            let s = TileSidebar()
+            s.onPick = { [weak self] i in
+                guard let self, self.headings.indices.contains(i) else { return }
+                let line = self.headings[i].id
+                self.scroll(toY: self.textView.top(ofLine: line) - 8)
+                self.textView.setSelections([Selection(at: self.textView.text.offset(ofLine: line))], scroll: false)
+                self.window?.makeFirstResponder(self.textView)
+                self.sidebar?.current = i
+            }
+            addSubview(s)
+            sidebar = s
+        }
+        sidebar?.isHidden = !shown
+        if shown { fillSidebar() }
+        needsLayout = true
+    }
+
+    private func fillSidebar() {
+        guard let sidebar, !sidebar.isHidden else { return }
+        sidebar.set(TileSidebar.entries(headingLevels.map { (title: $0.text, level: $0.level) }))
+        markCurrentHeading()
+    }
+
+    /// The last heading at or above the top of what shows.
+    private func markCurrentHeading() {
+        guard let sidebar, !sidebar.isHidden else { return }
+        let y = scroll.contentView.bounds.minY + 12
+        sidebar.current = headings.lastIndex { textView.top(ofLine: $0.id) <= y } ?? (headings.isEmpty ? nil : 0)
+    }
+
+    var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+    func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
 
     func debugType(_ text: String) { textView.insert(text) }
     func debugDrop(_ pb: NSPasteboard) -> Bool {
@@ -307,11 +367,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     private func findHeadings() {
-        headings = MarkdownOutline.headings(in: textView.text.string).map {
-            ScrubMark(id: $0.line, at: 0, title: $0.text, detail: nil)
-        }
+        headingLevels = MarkdownOutline.headings(in: textView.text.string)
+        headings = headingLevels.map { ScrubMark(id: $0.line, at: 0, title: $0.text, detail: nil) }
         updateScrubber()
+        fillSidebar()
     }
+
+    /// The headings as last found, with their levels, for the outline.
+    private var headingLevels: [MarkdownOutline.Heading] = []
 
     private func updateScrubber() {
         let marks = headings.map { m -> ScrubMark in var n = m; n.at = Double(textView.top(ofLine: m.id)); return n }

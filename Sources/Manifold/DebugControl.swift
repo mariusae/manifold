@@ -457,6 +457,8 @@ enum DebugControl {
             return wc?.debugSearchPreview(arg) ?? "no window"
         case "dir":
             return wc?.debugDirectory(arg) ?? "no window"
+        case "tilesidebar":
+            return wc?.debugTileSidebar(arg) ?? "no window"
         case "outputs":
             return wc?.debugOutputs(arg) ?? "no window"
         case "card":

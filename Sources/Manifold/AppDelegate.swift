@@ -227,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let view = submenu(main, "View")
         item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
+        item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
         view.addItem(.separator())
         let schemes = NSMenu(title: "Appearance")
         for scheme in ColorScheme.allCases {

@@ -447,6 +447,13 @@ when you find it again.
   the clipboard at once, the selection pulsing once to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
+- **A tile's own outline**: a Markdown text (in the editor or the
+  preview) and a PDF have a sidebar of their own at the tile's left —
+  the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
+  listing the headings (a PDF's table of contents), each clicked to go
+  there, the one you're in marked as you scroll; a PDF's has its pages
+  too, as thumbnails (Contents and Pages at its top). Shown or not, it's
+  kept with the tile.
 - **An outline** is a scrubber's marks as a list: Show Outline Beside
   (⇧⌘O, or in a terminal's, editor's or preview's bar menu) shows the
   block through its outline lens beside it, listing the commands (with
@@ -648,7 +655,12 @@ when you find it again.
   ⌘] go back and forward, and its pages are in its log.
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
-  for actual size), PDFs page in PDFKit.
+  for actual size). PDFs show as Preview shows them: along the top the
+  page (type a number to go there) of how many, ‹ › back and forward,
+  the zoom (− + and ⌘+/−), and a menu of layouts — single page or two,
+  scrolling or not, as a book — with Actual Size, Zoom to Fit and
+  rotating; ⌘F finds in the text, every match marked. A file named .pdf
+  is one, whatever is inside it.
 - **Agents** (File ▸ New Agent, ⌥⌘A) are terminal blocks that run the
   agent command (`claude` unless the settings say otherwise) in a login
   shell where the focused block is; their transcripts are kept like a

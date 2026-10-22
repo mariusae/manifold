@@ -64,12 +64,20 @@ protocol PaneContent: NSView {
     /// What the pill edits in place when clicked (§3.1): a page's
     /// address. The pill widens to show it; ⏎ commits, ⎋ leaves it.
     var pillEdit: PillEdit? { get }
+    /// Whether the view has a sidebar of its own (§7.5: an outline, a
+    /// PDF's pages), its button in the tile's bar; and whether it shows.
+    var hasSidebar: Bool { get }
+    var sidebarShown: Bool { get }
+    func toggleSidebar()
 }
 
 extension PaneContent {
     var caretRectInWindow: NSRect? { nil }
     var pillItems: [NSMenuItem] { [] }
     var pillEdit: PillEdit? { nil }
+    var hasSidebar: Bool { false }
+    var sidebarShown: Bool { false }
+    func toggleSidebar() {}
 }
 
 /// Something a tile's pill can become a field for: the text to start

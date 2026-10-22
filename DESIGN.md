@@ -737,6 +737,10 @@ Finder and other placements, and git status badges.
 ### 7.5 Image, PDF, diff, git, search, process, agent
 
 Each its kind's natural view: PDFKit and an image view (zoom, pages); a
+PDF with Preview's controls (the page of how many, back and forward, the
+zoom, the layout, find) and its sidebar, the table of contents and the
+pages, as a Markdown text has its headings (a tile's own sidebar, at its
+left, the bar's button showing it, kept with the tile); a
 side-by-side and inline diff; git status, log and blame as lists that open
 diffs and files; search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with

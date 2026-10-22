@@ -319,8 +319,8 @@ final class FindHost {
         guard let pill else { return }
         let w = min(FindPill.width, bounds.width - 20), h = pill.height
         let inBand = bounds.width >= 860
-        let y = bounds.height - (inBand ? 4 : GridView.band + 6) - h
-        var frame = NSRect(x: bounds.width - 10 - w, y: y, width: w, height: h)
+        let y = bounds.maxY - (inBand ? 4 : GridView.band + 6) - h
+        var frame = NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
         if inSuperview, let view {
             // Over the view, in its superview; along when the view moves.
             if let parent = view.superview, pill.superview !== parent { parent.addSubview(pill) }

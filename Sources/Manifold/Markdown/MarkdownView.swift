@@ -100,6 +100,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         handler.onScrolling = { [weak self] y in
             guard let self, let o = self.lastOutline else { return }
             self.scrubber.update(marks: o.marks, total: o.total, offset: y, shown: o.shown)
+            self.markCurrentHeading(at: y)
         }
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
@@ -148,8 +149,59 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             }
             self.lastOutline = (marks, h, v)
             self.scrubber.update(marks: marks, total: h, offset: y, shown: v)
+            self.headingLevels = ((d["m"] as? [[Any]]) ?? []).compactMap { row in
+                guard row.count == 3, let tag = row[1] as? String, let text = row[2] as? String else { return nil }
+                return (text, Int(tag.dropFirst()) ?? 1)
+            }
+            self.fillSidebar(at: y)
         }
     }
+
+    // MARK: The outline (§7.5)
+
+    /// The page's headings at the tile's left, each clicked to go there,
+    /// the one you're in marked.
+    private var sidebar: TileSidebar?
+    private var headingLevels: [(title: String, level: Int)] = []
+    private var sidebarRestored = false
+    var hasSidebar: Bool { true }
+    var sidebarShown: Bool { sidebar?.isHidden == false }
+
+    func toggleSidebar() {
+        setSidebar(!sidebarShown)
+        keeper.note(["outline": sidebarShown ? "1" : "0"], after: 0)
+    }
+
+    func setSidebar(_ shown: Bool) {
+        guard shown != sidebarShown else { return }
+        if shown, sidebar == nil {
+            let s = TileSidebar()
+            s.onPick = { [weak self] i in
+                self?.scroll(toHeading: i)
+                self?.sidebar?.current = i
+            }
+            addSubview(s)
+            sidebar = s
+        }
+        sidebar?.isHidden = !shown
+        if shown { scheduleOutline() }
+        needsLayout = true
+    }
+
+    private func fillSidebar(at y: Double) {
+        guard let sidebar, !sidebar.isHidden else { return }
+        sidebar.set(TileSidebar.entries(headingLevels))
+        markCurrentHeading(at: y)
+    }
+
+    /// The last heading at or above the top of the page as it shows.
+    private func markCurrentHeading(at y: Double) {
+        guard let sidebar, !sidebar.isHidden, let o = lastOutline else { return }
+        sidebar.current = o.marks.lastIndex { $0.at <= y + 24 } ?? (o.marks.isEmpty ? nil : 0)
+    }
+
+    var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
+    func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
 
     private func hoverScrubber(_ mark: ScrubMark?, at y: CGFloat) {
         guard let mark else { tip.isHidden = true; return }
@@ -179,7 +231,18 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     override func layout() {
         super.layout()
-        web.frame = NSRect(x: 0, y: 0, width: max(bounds.width - ScrubberView.width, 0), height: bounds.height)
+        // The outline as it was kept, once the keeper can say.
+        if !sidebarRestored {
+            sidebarRestored = true
+            if keeper.value("outline") == "1" { setSidebar(true) }
+        }
+        // The outline at the left, a third of the tile at most.
+        var left: CGFloat = 0
+        if let sidebar, !sidebar.isHidden {
+            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
+        }
+        web.frame = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: 0, width: ScrubberView.width, height: bounds.height)
         finder.layout(in: web.frame)
         scheduleOutline()

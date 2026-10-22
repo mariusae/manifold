@@ -197,6 +197,12 @@ final class GridView: NSView, NSDraggingSource {
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
+                pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
+                pill.onToggleSidebar = { [weak view = tile.view, weak pill] in
+                    guard let view else { return }
+                    view.toggleSidebar()
+                    pill?.sidebar = view.sidebarShown
+                }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
                 // The bar clicked grows the tile, ⌘-clicked fills the
                 // column (a stashed one comes back); the symbol clicked is
@@ -848,6 +854,12 @@ final class GridView: NSView, NSDraggingSource {
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
 
+    /// A tile's own sidebar shown or put away: its bar's button says so.
+    func sidebarChanged(_ id: PlacementID) {
+        guard let view = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view else { return }
+        pills[id]?.sidebar = view.hasSidebar ? view.sidebarShown : nil
+    }
+
     /// A tile's menu, under the pointer, as a menu is.
     private func showPillMenu(_ id: PlacementID) {
         guard let menu = delegate?.gridPillMenu(for: id), let pill = pills[id] else { return }
@@ -1356,6 +1368,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let subtitle = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
+    /// The view's own sidebar (an outline, a PDF's pages), shown or not;
+    /// nil, a view without one: no button.
+    private let sidebarButton = IconButton(symbol: "sidebar.left", size: 10, weight: .medium, target: nil, action: nil)
+    var sidebar: Bool? {
+        didSet {
+            guard sidebar != oldValue else { return }
+            sidebarButton.contentTintColor = sidebar == true ? Theme.accent : Theme.secondaryText
+            sidebarButton.toolTip = sidebar == true ? "Hide Outline (⌥⌘S)" : "Show Outline (⌥⌘S)"
+            needsLayout = true
+        }
+    }
+    var onToggleSidebar: (() -> Void)?
 
     static let height: CGFloat = GridView.barHeight
     /// What the bar's right end takes: close, maximize, and room.
@@ -1365,6 +1389,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var w: CGFloat = 10
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
+        if !sidebarButton.isHidden { w += 22 }
         if !glyph.isHidden { w += StatusGlyph.size + 8 }
         return w
     }
@@ -1403,6 +1428,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         corner.target = self
         corner.action = #selector(cornerClicked)
         corner.toolTip = "Maximize"
+        sidebarButton.target = self
+        sidebarButton.action = #selector(sidebarClicked)
+        sidebarButton.isHidden = true
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
@@ -1411,7 +1439,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -1473,6 +1501,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     @objc private func cornerClicked() { onToggleFull?() }
+    @objc private func sidebarClicked() { onToggleSidebar?() }
 
     required init?(coder: NSCoder) { fatalError() }
 
@@ -1575,6 +1604,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // name itself is cut.
         let showClose = !stashed && showsButtons
         var showCorner = !stashed && showsButtons
+        var showSidebar = showCorner && sidebar != nil
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
         let nameWanted = ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
@@ -1584,11 +1614,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
             var used = x + 10 + linkRoom + (showHost ? hostWidth + 8 : 0)
             if showClose { used += 22 }
             if showCorner { used += 22 }
+            if showSidebar { used += 22 }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
             return bounds.width - used
         }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
+        if spare() < nameNeed, showSidebar { showSidebar = false }
         if spare() < nameNeed, showCorner { showCorner = false }
         // Narrower still, the pill goes altogether: the symbol and a bit of
         // the name say what the tile is; the links are a hover away in the
@@ -1607,6 +1639,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         corner.isHidden = !showCorner
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            right -= 22
+        }
+        sidebarButton.isHidden = !showSidebar
+        if showSidebar {
+            sidebarButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
         }
         if !glyph.isHidden {
