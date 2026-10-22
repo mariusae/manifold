@@ -202,6 +202,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// Scrolls to a command's row; false if it isn't found on the screen (yet).
     @discardableResult
     func go(toCommand id: Int) -> Bool {
+        // Not found yet (a terminal just come into view, its rows not read
+        // since): looked for now, rather than after the usual pause.
+        if located[id] == nil { locate() }
         guard let row = located[id] else { return false }
         perform("scroll_to_row:\(row)")
         return true

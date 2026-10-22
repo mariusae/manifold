@@ -1122,6 +1122,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let focused = arrangement?.focused.flatMap { views[$0] as? OutputView }
         if verb == "copy" { return focused?.debugCopy() ?? "no output focused" }
         if verb == "back" { focused?.debugBack(); return focused == nil ? "no output focused" : "ok" }
+        if verb.hasPrefix("find ") { return focused?.debugFind(String(verb.dropFirst(5))) ?? "no output focused" }
         return views.values.compactMap { v -> String? in
             guard let o = v as? OutputView else { return nil }
             guard verb == "raw" else { return o.debugDescription_ }

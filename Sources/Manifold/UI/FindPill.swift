@@ -246,6 +246,8 @@ final class FindHost {
     /// own layer is not its own (a terminal's is Metal's): a subview of it
     /// would not show.
     var inSuperview = false
+    /// Where in the view the pill may go, if not all of it (below a header).
+    var area: (() -> NSRect)?
 
     init(view: NSView, target: Searchable) {
         self.view = view
@@ -295,7 +297,7 @@ final class FindHost {
         }
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
-        layout(in: view.bounds)
+        layout(in: area?() ?? view.bounds)
         if query == nil { pill?.focus() }
     }
 
@@ -326,5 +328,88 @@ final class FindHost {
             pill.isHidden = view.isHidden
         }
         pill.frame = frame
+    }
+}
+
+/// Find (⌘F) over a text view's text, for the find pill: every match
+/// marked as the editor marks them, the current one stronger and scrolled
+/// to, with the system's find indicator.
+final class TextViewSearch {
+    private weak var textView: NSTextView?
+    private var matches: [NSRange] = []
+    private var current: Int?
+    private var query = ""
+    /// Debugging: how many, and which is current.
+    var debugState: String { "\(matches.count) matches, current \(current.map(String.init) ?? "none")" }
+    private var caseSensitive = false
+
+    init(_ textView: NSTextView) { self.textView = textView }
+
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        clearMarks()
+        self.query = query
+        self.caseSensitive = caseSensitive
+        guard let tv = textView, !query.isEmpty else {
+            matches = []
+            current = nil
+            return done(nil)
+        }
+        let s = tv.string as NSString
+        var found: [NSRange] = []
+        var from = 0
+        while from < s.length, found.count < 10_000 {
+            let r = s.range(of: query, options: caseSensitive ? [] : [.caseInsensitive], range: NSRange(location: from, length: s.length - from))
+            guard r.location != NSNotFound else { break }
+            found.append(r)
+            from = NSMaxRange(r)
+        }
+        matches = found
+        for r in found { tv.layoutManager?.addTemporaryAttribute(.backgroundColor, value: TextView.matchColor, forCharacterRange: r) }
+        // The first from where the selection is.
+        let at = tv.selectedRange().location
+        current = found.isEmpty ? nil : (found.firstIndex { $0.location >= at } ?? 0)
+        go()
+        done(found.count)
+    }
+
+    /// Found again (the text changed under the pill).
+    func refresh() {
+        guard !query.isEmpty else { return }
+        search(query, caseSensitive: caseSensitive) { _ in }
+    }
+
+    func findNext(forward: Bool) {
+        guard !matches.isEmpty else { return }
+        let n = matches.count
+        current = ((current ?? (forward ? -1 : 0)) + (forward ? 1 : n - 1)) % n
+        go()
+    }
+
+    private func go() {
+        guard let tv = textView else { return }
+        for r in matches { tv.layoutManager?.addTemporaryAttribute(.backgroundColor, value: TextView.matchColor, forCharacterRange: r) }
+        guard let i = current, i < matches.count else { return }
+        let r = matches[i]
+        tv.layoutManager?.addTemporaryAttribute(.backgroundColor, value: SearchPreviewView.currentMatch, forCharacterRange: r)
+        tv.scrollRangeToVisible(r)
+        tv.showFindIndicator(for: r)
+    }
+
+    func end() {
+        clearMarks()
+        matches = []
+        current = nil
+        query = ""
+    }
+
+    private func clearMarks() {
+        guard let tv = textView, let lm = tv.layoutManager else { return }
+        lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (tv.string as NSString).length))
+    }
+
+    /// The selection, for ⌘E and as the pill's first query.
+    var selectedText: String? {
+        guard let tv = textView, tv.selectedRange().length > 0 else { return nil }
+        return (tv.string as NSString).substring(with: tv.selectedRange())
     }
 }

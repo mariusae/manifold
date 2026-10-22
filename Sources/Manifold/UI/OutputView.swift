@@ -27,6 +27,16 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private let text = NSTextView()
     private var shown: OutputState?
     private var plainText = ""
+    private lazy var finder: FindHost = {
+        let f = FindHost(view: self, target: self)
+        f.area = { [weak self] in self?.findArea ?? .zero }
+        return f
+    }()
+    /// The find pill below the header, clear of its buttons.
+    private var findArea: NSRect {
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight + GridView.band)
+    }
+    private lazy var textSearch = TextViewSearch(text)
 
     var focusView: NSView { text }
     var isDead: Bool { false }
@@ -115,6 +125,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
             .map { String($0.reversed().drop { $0 == " " }.reversed()) }.joined(separator: "\n")
         text.textStorage?.setAttributedString(rendered)
         text.sizeToFit()
+        textSearch.refresh()
         needsLayout = true
         restoreScroll()
     }
@@ -149,6 +160,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         super.layout()
         let w = bounds.width, h = bounds.height
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
+        finder.layout(in: findArea)
         // The command over how it went, at the left; the buttons at the
         // right, their titles dropped when the tile is narrow.
         let titled = w >= Self.titledWidth
@@ -175,6 +187,12 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         return pasteboard.string(forType: .string) ?? "nothing"
     }
 
+    /// Debugging: the find pill shown with a query typed; "next" steps.
+    func debugFind(_ query: String) -> String {
+        if query == "next" { findNext(forward: true) } else { finder.show(query: query, fromSelection: false) }
+        return textSearch.debugState + (finder.pill == nil ? ", no pill" : ", pill up")
+    }
+
     /// Debugging: Show in Terminal pressed.
     func debugBack() { back.performClick(nil) }
 
@@ -184,6 +202,24 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         text.textStorage?.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: text.textStorage?.length ?? 0)) { v, _, _ in if v != nil { runs += 1 } }
         return "$ \(shown?.line ?? "?") [\(outcome.stringValue)] \(runs) runs\n" + plainText.prefix(400)
     }
+}
+
+extension OutputView: Searchable {
+    /// ⌘F, ⌘G, ⌘E: the find pill, over what the command printed.
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
+
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        textSearch.search(query, caseSensitive: caseSensitive, done: done)
+    }
+
+    func findNext(forward: Bool) { textSearch.findNext(forward: forward) }
+
+    func endSearch() {
+        textSearch.end()
+        window?.makeFirstResponder(text)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) { done(textSearch.selectedText) }
 }
 
 /// The terminal's colours, as Ghostty is set up with them (§7.2): Paper

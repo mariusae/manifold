@@ -446,7 +446,8 @@ when you find it again.
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in
   the terminal's palette and font — read-only, with Copy (the command
-  and its output, as text) and Show in Terminal (back to the command).
+  and its output, as text), ⌘F to search it, and Show in Terminal (back
+  to the command, the terminal scrolled to where it began).
   The bytes are the host's, kept from the command's start to its end, so
   a command scrolled off the screen or run before the window opened
   still shows whole; one from before the host kept them shows the
