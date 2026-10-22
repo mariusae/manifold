@@ -347,6 +347,7 @@ extension MediaView: Searchable {
 
     @objc fileprivate func pageEntered() {
         guard let p = pdfView, let doc = p.document else { return }
+        NavJumps.willJump?(self)
         if let n = Int(pageField.stringValue.trimmingCharacters(in: .whitespaces)), let page = doc.page(at: min(max(n, 1), doc.pageCount) - 1) {
             p.go(to: page)
         }
@@ -419,6 +420,7 @@ extension MediaView: Searchable {
             let s = TileSidebar(pages: thumbs, emptyText: "No table of contents")
             s.onPick = { [weak self] i in
                 guard let self, self.contents.indices.contains(i), let d = self.contents[i].item.destination else { return }
+                NavJumps.willJump?(self)
                 self.pdfView?.go(to: d)
                 self.sidebar?.current = i
                 self.window?.makeFirstResponder(self.pdfView)
@@ -508,6 +510,18 @@ extension MediaView: Searchable {
         lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " ") + " header \(Int(header.frame.width))")
         if let sidebar, !sidebar.isHidden { lines.append(sidebar.debugEntries) } else { lines.append("sidebar hidden") }
         return lines.joined(separator: "\n")
+    }
+}
+
+extension MediaView {
+    /// A PDF's page.
+    var navLocation: NavLocation? {
+        guard let p = pdfView, let doc = p.document, let page = p.currentPage else { return nil }
+        return .page(doc.index(for: page))
+    }
+
+    func go(to location: NavLocation) {
+        if case let .page(i) = location, let p = pdfView, let page = p.document?.page(at: i) { p.go(to: page) }
     }
 }
 

@@ -666,6 +666,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var closedStack: [Closed] = []
     private let toast = ToastView()
+    /// Each folder tile's own history: the folders it showed before, and
+    /// those gone back from.
+    private var folderHistory: [PlacementID: (back: [BlockID], forward: [BlockID])] = [:]
     /// Other hosts' images shown in notes, as data the page can load.
     private var remoteImages: [BlockID: String] = [:]
     private var fetchingImages: Set<BlockID> = []
@@ -2998,12 +3001,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A place focus was, in this client's history: a tile in a workspace.
     /// Where focus is: the workspace and the tile, so a change is noticed.
     private var lastFocusPlace: (BlockID?, PlacementID?)?
-    /// Going back and forward (§3.5) walks the trail every host keeps —
-    /// each block gone to, by which tile — as it stood when the walk
-    /// began, newest last, with the step gone to; nothing while not walking.
-    private var trailWalk: (steps: [Step], cursor: Int)?
-    private var settleWork: DispatchWorkItem?
-    private var settleMonitor: Any?
 
     /// A move of focus takes the pen (§8.2): for the block, and the
     /// workspace it sits in. (The host writes the trail from the focus
@@ -3012,6 +3009,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let place = (selected, arrangement?.focused)
         guard place.0 != lastFocusPlace?.0 || place.1 != lastFocusPlace?.1 else { return }
         lastFocusPlace = place
+        noteNavFocus()
         if let b = focusedShown?.placement.block { hosts.own(b) }
         if let w = selected { hosts.own(w) }
     }
@@ -3026,94 +3024,151 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return steps.sorted { $0.at < $1.at }
     }
 
-    /// ⌘[ (or the mouse's back button): where focus was before, across
-    /// workspaces, the pointer following.
-    @objc func goBack(_ sender: Any?) { walkTrail(-1) }
-    /// ⌘] (or the mouse's forward button): forward again, as far as where
-    /// going back began.
-    @objc func goForward(_ sender: Any?) { walkTrail(1) }
+    // MARK: The block navigation stack (§3.5)
 
-    private func walkTrail(_ direction: Int) {
-        var walk = trailWalk ?? (steps: trailSteps(), cursor: 0)
-        if trailWalk == nil { walk.cursor = walk.steps.count }
-        guard !walk.steps.isEmpty else { return NSSound.beep() }
-        let here = focusedShown?.placement.block ?? selected
-        var i = walk.cursor + direction
-        var passed: Set<BlockID> = here.map { [$0] } ?? []
-        while walk.steps.indices.contains(i) {
-            let s = walk.steps[i]
-            // Each block once on the way: a run of visits to one is one place.
-            if passed.insert(s.block).inserted, go(to: s) {
-                walk.cursor = i
-                trailWalk = walk
-                awaitSettling()
+    /// A place in the stack: a tile in its workspace, its block, and where
+    /// in the block it was.
+    struct NavEntry {
+        var workspace: BlockID?
+        var placement: PlacementID?
+        var block: BlockID
+        var location: NavLocation?
+
+        func same(as e: NavEntry) -> Bool {
+            guard placement == e.placement, block == e.block else { return false }
+            switch (location, e.location) {
+            case let (a?, b?): return a.near(b)
+            default: return true
+            }
+        }
+    }
+
+    /// Every place gone to, block by block and within blocks — a focus
+    /// moved, a definition gone to, a found line, a heading, a command —
+    /// oldest first, with where back and forward are now. ⌃- goes back,
+    /// ⌃⇧- forward, as VS Code's do; anything new drops what's forward.
+    private var navStack: [NavEntry] = []
+    private var navCursor = -1
+    /// Going back or forward: the moves it makes aren't new places.
+    private var navigating = false
+
+    /// The current entry, kept up with where its view is now.
+    private func refreshNavCurrent() {
+        guard navStack.indices.contains(navCursor), let p = navStack[navCursor].placement, let v = views[p] else { return }
+        if let loc = v.navLocation { navStack[navCursor].location = loc }
+    }
+
+    /// `refresh`: the current entry first brought up to where its view is
+    /// (not after a jump, where that's where it landed, not where it was).
+    private func pushNav(_ e: NavEntry, refresh: Bool = true) {
+        if refresh { refreshNavCurrent() }
+        if navStack.indices.contains(navCursor), navStack[navCursor].same(as: e) {
+            navStack[navCursor] = e
+            return
+        }
+        if navCursor + 1 < navStack.count { navStack.removeSubrange((navCursor + 1)...) }
+        navStack.append(e)
+        if navStack.count > 300 { navStack.removeFirst(navStack.count - 300) }
+        navCursor = navStack.count - 1
+    }
+
+    /// Focus moved to another tile: a new place.
+    private func noteNavFocus() {
+        guard !navigating, let f = focusedShown else { return }
+        pushNav(NavEntry(workspace: selected, placement: f.id, block: f.placement.block, location: views[f.id]?.navLocation))
+    }
+
+    /// A view about to jump within its block: where it is noted first, and
+    /// where it lands once it has.
+    private func noteJump(_ view: PaneContent) {
+        guard !navigating else { return }
+        let here = NavEntry(workspace: selected, placement: view.placement, block: view.block, location: view.navLocation)
+        if navStack.indices.contains(navCursor), navStack[navCursor].placement == view.placement {
+            navStack[navCursor].location = here.location
+        } else {
+            pushNav(here)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self, weak view] in
+            guard let self, let view, !self.navigating else { return }
+            self.pushNav(NavEntry(workspace: self.selected, placement: view.placement, block: view.block, location: view.navLocation), refresh: false)
+        }
+    }
+
+    /// ⌃- (or the mouse's back button): the place before, in another block
+    /// or this one, the pointer following.
+    @objc func navigateBack(_ sender: Any?) { walkNav(-1) }
+    /// ⌃⇧- (or the mouse's forward button): forward again.
+    @objc func navigateForward(_ sender: Any?) { walkNav(1) }
+
+    private func walkNav(_ direction: Int) {
+        refreshNavCurrent()
+        var i = navCursor + direction
+        while navStack.indices.contains(i) {
+            if go(toNav: navStack[i]) {
+                navCursor = i
                 return
             }
-            i += direction
+            // Gone (its tile and block both): passed over, and forgotten.
+            navStack.remove(at: i)
+            if i < navCursor { navCursor -= 1 }
+            if direction < 0 { i -= 1 }
         }
         NSSound.beep()
     }
 
-    /// Goes to a step: the tile it was focused by, if it still is anywhere
-    /// — its workspace selected, it out of its stack (or from behind a
-    /// maximized one) and focused; the tile gone, its block wherever it
-    /// is; nothing left of either, false.
-    private func go(to step: Step) -> Bool {
-        if let pid = step.placement,
-           let edge = hosts.all.lazy.compactMap({ $0.node.graph.edge(pid) }).first(where: \.isLive),
-           let a = hosts.arrangement(edge.from), allWorkspaces.contains(edge.from), a.placement(pid) != nil {
-            if selected != edge.from { hosts.select(edge.from) }
+    /// Goes to an entry: its tile if it's still anywhere (its workspace
+    /// shown, out of its stack, focused), else its block wherever it is;
+    /// then the place in it.
+    private func go(toNav e: NavEntry) -> Bool {
+        navigating = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.navigating = false }
+        var target: PlacementID?
+        if let pid = e.placement, let w = e.workspace, allWorkspaces.contains(w), let a = hosts.arrangement(w), a.placement(pid) != nil {
+            if selected != w { hosts.select(w) }
             if a.focused != pid || a.isStashed(pid) || (a.full != nil && a.full != pid) {
-                hosts.append(arriving(pid, in: a), to: .block(edge.from))
+                hosts.append(arriving(pid, in: a), to: .block(w))
             }
-            warpPointerToFocus()
-        } else if let b = hosts.block(step.block) {
-            if b.kind == .arrangement { guard allWorkspaces.contains(b.id) else { return false } }
-            goTo(step.block)
+            target = pid
+        } else if hosts.block(e.block) != nil {
+            goTo(e.block)
         } else {
+            navigating = false
             return false
         }
         render()
         lastFocusPlace = (selected, arrangement?.focused)
         warpPointerToFocus()
+        if let loc = e.location {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, let p = target ?? self.arrangement?.focused, let v = self.views[p] else { return }
+                v.go(to: loc)
+            }
+        }
         return true
     }
 
-    /// After going back or forward, staying put (a couple of seconds), a
-    /// key typed or a click settles on where it went: the walk is over,
-    /// and the next back starts from here.
-    private func awaitSettling() {
-        settleWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.settle() }
-        settleWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
-        guard settleMonitor == nil else { return }
-        settleMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, (event.window ?? NSApp.keyWindow) === self.window else { return event }
-            // Not the keys that go back and forward themselves.
-            if event.type == .keyDown, event.modifierFlags.contains(.command), ["[", "]"].contains(event.charactersIgnoringModifiers ?? "") { return event }
-            self.settle()
-            return event
-        }
-    }
-
-    private func settle() {
-        settleWork?.cancel()
-        settleWork = nil
-        if let settleMonitor { NSEvent.removeMonitor(settleMonitor) }
-        settleMonitor = nil
-        trailWalk = nil
-    }
 
     /// The mouse's back and forward buttons (3 and 4), wherever it is in
-    /// the window: back and forward by focus.
+    /// the window: back and forward; and ⌃- and ⌃⇧-, the block navigation
+    /// stack's keys, before any view takes them.
     private var historyButtonsMonitor: Any?
+    private var navKeysMonitor: Any?
     private func watchHistoryButtons() {
+        NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
+        navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window, event.keyCode == 27 else { return event }
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard mods == .control || mods == [.control, .shift] else { return event }
+            if mods.contains(.shift) { self.navigateForward(nil) } else { self.navigateBack(nil) }
+            return nil
+        }
         historyButtonsMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
             guard let self, (event.window ?? NSApp.keyWindow) === self.window else { return event }
             switch event.buttonNumber {
-            case 3: self.goBack(nil); return nil
-            case 4: self.goForward(nil); return nil
+            // A page's or a folder's own history where the tile has one;
+            // else the block navigation stack.
+            case 3: if !NSApp.sendAction(#selector(WebView.goBack(_:)), to: nil, from: self) { self.navigateBack(nil) }; return nil
+            case 4: if !NSApp.sendAction(#selector(WebView.goForward(_:)), to: nil, from: self) { self.navigateForward(nil) }; return nil
             default: return event
             }
         }
@@ -3128,13 +3183,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return String(format: "at %.2f,%.2f elevation %.1f° %.0f K cast r%.3f g%.3f b%.3f", p.latitude, p.longitude, c.elevation, c.kelvin, c.red, c.green, c.blue)
     }
 
-    /// Debugging: the trail's last steps, the one gone to marked.
+    /// Debugging: the block navigation stack's last places, the one at marked.
     func debugHistory() -> String {
-        let steps = trailWalk?.steps ?? trailSteps()
-        let cursor = trailWalk?.cursor
-        return steps.suffix(30).enumerated().map { k, s in
-            let i = steps.count - min(30, steps.count) + k
-            return "\(i == cursor ? ">" : " ")\(i) \(hosts.block(s.block)?.displayTitle ?? "?")\(s.placement == nil ? "" : " (tile)")"
+        let first = max(0, navStack.count - 30)
+        return navStack[first...].enumerated().map { k, e in
+            let i = first + k
+            let loc = e.location.map { " @\($0)" } ?? ""
+            return "\(i == navCursor ? ">" : " ")\(i) \(hosts.block(e.block)?.displayTitle ?? "?")\(loc)"
         }.joined(separator: "\n")
     }
 
@@ -5195,11 +5250,37 @@ extension MainWindowController: DirectoryViewDelegate {
             // ⌘: the folder's listing beside this one, which stays.
             show(block, lens: .directory, .besideOpener(view.placement))
         } else if isDirectory {
-            // A folder takes the listing's place, in the same tile.
-            replace(view.placement, with: block, lens: .directory)
+            // A folder takes the listing's place, in the same tile; the one
+            // it was is the tile's to go back to (⌘[).
+            let next = Placement(block: block, lens: .directory)
+            var h = folderHistory.removeValue(forKey: view.placement) ?? (back: [], forward: [])
+            h.back.append(view.block)
+            h.forward = []
+            folderHistory[next.id] = h
+            replace(view.placement, with: block, lens: .directory, as: next.id)
         } else {
             open(path, from: view.placement)
         }
+    }
+
+    func directoryView(_ view: DirectoryView, history direction: Int) -> Bool {
+        guard var h = folderHistory[view.placement] else { return false }
+        let to: BlockID
+        if direction < 0 {
+            guard let b = h.back.popLast() else { return false }
+            h.forward.append(view.block)
+            to = b
+        } else {
+            guard let f = h.forward.popLast() else { return false }
+            h.back.append(view.block)
+            to = f
+        }
+        guard hosts.block(to) != nil else { return false }
+        let next = Placement(block: to, lens: .directory)
+        folderHistory.removeValue(forKey: view.placement)
+        folderHistory[next.id] = h
+        replace(view.placement, with: to, lens: .directory, as: next.id)
+        return true
     }
 
     func directoryViewRefresh(_ view: DirectoryView) {

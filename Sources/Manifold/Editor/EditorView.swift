@@ -318,6 +318,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             s.onPick = { [weak self] i in
                 guard let self, self.headings.indices.contains(i) else { return }
                 let line = self.headings[i].id
+                NavJumps.willJump?(self)
                 self.scroll(toY: self.textView.top(ofLine: line) - 8)
                 self.textView.setSelections([Selection(at: self.textView.text.offset(ofLine: line))], scroll: false)
                 self.window?.makeFirstResponder(self.textView)
@@ -767,6 +768,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// A line gone to, selected and scrolled into view; before the editor
     /// is laid out, kept until it is.
     func select(line: Int, column: Int? = nil) {
+        NavJumps.willJump?(self)
         let r = textView.offset(line: line, column: column)
         textView.setSelections([Selection(r.start, r.end)])
         textView.highlightedLine = line - 1
@@ -921,5 +923,14 @@ extension EditorView: Printable {
     /// The text as it is, in the code font (a note's too: its Markdown).
     func printOperation() -> NSPrintOperation? {
         TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: hasOutline ? .systemFont(ofSize: 10.5) : TextPrint.codeFont)
+    }
+}
+
+extension EditorView {
+    /// The caret's line (from 1).
+    var navLocation: NavLocation? { .line(textView.text.line(at: textView.primarySelection.head) + 1) }
+
+    func go(to location: NavLocation) {
+        if case let .line(n) = location { select(line: n, column: nil) }
     }
 }

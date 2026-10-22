@@ -406,8 +406,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         window.addItem(.separator())
-        item(window, "Go Back", #selector(MainWindowController.goBack(_:)), "[")
-        item(window, "Go Forward", #selector(MainWindowController.goForward(_:)), "]")
+        // The block navigation stack (§3.5): ⌃- and ⌃⇧-, as VS Code's.
+        item(window, "Navigate Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
+        item(window, "Navigate Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
         item(window, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
         item(window, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
         item(window, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])

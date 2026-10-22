@@ -69,6 +69,35 @@ protocol PaneContent: NSView {
     var hasSidebar: Bool { get }
     var sidebarShown: Bool { get }
     func toggleSidebar()
+    /// Where in its block the view is now, for the block navigation stack
+    /// (§3.5): an editor's line, a terminal's command gone to, a page's
+    /// scroll, a PDF's page. Nil: only the tile.
+    var navLocation: NavLocation? { get }
+    /// Back there.
+    func go(to location: NavLocation)
+}
+
+/// A place within a block (§3.5).
+enum NavLocation: Equatable {
+    case line(Int)
+    case command(Int)
+    case offset(Double)
+    case page(Int)
+
+    /// Near enough to be one place: lines a few apart are.
+    func near(_ other: NavLocation) -> Bool {
+        switch (self, other) {
+        case let (.line(a), .line(b)): abs(a - b) <= 3
+        case let (.offset(a), .offset(b)): abs(a - b) < 40
+        default: self == other
+        }
+    }
+}
+
+/// A view about to jump within its block (a definition, a found line, a
+/// heading, a command): the block navigation stack notes where it was.
+enum NavJumps {
+    static var willJump: ((PaneContent) -> Void)?
 }
 
 extension PaneContent {
@@ -78,6 +107,8 @@ extension PaneContent {
     var hasSidebar: Bool { false }
     var sidebarShown: Bool { false }
     func toggleSidebar() {}
+    var navLocation: NavLocation? { nil }
+    func go(to location: NavLocation) {}
 }
 
 /// Something a tile's pill can become a field for: the text to start

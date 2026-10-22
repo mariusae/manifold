@@ -65,13 +65,17 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     /// A line of the text (from 1) gone to: at the top, a little of what's
     /// before it showing.
-    func reveal(line: Int) { scroll(toTopLine: max(0, Double(line - 1) - 2)) }
+    func reveal(line: Int) {
+        NavJumps.willJump?(self)
+        scroll(toTopLine: max(0, Double(line - 1) - 2))
+    }
 
     private var pendingTopLine: Double?
 
     /// Scrolls to the page's `index`th heading (⌘\), the pointer
     /// following — not from the tile's own outline, where it stays.
     func scroll(toHeading index: Int, warping: Bool = true) {
+        NavJumps.willJump?(self)
         web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]; if(h){h.scrollIntoView({block:'start'});}})()") { [weak self] _, _ in
             guard let self, warping else { return }
             self.delegate?.markdownViewDidReveal(self)
@@ -109,6 +113,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         }
         // The scrubber follows the page as it moves, with the headings as last read.
         handler.onScrolling = { [weak self] y in
+            self?.scrollY = y
             guard let self, let o = self.lastOutline else { return }
             self.scrubber.update(marks: o.marks, total: o.total, offset: y, shown: o.shown)
             self.markCurrentHeading(at: y)
@@ -175,6 +180,12 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private var sidebar: TileSidebar?
     private var headingLevels: [(title: String, level: Int)] = []
     private var sidebarRestored = false
+    /// How far down the page is, as last seen.
+    private var scrollY: Double = 0
+    var navLocation: NavLocation? { .offset(scrollY) }
+    func go(to location: NavLocation) {
+        if case let .offset(y) = location { web.evaluateJavaScript("window.scrollTo(0, \(y));") }
+    }
     var hasSidebar: Bool { true }
     var sidebarShown: Bool { sidebar?.isHidden == false }
 

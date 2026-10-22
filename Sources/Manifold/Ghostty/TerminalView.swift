@@ -235,8 +235,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// A command's row scrolled to, by its id (an outline's click).
     /// Scrolls to a command's row; false if it isn't found on the screen (yet).
+    /// The command last gone to, while it's the place the terminal is at.
+    private var commandGoneTo: Int?
+    var navLocation: NavLocation? { commandGoneTo.map { .command($0) } }
+    func go(to location: NavLocation) {
+        if case let .command(id) = location { _ = go(toCommand: id) }
+    }
+
     @discardableResult
     func go(toCommand id: Int) -> Bool {
+        NavJumps.willJump?(self)
+        commandGoneTo = id
         // Not found yet (a terminal just come into view, its rows not read
         // since): looked for now, rather than after the usual pause.
         if located[id] == nil { locate() }

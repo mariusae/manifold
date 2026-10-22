@@ -24,6 +24,9 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void)
     /// An entry right-clicked: what can be done with it.
     func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu?
+    /// ⌘[ and ⌘]: the folders this tile showed before (or after), as a
+    /// Finder window's back and forward go; false if there's none.
+    func directoryView(_ view: DirectoryView, history direction: Int) -> Bool
 }
 
 /// What's dropped on a folder's tile: a file or folder of this Mac's, or
@@ -362,6 +365,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     }
 
     // MARK: Going places
+
+    /// ⌘[ (the Back button of a Finder window): the folder shown before.
+    @objc func goBack(_ sender: Any?) { if delegate?.directoryView(self, history: -1) != true { NSSound.beep() } }
+    @objc func goForward(_ sender: Any?) { if delegate?.directoryView(self, history: 1) != true { NSSound.beep() } }
 
     /// A file opened beside; a folder gone into, in this tile.
     func open(_ node: BrowserNode) {

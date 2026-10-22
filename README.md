@@ -179,12 +179,17 @@ and Mona Sans (bundled).
   folder of the block it was made from: it is found there, and saved
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
   beside the focused block; Browse This Folder (⌃⌘O) its own.
-  **Go Back** and **Go Forward** (⌘[ ⌘], or the mouse's back and
-  forward buttons) go along where the focus has been, this Mac's own
-  history: to the tile, in its workspace, brought out if it was stashed,
-  the pointer with it. Settle where you went back to — stay a couple of
-  seconds, type, click — and it is the newest place, so back from there
-  goes where you were before going back.
+  The **block navigation stack**: **Navigate Back** and **Navigate
+  Forward** (⌃- and ⌃⇧-, as in VS Code; or the mouse's back and forward
+  buttons) go along every place you've been — the tiles focused and,
+  within a block, where a jump took you from: a definition gone to, a
+  found line, a heading, a command, an outline's entry, a PDF's page —
+  back to the tile in its workspace (brought out if it was stashed) and
+  the line, command, scroll or page it was at, the pointer with it.
+  Going somewhere new from back there drops what was forward, as in VS
+  Code. ⌘[ and ⌘] are for what has a history of its own: a web page's,
+  and a folder tile's (the folders it showed, as a Finder window's Back
+  goes); the mouse's buttons go there first in such a tile.
 - **⌃⇥** walks the workspaces most recently gone to first, each
   sliding in from the right (⌃⇧⇥ from the left), for as long as control is
   held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
@@ -647,11 +652,9 @@ when you find it again.
   beyond, with what made each link shown when a block is pointed at,
   and what you went to before and after it, from the trail. Click a
   block to look around *it* instead (Back returns), double-click or ⏎ to
-  go there, arrow keys move, Space re-centers, ⎋ closes. Window ▸ Go
-  Back and Go Forward (⌘[, ⌘]) walk the trail — every tile focused and
-  every workspace gone to, which the host keeps — across columns and
-  workspaces: back to the block you were at before, wherever it was,
-  and forward again; ⌃⇥ goes round the workspaces in the same order.
+  go there, arrow keys move, Space re-centers, ⎋ closes. The trail —
+  every tile focused and every workspace gone to, which the host keeps
+  — orders ⌃⇥'s round of the workspaces and the map's before and after.
 - **Every block has a status** (DESIGN.md §3.7), in the schema of
   [OSC 7501](https://mitchellh.com/writing/program-status-osc7501):
   idle, working (with progress, or without), done, blocked (waiting for

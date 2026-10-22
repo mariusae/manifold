@@ -424,7 +424,7 @@ enum DebugControl {
         case "history":
             // This client's focus history; "history back|forward" goes along it.
             guard let wc else { return "no window" }
-            if arg == "back" { wc.goBack(nil) } else if arg == "forward" { wc.goForward(nil) }
+            if arg == "back" { wc.navigateBack(nil) } else if arg == "forward" { wc.navigateForward(nil) }
             return wc.debugHistory()
         case "links":
             // ⌘ held over the focused editor: the names shown as links.
