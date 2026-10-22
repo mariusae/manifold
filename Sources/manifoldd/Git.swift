@@ -60,6 +60,29 @@ final class Git {
         }
     }
 
+    /// The whole working tree of a git repository as a tree object —
+    /// tracked files as they are, untracked ones that aren't ignored —
+    /// written through an index of its own (a copy of the real one, so
+    /// only what changed is read), the real index and the files untouched.
+    func snapshotTree(_ root: String, done: @escaping (String?) -> Void) {
+        work.async {
+            let tmp = NSTemporaryDirectory() + "manifold-index-\(UUID().uuidString)"
+            defer { try? FileManager.default.removeItem(atPath: tmp) }
+            if let (out, status) = try? Child.run(["git", "-C", root, "rev-parse", "--git-path", "index"], timeout: 20, quiet: true), status == 0 {
+                var index = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !index.hasPrefix("/") { index = root + "/" + index }
+                try? FileManager.default.copyItem(atPath: index, toPath: tmp)
+            }
+            let git = ["env", "GIT_INDEX_FILE=\(tmp)", "git", "-C", root]
+            var tree: String?
+            if let (_, added) = try? Child.run(git + ["add", "-A"], timeout: 300, quiet: true), added == 0,
+               let (out, status) = try? Child.run(git + ["write-tree"], timeout: 60, quiet: true), status == 0 {
+                tree = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            self.queue.async { done(tree) }
+        }
+    }
+
     /// A file as a revision has it (`HEAD`: the committed version, in
     /// either system); nil if the revision doesn't have it.
     func show(_ path: String, at revision: String, done: @escaping (String?) -> Void) {

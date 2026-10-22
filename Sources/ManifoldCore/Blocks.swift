@@ -158,6 +158,18 @@ public struct TextState: Codable, Equatable, Sendable {
 
 // MARK: Terminal
 
+/// A repository's working tree at a moment, as a git tree object (§7.5).
+public struct TreeSnapshot: Codable, Equatable, Sendable {
+    public var repo: String
+    public var tree: String
+    public var at: Stamp
+    public init(repo: String, tree: String, at: Stamp) {
+        self.repo = repo
+        self.tree = tree
+        self.at = at
+    }
+}
+
 public struct TerminalState: Codable, Equatable, Sendable {
     public var cwd: String?
     /// The title the program in it last set.
@@ -172,6 +184,9 @@ public struct TerminalState: Codable, Equatable, Sendable {
     public var dormantSince: Stamp?
     /// For an agent: the command run in place of the login shell.
     public var command: String?
+    /// For an agent started in a repository: its working tree then, the
+    /// whole of it, to show what the agent changed since.
+    public var snapshot: TreeSnapshot?
     /// How long the last shell had been idle when it was ended, in seconds.
     public var dormantAfter: Int?
     /// The commands the shell ran (§3.8), the last `commandLimit` of them:
@@ -437,6 +452,10 @@ public enum DiffSubject: Codable, Equatable, Sendable {
     /// What's changed in a repository and not yet committed, as plain
     /// `git diff` (`sl diff`) shows it: read again as the repository moves.
     case uncommitted(repo: String)
+    /// Everything that's changed in a repository's working tree since a
+    /// snapshot of it (`tree`, the whole tree, untracked files too, as an
+    /// agent started): committed since or not, new files included.
+    case since(repo: String, tree: String, title: String)
 }
 
 /// A diff block: the subject, and the texts (or the patch) the host read
@@ -905,6 +924,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
                 return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
             case let .uncommitted(repo):
                 return "Changes in \(repo.lastPathComponent)"
+            case let .since(_, _, title):
+                return title
             case let .patch(_, title):
                 if let title, !title.isEmpty { return title }
                 let files = diff?.patch?.split(separator: "\n").filter { $0.hasPrefix("+++ ") }.count ?? 0

@@ -702,7 +702,13 @@ when you find it again.
 - **Agents** (File ▸ New Agent, ⌥⌘A) are terminal blocks that run the
   agent command (`claude` unless the settings say otherwise) in a login
   shell where the focused block is; their transcripts are kept like a
-  terminal's, and they come back after a restart the same way. Launch
+  terminal's, and they come back after a restart the same way. An agent
+  started in a git repository has the working tree noted as it starts
+  — all of it, untracked files too, without touching the index — and
+  **Changes Since It Started** in its tile's menu shows everything it
+  has changed since as a diff block of its own, linked from it: edits,
+  new files, commits, but nothing that was already changed before it
+  began. Launch
   Agent Here (in the File menu, a tile's menu, or the box, ⌘T) offers each
   agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
   opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's

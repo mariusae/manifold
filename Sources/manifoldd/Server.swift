@@ -450,6 +450,13 @@ final class Server {
                 append(.create(kind: .agent, title: nil, path: nil), to: .block(block))
                 if let cwd { append(.cwd(cwd), to: .block(block)) }
                 append(.command(command), to: .block(block))
+                // Its repository as it starts, to show what it changed since.
+                if let cwd, let (root, vcs) = git.repository(of: cwd), vcs == .git {
+                    git.snapshotTree(root) { [weak self] tree in
+                        guard let self, let tree else { return }
+                        self.append(.snapshot(TreeSnapshot(repo: root, tree: tree, at: self.clock.now())), to: .block(block))
+                    }
+                }
             }
             done()
         case let .newNotebook(block, cwd):
@@ -723,6 +730,7 @@ final class Server {
                 case let .versions(id, _, _): path = node.block(id)?.path
                 case let .patch(root, _): path = root
                 case let .uncommitted(repo): path = repo
+                case let .since(repo, _, _): path = repo
                 }
                 append(.create(kind: .diff, title: nil, path: path), to: .block(block))
             }
@@ -872,7 +880,13 @@ final class Server {
         let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
         report(block, .working, msg: "Refreshing")
         // The repository's changes in one diff, if open, looked at with it.
-        for d in node.blocks where d.kind == .diff && d.diff?.subject == .uncommitted(repo: root) { loadDiff(d.id) }
+        for d in node.blocks where d.kind == .diff {
+            switch d.diff?.subject {
+            case .uncommitted(root)?: loadDiff(d.id)
+            case let .since(repo, _, _)? where repo == root: loadDiff(d.id)
+            default: break
+            }
+        }
         var commands = [vcs.statusArguments, vcs.logArguments(limit: 200)]
         if let w = vcs.whereArguments { commands.append(w) }
         if let a = vcs.aheadArguments { commands.append(a) }
@@ -966,6 +980,30 @@ final class Server {
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
                     self.report(block, .error, msg: e.message)
+                }
+            }
+        case let .since(repo, tree, _):
+            // The tree now, against the one then: everything, new files too.
+            watchRepo(repo, .git)
+            git.snapshotTree(repo) { [weak self] now in
+                guard let self, self.node.block(block) != nil else { return }
+                guard let now else {
+                    self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: "couldn't read the working tree", at: self.clock.now()), to: .block(block))
+                    return self.report(block, .error, msg: "couldn't read the working tree")
+                }
+                self.git.run(.git, ["diff", "--no-color", tree, now], in: repo) { [weak self] result in
+                    guard let self, self.node.block(block) != nil else { return }
+                    switch result {
+                    case .success(let patch):
+                        if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
+                            return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                        }
+                        self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                        self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                    case .failure(let e):
+                        self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
+                        self.report(block, .error, msg: e.message)
+                    }
                 }
             }
         case let .commit(repo, sha):

@@ -4794,6 +4794,11 @@ extension MainWindowController: GridDelegate {
         if hosts.block(block)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
         }
+        if let snap = hosts.block(block)?.terminal?.snapshot {
+            menu.addItem(ClosureMenuItem("Changes Since It Started", symbol: "plusminus") { [weak self] in
+                self?.showAgentChanges(block, snap, beside: placement)
+            })
+        }
         if let b = hosts.block(block) {
             menu.addItem(.separator())
             for item in keepingItems(for: b) { menu.addItem(item) }
@@ -5420,6 +5425,18 @@ extension MainWindowController: ProcessViewDelegate {
 }
 
 extension MainWindowController: GitViewDelegate {
+    /// What an agent changed (§7.5): its repository's working tree now
+    /// against the tree as it started, every file it touched, new ones
+    /// too — a diff block of its own, linked from the agent.
+    func showAgentChanges(_ agent: BlockID, _ snap: TreeSnapshot, beside placement: PlacementID) {
+        guard let client = hosts.client(agent.host) else { return NSSound.beep() }
+        let name = hosts.block(agent)?.displayTitle ?? "the agent"
+        let subject = DiffSubject.since(repo: snap.repo, tree: snap.tree, title: "Changes by \(name) in \(snap.repo.lastPathComponent)")
+        let diff = client.diffBlock(subject)
+        hosts.link(from: agent, to: diff, kind: .opened, context: "changes since it started")
+        show(diff, lens: .diff, .besideOpener(placement), context: "changes since it started")
+    }
+
     func gitView(_ view: GitView, openDiff subject: DiffSubject) {
         guard let client = hosts.client(view.block.host) else { return }
         let block = client.diffBlock(subject)
@@ -5432,7 +5449,7 @@ extension MainWindowController: GitViewDelegate {
             context = new.path.lastPathComponent
         case let .commit(_, sha): context = String(sha.prefix(7))
         case .uncommitted: context = "uncommitted"
-        case .versions, .patch: break
+        case .versions, .patch, .since: break
         }
         show(block, lens: .diff, opener(view.placement), context: context)
     }

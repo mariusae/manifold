@@ -327,6 +327,18 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "agenttest":
+            // "agenttest <repo>": an agent running `sleep 600` there; its id.
+            guard let wc else { return "no window" }
+            let id = BlockID(host: wc.hosts.local.host)
+            wc.hosts.local.propose(.newAgent(block: id, cwd: arg, command: "sleep 600"))
+            return id.description
+        case "agentchanges":
+            // "agentchanges <agent>": its changes' diff block made; its patch so far.
+            guard let wc, let id = BlockID(string: arg), let snap = wc.hosts.block(id)?.terminal?.snapshot else { return "no snapshot" }
+            wc.showAgentChanges(id, snap, beside: wc.debugFocusedPlacement?.placement.id ?? "")
+            let d = wc.hosts.blocks.first { $0.kind == .diff && $0.diff?.subject == .since(repo: snap.repo, tree: snap.tree, title: "Changes by \(wc.hosts.block(id)?.displayTitle ?? "the agent") in \(snap.repo.lastPathComponent)") }
+            return "snapshot \(snap.tree.prefix(10)) of \(snap.repo)\n" + (d?.diff?.patch ?? d?.diff?.error ?? "(not loaded yet)")
         case "forward":
             // "forward <port>": this host's port through a tunnel (see the log).
             guard let wc, let port = Int(arg) else { return "usage: forward <port>" }

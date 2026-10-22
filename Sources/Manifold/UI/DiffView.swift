@@ -66,7 +66,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
                 if let file = self.rowsView.file(of: row) { self.delegate?.diffView(self, open: repo.appendingPathComponent(file), line: row.newLine ?? 1) }
             case .versions:
                 if let path = b.path { self.delegate?.diffView(self, open: path, line: row.newLine ?? row.oldLine ?? 1) }
-            case let .patch(root, _), let .uncommitted(root):
+            case let .patch(root, _), let .uncommitted(root), let .since(root, _, _):
                 if let file = self.rowsView.file(of: row) { self.delegate?.diffView(self, open: root.appendingPathComponent(file), line: row.newLine ?? 1) }
             }
         }

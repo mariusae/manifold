@@ -237,6 +237,8 @@ public enum Event: Codable, Equatable, Sendable {
     case shell(ShellEvent)
     /// An agent's command, run in place of the login shell.
     case command(String?)
+    /// An agent's repository as it started (§7.5).
+    case snapshot(TreeSnapshot)
     /// The shell ran a command (§3.8): its line, as it started.
     case ran(id: Int, String, at: Stamp)
     /// A command the shell ran ended, with its status.
@@ -528,6 +530,7 @@ extension TerminalState {
         switch event {
         case let .cwd(c): cwd = c
         case let .command(c): command = c
+        case let .snapshot(s): snapshot = s
         case let .ran(id, text, at):
             var list = commands ?? []
             list.append(ShellCommand(id: id, text: text, at: at))
