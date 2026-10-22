@@ -477,8 +477,18 @@ when you find it again.
   Mail and it's fetched there. Right-click an entry (or a file tile's
   menu) for **Open With** — on another host, **Open Locally With**: a
   copy opened by the app here, sent back each time it's saved — and
-  **Download**, to Downloads. Each file goes on a stream of its own in
-  the host's one connection, paced to what the link can take: no more
+  **Download**, to Downloads. Every copy shows at the foot of the
+  sidebar while it goes — what, where to, how much of how much, how
+  fast and how long is left, a bar filling — and × stops it, leaving
+  nothing half-written; a failed one stays, red, until it's dismissed,
+  and a finished download's row shows it in the Finder. With the sidebar
+  away, a badge at the window's lower left says copies are going and
+  brings it out. A drop of many things is one row. A copy between two
+  hosts goes straight from the one to the other through this Mac, never
+  onto its disk; a copy within a host is made by the host. Each copy is
+  a stream of its own in the host's one connection — a whole folder
+  one stream, its files' permissions, times and links kept — paced to
+  what the link can take: no more
   of it on the way at once than the link holds (its rate and its
   round trip, measured as it goes), so a file on its way — an image or
   a PDF opening too — leaves a keystroke, an edit or an answer behind

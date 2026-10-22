@@ -1,86 +1,233 @@
 import Foundation
 import ManifoldCore
 
-/// Files carried between this Mac and a host (§8): a file or folder
-/// dropped on another host's folder or terminal goes up; one dragged out
-/// of another host's folder (to the Finder, Mail) comes down; one opened
-/// with an app here comes down and goes back up when it's saved. Each file
-/// on a stream of its own, paced to the link, so none holds up anything
-/// else said meanwhile — a keystroke, an edit.
+/// Files carried between this Mac and its hosts (§8), or between two
+/// hosts, or within one: a file or folder dropped on another host's folder
+/// or terminal goes up; one dragged out to the Finder, or downloaded, comes
+/// down; one copied from one host's folder to another's goes straight from
+/// the one to the other; one opened with an app here comes down and goes
+/// back up when it's saved. Each is a tree on a stream of its own (paced
+/// to the link, so it holds up nothing else), its walking and its disk
+/// work on a queue of its own — never the main thread; it ends at its
+/// destination all at once, or not at all.
+///
+/// Each says how far it has got (`progress`, from any thread: bytes, of
+/// how many once that's known), says it's done on the main thread (why
+/// not, or nil), and gives back how to stop it.
 enum Transfer {
-    /// A file or a folder (all that's in it) of this Mac's to `remote` on
-    /// the host. `replace`: over what's there; else a file already there
-    /// fails it ("exists").
-    static func upload(_ local: URL, to remote: String, on c: HostClient, replace: Bool, done: @escaping (String?) -> Void) {
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: local.path, isDirectory: &isDir) else { return done("not found") }
-        guard isDir.boolValue else { return uploadFile(local, to: remote, on: c, replace: replace, done: done) }
-        // A folder: it and the folders in it made, then each file, in turn.
-        var folders = [remote]
-        var files: [(URL, String)] = []
-        let base = local.standardizedFileURL.path
-        if let e = FileManager.default.enumerator(at: local, includingPropertiesForKeys: [.isDirectoryKey]) {
-            for case let u as URL in e {
-                let rel = String(u.standardizedFileURL.path.dropFirst(base.count + 1))
-                let target = remote + "/" + rel
-                if (try? u.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { folders.append(target) } else { files.append((u, target)) }
-            }
+    typealias Progress = (Int64, Int64?) -> Void
+    typealias Stop = () -> Void
+
+    /// A file or folder of this Mac's to `remote` on the host; over what's
+    /// there if `replace`, else failing ("exists").
+    @discardableResult
+    static func upload(_ local: URL, to remote: String, on c: HostClient, replace: Bool,
+                       progress: Progress? = nil, done: @escaping (String?) -> Void) -> Stop {
+        guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
+        let q = DispatchQueue(label: "manifold.upload")
+        let finish = once(done)
+        let stream = mux.open(bulk: true, callbackQueue: q)
+        let source = TreeSource(stream, root: local.path)
+        var result: String??
+        var stopped = false
+        source.onProgress = { sent, total in progress?(sent, total) }
+        // The source failed (the file changed, or went): the host's side is
+        // told, and answers `end`.
+        stream.onFrame = { frame in
+            if case let .end(error, _)? = frame.decode(TreeMessage.self) { result = .some(error) }
         }
-        func makeFolders(_ i: Int) {
-            guard i < folders.count else { return send(0) }
-            c.propose(.makeFolder(path: folders[i])) { error in
-                if let error { return done(error) }
-                makeFolders(i + 1)
-            }
+        stream.onClose = {
+            source.cancel()
+            finish(stopped ? "cancelled" : result ?? "the link to the host went")
         }
-        func send(_ i: Int) {
-            guard i < files.count else { return done(nil) }
-            uploadFile(files[i].0, to: files[i].1, on: c, replace: replace) { error in
-                if let error { return done(error) }
-                send(i + 1)
-            }
-        }
-        makeFolders(0)
+        stream.send(.message(ClientMessage.writeTree(path: remote, replace: replace)))
+        source.start()
+        return { q.async { stopped = true; stream.abort() } }
     }
 
-    private static func uploadFile(_ local: URL, to remote: String, on c: HostClient, replace: Bool, done: @escaping (String?) -> Void) {
-        guard let h = try? FileHandle(forReadingFrom: local) else { return done("couldn't read \(local.lastPathComponent)") }
-        c.writeFile(remote, mode: replace ? .replace : .create, next: { (try? h.read(upToCount: Mux.bulkPiece)) ?? Data() }) { error, _ in
-            try? h.close()
-            done(error)
+    /// A file or folder of the host's to `local` here; over what's there if
+    /// `replace` (it's put there only once all of it has come).
+    @discardableResult
+    static func download(_ remote: String, on c: HostClient, to local: URL, replace: Bool = true,
+                         progress: Progress? = nil, done: @escaping (String?) -> Void) -> Stop {
+        guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
+        let q = DispatchQueue(label: "manifold.download")
+        let finish = once(done)
+        let stream = mux.open(bulk: true, callbackQueue: q)
+        let sink = TreeSink(stream, destination: local.path, replace: replace)
+        var stopped = false
+        sink.onProgress = { written, total in progress?(written, total) }
+        sink.onFinished = { error, _ in
+            stream.close()
+            finish(error)
         }
+        stream.onFrame = { frame in sink.received(frame) }
+        stream.onClose = { sink.cut(stopped ? "cancelled" : "the link to the host went") }
+        stream.send(.message(ClientMessage.readTree(path: remote)))
+        return { q.async { stopped = true; stream.abort() } }
     }
 
-    /// A file or folder of the host's to `local` on this Mac (made, or
-    /// written over).
-    static func download(_ remote: String, isDirectory: Bool, on c: HostClient, to local: URL, done: @escaping (String?) -> Void) {
-        guard isDirectory else { return downloadFile(remote, on: c, to: local, done: done) }
-        do { try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true) } catch { return done(error.localizedDescription) }
-        c.listFolder(remote) { entries in
-            guard let entries else { return done("couldn't list \(remote)") }
-            func next(_ i: Int) {
-                guard i < entries.count else { return done(nil) }
-                let e = entries[i]
-                download(remote + "/" + e.name, isDirectory: e.isDirectory, on: c, to: local.appendingPathComponent(e.name)) { error in
-                    if let error { return done(error) }
-                    next(i + 1)
+    /// A file or folder of one host's to `dest` on another (or the same):
+    /// within a host, the host copies it itself; between two, it comes from
+    /// the one and goes to the other as it comes, through here but never
+    /// onto this Mac's disk.
+    @discardableResult
+    static func copy(_ path: String, on a: HostClient, to dest: String, on b: HostClient, replace: Bool,
+                     progress: Progress? = nil, done: @escaping (String?) -> Void) -> Stop {
+        if a === b { return copyWithin(path, to: dest, on: a, replace: replace, progress: progress, done: done) }
+        guard let from = a.mux else { return failed(done, "\(a.host.raw) isn't connected") }
+        guard let to = b.mux else { return failed(done, "\(b.host.raw) isn't connected") }
+        let q = DispatchQueue(label: "manifold.relay")
+        let finish = once(done)
+        let source = from.open(bulk: true, callbackQueue: q)
+        let sink = to.open(bulk: true, callbackQueue: q)
+        // Credit back to the source only as the sink takes what it sent:
+        // the slower link sets the pace, and nothing piles up here.
+        source.manualCredit = true
+        var owed = 0, moved: Int64 = 0, total: Int64?
+        var forwarded = false, ended = false, stopped = false
+        func payBack() {
+            guard owed > 0 else { return }
+            source.consumed(owed)
+            owed = 0
+        }
+        source.onFrame = { frame in
+            if frame.kind == .data {
+                moved += Int64(frame.payload.count)
+                progress?(moved, total)
+            } else if let m = frame.decode(TreeMessage.self) {
+                switch m {
+                case let .total(t): total = t; progress?(0, t)
+                case .done: forwarded = true
+                default: break
                 }
             }
-            next(0)
+            sink.send(frame)
+            owed += frame.payload.count + 5
+            if sink.wantsMore { payBack() }
+        }
+        sink.onDrain = { payBack() }
+        sink.onFrame = { frame in
+            guard case let .end(error, _)? = frame.decode(TreeMessage.self) else { return }
+            ended = true
+            source.abort()
+            finish(error)
+        }
+        source.onClose = {
+            // Closed before all of it had come: the copy can't finish.
+            guard !forwarded, !ended else { return }
+            ended = true
+            sink.abort()
+            finish(stopped ? "cancelled" : "the link to \(a.host.raw) went")
+        }
+        sink.onClose = {
+            guard !ended else { return }
+            ended = true
+            source.abort()
+            finish(stopped ? "cancelled" : "the link to \(b.host.raw) went")
+        }
+        source.send(.message(ClientMessage.readTree(path: path)))
+        sink.send(.message(ClientMessage.writeTree(path: dest, replace: replace)))
+        return { q.async { stopped = true; source.abort(); sink.abort() } }
+    }
+
+    /// Copied by the host itself, saying how far it has got.
+    private static func copyWithin(_ path: String, to dest: String, on c: HostClient, replace: Bool,
+                                   progress: Progress?, done: @escaping (String?) -> Void) -> Stop {
+        guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
+        let q = DispatchQueue(label: "manifold.copy")
+        let finish = once(done)
+        let stream = mux.open(bulk: true, callbackQueue: q)
+        var result: String??
+        var stopped = false
+        stream.onFrame = { frame in
+            switch frame.decode(TreeMessage.self) {
+            case let .progress(d, t)?: progress?(d, t)
+            case let .end(error, _)?: result = .some(error)
+            default: break
+            }
+        }
+        stream.onClose = { finish(stopped ? "cancelled" : result ?? "the link to the host went") }
+        stream.send(.message(ClientMessage.copyTree(from: path, to: dest, replace: replace)))
+        return { q.async { stopped = true; stream.abort() } }
+    }
+
+    /// A copy of each of several things, as one: `limit` at a time (so a
+    /// drop of hundreds doesn't open hundreds of streams at once), their
+    /// progress added up (the total once each has said its own), each's
+    /// outcome given back in order, on the main thread.
+    typealias Job = (_ progress: @escaping Progress, _ done: @escaping (String?) -> Void) -> Stop?
+
+    @discardableResult
+    static func batch(_ jobs: [Job], limit: Int = 4, progress: Progress? = nil, done: @escaping ([String?]) -> Void) -> Stop {
+        let q = DispatchQueue(label: "manifold.batch")
+        var results = [String??](repeating: nil, count: jobs.count)
+        var dones = [Int64](repeating: 0, count: jobs.count)
+        var totals = [Int64?](repeating: nil, count: jobs.count)
+        var stops: [Int: Stop] = [:]
+        var next = 0, running = 0, stopped = false, reported = false
+        func finishIfAll() {
+            guard !reported, running == 0, results.allSatisfy({ $0 != nil }) else { return }
+            reported = true
+            let out = results.map { $0 ?? "cancelled" }
+            DispatchQueue.main.async { done(out) }
+        }
+        func report() {
+            let known = totals.compactMap { $0 }
+            progress?(dones.reduce(0, +), known.count == jobs.count ? known.reduce(0, +) : nil)
+        }
+        func launch() {
+            while running < limit, next < jobs.count, !stopped {
+                let i = next
+                next += 1
+                running += 1
+                let job = jobs[i]
+                DispatchQueue.main.async {
+                    let stop = job({ d, t in q.async { dones[i] = d; if let t { totals[i] = t }; report() } }) { error in
+                        q.async {
+                            results[i] = .some(error)
+                            stops[i] = nil
+                            running -= 1
+                            if error == nil, let t = totals[i] { dones[i] = t }
+                            report()
+                            launch()
+                            finishIfAll()
+                        }
+                    }
+                    if let stop { q.async { stops[i] = stop } }
+                }
+            }
+        }
+        if jobs.isEmpty { DispatchQueue.main.async { done([]) } }
+        q.async { launch() }
+        return {
+            q.async {
+                stopped = true
+                for stop in stops.values { stop() }
+                // Those not begun: stopped too.
+                for i in next..<jobs.count { results[i] = .some("cancelled") }
+                next = jobs.count
+                finishIfAll()
+            }
         }
     }
 
-    private static func downloadFile(_ remote: String, on c: HostClient, to local: URL, done: @escaping (String?) -> Void) {
-        FileManager.default.createFile(atPath: local.path, contents: nil)
-        guard let h = try? FileHandle(forWritingTo: local) else { return done("couldn't write \(local.path)") }
-        var failure: String?
-        c.readFile(remote, onData: { data in
-            guard failure == nil else { return }
-            do { try h.write(contentsOf: data) } catch { failure = error.localizedDescription }
-        }) { error in
-            try? h.close()
-            done(failure ?? error)
+    /// `done`, once, on the main thread.
+    private static func once(_ done: @escaping (String?) -> Void) -> (String?) -> Void {
+        let lock = NSLock()
+        var called = false
+        return { error in
+            let first = lock.withLock { () -> Bool in
+                defer { called = true }
+                return !called
+            }
+            if first { DispatchQueue.main.async { done(error) } }
         }
+    }
+
+    private static func failed(_ done: @escaping (String?) -> Void, _ why: String) -> Stop {
+        DispatchQueue.main.async { done(why) }
+        return {}
     }
 }
 
@@ -92,7 +239,7 @@ extension HostClient {
     func readFile(_ path: String, offset: Int64 = 0, length: Int64? = nil, limit: Int64? = nil,
                   onData: @escaping (Data) -> Void, done: @escaping (String?) -> Void) {
         guard let mux else { return done("not connected") }
-        let stream = mux.open(bulk: true)
+        let stream = mux.open(bulk: true, callbackQueue: .main)
         var ended: String??
         stream.onFrame = { frame in
             if frame.kind == .data { return onData(frame.payload) }
@@ -102,34 +249,17 @@ extension HostClient {
         stream.send(.message(ClientMessage.readFile(path: path, offset: offset, length: length, limit: limit)))
     }
 
-    /// A file's bytes up a stream of its own: `next` gives each piece (an
-    /// empty one at the end), asked while the stream wants more; `done`
-    /// with why not, or the path written.
-    func writeFile(_ path: String, mode: WriteMode, next: @escaping () -> Data, done: @escaping (String?, String?) -> Void) {
-        send(.writeFile(path: path, mode: mode), next: next, done: done)
-    }
-
     /// An image kept on the host as `name` in `folder` (Manifold's own, if
     /// nil), "name 2" if that's taken, and an image block `block` made for
-    /// it; `done` with why not, or where it went.
+    /// it; `done` (on the main thread) with why not, or where it went.
     func saveImage(_ data: Data, block: BlockID, name: String, folder: String?, done: @escaping (String?, String?) -> Void) {
-        var offset = 0
-        send(.saveImage(block: block, name: name, folder: folder), next: {
-            let piece = data.subdata(in: offset..<min(data.count, offset + Mux.bulkPiece))
-            offset += piece.count
-            return piece
-        }, done: done)
-    }
-
-    private func send(_ first: ClientMessage, next: @escaping () -> Data, done: @escaping (String?, String?) -> Void) {
         guard let mux else { return done("not connected", nil) }
-        let stream = mux.open(bulk: true)
+        let stream = mux.open(bulk: true, callbackQueue: .main)
         var ended: (String?, String?)?
-        var finished = false
+        var offset = 0, finished = false
         stream.onFrame = { frame in
             if case let .end(error, path)? = frame.decode(ServerMessage.self) {
                 ended = (error, path)
-                // Refused before the end: no more of it.
                 finished = true
             }
         }
@@ -139,13 +269,14 @@ extension HostClient {
         }
         func produce() {
             while !finished, stream.wantsMore {
-                let piece = next()
+                let piece = data.subdata(in: offset..<min(data.count, offset + Mux.bulkPiece))
+                offset += piece.count
                 stream.send(Frame(.data, piece))
                 if piece.isEmpty { finished = true }
             }
         }
         stream.onDrain = { produce() }
-        stream.send(.message(first))
+        stream.send(.message(ClientMessage.saveImage(block: block, name: name, folder: folder)))
         produce()
     }
 

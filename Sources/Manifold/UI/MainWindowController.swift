@@ -54,7 +54,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
     private var recentlyClosed: Set<BlockID> = []
-    private var sidebarShown = false
+    private var sidebarShown = false {
+        // The copies' badge only while the sidebar (which shows them) is away.
+        didSet { if sidebarShown != oldValue { transfersChanged() } }
+    }
     private var draggingTab = false
     private var hideWork: DispatchWorkItem?
     private var saveFrameWork: DispatchWorkItem?
@@ -103,6 +106,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(stage)
         root.addSubview(sidebar)
         root.addSubview(toast)
+        // Copies on their way (§8): in the sidebar, and, while it's away,
+        // a badge at the lower left that brings it out.
+        transfersBadge.isHidden = true
+        transfersBadge.onClick = { [weak self] in self?.showSidebar(animated: true) }
+        root.addSubview(transfersBadge)
+        NotificationCenter.default.addObserver(forName: Transfers.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.transfersChanged()
+        }
         root.onMouseMoved = { [weak self] p in self?.mouseMoved(to: p) }
         root.onMouseExitedWindow = { [weak self] in self?.scheduleHide() }
         root.onLayout = { [weak self] in
@@ -648,6 +659,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    private let transfersBadge = TransfersBadge()
+
+    private func transfersChanged() {
+        let items = Transfers.shared.visible
+        sidebar.transfers.items = items
+        sidebar.needsLayout = true
+        transfersBadge.show(items)
+        transfersBadge.isHidden = items.isEmpty || sidebarShown
+        root.needsLayout = true
+    }
+
     private func layoutViews() {
         let b = root.bounds
         glass.frame = b
@@ -662,6 +684,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sliding { outgoing.frame = stage.bounds }
         palette?.frame = b
         history?.frame = b
+        if !transfersBadge.isHidden {
+            let s = transfersBadge.wantedSize
+            transfersBadge.frame = NSRect(x: 14, y: 14, width: s.width, height: s.height)
+        }
         if !toast.isHidden {
             let s = toast.wantedSize
             toast.frame = NSRect(x: stage.frame.minX + (stage.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
@@ -5053,7 +5079,11 @@ extension MainWindowController: GridDelegate {
             let id = BlockID(host: host.host)
             let f = DateFormatter()
             f.dateFormat = "yyyy-MM-dd-HHmmss"
-            host.saveImage(data, block: id, name: "image-\(f.string(from: Date())).\(kind)", folder: nil) { [weak self] error, _ in
+            let name = "image-\(f.string(from: Date())).\(kind)"
+            Transfers.shared.run(name, detail: "to \(hosts.label(of: host.host))", symbol: "photo") { [host] _, done in
+                host.saveImage(data, block: id, name: name, folder: nil) { error, _ in done(error) }
+                return nil
+            } then: { [weak self] error in
                 guard let self else { return }
                 if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
                 self.showWhenMade(id, lens: .image, place: place)
@@ -5519,7 +5549,15 @@ extension MainWindowController: EditorViewDelegate {
         let name = "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
         let folder = b.path.map { $0.deletingLastPathComponent }
         let id = BlockID(host: text.host)
-        c.saveImage(data, block: id, name: name, folder: folder) { [weak self] error, path in
+        var saved: String?
+        Transfers.shared.run(name, detail: "into \(b.displayTitle)", symbol: "photo") { _, done in
+            c.saveImage(data, block: id, name: name, folder: folder) { error, path in
+                saved = path
+                done(error)
+            }
+            return nil
+        } then: { [weak self] error in
+            let path = saved
             guard let self else { return }
             if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
             let target = folder != nil
@@ -5720,7 +5758,10 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void) {
         guard let c = hosts.client(view.block.host) else { return done("the host isn't attached") }
-        Transfer.download(path, isDirectory: isDirectory, on: c, to: url, done: done)
+        let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(hosts.label(of: view.block.host)) to \(url.deletingLastPathComponent().lastPathComponent)", symbol: "arrow.down") { progress, finished in
+            Transfer.download(path, on: c, to: url, progress: progress, done: finished)
+        } then: { error in done(error) }
+        item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
     }
 
     func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu? {
@@ -5759,79 +5800,66 @@ extension MainWindowController: DirectoryViewDelegate {
 
     // MARK: Files between hosts
 
-    /// Files and folders put in a folder on a host: this Mac's, or entries
-    /// of any host's (fetched here, then sent on). What's there already
-    /// is asked about, once for all, before it's written over.
+    /// Files and folders put in a folder on a host: this Mac's, another
+    /// app's (a promised file), or entries of any host's — copied within
+    /// the host by the host, or straight from one host to the other. All
+    /// of them one row at the bottom of the sidebar, with how far they've
+    /// got (§8); what's there already is asked about, once for all, before
+    /// it's written over.
     func copy(_ items: [DroppedItem], into folder: String, on target: HostID, replacing: Bool = false, moving: Bool = false) {
         guard let c = hosts.client(target) else { return NSSound.beep() }
-        let label = hosts.label(of: target) + ":" + folder.abbreviatingHome
-        let n = items.count
-        let verb = moving ? "Moving" : "Copying", done = moving ? "Moved" : "Copied"
-        toast.show("\(verb) \(n) item\(n == 1 ? "" : "s") to \(label)…", action: "OK", for: 60) {}
-        var existing: [DroppedItem] = []
-        var failure: String?
-        func finish() {
-            if let failure {
-                toast.show("Couldn't \(moving ? "move" : "copy") to \(label): \(failure)", action: "OK", for: 10) {}
-            } else if !existing.isEmpty {
-                toast.show("\(done) \(n - existing.count) of \(n)", action: "OK", for: 4) {}
-                let alert = NSAlert()
-                alert.messageText = existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)"
-                alert.informativeText = "Replace what's there with what was dropped?"
-                alert.addButton(withTitle: "Replace")
-                alert.addButton(withTitle: "Leave Them")
-                if let window { alert.beginSheetModal(for: window) { [weak self] r in
-                    if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true, moving: moving) }
-                } }
-            } else {
-                toast.show("\(done) \(n) item\(n == 1 ? "" : "s") to \(label)", action: "OK", for: 4) {}
-            }
-            hosts.client(target).map { _ in hosts.propose(.listDirectory(hosts.directoryBlock(for: folder, on: target))) }
-        }
-        func next(_ i: Int) {
-            guard i < items.count else { return finish() }
-            let item = items[i]
+        let label = hosts.label(of: target) + ":" + Self.shortPlace(folder)
+        let jobs: [Transfer.Job] = items.map { item in
             let dest = folder + "/" + Self.name(of: item)
-            let after: (String?) -> Void = { error in
-                if error == "exists" { existing.append(item) } else if let error { failure = error; return finish() }
-                next(i + 1)
-            }
-            switch item {
-            case let .promised(r):
-                // Written here first, then sent as a file of this Mac's is.
-                Promises.receive([r]) { urls in
-                    guard !urls.isEmpty else { return after("the file never came") }
-                    var left = urls.count
-                    var failed: String?
-                    for u in urls {
-                        Transfer.upload(u, to: folder + "/" + u.lastPathComponent, on: c, replace: replacing) { e in
-                            if let e { failed = e }
-                            left -= 1
-                            if left == 0 { after(failed) }
+            return { [weak self] progress, done in
+                switch item {
+                case let .promised(r):
+                    // Written here by the app that has it, then sent up.
+                    Promises.receive([r]) { urls in
+                        guard !urls.isEmpty else { return done("the file never came") }
+                        let ups: [Transfer.Job] = urls.map { u in
+                            { p, d in Transfer.upload(u, to: folder + "/" + u.lastPathComponent, on: c, replace: replacing, progress: p, done: d) }
                         }
+                        Transfer.batch(ups, progress: progress) { results in done(results.compactMap { $0 }.first) }
                     }
-                }
-            case let .local(url):
-                Transfer.upload(url, to: dest, on: c, replace: replacing, done: after)
-            case let .entry(host, path, _) where moving && host == target:
-                // Within the host: moved there, as the Finder moves within a disk.
-                c.propose(.movePath(from: path, to: dest, replace: replacing)) { error in after(error) }
-            case let .entry(host, path, isDirectory):
-                // Another tile's entry: fetched to a scratch folder here, then sent.
-                guard let source = hosts.client(host) else { return after("its host isn't attached") }
-                let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-copy-\(UUID().uuidString)")
-                try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-                let local = scratch.appendingPathComponent(path.lastPathComponent)
-                Transfer.download(path, isDirectory: isDirectory, on: source, to: local) { error in
-                    guard error == nil else { try? FileManager.default.removeItem(at: scratch); return after(error) }
-                    Transfer.upload(local, to: dest, on: c, replace: replacing) { error in
-                        try? FileManager.default.removeItem(at: scratch)
-                        after(error)
-                    }
+                    return nil
+                case let .local(url):
+                    return Transfer.upload(url, to: dest, on: c, replace: replacing, progress: progress, done: done)
+                case let .entry(host, path, _) where moving && host == target:
+                    // Within the host: moved there, as the Finder moves within a disk.
+                    c.propose(.movePath(from: path, to: dest, replace: replacing)) { error in done(error) }
+                    return nil
+                case let .entry(host, path, _):
+                    guard let source = self?.hosts.client(host) else { done("its host isn't attached"); return nil }
+                    return Transfer.copy(path, on: source, to: dest, on: c, replace: replacing, progress: progress, done: done)
                 }
             }
         }
-        next(0)
+        let sources = Set(items.compactMap { if case let .entry(h, _, _) = $0 { return h } else { return nil } })
+        let from = sources.count == 1 && sources.first != target ? hosts.label(of: sources.first!) + " → " : ""
+        var results: [String?] = []
+        Transfers.shared.run(items.count == 1 ? Self.name(of: items[0]) : "\(items.count) items",
+                             detail: (moving ? "moving to " : from.isEmpty ? "to " : from) + label,
+                             symbol: moving ? "arrow.right" : sources.isEmpty ? "arrow.up" : "doc.on.doc") { progress, done in
+            Transfer.batch(jobs, progress: progress) { r in
+                results = r
+                // "Already there" isn't a failure of the whole: asked about below.
+                done(r.compactMap { $0 }.first { $0 != "exists" })
+            }
+        } then: { [weak self] _ in
+            guard let self else { return }
+            self.hosts.propose(.listDirectory(self.hosts.directoryBlock(for: folder, on: target)))
+            let existing = zip(items, results).filter { $0.1 == "exists" }.map(\.0)
+            guard !existing.isEmpty else { return }
+            let alert = NSAlert()
+            alert.messageText = existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)"
+            alert.informativeText = "Replace what's there with what was dropped?"
+            alert.addButton(withTitle: "Replace")
+            alert.addButton(withTitle: "Leave Them")
+            if let window = self.window { alert.beginSheetModal(for: window) { [weak self] r in
+                if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true, moving: moving) }
+            } }
+        }
     }
 
     /// This Mac's files dropped on another host's terminal: sent to the
@@ -5839,30 +5867,37 @@ extension MainWindowController: DirectoryViewDelegate {
     /// their paths there given back to be typed.
     func upload(_ urls: [URL], toShellOf block: BlockID, done: @escaping ([String]) -> Void) {
         guard let c = hosts.client(block.host), let folder = hosts.block(block)?.terminal?.cwd else { return NSSound.beep() }
-        let label = hosts.label(of: block.host)
-        toast.show("Sending \(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) items") to \(label)…", action: "OK", for: 60) {}
-        c.listFolder(folder) { [weak self] entries in
+        let label = hosts.label(of: block.host) + ":" + Self.shortPlace(folder)
+        c.listFolder(folder) { entries in
             var taken = Set((entries ?? []).map(\.name))
-            var sent: [String] = []
-            func next(_ i: Int) {
-                guard i < urls.count else {
-                    self?.toast.show("Sent to \(label):\(folder.abbreviatingHome)", action: "OK", for: 4) {}
-                    return done(sent)
-                }
-                let name = Self.freeName(urls[i].lastPathComponent, taken: taken)
+            let dests: [String] = urls.map { u in
+                let name = Self.freeName(u.lastPathComponent, taken: taken)
                 taken.insert(name)
-                let dest = folder + "/" + name
-                Transfer.upload(urls[i], to: dest, on: c, replace: false) { error in
-                    if let error {
-                        self?.toast.show("Couldn't send \(urls[i].lastPathComponent): \(error)", action: "OK", for: 10) {}
-                        return done(sent)
-                    }
-                    sent.append(dest)
-                    next(i + 1)
-                }
+                return folder + "/" + name
             }
-            next(0)
+            let jobs: [Transfer.Job] = zip(urls, dests).map { u, dest in
+                { p, d in Transfer.upload(u, to: dest, on: c, replace: false, progress: p, done: d) }
+            }
+            var results: [String?] = []
+            Transfers.shared.run(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) items", detail: "to \(label)", symbol: "arrow.up") { progress, finished in
+                Transfer.batch(jobs, progress: progress) { r in
+                    results = r
+                    finished(r.compactMap { $0 }.first)
+                }
+            } then: { _ in
+                // The paths of those that went, typed.
+                done(zip(dests, results).filter { $0.1 == nil }.map(\.0))
+            }
         }
+    }
+
+    /// A folder as a row has room for it: from home, else its last two
+    /// folders.
+    static func shortPlace(_ folder: String) -> String {
+        let p = folder.abbreviatingHome
+        guard p.count > 28 else { return p }
+        let parts = p.split(separator: "/")
+        return "…/" + parts.suffix(2).joined(separator: "/")
     }
 
     /// A name not among `taken`: as it is, else "name 2.ext", "name 3.ext"…
@@ -5896,16 +5931,10 @@ extension MainWindowController: DirectoryViewDelegate {
             url = downloads.appendingPathComponent((path.lastPathComponent as NSString).deletingPathExtension + " \(n)" + (ext.isEmpty ? "" : "." + ext))
             n += 1
         }
-        toast.show("Downloading \(path.lastPathComponent)…", action: "OK", for: 60) {}
-        Transfer.download(path, isDirectory: isDirectory, on: c, to: url) { [weak self] error in
-            if let error {
-                self?.toast.show("Couldn't download \(path.lastPathComponent): \(error)", action: "OK", for: 10) {}
-            } else {
-                self?.toast.show("Downloaded \(url.lastPathComponent)", action: "Show in Finder", for: 8) {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
-            }
+        let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(hosts.label(of: h)) to Downloads", symbol: "arrow.down") { progress, done in
+            Transfer.download(path, on: c, to: url, replace: false, progress: progress, done: done)
         }
+        item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
     }
 
     /// Open With ▸: the apps that open the file, its default first; on
@@ -5939,7 +5968,6 @@ extension MainWindowController: DirectoryViewDelegate {
             return
         }
         guard let c = hosts.client(h) else { return NSSound.beep() }
-        toast.show("Fetching \(path.lastPathComponent)…", action: "OK", for: 60) {}
         LocalCopies.shared.open(path, on: c, label: hosts.label(of: h)) { [weak self] url, error in
             guard let url else { self?.toast.show("Couldn't fetch \(path.lastPathComponent): \(error ?? "")", action: "OK", for: 10) {}; return }
             self?.toast.show("\(path.lastPathComponent) opened here; saved, it goes back to \(self?.hosts.label(of: h) ?? "its host")", action: "OK", for: 6) {}

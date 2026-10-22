@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 45
+public let protocolVersion = 46
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -214,7 +214,70 @@ public enum Proposal: Codable, Sendable {
     case startNotebook(block: BlockID)
 }
 
-/// How `writeFile` writes: a new file (failing if one is there), over
+/// One item of a tree on a file stream (§8): where it is under the tree's
+/// root ("" for the root itself), what it is, how big, its permissions,
+/// when it was modified, and, for a link, where it points.
+public struct TreeEntry: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable { case file, directory, symlink }
+    public var path: String
+    public var kind: Kind
+    public var size: Int64
+    public var mode: UInt16
+    public var modified: Double
+    public var target: String?
+
+    public init(path: String, kind: Kind, size: Int64 = 0, mode: UInt16 = 0o644, modified: Double = 0, target: String? = nil) {
+        self.path = path
+        self.kind = kind
+        self.size = size
+        self.mode = mode
+        self.modified = modified
+        self.target = target
+    }
+
+    /// A path under a root that stays under it: relative, no "..".
+    public var isSafe: Bool {
+        !path.hasPrefix("/") && !path.split(separator: "/").contains("..")
+    }
+
+    /// What's under `root` (the root first; a folder before what's in it),
+    /// links not followed. Nil if the root can't be read.
+    public static func walk(_ root: String) -> [TreeEntry]? {
+        let fm = FileManager.default
+        func entry(_ full: String, _ rel: String) -> TreeEntry? {
+            guard let a = try? fm.attributesOfItem(atPath: full) else { return nil }
+            let type = a[.type] as? FileAttributeType
+            let mode = UInt16(truncatingIfNeeded: (a[.posixPermissions] as? NSNumber)?.intValue ?? 0o644)
+            let modified = (a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            switch type {
+            case .typeDirectory?: return TreeEntry(path: rel, kind: .directory, mode: mode, modified: modified)
+            case .typeSymbolicLink?: return TreeEntry(path: rel, kind: .symlink, mode: mode, modified: modified, target: try? fm.destinationOfSymbolicLink(atPath: full))
+            case .typeRegular?: return TreeEntry(path: rel, kind: .file, size: (a[.size] as? NSNumber)?.int64Value ?? 0, mode: mode, modified: modified)
+            default: return nil // sockets, devices: not copied
+            }
+        }
+        guard let top = entry(root, "") else { return nil }
+        var out = [top]
+        func descend(_ dir: String, _ rel: String) {
+            guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return }
+            for name in names.sorted() {
+                let full = dir + "/" + name, r = rel.isEmpty ? name : rel + "/" + name
+                guard let e = entry(full, r) else { continue }
+                out.append(e)
+                if e.kind == .directory { descend(full, r) }
+            }
+        }
+        if top.kind == .directory { descend(root, "") }
+        return out
+    }
+
+    /// The bytes all its files hold.
+    public static func total(_ entries: [TreeEntry]) -> Int64 {
+        entries.reduce(0) { $0 + ($1.kind == .file ? $1.size : 0) }
+    }
+}
+
+/// How a file is written (an image kept, `saveImage`): a new file (failing if one is there), over
 /// whatever is there, onto the end of what's there, or a new file under
 /// the name or, taken, the first free "name 2", "name 3"…
 public enum WriteMode: String, Codable, Sendable {
@@ -265,10 +328,18 @@ public enum ClientMessage: Codable, Sendable {
     /// `end` — or only `end`, saying why not (unreadable; bigger than
     /// `limit`, if given).
     case readFile(path: String, offset: Int64, length: Int64?, limit: Int64?)
-    /// A stream's first frame: a file's bytes go up it as `data` frames,
-    /// an empty one last, and come to `path` (the folders on the way made)
-    /// as `mode` says; answered with `end`, the path written.
-    case writeFile(path: String, mode: WriteMode)
+    /// A stream's first frame: a file or folder (all under it) comes down
+    /// the stream as a tree (`TreeMessage`: its total, each item and a
+    /// file's bytes, then `done`), or `end` says why not.
+    case readTree(path: String)
+    /// A stream's first frame: a tree goes up the stream as `readTree`'s
+    /// comes down, and is put at `path` once all of it has come — over
+    /// what's there if `replace`, else failing ("exists"); answered `end`.
+    case writeTree(path: String, replace: Bool)
+    /// A stream's first frame: a file or folder copied within the host,
+    /// from `from` to `to` (over what's there if `replace`, else failing),
+    /// its `progress` said as it goes, then `end`.
+    case copyTree(from: String, to: String, replace: Bool)
     /// A stream's first frame: an image put in a text (pasted, dropped,
     /// from an iPhone's camera), its bytes up the stream as `writeFile`'s,
     /// kept as `name` in `folder` (beside a Markdown file) or in
@@ -334,6 +405,7 @@ public enum ServerMessage: Codable, Sendable {
     /// A file stream's last word: done (`path`, the file written, for a
     /// write), or why not.
     case end(error: String?, path: String?)
+
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)

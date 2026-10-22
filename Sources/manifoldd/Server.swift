@@ -243,9 +243,38 @@ final class Server {
         case let .readFile(path, offset, length, limit)?:
             guard let stream = conn as? MuxStream else { return conn.close() }
             FileSender.start(stream, path: path, offset: offset, length: length, limit: limit, queue: queue)
-        case let .writeFile(path, mode)?:
+        // Trees (§8): what a copy is — a file or a folder and all in it.
+        case let .readTree(path)?:
             guard let stream = conn as? MuxStream else { return conn.close() }
-            FileReceiver.start(stream, path: path, mode: mode, queue: queue)
+            let source = TreeSource(stream, root: path)
+            source.onFinished = { [weak stream] _ in stream?.close() }
+            stream.onClose = { source.cancel() }
+            stream.onFrame = { _ in }
+            source.start()
+        case let .writeTree(path, replace)?:
+            guard let stream = conn as? MuxStream else { return conn.close() }
+            let sink = TreeSink(stream, destination: path, replace: replace)
+            if sink.refusedAtOnce() {
+                stream.send(.message(TreeMessage.end(error: "exists", path: nil)))
+                return stream.close()
+            }
+            sink.onFinished = { [weak stream] error, path in
+                stream?.send(.message(TreeMessage.end(error: error, path: path)))
+                stream?.close()
+            }
+            stream.onFrame = { frame in sink.received(frame) }
+            stream.onClose = { sink.cut() }
+        case let .copyTree(from, to, replace)?:
+            guard let stream = conn as? MuxStream else { return conn.close() }
+            let copier = TreeCopier(from: from, to: to, replace: replace)
+            copier.onProgress = { [weak stream] done, total in stream?.send(.message(TreeMessage.progress(done: done, total: total))) }
+            copier.onFinished = { [weak stream] error, path in
+                stream?.send(.message(TreeMessage.end(error: error, path: path)))
+                stream?.close()
+            }
+            stream.onFrame = { _ in }
+            stream.onClose = { copier.cancel() }
+            copier.start()
         case let .saveImage(block, name, folder)?:
             // Beside a Markdown file; for a note, in Manifold's own folder.
             guard let stream = conn as? MuxStream else { return conn.close() }

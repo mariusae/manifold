@@ -405,6 +405,29 @@ public final class MuxStream: Channel {
         mux?.onQueue { [self] in finishClose() }
     }
 
+    /// Closed now, what's waiting dropped (a copy stopped): the other end
+    /// told at once, not after the rest has gone.
+    public func abort() {
+        let first: Bool = lock.withLock {
+            guard !_closed else { return false }
+            _closed = true
+            _queued = 0
+            return true
+        }
+        guard first, let mux else { return }
+        mux.onQueue { [self] in
+            outbox = []
+            self.mux?.sendClose(self)
+            onCallbacks { [self] in
+                let f = onClose
+                onClose = nil
+                onFrame = nil
+                onDrain = nil
+                f?()
+            }
+        }
+    }
+
     /// The consumer took `n` bytes (with `manualCredit`): the other end may
     /// send as much again.
     public func consumed(_ n: Int) {

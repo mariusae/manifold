@@ -113,6 +113,8 @@ enum DebugControl {
             return "ok"
         case "sidebar":
             if arg.hasPrefix("search ") { return wc?.debugSidebarView.debugTypeFilter(String(arg.dropFirst(7))) ?? "no window" }
+            // "sidebar pin": pinned, or not, as its pin button does.
+            if arg == "pin" { wc?.sidebarTogglePinned(); return "ok" }
             if arg.hasPrefix("width "), let w = Double(arg.dropFirst(6)) {
                 // As if the resize handle were dragged there and let go.
                 wc?.sidebarResize(to: CGFloat(w))
@@ -418,6 +420,15 @@ enum DebugControl {
             let (on, folder) = target.count == 2 ? (HostID(target[0]), target[1]) : (wc.hosts.local.host, a[0])
             wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: folder, on: on)
             return "copying"
+        case "copyentry":
+            // "copyentry <host>:<path> <host>:<folder>": a host's entry dropped on a
+            // folder of another's (or the same's), as a drag between folder tiles.
+            let a = arg.split(separator: " ").map { $0.split(separator: ":", maxSplits: 1).map(String.init) }
+            guard let wc, a.count == 2, a[0].count == 2, a[1].count == 2 else { return "usage: copyentry <host>:<path> <host>:<folder>" }
+            var isDir: ObjCBool = false
+            FileManager.default.fileExists(atPath: a[0][1], isDirectory: &isDir)
+            wc.copy([.entry(host: HostID(a[0][0]), path: a[0][1], isDirectory: isDir.boolValue)], into: a[1][1], on: HostID(a[1][0]))
+            return "copying"
         case "revision":
             // "revision <repo> <path> <rev>": the file as the revision has it, beside the focused tile.
             let a = arg.split(separator: " ").map(String.init)
@@ -445,8 +456,15 @@ enum DebugControl {
             let a = arg.split(separator: " ").map(String.init)
             guard let wc, a.count == 2 || a.count == 3 else { return "usage: fetch <remote> <local> [host]" }
             guard let c = a.count == 3 ? wc.hosts.client(HostID(a[2])) : wc.hosts.local else { return "no such host" }
-            Transfer.download(a[0], isDirectory: false, on: c, to: URL(fileURLWithPath: a[1])) { e in NSLog("fetch: %@", e ?? "ok") }
+            Transfers.shared.run(a[0].lastPathComponent, detail: "fetched", symbol: "arrow.down") { progress, done in
+                Transfer.download(a[0], on: c, to: URL(fileURLWithPath: a[1]), progress: progress, done: done)
+            } then: { e in NSLog("fetch: %@", e ?? "ok") }
             return "fetching"
+        case "transfers":
+            // The copies shown (and those too quick to be), as the sidebar has them;
+            // "transfers stop": the first that runs, stopped.
+            if arg == "stop" { Transfers.shared.running.first?.cancel?(); return "stopping" }
+            return Transfers.shared.items.map { "\($0.title) [\($0.detail)] \($0.progressText)" }.joined(separator: "\n")
         case "localcopy":
             // "localcopy <path>": fetched to a watched copy (no app opened); says where.
             guard let wc else { return "no window" }

@@ -34,7 +34,9 @@ final class LocalCopies {
         let dir = folder.appendingPathComponent(String(place), isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(path.lastPathComponent)
-        Transfer.download(path, isDirectory: false, on: c, to: url) { [weak self] error in
+        Transfers.shared.run(path.lastPathComponent, detail: "from \(label), to open here", symbol: "arrow.down") { progress, finished in
+            Transfer.download(path, on: c, to: url, progress: progress, done: finished)
+        } then: { [weak self] error in
             guard let self, error == nil else { return done(nil, error) }
             self.copies[url] = Copy(url: url, path: path, client: c, label: label, modified: Self.modified(url))
             self.watch()
@@ -62,7 +64,9 @@ final class LocalCopies {
             if seen[url] != m { seen[url] = m; continue }
             guard let c = copy.client else { continue }
             copies[url]?.sending = true
-            Transfer.upload(url, to: copy.path, on: c, replace: true) { [weak self] error in
+            Transfers.shared.run(url.lastPathComponent, detail: "saved, back to \(copy.label)", symbol: "arrow.up") { progress, finished in
+                Transfer.upload(url, to: copy.path, on: c, replace: true, progress: progress, done: finished)
+            } then: { [weak self] error in
                 guard let self else { return }
                 self.copies[url]?.sending = false
                 if error == nil { self.copies[url]?.modified = m }

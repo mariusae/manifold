@@ -54,6 +54,8 @@ final class SidebarView: NSView {
     /// of the tree, and again puts the tree back.
     private let keptRow = FootRowView(title: "Kept", symbol: "pin")
     private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
+    /// Copies on their way (§8), above those rows.
+    let transfers = TransfersView()
     static let footRowHeight: CGFloat = 22
     private var filterShown = false
 
@@ -122,7 +124,7 @@ final class SidebarView: NSView {
         inboxButton.action = #selector(inboxClicked)
         inboxButton.toolTip = "Inbox (⌥⌘6)"
         counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
-        for v in [searchButton, byButton, inboxButton, counts, keptRow, closedRow] { card.addSubview(v) }
+        for v in [searchButton, byButton, inboxButton, counts, keptRow, closedRow, transfers] { card.addSubview(v) }
         keptRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .kept ? .desk : .kept) }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         filter.isHidden = true
@@ -179,6 +181,9 @@ final class SidebarView: NSView {
         let cw = counts.wantedWidth
         counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
         var bottom = Self.barHeight
+        let th = transfers.wantedHeight
+        transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
+        bottom += th
         for row in [closedRow, keptRow] where !row.isHidden && !pushed {
             row.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
             bottom += Self.footRowHeight
