@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldCore
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -13,17 +14,28 @@ private func relayConnect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>, _ len: s
 /// One forwarded connection, on the host (§8): a socket to a port on the
 /// host's own loopback — IPv4, else IPv6, as servers bind one or the
 /// other — its bytes handed up as they come, and written as they're sent.
+/// No more than a window of its bytes is on the way to the client at
+/// once: past it, the socket isn't read until the client says it took
+/// some (a fast server and a slow link fill nothing but the socket).
 final class PortRelay {
     private let fd: Int32
     private let source: DispatchSourceRead
+    private let queue: DispatchQueue
     private let writes = DispatchQueue(label: "manifoldd.relay")
     private var ended = false
+    /// Bytes handed up and not yet taken by the client; reading stopped
+    /// while they're a window's worth.
+    private var unacked = 0
+    private var paused = false
     var onData: ((Data) -> Void)?
     var onClose: (() -> Void)?
+    /// Bytes from the client written on to the socket (on the queue).
+    var onWritten: ((Int) -> Void)?
 
     init?(port: Int, queue: DispatchQueue) {
         guard let fd = Self.open(port) else { return nil }
         self.fd = fd
+        self.queue = queue
         source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.readAvailable() }
         source.setCancelHandler { relayClose(fd) }
@@ -69,15 +81,30 @@ final class PortRelay {
         let n = read(fd, &buf, buf.count)
         if n > 0 {
             onData?(Data(buf[0..<n]))
+            unacked += n
+            if unacked >= Frame.tunnelWindow, !paused {
+                paused = true
+                source.suspend()
+            }
         } else if n == 0 || (errno != EAGAIN && errno != EINTR) {
             end()
         }
     }
 
+    /// The client took `count` of the bytes handed up: reading goes on,
+    /// if it had stopped.
+    func acked(_ count: Int) {
+        unacked = max(0, unacked - count)
+        if paused, unacked < Frame.tunnelWindow, !ended {
+            paused = false
+            source.resume()
+        }
+    }
+
     /// Written in order, off the server's queue (a slow reader there
-    /// holds up only its own tunnel).
+    /// holds up only its own tunnel), and said to be when it is.
     func write(_ data: Data) {
-        writes.async { [fd] in
+        writes.async { [weak self, fd, queue] in
             data.withUnsafeBytes { raw in
                 guard let base = raw.baseAddress else { return }
                 var off = 0
@@ -86,12 +113,25 @@ final class PortRelay {
                     if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return }
                 }
             }
+            queue.async { self?.onWritten?(data.count) }
         }
+    }
+
+    /// The client's side is done sending: what it sent is written, then
+    /// the socket's sending side shut, while what comes back still goes
+    /// up until the server here closes.
+    func finishWriting() {
+        writes.async { [fd] in _ = shutdown(fd, Int32(SHUT_WR)) }
     }
 
     func end() {
         guard !ended else { return }
         ended = true
+        // A suspended source must be going again to be cancelled.
+        if paused {
+            paused = false
+            source.resume()
+        }
         source.cancel()
         onClose?()
     }

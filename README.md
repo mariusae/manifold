@@ -465,7 +465,11 @@ when you find it again.
   menu) for **Open With** — on another host, **Open Locally With**: a
   copy opened by the app here, sent back each time it's saved — and
   **Download**, to Downloads. Files go in four-megabyte pieces, so a
-  big one isn't held all at once.
+  big one isn't held all at once, and each piece in small fragments
+  between everything else the host says: a file on its way, an image
+  or a PDF opening, holds up no edit, search or answer for long, on a
+  slow link or a fast one. The host reads and writes them aside from
+  its terminals and other clients.
 - **Another host's ports come here**: open a `localhost` address from
   its tiles — ⌘-click `http://localhost:3000` in a remote terminal, a
   dev server's banner — and the port is forwarded through the host's
@@ -474,7 +478,10 @@ when you find it again.
   `ssh -L`. **Forward a Port from *host*…** in the host's menu asks for
   one; each forward is listed there, to open or stop. A forward keeps
   listening while the host is away, and its connections go again when
-  it's back.
+  it's back. A forwarded connection keeps no more than a megabyte on the
+  way at a time each way, so a fast server and a slow reader (or the
+  other way round) fill nothing but themselves; and one side done
+  sending still hears the other's answer.
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does

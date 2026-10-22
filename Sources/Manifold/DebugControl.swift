@@ -405,10 +405,13 @@ enum DebugControl {
             wc.hosts.local.forwards.forward(port) { local in NSLog("forwarded %d to %@", port, local.map(String.init) ?? "nothing") }
             return "forwarding"
         case "copyinto":
-            // "copyinto <folder> <local path>…": as if dropped on the folder (this host).
+            // "copyinto [host:]<folder> <local path>…": as if dropped on the
+            // folder (this host's, or another's).
             let a = arg.split(separator: " ").map(String.init)
-            guard let wc, a.count >= 2 else { return "usage: copyinto <folder> <path>…" }
-            wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: a[0], on: wc.hosts.local.host)
+            guard let wc, a.count >= 2 else { return "usage: copyinto [host:]<folder> <path>…" }
+            let target = a[0].split(separator: ":", maxSplits: 1).map(String.init)
+            let (on, folder) = target.count == 2 ? (HostID(target[0]), target[1]) : (wc.hosts.local.host, a[0])
+            wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: folder, on: on)
             return "copying"
         case "revision":
             // "revision <repo> <path> <rev>": the file as the revision has it, beside the focused tile.
@@ -425,10 +428,12 @@ enum DebugControl {
             wc.copy([.entry(host: wc.hosts.local.host, path: a[1], isDirectory: dir.boolValue)], into: a[0], on: wc.hosts.local.host, moving: true)
             return "moving"
         case "fetch":
-            // "fetch <remote path> <local path>": in pieces, from this host's server.
+            // "fetch <remote path> <local path> [host]": in pieces, from this
+            // host's server (or another's).
             let a = arg.split(separator: " ").map(String.init)
-            guard let wc, a.count == 2 else { return "usage: fetch <remote> <local>" }
-            Transfer.download(a[0], isDirectory: false, on: wc.hosts.local, to: URL(fileURLWithPath: a[1])) { e in NSLog("fetch: %@", e ?? "ok") }
+            guard let wc, a.count == 2 || a.count == 3 else { return "usage: fetch <remote> <local> [host]" }
+            guard let c = a.count == 3 ? wc.hosts.client(HostID(a[2])) : wc.hosts.local else { return "no such host" }
+            Transfer.download(a[0], isDirectory: false, on: c, to: URL(fileURLWithPath: a[1])) { e in NSLog("fetch: %@", e ?? "ok") }
             return "fetching"
         case "localcopy":
             // "localcopy <path>": fetched to a watched copy (no app opened); says where.

@@ -27,6 +27,9 @@ final class Server {
     /// What the host calls itself, for clients to show.
     let label: String?
     private let queue = DispatchQueue(label: "manifoldd")
+    /// Files written for clients (uploads, images), in order, off `queue`:
+    /// a slow disk holds up no terminal, no other client.
+    private let fileWrites = DispatchQueue(label: "manifoldd.files")
     private let node = Node()
     private let store: LogStore
     private let clock: Clock
@@ -243,10 +246,16 @@ final class Server {
     }
 
     private func clientFrame(_ frame: Frame, from conn: Connection) {
-        // A forwarded port's bytes, on to its connection here; none, it closes.
+        // A forwarded port's bytes, on to its connection here; none, the
+        // client's side is done sending.
         if let (id, data) = frame.tunnel {
             guard let relay = relays[ObjectIdentifier(conn)]?[id] else { return }
-            if data.isEmpty { relay.end() } else { relay.write(data) }
+            if data.isEmpty { relay.finishWriting() } else { relay.write(data) }
+            return
+        }
+        // The client took some of a tunnel's bytes: more may come.
+        if let (id, count) = frame.tunnelAck {
+            relays[ObjectIdentifier(conn)]?[id]?.acked(count)
             return
         }
         switch frame.decode(ClientMessage.self) {
@@ -546,35 +555,34 @@ final class Server {
                 self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false))) }
             }
         case let .readRange(path, offset, length):
-            DispatchQueue.global(qos: .userInitiated).async {
-                var data: Data?
-                if let h = FileHandle(forReadingAtPath: path) {
-                    try? h.seek(toOffset: UInt64(max(offset, 0)))
-                    data = (try? h.read(upToCount: max(length, 0))) ?? Data()
-                    try? h.close()
-                }
-                conn.send(.message(ServerMessage.bytes(id: id, data)))
+            readBytes(for: id, to: conn) {
+                guard let h = FileHandle(forReadingAtPath: path) else { return nil }
+                defer { try? h.close() }
+                try? h.seek(toOffset: UInt64(max(offset, 0)))
+                return (try? h.read(upToCount: max(length, 0))) ?? Data()
             }
         case let .writePath(path, data, mode):
-            let url = URL(fileURLWithPath: path)
-            let fm = FileManager.default
-            do {
-                try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                switch mode {
-                case .create:
-                    if fm.fileExists(atPath: path) { return done("exists") }
-                    try data.write(to: url)
-                case .replace:
-                    try data.write(to: url, options: .atomic)
-                case .append:
-                    let h = try FileHandle(forWritingTo: url)
-                    try h.seekToEnd()
-                    try h.write(contentsOf: data)
-                    try h.close()
+            fileWrites.async { [weak self] in
+                let url = URL(fileURLWithPath: path)
+                let fm = FileManager.default
+                var error: String?
+                do {
+                    try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    switch mode {
+                    case .create:
+                        if fm.fileExists(atPath: path) { error = "exists" } else { try data.write(to: url) }
+                    case .replace:
+                        try data.write(to: url, options: .atomic)
+                    case .append:
+                        let h = try FileHandle(forWritingTo: url)
+                        try h.seekToEnd()
+                        try h.write(contentsOf: data)
+                        try h.close()
+                    }
+                } catch let e {
+                    error = e.localizedDescription
                 }
-                done()
-            } catch {
-                done(error.localizedDescription)
+                self?.queue.async { done(error) }
             }
         case let .captureTurn(block, agent, turn):
             writeTurn(block, agent: agent, turn: turn)
@@ -588,6 +596,7 @@ final class Server {
             let key = ObjectIdentifier(conn), id32 = UInt32(truncatingIfNeeded: tid)
             guard let relay = PortRelay(port: port, queue: queue) else { return done("nothing is listening on port \(port)") }
             relay.onData = { [unowned conn] data in conn.send(.tunnel(id32, data)) }
+            relay.onWritten = { [unowned conn] count in conn.send(.tunnelAck(id32, count)) }
             relay.onClose = { [weak self, unowned conn] in
                 self?.relays[key]?.removeValue(forKey: id32)
                 conn.send(.tunnel(id32, Data()))
@@ -596,21 +605,31 @@ final class Server {
             done()
         case let .saveImage(block, data, name, folder):
             // Beside a Markdown file; for a note, in Manifold's own folder.
+            // Written off the queue; the block made back on it.
             let dir = folder ?? Self.imagesFolder
-            do {
-                try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-                var path = dir + "/" + name
-                let ext = name.pathExtension, base = (name as NSString).deletingPathExtension
-                var n = 2
-                while FileManager.default.fileExists(atPath: path) {
-                    path = dir + "/" + base + " \(n)" + (ext.isEmpty ? "" : "." + ext)
-                    n += 1
+            fileWrites.async { [weak self] in
+                let written: Result<String, Error> = Result {
+                    try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                    var path = dir + "/" + name
+                    let ext = name.pathExtension, base = (name as NSString).deletingPathExtension
+                    var n = 2
+                    while FileManager.default.fileExists(atPath: path) {
+                        path = dir + "/" + base + " \(n)" + (ext.isEmpty ? "" : "." + ext)
+                        n += 1
+                    }
+                    try data.write(to: URL(fileURLWithPath: path))
+                    return path
                 }
-                try data.write(to: URL(fileURLWithPath: path))
-                if node.block(block) == nil { append(.create(kind: .image, title: nil, path: path), to: .block(block)) }
-                done()
-            } catch {
-                done(error.localizedDescription)
+                self?.queue.async {
+                    guard let self else { return }
+                    switch written {
+                    case .success(let path):
+                        if self.node.block(block) == nil { self.append(.create(kind: .image, title: nil, path: path), to: .block(block)) }
+                        done()
+                    case .failure(let error):
+                        done(error.localizedDescription)
+                    }
+                }
             }
         case let .showRevision(block, repo, path, revision, title):
             // `git show rev:path`: the file as it was, read-only, in an output block.
@@ -646,13 +665,15 @@ final class Server {
                 done(error.localizedDescription)
             }
         case let .readPath(path, limit):
-            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
-            let data = size.map { $0 <= Int64(limit) } == true ? try? Data(contentsOf: URL(fileURLWithPath: path)) : nil
-            conn.send(.message(ServerMessage.bytes(id: id, data)))
+            readBytes(for: id, to: conn) {
+                let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
+                return size.map { $0 <= Int64(limit) } == true ? try? Data(contentsOf: URL(fileURLWithPath: path)) : nil
+            }
         case let .readBytes(block):
+            // Clients since protocol 42 read a file's bytes in pieces
+            // (readRange); this is for one from before.
             guard let b = node.block(block), let path = b.path else { return done("not a file") }
-            let data = try? Data(contentsOf: URL(fileURLWithPath: path))
-            conn.send(.message(ServerMessage.bytes(id: id, data)))
+            readBytes(for: id, to: conn) { try? Data(contentsOf: URL(fileURLWithPath: path)) }
         case let .processes(block):
             if node.block(block) == nil {
                 append(.create(kind: .process, title: nil, path: nil), to: .block(block))
@@ -1130,6 +1151,15 @@ final class Server {
     /// a file checks it so). A file that seems not to be there is looked
     /// for again a few times before it's taken for a new one — a file
     /// being replaced, a slow file system, isn't read as empty.
+    /// A file's bytes read off `queue` (a big one, a slow disk, holds up
+    /// nothing else), then sent from it, in the bulk lane.
+    private func readBytes(for id: Int, to conn: Connection, _ read: @escaping () -> Data?) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let data = read()
+            self?.queue.async { conn.sendBulk(.message(ServerMessage.bytes(id: id, data))) }
+        }
+    }
+
     private func readFile(_ block: BlockID, for conn: Connection, attempt: Int = 0, done: @escaping (String?) -> Void) {
         guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
         let send = { (p: HostProposal) in conn.send(.message(ServerMessage.propose(shard: .block(block), p))) }

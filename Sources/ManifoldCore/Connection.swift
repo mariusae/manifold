@@ -14,7 +14,16 @@ private func sysListen(_ fd: Int32, _ backlog: Int32) -> Int32 { listen(fd, back
 /// A framed, non-blocking connection over a socket, or over a pair of
 /// pipes (a remote host's bridge, by its stdio), driven by dispatch
 /// sources on one queue. All methods must be called on that queue.
+///
+/// Frames go in two lanes. `send` is the ordered one: frames arrive as
+/// they were sent. `sendBulk` is for big things whose order doesn't matter
+/// (a file's bytes, a piece of an upload): each is cut into fragments
+/// that go out between the ordered frames, one fragment at a time and in
+/// turn with other bulk sends, so a file on its way holds up nothing
+/// else for longer than a fragment takes.
 public final class Connection {
+    /// How much of a bulk send goes at a time.
+    public static let fragmentSize = 64 << 10
     /// Read from here...
     public let fd: Int32
     /// ...and written to here (the same, for a socket).
@@ -23,8 +32,18 @@ public final class Connection {
     private let readSource: DispatchSourceRead
     private var writeSource: DispatchSourceWrite?
     private var writeSourceActive = false
+    /// Ordered bytes to write, from `sent` on.
     private var outbox = Data()
+    private var sent = 0
+    /// Bulk sends on their way: their encoded frames, and how far each is.
+    private var bulk: [(id: UInt32, data: Data, offset: Int)] = []
+    private var nextBulk: UInt32 = 1
+    /// Bulk frames coming in, by id, until their last fragment.
+    private var fragments: [UInt32: Data] = [:]
     private var decoder = FrameDecoder()
+    /// When bytes last came in, and last went out.
+    public private(set) var lastRead = Date()
+    public private(set) var lastWrite = Date()
     public private(set) var isClosed = false
 
     public var onFrame: ((Frame) -> Void)?
@@ -61,12 +80,31 @@ public final class Connection {
     public func send(_ frame: Frame) {
         guard !isClosed else { return }
         outbox.append(frame.encoded)
-        // A peer that stops reading doesn't get to hold unbounded memory.
-        if outbox.count > 64 << 20 {
-            close()
-            return
-        }
+        guard !stalled else { return close() }
         flush()
+    }
+
+    /// A frame in the bulk lane: whole when it arrives, but not in order
+    /// with the frames around it.
+    public func sendBulk(_ frame: Frame) {
+        guard !isClosed else { return }
+        let data = frame.encoded
+        guard data.count > Self.fragmentSize else { return send(frame) }
+        bulk.append((nextBulk, data, 0))
+        nextBulk &+= 1
+        guard !stalled else { return close() }
+        flush()
+    }
+
+    /// Bytes waiting to be written.
+    public var pending: Int { outbox.count - sent + bulk.reduce(0) { $0 + $1.data.count - $1.offset } }
+
+    /// A peer that stopped reading doesn't get to hold unbounded memory:
+    /// a lot waiting and none of it taken for half a minute (a slow link
+    /// that is taking it is let be), or far too much.
+    private var stalled: Bool {
+        let p = pending
+        return p > 1 << 30 || (p > 64 << 20 && Date().timeIntervalSince(lastWrite) > 30)
     }
 
     public func close() {
@@ -91,22 +129,73 @@ public final class Connection {
             close()
             return
         }
+        lastRead = Date()
         onRead?(n)
         decoder.append(Data(buf[0..<n]))
         do {
             while !isClosed, let frame = try decoder.next() {
-                onFrame?(frame)
+                if frame.kind == .fragment {
+                    if let whole = try reassemble(frame) { onFrame?(whole) }
+                } else {
+                    onFrame?(frame)
+                }
             }
         } catch {
             close()
         }
     }
 
+    /// A bulk frame's fragment: kept until the last, which makes it whole.
+    private func reassemble(_ fragment: Frame) throws -> Frame? {
+        let p = fragment.payload
+        guard p.count >= 5 else { throw ProtocolError.badFrameKind }
+        let s = p.startIndex
+        let id = p[s..<s + 4].reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+        fragments[id, default: Data()].append(p[(s + 5)...])
+        guard fragments[id]!.count <= 1 << 30 else { throw ProtocolError.frameTooLarge }
+        guard p[s + 4] != 0, let whole = fragments.removeValue(forKey: id) else { return nil }
+        var d = FrameDecoder()
+        d.append(whole)
+        guard let frame = try d.next() else { throw ProtocolError.badFrameKind }
+        return frame
+    }
+
+    /// The next bulk send's next fragment, onto the ordered bytes; the
+    /// send goes to the back of the line, if there's more of it.
+    private func nextFragment() {
+        var b = bulk.removeFirst()
+        let end = min(b.offset + Self.fragmentSize, b.data.count)
+        let last = end == b.data.count
+        var p = Data(capacity: 5 + end - b.offset)
+        withUnsafeBytes(of: b.id.bigEndian) { p.append(contentsOf: $0) }
+        p.append(last ? 1 : 0)
+        p.append(b.data[(b.data.startIndex + b.offset)..<(b.data.startIndex + end)])
+        outbox.append(Frame(.fragment, p).encoded)
+        if !last {
+            b.offset = end
+            bulk.append(b)
+        }
+    }
+
     private func flush() {
-        while !outbox.isEmpty {
-            let n = outbox.withUnsafeBytes { write(writeFD, $0.baseAddress, $0.count) }
+        while true {
+            if sent == outbox.count {
+                // The ordered bytes all gone: a bulk send's next piece.
+                outbox.removeAll(keepingCapacity: outbox.count <= 1 << 20)
+                sent = 0
+                guard !bulk.isEmpty else { break }
+                nextFragment()
+            }
+            let n = outbox.withUnsafeBytes { write(writeFD, $0.baseAddress! + sent, $0.count - sent) }
             if n > 0 {
-                outbox.removeFirst(n)
+                sent += n
+                lastWrite = Date()
+                // Written bytes dropped now and then, not on every write
+                // (which would copy what's left each time).
+                if sent >= 1 << 20, sent * 2 >= outbox.count {
+                    outbox = outbox.subdata(in: (outbox.startIndex + sent)..<outbox.endIndex)
+                    sent = 0
+                }
             } else if n < 0 && errno == EINTR {
                 continue
             } else if n < 0 && errno == EAGAIN {

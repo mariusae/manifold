@@ -6,7 +6,9 @@ import Network
 /// loopback (a dev server's localhost:3000) reached on this Mac's, at the
 /// same port when it's free here, else another. Each connection made here
 /// is a tunnel through the host's own link: the host connects to the port
-/// on its side, and the bytes go both ways in `tunnel` frames.
+/// on its side, and the bytes go both ways in `tunnel` frames — no more
+/// than a window of a tunnel's at once, each end saying (`tunnelAck`)
+/// when it has passed bytes on, so a slow side fills nothing but itself.
 final class PortForwards {
     struct Forward {
         let remote: Int
@@ -17,6 +19,10 @@ final class PortForwards {
     private weak var client: HostClient?
     private(set) var forwards: [Int: Forward] = [:]
     private var streams: [UInt32: NWConnection] = [:]
+    /// Bytes of each tunnel's sent to the host and not yet taken there;
+    /// a tunnel at its window waits (`stalled`) to be read again.
+    private var unacked: [UInt32: Int] = [:]
+    private var stalled: Set<UInt32> = []
     private var nextID: UInt32 = 1
     /// The forwards changed (made, ready, stopped).
     var onChange: (() -> Void)?
@@ -93,25 +99,51 @@ final class PortForwards {
     private func pump(_ c: NWConnection, _ id: UInt32) {
         c.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, complete, error in
             guard let self else { return }
-            if let data, !data.isEmpty { self.client?.sendTunnel(id, data) }
-            if complete || error != nil {
+            if let data, !data.isEmpty {
+                self.client?.sendTunnel(id, data)
+                self.unacked[id, default: 0] += data.count
+            }
+            if error != nil {
                 if self.streams.removeValue(forKey: id) != nil { self.client?.sendTunnel(id, Data()) }
+                self.forget(id)
                 c.cancel()
                 return
             }
-            self.pump(c, id)
+            if complete {
+                // Done sending, here: said so, and the host's answer
+                // still comes back until it closes its side.
+                self.client?.sendTunnel(id, Data())
+                return
+            }
+            if self.unacked[id, default: 0] >= Frame.tunnelWindow { self.stalled.insert(id) } else { self.pump(c, id) }
         }
     }
 
+    /// The host passed on `count` of a tunnel's bytes: read on, if it waited.
+    func acked(_ id: UInt32, _ count: Int) {
+        guard let c = streams[id] else { return }
+        unacked[id] = max(0, unacked[id, default: 0] - count)
+        if unacked[id, default: 0] < Frame.tunnelWindow, stalled.remove(id) != nil { pump(c, id) }
+    }
+
+    private func forget(_ id: UInt32) {
+        unacked.removeValue(forKey: id)
+        stalled.remove(id)
+    }
+
     /// The host's side of a tunnel: its bytes on to the connection here;
-    /// none, it closed.
+    /// none, it closed (after this side's EOF, if it came first).
     func received(_ id: UInt32, _ data: Data) {
         guard let c = streams[id] else { return }
         if data.isEmpty {
             streams.removeValue(forKey: id)
+            forget(id)
             c.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in c.cancel() })
         } else {
-            c.send(content: data, completion: .contentProcessed { _ in })
+            // Taken here: the host may send as much again.
+            c.send(content: data, completion: .contentProcessed { [weak self] error in
+                if error == nil { self?.client?.sendTunnelAck(id, data.count) }
+            })
         }
     }
 
@@ -120,5 +152,7 @@ final class PortForwards {
     func linkClosed() {
         for c in streams.values { c.cancel() }
         streams = [:]
+        unacked = [:]
+        stalled = []
     }
 }

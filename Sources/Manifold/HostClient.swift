@@ -259,7 +259,13 @@ final class HostClient {
         if let done { pendingProposals[id] = done }
         // A link broken can be made again at once.
         if case .unlink = proposal { recentLinks = [:] }
-        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+        let frame = Frame.message(ClientMessage.propose(id: id, proposal))
+        // An upload's piece, an image's bytes: in the bulk lane, around
+        // whatever else is said meanwhile.
+        switch proposal {
+        case .writePath, .saveImage: conn?.sendBulk(frame)
+        default: conn?.send(frame)
+        }
     }
 
     /// Asks the block's host's language server something.
@@ -271,13 +277,19 @@ final class HostClient {
         conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
     }
 
-    /// A file's bytes from this host.
+    /// A file block's bytes from this host (an image, a PDF), in pieces,
+    /// as big as it is.
     func readBytes(_ block: BlockID, done: @escaping (Data?) -> Void) {
-        guard conn != nil else { return done(nil) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingBytes[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .readBytes(block: block))))
+        guard conn != nil, let path = node.block(block)?.path else { return done(nil) }
+        var whole = Data()
+        func next() {
+            readRange(path: path, offset: Int64(whole.count), length: Transfer.piece) { data in
+                guard let data else { return done(nil) }
+                whole.append(data)
+                if data.count < Transfer.piece { done(whole) } else { next() }
+            }
+        }
+        next()
     }
 
     /// A folder's entries, ignored ones marked (§7.4).
@@ -682,7 +694,7 @@ final class HostClient {
         pingSent = sent
         conn.send(.message(ClientMessage.ping))
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self, self.pingSent == sent, self.conn === conn else { return }
+            guard let self, self.pingSent == sent, self.conn === conn, !self.busy(conn, within: 5) else { return }
             NSLog("host %@: no answer after waking; dropping the connection", self.host.raw)
             self.pingSent = nil
             self.link = .unreachable("not answering")
@@ -699,6 +711,9 @@ final class HostClient {
             MainActor.assumeIsolated {
                 guard let self, let conn = self.conn else { return }
                 if let sent = self.pingSent, Date().timeIntervalSince(sent) > 12 {
+                    // Still busy (a file coming, one going): the pong is
+                    // behind it; asked again when it's quiet.
+                    if self.busy(conn, within: 12) { return }
                     NSLog("host %@: no answer to a ping; dropping the connection", self.host.raw)
                     self.pingSent = nil
                     self.link = .unreachable("not answering")
@@ -715,11 +730,21 @@ final class HostClient {
     lazy var forwards = PortForwards(client: self)
 
     func sendTunnel(_ id: UInt32, _ data: Data) { conn?.send(.tunnel(id, data)) }
+    func sendTunnelAck(_ id: UInt32, _ count: Int) { conn?.send(.tunnelAck(id, count)) }
+
+    /// Whether the link is plainly alive without its pong: bytes came in
+    /// lately, or what's being sent is still being taken. A big piece
+    /// ahead of the pong on a slow link isn't the host gone.
+    private func busy(_ conn: Connection, within seconds: TimeInterval) -> Bool {
+        let now = Date()
+        return now.timeIntervalSince(conn.lastRead) < seconds || (conn.pending > 0 && now.timeIntervalSince(conn.lastWrite) < seconds)
+    }
 
     private func attach(_ conn: Connection) {
         conn.onFrame = { [weak self] frame in
             guard let self else { return }
             if let (id, data) = frame.tunnel { return self.forwards.received(id, data) }
+            if let (id, count) = frame.tunnelAck { return self.forwards.acked(id, count) }
             guard let message = frame.decode(ServerMessage.self) else {
                 NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", self.host.raw, frame.kind.rawValue, frame.payload.count)
                 return
