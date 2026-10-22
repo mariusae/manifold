@@ -731,7 +731,11 @@ when you find it again.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: the page
   has the whole tile, its pill has the address (click it, or ⌘L), ⌘[ and
-  ⌘] go back and forward, and its pages are in its log.
+  ⌘] go back and forward, and its pages are in its log. A link that
+  opens a new window (`target=_blank`, `window.open`) opens a web block
+  beside, linked from the page; a page's alerts, confirmations and
+  questions are sheets over the window, and a file input opens the
+  Open panel.
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
   for actual size). PDFs show as Preview shows them: along the top the

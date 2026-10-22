@@ -53,6 +53,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         web.navigationDelegate = self
+        web.uiDelegate = self
         web.allowsBackForwardNavigationGestures = true
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
@@ -215,6 +216,61 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         if !events.isEmpty { delegate?.webView(self, append: events) }
     }
 
+}
+
+/// What a page asks of its window: a new one (a link with
+/// `target=_blank`, `window.open`) is a web block beside this one; an
+/// alert, a confirmation, a question and a file to upload are asked
+/// over the window, as Safari asks them.
+extension WebView: WKUIDelegate {
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url, url.absoluteString != "about:blank" {
+            delegate?.webView(self, open: url, over: false)
+        }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        ask(message, from: frame, buttons: ["OK"]) { _ in completionHandler() }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        ask(message, from: frame, buttons: ["OK", "Cancel"]) { completionHandler($0 == .alertFirstButtonReturn) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let field = NSTextField(string: defaultText ?? "")
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 22)
+        ask(prompt, from: frame, buttons: ["OK", "Cancel"], accessory: field) {
+            completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil)
+        }
+    }
+
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        guard let window else { return completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
+        panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) }
+    }
+
+    /// The page's question as a sheet, headed by the site that asks.
+    private func ask(_ message: String, from frame: WKFrameInfo, buttons: [String], accessory: NSView? = nil,
+                     done: @escaping (NSApplication.ModalResponse) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = frame.securityOrigin.host.isEmpty ? "This page says" : "\(frame.securityOrigin.host) says"
+        alert.informativeText = message
+        for b in buttons { alert.addButton(withTitle: b) }
+        alert.accessoryView = accessory
+        guard let window else { return done(alert.runModal()) }
+        alert.beginSheetModal(for: window, completionHandler: done)
+        if let accessory { alert.window.initialFirstResponder = accessory }
+    }
 }
 
 extension WebView: Searchable {
