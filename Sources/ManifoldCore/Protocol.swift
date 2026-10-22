@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 34
+public let protocolVersion = 35
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -19,6 +19,9 @@ public enum FrameKind: UInt8, Sendable {
     case resize = 3
     /// Sent by the server after it has replayed a session's recent output.
     case replayDone = 4
+    /// A forwarded port's bytes (§8), either way: a 4-byte big-endian
+    /// tunnel id, then the bytes; none, the tunnel closed.
+    case tunnel = 5
 }
 
 public struct Frame: Sendable {
@@ -48,6 +51,21 @@ public struct Frame: Sendable {
         withUnsafeBytes(of: cols.bigEndian) { d.append(contentsOf: $0) }
         withUnsafeBytes(of: rows.bigEndian) { d.append(contentsOf: $0) }
         return Frame(.resize, d)
+    }
+
+    public static func tunnel(_ id: UInt32, _ data: Data) -> Frame {
+        var d = Data(capacity: 4 + data.count)
+        withUnsafeBytes(of: id.bigEndian) { d.append(contentsOf: $0) }
+        d.append(data)
+        return Frame(.tunnel, d)
+    }
+
+    /// A tunnel frame's id and bytes.
+    public var tunnel: (id: UInt32, data: Data)? {
+        guard kind == .tunnel, payload.count >= 4 else { return nil }
+        let b = [UInt8](payload.prefix(4))
+        let id = UInt32(b[0]) << 24 | UInt32(b[1]) << 16 | UInt32(b[2]) << 8 | UInt32(b[3])
+        return (id, payload.count > 4 ? payload.subdata(in: payload.startIndex + 4..<payload.endIndex) : Data())
     }
 
     public var size: (cols: UInt16, rows: UInt16)? {
@@ -190,6 +208,9 @@ public enum Proposal: Codable, Sendable {
     case writePath(path: String, data: Data, mode: WriteMode)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
+    /// A forwarded port's connection (§8): the host connects to `port` on
+    /// its own loopback, and `tunnel` frames carry the bytes as `id`.
+    case openTunnel(id: Int, port: Int)
     /// A shell notebook made, one empty cell in it, its shell started in
     /// `cwd` (§7.7).
     case newNotebook(block: BlockID, cwd: String?)

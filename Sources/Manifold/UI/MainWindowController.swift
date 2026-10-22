@@ -1802,6 +1802,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let label = hosts.label(of: host)
         var items: [NSMenuItem] = []
         if let c = hosts.client(host), c.isRemote {
+            // Its ports brought here: one asked for, those forwarded (each stopped).
+            let fwd = ClosureMenuItem("Forward a Port from \(label)…", symbol: "arrow.left.arrow.right") { [weak self] in self?.askForwardPort(host) }
+            fwd.isEnabled = c.isConnected
+            items.append(fwd)
+            for f in c.forwards.forwards.values.sorted(by: { $0.remote < $1.remote }) {
+                let local = f.local.map(String.init) ?? "…"
+                let open = ClosureMenuItem("localhost:\(local) → \(label):\(f.remote)", symbol: "network") { [weak self] in
+                    self?.openWeb(URL(string: "http://localhost:\(local)/")!, place: .here, here: true)
+                }
+                let stop = NSMenu()
+                stop.addItem(ClosureMenuItem("Open", symbol: "safari") { [weak self] in
+                    self?.openWeb(URL(string: "http://localhost:\(local)/")!, place: .here, here: true)
+                })
+                stop.addItem(ClosureMenuItem("Stop Forwarding", symbol: "xmark") { c.forwards.stop(f.remote) })
+                open.submenu = stop
+                items.append(open)
+            }
             items.append(ClosureMenuItem("Reset Server on \(label)…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.resetServer(host) })
         }
         let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
@@ -1817,6 +1834,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         item.setSymbol("server.rack", size: 12)
         item.submenu = sub
         return item
+    }
+
+    /// Forward a Port…: which of the host's, asked; forwarded, and opened.
+    private func askForwardPort(_ h: HostID) {
+        let alert = NSAlert()
+        alert.messageText = "Forward a port from \(hosts.label(of: h))"
+        alert.informativeText = "A server listening on the host's own localhost is reached on this Mac's, at the same port when it's free here."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        field.placeholderString = "3000"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Forward")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn, let port = Int(field.stringValue.trimmingCharacters(in: .whitespaces)), (1...65535).contains(port) else { return }
+        forward(port, on: h) { [weak self] local in
+            guard let local else { return }
+            self?.openWeb(URL(string: "http://localhost:\(local)/")!, place: .here, here: true)
+        }
+    }
+
+    /// A port of another host's brought here: said so (a toast), and the
+    /// port here given back.
+    func forward(_ port: Int, on h: HostID, done: @escaping (Int?) -> Void) {
+        guard let c = hosts.client(h) else { return done(nil) }
+        c.forwards.forward(port) { [weak self] local in
+            guard let self else { return }
+            if let local {
+                let same = local == port ? "" : " (\(port) is taken here)"
+                self.toast.show("\(self.hosts.label(of: h)):\(port) forwarded to localhost:\(local)\(same)", action: "Stop", for: 6) { c.forwards.stop(port) }
+            } else {
+                self.toast.show("Couldn't forward \(port) from \(self.hosts.label(of: h))", action: "OK", for: 8) {}
+            }
+            done(local)
+        }
     }
 
     /// Resets a host's graph, once asked: every link and the trail gone.
@@ -3877,11 +3928,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
-            if scheme == "http" || scheme == "https", here ?? Self.clickModifiers.map(Self.opensHere) ?? true {
-                show(host.newWeb(url: url.absoluteString), lens: .web, place, context: target)
-            } else {
-                NSWorkspace.shared.open(url)
+            let inWeb = here ?? Self.clickModifiers.map(Self.opensHere) ?? true
+            // A server on another host's own localhost (one a remote
+            // terminal names): its port forwarded here, then the address
+            // opened at the port here.
+            let from = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
+            if from != host.host, scheme == "http" || scheme == "https", let h = url.host, Self.loopbackNames.contains(h) {
+                let port = url.port ?? (scheme == "https" ? 443 : 80)
+                forward(port, on: from) { [weak self] local in
+                    guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+                    parts.host = "localhost"
+                    parts.port = local
+                    if let here = parts.url { self?.openWeb(here, place: place, here: inWeb, context: target) }
+                }
+                return
             }
+            openWeb(url, place: place, here: inWeb, context: target)
             return
         }
         let base = placement.flatMap { shown($0)?.block }.flatMap { $0.terminal?.cwd ?? $0.place }
@@ -3937,6 +3999,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         if !local || Self.isEditable(path) { return (hosts.textBlock(for: path, on: on), Lens.default(for: .text, path: path)) }
         return nil
+    }
+
+    static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]
+
+    /// An address: in the web lens (where `here` says), else the system's browser.
+    func openWeb(_ url: URL, place: Where, here: Bool, context: String? = nil) {
+        if (url.scheme == "http" || url.scheme == "https") && here {
+            show(host.newWeb(url: url.absoluteString), lens: .web, place, context: context ?? url.absoluteString)
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// Opens a path on another host, where it can't be looked at from

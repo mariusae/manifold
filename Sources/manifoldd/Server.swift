@@ -44,6 +44,8 @@ final class Server {
     /// Shell notebooks' shells (§7.7), and what a running cell has printed
     /// that the clients haven't been sent yet.
     private var notebooks: [BlockID: NotebookShell] = [:]
+    /// Forwarded ports' connections (§8), by the client they're for and id.
+    private var relays: [ObjectIdentifier: [UInt32: PortRelay]] = [:]
     private var notebookLive: [BlockID: (cell: String, output: Data)] = [:]
     private var notebookLiveScheduled: Set<BlockID> = []
     /// When each notebook's running cell was last interrupted: asked again
@@ -218,6 +220,8 @@ final class Server {
                 self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
                 self?.appClients.remove(ObjectIdentifier(conn))
                 self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
+                // Its forwarded connections go with it.
+                for relay in self?.relays.removeValue(forKey: ObjectIdentifier(conn))?.values ?? [:].values { relay.onClose = nil; relay.end() }
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
@@ -235,6 +239,12 @@ final class Server {
     }
 
     private func clientFrame(_ frame: Frame, from conn: Connection) {
+        // A forwarded port's bytes, on to its connection here; none, it closes.
+        if let (id, data) = frame.tunnel {
+            guard let relay = relays[ObjectIdentifier(conn)]?[id] else { return }
+            if data.isEmpty { relay.end() } else { relay.write(data) }
+            return
+        }
         switch frame.decode(ClientMessage.self) {
         case .ping?:
             conn.send(.message(ServerMessage.pong))
@@ -550,6 +560,16 @@ final class Server {
             } catch {
                 done(error.localizedDescription)
             }
+        case let .openTunnel(tid, port):
+            let key = ObjectIdentifier(conn), id32 = UInt32(truncatingIfNeeded: tid)
+            guard let relay = PortRelay(port: port, queue: queue) else { return done("nothing is listening on port \(port)") }
+            relay.onData = { [unowned conn] data in conn.send(.tunnel(id32, data)) }
+            relay.onClose = { [weak self, unowned conn] in
+                self?.relays[key]?.removeValue(forKey: id32)
+                conn.send(.tunnel(id32, Data()))
+            }
+            relays[key, default: [:]][id32] = relay
+            done()
         case let .makeFolder(path):
             do {
                 try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)

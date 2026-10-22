@@ -327,6 +327,11 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "forward":
+            // "forward <port>": this host's port through a tunnel (see the log).
+            guard let wc, let port = Int(arg) else { return "usage: forward <port>" }
+            wc.hosts.local.forwards.forward(port) { local in NSLog("forwarded %d to %@", port, local.map(String.init) ?? "nothing") }
+            return "forwarding"
         case "copyinto":
             // "copyinto <folder> <local path>…": as if dropped on the folder (this host).
             let a = arg.split(separator: " ").map(String.init)

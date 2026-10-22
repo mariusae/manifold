@@ -701,9 +701,15 @@ final class HostClient {
         }
     }
 
+    /// Ports of this host's forwarded to this Mac (§8).
+    lazy var forwards = PortForwards(client: self)
+
+    func sendTunnel(_ id: UInt32, _ data: Data) { conn?.send(.tunnel(id, data)) }
+
     private func attach(_ conn: Connection) {
         conn.onFrame = { [weak self] frame in
             guard let self else { return }
+            if let (id, data) = frame.tunnel { return self.forwards.received(id, data) }
             guard let message = frame.decode(ServerMessage.self) else {
                 NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", self.host.raw, frame.kind.rawValue, frame.payload.count)
                 return
@@ -720,6 +726,7 @@ final class HostClient {
             self.isConnected = false
             // Reads asked over this link won't be answered: asked again on the next.
             self.readsInFlight = []
+            self.forwards.linkClosed()
             self.pingTimer?.invalidate()
             self.pingSent = nil
             // Gone before it answered: unreachable, not still connecting.

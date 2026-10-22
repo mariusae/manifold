@@ -446,6 +446,15 @@ when you find it again.
   copy opened by the app here, sent back each time it's saved — and
   **Download**, to Downloads. Files go in four-megabyte pieces, so a
   big one isn't held all at once.
+- **Another host's ports come here**: open a `localhost` address from
+  its tiles — ⌘-click `http://localhost:3000` in a remote terminal, a
+  dev server's banner — and the port is forwarded through the host's
+  own link to this Mac's localhost (the same port when it's free here,
+  else another, which the toast says) and the address opened there: no
+  `ssh -L`. **Forward a Port from *host*…** in the host's menu asks for
+  one; each forward is listed there, to open or stop. A forward keeps
+  listening while the host is away, and its connections go again when
+  it's back.
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does
