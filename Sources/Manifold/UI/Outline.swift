@@ -177,8 +177,10 @@ final class OutlineTicks: NSView {
 }
 
 /// A list floating over the window — an outline opened from its ticks, a
-/// command's actions from its dot — over everything in it, as a hover card
-/// is. A row clicked does what it does; one with a menu has a ⋯ while the
+/// command's actions from its dot — in a little window of its own over it,
+/// as a menu is: the views under it don't see the pointer while it's on
+/// the list (a terminal's caret cursor, a page's), and it has a window's
+/// shadow. A row clicked does what it does; one with a menu has a ⋯ while the
 /// pointer is on it (and the menu on a right-click). It stays while the
 /// pointer is on it or on what opened it, and goes a moment after it's on
 /// neither.
@@ -217,6 +219,15 @@ final class FloatingList: NSView {
     private weak var opener: AnyObject?
     private var hideWork: DispatchWorkItem?
     private var place: Place = .overTopRight(.zero)
+    /// The window it's over, and its own.
+    private weak var host: NSWindow?
+    private let panel: NSPanel = ListPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+
+    /// Never key: the keyboard stays where it was.
+    private final class ListPanel: NSPanel {
+        override var canBecomeKey: Bool { false }
+        override var canBecomeMain: Bool { false }
+    }
 
     static let rowHeight: CGFloat = 28
     private static let pad: CGFloat = 6
@@ -227,10 +238,6 @@ final class FloatingList: NSView {
         layer?.cornerRadius = 10
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
-        layer?.zPosition = 50
-        layer?.shadowOpacity = 0.2
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
         themed {
             $0.layer?.backgroundColor = Theme.panel.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
@@ -240,26 +247,35 @@ final class FloatingList: NSView {
         scroll.autohidesScrollers = true
         scroll.documentView = stack
         addSubview(scroll)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.animationBehavior = .none
+        panel.contentView = self
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var isShown: Bool { superview != nil && !isHidden }
+    var isShown: Bool { panel.isVisible && panel.parent != nil }
     func isShown(for owner: AnyObject) -> Bool { isShown && opener === owner }
 
     func show(_ rows: [Row], for owner: AnyObject, in window: NSWindow, place: Place, scrollToCurrent: Bool = false) {
         hideWork?.cancel()
-        guard let root = window.contentView else { return }
-        let same = opener === owner && superview === root
+        let same = opener === owner && isShown && host === window
         opener = owner
         self.place = place
-        if superview !== root {
-            removeFromSuperview()
-            root.addSubview(self)
-        }
-        isHidden = false
+        host = window
+        panel.appearance = window.effectiveAppearance
         fill(rows)
-        position(in: root)
+        position(in: window)
+        if panel.parent !== window {
+            panel.parent?.removeChildWindow(panel)
+            window.addChildWindow(panel, ordered: .above)
+        }
+        panel.orderFront(nil)
+        updateHover()
         if scrollToCurrent || !same, let i = rows.firstIndex(where: \.current) {
             stack.scrollToVisible(rowViews[i].frame.insetBy(dx: 0, dy: -Self.rowHeight))
         }
@@ -267,9 +283,9 @@ final class FloatingList: NSView {
 
     /// The rows afresh, if it shows for this owner (an outline that changed).
     func update(_ rows: [Row], for owner: AnyObject) {
-        guard isShown(for: owner), let root = superview else { return }
+        guard isShown(for: owner), let host else { return }
         fill(rows)
-        position(in: root)
+        position(in: host)
     }
 
     func hide(for owner: AnyObject) {
@@ -281,7 +297,8 @@ final class FloatingList: NSView {
         hideWork = nil
         // Its rows are used again for the next list: none left marked.
         for r in rowViews { r.hovering = false }
-        removeFromSuperview()
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
         opener = nil
     }
 
@@ -310,14 +327,20 @@ final class FloatingList: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
+    /// Where the pointer is, on the screen.
+    private var pointer: NSPoint {
+        if let p = debugPointer, let host { return host.convertPoint(toScreen: p) }
+        return NSEvent.mouseLocation
+    }
+
     /// Whether the pointer is on the list, or on what opened it.
     private var pointerOnIt: Bool {
-        guard isShown, let window else { return false }
-        let p = debugPointer ?? window.mouseLocationOutsideOfEventStream
+        guard isShown, let host else { return false }
+        let p = pointer
         let opener: NSRect = switch place {
         case let .overTopRight(r), let .rightOf(r): r
         }
-        return convert(bounds, to: nil).insetBy(dx: -2, dy: -2).contains(p) || opener.insetBy(dx: -2, dy: -2).contains(p)
+        return panel.frame.insetBy(dx: -2, dy: -2).contains(p) || host.convertToScreen(opener).insetBy(dx: -2, dy: -2).contains(p)
     }
 
     private func fill(_ fresh: [Row]) {
@@ -332,12 +355,13 @@ final class FloatingList: NSView {
         updateHover()
     }
 
-    private func position(in root: NSView) {
+    private func position(in window: NSWindow) {
         let width = min(380, max(200, rowViews.map(\.wantedWidth).max() ?? 200)) + 2 * Self.pad
         let content = CGFloat(rows.count) * Self.rowHeight
-        let room = root.bounds.insetBy(dx: 8, dy: 8)
+        // Within the window's content, in its coordinates.
+        let root = window.contentView.map { $0.convert($0.bounds, to: nil) } ?? .zero
+        let room = root.insetBy(dx: 8, dy: 8)
         let height = min(content + 2 * Self.pad, min(room.height, 480))
-        // In the window's coordinates, then the root's.
         var frame: NSRect
         switch place {
         case let .overTopRight(r):
@@ -345,15 +369,15 @@ final class FloatingList: NSView {
         case let .rightOf(r):
             frame = NSRect(x: r.maxX + 4, y: r.midY + Self.rowHeight / 2 + Self.pad - height, width: width, height: height)
         }
-        frame = root.convert(frame, from: nil)
         frame.origin.x = min(max(frame.minX, room.minX), room.maxX - width)
         frame.origin.y = min(max(frame.minY, room.minY), room.maxY - height)
-        self.frame = frame.integral
+        panel.setFrame(window.convertToScreen(frame.integral), display: false)
         scroll.frame = bounds.insetBy(dx: 0, dy: Self.pad)
         stack.frame = NSRect(x: 0, y: 0, width: bounds.width, height: content)
         for (i, v) in rowViews.enumerated() {
             v.frame = NSRect(x: Self.pad, y: CGFloat(i) * Self.rowHeight, width: bounds.width - 2 * Self.pad, height: Self.rowHeight)
         }
+        panel.invalidateShadow()
     }
 
     override func updateTrackingAreas() {
@@ -385,12 +409,18 @@ final class FloatingList: NSView {
     /// scrolled or filled afresh under a pointer that didn't move are told
     /// so (each row's own tracking would leave the ones it left marked).
     private func updateHover() {
-        guard let window else { return }
-        let p = debugPointer ?? window.mouseLocationOutsideOfEventStream
+        guard isShown else { return }
+        let p = panel.convertPoint(fromScreen: pointer)
         let inClip = scroll.contentView.convert(p, from: nil)
         let inStack = stack.convert(p, from: nil)
         let row = scroll.contentView.bounds.contains(inClip) ? rowViews.firstIndex { $0.frame.contains(inStack) } : nil
         for (i, r) in rowViews.enumerated() { r.hovering = i == row }
+        // Its own cursor, all over it (a window that's never key has no
+        // cursor rectangles): a hand on a row that does something, else
+        // the arrow — between rows too.
+        if bounds.contains(p) {
+            (row.map { !rows[$0].header && rows[$0].action != nil } == true ? NSCursor.pointingHand : NSCursor.arrow).set()
+        }
     }
 
     /// Debugging: where the pointer is taken to be (in the window), in place
@@ -408,13 +438,14 @@ final class FloatingList: NSView {
         let xy = words.dropFirst().compactMap { Double($0) }
         debugPointer = xy.count == 2 ? NSPoint(x: xy[0], y: xy[1]) : nil
         updateHover()
-        return "pointer \(debugPointer.map { NSStringFromPoint($0) } ?? "real") panel \(NSStringFromRect(convert(bounds, to: nil)))"
+        let inHost = host?.convertFromScreen(panel.frame) ?? .zero
+        return "pointer \(debugPointer.map { NSStringFromPoint($0) } ?? "real") panel \(NSStringFromRect(inHost))"
     }
 
     /// Debugging: the rows, the current one starred.
     var debugRows: String {
         guard isShown else { return "not shown" }
-        return "frame \(NSStringFromRect(frame))\n" + rows.enumerated().map { i, r in
+        return "frame \(NSStringFromRect(host?.convertFromScreen(panel.frame) ?? .zero))\n" + rows.enumerated().map { i, r in
             (rowViews[i].hovering ? "h" : " ") + (r.current ? "*" : " ") + (r.header ? "# " : "") + String(repeating: "  ", count: r.level)
                 + (r.symbol.map { "[\($0)] " } ?? "") + r.title + (r.menu == nil ? "" : " ⋯")
         }.joined(separator: "\n")
@@ -518,7 +549,7 @@ final class FloatingListRow: NSView {
         NSBezierPath(roundedRect: NSRect(x: 10 + indent, y: (bounds.height - 2) / 2, width: length, height: 2), xRadius: 1, yRadius: 1).fill()
     }
 
-    override func resetCursorRects() { if !row.header { addCursorRect(bounds, cursor: .pointingHand) } }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {}
 
     override func mouseUp(with event: NSEvent) {
