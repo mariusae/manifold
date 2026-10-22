@@ -3379,7 +3379,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: fragment) }
         Drags.path = { [weak self] path, isDir, host, mods in self?.entryDragItem(path, isDirectory: isDir, on: host, modifiers: mods) ?? NSPasteboardItem() }
         Drags.place = { [weak self] id, fragment, title, mods in
-            self?.pathDragItem(for: id, linkOnly: mods.contains(.option), place: fragment.map { ($0, title) })
+            guard let self else { return nil }
+            if let item = self.pathDragItem(for: id, linkOnly: mods.contains(.option), place: fragment.map { ($0, title) }) { return item }
+            // A block the host is making now (a turn's, asked for as the
+            // drag began): its link, by the item's name, to land as it comes.
+            let item = NSPasteboardItem()
+            let t = title.replacingOccurrences(of: "]", with: "\\]")
+            item.setString("[\(t)](manifold:\(id.description))", forType: .manifoldBlockLink)
+            if mods.contains(.option) { item.setString("1", forType: .manifoldLinkOnly) }
+            return item
         }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
@@ -6393,24 +6401,48 @@ extension MainWindowController: TerminalViewDelegate {
         if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
             return showTurn(command.id, of: view.block, place: place)
         }
+        let (id, made) = outputBlock(of: command, in: view.block, output: output)
         let context = "command \(command.id)"
-        if let made = hosts.neighborhood(of: view.block).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output }) {
-            return show(made.to, lens: .output, place, kind: .opened, context: context)
-        }
-        let id = BlockID(host: view.block.host)
-        hosts.propose(.captureOutput(block: id, terminal: view.block, command: command.id, fallback: output))
+        if made { return show(id, lens: .output, place, kind: .opened, context: context) }
         // Shown once the host has made it (a moment).
         showWhenMade(id, lens: .output, place: place, context: context)
+    }
+
+    func terminal(_ view: TerminalView, blockFor command: ShellCommand, output: String) -> BlockID {
+        if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
+            return turnBlock(command.id, of: view.block).id
+        }
+        return outputBlock(of: command, in: view.block, output: output).id
+    }
+
+    /// A command's output as a block (§3.8): the one made before, else one
+    /// the host is asked to make now (`made` false: not here yet).
+    private func outputBlock(of command: ShellCommand, in terminal: BlockID, output: String) -> (id: BlockID, made: Bool) {
+        let context = "command \(command.id)"
+        if let made = hosts.neighborhood(of: terminal).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output }) {
+            return (made.to, true)
+        }
+        let id = BlockID(host: terminal.host)
+        hosts.propose(.captureOutput(block: id, terminal: terminal, command: command.id, fallback: output))
+        return (id, false)
+    }
+
+    /// An agent's turn as its own block: the one made before, else one the
+    /// host makes now; either brought up to date.
+    private func turnBlock(_ turn: Int, of agent: BlockID) -> (id: BlockID, made: Bool) {
+        let context = "turn \(turn)"
+        let made = hosts.neighborhood(of: agent).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output })?.to
+        let id = made ?? BlockID(host: agent.host)
+        hosts.propose(.captureTurn(block: id, agent: agent, turn: turn))
+        return (id, made != nil)
     }
 
     /// An agent's turn as its own block (§3.8): the one made before, brought
     /// up to date, else one the host makes now.
     func showTurn(_ turn: Int, of agent: BlockID, place: Where) {
         let context = "turn \(turn)"
-        let made = hosts.neighborhood(of: agent).outbound[.link(.opened)]?.first(where: { $0.context == context && hosts.block($0.to)?.kind == .output })?.to
-        let id = made ?? BlockID(host: agent.host)
-        hosts.propose(.captureTurn(block: id, agent: agent, turn: turn))
-        if made != nil { return show(id, lens: .output, place, kind: .opened, context: context) }
+        let (id, made) = turnBlock(turn, of: agent)
+        if made { return show(id, lens: .output, place, kind: .opened, context: context) }
         showTurnWhenMade(id, place: place, context: context)
     }
 

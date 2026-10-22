@@ -15,6 +15,10 @@ protocol TerminalViewDelegate: AnyObject {
     /// A command and its output, to show as a block of their own, beside
     /// a placement (an outline's) if given.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?)
+    /// The block a command opens as (an agent's turn, its turn; a shell's
+    /// command, its output): the one made before, else one the host is
+    /// asked to make now — what the command carries ⇧-dragged.
+    func terminal(_ view: TerminalView, blockFor command: ShellCommand, output: String) -> BlockID
     /// Copy on Select was switched from the pill's menu: a setting.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
     /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
@@ -263,9 +267,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             return self.delegate?.terminal(self, menuFor: self.outlined[i])
         }
         o.block = block
-        o.placeFor = { [weak self] i in
-            guard let self, self.outlined.indices.contains(i) else { return nil }
-            return "command=\(self.outlined[i].id)"
+        // ⇧-dragged, a command is the block it opens as, clicked.
+        o.blockFor = { [weak self] i in
+            guard let self, self.outlined.indices.contains(i), let delegate = self.delegate else { return nil }
+            let c = self.outlined[i]
+            return delegate.terminal(self, blockFor: c, output: self.transcript(ofCommand: c.id)?.1 ?? "")
         }
         return o
     }()

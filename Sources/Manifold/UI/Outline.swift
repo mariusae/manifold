@@ -36,6 +36,9 @@ final class Outline {
     /// "page=3", "command=7"): what a link to an item says.
     var block: BlockID?
     var placeFor: ((Int) -> String?)?
+    /// The block an item opens as when chosen, if it's one of its own (an
+    /// agent's turn, a command's output): what it carries ⇧-dragged.
+    var blockFor: ((Int) -> BlockID?)?
 
     func set(_ fresh: [Item]) {
         guard fresh != items else { return }
@@ -49,13 +52,18 @@ final class Outline {
         onPick?(i)
     }
 
-    /// What an item carries dragged. ⇧: the block as a pill ⇧-dragged
-    /// carries it — its path, and its link, here to the item's place in it —
-    /// so a note mentions the place and a tile it's dropped on is linked
-    /// (⌥⇧, the link alone); an item without a place of its own carries what
-    /// the view gives (a diff's file, as its block). Plain: what the view gives.
+    /// What an item carries dragged. ⇧: the block it opens as, if it opens
+    /// as one of its own (an agent's turn); else its block as a pill
+    /// ⇧-dragged carries it — its path, and its link, here to the item's
+    /// place in it — so a note mentions the place and a tile it's dropped on
+    /// is linked (⌥⇧, the link alone); an item without a place of its own
+    /// carries what the view gives (a diff's file, as its block). Plain:
+    /// what the view gives.
     func dragItem(_ i: Int, modifiers: NSEvent.ModifierFlags) -> NSPasteboardWriting? {
         guard items.indices.contains(i) else { return nil }
+        if modifiers.contains(.shift), let place = Drags.place, let opened = blockFor?(i) {
+            return place(opened, nil, items[i].title, modifiers)
+        }
         if modifiers.contains(.shift), let block, let place = Drags.place {
             if let fragment = placeFor?(i) { return place(block, fragment, items[i].title, modifiers) }
             if writerFor == nil { return place(block, nil, items[i].title, modifiers) }
@@ -64,7 +72,7 @@ final class Outline {
     }
 
     /// Whether an item can be dragged at all.
-    var draggable: Bool { block != nil || writerFor != nil }
+    var draggable: Bool { block != nil || writerFor != nil || blockFor != nil }
 
     /// Headings as items, the shallowest at the left (a text whose
     /// headings all begin at ## isn't indented a step for nothing).
