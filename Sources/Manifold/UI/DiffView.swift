@@ -5,6 +5,8 @@ protocol DiffViewDelegate: AnyObject {
     /// Open the new side's file at a line, beside the diff.
     func diffView(_ view: DiffView, open path: String, line: Int)
     func diffViewReload(_ view: DiffView)
+    /// A file's row right-clicked: its versions, its changes alone.
+    func diffView(_ view: DiffView, menuFor path: String) -> NSMenu?
 }
 
 /// The diff lens (DESIGN.md §7.5): a file at two points, or a commit, as
@@ -70,6 +72,11 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             case let .patch(root, _), let .uncommitted(root), let .since(root, _, _), let .trees(root, _, _, _):
                 if let file = self.rowsView.file(of: row) { self.delegate?.diffView(self, open: root.appendingPathComponent(file), line: row.newLine ?? 1) }
             }
+        }
+        // A row right-clicked: its file's versions, its changes alone.
+        rowsView.onMenu = { [weak self] row in
+            guard let self, let i = self.rowsView.rows.firstIndex(of: row), let path = self.filePath(ofRow: i) else { return nil }
+            return self.delegate?.diffView(self, menuFor: path)
         }
         scroll.documentView = rowsView
         scroll.hasVerticalScroller = true
@@ -170,6 +177,10 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             s.writerFor = { [weak self] i in
                 guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
                 return Drags.path?(path, false, self.block.host, Drags.modifiers)
+            }
+            s.menuFor = { [weak self] i in
+                guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
+                return self.delegate?.diffView(self, menuFor: path)
             }
             s.isHidden = true
             addSubview(s)
@@ -272,6 +283,20 @@ final class DiffRowsView: NSView {
             }
         }
         return (out, lines)
+    }
+
+    /// A row right-clicked: its menu.
+    var onMenu: ((DiffRow) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let line = Int(convert(event.locationInWindow, from: nil).y / rowHeight)
+        let row: DiffRow?
+        if sideBySide {
+            row = pairs.indices.contains(line) ? (pairs[line].right ?? pairs[line].left ?? pairs[line].span) : nil
+        } else {
+            row = rows.indices.contains(line) ? rows[line] : nil
+        }
+        return row.flatMap { onMenu?($0) }
     }
 
     /// Where a row is on screen, to scroll it into view.

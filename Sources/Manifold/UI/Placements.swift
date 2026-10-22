@@ -210,4 +210,15 @@ enum Drags {
     static var block: ((_ block: BlockID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
 
     static var modifiers: NSEvent.ModifierFlags { NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags }
+
+    /// A block's address on the clipboard, a place in it if given
+    /// ("line=12", "page=3", "command=7"). Given by the window.
+    static var copyLink: ((_ block: BlockID, _ fragment: String?) -> Void)?
+
+    /// A menu of one item: Copy Link to the place.
+    static func linkMenu(_ title: String, _ block: BlockID, _ fragment: String) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem(title, symbol: "link") { copyLink?(block, fragment) })
+        return menu
+    }
 }

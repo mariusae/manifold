@@ -612,6 +612,19 @@ final class Server {
             } catch {
                 done(error.localizedDescription)
             }
+        case let .showRevision(block, repo, path, revision, title):
+            // `git show rev:path`: the file as it was, read-only, in an output block.
+            let rel = path.hasPrefix(repo + "/") ? String(path.dropFirst(repo.count + 1)) : path
+            git.run(git.repository(of: repo)?.vcs ?? .git, ["show", "\(revision):\(rel)"], in: repo) { [weak self] result in
+                guard let self else { return }
+                guard case .success(let text) = result else { return done("\(rel) isn't in \(revision.prefix(10))") }
+                if self.node.block(block) == nil {
+                    self.append(.create(kind: .output, title: title, path: nil), to: .block(block))
+                    self.append(.cwd(path.deletingLastPathComponent), to: .block(block))
+                }
+                self.append(.output(OutputState(line: title, status: 0, output: text, plain: true)), to: .block(block))
+                done()
+            }
         case let .movePath(from, to, replace):
             let fm = FileManager.default
             do {

@@ -443,7 +443,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// row it starts on. Ghostty joins soft-wrapped rows (and reaches the
     /// history only for the whole screen), so a line's rows are counted
     /// from its width.
-    fileprivate var transcriptLines: String? { screenLines()?.map { String($0.text) }.joined(separator: "\n") }
+    var transcriptLines: String? { screenLines()?.map { String($0.text) }.joined(separator: "\n") }
 
     private func screenLines() -> [(row: Int, text: Substring)]? {
         guard let surface else { return nil }
@@ -853,6 +853,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let menu = NSMenu()
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
+        if selectedText?.isEmpty == false {
+            menu.addItem(withTitle: "New Note from Selection", action: #selector(MainWindowController.newNoteFromSelection(_:)), keyEquivalent: "")
+        }
+        menu.addItem(withTitle: "Save Scrollback as Note", action: #selector(MainWindowController.saveScrollbackAsNote(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: "")
         // The processes under the shell, the shell first, each a submenu
@@ -1216,7 +1220,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var selectedText: String? {
+    var selectedText: String? {
         guard let surface, ghostty_surface_has_selection(surface) else { return nil }
         var t = ghostty_text_s()
         guard ghostty_surface_read_selection(surface, &t) else { return nil }

@@ -208,6 +208,13 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
                 self?.scroll(toHeading: i, warping: false)
                 self?.sidebar?.current = i
             }
+            // A heading's link: the line it's on in the text.
+            s.menuFor = { [weak self] i in
+                guard let self, let text = self.source()?.text else { return nil }
+                let lines = MarkdownOutline.headings(in: text).map(\.line)
+                guard lines.indices.contains(i) else { return nil }
+                return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
+            }
             addSubview(s)
             sidebar = s
         }

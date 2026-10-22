@@ -324,6 +324,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 self.window?.makeFirstResponder(self.textView)
                 self.sidebar?.current = i
             }
+            s.menuFor = { [weak self] i in
+                guard let self, self.headings.indices.contains(i) else { return nil }
+                return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(self.headings[i].id + 1)")
+            }
             addSubview(s)
             sidebar = s
         }

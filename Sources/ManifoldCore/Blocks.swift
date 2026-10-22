@@ -471,6 +471,9 @@ public struct DiffSide: Codable, Equatable, Sendable {
 
 /// What a diff block compares: a file at two points, or a whole commit.
 public enum DiffSubject: Codable, Equatable, Sendable {
+    /// Two files, or a file at two revisions.
+    public var isSides: Bool { if case .sides = self { true } else { false } }
+
     case sides(old: DiffSide, new: DiffSide)
     case commit(repo: String, sha: String)
     /// A text block at two moments of its log (`to` nil: as it is now).

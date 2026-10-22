@@ -404,6 +404,12 @@ enum DebugControl {
             guard let wc, a.count >= 2 else { return "usage: copyinto <folder> <path>…" }
             wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: a[0], on: wc.hosts.local.host)
             return "copying"
+        case "revision":
+            // "revision <repo> <path> <rev>": the file as the revision has it, beside the focused tile.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count == 3, let v = wc.debugFocusedView as? PaneContent else { return "usage: revision <repo> <path> <rev> (a tile focused)" }
+            wc.showRevision(a[1], repo: a[0], revision: a[2], from: v)
+            return "showing"
         case "moveinto":
             // "moveinto <folder> <path>": as if this host's entry were dropped on the folder.
             let a = arg.split(separator: " ").map(String.init)

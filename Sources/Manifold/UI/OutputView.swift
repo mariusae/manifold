@@ -107,15 +107,18 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     func refresh() {
         guard let o = source()?.output, o != shown else { return }
         shown = o
-        prompt.attributedStringValue = NSAttributedString(string: "$ " + o.line, attributes: [
+        // A file's old version (§3.6) is no command: no prompt, no terminal.
+        let ran = o.source != nil
+        prompt.attributedStringValue = NSAttributedString(string: (ran ? "$ " : "") + o.line, attributes: [
             .font: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask), .foregroundColor: Theme.text])
         var words: [String] = []
         if let s = o.status { words.append(s == 0 ? "ok" : "exit \(s)") } else if o.ran != nil { words.append(o.ended == nil ? "running" : "ok") }
         if let at = o.ended ?? o.ran { words.append(Age.ago(at)) }
-        if o.plain { words.append("from the screen") }
+        if o.plain, ran { words.append("from the screen") }
         outcome.stringValue = words.joined(separator: " · ")
         outcome.textColor = (o.status ?? 0) == 0 ? Theme.secondaryText : Theme.statusError
-        back.isEnabled = o.source != nil && o.command != nil
+        back.isEnabled = ran && o.command != nil
+        back.isHidden = !ran
         let palette = TerminalPalette.current(for: self)
         let rendered = o.plain
             ? NSAttributedString(string: o.output, attributes: [.font: font, .foregroundColor: palette.foreground])
@@ -145,15 +148,15 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     @objc private func copyClicked() {
         guard let o = shown else { return }
         pasteboard.clearContents()
-        pasteboard.setString("$ " + o.line + "\n" + plainText + (plainText.hasSuffix("\n") ? "" : "\n"), forType: .string)
+        pasteboard.setString((o.source != nil ? "$ " : "") + o.line + "\n" + plainText + (plainText.hasSuffix("\n") ? "" : "\n"), forType: .string)
         copied = true
         needsLayout = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.copied = false; self?.needsLayout = true }
     }
 
     var pillItems: [NSMenuItem] {
-        [ClosureMenuItem("Copy Command and Output", symbol: "doc.on.doc") { [weak self] in self?.copyClicked() },
-         ClosureMenuItem("Show in Terminal", symbol: "arrow.uturn.backward") { [weak self] in self?.backClicked() }]
+        [ClosureMenuItem("Copy Command and Output", symbol: "doc.on.doc") { [weak self] in self?.copyClicked() }]
+            + (back.isHidden ? [] : [ClosureMenuItem("Show in Terminal", symbol: "arrow.uturn.backward") { [weak self] in self?.backClicked() }])
     }
 
     override func layout() {
@@ -171,7 +174,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         let by = ((Self.headerHeight - copy.frame.height) / 2).rounded()
         copy.frame = NSRect(x: w - 10 - copy.frame.width, y: by, width: copy.frame.width, height: copy.frame.height)
         back.frame = NSRect(x: copy.frame.minX - 4 - back.frame.width, y: by, width: back.frame.width, height: back.frame.height)
-        let tw = max(0, back.frame.minX - 12 - 12)
+        let tw = max(0, (back.isHidden ? copy : back).frame.minX - 12 - 12)
         let ph = ceil(prompt.intrinsicContentSize.height)
         prompt.frame = NSRect(x: 12, y: Self.headerHeight / 2 - 1, width: tw, height: ph)
         outcome.frame = NSRect(x: 12, y: Self.headerHeight / 2 - 16, width: tw, height: 14)
@@ -200,14 +203,14 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     var debugDescription_: String {
         var runs = 0
         text.textStorage?.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: text.textStorage?.length ?? 0)) { v, _, _ in if v != nil { runs += 1 } }
-        return "$ \(shown?.line ?? "?") [\(outcome.stringValue)] \(runs) runs\n" + plainText.prefix(400)
+        return "\(prompt.stringValue) [\(outcome.stringValue)] \(runs) runs\n" + plainText.prefix(400)
     }
 }
 
 extension OutputView: Printable {
     /// The command, how it ended, and what it printed, as text.
     func printOperation() -> NSPrintOperation? {
-        TextPrint.operation(text.string, title: "$ " + prompt.stringValue.replacingOccurrences(of: "$ ", with: "") + "  (" + outcome.stringValue + ")", font: TextPrint.codeFont)
+        TextPrint.operation(text.string, title: prompt.stringValue + "  (" + outcome.stringValue + ")", font: TextPrint.codeFont)
     }
 }
 

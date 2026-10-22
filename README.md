@@ -479,7 +479,16 @@ when you find it again.
   (a terminal's `#command=N` to that command). Copy Link in a tile's
   menu puts it on the clipboard: a link where links are taken, named
   for the block; text elsewhere; the block's pill in a note. Copy Path
-  and Reveal in Finder are beside it.
+  and Reveal in Finder are beside it. Closer in, the editor's menu has Copy
+  Link to This Line (`#line=N`), an outline's heading or a PDF's page
+  menu Copy Link to it (`#line=`, `#page=`), and a terminal's command or
+  turn Copy Link to This Command; followed, each goes to that place.
+- **Notes from what's at hand**: New Note from Selection, in an editor's
+  or a terminal's menu (and ⇧⌘P's), makes a note of the selected text,
+  quoted as code when it came from code, linked from where it came; New
+  Note from Clipboard makes one of what was copied (a picture, an image
+  block), and a
+  terminal's Save Scrollback as Note keeps its whole transcript.
 - **Links** go by the click: ⌘-click a web address — in a terminal, an
   editor, a preview or a web page — and the system's browser opens it;
   ⇧⌘-click and it opens in Manifold's own web lens beside (a plain click
@@ -589,7 +598,9 @@ when you find it again.
   the tile is wide, beneath them when it's tall: the whole file in the
   code face with its line numbers, the hit's line lit in the middle, its
   match boxed and every other match marked; a double-click in it opens
-  the file at that line. A search is found again by its query in ⌘O.
+  the file at that line. A search is found again by its query in ⌘O. A folder's
+  menu (in a folder tile or the sidebar) has Find in This Folder…, for
+  the same search under it.
 - **Git and Sapling** repositories get a block each (File ▸ Source Control
   for This Project, ⌥⌘G, for the focused block's; the nearest `.sl`,
   `.hg` (a Sapling checkout as Meta's are) or `.git` up from it says
@@ -606,7 +617,10 @@ when you find it again.
   read again as the repository moves. Compare with Last
   Commit (⌥⌘D) does the same for the file being edited. A diff shows
   old and new side by side when its tile is wide enough for two
-  columns, unified when it isn't. The editor's
+  columns, unified when it isn't. A diff's row or file has a menu:
+  Open This Version (the file as it was at the commit, from `git show`,
+  a block of its own beside), Open the Version Before, This File's
+  Changes Alone (from a whole commit's diff) and Open the File. The editor's
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.

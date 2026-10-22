@@ -450,6 +450,10 @@ extension MediaView: Searchable {
                 self.window?.makeFirstResponder(self.pdfView)
             }
             s.onPageChange = { [weak self] page in self?.keeper.note(["sidebarPage": page.rawValue]) }
+            s.menuFor = { [weak self] i in
+                guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
+                return Drags.linkMenu("Copy Link to This Page", self.block, "page=\(page + 1)")
+            }
             addSubview(s)
             sidebar = s
             if let kept = keeper.value("sidebarPage").flatMap(TileSidebar.Page.init(rawValue:)) { s.show(page: kept) }

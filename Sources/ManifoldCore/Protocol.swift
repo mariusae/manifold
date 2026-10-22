@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 40
+public let protocolVersion = 41
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -208,6 +208,9 @@ public enum Proposal: Codable, Sendable {
     case writePath(path: String, data: Data, mode: WriteMode)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
+    /// A file as a revision (a commit, a tree) has it, as a block of its own
+    /// to read: made if new.
+    case showRevision(block: BlockID, repo: String, path: String, revision: String, title: String)
     /// A file or folder moved (renamed) on the host; `replace`: over what's
     /// there, else failing ("exists").
     case movePath(from: String, to: String, replace: Bool)

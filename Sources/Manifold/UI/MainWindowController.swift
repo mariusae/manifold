@@ -1404,6 +1404,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Workspace", subtitle: "⌥⌘T") { [weak self] in
             self?.newTerminal(nil)
         })
+        items.append(PaletteItem(symbol: "text.badge.plus", title: "New Note from Selection", subtitle: "") { [weak self] in self?.newNoteFromSelection(nil) })
+        items.append(PaletteItem(symbol: "doc.on.clipboard", title: "New Note from Clipboard", subtitle: "") { [weak self] in self?.newNoteFromClipboard(nil) })
         items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
             self?.newNote(nil)
         })
@@ -1660,6 +1662,63 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let id = BlockID(host: client.host)
         client.propose(.newNotebook(block: id, cwd: focusedCwd))
         showWhenMade(id, lens: .notebook, place: .here)
+    }
+
+    /// New Note from Selection: what's selected in the focused editor or
+    /// terminal, as a note of its own beside it — code fenced, as it was —
+    /// linked from where it came from, by the lines it was.
+    @objc func newNoteFromSelection(_ sender: Any?) {
+        guard let f = focusedShown, let view = views[f.id], let b = f.block else { return NSSound.beep() }
+        var text: String?
+        var context = "from the selection"
+        var fence = ""
+        if let e = view as? EditorView, case let s = e.textView.selectedText, !s.isEmpty {
+            text = s
+            if let sel = e.textView.selections.first(where: { !$0.isCaret }) {
+                let first = e.textView.text.line(at: sel.min) + 1, last = e.textView.text.line(at: max(sel.max - 1, sel.min)) + 1
+                context = first == last ? "line \(first)" : "lines \(first)–\(last)"
+            }
+            if !(b.path.map(Lens.isMarkdown) ?? true) { fence = b.path?.pathExtension ?? "" }
+        } else if let t = view as? TerminalView, let s = t.selectedText, !s.isEmpty {
+            text = s
+            context = "from the terminal"
+            fence = "text"
+        }
+        guard let text else { return NSSound.beep() }
+        let body = fence.isEmpty ? text : "```" + (fence == "text" ? "" : fence) + "\n" + text + (text.hasSuffix("\n") ? "" : "\n") + "```\n"
+        let client = hosts.client(b.id.host) ?? host
+        let note = client.newNote(home: b.place, text: body)
+        hosts.link(from: b.id, to: note, kind: .linked, context: context)
+        show(note, lens: .editor, .besideOpener(f.id), context: context)
+    }
+
+    /// Save Scrollback as Note: the focused terminal's whole transcript, as
+    /// a note beside it (in a code fence), linked from it.
+    @objc func saveScrollbackAsNote(_ sender: Any?) {
+        guard let f = focusedShown, let t = views[f.id] as? TerminalView, let text = t.transcriptLines, let b = f.block else { return NSSound.beep() }
+        let trimmed = text.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+        let note = (hosts.client(b.id.host) ?? host).newNote(home: b.place, text: "# Scrollback · \(b.displayTitle)\n\n```\n" + trimmed + "\n```\n")
+        hosts.link(from: b.id, to: note, kind: .linked, context: "scrollback")
+        show(note, lens: .editor, .besideOpener(f.id), context: "scrollback")
+    }
+
+    /// Copy Link to This Line: the focused text's address with the caret's
+    /// line (`#line=N`), going there from anywhere.
+    @objc func copyLinkToLine(_ sender: Any?) {
+        guard let f = focusedShown, let e = views[f.id] as? EditorView, case let .line(n)? = e.navLocation else { return NSSound.beep() }
+        copyLink(to: f.placement.block, fragment: "line=\(n)")
+    }
+
+    /// New Note from Clipboard: its text as a note (a picture: an image block).
+    @objc func newNoteFromClipboard(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        if let s = pb.string(forType: .string), !s.isEmpty {
+            show(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: s), lens: .editor, .here)
+        } else if case let images = TextView.images(on: pb), let (data, kind) = images.first {
+            gridOpenDropped(.image(data, kind), column: max((arrangement?.columns.count ?? 1) - 1, 0), at: Int.max, newColumn: false)
+        } else {
+            NSSound.beep()
+        }
     }
 
     @objc func newNote(_ sender: Any?) {
@@ -3227,6 +3286,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var navKeysMonitor: Any?
     private func watchHistoryButtons() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
+        Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: fragment) }
         Drags.path = { [weak self] path, isDir, host, mods in self?.entryDragItem(path, isDirectory: isDir, on: host, modifiers: mods) ?? NSPasteboardItem() }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
@@ -3727,6 +3787,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A terminal scrolled to one of its commands, once its tile is up and
     /// it has found the command's row (a moment, for a tile just made).
+    /// A place in a block, once its tile is up: a line (in a preview, the
+    /// line's place on the page), a PDF's page.
+    func goToPlace(_ place: NavLocation, in block: BlockID, tries: Int = 20) {
+        if let v = content.views.first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }) {
+            if case let .line(n) = place, let m = v as? MarkdownView { return m.reveal(line: n) }
+            // A PDF's document comes a moment after its tile.
+            if case .page = place, let m = v as? MediaView, m.navLocation == nil, tries > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToPlace(place, in: block, tries: tries - 1) }
+                return
+            }
+            return v.go(to: place)
+        }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToPlace(place, in: block, tries: tries - 1) }
+    }
+
     func goToCommand(_ id: Int, in block: BlockID, tries: Int = 20) {
         if let t = content.views.compactMap({ $0 as? TerminalView }).first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }), t.go(toCommand: id) { return }
         guard tries > 0 else { return }
@@ -3870,7 +3946,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let client = hosts.client(on) else { return }
         let block = client.newSearch(SearchQuery(text: text, root: root))
-        show(block, lens: .search, .here)
+        // Linked from where it was asked, by what was looked for.
+        show(block, lens: .search, focusedShown.map { .besideOpener($0.id) } ?? .here, context: text.isEmpty ? "find in files" : "find “\(text)”")
+    }
+
+    /// Find in This Folder: a search under a folder (a folder tile's, an
+    /// entry's), beside it, its words to type.
+    func findInFolder(_ path: String, on h: HostID, from placement: PlacementID?) {
+        guard let client = hosts.client(h) else { return NSSound.beep() }
+        let block = client.newSearch(SearchQuery(text: "", root: path))
+        show(block, lens: .search, placement.map { .besideOpener($0) } ?? .here, context: "find in \(path.lastPathComponent)")
     }
 
     /// New Agent: a terminal running the agent command (the settings'),
@@ -4147,6 +4232,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
             arrive(b, from: placement, over: over)
             if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
+            // A place in it: a line (a heading's), a PDF's page.
+            if let fragment, fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
+            if let fragment, fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
             return
         }
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
@@ -5158,6 +5246,12 @@ extension MainWindowController: GridDelegate {
                 })
             }
         }
+        // A folder (a terminal's): looked through.
+        if let dir = b.kind == .directory ? b.path : b.terminal?.cwd {
+            items.append(ClosureMenuItem("Find in This Folder…", symbol: "magnifyingglass") { [weak self] in
+                self?.findInFolder(dir, on: block.host, from: self?.arrangement?.placements(of: block).first?.id)
+            })
+        }
         // A file: opened with an app here (another host's, a copy sent
         // back when saved), or fetched to Downloads.
         if let path = b.path, [.text, .image, .pdf, .directory].contains(b.kind) {
@@ -5581,6 +5675,11 @@ extension MainWindowController: DirectoryViewDelegate {
             })
         }
         menu.addItem(.separator())
+        if isDirectory {
+            menu.addItem(ClosureMenuItem("Find in This Folder…", symbol: "magnifyingglass") { [weak self, weak view] in
+                self?.findInFolder(path, on: on, from: view?.placement)
+            })
+        }
         if !isDirectory { menu.addItem(openWithItem(path, on: on)) }
         if on == host.host {
             menu.addItem(ClosureMenuItem("Reveal in Finder", symbol: "folder") {
@@ -5870,6 +5969,64 @@ extension MainWindowController: GitViewDelegate {
         show(diff, lens: .diff, .besideOpener(placement), context: "changes since it started")
     }
 
+    /// A diff's file, right-clicked: the file as the diff's two sides have
+    /// it, each read-only as a block of its own (Open This Version), the
+    /// file's changes alone, and the file as it is now.
+    func diffView(_ view: DiffView, menuFor path: String) -> NSMenu? {
+        guard let subject = hosts.block(view.block)?.diff?.subject else { return nil }
+        let name = path.lastPathComponent
+        var sides: (repo: String, old: String?, new: String?)?
+        switch subject {
+        case let .commit(repo, sha): sides = (repo, sha + "^", sha)
+        case let .trees(repo, from, to, _): sides = (repo, from, to)
+        case let .since(repo, tree, _): sides = (repo, tree, nil)
+        case let .uncommitted(repo): sides = (repo, "HEAD", nil)
+        case let .sides(old, new): sides = (git(old.path) ?? path.deletingLastPathComponent, old.revision, new.revision)
+        default: break
+        }
+        let menu = NSMenu()
+        if let s = sides {
+            for (rev, label) in [(s.new, "Open This Version"), (s.old, "Open the Version Before")] {
+                guard let rev else { continue }
+                menu.addItem(ClosureMenuItem(label, symbol: "clock.arrow.circlepath") { [weak self] in
+                    self?.showRevision(path, repo: s.repo, revision: rev, from: view)
+                })
+            }
+            if let old = s.old, !(subject.isSides) {
+                menu.addItem(ClosureMenuItem("This File's Changes Alone", symbol: "plusminus") { [weak self] in
+                    guard let self, let client = self.hosts.client(view.block.host) else { return }
+                    let d = client.diffBlock(.sides(old: DiffSide(path: path, revision: old), new: DiffSide(path: path, revision: s.new)))
+                    self.show(d, lens: .diff, .besideOpener(view.placement), context: name)
+                })
+            }
+        }
+        menu.addItem(ClosureMenuItem("Open the File", symbol: "doc") { [weak self] in self?.diffView(view, open: path, line: 1) })
+        return menu
+    }
+
+    /// A git repository a path is in, here (for a diff of two sides' revisions).
+    private func git(_ path: String) -> String? {
+        var dir = path.deletingLastPathComponent
+        while !dir.isEmpty, dir != "/" {
+            if FileManager.default.fileExists(atPath: dir + "/.git") { return dir }
+            dir = dir.deletingLastPathComponent
+        }
+        return nil
+    }
+
+    /// A file as a revision has it: a read-only block of its own, beside.
+    func showRevision(_ path: String, repo: String, revision: String, from view: PaneContent) {
+        let short = revision.hasSuffix("^") ? String(revision.dropLast().prefix(7)) + "^" : String(revision.prefix(7))
+        let title = "\(path.lastPathComponent) @ \(short)"
+        let id = BlockID(host: view.block.host)
+        guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
+        client.propose(.showRevision(block: id, repo: repo, path: path, revision: revision, title: title)) { [weak self] error in
+            guard let self else { return }
+            if let error { return self.toast.show(error, action: "OK", for: 6) {} }
+            self.showWhenMade(id, lens: .output, place: .besideOpener(view.placement), context: "version \(short)")
+        }
+    }
+
     func gitView(_ view: GitView, openDiff subject: DiffSubject) {
         guard let client = hosts.client(view.block.host) else { return }
         let block = client.diffBlock(subject)
@@ -6058,6 +6215,10 @@ extension MainWindowController: TerminalViewDelegate {
 
     func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {
         let menu = NSMenu()
+        let linkItem = ClosureMenuItem("Copy Link to This \(hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true ? "Turn" : "Command")", symbol: "link") { [weak self] in
+            self?.copyLink(to: view.block, fragment: "command=\(command.id)")
+        }
+        defer { menu.addItem(.separator()); menu.addItem(linkItem) }
         if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {
             for item in turnItems(turn, of: view.block, beside: view.placement) { menu.addItem(item) }
         } else {
