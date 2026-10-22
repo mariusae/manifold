@@ -2,70 +2,20 @@
 # Builds libghostty from a pinned Ghostty release into
 # Frameworks/GhosttyKit.xcframework, which Package.swift links against.
 #
-# Everything it needs (Zig, the Ghostty source) is fetched into vendor/.
-# patches/ghostty.patch makes the build work with the tools on hand:
+# Everything it needs (Zig, the Ghostty source, a usable SDK) is made in
+# vendor/ by scripts/ghostty-env.sh. patches/ghostty.patch makes the build
+# work with the tools on hand:
 #   - shaders are compiled at runtime, so Xcode's Metal toolchain isn't needed;
 #   - archives are merged by unpacking them, since Apple's libtool drops the
 #     unaligned members Zig 0.15 writes.
 set -e
 cd "$(dirname "$0")/.."
-root=$PWD
-
-tag=v1.3.1
-zig_version=0.15.2
-
-mkdir -p vendor
-zig=vendor/zig-aarch64-macos-$zig_version/zig
-if [ ! -x "$zig" ]; then
-  curl -sSfL "https://ziglang.org/download/$zig_version/zig-aarch64-macos-$zig_version.tar.xz" | tar xJ -C vendor
-fi
-
-if [ ! -d vendor/ghostty ]; then
-  git clone -q --depth 1 --branch "$tag" https://github.com/ghostty-org/ghostty.git vendor/ghostty
-  git -C vendor/ghostty apply "$root/patches/ghostty.patch"
-fi
-
-# Zig 0.15 can't read the arm64e-only .tbd stubs in the macOS 27 SDKs (and
-# some 26 ones), so point its SDK lookups at an older SDK where one is
-# installed (from the Command Line Tools: a 15.x, else the 26, whose
-# libSystem still names arm64); else at whatever xcrun names, and hope.
-sdk=""
-for candidate in /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk \
-                 /Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk; do
-  if [ -d "$candidate" ]; then sdk=$candidate; break; fi
-done
-[ -n "$sdk" ] || sdk=$(/usr/bin/xcrun --show-sdk-path)
-# An SDK whose system libraries name only arm64e: a copy of it (cloned, so
-# it takes no room) whose .tbd stubs also name arm64, which Zig reads.
-if ! grep -q "arm64-macos" "$sdk/usr/lib/system/libsystem_c.tbd" 2>/dev/null; then
-  shimmed=vendor/sdk-arm64/$(basename "$sdk")
-  if [ ! -f "$shimmed/.manifold-done" ]; then
-    echo "Making $shimmed (its stubs naming arm64 too)"
-    rm -rf "$shimmed"
-    mkdir -p "$(dirname "$shimmed")"
-    cp -c -R "$(cd "$sdk" && pwd -P)" "$shimmed"
-    find "$shimmed" -name '*.tbd' -type f -print0 | xargs -0 perl -0pi -e \
-      's/(targets:\s*\[)([^\]]*)\]/my ($h, $t) = ($1, $2); ($t =~ \/arm64e-macos\/ && $t !~ \/\barm64-macos\/) ? "$h$t, arm64-macos ]" : "$h$t]"/ge'
-    touch "$shimmed/.manifold-done"
-  fi
-  sdk=$PWD/$shimmed
-fi
-echo "SDK: $sdk"
-shim=vendor/xcrun-shim
-mkdir -p "$shim"
-cat > "$shim/xcrun" <<EOF
-#!/bin/sh
-for a in "\$@"; do
-  if [ "\$a" = --show-sdk-path ]; then echo $sdk; exit 0; fi
-done
-exec /usr/bin/xcrun "\$@"
-EOF
-chmod +x "$shim/xcrun"
+. scripts/ghostty-env.sh
 
 # The xcframework step itself needs a working xcodebuild; we only want the
 # merged archive it would wrap, so its failure is expected and ignored. Any
 # other failure is caught below.
-(cd vendor/ghostty && PATH="$root/$shim:$PATH" "$root/$zig" build \
+(cd vendor/ghostty && "$root/$zig" build \
   -Doptimize=ReleaseFast -Di18n=false -Demit-macos-app=false \
   -Demit-xcframework=true -Dxcframework-target=native) >vendor/ghostty-build.log 2>&1 || true
 

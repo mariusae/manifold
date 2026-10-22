@@ -1068,5 +1068,15 @@ directly (without `login(1)`), a surface can have its bytes carried by the
 app (a "manual" I/O backend: no pty, no process — output fed in, typing and
 sizes handed out), which is how terminals reach their hosts, and the
 contrast correction above. Zig 0.15 can't read the stubs of the newest
-macOS SDKs, so `scripts/build-ghostty.sh` builds against a cloned copy of
-the SDK whose stubs also name arm64.
+macOS SDKs, so the build uses a cloned copy of the SDK whose stubs also
+name arm64.
+
+Nothing needs to be set up by hand, and nothing in `vendor/` needs to be
+cleared: `scripts/build-ghostty.sh` and `scripts/build-manifold-vt.sh` both
+start with `scripts/ghostty-env.sh`, which checks every time that Zig is
+there (checked against its SHA-256), that `vendor/ghostty` is the pinned
+release with the current patch (if the patch changed, the tree is reset and
+it's applied again; edits of its own are saved to
+`vendor/ghostty-local-<time>.patch` first), that the SDK copy covers every
+stub, and that all of Ghostty's dependencies are in Zig's cache (fetched
+with retries before the build, so a failed download says which one).

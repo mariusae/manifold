@@ -5,10 +5,7 @@
 # Package.swift links (linux/ is set to one arch by build-linux.sh).
 set -e
 cd "$(dirname "$0")/.."
-root=$PWD
-zig=vendor/zig-aarch64-macos-0.15.2/zig
-# The Zig, the Ghostty source and the SDK shim come from build-ghostty.sh.
-[ -x "$zig" ] && [ -d vendor/ghostty ] && [ -x vendor/xcrun-shim/xcrun ] || scripts/build-ghostty.sh
+. scripts/ghostty-env.sh
 out=Frameworks/manifold-vt
 for t in native x86_64-linux-musl aarch64-linux-musl; do
   case $t in
@@ -18,7 +15,7 @@ for t in native x86_64-linux-musl aarch64-linux-musl; do
   esac
   prefix=$(mktemp -d)
   # Without SIMD, which would need libc++ beside the server.
-  if ! (cd vendor/ghostty && PATH="$root/vendor/xcrun-shim:$PATH" "$root/$zig" build manifold-vt $target \
+  if ! (cd vendor/ghostty && "$root/$zig" build manifold-vt $target \
         -Doptimize=ReleaseFast -Dsimd=false -Di18n=false --prefix "$prefix") >vendor/manifold-vt-$dir.log 2>&1; then
     echo "libmanifoldvt for $dir failed; see vendor/manifold-vt-$dir.log" >&2
     exit 1
