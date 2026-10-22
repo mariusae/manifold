@@ -634,7 +634,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(found == [
         Mention(target: .title("Design Doc"), text: "Design Doc"),
         Mention(target: .path("../README.md"), text: "the readme"),
-        Mention(target: .path("assets/p.png"), text: "pic"),
+        Mention(target: .path("assets/p.png"), text: "pic", embeds: true),
         Mention(target: .title("Other"), text: "Other|alias"),
     ])
     #expect(Mention.resolve("../README.md", from: "/a/b/c.md") == "/a/README.md")
