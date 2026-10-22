@@ -1,13 +1,15 @@
 diff --git a/build.zig b/build.zig
-index f9d861b..6b5d4f7 100644
+index f9d861b..6b49c77 100644
 --- a/build.zig
 +++ b/build.zig
-@@ -118,6 +118,26 @@ pub fn build(b: *std.Build) !void {
-     libghostty_vt_shared.install(libvt_step);
-     libghostty_vt_shared.install(b.getInstallStep());
+@@ -33,6 +33,30 @@ pub fn build(b: *std.Build) !void {
+         &deps,
+     );
  
 +    // Manifold: the host's terminal emulator (src/manifold_vt.zig), a
 +    // static library linked into manifoldd, for each OS its server runs on.
++    // With -Dmanifold-vt-only, nothing else is set up, so none of the app's
++    // dependencies (GTK, Wayland, fontconfig…) is asked for or fetched.
 +    {
 +        const manifold_vt_step = b.step("manifold-vt", "Build Manifold's host terminal library");
 +        const m = b.createModule(.{
@@ -26,9 +28,11 @@ index f9d861b..6b5d4f7 100644
 +        manifold_vt_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
 +    }
 +
-     // Helpgen
-     if (config.emit_helpgen) deps.help_strings.install();
- 
++    if (b.option(bool, "manifold-vt-only", "Set up only Manifold's host terminal library") orelse false) return;
++
+     // All our steps which we'll hook up later. The steps are shown
+     // up here just so that they are more self-documenting.
+     const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
 index 40ff55c..6521f72 100644
 --- a/include/ghostty.h

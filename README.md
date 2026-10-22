@@ -1078,5 +1078,8 @@ there (checked against its SHA-256), that `vendor/ghostty` is the pinned
 release with the current patch (if the patch changed, the tree is reset and
 it's applied again; edits of its own are saved to
 `vendor/ghostty-local-<time>.patch` first), that the SDK copy covers every
-stub, and that all of Ghostty's dependencies are in Zig's cache (fetched
-with retries before the build, so a failed download says which one).
+stub. Downloads Zig makes during a build are retried, and named if they
+keep failing. The host's terminal library is built with
+`-Dmanifold-vt-only`, which sets up nothing of Ghostty's app, so it fetches
+two small packages (uucode, zlib), not the GTK, Wayland and font libraries
+Ghostty's Linux app wants.

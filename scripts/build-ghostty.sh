@@ -15,9 +15,9 @@ cd "$(dirname "$0")/.."
 # The xcframework step itself needs a working xcodebuild; we only want the
 # merged archive it would wrap, so its failure is expected and ignored. Any
 # other failure is caught below.
-(cd vendor/ghostty && "$root/$zig" build \
+ghostty_build "$root/vendor/ghostty-build.log" \
   -Doptimize=ReleaseFast -Di18n=false -Demit-macos-app=false \
-  -Demit-xcframework=true -Dxcframework-target=native) >vendor/ghostty-build.log 2>&1 || true
+  -Demit-xcframework=true -Dxcframework-target=native || true
 
 lib=$(ls -t vendor/ghostty/.zig-cache/o/*/libghostty-fat.a 2>/dev/null | head -1)
 other_errors=$(grep "error:" vendor/ghostty-build.log | grep -v -e "exited with code 70" -e "build command failed" || true)

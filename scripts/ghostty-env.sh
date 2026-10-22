@@ -13,8 +13,8 @@
 #   - the SDK: Zig 0.15 can't link against .tbd stubs that name only arm64e
 #     (as the macOS 26 and 27 SDKs' do), so it gets a clone of the SDK
 #     whose stubs name arm64 too, if any stub needs it;
-#   - Ghostty's dependencies, all fetched into Zig's cache before building,
-#     a few tries each, so a build fails on a download only by saying so.
+#   - Ghostty's dependencies: ghostty_build runs a build, trying again when
+#     a download fails, and saying which one if it keeps failing.
 
 ghostty_tag=v1.3.1
 ghostty_commit=332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28
@@ -140,15 +140,19 @@ SDKROOT=$sdk
 export PATH SDKROOT
 echo "SDK: $sdk"
 
-# Every dependency, lazy ones too (the Linux builds want some the Mac's
-# don't), into Zig's cache; already there, nothing's fetched.
-fetched=""
-for try in 1 2 3; do
-  if (cd "$g" && "$root/$zig" build --fetch=all) >vendor/ghostty-fetch.log 2>&1; then fetched=1; break; fi
-  sleep "$try"
-done
-if [ -z "$fetched" ]; then
-  echo "Ghostty's dependencies couldn't all be fetched; see vendor/ghostty-fetch.log" >&2
-  grep -i "error" vendor/ghostty-fetch.log | head -5 >&2
-  exit 1
-fi
+# A Zig build in vendor/ghostty, its output in the log named first. Zig
+# fetches what the build asks for as it goes (Ghostty's dependencies are
+# nearly all lazy, so a build for one target fetches only its own); a
+# download that fails is tried again, twice, and then named.
+ghostty_build() {
+  log=$1
+  shift
+  for try in 1 2 3; do
+    (cd "$root/vendor/ghostty" && "$root/$zig" build "$@") >"$log" 2>&1 && return 0
+    grep -q -i -e "unable to fetch" -e "bad HTTP response" -e "unable to connect" -e "NameServerFailure" -e "ConnectionResetByPeer" "$log" || return 1
+    sleep "$try"
+  done
+  echo "a download failed (Zig's error, from $log):" >&2
+  grep -i -A2 "error:" "$log" | head -8 >&2
+  return 1
+}

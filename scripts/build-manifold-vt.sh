@@ -14,9 +14,10 @@ for t in native x86_64-linux-musl aarch64-linux-musl; do
     aarch64-linux-musl) dir=linux-aarch64; target=-Dtarget=$t ;;
   esac
   prefix=$(mktemp -d)
-  # Without SIMD, which would need libc++ beside the server.
-  if ! (cd vendor/ghostty && "$root/$zig" build manifold-vt $target \
-        -Doptimize=ReleaseFast -Dsimd=false -Di18n=false --prefix "$prefix") >vendor/manifold-vt-$dir.log 2>&1; then
+  # Without SIMD, which would need libc++ beside the server; and without
+  # the app, whose dependencies (GTK, Wayland…) it would fetch.
+  if ! ghostty_build "$root/vendor/manifold-vt-$dir.log" manifold-vt $target \
+       -Dmanifold-vt-only=true -Doptimize=ReleaseFast -Dsimd=false -Di18n=false --prefix "$prefix"; then
     echo "libmanifoldvt for $dir failed; see vendor/manifold-vt-$dir.log" >&2
     exit 1
   fi
