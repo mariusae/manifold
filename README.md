@@ -673,7 +673,12 @@ when you find it again.
   and stacks, to commit, amend, rebase and split by hand — as a block of
   its own, beside, like any other: the host runs `sl web` (or finds the one
   running), and the tile shows what it serves, with nothing of a browser
-  about it; a link out of it (a pull request) opens in the browser. On
+  about it; a link out of it (a pull request) opens in the browser. A
+  file you open from it (clicking one in a commit's or the working copy's
+  files, or Open File in its menu) opens here, beside it, as any file
+  does — at the line, when it names one — and Open Containing Folder
+  opens the folder's listing, not the host's editor or the Finder
+  (Sapling's `isl.open-file-cmd` isn't used, or changed). On
   another host it comes through the host's connection; its theme follows
   the app's. It works on a git repository as well as a Sapling one;
   outside any repository, or with no `sl`, the tile says so. The servers look for tools (`git`, `sl`, `rg`, language servers)

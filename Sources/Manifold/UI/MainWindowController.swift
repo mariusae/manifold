@@ -5782,6 +5782,18 @@ extension MainWindowController: SmartlogViewDelegate {
     }
 
     func smartlog(_ view: SmartlogView, open url: URL) { NSWorkspace.shared.open(url) }
+
+    func smartlog(_ view: SmartlogView, openFile path: String, line: Int?) {
+        if let line, line > 0 {
+            open(path: path, line: line, column: nil, on: view.block.host, from: view.placement, context: "\(path.lastPathComponent):\(line)")
+        } else {
+            open(path, from: view.placement)
+        }
+    }
+
+    func smartlog(_ view: SmartlogView, revealFile path: String) {
+        openDirectory((path as NSString).deletingLastPathComponent, from: view.placement, context: path.lastPathComponent)
+    }
 }
 
 extension MainWindowController: DirectoryViewDelegate {

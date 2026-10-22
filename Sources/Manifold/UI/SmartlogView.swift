@@ -10,14 +10,21 @@ protocol SmartlogViewDelegate: AnyObject {
     func smartlog(_ view: SmartlogView, localURL url: String, done: @escaping (URL?) -> Void)
     /// A link out of it (a pull request, a commit on GitHub).
     func smartlog(_ view: SmartlogView, open url: URL)
+    /// A file it was asked to open (clicked in a commit's or the working
+    /// copy's list), on its host: at a line, if it named one.
+    func smartlog(_ view: SmartlogView, openFile path: String, line: Int?)
+    /// A file's folder, as Reveal in Finder would show it.
+    func smartlog(_ view: SmartlogView, revealFile path: String)
 }
 
 /// Sapling's Interactive Smartlog for a repository (§7.6), as a block of
 /// its own: the page the host's `sl web` serves, with nothing of a browser
 /// about it — no address, no back and forward, no browser's menu or
 /// gestures — so it's a tile like any other. Until the host has it, or if
-/// it can't, a line says so.
-final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegate {
+/// it can't, a line says so. A file it opens opens here, as a tile, not
+/// in the host's editor: the page's request for it to its server is
+/// caught on the way (`opener`) and handed to the delegate.
+final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let placement: PlacementID
     let block: BlockID
     weak var delegate: SmartlogViewDelegate?
@@ -38,6 +45,7 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
         self.block = block
         let config = WKWebViewConfiguration()
         config.preferences.isElementFullscreenEnabled = false
+        config.userContentController.addUserScript(WKUserScript(source: Self.opener, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         web = PlainWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
         wantsLayer = true
@@ -47,6 +55,8 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
         }
         web.navigationDelegate = self
         web.uiDelegate = self
+        // Held weakly: the controller keeps its handlers.
+        config.userContentController.add(WeakScriptHandler(self), name: "manifold")
         web.allowsBackForwardNavigationGestures = false
         web.allowsMagnification = false
         // Nothing white before the page draws.
@@ -63,6 +73,7 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     required init?(coder: NSCoder) { fatalError() }
 
     func destroy() {
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "manifold")
         web.stopLoading()
         web.navigationDelegate = nil
         web.uiDelegate = nil
@@ -159,6 +170,64 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
         alert.beginSheetModal(for: window) { _ in completionHandler() }
     }
 
+    // MARK: Files it opens
+
+    /// ISL's page asks its server, over its WebSocket, to open a file
+    /// (`platform/openFile`, `…/openFiles`: a path from the repository's
+    /// root, perhaps a line) or show its folder (`…/openContainingFolder`);
+    /// the server would run `isl.open-file-cmd`, or the host's default
+    /// app. Those are kept from the server and posted here instead, with
+    /// the root the server last named (`repoInfo`: the page can change
+    /// repository). Everything else goes on as it was.
+    static let opener = """
+        (() => {
+          const Native = window.WebSocket;
+          const asks = new Set(['platform/openFile', 'platform/openFiles', 'platform/openContainingFolder']);
+          let root = null;
+          class Socket extends Native {
+            constructor(...args) {
+              super(...args);
+              this.addEventListener('message', e => {
+                try {
+                  const m = JSON.parse(e.data);
+                  if (m && m.type === 'repoInfo' && m.info && typeof m.info.repoRoot === 'string') root = m.info.repoRoot;
+                } catch (_) {}
+              });
+            }
+            send(data) {
+              try {
+                const m = typeof data === 'string' ? JSON.parse(data) : null;
+                if (m && asks.has(m.type)) {
+                  const line = m.options && typeof m.options.line === 'number' ? m.options.line : null;
+                  const paths = m.type === 'platform/openFiles' ? m.paths : [m.path];
+                  window.webkit.messageHandlers.manifold.postMessage({
+                    reveal: m.type === 'platform/openContainingFolder', paths: paths.filter(p => typeof p === 'string'), line, root
+                  });
+                  return;
+                }
+              } catch (_) {}
+              super.send(data);
+            }
+          }
+          window.WebSocket = Socket;
+        })();
+        """
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let paths = body["paths"] as? [String] else { return }
+        // The repository the server named, else the one the block is for.
+        guard let root = (body["root"] as? String) ?? source()?.path else { return }
+        let line = (body["line"] as? NSNumber)?.intValue
+        for p in paths {
+            let path = p.hasPrefix("/") ? p : (root as NSString).appendingPathComponent(p)
+            if body["reveal"] as? Bool == true {
+                delegate?.smartlog(self, revealFile: path)
+            } else {
+                delegate?.smartlog(self, openFile: path, line: line)
+            }
+        }
+    }
+
     /// Debugging: what it shows.
     var debugState: String {
         "loaded \(loaded ?? "-") shown \(shown) note \(note.isHidden ? "hidden" : "“\(note.stringValue)”") page \(web.url?.absoluteString ?? "-")"
@@ -171,6 +240,16 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
             self.retried = false
             self.delegate?.smartlogStart(self)
         }]
+    }
+}
+
+/// A script message handler that doesn't keep its view: the content
+/// controller holds its handlers strongly.
+final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(controller, didReceive: message)
     }
 }
 
