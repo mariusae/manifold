@@ -10,6 +10,9 @@ struct LinkCard: Equatable {
     var title: String
     var symbol: String
     var outbound: Bool
+    /// Not an embed (a note's image), which goes when the note no longer
+    /// shows it.
+    var breakable = true
 }
 
 /// A block's links by hand (§3.5), in its tile's bar: the first link's
@@ -67,10 +70,6 @@ final class LinkBadge: NSView {
             guard let self, let c = self.cards.first else { return }
             self.onOpen?(c.block, over)
         }
-        badge.onBreak = { [weak self] in
-            guard let self, let c = self.cards.first else { return }
-            self.onBreak?(c.link)
-        }
         badge.onMenu = { [weak self] in self?.showMenu() }
         badge.onDragStart = { [weak self] event in
             guard let self, let c = self.cards.first else { return }
@@ -103,7 +102,7 @@ final class LinkBadge: NSView {
     private func showMenu() {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
-        if let c = cards.first {
+        if let c = cards.first, c.breakable {
             menu.addItem(ClosureMenuItem("Break the Link", symbol: "xmark") { [weak self] in self?.onBreak?(c.link) })
         }
         guard let event = NSApp.currentEvent else { return }
@@ -141,15 +140,21 @@ final class LinkBadge: NSView {
 
     private func rebuild() {
         for p in pills { p.removeFromSuperview() }
-        if let first = cards.first { configure(badge, first) }
+        if let first = cards.first {
+            configure(badge, first)
+            badge.onBreak = first.breakable ? { [weak self] in
+                guard let self, let c = self.cards.first else { return }
+                self.onBreak?(c.link)
+            } : nil
+        }
         pills = cards.dropFirst().map { card in
             let p = Capsule()
             configure(p, card)
-            p.toolTip = card.outbound ? "Links to it" : "Linked from it"
+            p.toolTip = card.breakable ? (card.outbound ? "Links to it" : "Linked from it") : (card.outbound ? "Shows it" : "Shown in it")
             p.isHidden = true
             let block = card.block, link = card.link
             p.onClick = { [weak self] over in self?.onOpen?(block, over) }
-            p.onBreak = { [weak self] in self?.onBreak?(link) }
+            p.onBreak = card.breakable ? { [weak self] in self?.onBreak?(link) } : nil
             p.onDragStart = { [weak self, weak p] event in
                 guard let self, let p else { return }
                 self.drag(block, from: p, event)

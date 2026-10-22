@@ -1725,28 +1725,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let client = hosts.client(focusedHost) ?? host
         let note = client.newNote(home: focusedCwd)
         if let f = focusedShown, let b = f.block, b.kind != .arrangement {
-            hosts.link(from: b.id, to: note, kind: .linked, context: b.displayTitle)
+            hosts.link(from: b.id, to: note, kind: .linked, context: "new note")
         }
         show(note, lens: .editor, .here)
     }
 
     /// The links a block has by hand (§3.5), for its badge: what it links
-    /// to (→) and what links to it (←), each by its title.
+    /// to (→) and what links to it (←), each by its title; then a note's
+    /// images, and the note an image is in.
     private func links(of block: BlockID) -> [LinkCard] {
         // Straight from the graphs' edges: this runs for every tile on
         // every render.
         var seen = Set<BlockID>()
         var cards: [LinkCard] = []
-        for c in hosts.all {
-            for e in c.node.graph.edges(from: block, kind: .link(.linked)) where e.isLive {
-                guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true))
+        // A note's images too (embeds), which aren't broken by hand.
+        for kind in [LinkKind.linked, .embeds] {
+            for c in hosts.all {
+                for e in c.node.graph.edges(from: block, kind: .link(kind)) where e.isLive {
+                    guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
+                    cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true, breakable: kind == .linked))
+                }
             }
-        }
-        for c in hosts.all {
-            for e in c.node.graph.edges(to: block, kind: .link(.linked)) where e.isLive {
-                guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
-                cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false))
+            for c in hosts.all {
+                for e in c.node.graph.edges(to: block, kind: .link(kind)) where e.isLive {
+                    guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
+                    cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false, breakable: kind == .linked))
+                }
             }
         }
         return cards
@@ -1758,7 +1762,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A block ⇧-dragged onto another: linked, from it to the target.
     func link(_ block: BlockID, to target: BlockID) {
         guard block != target else { return }
-        hosts.link(from: block, to: target, kind: .linked, context: hosts.block(block)?.displayTitle)
+        hosts.link(from: block, to: target, kind: .linked, context: "⇧-dragged in")
     }
 
     /// Debugging: typed into the focused editor, as keys would be.
@@ -1792,11 +1796,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool) {
         let placed = allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
         if over, let b = hosts.block(block), b.kind != .arrangement {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement))
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "from its links")
         } else if placed, let b = hosts.block(block) {
             goTo(b.id)
         } else if let b = hosts.block(block) {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened)
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened, context: "from its links")
         }
     }
 
@@ -3666,8 +3670,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let mods = NSApp.currentEvent?.modifierFlags ?? []
         guard let b = hosts.block(id), b.kind != .arrangement, let f = arrangement?.focused else { return goTo(id) }
         let lens = Lens.default(for: b.kind, path: b.path)
-        if mods.contains(.option) { show(id, lens: lens, .over(f)) }
-        else if mods.contains(.command) { show(id, lens: lens, .besideOpener(f)) }
+        if mods.contains(.option) { show(id, lens: lens, .over(f), context: "chosen in ⌘O") }
+        else if mods.contains(.command) { show(id, lens: lens, .besideOpener(f), context: "chosen in ⌘O") }
         else { goTo(id) }
     }
 
@@ -3813,10 +3817,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the tile clicked in.
     func arrive(_ block: BlockID, from placement: PlacementID?, over: Bool? = nil) {
         if over ?? Self.clickModifiers?.contains(.option) ?? false, let placement, let b = hosts.block(block), b.kind != .arrangement {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement))
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "followed")
         } else {
             goTo(block)
         }
+    }
+
+    /// A block's link followed from a tile (a terminal's, an output's, a
+    /// page's): the tile's block linked to it, unless they're linked already
+    /// (a note's mention of it).
+    private func linkFollowed(from placement: PlacementID?, to block: BlockID) {
+        guard let from = placement.flatMap({ shown($0)?.placement.block }), from != block else { return }
+        let linked = hosts.all.contains { $0.node.graph.edges(from: from).contains { $0.to == block && $0.isLive && $0.kind != .placed } }
+        if !linked { hosts.link(from: from, to: block, kind: .opened, context: "followed") }
     }
 
     /// A tile over another (⌥-drag, ⌥-click): moved to just after it, the
@@ -3930,7 +3943,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         let block = hosts.textBlock(for: path, on: on)
-        show(block, lens: .editor, focusedShown?.lens == .terminal ? opener(focusedShown?.id) : .here)
+        show(block, lens: .editor, focusedShown?.lens == .terminal ? opener(focusedShown?.id) : .here, context: "edit \(path.lastPathComponent)")
     }
 
     /// Find in Files…: a search block on the focused block's host, under
@@ -4017,7 +4030,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let f = focusedShown, let path = f.path, f.lens == .editor || f.lens == .preview,
               let client = hosts.client(f.placement.block.host) else { return }
         let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
-        hosts.link(from: block, to: f.placement.block, kind: .opened, context: "HEAD → working tree")
         show(block, lens: .diff, .besideOpener(f.id), context: "Compare with Last Commit")
     }
 
@@ -4231,6 +4243,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // it — and to a place in it, if the link names one (#command=7).
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
             arrive(b, from: placement, over: over)
+            linkFollowed(from: placement, to: b)
             if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
             // A place in it: a line (a heading's), a PDF's page.
             if let fragment, fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
@@ -4513,7 +4526,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // when the editing is done.
                 showOver(block, lens: lens, over: opener.id, again: true, context: "\(path.lastPathComponent)")
             } else {
-                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
+                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "manifold open")
             }
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
                 placed.append(p.id)
@@ -4537,7 +4550,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             hosts.select(aid)
         }
         let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
-        show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here)
+        show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "asked from the shell")
         hosts.propose(.openDone(id: id, client: client), on: on)
         NSApp.activate()
     }
@@ -4623,7 +4636,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let client = self.hosts.client(block.host) else { return }
             self.hideHistory()
             let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
-            self.hosts.link(from: diff, to: block, kind: .opened, context: "then → now")
             self.show(diff, lens: .diff, .besideOpener(placement), context: "Compare with Now")
         }
         h.onOpen = { [weak self] text, moment in
@@ -5637,10 +5649,10 @@ extension MainWindowController: DirectoryViewDelegate {
         let mods = Self.clickModifiers ?? []
         if isDirectory, mods.contains(.option) {
             // ⌥: the folder's listing over this one.
-            showOver(block, lens: .directory, over: view.placement)
+            showOver(block, lens: .directory, over: view.placement, context: "subfolder")
         } else if isDirectory, mods.contains(.command) {
             // ⌘: the folder's listing beside this one, which stays.
-            show(block, lens: .directory, .besideOpener(view.placement))
+            show(block, lens: .directory, .besideOpener(view.placement), context: "subfolder")
         } else if isDirectory {
             // A folder takes the listing's place, in the same tile; the one
             // it was is the tile's to go back to (⌘[).
@@ -5718,7 +5730,7 @@ extension MainWindowController: DirectoryViewDelegate {
         if let (block, lens) = pathBlock(path, isDirectory: isDirectory, on: on) {
             menu.addItem(ClosureMenuItem("Open Beside", symbol: "rectangle.split.2x1") { [weak self, weak view] in
                 guard let view else { return }
-                self?.show(block, lens: lens, .besideOpener(view.placement))
+                self?.show(block, lens: lens, .besideOpener(view.placement), context: isDirectory ? "subfolder" : "in the folder")
             })
         }
         menu.addItem(.separator())
@@ -6412,8 +6424,8 @@ extension MainWindowController: OrganizationViewDelegate {
         // The rule (§3.1): plain goes to it where it is (here, if nowhere);
         // ⌥ puts it over the focused tile; ⌘ beside it.
         let lens = Lens.default(for: b.kind, path: b.path)
-        if over, let f = arrangement?.focused { show(block, lens: lens, .over(f)) }
-        else if beside, let f = arrangement?.focused { show(block, lens: lens, .besideOpener(f)) }
+        if over, let f = arrangement?.focused { show(block, lens: lens, .over(f), context: "from the sidebar") }
+        else if beside, let f = arrangement?.focused { show(block, lens: lens, .besideOpener(f), context: "from the sidebar") }
         else if beside { show(block, lens: lens, .here) }
         else { arrive(block, from: arrangement?.focused, over: false) }
     }

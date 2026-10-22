@@ -257,6 +257,8 @@ final class HostClient {
         let id = nextProposal
         nextProposal += 1
         if let done { pendingProposals[id] = done }
+        // A link broken can be made again at once.
+        if case .unlink = proposal { recentLinks = [:] }
         conn?.send(.message(ClientMessage.propose(id: id, proposal)))
     }
 
@@ -523,10 +525,18 @@ final class HostClient {
     }
 
 
+    /// A link made again within moments — one action saying it twice, the
+    /// second time perhaps without its words — is made once: a re-link
+    /// replaces the link, words and all.
     func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
         guard from != to else { return }
+        let key = "\(from) \(to) \(kind)", now = Date()
+        recentLinks = recentLinks.filter { now.timeIntervalSince($0.value.at) < 5 }
+        if let last = recentLinks[key], context == nil || context == last.context { return }
+        recentLinks[key] = (context, now)
         propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context)))
     }
+    private var recentLinks: [String: (context: String?, at: Date)] = [:]
 
     func setSettings(_ s: Settings) { propose(.settings(s)) }
 

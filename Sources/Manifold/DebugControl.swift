@@ -387,6 +387,12 @@ enum DebugControl {
             let id = BlockID(host: wc.hosts.local.host)
             wc.hosts.local.propose(.newAgent(block: id, cwd: arg, command: "sleep 600"))
             return id.description
+        case "uncommitted":
+            // "uncommitted <repo>": its outstanding changes' diff block, shown.
+            guard let wc, let client = wc.hosts.client(wc.host.host) else { return "no window" }
+            let d = client.diffBlock(.uncommitted(repo: arg))
+            wc.show(d, lens: .diff, .here)
+            return d.description
         case "agentchanges":
             // "agentchanges <agent>": its changes' diff block made; its patch so far.
             guard let wc, let id = BlockID(string: arg), let snap = wc.hosts.block(id)?.terminal?.snapshot else { return "no snapshot" }

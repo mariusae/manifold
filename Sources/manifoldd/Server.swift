@@ -1038,6 +1038,7 @@ final class Server {
                         return
                     }
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                    self.linkChangedFiles(of: block, repo: repo, patch: patch)
                     self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
@@ -1064,6 +1065,7 @@ final class Server {
                             return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                         }
                         self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                        self.linkChangedFiles(of: block, repo: repo, patch: patch)
                         self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                     case .failure(let e):
                         self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
@@ -1078,6 +1080,7 @@ final class Server {
                 switch result {
                 case .success(let patch):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                    self.linkChangedFiles(of: block, repo: repo, patch: patch)
                     self.report(block, .done, msg: "Compared")
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
@@ -1416,6 +1419,24 @@ final class Server {
         }
     }
 
+    /// A diff linked to the files it changes that are blocks here, so each
+    /// is found from the other.
+    private func linkChangedFiles(of diff: BlockID, repo: String, patch: String) {
+        // The repository as given and as the files' blocks may have it
+        // (/tmp, not /private/tmp).
+        let roots = Set([repo, URL(fileURLWithPath: repo).resolvingSymlinksInPath().path])
+        var paths: Set<String> = []
+        for line in patch.split(separator: "\n") where line.hasPrefix("+++ b/") && paths.count < 400 {
+            for root in roots { paths.insert(root + "/" + line.dropFirst(6)) }
+        }
+        let linked = Set(node.links(host).links.filter { $0.from == diff }.map(\.to))
+        for b in node.blocks where b.kind == .text {
+            guard let path = b.path, paths.contains(path), !linked.contains(b.id) else { continue }
+            let file = b.id
+            append(.link(Link(from: diff, to: file, kind: .opened, at: clock.now(), context: "changed")), to: .links(host))
+        }
+    }
+
     /// A diff block of the changes between two trees of a repository.
     private func showTreeDiff(_ block: BlockID, repo: String, from: String, to: String) {
         git.run(.git, ["diff", "--no-color", from, to], in: repo) { [weak self] result in
@@ -1426,6 +1447,7 @@ final class Server {
                     return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                 }
                 self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
+                self.linkChangedFiles(of: block, repo: repo, patch: patch)
                 self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
             case .failure(let e):
                 self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))

@@ -668,8 +668,13 @@ when you find it again.
 - **Links are two kinds**: by hand (⇧-drag a bar onto a tile, a note
   made beside a block), which keep what they point at; and by the way
   (a file ⌘-clicked in a terminal, a hit followed, a diff of a file, a
-  `[[mention]]` in a note), which are history and keep nothing. The
-  tile's links badge shows the ones by hand; **the Neighborhood Map**
+  `[[mention]]` in a note, a diff to the open files it changes, a block's
+  link followed from a terminal, an output or a page), which are history
+  and keep nothing; each says what made it ("followed", "subfolder",
+  "chosen in ⌘O", "⇧-dragged in"), and the same link said twice in a
+  moment is made once. The tile's links badge shows the ones by hand,
+  and a note's images (the note, on an image's), which go when the note
+  stops showing them rather than by ×; **the Neighborhood Map**
   (Window ▸ Show the Neighborhood Map, ⌥⌘N, or the badge's or a row's
   menu) draws a block's surroundings in graph form, two steps out —
   what it's joined to on a ring around it, what those are joined to
