@@ -71,6 +71,9 @@ enum DebugControl {
                 guard let panel = NSApp.windows.first(where: { $0 is PickerPanel && $0.isVisible }) else { return "no picker" }
                 return snapshot(panel, to: String(arg.dropLast(7)))
             }
+            // Laid out first, as a display would be (with the display asleep,
+            // none comes, and what's drawn is from before the last change).
+            window.contentView?.layoutSubtreeIfNeeded()
             return snapshot(window, to: arg.isEmpty ? "/tmp/manifold.png" : arg)
         case "action":
             let sel = Selector(arg)
@@ -923,9 +926,18 @@ enum DebugControl {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         let ctx = NSGraphicsContext.current!.cgContext
 
-        func draw(_ v: NSView) {
+        // Clipped where the screen clips: by a scroll view's clip view, or
+        // a layer that masks to its bounds (a scroll view's rows out of
+        // sight aren't drawn; a badge's sheets above its pill are).
+        func draw(_ v: NSView, clip: NSRect) {
             guard !v.isHidden, v.alphaValue > 0 else { return }
             let r = v.convert(v.bounds, to: root)
+            let clips = v is NSClipView || v.layer?.masksToBounds == true
+            let inside = clips ? clip.intersection(r) : clip
+            guard !inside.isEmpty else { return }
+            ctx.saveGState()
+            defer { ctx.restoreGState() }
+            ctx.clip(to: inside)
             if let t = v as? TerminalView {
                 if let contents = t.layer?.contents, CFGetTypeID(contents as CFTypeRef) == IOSurfaceGetTypeID() {
                     let ci = CIImage(ioSurface: contents as! IOSurface)
@@ -945,9 +957,9 @@ enum DebugControl {
                 ctx.draw(cg, in: r)
                 ctx.restoreGState()
             }
-            for sub in v.subviews { draw(sub) }
+            for sub in v.subviews { draw(sub, clip: inside) }
         }
-        draw(root)
+        draw(root, clip: root.bounds)
         // Child windows (popups) over it, where they are on screen.
         for child in window.childWindows ?? [] {
             guard child.isVisible, let cv = child.contentView, cv.bounds.width >= 1, cv.bounds.height >= 1,

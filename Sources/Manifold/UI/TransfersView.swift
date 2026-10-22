@@ -113,8 +113,8 @@ final class TransferRowView: NSView {
             }
         }()
         if case .finished = item.state { icon.image = Theme.symbol("checkmark.circle.fill", size: 11) }
-        close.isHidden = !(hovering || !item.isRunning)
-        close.toolTip = item.isRunning ? "Stop" : "Dismiss"
+        // Always there: a copy is stopped with one click, hovered or not.
+        close.toolTip = item.isRunning ? "Stop Copying" : "Dismiss"
         toolTip = item.isRunning ? "\(item.title) — \(item.detail)" : item.action.map { "Click: \($0.title)" }
         needsDisplay = true
         needsLayout = true
