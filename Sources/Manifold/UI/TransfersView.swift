@@ -41,6 +41,7 @@ final class TransfersView: NSView {
             more.stringValue = hidden > 0 ? "and \(hidden) more" : ""
             more.isHidden = hidden == 0
             needsLayout = true
+            needsDisplay = true
             // A bar whose total isn't known yet moves on its own.
             let moving = items.contains { $0.isRunning && $0.fraction == nil }
             if moving, animation == nil {
@@ -57,12 +58,19 @@ final class TransfersView: NSView {
 
     var wantedHeight: CGFloat {
         guard !rows.isEmpty else { return 0 }
-        return CGFloat(rows.count) * Self.rowHeight + (more.isHidden ? 0 : 18) + 4
+        return CGFloat(rows.count) * Self.rowHeight + (more.isHidden ? 0 : 18) + 6
+    }
+
+    /// A hairline along the top: the rows apart from the tree above.
+    override func draw(_ dirtyRect: NSRect) {
+        guard !rows.isEmpty else { return }
+        Theme.divider.setFill()
+        NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
     }
 
     override func layout() {
         super.layout()
-        var y: CGFloat = 0
+        var y: CGFloat = 2
         for r in rows {
             r.frame = NSRect(x: 0, y: y, width: bounds.width, height: Self.rowHeight)
             y += Self.rowHeight

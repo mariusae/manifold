@@ -926,13 +926,13 @@ enum DebugControl {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         let ctx = NSGraphicsContext.current!.cgContext
 
-        // Clipped where the screen clips: by a scroll view's clip view, or
-        // a layer that masks to its bounds (a scroll view's rows out of
-        // sight aren't drawn; a badge's sheets above its pill are).
+        // Clipped only where the screen clips: by a view or layer that clips
+        // to its bounds (not, any more, by a scroll view's clip view, which
+        // on the screen lets its rows run on past it).
         func draw(_ v: NSView, clip: NSRect) {
             guard !v.isHidden, v.alphaValue > 0 else { return }
             let r = v.convert(v.bounds, to: root)
-            let clips = v is NSClipView || v.layer?.masksToBounds == true
+            let clips = v.clipsToBounds || v.layer?.masksToBounds == true
             let inside = clips ? clip.intersection(r) : clip
             guard !inside.isEmpty else { return }
             ctx.saveGState()

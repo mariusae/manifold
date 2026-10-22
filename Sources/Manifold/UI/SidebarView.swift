@@ -183,7 +183,8 @@ final class SidebarView: NSView {
         var bottom = Self.barHeight
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
-        bottom += th
+        // Their own place under the tree, a little apart from it.
+        bottom += th > 0 ? th + 6 : 0
         for row in [closedRow, keptRow] where !row.isHidden && !pushed {
             row.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
             bottom += Self.footRowHeight
