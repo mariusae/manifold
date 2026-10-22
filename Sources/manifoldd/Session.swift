@@ -22,7 +22,7 @@ final class Session {
     /// Whether there's output not yet saved to disk.
     private(set) var unsaved = false
     private var titles = TitleScanner()
-    private var attachments: [Connection] = []
+    private var attachments: [any Channel] = []
     private var size: (cols: UInt16, rows: UInt16)
     private var input = Data()
     private var inputSource: DispatchSourceWrite?
@@ -158,7 +158,7 @@ final class Session {
     /// answers it is still waiting for — and the attachment is told so.
     private var replayShown = false
 
-    func attach(_ conn: Connection, cols: UInt16, rows: UInt16) {
+    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16) {
         attachments.append(conn)
         sizes[ObjectIdentifier(conn)] = (cols, rows)
         conn.send(Frame(.data, replay.replay))
@@ -167,7 +167,7 @@ final class Session {
         resize(cols: cols, rows: rows)
     }
 
-    func detach(_ conn: Connection) {
+    func detach(_ conn: any Channel) {
         attachments.removeAll { $0 === conn }
         sizes.removeValue(forKey: ObjectIdentifier(conn))
         if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
@@ -175,7 +175,7 @@ final class Session {
 
     var isAttached: Bool { !attachments.isEmpty }
 
-    func handle(_ frame: Frame, from conn: Connection? = nil) {
+    func handle(_ frame: Frame, from conn: (any Channel)? = nil) {
         switch frame.kind {
         case .data:
             input.append(frame.payload)

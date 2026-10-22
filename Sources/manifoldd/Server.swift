@@ -33,7 +33,7 @@ final class Server {
     private let node = Node()
     private let store: LogStore
     private let clock: Clock
-    private var clients: [Connection] = []
+    private var clients: [any Channel] = []
     /// Each client's attachment number, and the app among them (named so).
     private var clientIDs: [ObjectIdentifier: Int] = [:]
     private var appClients: Set<ObjectIdentifier> = []
@@ -41,7 +41,7 @@ final class Server {
     /// (§8.2): the last to focus its block, or the first to append.
     private var owners: [ShardID: ObjectIdentifier] = [:]
     /// Connections that haven't said what they are yet.
-    private var pending: [Connection] = []
+    private var pending: [any Channel] = []
     private var attachments = 0
     private var sessions: [BlockID: Session] = [:]
     /// Shell notebooks' shells (§7.7), and what a running cell has printed
@@ -201,15 +201,21 @@ final class Server {
         while true {
             let fd = sysAccept(listenFD)
             guard fd >= 0 else { return }
-            let conn = Connection(fd: fd, queue: queue)
+            // One connection, its streams in it (§8): what each is, its
+            // first frame says — the connection's own, a client's hello.
+            let mux = Mux(Connection(fd: fd, queue: queue))
+            let conn = mux.control
             conn.onFrame = { [weak self, unowned conn] frame in self?.firstFrame(frame, on: conn) }
             conn.onClose = { [weak self, unowned conn] in self?.pending.removeAll { $0 === conn } }
+            mux.onStream = { [weak self] stream in
+                stream.onFrame = { [weak self, unowned stream] frame in self?.firstFrame(frame, on: stream) }
+            }
             pending.append(conn)
-            conn.start()
+            mux.start()
         }
     }
 
-    private func firstFrame(_ frame: Frame, on conn: Connection) {
+    private func firstFrame(_ frame: Frame, on conn: any Channel) {
         pending.removeAll { $0 === conn }
         conn.onClose = nil
         switch frame.decode(ClientMessage.self) {
@@ -245,7 +251,7 @@ final class Server {
         }
     }
 
-    private func clientFrame(_ frame: Frame, from conn: Connection) {
+    private func clientFrame(_ frame: Frame, from conn: any Channel) {
         // A forwarded port's bytes, on to its connection here; none, the
         // client's side is done sending.
         if let (id, data) = frame.tunnel {
@@ -303,7 +309,7 @@ final class Server {
 
     /// The pen for a shard goes to `conn` (§8.2): whoever held it is told
     /// it's fenced, and mirrors from here on.
-    private func own(_ shard: ShardID, by conn: Connection) {
+    private func own(_ shard: ShardID, by conn: any Channel) {
         let me = ObjectIdentifier(conn)
         if let holder = owners[shard], holder != me, let other = clients.first(where: { ObjectIdentifier($0) == holder }) {
             other.send(.message(ServerMessage.fenced(shard: shard)))
@@ -315,7 +321,7 @@ final class Server {
     /// it continues the log; else the client is sent the log as it is. A
     /// shard no one owns is taken by the first to append; one another
     /// attachment owns is refused.
-    private func clientAppended(_ shard: ShardID, _ entries: [Entry], from conn: Connection) {
+    private func clientAppended(_ shard: ShardID, _ entries: [Entry], from conn: any Channel) {
         guard let first = entries.first else { return }
         let me = ObjectIdentifier(conn)
         if let holder = owners[shard], holder != me, clients.contains(where: { ObjectIdentifier($0) == holder }) {
@@ -451,7 +457,7 @@ final class Server {
 
     // MARK: Proposals
 
-    private func propose(_ id: Int, _ proposal: Proposal, from conn: Connection) {
+    private func propose(_ id: Int, _ proposal: Proposal, from conn: any Channel) {
         func done(_ error: String? = nil) { conn.send(.message(ServerMessage.done(id: id, error: error))) }
         switch proposal {
         case let .newTerminal(block, cwd):
@@ -1140,7 +1146,7 @@ final class Server {
     /// Who writes what the host proposes for a shard it doesn't lead: the
     /// app attachment holding its pen, else any app attachment — never a
     /// command-line client, which would let it drop.
-    private func leader(of shard: ShardID) -> Connection? {
+    private func leader(of shard: ShardID) -> (any Channel)? {
         let apps = clients.filter { appClients.contains(ObjectIdentifier($0)) }
         if let owner = owners[shard], let c = apps.first(where: { ObjectIdentifier($0) == owner }) { return c }
         return apps.first ?? clients.first
@@ -1153,14 +1159,14 @@ final class Server {
     /// being replaced, a slow file system, isn't read as empty.
     /// A file's bytes read off `queue` (a big one, a slow disk, holds up
     /// nothing else), then sent from it, in the bulk lane.
-    private func readBytes(for id: Int, to conn: Connection, _ read: @escaping () -> Data?) {
+    private func readBytes(for id: Int, to conn: any Channel, _ read: @escaping () -> Data?) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let data = read()
             self?.queue.async { conn.sendBulk(.message(ServerMessage.bytes(id: id, data))) }
         }
     }
 
-    private func readFile(_ block: BlockID, for conn: Connection, attempt: Int = 0, done: @escaping (String?) -> Void) {
+    private func readFile(_ block: BlockID, for conn: any Channel, attempt: Int = 0, done: @escaping (String?) -> Void) {
         guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
         let send = { (p: HostProposal) in conn.send(.message(ServerMessage.propose(shard: .block(block), p))) }
         if let contents = TextFile.read(path) {
@@ -1191,7 +1197,7 @@ final class Server {
 
     // MARK: Sessions
 
-    private func attach(_ conn: Connection, _ req: AttachRequest) {
+    private func attach(_ conn: any Channel, _ req: AttachRequest) {
         let id = req.block
         if node.block(id) == nil {
             append(.create(kind: .terminal, title: nil, path: nil), to: .block(id))

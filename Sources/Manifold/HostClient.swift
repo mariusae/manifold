@@ -23,6 +23,9 @@ final class HostClient {
     /// What the host calls itself (§8), once it has said.
     private(set) var label: String?
     private var conn: Connection?
+    /// The connection's streams (§8): its own frames are the control
+    /// stream; terminals, forwarded ports and files have streams of their own.
+    private(set) var mux: Mux?
     private var child: Child?
     private(set) var hasState = false
     private(set) var isConnected = false
@@ -741,7 +744,8 @@ final class HostClient {
     }
 
     private func attach(_ conn: Connection) {
-        conn.onFrame = { [weak self] frame in
+        let mux = Mux(conn)
+        mux.control.onFrame = { [weak self] frame in
             guard let self else { return }
             if let (id, data) = frame.tunnel { return self.forwards.received(id, data) }
             if let (id, count) = frame.tunnelAck { return self.forwards.acked(id, count) }
@@ -754,10 +758,11 @@ final class HostClient {
             }
             self.handle(message)
         }
-        conn.onClose = { [weak self] in
+        mux.control.onClose = { [weak self] in
             guard let self else { return }
             NSLog("host %@: connection closed", self.host.raw)
             self.conn = nil
+            self.mux = nil
             self.isConnected = false
             // Reads asked over this link won't be answered: asked again on the next.
             self.readsInFlight = []
@@ -797,9 +802,10 @@ final class HostClient {
             if self.received == 0 { self.begin("Receiving the host's state") }
             self.received += n
         }
-        conn.start()
+        mux.start()
         conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
         self.conn = conn
+        self.mux = mux
         isConnected = true
         begin(isRemote ? "Waiting for the host to answer (the bridge, its server)" : "Waiting for the server to answer")
     }

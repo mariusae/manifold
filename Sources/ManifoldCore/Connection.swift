@@ -51,6 +51,10 @@ public final class Connection {
     /// Bytes as they arrive, before they make whole frames: a large
     /// frame on its way.
     public var onRead: ((Int) -> Void)?
+    /// Told when what was waiting has been written (a `Mux` sends more of
+    /// its paced streams then).
+    public var onDrain: (() -> Void)?
+    private var flushing = false
 
     /// Takes ownership of the descriptors. Call `start` once the handlers
     /// are set.
@@ -119,6 +123,7 @@ public final class Connection {
         onClose = nil
         onFrame = nil
         onRead = nil
+        onDrain = nil
     }
 
     private func readAvailable() {
@@ -177,7 +182,15 @@ public final class Connection {
         }
     }
 
+    /// Writes what it can; called again (by the write source) when more can
+    /// go. Not re-entered: a send while it's writing just adds to the line.
     private func flush() {
+        guard !flushing else { return }
+        flushing = true
+        defer {
+            flushing = false
+            if !isClosed, pending == 0 { onDrain?() }
+        }
         while true {
             if sent == outbox.count {
                 // The ordered bytes all gone: a bulk send's next piece.

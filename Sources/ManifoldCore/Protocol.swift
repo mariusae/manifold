@@ -30,6 +30,13 @@ public enum FrameKind: UInt8, Sendable {
     /// connection there): a 4-byte tunnel id, then a 4-byte count. Each
     /// end has at most `Frame.tunnelWindow` bytes of a tunnel on the way.
     case tunnelAck = 7
+    /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
+    /// op (open, a frame, close, credit), then the op's bytes — for a
+    /// frame, the stream's own frame, encoded.
+    case stream = 8
+    /// How many bytes of paced streams' frames have been received, in all
+    /// (8 bytes): the sender's measure of the link.
+    case linkAck = 9
 }
 
 public struct Frame: Sendable {
