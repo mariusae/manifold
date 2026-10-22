@@ -612,6 +612,19 @@ final class Server {
             } catch {
                 done(error.localizedDescription)
             }
+        case let .movePath(from, to, replace):
+            let fm = FileManager.default
+            do {
+                if fm.fileExists(atPath: to) {
+                    guard replace else { return done("exists") }
+                    try fm.removeItem(atPath: to)
+                }
+                try fm.createDirectory(atPath: to.deletingLastPathComponent, withIntermediateDirectories: true)
+                try fm.moveItem(atPath: from, toPath: to)
+                done()
+            } catch {
+                done(error.localizedDescription)
+            }
         case let .makeFolder(path):
             do {
                 try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)

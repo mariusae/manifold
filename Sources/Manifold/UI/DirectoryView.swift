@@ -18,7 +18,7 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String?
     /// Files dropped on the folder — this Mac's, or a folder tile's entries
     /// on any host — put in `folder`, on the block's host.
-    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String)
+    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String, moving: Bool)
     /// An entry of another host's dragged out to another app: brought to
     /// `url` on this Mac.
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void)
@@ -33,11 +33,15 @@ protocol DirectoryViewDelegate: AnyObject {
 /// an entry of a folder's tile, on its host.
 enum DroppedItem {
     case local(URL)
+    /// Files another app promises (Photos, Mail), written here when dropped.
+    case promised(NSFilePromiseReceiver)
     case entry(host: HostID, path: String, isDirectory: Bool)
 }
 
 /// What each way of showing a folder does (§7.4).
 protocol DirectoryMode: NSView {
+    /// The folder shown at a point (in this view), for a drop to go into.
+    func folder(at point: NSPoint) -> String?
     var focusView: NSView { get }
     /// The selection, as an absolute path.
     var selectedPath: String? { get }
@@ -132,7 +136,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         footer.alignment = .center
         footer.isHidden = true
         addSubview(footer)
-        registerForDraggedTypes([.fileURL, .manifoldPath])
+        registerForDraggedTypes([.fileURL, .manifoldPath] + Promises.types)
         documentChanged()
     }
 
@@ -304,28 +308,47 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
 
     /// What's dragged, as it would land here: none of what's already in
     /// this folder (an entry dragged within its own listing).
-    private func dropped(_ pb: NSPasteboard) -> [DroppedItem] {
+    /// Where a drop at a point goes: the folder under it (a row's, a
+    /// column's), else the one shown.
+    private func dropFolder(_ sender: NSDraggingInfo) -> String? {
+        guard let model else { return nil }
+        guard let content else { return model.root }
+        return content.folder(at: content.convert(sender.draggingLocation, from: nil)) ?? model.root
+    }
+
+    private func dropped(_ pb: NSPasteboard, into folder: String) -> [DroppedItem] {
         guard let model else { return [] }
         let entries: [DroppedItem] = (pb.pasteboardItems ?? []).compactMap { item in
             let f = item.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) ?? []
             guard f.count == 3 else { return nil }
             let host = HostID(String(f[0])), path = String(f[1])
-            if host == block.host, path.deletingLastPathComponent == model.root || path == model.root { return nil }
+            // Not where it is already, nor into itself.
+            if host == block.host, path.deletingLastPathComponent == folder || path == folder || folder.hasPrefix(path + "/") { return nil }
             return .entry(host: host, path: path, isDirectory: f[2] == "d")
         }
         if !entries.isEmpty || pb.types?.contains(.manifoldPath) == true { return entries }
         // A link alone (⌥⇧) or a tile's path isn't a file to put here.
         if pb.types?.contains(.manifoldLinkOnly) == true || pb.types?.contains(.manifoldBlockLink) == true { return [] }
         let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if urls.isEmpty { return Promises.receivers(pb).map { .promised($0) } }
         let local = delegate?.directoryViewIsLocal(self) == true
-        return urls.filter { !(local && $0.deletingLastPathComponent().standardizedFileURL.path == model.root) }.map { .local($0) }
+        return urls.filter { !(local && $0.deletingLastPathComponent().standardizedFileURL.path == folder) }.map { .local($0) }
+    }
+
+    /// Entries of this host's dropped without ⌥ move, as the Finder moves
+    /// within a disk; anything else (⌥, another host, another app) is copied.
+    private func moves(_ items: [DroppedItem], _ sender: NSDraggingInfo) -> Bool {
+        guard !NSEvent.modifierFlags.contains(.option) else { return false }
+        return items.allSatisfy { if case let .entry(h, _, _) = $0 { h == block.host } else { false } }
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        dropping = !dropped(sender.draggingPasteboard).isEmpty
-        return dropping ? .copy : []
+        guard let folder = dropFolder(sender) else { return [] }
+        let items = dropped(sender.draggingPasteboard, into: folder)
+        dropping = !items.isEmpty
+        return dropping ? (moves(items, sender) ? .move : .copy) : []
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { dropping = false }
@@ -333,9 +356,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         dropping = false
-        let items = dropped(sender.draggingPasteboard)
-        guard !items.isEmpty, let root = model?.root else { return false }
-        delegate?.directoryView(self, receive: items, into: root)
+        guard let folder = dropFolder(sender) else { return false }
+        let items = dropped(sender.draggingPasteboard, into: folder)
+        guard !items.isEmpty else { return false }
+        delegate?.directoryView(self, receive: items, into: folder, moving: moves(items, sender))
         return true
     }
 

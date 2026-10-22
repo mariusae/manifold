@@ -164,7 +164,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.manifoldBlockLink, .string, .fileURL])
+        registerForDraggedTypes([.manifoldBlockLink, .string, .fileURL] + Promises.types)
         wantsLayer = true
         fontChanged()
     }
@@ -1630,6 +1630,8 @@ final class TextView: NSView, NSTextInputClient {
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         if let grid = linkOnlyGrid(sender) { return grid.draggingUpdated(sender) }
+        // A picture from Photos (promised, not yet a file): into a note.
+        if isEditable, onImage != nil, Self.droppedText(sender.draggingPasteboard) == nil, !Promises.receivers(sender.draggingPasteboard).isEmpty { return .copy }
         guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
         let p = convert(sender.draggingLocation, from: nil)
         let at = offset(at: p)
@@ -1652,6 +1654,14 @@ final class TextView: NSView, NSTextInputClient {
     /// What a drop does: the text in where the point is; a block's link
     /// noted as a mention.
     func drop(_ pb: NSPasteboard, at p: NSPoint) -> Bool {
+        if isEditable, let onImage, Self.droppedText(pb) == nil, case let receivers = Promises.receivers(pb), !receivers.isEmpty {
+            window?.makeFirstResponder(self)
+            setSelections([Selection(at: offset(at: p))], scroll: false)
+            Promises.receive(receivers) { urls in
+                for u in urls where BlockKind.forFile(u.path) == .image { if let data = try? Data(contentsOf: u) { onImage(data, u.pathExtension.lowercased()) } }
+            }
+            return true
+        }
         // Image files dropped on Markdown: kept as images and shown where they land.
         if isEditable, let onImage, pb.types?.contains(.manifoldBlockLink) != true, case let images = Self.images(on: pb), !images.isEmpty {
             window?.makeFirstResponder(self)

@@ -10,6 +10,8 @@ protocol NotebookViewDelegate: AnyObject {
     func notebookStart(_ view: NotebookView)
     /// A path or an address ⌘-clicked in an output.
     func notebook(_ view: NotebookView, open target: String)
+    /// A block ⇧-dragged into a cell: its path typed, and linked.
+    func notebook(_ view: NotebookView, linkedFrom block: BlockID)
 }
 
 /// The shell notebook lens (§7.7): a column of cells, each a command to
@@ -135,6 +137,10 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     private func makeCell(_ id: String) -> NotebookCellView {
         let v = NotebookCellView(id: id, font: codeFont)
+        v.editor.onLinked = { [weak self] block in
+            guard let self else { return }
+            self.delegate?.notebook(self, linkedFrom: block)
+        }
         v.owner = self
         stack.addSubview(v)
         cells[id] = v
@@ -770,6 +776,23 @@ extension NotebookView {
 /// the cells beside it; ⌥⌘↑ and ⌥⌘↓ move it.
 final class CellEditor: NSTextView {
     weak var cellView: NotebookCellView?
+
+    /// Dropped on a cell, as on a terminal: files and folders by their
+    /// paths, quoted for the shell; a ⇧-dragged block, its path (and the
+    /// link to it noted).
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pb = sender.draggingPasteboard
+        guard isEditable, let text = TerminalView.dropText(pb) else { return super.performDragOperation(sender) }
+        let at = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
+        window?.makeFirstResponder(self)
+        setSelectedRange(NSRange(location: at, length: 0))
+        insertText(text, replacementRange: NSRange(location: at, length: 0))
+        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) { onLinked?(block) }
+        return true
+    }
+
+    /// A block dropped in, its link noted (the notebook mentions it).
+    var onLinked: ((BlockID) -> Void)?
 
     /// Empty: what to do, in the placeholder's grey.
     override func draw(_ dirtyRect: NSRect) {

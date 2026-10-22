@@ -110,6 +110,12 @@ final class DirectoryListMode: NSView, DirectoryMode, DebugDescribing, NSOutline
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
 
+    func folder(at point: NSPoint) -> String? {
+        let row = outline.row(at: outline.convert(point, from: self))
+        guard row >= 0, let node = outline.item(atRow: row) as? BrowserNode, node.isDirectory else { return nil }
+        return node.path
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard outline.clickedRow >= 0, let node = outline.item(atRow: outline.clickedRow) as? BrowserNode, let m = owner.menu(for: node) else { return }

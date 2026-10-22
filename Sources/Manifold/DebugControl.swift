@@ -404,6 +404,14 @@ enum DebugControl {
             guard let wc, a.count >= 2 else { return "usage: copyinto <folder> <path>…" }
             wc.copy(a.dropFirst().map { .local(URL(fileURLWithPath: $0)) }, into: a[0], on: wc.hosts.local.host)
             return "copying"
+        case "moveinto":
+            // "moveinto <folder> <path>": as if this host's entry were dropped on the folder.
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count == 2 else { return "usage: moveinto <folder> <path>" }
+            var dir: ObjCBool = false
+            FileManager.default.fileExists(atPath: a[1], isDirectory: &dir)
+            wc.copy([.entry(host: wc.hosts.local.host, path: a[1], isDirectory: dir.boolValue)], into: a[0], on: wc.hosts.local.host, moving: true)
+            return "moving"
         case "fetch":
             // "fetch <remote path> <local path>": in pieces, from this host's server.
             let a = arg.split(separator: " ").map(String.init)

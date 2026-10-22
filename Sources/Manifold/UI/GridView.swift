@@ -13,6 +13,8 @@ protocol GridDelegate: AnyObject {
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
     /// Files dropped from outside: opened where they landed.
     func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool)
+    /// This Mac's host, whose files can go out as files.
+    var gridLocalHost: HostID { get }
     /// Something from another app dropped on the grid: a web address, an
     /// image, text — made a block of its own where it lands.
     func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool)
@@ -155,13 +157,15 @@ final class GridView: NSView, NSDraggingSource {
         wantsLayer = true
         layer?.backgroundColor = .clear
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath, .URL, .string, .png, .tiff])
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath, .URL, .string, .png, .tiff] + Promises.types)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     /// What another app drags that the grid makes a block of.
     enum Dropped {
+        /// Files another app promises (Photos, Mail): opened once written.
+        case promised([NSFilePromiseReceiver])
         case web(URL)
         case image(Data, String)
         case text(String)
@@ -172,6 +176,8 @@ final class GridView: NSView, NSDraggingSource {
     static func dropped(_ pb: NSPasteboard) -> Dropped? {
         let ours: [NSPasteboard.PasteboardType] = [.manifoldPlacement, .manifoldBlock, .manifoldArrangement, .manifoldBlockLink, .manifoldPath, .fileURL]
         guard !(pb.types ?? []).contains(where: ours.contains) else { return nil }
+        let promised = Promises.receivers(pb)
+        if !promised.isEmpty { return .promised(promised) }
         if let url = (pb.readObjects(forClasses: [NSURL.self]) as? [URL])?.first, url.scheme == "http" || url.scheme == "https" { return .web(url) }
         if let png = pb.data(forType: .png) { return .image(png, "png") }
         if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) { return .image(png, "png") }
@@ -885,6 +891,12 @@ final class GridView: NSView, NSDraggingSource {
             pathDrag = true
         } else {
             item.setString(placement, forType: .manifoldPlacement)
+            // Out of the window (the Finder, Mail): a file here goes as its file.
+            var dir: ObjCBool = false
+            if let path = shown?.block?.path, shown?.block?.id.host == delegate?.gridLocalHost,
+               FileManager.default.fileExists(atPath: path, isDirectory: &dir), !dir.boolValue {
+                item.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL)
+            }
             pathDrag = false
         }
         let dragItem = NSDraggingItem(pasteboardWriter: item)
@@ -932,8 +944,9 @@ final class GridView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         if pathDrag { return [.copy, .link, .generic] }
-        // ⌥ copies to another workspace (as a file is copied).
-        return context == .withinApplication ? [.move, .copy] : []
+        // ⌥ copies to another workspace (as a file is copied); out of the
+        // app, a file is copied.
+        return context == .withinApplication ? [.move, .copy] : [.copy]
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
@@ -1188,7 +1201,9 @@ final class GridView: NSView, NSDraggingSource {
     /// The shown tile under a point.
     private func tile(at point: NSPoint) -> Tile? {
         for c in columns.indices {
-            for t in columns[c] where !isStashed(t.shown.id) && !t.view.isHidden && t.view.frame.contains(point) { return t }
+            // The tile, its bar too (a link dropped on a tile's name links to it).
+            for t in columns[c] where !isStashed(t.shown.id) && !t.view.isHidden
+                && (t.view.frame.contains(point) || pills[t.shown.id].map { !$0.isHidden && $0.frame.contains(point) } == true) { return t }
         }
         return nil
     }

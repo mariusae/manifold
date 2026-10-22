@@ -73,6 +73,14 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
 
     func browser(_ browser: NSBrowser, canDragRowsWith rowIndexes: IndexSet, inColumn column: Int, with event: NSEvent) -> Bool { true }
 
+    func folder(at point: NSPoint) -> String? {
+        var row = -1, column = -1
+        guard browser.getRow(&row, column: &column, for: browser.convert(point, from: self)), row >= 0, column >= 0,
+              let node = browser.item(atRow: row, inColumn: column) as? BrowserNode else { return nil }
+        // A folder's row: into it; a file's: the column's folder.
+        return node.isDirectory ? node.path : node.path.deletingLastPathComponent
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard browser.clickedColumn >= 0, browser.clickedRow >= 0,
@@ -84,7 +92,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
         let nodes = rowIndexes.compactMap { browser.item(atRow: $0, inColumn: column) as? BrowserNode }
         guard !nodes.isEmpty else { return false }
         pasteboard.clearContents()
-        return pasteboard.writeObjects(nodes.map(owner.pasteboardItem))
+        // As the other modes write them: another host's entries as promises, for the Finder.
+        return pasteboard.writeObjects(nodes.map(owner.pasteboardWriter))
     }
 
     func browser(_ sender: NSBrowser, willDisplayCell cell: Any, atRow row: Int, column: Int) {

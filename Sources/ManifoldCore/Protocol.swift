@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 39
+public let protocolVersion = 40
 
 /// The app and the attach helper both talk to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -208,6 +208,9 @@ public enum Proposal: Codable, Sendable {
     case writePath(path: String, data: Data, mode: WriteMode)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
+    /// A file or folder moved (renamed) on the host; `replace`: over what's
+    /// there, else failing ("exists").
+    case movePath(from: String, to: String, replace: Bool)
     /// An image put in a text (pasted, dropped, from an iPhone's camera):
     /// its bytes written as `name` in `folder` (beside a Markdown file), or
     /// in Manifold's own folder for a note, and an image block made for it.

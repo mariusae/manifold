@@ -124,6 +124,8 @@ protocol OrganizationViewDelegate: AnyObject {
     /// A row ⇧-dragged: not the block to move but what it stands for (its
     /// path, its file, its link), as a tile's ⇧-dragged pill is.
     func organizationPathItem(for block: BlockID, modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?
+    /// Files dropped on a workspace's row: opened in that workspace.
+    func organizationOpen(files: [String], in workspace: BlockID)
     /// A row was clicked: show its block here, or beside (§3.1); go to
     /// an arrangement; focus a column.
     func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags)
@@ -234,7 +236,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         outline.menu = NSMenu()
         outline.menu?.delegate = self
         outline.backgroundColor = .clear
-        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldHost])
+        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldHost, .fileURL])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.draggingDestinationFeedbackStyle = .regular
         scroll.documentView = outline
@@ -405,7 +407,19 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return context == .withinApplication ? [.move, .copy] : []
     }
 
+    /// Files from the Finder (or anywhere) dragged: their paths, if no block is.
+    private static func files(_ pb: NSPasteboard) -> [String] {
+        guard OrgDragItem(pb) == nil, pb.types?.contains(.manifoldBlockLink) != true else { return [] }
+        return (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []).map(\.path)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        // Files onto a workspace's row: opened there.
+        if !Self.files(info.draggingPasteboard).isEmpty {
+            guard let node = item as? OrgNode, node.arrangement != nil, node.column == nil, index == NSOutlineViewDropOnItemIndex else { return [] }
+            springLoad(node)
+            return .copy
+        }
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return [] }
         let node = item as? OrgNode
         guard delegate?.organizationCanDrop(drag, onto: node, at: index) == true else { return [] }
@@ -420,6 +434,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        let files = Self.files(info.draggingPasteboard)
+        if !files.isEmpty, let node = item as? OrgNode, let w = node.arrangement {
+            springWork?.cancel()
+            delegate?.organizationOpen(files: files, in: w)
+            return true
+        }
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return false }
         springWork?.cancel()
         return delegate?.organizationDrop(drag, onto: item as? OrgNode, at: index, copy: Self.copying(info)) ?? false

@@ -4918,9 +4918,16 @@ extension MainWindowController: GridDelegate {
         }
     }
 
+    var gridLocalHost: HostID { host.host }
+
     func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool) {
         let place: Where = newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
         switch thing {
+        case let .promised(receivers):
+            Promises.receive(receivers) { [weak self] urls in
+                guard !urls.isEmpty else { return }
+                self?.gridOpenFiles(urls.map(\.path), column: column, at: at, newColumn: newColumn)
+            }
         case let .web(url):
             show(host.newWeb(url: url.absoluteString), lens: .web, place, context: "dropped")
         case let .text(text):
@@ -5551,8 +5558,8 @@ extension MainWindowController: DirectoryViewDelegate {
         return "[\(title)](manifold:\(id.description))"
     }
 
-    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String) {
-        copy(items, into: folder, on: view.block.host)
+    func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String, moving: Bool) {
+        copy(items, into: folder, on: view.block.host, moving: moving)
     }
 
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void) {
@@ -5594,28 +5601,29 @@ extension MainWindowController: DirectoryViewDelegate {
     /// Files and folders put in a folder on a host: this Mac's, or entries
     /// of any host's (fetched here, then sent on). What's there already
     /// is asked about, once for all, before it's written over.
-    func copy(_ items: [DroppedItem], into folder: String, on target: HostID, replacing: Bool = false) {
+    func copy(_ items: [DroppedItem], into folder: String, on target: HostID, replacing: Bool = false, moving: Bool = false) {
         guard let c = hosts.client(target) else { return NSSound.beep() }
         let label = hosts.label(of: target) + ":" + folder.abbreviatingHome
         let n = items.count
-        toast.show("Copying \(n) item\(n == 1 ? "" : "s") to \(label)…", action: "OK", for: 60) {}
+        let verb = moving ? "Moving" : "Copying", done = moving ? "Moved" : "Copied"
+        toast.show("\(verb) \(n) item\(n == 1 ? "" : "s") to \(label)…", action: "OK", for: 60) {}
         var existing: [DroppedItem] = []
         var failure: String?
         func finish() {
             if let failure {
-                toast.show("Couldn't copy to \(label): \(failure)", action: "OK", for: 10) {}
+                toast.show("Couldn't \(moving ? "move" : "copy") to \(label): \(failure)", action: "OK", for: 10) {}
             } else if !existing.isEmpty {
-                toast.show("Copied \(n - existing.count) of \(n)", action: "OK", for: 4) {}
+                toast.show("\(done) \(n - existing.count) of \(n)", action: "OK", for: 4) {}
                 let alert = NSAlert()
                 alert.messageText = existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)"
                 alert.informativeText = "Replace what's there with what was dropped?"
                 alert.addButton(withTitle: "Replace")
                 alert.addButton(withTitle: "Leave Them")
                 if let window { alert.beginSheetModal(for: window) { [weak self] r in
-                    if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true) }
+                    if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true, moving: moving) }
                 } }
             } else {
-                toast.show("Copied \(n) item\(n == 1 ? "" : "s") to \(label)", action: "OK", for: 4) {}
+                toast.show("\(done) \(n) item\(n == 1 ? "" : "s") to \(label)", action: "OK", for: 4) {}
             }
             hosts.client(target).map { _ in hosts.propose(.listDirectory(hosts.directoryBlock(for: folder, on: target))) }
         }
@@ -5628,8 +5636,25 @@ extension MainWindowController: DirectoryViewDelegate {
                 next(i + 1)
             }
             switch item {
+            case let .promised(r):
+                // Written here first, then sent as a file of this Mac's is.
+                Promises.receive([r]) { urls in
+                    guard !urls.isEmpty else { return after("the file never came") }
+                    var left = urls.count
+                    var failed: String?
+                    for u in urls {
+                        Transfer.upload(u, to: folder + "/" + u.lastPathComponent, on: c, replace: replacing) { e in
+                            if let e { failed = e }
+                            left -= 1
+                            if left == 0 { after(failed) }
+                        }
+                    }
+                }
             case let .local(url):
                 Transfer.upload(url, to: dest, on: c, replace: replacing, done: after)
+            case let .entry(host, path, _) where moving && host == target:
+                // Within the host: moved there, as the Finder moves within a disk.
+                c.propose(.movePath(from: path, to: dest, replace: replacing)) { error in after(error) }
             case let .entry(host, path, isDirectory):
                 // Another tile's entry: fetched to a scratch folder here, then sent.
                 guard let source = hosts.client(host) else { return after("its host isn't attached") }
@@ -5695,6 +5720,7 @@ extension MainWindowController: DirectoryViewDelegate {
         switch item {
         case let .local(url): url.lastPathComponent
         case let .entry(_, path, _): path.lastPathComponent
+        case let .promised(r): r.fileNames.first ?? "file"
         }
     }
 
@@ -5806,6 +5832,8 @@ extension MainWindowController: NotebookViewDelegate {
     func notebook(_ view: NotebookView, open target: String) {
         open(target, from: view.placement)
     }
+
+    func notebook(_ view: NotebookView, linkedFrom block: BlockID) { link(block, to: view.block) }
 }
 
 extension MainWindowController: MediaViewDelegate {
@@ -6454,6 +6482,13 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+
+    func organizationOpen(files: [String], in workspace: BlockID) {
+        if selected != workspace { hosts.select(workspace) }
+        render()
+        let column = max((arrangement?.columns.count ?? 1) - 1, 0)
+        gridOpenFiles(files, column: column, at: Int.max, newColumn: false)
+    }
 
     func organizationPathItem(for block: BlockID, modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem? {
         pathDragItem(for: block, linkOnly: modifiers.contains(.option))

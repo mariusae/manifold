@@ -85,6 +85,8 @@ final class DirectoryGalleryMode: NSView, DirectoryMode, DebugDescribing, NSColl
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionMoved() }
 
+    func folder(at point: NSPoint) -> String? { nil }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let window = strip.window,
