@@ -152,13 +152,38 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         rowsView.rows = rows
         rowsView.relayout()
         if d.loadedAt != nil { restoreState() }
-        fillSidebar()
+        fillOutline()
     }
 
     // MARK: The outline (§7.5)
 
-    /// The files at the tile's left, their hunks under them, each clicked
-    /// to go there; the one you're in marked.
+    /// The files, their hunks under them, each chosen to go there; the
+    /// one you're in marked: as ticks at the tile's upper right, and in the
+    /// sidebar at its left.
+    private lazy var changesOutline: Outline = {
+        let o = Outline()
+        o.onPick = { [weak self] i in
+            guard let self, self.marks.indices.contains(i) else { return }
+            let r = self.rowsView.rect(ofRow: self.marks[i])
+            self.rowsView.scroll(NSPoint(x: 0, y: max(r.minY - 4, 0)))
+            self.changesOutline.current = i
+        }
+        // A file (or a change in it) dragged out: the file, on the diff's host.
+        o.writerFor = { [weak self] i in
+            guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
+            return Drags.path?(path, false, self.block.host, Drags.modifiers)
+        }
+        o.menuFor = { [weak self] i in
+            guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
+            return self.delegate?.diffView(self, menuFor: path)
+        }
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.markCurrent() }
+        return o
+    }()
+    var outline: Outline? { changesOutline }
+    /// Under the header (what's compared, and how much changed).
+    var outlineInset: CGFloat { 32 }
     private var sidebar: TileSidebar?
     private var marks: [Int] = []
     var hasSidebar: Bool { true }
@@ -166,37 +191,19 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     func toggleSidebar() {
         if sidebar == nil {
-            let s = TileSidebar(emptyText: "One file")
-            s.onPick = { [weak self] i in
-                guard let self, self.marks.indices.contains(i) else { return }
-                let r = self.rowsView.rect(ofRow: self.marks[i])
-                self.rowsView.scroll(NSPoint(x: 0, y: max(r.minY - 4, 0)))
-                self.sidebar?.current = i
-            }
-            // A file (or a change in it) dragged out: the file, on the diff's host.
-            s.writerFor = { [weak self] i in
-                guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
-                return Drags.path?(path, false, self.block.host, Drags.modifiers)
-            }
-            s.menuFor = { [weak self] i in
-                guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
-                return self.delegate?.diffView(self, menuFor: path)
-            }
+            let s = TileSidebar(outline: changesOutline, emptyText: "One file")
             s.isHidden = true
             addSubview(s)
             sidebar = s
-            scroll.contentView.postsBoundsChangedNotifications = true
-            NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.markCurrent() }
         }
         sidebar?.isHidden.toggle()
         keeper.note(["outline": sidebarShown ? "1" : "0"], after: 0)
-        fillSidebar()
+        fillOutline()
         needsLayout = true
     }
 
-    private func fillSidebar() {
-        guard let sidebar, !sidebar.isHidden else { return }
-        var entries: [TileSidebar.Entry] = []
+    private func fillOutline() {
+        var entries: [Outline.Item] = []
         marks = []
         for (i, r) in rowsView.rows.enumerated() {
             switch r.kind {
@@ -208,7 +215,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             default: break
             }
         }
-        sidebar.set(entries)
+        changesOutline.set(entries)
         markCurrent()
     }
 
@@ -226,9 +233,8 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }
 
     private func markCurrent() {
-        guard let sidebar, !sidebar.isHidden else { return }
         let y = scroll.contentView.bounds.minY + 8
-        sidebar.current = marks.lastIndex { rowsView.rect(ofRow: $0).minY <= y } ?? (marks.isEmpty ? nil : 0)
+        changesOutline.current = marks.lastIndex { rowsView.rect(ofRow: $0).minY <= y } ?? (marks.isEmpty ? nil : 0)
     }
 }
 

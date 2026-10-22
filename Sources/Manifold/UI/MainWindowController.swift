@@ -502,6 +502,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let d = v as? DiffView { d.theme = hosts.state.appearance.theme }
             if let t = v as? TerminalView {
                 t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+                t.isAgent = isAgent(p)
+            t.turns = Set(hosts.block(p.block)?.terminal?.turns?.map(\.id) ?? [])
+                t.turns = Set(hosts.block(p.block)?.terminal?.turns?.map(\.id) ?? [])
                 t.resumeIfLinkBack()
             }
             (v as? SmartlogView)?.refresh()
@@ -516,6 +519,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(p.block.host))
             t.delegate = self
             t.commands = hosts.block(p.block)?.terminal?.commands ?? []
+            t.isAgent = isAgent(p)
             t.readingPassword = SecureInput.shared.reading.contains(p.block)
             t.setSidebar(viewState(of: p)["outline"] == "1")
             t.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
@@ -1258,13 +1262,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     /// A pointer move, handed to the surface as its tracking area would.
     /// A synthesized move: to the grid (its stacks), and to whatever view
-    /// is under the point that takes moves of its own (a scrubber).
+    /// is under the point that takes moves of its own (a scrubber, a
+    /// command's dot).
     func debugHover(_ event: NSEvent) {
         content.mouseMoved(with: event)
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is ScrubTip || view is LinkBadge || view is StackSwitcherView || view is OrganizationView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is StackSwitcherView || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
@@ -1288,6 +1293,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     /// Debugging: the focused tile's own sidebar — "toggle", "pick N",
     /// or nothing: what it lists. "pdf …": the focused PDF's controls.
+    func debugTicks(_ arg: String) -> String {
+        let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        switch words.first {
+        case "rows": return FloatingList.shared.debugRows
+        case "click": return FloatingList.shared.debugClick(words.count > 1 ? words[1] : "")
+        default: break
+        }
+        guard let f = arrangement?.focused else { return "no tile focused" }
+        guard let t = content.debugTicks(f) else { return "no outline" }
+        if words.first == "open" {
+            t.open()
+            return FloatingList.shared.debugRows
+        }
+        return "frame \(NSStringFromRect(t.frame))\n" + t.debugState
+    }
+
     func debugTileSidebar(_ arg: String) -> String {
         guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
         if arg.hasPrefix("pdf") { return (v as? MediaView)?.debugPDF(String(arg.dropFirst(3)).trimmingCharacters(in: .whitespaces)) ?? "no PDF focused" }
@@ -4113,6 +4134,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = from.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
         show(block, lens: .directory, opener(from), context: context)
+    }
+
+    /// Whether a terminal tile is an agent's: its turns are its outline
+    /// (ticks), not a shell's commands (dots).
+    private func isAgent(_ p: Placement) -> Bool {
+        guard let b = hosts.block(p.block) else { return p.lens == .agent }
+        return p.lens == .agent || b.kind == .agent || b.agent != nil || b.terminal?.turns?.isEmpty == false
     }
 
     /// A web page kept as a file, by its name.

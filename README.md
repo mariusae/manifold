@@ -99,7 +99,7 @@ and Mona Sans (bundled).
   click that opens something** puts what opens over the tile clicked
   in, that tile going behind it (as ⌥-drag stacks): a link or a
   block's pill in a note, a badge's link, a sidebar row, a listing's
-  file or folder, a scrubber's command, ⌘⌥-click on a terminal's link,
+  file or folder, ⌘⌥-click on a terminal's link,
   ⌥⇧⌘-click on a page's. Drop a pill on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
@@ -556,19 +556,30 @@ when you find it again.
   text. ⌘C copies an image (or a PDF's selected text) as other views
   copy theirs, and every tile's menu has Copy Link and, where it has a
   place, Copy Path and Reveal in Finder.
-- **A tile's own outline**: a terminal (its commands, an agent's turns,
-  each with how it ended and when — clicked, the terminal goes there and
-  the command's whole output opens beside as a block of its own), a
-  Markdown text (in the editor or the preview), a PDF, a diff (its
-  files, each change under them, by the function it's in or its line)
-  and a web page (its headings) have a sidebar of their own at the
-  tile's left —
+- **Outline ticks**: a tile whose block has an outline — a Markdown
+  text's headings (in the editor or the preview), a PDF's contents, a
+  diff's files and changes, a web page's headings, an agent's turns —
+  shows it as a few short ticks at its content's upper right (five at
+  most, however long the outline), the one nearest where you are longer
+  and darker; they take no room of their own. Rest the pointer on them
+  and the whole outline opens over them, indented by level, where you are
+  marked: click an item to go there, or its ⋯ (or right-click it) for what
+  else it can do — copy a link to a heading or a page, a turn's changes,
+  undo a turn. A **shell's commands** have a dot each instead, beside the
+  prompt (red for one that failed, the accent for one still running):
+  rest the pointer on a dot for **Copy Command and Output** and **Show as
+  Block**.
+- **A tile's own sidebar**: the same outline — a terminal's commands (an
+  agent's turns), each with how it ended and when, clicked, the terminal
+  goes there and the command's whole output opens beside as a block of
+  its own; a Markdown text's, a PDF's, a diff's or a web page's — as a
+  list at the tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
   at its top). Shown or not, it's kept with the tile.
-- **An outline** is a scrubber's marks as a list: Show Outline Beside
+- **The outline lens**: Show Outline Beside
   (⇧⌘O, or in a terminal's, editor's or preview's bar menu) shows the
   block through its outline lens beside it, listing the commands (with
   their outcome and when) or the headings, each clicked to go there in
@@ -584,19 +595,10 @@ when you find it again.
   still shows whole; one from before the host kept them shows the
   screen's text instead. One per command; clicked again, the same block
   comes back.
-- **A terminal's scroll bar is a scrubber**, as Prism's: a strip down
-  the tile's right edge, the knob where you are, and a tick for each
-  command the shell ran (the shells Manifold starts say so; red for one
-  that failed, pulsing for one still running). Rest the pointer on a
-  tick and a tip names the command and how it ended; click the tick to
-  scroll to it. Click the tip, double-click or ⌘-click the tick, or
-  right-click it for **Show Command and Output**, and the command and
-  what it printed, as the screen showed them, become a note beside the
-  terminal; the tip's copy button (or **Copy Command and Output**) puts
-  the same on the clipboard. An editor's and a preview's scroll bars
-  are scrubbers too, their ticks the headings of a Markdown text (or a
-  note): hover for the heading, click to go to it. Drag the knob or click the track to scroll as ever.
-  A scrubber shows as macOS shows its scroll bars: while you scroll,
+- **A terminal's, an editor's and a preview's scroll bar** is a strip
+  down the tile's right edge, the knob where you are: drag the knob or
+  click the track to scroll as ever. (Where things are in what it holds
+  is the outline's, above.) It shows as macOS shows its scroll bars: while you scroll,
   while the pointer rests on it, and a moment after, fading otherwise
   (and staying, if your scroll bars are set to always show).
 - **Shell notebooks** (File ▸ New Shell Notebook, ⌃⇧⌘N, or New Shell
@@ -714,7 +716,7 @@ when you find it again.
   map shows a note's backlinks whether or not anyone followed them.
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
-  scrubber's command, a finder row chosen with ⏎: plain **goes to** it
+  finder row chosen with ⏎: plain **goes to** it
   where it is (or opens it here); **⌥ puts it over** the tile you
   clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
   beside** that tile. ⇧ is about the path: ⇧-click a bar for where the
@@ -826,8 +828,8 @@ when you find it again.
   began. **Each turn** is noted too (with the hooks Manifold installs,
   `manifold --install-skill`): what was asked, the working tree as the
   turn began and as it ended (a checkpoint, in a git repository), the
-  files it changed, its last words. Its tick on the scrubber, its line in
-  the terminal's outline or the outline lens opens the turn as a block
+  files it changed, its last words. Its item in the terminal's outline
+  (its ticks, or its sidebar) or the outline lens opens the turn as a block
   of its own: what was asked, what it did (its words and each tool it
   used, from Claude Code's transcript), what it said, the files it
   changed and **Changes in this turn** as links — a block linked from
@@ -854,8 +856,7 @@ when you find it again.
 - **Agents' hooks** (`manifold --install-skill`, on any host, in one of
   its terminals or not) let an agent that doesn't speak OSC 7501 (Codex,
   say) show its status, and give every agent an outline: each prompt is
-  a mark on the terminal's scrubber and in its outline, as a shell's
-  command is, found on the screen where the agent echoes it, until the
+  an item in the terminal's outline, found on the screen where the agent echoes it, until the
   turn ends. The hooks run `manifold agent <event> --agent <name>`
   (start, prompt, working, waiting, stop, end), which tells the host
   over its socket and does nothing outside Manifold's terminals; status
@@ -1006,7 +1007,7 @@ is migrated into logs on first run.
   integration and then yours; fish through a command run after its
   configuration; bash through an rc file of Manifold's that sources the
   profile files and .bashrc. The same hooks tell Manifold each command
-  the shell runs, for the terminal's scrubber; and the shell says where
+  the shell runs, for the terminal's dots and outline; and the shell says where
   it is (OSC 7, as zsh and fish do through Ghostty's integration and
   bash through Manifold's rc), so a terminal's folder follows a `cd` at
   once — a shell that doesn't say is asked through its process every

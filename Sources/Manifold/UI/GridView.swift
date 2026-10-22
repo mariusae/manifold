@@ -91,6 +91,8 @@ final class GridView: NSView, NSDraggingSource {
         var links: [LinkCard] = []
     }
     private var badges: [PlacementID: LinkBadge] = [:]
+    /// Each tile's outline, as ticks at its content's upper right (§7.5).
+    private var ticks: [PlacementID: OutlineTicks] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -219,6 +221,10 @@ final class GridView: NSView, NSDraggingSource {
             b.removeFromSuperview()
             badges.removeValue(forKey: id)
         }
+        for (id, t) in ticks where !incoming.contains(id) {
+            t.removeFromSuperview()
+            ticks.removeValue(forKey: id)
+        }
         self.columns = columns
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
         self.heights = heights
@@ -324,6 +330,18 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onDragStart = { [weak self, weak pill] event in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill)
+                }
+                // Its outline, as ticks over its content's upper right.
+                if let outline = tile.view.outline {
+                    if ticks[id]?.outline !== outline {
+                        ticks[id]?.removeFromSuperview()
+                        let t = OutlineTicks(outline: outline)
+                        ticks[id] = t
+                        addSubview(t)
+                    }
+                } else {
+                    ticks[id]?.removeFromSuperview()
+                    ticks.removeValue(forKey: id)
                 }
                 // The block's links, as a badge at the upper right.
                 if tile.links.isEmpty {
@@ -559,11 +577,13 @@ final class GridView: NSView, NSDraggingSource {
                 setHidden(t.view, true)
                 pills[t.shown.id]?.isHidden = true
                 badges[t.shown.id]?.isHidden = true
+                ticks[t.shown.id]?.available = false
             }
             for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
             let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
             tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - Self.barHeight)
+            placeTicks(of: tile, in: tile.view.frame, shown: true)
             focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
@@ -585,6 +605,7 @@ final class GridView: NSView, NSDraggingSource {
             if !stashed { pills[t.shown.id]?.isHidden = false }
             pills[t.shown.id]?.behind = 0
             badges[t.shown.id]?.isHidden = stashed
+            ticks[t.shown.id]?.available = !stashed
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -624,6 +645,7 @@ final class GridView: NSView, NSDraggingSource {
                     settle(tile.view, body, was: was)
                     setHidden(tile.view, collapsed)
                 }
+                placeTicks(of: tile, in: body, shown: !held && !collapsed)
                 // The switcher over the whole tile, its bar put away meanwhile.
                 if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
@@ -913,6 +935,20 @@ final class GridView: NSView, NSDraggingSource {
         if !pathDrag { delegate?.gridDragChanged(true) }
         view.beginDraggingSession(with: [dragItem], event: event, source: self)
     }
+
+    /// A tile's outline ticks at its content's upper right, in from the
+    /// scroll bar, over the content (they take no room of their own).
+    private func placeTicks(of tile: Tile, in body: NSRect, shown: Bool) {
+        guard let t = ticks[tile.shown.id] else { return }
+        let size = OutlineTicks.size
+        t.frame = NSRect(x: body.maxX - ScrubberView.width - size.width - 2, y: body.maxY - tile.view.outlineInset - size.height - 6,
+                         width: size.width, height: size.height)
+        t.available = shown && body.height >= 3 * size.height
+        keep(t, above: tile.view)
+    }
+
+    /// Debugging: the focused tile's ticks, and its outline.
+    func debugTicks(_ id: PlacementID) -> OutlineTicks? { ticks[id] }
 
     /// A tile's own buttons changed (a page could go back, or loads): its bar
     /// shows them as they are.

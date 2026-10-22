@@ -113,11 +113,12 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             self?.keeper.note(values)
             if values["scroll"] != nil { self?.scheduleOutline() }
         }
-        // The scrubber follows the page as it moves, with the headings as last read.
+        // The scrubber follows the page as it moves, and the outline marks
+        // the heading you're in, with the headings as last read.
         handler.onScrolling = { [weak self] y in
             self?.scrollY = y
             guard let self, let o = self.lastOutline else { return }
-            self.scrubber.update(marks: o.marks, total: o.total, offset: y, shown: o.shown)
+            self.scrubber.update(total: o.total, offset: y, shown: o.shown)
             self.markCurrentHeading(at: y)
         }
         web.navigationDelegate = self
@@ -131,23 +132,28 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         scrubber.onScroll = { [weak self] f in
             self?.web.evaluateJavaScript("window.scrollTo(0, \(f) * Math.max(document.documentElement.scrollHeight - window.innerHeight, 0));")
         }
-        scrubber.onPick = { [weak self] mark in self?.scroll(toHeading: mark.id) }
-        scrubber.onHover = { [weak self] mark, y in self?.hoverScrubber(mark, at: y) }
-        tip.showsCopy = false
-        tip.isHidden = true
-        tip.onExit = { [weak self] in self?.tip.isHidden = true }
         addSubview(scrubber)
-        addSubview(tip)
+        headingsOutline.onPick = { [weak self] i in
+            self?.scroll(toHeading: i, warping: false)
+            self?.headingsOutline.current = i
+        }
+        // A heading's link: the line it's on in the text.
+        headingsOutline.menuFor = { [weak self] i in
+            guard let self, let text = self.source()?.text else { return nil }
+            let lines = MarkdownOutline.headings(in: text).map(\.line)
+            guard lines.indices.contains(i) else { return nil }
+            return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
+        }
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
     // MARK: The scrubber (§3.1)
 
     private let scrubber = ScrubberView(frame: .zero)
-    private let tip = ScrubTip(frame: .zero)
     private var outlineWork: DispatchWorkItem?
-    /// The page's headings and size as last read, for following a scroll live.
-    private var lastOutline: (marks: [ScrubMark], total: Double, shown: Double)?
+    /// The page's headings' tops and its size as last read, for following a
+    /// scroll live.
+    private var lastOutline: (tops: [Double], total: Double, shown: Double)?
 
     /// The page's headings and where it is, asked of the page a moment
     /// after it rendered, scrolled or changed size.
@@ -163,26 +169,24 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].offsetTop,hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,m:m};})()"
         web.evaluateJavaScript(js) { [weak self] r, _ in
             guard let self, let d = r as? [String: Any], let h = d["h"] as? Double, let y = d["y"] as? Double, let v = d["v"] as? Double else { return }
-            let marks = ((d["m"] as? [[Any]]) ?? []).enumerated().compactMap { i, row -> ScrubMark? in
-                guard row.count == 3, let top = row[0] as? Double, let text = row[2] as? String else { return nil }
-                return ScrubMark(id: i, at: top, title: text, detail: nil)
+            let rows = ((d["m"] as? [[Any]]) ?? []).compactMap { row -> (top: Double, title: String, level: Int)? in
+                guard row.count == 3, let top = row[0] as? Double, let tag = row[1] as? String, let text = row[2] as? String else { return nil }
+                return (top, text, Int(tag.dropFirst()) ?? 1)
             }
-            self.lastOutline = (marks, h, v)
-            self.scrubber.update(marks: marks, total: h, offset: y, shown: v)
-            self.headingLevels = ((d["m"] as? [[Any]]) ?? []).compactMap { row in
-                guard row.count == 3, let tag = row[1] as? String, let text = row[2] as? String else { return nil }
-                return (text, Int(tag.dropFirst()) ?? 1)
-            }
-            self.fillSidebar(at: y)
+            self.lastOutline = (rows.map(\.top), h, v)
+            self.scrubber.update(total: h, offset: y, shown: v)
+            self.headingsOutline.set(Outline.headings(rows.map { (title: $0.title, level: $0.level) }))
+            self.markCurrentHeading(at: y)
         }
     }
 
     // MARK: The outline (§7.5)
 
-    /// The page's headings at the tile's left, each clicked to go there,
-    /// the one you're in marked.
+    /// The page's headings, the one you're in marked: as ticks at the
+    /// tile's upper right, and in the sidebar at its left.
+    private let headingsOutline = Outline()
+    var outline: Outline? { headingsOutline }
     private var sidebar: TileSidebar?
-    private var headingLevels: [(title: String, level: Int)] = []
     private var sidebarRestored = false
     /// The page shows a note or a Markdown file, which images dropped go into.
     var acceptsImages = false
@@ -203,18 +207,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     func setSidebar(_ shown: Bool) {
         guard shown != sidebarShown else { return }
         if shown, sidebar == nil {
-            let s = TileSidebar()
-            s.onPick = { [weak self] i in
-                self?.scroll(toHeading: i, warping: false)
-                self?.sidebar?.current = i
-            }
-            // A heading's link: the line it's on in the text.
-            s.menuFor = { [weak self] i in
-                guard let self, let text = self.source()?.text else { return nil }
-                let lines = MarkdownOutline.headings(in: text).map(\.line)
-                guard lines.indices.contains(i) else { return nil }
-                return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
-            }
+            let s = TileSidebar(outline: headingsOutline)
             addSubview(s)
             sidebar = s
         }
@@ -223,30 +216,14 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         needsLayout = true
     }
 
-    private func fillSidebar(at y: Double) {
-        guard let sidebar, !sidebar.isHidden else { return }
-        sidebar.set(TileSidebar.entries(headingLevels))
-        markCurrentHeading(at: y)
-    }
-
     /// The last heading at or above the top of the page as it shows.
     private func markCurrentHeading(at y: Double) {
-        guard let sidebar, !sidebar.isHidden, let o = lastOutline else { return }
-        sidebar.current = o.marks.lastIndex { $0.at <= y + 24 } ?? (o.marks.isEmpty ? nil : 0)
+        guard let o = lastOutline else { return }
+        headingsOutline.current = o.tops.lastIndex { $0 <= y + 24 } ?? (o.tops.isEmpty ? nil : 0)
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
     func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
-
-    private func hoverScrubber(_ mark: ScrubMark?, at y: CGFloat) {
-        guard let mark else { tip.isHidden = true; return }
-        tip.show(mark)
-        let size = tip.fittingSize
-        let point = convert(NSPoint(x: 0, y: y), from: scrubber)
-        let top = min(max(point.y - size.height / 2, 0), bounds.height - size.height)
-        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
-        tip.isHidden = false
-    }
 
     required init?(coder: NSCoder) { fatalError() }
 

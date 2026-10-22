@@ -98,7 +98,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
         // The scroll bar is a scrubber (§3.1): down the right, outside
-        // the text, its marks the headings of a Markdown text.
+        // the text.
         scroll.hasVerticalScroller = false
         scroll.documentView = textView
         addSubview(scroll)
@@ -107,13 +107,21 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             let span = max(self.textView.frame.height - self.scroll.contentSize.height, 0)
             self.scroll(toY: f * span)
         }
-        scrubber.onPick = { [weak self] mark in self?.scroll(toY: CGFloat(mark.at) - 8) }
-        scrubber.onHover = { [weak self] mark, y in self?.hoverScrubber(mark, at: y) }
-        tip.showsCopy = false
-        tip.isHidden = true
-        tip.onExit = { [weak self] in self?.tip.isHidden = true }
         addSubview(scrubber)
-        addSubview(tip)
+        // A heading chosen in the outline: the text there, the caret at it.
+        headingsOutline.onPick = { [weak self] i in
+            guard let self, self.headingLines.indices.contains(i) else { return }
+            let line = self.headingLines[i]
+            NavJumps.willJump?(self)
+            self.scroll(toY: self.textView.top(ofLine: line) - 8)
+            self.textView.setSelections([Selection(at: self.textView.text.offset(ofLine: line))], scroll: false)
+            self.window?.makeFirstResponder(self.textView)
+            self.headingsOutline.current = i
+        }
+        headingsOutline.menuFor = { [weak self] i in
+            guard let self, self.headingLines.indices.contains(i) else { return nil }
+            return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(self.headingLines[i] + 1)")
+        }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         textView.document = self
@@ -287,8 +295,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: The scrubber (§3.1)
 
     private let scrubber = ScrubberView(frame: .zero)
-    private let tip = ScrubTip(frame: .zero)
-    private var headings: [ScrubMark] = []
+    /// Each heading's line (0-based), in the outline's order.
+    private var headingLines: [Int] = []
     private var headingsWork: DispatchWorkItem?
     /// Whether the text is an outline's kind: Markdown, or a note.
     fileprivate var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
@@ -300,8 +308,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: The outline (§7.5)
 
-    /// The headings at the tile's left, each clicked to go there, the one
-    /// you're in marked (a Markdown text, a note).
+    /// A Markdown text's (a note's) headings, the one you're in marked:
+    /// as ticks at the tile's upper right, and in the sidebar at its left.
+    private let headingsOutline = Outline()
+    var outline: Outline? { hasOutline ? headingsOutline : nil }
     private var sidebar: TileSidebar?
     /// Shown or put away: kept with the tile.
     var onToggleSidebar: ((Bool) -> Void)?
@@ -316,39 +326,19 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     func setSidebar(_ shown: Bool) {
         guard hasOutline, shown != sidebarShown else { return }
         if shown, sidebar == nil {
-            let s = TileSidebar()
-            s.onPick = { [weak self] i in
-                guard let self, self.headings.indices.contains(i) else { return }
-                let line = self.headings[i].id
-                NavJumps.willJump?(self)
-                self.scroll(toY: self.textView.top(ofLine: line) - 8)
-                self.textView.setSelections([Selection(at: self.textView.text.offset(ofLine: line))], scroll: false)
-                self.window?.makeFirstResponder(self.textView)
-                self.sidebar?.current = i
-            }
-            s.menuFor = { [weak self] i in
-                guard let self, self.headings.indices.contains(i) else { return nil }
-                return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(self.headings[i].id + 1)")
-            }
+            let s = TileSidebar(outline: headingsOutline)
             addSubview(s)
             sidebar = s
         }
         sidebar?.isHidden = !shown
-        if shown { fillSidebar() }
         needsLayout = true
-    }
-
-    private func fillSidebar() {
-        guard let sidebar, !sidebar.isHidden else { return }
-        sidebar.set(TileSidebar.entries(headingLevels.map { (title: $0.text, level: $0.level) }))
-        markCurrentHeading()
     }
 
     /// The last heading at or above the top of what shows.
     private func markCurrentHeading() {
-        guard let sidebar, !sidebar.isHidden else { return }
+        guard hasOutline else { return }
         let y = scroll.contentView.bounds.minY + 12
-        sidebar.current = headings.lastIndex { textView.top(ofLine: $0.id) <= y } ?? (headings.isEmpty ? nil : 0)
+        headingsOutline.current = headingLines.lastIndex { textView.top(ofLine: $0) <= y } ?? (headingLines.isEmpty ? nil : 0)
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
@@ -361,9 +351,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
-        case "pick": return scrubber.debugPick(Int(arg) ?? 0)
+        case "pick": headingsOutline.pick(Int(arg) ?? 0); return "picked"
         case "text": return String(textView.text.string.suffix(300))
-        default: return "marks \(headings.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))\n" + scrubber.debugMarks
+        default: return "headings \(headingLines.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))"
         }
     }
 
@@ -383,29 +373,15 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     private func findHeadings() {
-        headingLevels = MarkdownOutline.headings(in: textView.text.string)
-        headings = headingLevels.map { ScrubMark(id: $0.line, at: 0, title: $0.text, detail: nil) }
-        updateScrubber()
-        fillSidebar()
+        let found = MarkdownOutline.headings(in: textView.text.string)
+        headingLines = found.map(\.line)
+        headingsOutline.set(Outline.headings(found.map { (title: $0.text, level: $0.level) }))
+        markCurrentHeading()
     }
-
-    /// The headings as last found, with their levels, for the outline.
-    private var headingLevels: [MarkdownOutline.Heading] = []
 
     private func updateScrubber() {
-        let marks = headings.map { m -> ScrubMark in var n = m; n.at = Double(textView.top(ofLine: m.id)); return n }
-        scrubber.update(marks: marks, total: Double(textView.frame.height), offset: Double(scroll.contentView.bounds.minY),
+        scrubber.update(total: Double(textView.frame.height), offset: Double(scroll.contentView.bounds.minY),
                         shown: Double(scroll.contentSize.height))
-    }
-
-    private func hoverScrubber(_ mark: ScrubMark?, at y: CGFloat) {
-        guard let mark else { tip.isHidden = true; return }
-        tip.show(mark)
-        let size = tip.fittingSize
-        let point = convert(NSPoint(x: 0, y: y), from: scrubber)
-        let top = min(max(point.y - size.height / 2, 0), bounds.height - size.height)
-        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
-        tip.isHidden = false
     }
 
     func destroy() {

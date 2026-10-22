@@ -75,6 +75,12 @@ protocol PaneContent: NSView {
     var hasSidebar: Bool { get }
     var sidebarShown: Bool { get }
     func toggleSidebar()
+    /// Its outline, if it has one (§7.5): the tile shows it as ticks at its
+    /// upper right, the whole of it over them while the pointer is there.
+    var outline: Outline? { get }
+    /// How far down from its top its content begins, under a header of its
+    /// own (a PDF's page and zoom): the ticks go below that.
+    var outlineInset: CGFloat { get }
     /// Where in its block the view is now, for the block navigation stack
     /// (§3.5): an editor's line, a terminal's command gone to, a page's
     /// scroll, a PDF's page. Nil: only the tile.
@@ -127,6 +133,8 @@ extension PaneContent {
     var hasSidebar: Bool { false }
     var sidebarShown: Bool { false }
     func toggleSidebar() {}
+    var outline: Outline? { nil }
+    var outlineInset: CGFloat { 0 }
     var navLocation: NavLocation? { nil }
     func go(to location: NavLocation) {}
 }

@@ -48,6 +48,23 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate var sidebarRestored = false
     /// The table of contents, flattened: each entry's item and its page.
     fileprivate var contents: [(item: PDFOutline, page: Int?)] = []
+    /// A PDF's table of contents, the entry whose page shows marked: as
+    /// ticks at the tile's upper right, and in the sidebar at its left.
+    private lazy var contentsOutline: Outline = {
+        let o = Outline()
+        o.onPick = { [weak self] i in
+            guard let self, self.contents.indices.contains(i), let d = self.contents[i].item.destination else { return }
+            NavJumps.willJump?(self)
+            self.pdfView?.go(to: d)
+            self.contentsOutline.current = i
+            self.window?.makeFirstResponder(self.pdfView)
+        }
+        o.menuFor = { [weak self] i in
+            guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
+            return Drags.linkMenu("Copy Link to This Page", self.block, "page=\(page + 1)")
+        }
+        return o
+    }()
     fileprivate lazy var finder: FindHost = {
         let f = FindHost(view: self, target: self)
         // Below the controls, over the pages.
@@ -140,7 +157,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
     override func layout() {
         super.layout()
-        var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - 32)
+        var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.barHeight)
         if pdfView != nil {
             layoutControls()
             if !sidebarRestored {
@@ -341,7 +358,7 @@ extension MediaView: Searchable {
         }
         var levels: [Int] = []
         if let root = doc.outlineRoot { walk(root, 0) }
-        sidebar?.set(zip(contents, levels).map { TileSidebar.Entry(title: $0.0.item.label ?? "Untitled", level: min($0.1, 4)) })
+        contentsOutline.set(zip(contents, levels).map { Outline.Item(title: $0.0.item.label ?? "Untitled", level: min($0.1, 4)) })
         // The contents first when there are any, unless the pages were chosen.
         if keeper.value("sidebarPage") == nil { sidebar?.show(page: contents.isEmpty ? .pages : .contents) }
         pageChanged()
@@ -355,7 +372,7 @@ extension MediaView: Searchable {
         if pageField.currentEditor() == nil { pageField.stringValue = "\(i + 1)" }
         previousButton.isEnabled = p.canGoToPreviousPage
         nextButton.isEnabled = p.canGoToNextPage
-        sidebar?.current = contents.lastIndex { ($0.page ?? .max) <= i }
+        contentsOutline.current = contents.lastIndex { ($0.page ?? .max) <= i }
     }
 
     fileprivate func scaleChanged() {
@@ -424,6 +441,11 @@ extension MediaView: Searchable {
 
     // MARK: The sidebar
 
+    // An image's is empty, and shows nothing.
+    var outline: Outline? { contentsOutline }
+    /// Under the bar of page and zoom.
+    var outlineInset: CGFloat { Self.barHeight }
+    static let barHeight: CGFloat = 32
     var hasSidebar: Bool { pdfView != nil }
     var sidebarShown: Bool { sidebar?.isHidden == false }
 
@@ -441,19 +463,8 @@ extension MediaView: Searchable {
             thumbs.pdfView = p
             thumbs.thumbnailSize = NSSize(width: 120, height: 150)
             thumbs.backgroundColor = .clear
-            let s = TileSidebar(pages: thumbs, emptyText: "No table of contents")
-            s.onPick = { [weak self] i in
-                guard let self, self.contents.indices.contains(i), let d = self.contents[i].item.destination else { return }
-                NavJumps.willJump?(self)
-                self.pdfView?.go(to: d)
-                self.sidebar?.current = i
-                self.window?.makeFirstResponder(self.pdfView)
-            }
+            let s = TileSidebar(outline: contentsOutline, pages: thumbs, emptyText: "No table of contents")
             s.onPageChange = { [weak self] page in self?.keeper.note(["sidebarPage": page.rawValue]) }
-            s.menuFor = { [weak self] i in
-                guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
-                return Drags.linkMenu("Copy Link to This Page", self.block, "page=\(page + 1)")
-            }
             addSubview(s)
             sidebar = s
             if let kept = keeper.value("sidebarPage").flatMap(TileSidebar.Page.init(rawValue:)) { s.show(page: kept) }

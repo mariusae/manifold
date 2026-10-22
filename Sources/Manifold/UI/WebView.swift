@@ -98,18 +98,24 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
 
     // MARK: The outline (§7.5)
 
-    /// The page's headings at the tile's left, each clicked to go there.
+    /// The page's headings, each chosen to go there: as ticks at the
+    /// tile's upper right, and in the sidebar at its left.
+    private lazy var headingsOutline: Outline = {
+        let o = Outline()
+        o.onPick = { [weak self, weak o] i in
+            self?.web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(i)]; if(h){h.scrollIntoView({block:'start'});}})()")
+            o?.current = i
+        }
+        return o
+    }()
+    var outline: Outline? { headingsOutline }
     private var sidebar: TileSidebar?
     var hasSidebar: Bool { true }
     var sidebarShown: Bool { sidebar?.isHidden == false }
 
     func toggleSidebar() {
         if sidebar == nil {
-            let s = TileSidebar(emptyText: "No headings")
-            s.onPick = { [weak self] i in
-                self?.web.evaluateJavaScript("(function(){var h=document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(i)]; if(h){h.scrollIntoView({block:'start'});}})()")
-                self?.sidebar?.current = i
-            }
+            let s = TileSidebar(outline: headingsOutline, emptyText: "No headings")
             s.isHidden = true
             addSubview(s)
             sidebar = s
@@ -123,7 +129,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
 
     /// The headings as the page has them now (after each load, too).
     private func readHeadings() {
-        guard let sidebar, !sidebar.isHidden else { return }
         let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return m;})()"
         web.evaluateJavaScript(js) { [weak self] r, _ in
             let rows = (r as? [[Any]]) ?? []
@@ -131,7 +136,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
                 guard row.count == 2, let tag = row[0] as? String, let text = row[1] as? String, !text.isEmpty else { return nil }
                 return (text, Int(tag.dropFirst()) ?? 1)
             }
-            self?.sidebar?.set(TileSidebar.entries(headings))
+            self?.headingsOutline.set(Outline.headings(headings))
         }
     }
 

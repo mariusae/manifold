@@ -55,10 +55,9 @@ enum Theme {
     static let cardBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.1))
     /// The sidebar's resize handle.
     static let handle = NSColor.dynamic(NSColor(white: 0, alpha: 0.22), NSColor(white: 1, alpha: 0.25))
-    /// A scrubber's strip, its knob, and its quiet ticks (§3.1).
+    /// A scrubber's strip and its knob (§3.1).
     static let scrubberTrack = NSColor.dynamic(NSColor(white: 0, alpha: 0.035), NSColor(white: 1, alpha: 0.04))
     static let scrubberKnob = NSColor.dynamic(NSColor(white: 0, alpha: 0.14), NSColor(white: 1, alpha: 0.18))
-    static let scrubberTick = NSColor.dynamic(NSColor(white: 0, alpha: 0.55), NSColor(white: 1, alpha: 0.6))
     /// The hairline around sheets.
     static func sheetEdge(hovered: Bool) -> NSColor {
         hovered ? .dynamic(NSColor(white: 0, alpha: 0.34), NSColor(white: 1, alpha: 0.34))

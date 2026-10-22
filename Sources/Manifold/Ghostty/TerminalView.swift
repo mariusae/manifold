@@ -90,6 +90,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             NSLog("manifold: could not create a terminal surface for %@", block.description)
         }
         link.onClosed = { [weak self] in self?.linkClosed() }
+        dots.layer?.zPosition = 5
+        dots.onHover = { [weak self] id, rect in self?.showActions(ofCommand: id, at: rect) }
+        dots.onLeave = { [weak dots] in
+            guard let dots else { return }
+            FloatingList.shared.openerLeft(dots)
+        }
     }
 
     /// The stream closed: the shell ended (or the server let it go), and
@@ -114,7 +120,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func destroy() {
         finder.hide()
         scrubber.removeFromSuperview()
-        tip.removeFromSuperview()
+        dots.removeFromSuperview()
         locateWork?.cancel()
         link.stop()
         guard let surface else { return }
@@ -210,29 +216,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let s = ScrubberView(frame: NSRect(x: 0, y: 0, width: Self.scrollerWidth, height: 100))
         s.layer?.zPosition = 5
         s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
-        s.onPick = { [weak self] mark in self?.go(to: mark) }
-        s.onOpen = { [weak self] mark in self?.open(mark) }
-        s.onHover = { [weak self] mark, y in self?.hover(mark, at: y) }
-        s.markMenu = { [weak self] mark in self?.markMenu(mark) }
         return s
     }()
-    private lazy var tip: ScrubTip = {
-        let t = ScrubTip(frame: .zero)
-        t.isHidden = true
-        t.onEnter = { [weak self] in self?.tipHideWork?.cancel() }
-        t.onExit = { [weak self] in self?.hideTip() }
-        t.onClick = { [weak self] in
-            guard let self, let mark = self.tipMark else { return }
-            self.open(mark)
-        }
-        t.onCopy = { [weak self] in
-            guard let self, let mark = self.tipMark else { return }
-            self.copyTranscript(mark)
-        }
-        return t
-    }()
-    private var tipMark: ScrubMark?
-    private var tipHideWork: DispatchWorkItem?
+    /// A dot beside each command's prompt, a shell's (§3.8), in the same
+    /// way over the terminal's left padding.
+    private let dots = CommandDots(frame: .zero)
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
     /// What the core says of the screen and its history: how many rows,
@@ -241,18 +229,60 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let grew = total != scrollbar.total
         scrollbar = (total, offset, len)
         layoutScroller()
-        updateMarks()
         markCurrentCommand()
         if grew { scheduleLocate() }
     }
 
     // MARK: The outline (§7.5)
 
-    /// The commands (an agent's turns) at the tile's left, each with how
-    /// it ended; clicked, the terminal goes there and the command's whole
-    /// output opens beside as a block of its own. In the superview, as the
-    /// scrubber is (Ghostty's layer is this view's): the terminal moves
-    /// over to make room for it.
+    /// The commands (an agent's turns), each with how it ended; chosen,
+    /// the terminal goes there and the command's whole output opens beside
+    /// as a block of its own. An agent's is its tile's outline, as ticks
+    /// at its upper right; a shell's commands have their dots instead.
+    /// Either is listed in the sidebar at the tile's left — in the
+    /// superview, as the scrubber is (Ghostty's layer is this view's): the
+    /// terminal moves over to make room for it.
+    private lazy var commandsOutline: Outline = {
+        let o = Outline()
+        o.onPick = { [weak self] i in
+            guard let self, self.outlined.indices.contains(i) else { return }
+            let id = self.outlined[i].id
+            self.go(toCommand: id)
+            _ = self.showOutput(ofCommand: id, beside: self.placement)
+            self.commandsOutline.current = i
+        }
+        // A command dragged out: its text (to type again, to keep in a note).
+        o.writerFor = { [weak self] i in
+            guard let self, self.outlined.indices.contains(i) else { return nil }
+            let item = NSPasteboardItem()
+            item.setString(self.outlined[i].text, forType: .string)
+            return item
+        }
+        o.menuFor = { [weak self] i in
+            guard let self, self.outlined.indices.contains(i) else { return nil }
+            return self.delegate?.terminal(self, menuFor: self.outlined[i])
+        }
+        return o
+    }()
+    /// An agent's terminal: its turns are its outline, and its commands
+    /// have no dots.
+    var isAgent = false {
+        didSet {
+            guard isAgent != oldValue else { return }
+            updateDots()
+            fillOutline()
+        }
+    }
+    /// An agent's turns, by the command each is: its outline, without the
+    /// shell's own commands around them.
+    var turns: Set<Int> = [] {
+        didSet { if turns != oldValue { fillOutline() } }
+    }
+    /// The commands the outline lists: an agent's turns, else all of them.
+    private var outlined: [ShellCommand] {
+        isAgent && !turns.isEmpty ? commands.filter { turns.contains($0.id) } : commands
+    }
+    var outline: Outline? { isAgent ? commandsOutline : nil }
     private var sidebar: TileSidebar?
     /// The frame the grid gave, the sidebar's room taken from it.
     private var given: NSRect?
@@ -269,32 +299,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func setSidebar(_ shown: Bool) {
         guard shown != sidebarShown else { return }
         if shown, sidebar == nil {
-            let s = TileSidebar(emptyText: "No commands yet")
+            let s = TileSidebar(outline: commandsOutline, emptyText: "No commands yet")
             s.layer?.zPosition = 5
-            s.onPick = { [weak self] i in
-                guard let self, self.commands.indices.contains(i) else { return }
-                let id = self.commands[i].id
-                self.go(toCommand: id)
-                _ = self.showOutput(ofCommand: id, beside: self.placement)
-                self.sidebar?.current = i
-            }
-            // A command dragged out: its text (to type again, to keep in a note).
-            s.writerFor = { [weak self] i in
-                guard let self, self.commands.indices.contains(i) else { return nil }
-                let item = NSPasteboardItem()
-                item.setString(self.commands[i].text, forType: .string)
-                return item
-            }
-            s.menuFor = { [weak self] i in
-                guard let self, self.commands.indices.contains(i) else { return nil }
-                return self.delegate?.terminal(self, menuFor: self.commands[i])
-            }
             sidebar = s
         }
         sidebarOn = shown
         sidebar?.isHidden = !shown || isHidden
         if let given { frame = given }
-        fillSidebar()
     }
 
     override var frame: NSRect {
@@ -309,22 +320,22 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
-    private func fillSidebar() {
-        guard let sidebar, sidebarOn else { return }
-        sidebar.set(commands.map { c in
+    private func fillOutline() {
+        let commands = outlined
+        commandsOutline.set(commands.map { c in
             var detail: String
             if let st = c.status { detail = st == 0 ? Age.short(c.at) : "exit \(st) · \(Age.short(c.at))" } else { detail = c.id == commands.last?.id ? "running" : Age.short(c.at) }
             if detail == "now" { detail = "just now" }
-            return TileSidebar.Entry(title: c.text, detail: detail, failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: true)
+            return Outline.Item(title: c.text, detail: detail, failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: !isAgent)
         })
         markCurrentCommand()
     }
 
     /// The last command at or above the top of what shows.
     private func markCurrentCommand() {
-        guard let sidebar, sidebarOn else { return }
         let top = scrollbar.offset + 1
-        sidebar.current = commands.lastIndex { (located[$0.id] ?? Int.max) <= top } ?? (commands.isEmpty ? nil : 0)
+        let commands = outlined
+        commandsOutline.current = commands.lastIndex { (located[$0.id] ?? Int.max) <= top } ?? (commands.isEmpty ? nil : 0)
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
@@ -333,33 +344,40 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func layoutScroller() {
         guard let parent = superview else { return }
         if scrubber.superview !== parent { parent.addSubview(scrubber) }
-        if tip.superview !== parent { parent.addSubview(tip) }
+        if dots.superview !== parent { parent.addSubview(dots) }
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
-        scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len && commands.isEmpty
-        if isHidden { hideTip(now: true) }
+        scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len
+        scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
+        updateDots()
     }
 
-    private func updateMarks() {
-        let marks = commands.compactMap { c -> ScrubMark? in
-            guard let row = located[c.id] else { return nil }
-            let last = c.id == commands.last?.id
-            var words: [String] = []
-            if let st = c.status { words.append(st == 0 ? "ok" : "exit \(st)") } else if last { words.append("running") }
-            let age = Age.short(c.at)
-            words.append(age == "now" ? age : age + " ago")
-            return ScrubMark(id: c.id, at: Double(row), title: c.text, detail: words.joined(separator: " · "),
-                             failed: c.failed, running: c.ended == nil && last)
-        }
-        scrubber.update(marks: marks, total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
+    /// The dots where the shell's commands are on the screen now: in the
+    /// left padding, level with each one's prompt row.
+    private func updateDots() {
+        guard dots.superview != nil else { return }
+        dots.frame = NSRect(x: frame.minX, y: frame.minY, width: Self.dotsWidth, height: frame.height)
+        dots.isHidden = isHidden || isAgent
+        guard !dots.isHidden, let surface else { return dots.set([]) }
+        let size = ghostty_surface_size(surface)
+        let scale = window?.backingScaleFactor ?? 2
+        let cell = CGFloat(size.cell_height_px) / scale
+        guard cell > 0 else { return dots.set([]) }
+        let last = commands.last?.id
+        dots.set(commands.compactMap { c -> CommandDots.Dot? in
+            guard let row = located[c.id], row >= scrollbar.offset, row < scrollbar.offset + max(scrollbar.len, 1) else { return nil }
+            // From the top: the padding, then the rows above it.
+            let fromTop = Self.paddingTop + CGFloat(row - scrollbar.offset) * cell + cell / 2
+            return CommandDots.Dot(id: c.id, y: frame.height - fromTop, failed: c.failed, running: c.ended == nil && c.id == last)
+        })
     }
+
+    /// The terminal's padding at its left and top (GhosttyRuntime's config).
+    static let dotsWidth: CGFloat = 10
+    static let paddingTop: CGFloat = 6
 
     private func scroll(toFraction fraction: Double) {
         let span = max(scrollbar.total - scrollbar.len, 0)
         perform("scroll_to_row:\(Int((fraction * Double(span)).rounded()))")
-    }
-
-    private func go(to mark: ScrubMark) {
-        perform("scroll_to_row:\(Int(mark.at))")
     }
 
     /// A command's row scrolled to, by its id (an outline's click).
@@ -395,8 +413,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// A command and its output, as shown: the rows from its prompt to
     /// the next command's (or the end).
-    private func transcript(of mark: ScrubMark) -> (ShellCommand, String)? { transcript(ofCommand: mark.id) }
-
     private func transcript(ofCommand id: Int) -> (ShellCommand, String)? {
         guard let c = commands.first(where: { $0.id == id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
@@ -405,48 +421,34 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return (c, output)
     }
 
-    /// The command and its output, as a block.
-    private func open(_ mark: ScrubMark) {
-        guard let (c, output) = transcript(of: mark) else { return }
-        hideTip(now: true)
-        delegate?.terminal(self, show: c, output: output, beside: nil)
+    /// The command and its output, as a block of its own.
+    private func open(command id: Int) {
+        FloatingList.shared.hideNow()
+        guard let (c, output) = transcript(ofCommand: id) else { return }
+        delegate?.terminal(self, show: c, output: output, beside: placement)
     }
 
     /// The command and its output, onto the clipboard.
-    private func copyTranscript(_ mark: ScrubMark) {
-        guard let (c, output) = transcript(of: mark) else { return }
+    private func copyTranscript(command id: Int) {
+        FloatingList.shared.hideNow()
+        guard let (c, output) = transcript(ofCommand: id) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("$ " + c.text + "\n" + output + "\n", forType: .string)
-        hideTip(now: true)
     }
 
-    private func markMenu(_ mark: ScrubMark) -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Go to Command", symbol: "arrow.right.circle") { [weak self] in self?.go(to: mark) })
-        menu.addItem(ClosureMenuItem("Show Command and Output", symbol: "doc.text") { [weak self] in self?.open(mark) })
-        menu.addItem(ClosureMenuItem("Copy Command and Output", symbol: "doc.on.doc") { [weak self] in self?.copyTranscript(mark) })
-        return menu
-    }
-
-    private func hover(_ mark: ScrubMark?, at y: CGFloat) {
-        tipHideWork?.cancel()
-        guard let mark, let parent = superview else { hideTip(); return }
-        tipMark = mark
-        tip.show(mark)
-        let size = tip.fittingSize
-        let point = parent.convert(NSPoint(x: 0, y: y), from: scrubber)
-        let top = min(max(point.y - size.height / 2, frame.minY), frame.maxY - size.height)
-        tip.frame = NSRect(x: scrubber.frame.minX - size.width - 4, y: round(top), width: size.width, height: size.height)
-        tip.isHidden = false
-    }
-
-    /// Gone, after a moment: time to move onto it from the strip.
-    private func hideTip(now: Bool = false) {
-        tipHideWork?.cancel()
-        if now { tip.isHidden = true; tipMark = nil; return }
-        let work = DispatchWorkItem { [weak self] in self?.tip.isHidden = true; self?.tipMark = nil }
-        tipHideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    /// A dot's actions, beside it: the command's output copied, or as a
+    /// block of its own.
+    private func showActions(ofCommand id: Int, at rect: NSRect) {
+        guard let window, let c = commands.first(where: { $0.id == id }) else { return }
+        var detail: String
+        if let st = c.status { detail = st == 0 ? Age.short(c.at) : "exit \(st) · \(Age.short(c.at))" } else { detail = c.id == commands.last?.id ? "running" : Age.short(c.at) }
+        if detail == "now" { detail = "just now" }
+        let rows: [FloatingList.Row] = [
+            .init(title: c.text, detail: detail, code: true, failed: c.failed, header: true),
+            .init(title: "Copy Command and Output", symbol: "doc.on.doc", action: { [weak self] in self?.copyTranscript(command: id) }),
+            .init(title: "Show as Block", symbol: "rectangle.portrait.on.rectangle.portrait", action: { [weak self] in self?.open(command: id) }),
+        ]
+        FloatingList.shared.show(rows, for: dots, in: window, place: .rightOf(dots.convert(rect, to: nil)))
     }
 
     // MARK: Commands on the scrubber (§3.8)
@@ -457,8 +459,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         didSet {
             guard commands != oldValue else { return }
             scheduleLocate()
-            updateMarks()
-            fillSidebar()
+            updateDots()
+            fillOutline()
         }
     }
     /// Each command's row on the screen, once found.
@@ -537,7 +539,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// each time, so a screen cleared or trimmed is simply read anew.
     func locate() {
         guard scrollbar.total > 0, !commands.isEmpty else {
-            if !located.isEmpty { located = [:]; updateMarks() }
+            if !located.isEmpty { located = [:]; updateDots() }
             return
         }
         guard let lines = screenLines() else { return }
@@ -552,7 +554,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         if found != located {
             located = found
-            updateMarks()
+            updateDots()
+            markCurrentCommand()
         }
     }
 
@@ -574,19 +577,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Debugging
 
     var debugScrubber: String {
-        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count)\n" + scrubber.debugMarks
+        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent)\n" + dots.debugDots
     }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
-        case "hover":
-            guard let f = Double(arg) else { return "usage: scrub hover <fraction>" }
-            let mark = scrubber.debugHover(fraction: f)
-            return mark.map { "\($0.id) \($0.title) tip \(tip.isHidden ? "hidden" : "shown")" } ?? "nothing"
+        case "dot":
+            // "scrub dot <id>": as the pointer resting on the command's dot.
+            guard let id = Int(arg), let d = dots.dot(id) else { return "no dot for \(arg)" }
+            showActions(ofCommand: id, at: dots.rect(of: d))
+            return FloatingList.shared.debugRows
         case "go", "open":
-            guard let id = Int(arg), let c = commands.first(where: { $0.id == id }), let row = located[id] else { return "no such command" }
-            let mark = ScrubMark(id: id, at: Double(row), title: c.text)
-            if what == "go" { go(to: mark) } else { open(mark) }
+            guard let id = Int(arg), commands.contains(where: { $0.id == id }) else { return "no such command" }
+            if what == "go" { go(toCommand: id) } else { open(command: id) }
             return "ok"
         case "locate":
             locate()
@@ -632,7 +635,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.viewDidMoveToSuperview()
         syncFocus()
         finder.layout(in: bounds)
-        if superview == nil { scrubber.removeFromSuperview(); tip.removeFromSuperview() } else { layoutScroller() }
+        if superview == nil {
+            scrubber.removeFromSuperview()
+            dots.removeFromSuperview()
+            FloatingList.shared.hide(for: dots)
+        } else {
+            layoutScroller()
+        }
         // The outline goes with it (lent to a card, put back).
         if superview == nil { sidebar?.removeFromSuperview() } else if let given { frame = given }
     }

@@ -1,50 +1,27 @@
 import AppKit
 
-/// A tile's own sidebar (§7.5), at its left, as Preview's is: a list to
-/// steer by — a Markdown text's headings, a PDF's table of contents —
-/// each clicked to go there, the one you're in marked; and, for a PDF,
-/// its pages as thumbnails, the other page of the sidebar.
+/// A tile's own sidebar (§7.5), at its left, as Preview's is: its view's
+/// outline as a list to steer by — a Markdown text's headings, a PDF's
+/// table of contents — each clicked to go there, the one you're in
+/// marked; and, for a PDF, its pages as thumbnails, the other page of the
+/// sidebar. What it lists, what a click does, an entry's menu and what it
+/// carries dragged out are all the outline's.
 final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
-    struct Entry: Equatable {
-        var title: String
-        var level = 0
-        /// At the right, in grey: how a command ended, and when.
-        var detail = ""
-        var failed = false
-        var running = false
-        /// In the code font: a command, not a heading.
-        var code = false
-    }
+    typealias Entry = Outline.Item
 
     enum Page: String { case contents, pages }
 
     static let width: CGFloat = 220
-    /// An entry clicked (or ⏎ on it): its index.
-    var onPick: ((Int) -> Void)?
+    let outline: Outline
     var onPageChange: ((Page) -> Void)?
-    /// An entry dragged out: what it carries (a file, a command's text).
-    var writerFor: ((Int) -> NSPasteboardWriting?)? {
-        didSet {
-            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
-            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
-        }
-    }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        entries.indices.contains(row) ? writerFor?(row) : nil
-    }
-
-    /// An entry right-clicked: its menu.
-    var menuFor: ((Int) -> NSMenu?)? {
-        didSet {
-            table.menu = menuFor == nil ? nil : NSMenu()
-            table.menu?.delegate = self
-        }
+        entries.indices.contains(row) ? outline.writerFor?(row) : nil
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard entries.indices.contains(table.clickedRow), let m = menuFor?(table.clickedRow) else { return }
+        guard entries.indices.contains(table.clickedRow), let m = outline.menuFor?(table.clickedRow) else { return }
         for item in m.items { m.removeItem(item); menu.addItem(item) }
     }
 
@@ -61,7 +38,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     /// `pages`: a view of the document's pages (a PDF's thumbnails), the
     /// sidebar's other page; `emptyText`, what the list says with nothing in it.
-    init(pages: NSView? = nil, emptyText: String = "No headings") {
+    init(outline: Outline, pages: NSView? = nil, emptyText: String = "No headings") {
+        self.outline = outline
         pagesView = pages
         tabs = pages == nil ? nil : NSSegmentedControl(images: ["list.bullet.indent", "rectangle.grid.1x2"].compactMap { Theme.symbol($0, size: 12) },
                                                        trackingMode: .selectOne, target: nil, action: nil)
@@ -102,7 +80,22 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             addSubview(tabs)
         }
         if let pagesView { addSubview(pagesView) }
+        if outline.writerFor != nil {
+            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
+            table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
+        }
+        if outline.menuFor != nil {
+            table.menu = NSMenu()
+            table.menu?.delegate = self
+        }
         show(page: .contents)
+        outline.watch(self) { [weak self] in self?.outlineChanged() }
+        outlineChanged()
+    }
+
+    private func outlineChanged() {
+        set(outline.items)
+        current = outline.current
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -141,15 +134,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         onPageChange?(page)
     }
 
-    /// Headings as entries, the shallowest at the left (a text whose
-    /// headings all begin at ## isn't indented a step for nothing).
-    static func entries(_ headings: [(title: String, level: Int)]) -> [Entry] {
-        let top = headings.map(\.level).min() ?? 0
-        return headings.map { Entry(title: $0.title, level: min(max($0.level - top, 0), 4)) }
-    }
-
     /// The list afresh, if it changed.
-    func set(_ fresh: [Entry]) {
+    private func set(_ fresh: [Entry]) {
         guard fresh != entries else { return }
         entries = fresh
         table.reloadData()
@@ -157,7 +143,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     }
 
     /// The entry you're in, marked and kept in sight.
-    var current: Int? {
+    private var current: Int? {
         didSet {
             guard current != oldValue else { return }
             marking = true
@@ -174,12 +160,12 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     @objc private func rowClicked() {
         let row = table.clickedRow
         guard entries.indices.contains(row) else { return }
-        onPick?(row)
+        outline.pick(row)
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36, entries.indices.contains(table.selectedRow) {
-            onPick?(table.selectedRow)
+            outline.pick(table.selectedRow)
         } else {
             super.keyDown(with: event)
         }
@@ -206,7 +192,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     func debugPick(_ i: Int) -> String {
         guard entries.indices.contains(i) else { return "no entry \(i) of \(entries.count)" }
-        onPick?(i)
+        outline.pick(i)
         return "picked \(entries[i].title)"
     }
 }
