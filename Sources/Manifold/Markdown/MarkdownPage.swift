@@ -207,6 +207,10 @@ enum MarkdownPage {
             ("JetBrains Mono", "JetBrainsMono-Italic.ttf", 400, "italic"),
             ("JetBrains Mono", "JetBrainsMono-Bold.ttf", 700, "normal"),
             ("JetBrains Mono", "JetBrainsMono-BoldItalic.ttf", 700, "italic"),
+            ("Anthrosevka Mono", "AnthrosevkaMono-Regular.ttf", 400, "normal"),
+            ("Anthrosevka Mono", "AnthrosevkaMono-Italic.ttf", 400, "italic"),
+            ("Anthrosevka Mono", "AnthrosevkaMono-Bold.ttf", 700, "normal"),
+            ("Anthrosevka Mono", "AnthrosevkaMono-BoldItalic.ttf", 700, "italic"),
         ] + ["Sans", "Mono"].flatMap { kind -> [(String, String, Int, String)] in [
             ("Recursive \(kind)", "Recursive\(kind)LnrSt-Regular.otf", 400, "normal"),
             ("Recursive \(kind)", "Recursive\(kind)LnrSt-Italic.otf", 400, "italic"),

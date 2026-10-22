@@ -812,7 +812,7 @@ enum DebugControl {
             wc?.setColorScheme(item)
             return "ok"
         case "theme":
-            guard let theme = FontTheme(rawValue: arg) else { return "notes, tiempos, tiemposFira, tiemposJetBrains, mona, recursive, go or system" }
+            guard let theme = FontTheme(rawValue: arg) else { return "notes, tiempos, tiemposFira, tiemposJetBrains, tiemposAnthrosevka, mona, recursive, go or system" }
             let item = NSMenuItem()
             item.representedObject = theme.rawValue
             wc?.setTheme(item)

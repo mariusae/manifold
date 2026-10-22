@@ -11,6 +11,7 @@ extension FontTheme {
         case .tiempos: "Tiempos"
         case .tiemposFira: "Tiempos/Fira"
         case .tiemposJetBrains: "Tiempos/JetBrains"
+        case .tiemposAnthrosevka: "Tiempos/Anthrosevka"
         case .mona: "Mona"
         case .recursive: "Recursive"
         case .go: "Go"
@@ -21,7 +22,7 @@ extension FontTheme {
     var proportionalName: String {
         switch self {
         case .notes: "SF Pro"
-        case .tiempos, .tiemposFira, .tiemposJetBrains: "Tiempos Text"
+        case .tiempos, .tiemposFira, .tiemposJetBrains, .tiemposAnthrosevka: "Tiempos Text"
         case .mona: "Mona Sans"
         case .recursive: "Recursive Sans"
         case .go: "Go"
@@ -35,6 +36,7 @@ extension FontTheme {
         case .tiempos: "Menlo"
         case .tiemposFira: "Fira Code"
         case .tiemposJetBrains: "JetBrains Mono"
+        case .tiemposAnthrosevka: "Anthrosevka Mono"
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
         case .go: "Go Mono"
@@ -59,6 +61,7 @@ extension FontTheme {
         case .tiempos: "font-family = Menlo"
         case .tiemposFira: "font-family = Fira Code"
         case .tiemposJetBrains: "font-family = JetBrains Mono"
+        case .tiemposAnthrosevka: "font-family = Anthrosevka Mono"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
         // Terminal.app's copy, registered for this process at launch.
@@ -82,10 +85,13 @@ extension FontTheme {
     /// look at a size (Tiempos Text is a text face, set a point larger).
     func editorSize(_ kind: EditorFont) -> CGFloat {
         switch (self, kind) {
-        case (.mona, .proportional), (.tiempos, .proportional), (.tiemposFira, .proportional), (.tiemposJetBrains, .proportional): 15
+        case (.mona, .proportional), (.tiempos, .proportional), (.tiemposFira, .proportional), (.tiemposJetBrains, .proportional),
+             (.tiemposAnthrosevka, .proportional): 15
         case (.recursive, .proportional): 14.5
         case (.go, .proportional), (.system, .proportional), (.notes, .proportional): 14
         case (.go, .monospaced), (.notes, .monospaced), (.tiempos, .monospaced), (.tiemposFira, .monospaced), (.tiemposJetBrains, .monospaced): 13
+        // Iosevka's letters are narrow, and look small at a size.
+        case (.tiemposAnthrosevka, .monospaced): 14
         case (_, .monospaced): 13.5
         }
     }
@@ -94,7 +100,7 @@ extension FontTheme {
         switch kind {
         case .proportional:
             let name: String? = switch self {
-            case .tiempos, .tiemposFira, .tiemposJetBrains: "Tiempos Text"
+            case .tiempos, .tiemposFira, .tiemposJetBrains, .tiemposAnthrosevka: "Tiempos Text"
             case .mona: "Mona Sans"
             case .recursive: "Recursive Sans Linear Static"
             case .go: "Go"
@@ -112,6 +118,7 @@ extension FontTheme {
             case .tiempos: "Menlo"
             case .tiemposFira: "Fira Code"
             case .tiemposJetBrains: "JetBrains Mono"
+            case .tiemposAnthrosevka: "Anthrosevka Mono"
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
             case .go: "Go Mono"
@@ -151,6 +158,7 @@ extension FontTheme {
         case .tiempos: (#""Tiempos Text""#, "Menlo", features, sansFeatures)
         case .tiemposFira: (#""Tiempos Text""#, #""Fira Code""#, features, sansFeatures)
         case .tiemposJetBrains: (#""Tiempos Text""#, #""JetBrains Mono""#, features, sansFeatures)
+        case .tiemposAnthrosevka: (#""Tiempos Text""#, #""Anthrosevka Mono""#, features, sansFeatures)
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
         case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)

@@ -87,6 +87,19 @@ done
 [ -s "$out/OFL.txt" ] || unzip -qjo "$zip" "OFL.txt" -d "$out"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
 
+# Anthrosevka Mono (OFL), Iosevka built after Anthropic Mono, for the
+# Tiempos/Anthrosevka theme.
+anth=v0.4.0
+out=Frameworks/anthrosevka
+mkdir -p "$out"
+zip=vendor/AnthrosevkaMono-$anth.zip
+[ -f "$zip" ] || curl -sSfL -o "$zip" "https://github.com/nanxstats/anthrosevka/releases/download/$anth/AnthrosevkaMono.zip"
+for face in Regular Italic Bold BoldItalic; do
+  [ -s "$out/AnthrosevkaMono-$face.ttf" ] || unzip -qjo "$zip" "AnthrosevkaMono-$face.ttf" -d "$out"
+done
+github_file nanxstats/anthrosevka $anth LICENSE "$out/LICENSE"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+
 # Tiempos Text, for the Tiempos themes: copied, not fetched.
 tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
 out=Frameworks/tiempos
