@@ -158,12 +158,13 @@ final class HostClient {
     /// When this host's link last brought anything, kept once it's gone.
     private var lastContact: Date?
     /// How long a pong may take at least before the link counts as dead.
-    static let answerWithin: TimeInterval = 3
-    /// The host has said nothing for this long while it should have (a ping
-    /// unanswered), or its link is gone and not yet back: posted for its
-    /// terminals each second (`silence` in userInfo, none once it's over).
-    static let silenceChanged = Notification.Name("ManifoldHostSilence")
+    static let answerWithin: TimeInterval = 6
+    /// Whether the host was quiet at the last heartbeat (`silence`): its
+    /// row in the sidebar says so as it starts and ends.
     private var silent = false
+    /// Quiet this long — a ping unanswered and nothing else heard — before
+    /// it shows: a link that's slow for a moment answers well before.
+    static let quietAfter: TimeInterval = 3
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
@@ -737,18 +738,28 @@ final class HostClient {
             let heard = mux.linkState().lastRead
             guard heard < sent else { return nil }
             let s = now.timeIntervalSince(heard)
-            return s >= 1.5 ? s : nil
+            return s >= Self.quietAfter ? s : nil
         }
         guard isRemote, !disconnected, let lastContact else { return nil }
         return now.timeIntervalSince(lastContact)
     }
 
     private func postSilence() {
-        let s = silence
-        guard s != nil || silent else { return }
-        silent = s != nil
-        NotificationCenter.default.post(name: Self.silenceChanged, object: self,
-                                        userInfo: s.map { ["silence": $0, "connected": link == .connected] } ?? [:])
+        let quiet = silence != nil && link == .connected
+        guard quiet != silent else { return }
+        silent = quiet
+        scheduleChange()
+    }
+
+    /// Said of a host that's quiet, or being reached again: how long since
+    /// it was last heard from (as of the hover).
+    var silenceDescription: String? {
+        guard let s = silence else { return nil }
+        let n = Int(s.rounded(.down))
+        let ago = n < 60 ? "\(n) s" : n < 3600 ? "\(n / 60) min" : "\(n / 3600) h"
+        return link == .connected
+            ? "Nothing heard from it for \(ago): the network may be slow, or gone. Its terminals hold what's typed; the link is made again if this goes on."
+            : "Last heard from \(ago) ago."
     }
 
     /// Ports of this host's forwarded to this Mac (§8).

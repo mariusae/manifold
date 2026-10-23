@@ -3122,12 +3122,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func hostStanding(_ n: OrgNode, _ c: HostClient) {
         switch c.link {
         case .connected:
-            break
+            // Up, but quiet a while: a broken ring, and on hover, how long.
+            guard c.silence != nil else { break }
+            n.look = .quiet
+            n.liveTooltip = { [weak c] in c?.silenceDescription ?? "Heard from again." }
         case .connecting:
             n.look = .connecting
             n.detail = "connecting…"
-            // The step under way and how long so far, as of the hover.
-            n.liveTooltip = { [weak c] in c?.stepDescription ?? "Connecting…" }
+            // The step under way and how long so far, as of the hover; and
+            // when it was last heard from, if it was connected before.
+            n.liveTooltip = { [weak c] in
+                [c?.stepDescription ?? "Connecting…", c?.silenceDescription].compactMap { $0 }.joined(separator: "\n")
+            }
             n.dimmed = true
         case .unreachable(let why):
             n.look = .offline
@@ -7199,7 +7205,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: self = .done
         case .failed: self = .failed
         case .working: self = .working
-        case .inactive, .connecting, .offline: self = .inactive
+        case .inactive, .connecting, .offline, .quiet: self = .inactive
         }
     }
 

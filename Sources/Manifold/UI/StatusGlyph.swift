@@ -18,6 +18,9 @@ final class StatusGlyph: NSView {
         case connecting
         /// A host that can't be reached now: what's shown is as last seen.
         case offline
+        /// A host whose link is up but hasn't been heard from for a while
+        /// (a ping unanswered): a broken ring.
+        case quiet
     }
 
     var look: Look? {
@@ -71,6 +74,7 @@ final class StatusGlyph: NSView {
         case .inactive: words = ["Inactive: the shell ended while idle"]
         case .connecting: words = ["Connecting to its host"]
         case .offline: words = ["Its host can't be reached: as last seen"]
+        case .quiet: words = ["Its host has been quiet a while"]
         case .needsYou:
             switch r?.kind {
             case .permission?: words = ["Needs you: permission"]
@@ -201,6 +205,15 @@ final class StatusGlyph: NSView {
             slash.move(to: NSPoint(x: center.x - radius * 0.6, y: center.y - radius * 0.6))
             slash.line(to: NSPoint(x: center.x + radius * 0.6, y: center.y + radius * 0.6))
             slash.stroke()
+        case .quiet:
+            // A broken ring, in amber: the signal faltering, not yet gone.
+            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+            ring.lineWidth = 1.6
+            ring.lineCapStyle = .round
+            let dash = 2 * .pi * radius / 6
+            ring.setLineDash([dash * 0.55, dash * 0.45], count: 2, phase: 0)
+            amber.setStroke()
+            ring.stroke()
         case .inactive:
             // A crescent: the disc less a disc shifted up and right.
             let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))

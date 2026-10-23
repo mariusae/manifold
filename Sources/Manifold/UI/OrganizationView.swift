@@ -261,6 +261,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
         roots = nodes
         expandedByDefault = openByDefault
+        // Where it was scrolled to, kept: reloaded, its rows are closed for
+        // a moment, the list short, and it would be back at the top.
+        let scrolled = scroll.contentView.bounds.origin
+        defer {
+            scroll.contentView.scroll(to: scrolled)
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
         outline.reloadData()
         func expandAll(_ list: [OrgNode]) {
             for n in list where expanded.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
@@ -481,7 +488,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")"
         }.joined(separator: "\n")
     }
 

@@ -352,11 +352,12 @@ around it, and comes back with its history.
   stream. A terminal whose host goes away keeps what it showed, and
   picks up where it was when the host is back — its history, scroll and
   selection kept, caught up with the screen; a remote host is one ssh session
-  however many terminals it has. A link that's gone dead is noticed in a few
-  seconds (a ping every two, unanswered for three or four round trips with
-  nothing else coming) and made again at once, as it is when the Mac wakes
-  or moves to another network; meanwhile its terminals say "Last contact
-  4 s ago" (and "reconnecting…"), as mosh does. What's typed into a dying
+  however many terminals it has. A host that's gone quiet (a ping every two
+  seconds, one unanswered with nothing else heard for three) shows a broken
+  amber ring by its name in the sidebar, which on hover says how long since
+  it was last heard from; quiet for six (or four round trips), its link is
+  taken for dead and made again at once, as it is when the Mac wakes or
+  moves to another network (a spinner there then). What's typed into a dying
   link or while it's away isn't lost: a terminal attaching again sends its
   last 15 seconds of input, and the host writes only what it hadn't taken —
   a keystroke the host had already isn't written twice. The host keeps each terminal itself, in
