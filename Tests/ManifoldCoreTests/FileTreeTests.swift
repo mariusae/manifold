@@ -131,3 +131,43 @@ private func wait(until done: () -> Bool) {
     #expect(!((try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []).contains { $0.hasPrefix("." + dest.lastPathComponent + ".manifold-") })
     queue.sync { a.connection.close(); b.connection.close() }
 }
+
+/// Compressed (their tests set what's shared: one at a time, beside the
+/// mux's).
+@Suite(.serialized) struct CompressedTrees {
+    @Test func aTextFileGoesDownACompressedStreamWhole() throws {
+        let saved = Mux.compressBelow
+        Mux.compressBelow = .infinity
+        defer { Mux.compressBelow = saved }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tree-z-\(UUID().uuidString)").path
+        let dest = root + "-out"
+        defer { try? FileManager.default.removeItem(atPath: root); try? FileManager.default.removeItem(atPath: dest) }
+        var text = ""
+        var i = 0
+        while text.utf8.count < 700_000 { i += 1; text += "-rw-r--r--  1 root  wheel  \(i * 31) Oct 23 file\(i)\n" }
+        try Data(text.utf8).write(to: URL(fileURLWithPath: root))
+        let queue = DispatchQueue(label: "tree-test")
+        let (a, b) = muxPair(queue)
+        let result = Box<(String?, String?)>()
+        var source: TreeSource?
+        a.onStream = { stream in
+            source = TreeSource(stream, root: root)
+            source?.start()
+        }
+        b.compression = true
+        queue.sync {
+            a.start()
+            b.start()
+            let s = b.open(bulk: true, compress: true, callbackQueue: DispatchQueue(label: "sink"))
+            let sink = TreeSink(s, destination: dest, replace: false)
+            sink.onFinished = { e, p in result.set((e, p)) }
+            s.onFrame = { sink.received($0) }
+            s.onClose = { sink.cut("closed") }
+            s.send(Frame(.data, Data("go".utf8)))
+        }
+        wait { result.get != nil }
+        #expect(result.get?.0 == nil)
+        #expect(FileManager.default.contents(atPath: dest) == Data(text.utf8))
+        queue.sync { a.connection.close(); b.connection.close() }
+    }
+}

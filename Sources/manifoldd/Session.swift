@@ -312,8 +312,7 @@ final class Session {
 
     /// A terminal's history after its screen (`BackfillRequest`): the rows
     /// asked for that are still kept, at most `limit` (the newest), newest
-    /// first in pieces, each its rows' first and end, its width, its rows
-    /// (compressed, if asked for and smaller so);
+    /// first in pieces, each its rows' first and end, its width, its rows;
     /// a seam above them if older ones were asked for that won't come;
     /// then `replayDone`: all there is. Another numbering (the terminal
     /// made again, or reflowed since): nothing, closed.
@@ -331,10 +330,6 @@ final class Session {
             withUnsafeBytes(of: hi.bigEndian) { d.append(contentsOf: $0) }
             withUnsafeBytes(of: screen.width.bigEndian) { d.append(contentsOf: $0) }
             d.append(rows)
-            if req.zstd == true {
-                let packed = Zstd.compress(d)
-                if !packed.isEmpty, packed.count < d.count { return Frame(.zstd, packed) }
-            }
             return Frame(.data, d)
         }
         let seam = Data("\u{1b}[0m\u{1b}[2m── earlier output not kept ──\u{1b}[0m".utf8)

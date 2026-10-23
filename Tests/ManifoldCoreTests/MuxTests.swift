@@ -124,6 +124,38 @@ private final class Inbox: @unchecked Sendable {
 /// still acknowledged, so the sender's count of bytes in flight comes back
 /// to nothing — else its pacing, waiting for that count to empty before
 /// measuring the round trip, would stop every paced stream for good.
+@Test func whatsSentFromAnotherThreadBeforeACloseAllArrives() {
+    let queue = DispatchQueue(label: "mux-test")
+    let (client, server) = muxPair(queue)
+    let inbox = Inbox()
+    let rounds = 20, frames = 300
+    server.onStream = { s in
+        // A producer of its own (as a file's reader is), sending and then
+        // closing while the mux drains what's gone before.
+        s.onFrame = { _ in
+            DispatchQueue.global().async {
+                for i in 0..<frames { s.send(Frame(.data, Data(repeating: UInt8(i & 0xff), count: 2_000))) }
+                s.close()
+            }
+        }
+    }
+    queue.sync {
+        client.start()
+        server.start()
+    }
+    for r in 0..<rounds {
+        queue.sync {
+            let c = client.open(bulk: true)
+            c.onFrame = { inbox.add("round \(r)", $0) }
+            c.onClose = { inbox.closed("round \(r)") }
+            c.send(Frame(.data, Data("go".utf8)))
+        }
+    }
+    wait { (0..<rounds).allSatisfy { inbox.isClosed("round \($0)") } }
+    #expect((0..<rounds).map { inbox.get("round \($0)").count } == Array(repeating: frames, count: rounds))
+    queue.sync { client.connection.close(); server.connection.close() }
+}
+
 @Test func pacedBytesToAStreamClosedOnTheWayAreStillAcknowledged() {
     let queue = DispatchQueue(label: "mux-test")
     let (client, server) = muxPair(queue)
@@ -167,14 +199,159 @@ private final class Inbox: @unchecked Sendable {
         return
     }
     #expect(back.block == req.block && back.epoch == 7 && back.from == 10 && back.to == 400 && back.limit == 5_000)
-    #expect(back.zstd == nil)
+}
 
-    // Compressed pieces asked for: a server from before reads the rest as
-    // it did (and sends them plain), and one asking now is heard.
-    var zreq = req
-    zreq.zstd = true
-    let encoded = Frame.message(zreq)
-    struct Before: Codable { var block: BlockID; var epoch, from, to, limit: UInt64 }
-    #expect(encoded.decode(Before.self)?.limit == 5_000)
-    #expect(encoded.decode(BackfillRequest.self)?.zstd == true)
+/// Compressed streams (their tests set what's shared: one at a time).
+@Suite(.serialized) struct CompressedStreams {
+    @Test func aFilesBigPiecesGoCompressedAndAllArriveBeforeTheClose() throws {
+        let saved = Mux.compressBelow
+        Mux.compressBelow = .infinity
+        defer { Mux.compressBelow = saved }
+        let queue = DispatchQueue(label: "mux-test")
+        let (client, server) = muxPair(queue)
+        let inbox = Inbox()
+        // Text, as a file of it: pieces of the most a bulk frame carries.
+        var text = Data()
+        var i = 0
+        while text.count < 700_000 { i += 1; text += Data("-rw-r--r--  1 root  wheel  \(i * 31) Oct 23 file\(i)\n".utf8) }
+        let pieces = stride(from: 0, to: text.count, by: Mux.bulkPiece).map { text[$0..<min(text.count, $0 + Mux.bulkPiece)] }
+        server.onStream = { s in
+            s.onFrame = { _ in
+                for p in pieces { s.send(Frame(.data, Data(p))) }
+                s.send(Frame(.data, Data("the end".utf8)))
+                s.close()
+            }
+        }
+        client.compression = true
+        var c: MuxStream!
+        queue.sync {
+            client.start()
+            server.start()
+            c = client.open(bulk: true, compress: true)
+            c.onFrame = { inbox.add("client", $0) }
+            c.onClose = { inbox.closed("client") }
+            c.send(Frame(.data, Data("send it".utf8)))
+        }
+        wait { inbox.isClosed("client") }
+        let got = inbox.get("client")
+        #expect(got.count == pieces.count + 1)
+        #expect(got.dropLast().reduce(Data()) { $0 + $1.payload } == text)
+        #expect(got.last?.payload == Data("the end".utf8))
+        print("file: \(text.count) bytes, \(server.pacedSent) on the link")
+        queue.sync { client.connection.close(); server.connection.close() }
+    }
+
+    @Test func aCompressedStreamsFramesGoSmallerBothWaysAndArriveAsTheyWere() {
+        // A socket pair is as fast as links come: taken for a slow one here.
+        let saved = Mux.compressBelow
+        Mux.compressBelow = .infinity
+        defer { Mux.compressBelow = saved }
+        let queue = DispatchQueue(label: "mux-test")
+        let (client, server) = muxPair(queue)
+        let inbox = Inbox()
+        var serverStream: MuxStream?
+        server.onStream = { s in
+            serverStream = s
+            s.onFrame = { f in inbox.add("server", f) }
+        }
+        client.compression = true
+        let lines = (1...2_000).map { Data("\u{1b}[32m-rw-r--r--\u{1b}[0m  1 marius  staff  \($0 * 37) Oct 23 file\($0).txt\r\n".utf8) }
+        let raw = lines.reduce(0) { $0 + $1.count + 5 }
+        var s: MuxStream!
+        queue.sync {
+            client.start()
+            server.start()
+            s = client.open(bulk: true, compress: true)
+            s.onFrame = { inbox.add("client", $0) }
+            // Small ones as they are: a keystroke.
+            s.send(Frame(.data, Data("ls\r".utf8)))
+            for l in lines { s.send(Frame(.data, l)) }
+        }
+        wait { inbox.get("server").count == lines.count + 1 }
+        #expect(inbox.get("server").map(\.payload) == [Data("ls\r".utf8)] + lines)
+        // What crossed the link: far less than the frames (each still with
+        // its stream's and its own framing, ten bytes).
+        print("compressed stream: \(raw) bytes of frames, \(client.pacedSent) on the link")
+        #expect(client.pacedSent * 2 < UInt64(raw))
+        #expect(s.compresses && serverStream?.compresses == true)
+
+        // And back: the server's side of it compresses too.
+        queue.sync { for l in lines.prefix(500) { serverStream!.send(Frame(.data, l)) } }
+        wait { inbox.get("client").count == 500 }
+        #expect(inbox.get("client").map(\.payload) == Array(lines.prefix(500)))
+        #expect(server.pacedSent * 2 < UInt64(lines.prefix(500).reduce(0) { $0 + $1.count + 5 }))
+        queue.sync { client.connection.close(); server.connection.close() }
+    }
+
+    @Test func anIdleCompressedStreamLetsGoOfItsCompressingAndTakesItUpAgain() {
+        let saved = (MuxStream.compressIdle, Mux.compressBelow)
+        MuxStream.compressIdle = 0.2
+        Mux.compressBelow = .infinity
+        defer { (MuxStream.compressIdle, Mux.compressBelow) = saved }
+        let queue = DispatchQueue(label: "mux-test")
+        let (client, server) = muxPair(queue)
+        let inbox = Inbox()
+        var serverStream: MuxStream?
+        server.onStream = { s in
+            serverStream = s
+            s.onFrame = { f in inbox.add("server", f) }
+        }
+        client.compression = true
+        let line = Data(String(repeating: "some output, again and again ", count: 10).utf8)
+        var s: MuxStream!
+        queue.sync {
+            client.start()
+            server.start()
+            s = client.open(bulk: true, compress: true)
+            s.send(Frame(.data, line))
+        }
+        wait { inbox.get("server").count == 1 }
+        #expect(s.compressing.deflater && serverStream?.compressing.inflater == true)
+        // Idle: both ends let go of theirs.
+        wait { !s.compressing.deflater && serverStream?.compressing.inflater == false }
+        #expect(!s.compressing.deflater && serverStream?.compressing.inflater == false)
+        // Taken up again, the frames as they were.
+        queue.sync { s.send(Frame(.data, line)) }
+        wait { inbox.get("server").count == 2 }
+        #expect(inbox.get("server").map(\.payload) == [line, line])
+        queue.sync { client.connection.close(); server.connection.close() }
+    }
+
+    @Test func aStreamOpenedCompressedToAnEndThatCantTakeItGoesAsItIs() {
+        let queue = DispatchQueue(label: "mux-test")
+        let (client, server) = muxPair(queue)
+        let inbox = Inbox()
+        var serverStream: MuxStream?
+        server.onStream = { s in
+            serverStream = s
+            s.onFrame = { f in inbox.add("server", f) }
+        }
+        // client.compression left false: a server from before.
+        let line = Data(String(repeating: "x", count: 1_000).utf8)
+        var s: MuxStream!
+        queue.sync {
+            client.start()
+            server.start()
+            s = client.open(bulk: true, compress: true)
+            s.send(Frame(.data, line))
+        }
+        wait { inbox.get("server").count == 1 }
+        #expect(!s.compresses && serverStream?.compresses == false)
+        #expect(client.pacedSent > 1_000)
+        queue.sync { client.connection.close(); server.connection.close() }
+    }
+}
+
+@Test func aWelcomeSaysWhatItsServerCanDoAndOneFromBeforeSaysNothing() throws {
+    let host = HostID("h4z3gpme3et")
+    // An app from before reads a welcome with features as it did.
+    enum Before: Codable { case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot]) }
+    let now = Frame.message(ServerMessage.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: [], features: ["zstd"]))
+    guard case .welcome(51, 1, host, nil, 0, "/", _)? = now.decode(Before.self) else { Issue.record("not read as before"); return }
+    guard case let .welcome(_, _, _, _, _, _, _, features)? = now.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    #expect(features == ["zstd"])
+    // A server from before: none.
+    let then = Frame.message(Before.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: []))
+    guard case let .welcome(_, _, _, _, _, _, _, none)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    #expect(none == nil)
 }

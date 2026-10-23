@@ -29,6 +29,14 @@ extension Connection: Channel {}
 /// queued below us (ssh's window, the sockets' buffers) stays small and
 /// a keystroke isn't left behind megabytes of a file.
 ///
+/// A stream opened `compress` (a terminal's, a file's — not a forwarded
+/// port's, whose bytes are mostly compressed already, or encrypted, and
+/// would tell by their size what they hold) goes compressed both ways when
+/// the other end can take it (`compression`) and the link is slow enough
+/// to gain: each frame of any size against those before it on the stream
+/// (`Zstd.Encoder`), as a `zstdFrame`; its window counts the frames as
+/// they were, its pacing the bytes that go.
+///
 /// It runs on its connection's queue. `open`, and a stream's or the
 /// control channel's `send`, `close` and `consumed`, may be called from
 /// any thread: they go to the queue, in the order made. A stream's (or
@@ -79,6 +87,23 @@ public final class Mux {
     private var rates: [(at: Date, rate: Double)] = []
     public private(set) var budget = 256 << 10
 
+    /// Whether the other end takes streams compressed (its server said so,
+    /// and it isn't this machine): set by the client once it's heard.
+    public var compression: Bool {
+        get { lock.withLock { _compression } }
+        set { lock.withLock { _compression = newValue } }
+    }
+    private var _compression = false
+
+    /// Frames compressed as they went, in all, and what they came to (on
+    /// the queue).
+    fileprivate var compressedFrom = 0, compressedTo = 0
+    /// Compressed frames received, and what they came to.
+    private var inflatedFrom = 0, inflatedTo = 0
+
+    /// Faster than this, a link isn't worth compressing for.
+    static var compressBelow = Double(32 << 20)
+
     public init(_ connection: Connection) {
         self.connection = connection
         if let t = connection.queue.getSpecific(key: Self.queueKey) {
@@ -113,22 +138,30 @@ public final class Mux {
     }
 
     /// A new stream (the client's side): `bulk` ones paced, `urgent` ones
-    /// (a terminal's) paced too but ahead of the others; handlers run on
+    /// (a terminal's) paced too but ahead of the others; `compress` ones
+    /// compressed, if the other end takes it; handlers run on
     /// `callbackQueue` (nil: the mux's queue).
-    public func open(bulk: Bool, urgent: Bool = false, callbackQueue: DispatchQueue? = nil) -> MuxStream {
+    public func open(bulk: Bool, urgent: Bool = false, compress: Bool = false, callbackQueue: DispatchQueue? = nil) -> MuxStream {
         lock.lock()
         let id = nextID
         nextID &+= 1
+        let compress = compress && _compression
         lock.unlock()
-        let s = MuxStream(id: id, bulk: bulk || urgent, urgent: urgent, mux: self)
+        let s = MuxStream(id: id, bulk: bulk || urgent, urgent: urgent, compresses: compress, mux: self)
         s.callbackQueue = callbackQueue
         onQueue { [self] in
             if connection.isClosed { return s.peerClosed() }
             streams[id] = s
-            sendOp(id, .open, Data([urgent ? 2 : bulk ? 1 : 0]))
+            // Its kind, then (to a server that knows) its flags.
+            var open = Data([urgent ? 2 : bulk ? 1 : 0])
+            if compress { open.append(1) }
+            sendOp(id, .open, open)
         }
         return s
     }
+
+    /// Whether the link is slow enough that compressing gains (on the queue).
+    var worthCompressing: Bool { (rates.map(\.rate).max() ?? 0) < Self.compressBelow }
 
     /// Closes the connection (from anywhere).
     public func close() { onQueue { [connection] in connection.close() } }
@@ -146,7 +179,7 @@ public final class Mux {
     /// closed at this end while the other was sending on it still has
     /// what was on its way counted, or the sender's pacing would wait for
     /// it forever.
-    enum Op: UInt8 { case open = 0, frame = 1, close = 2, credit = 3, pacedFrame = 4 }
+    enum Op: UInt8 { case open = 0, frame = 1, close = 2, credit = 3, pacedFrame = 4, zstdFrame = 5, zstdPacedFrame = 6 }
 
     private func sendOp(_ id: UInt32, _ op: Op, _ rest: Data) {
         connection.send(Self.opFrame(id, op, rest))
@@ -180,23 +213,35 @@ public final class Mux {
         switch op {
         case .open:
             guard streams[id] == nil else { return }
-            let s = MuxStream(id: id, bulk: rest.first == 1 || rest.first == 2, urgent: rest.first == 2, mux: self)
+            let flags = rest.count > 1 ? rest[rest.startIndex + 1] : 0
+            let s = MuxStream(id: id, bulk: rest.first == 1 || rest.first == 2, urgent: rest.first == 2, compresses: flags & 1 != 0, mux: self)
             streams[id] = s
             onStream?(s)
-        case .frame, .pacedFrame:
+        case .frame, .pacedFrame, .zstdFrame, .zstdPacedFrame:
             // Received, whether or not it's taken yet (or its stream is
             // still here to take it): the link has it.
-            if op == .pacedFrame {
+            if op == .pacedFrame || op == .zstdPacedFrame {
                 bulkReceived &+= UInt64(wire)
                 var d = Data(capacity: 8)
                 withUnsafeBytes(of: bulkReceived.bigEndian) { d.append(contentsOf: $0) }
                 connection.send(Frame(.linkAck, d))
             }
             guard let s = streams[id] else { return }
+            var bytes = rest
+            if op == .zstdFrame || op == .zstdPacedFrame {
+                // Out of turn, or not what its encoder made: the
+                // connection can't be trusted to go on.
+                guard let d = s.inflate(rest) else { return connection.close() }
+                inflatedFrom += rest.count
+                inflatedTo += d.count
+                // The end of its compressed frames, holding none.
+                if d.isEmpty { return }
+                bytes = d
+            }
             var decoder = FrameDecoder()
-            decoder.append(rest)
+            decoder.append(bytes)
             guard let inner = try? decoder.next() else { return connection.close() }
-            s.delivered(inner, size: rest.count)
+            s.delivered(inner, size: bytes.count)
         case .credit:
             guard let s = streams[id], rest.count == 4 else { return }
             s.credited(Int(rest.reduce(UInt32(0)) { $0 << 8 | UInt32($1) }))
@@ -224,7 +269,7 @@ public final class Mux {
             if !ready.contains(where: { $0 === s }) { ready.append(s) }
             if !pumping { pumpBulk() }
         } else {
-            while let f = s.next() { sendOp(s.id, .frame, f) }
+            while let f = s.next() { sendOp(s.id, f.zstd ? .zstdFrame : .frame, f.bytes) }
             s.drainedIfEmpty()
         }
     }
@@ -256,7 +301,7 @@ public final class Mux {
                 s.drainedIfEmpty()
                 continue
             }
-            let frame = Self.opFrame(s.id, .pacedFrame, f)
+            let frame = Self.opFrame(s.id, f.zstd ? .zstdPacedFrame : .pacedFrame, f.bytes)
             bulkSent &+= UInt64(frame.payload.count + 5)
             marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
             if probing { probe = bulkSent }
@@ -317,6 +362,8 @@ public final class Mux {
 
     /// Paced bytes sent and not yet acknowledged (from anywhere).
     var inFlight: UInt64 { onQueueNow { bulkSent - bulkAcked } }
+    /// Paced bytes sent, in all (from anywhere).
+    var pacedSent: UInt64 { onQueueNow { bulkSent } }
 
     /// Debugging: the pacing's state (from anywhere).
     public var debugPacing: String { onQueueNow { pacing } }
@@ -324,7 +371,9 @@ public final class Mux {
     private var pacing: String {
         let rtt = minRTT.map { String(format: "%.1f ms", $0.rtt * 1000) } ?? "?"
         let rate = rates.map(\.rate).max().map { String(format: "%.0f KB/s", $0 / 1024) } ?? "?"
-        return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), rate \(rate), streams \(streams.count)"
+        let zstd = (compressedFrom == 0 ? "" : ", sent compressed \(compressedFrom >> 10) → \(compressedTo >> 10) KB")
+            + (inflatedFrom == 0 ? "" : ", received compressed \(inflatedFrom >> 10) → \(inflatedTo >> 10) KB")
+        return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), rate \(rate), streams \(streams.count)\(zstd)"
     }
 }
 
@@ -363,6 +412,8 @@ public final class MuxStream: Channel {
     public let bulk: Bool
     /// Paced, but ahead of the others (a terminal's).
     public let urgent: Bool
+    /// Its frames go compressed (both ends agreed when it opened).
+    public let compresses: Bool
     /// How much may wait to go before a producer is told to hold off
     /// (`wantsMore`): a terminal's is small, so one that falls behind is
     /// caught up with its screen, not left to drain what it missed.
@@ -388,13 +439,32 @@ public final class MuxStream: Channel {
     // On the mux's queue:
     /// What may be sent before the other end gives credit.
     private var window = Mux.window
-    private var outbox: [Data] = []
+    /// Frames to go: their bytes (compressed, or as they are) and their
+    /// size as they are, which the window counts.
+    private var outbox: [(bytes: Data, zstd: Bool, size: Int)] = []
     private var uncredited = 0
+    /// Compressing what it sends, and what it was sent (made when a frame
+    /// is, let go after a while with none).
+    private var deflater: Zstd.Encoder?
+    private var inflater: Zstd.Decoder?
+    private var lastDeflated = Date.distantPast
+    /// `close` taken on the queue, after what was sent before it.
+    private var closeTaken = false
+    private var idleCheck = false
+    /// What it sends doesn't get smaller (it was compressed already): sent
+    /// as it is from then on.
+    private var incompressible = false
 
-    init(id: UInt32, bulk: Bool, urgent: Bool = false, mux: Mux) {
+    /// A frame smaller than this goes as it is (a keystroke, its echo).
+    static let compressFrom = 64
+    /// A stream's compressing let go of after this long without a frame.
+    static var compressIdle: TimeInterval = 10
+
+    init(id: UInt32, bulk: Bool, urgent: Bool = false, compresses: Bool = false, mux: Mux) {
         self.id = id
         self.bulk = bulk
         self.urgent = urgent
+        self.compresses = compresses
         self.mux = mux
     }
 
@@ -413,9 +483,78 @@ public final class MuxStream: Channel {
         }
         guard ok, let mux else { return }
         mux.onQueue { [self] in
-            outbox.append(data)
+            // Compressed here, on the queue, so in the order frames go out.
+            let out = deflate(data)
+            if out.bytes.count != data.count { lock.withLock { _queued += out.bytes.count - data.count } }
+            outbox.append((out.bytes, out.zstd, data.count))
+            // Given up on (it doesn't get smaller): its frames ended, after this one.
+            if incompressible { endDeflating() }
             self.mux?.pump(self)
         }
+    }
+
+    /// A frame to go, compressed if this stream is and it gains (on the
+    /// queue).
+    private func deflate(_ data: Data) -> (bytes: Data, zstd: Bool) {
+        guard compresses, !incompressible, data.count >= Self.compressFrom, mux?.worthCompressing == true else { return (data, false) }
+        guard let enc = deflater ?? Zstd.Encoder() else { return (data, false) }
+        guard let packed = enc.compress(data) else {
+            // zstd failed: its frames can't go on; the rest as they are.
+            incompressible = true
+            deflater = nil
+            return (data, false)
+        }
+        deflater = enc
+        lastDeflated = Date()
+        mux?.compressedFrom += data.count
+        mux?.compressedTo += packed.count
+        // A good deal of it, and no smaller (an image, an archive): ended,
+        // and not tried again.
+        if enc.taken >= 256 << 10, enc.made * 10 > enc.taken * 9 {
+            incompressible = true
+        } else if !idleCheck {
+            idleCheck = true
+            checkIdle(after: Self.compressIdle)
+        }
+        return (packed, true)
+    }
+
+    /// Its compressing let go of when it's been idle: ended (the other end
+    /// lets go of its own), made again for the next frame.
+    private func checkIdle(after delay: TimeInterval) {
+        mux?.queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, deflater != nil, !isClosed else {
+                self?.idleCheck = false
+                return
+            }
+            let idle = Date().timeIntervalSince(lastDeflated)
+            if idle < Self.compressIdle { return checkIdle(after: Self.compressIdle - idle) }
+            idleCheck = false
+            endDeflating()
+            mux?.pump(self)
+        }
+    }
+
+    /// The encoder's frames ended, the end sent after what's waiting; it's
+    /// let go of (on the queue).
+    private func endDeflating() {
+        guard let enc = deflater else { return }
+        deflater = nil
+        guard let end = enc.end() else { return }
+        lock.withLock { _queued += end.count }
+        outbox.append((end, true, 0))
+    }
+
+    /// Whether it holds an encoder, a decoder now (debugging, tests).
+    var compressing: (deflater: Bool, inflater: Bool) { mux?.onQueueNow { (deflater != nil, inflater != nil) } ?? (false, false) }
+
+    /// A compressed frame received made again (on the queue); nil if it
+    /// can't be. Its decoder let go of once its encoder's frames end.
+    func inflate(_ data: Data) -> Data? {
+        guard let dec = inflater ?? Zstd.Decoder() else { return nil }
+        guard let d = dec.decompress(data) else { return nil }
+        inflater = dec.finished ? nil : dec
+        return d
     }
 
     /// Closed once what was sent before has gone.
@@ -426,7 +565,10 @@ public final class MuxStream: Channel {
             return true
         }
         guard first else { return }
-        mux?.onQueue { [self] in finishClose() }
+        mux?.onQueue { [self] in
+            closeTaken = true
+            finishClose()
+        }
     }
 
     /// Closed now, what's waiting dropped (a copy stopped): the other end
@@ -471,12 +613,12 @@ public final class MuxStream: Channel {
     var hasNext: Bool { !outbox.isEmpty && window > 0 }
 
     /// The next frame, if the window lets it go.
-    func next() -> Data? {
+    func next() -> (bytes: Data, zstd: Bool)? {
         guard hasNext else { return nil }
         let d = outbox.removeFirst()
-        lock.withLock { _queued -= d.count }
-        window -= d.count
-        return d
+        lock.withLock { _queued -= d.bytes.count }
+        window -= d.size
+        return (d.bytes, d.zstd)
     }
 
     private func onCallbacks(_ work: @escaping () -> Void) {
@@ -484,7 +626,10 @@ public final class MuxStream: Channel {
     }
 
     func drainedIfEmpty() {
-        if lock.withLock({ _closing }) { return finishClose() }
+        // Closing once the close has been taken in turn: not as soon as it's
+        // asked for (from another thread), when frames sent before it may
+        // still be on their way to the queue — they'd be dropped.
+        if closeTaken { return finishClose() }
         if wantsMore, onDrain != nil { onCallbacks { [self] in onDrain?() } }
     }
 

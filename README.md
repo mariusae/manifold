@@ -361,14 +361,16 @@ around it, and comes back with its history.
   Either way the screen comes at once, and the history it hasn't got
   comes after, behind everything else of the terminal's: the host numbers
   each line as it scrolls off, the app says how far it has them, and what's
-  missing is sent newest first, compressed (zstd, built from its sources
-  in Sources/CZstd), and put into the scrollback above the lines already
-  there (a line wrapped over rows still one line), without moving what
-  you're looking at. Up to 5,000 lines for a terminal opened
+  missing is sent newest first and put into the scrollback above the
+  lines already there (a line wrapped over rows still one line), without
+  moving what you're looking at. Up to 5,000 lines for a terminal opened
   anew, and up to 10,000 of what a terminal missed (after a break, or
   behind a flood), past which an “earlier output not kept” line marks the
   hole; a break while history is still coming sends the rest after it.
-  Terminals are paced to the link as files are, but ahead of them. A
+  Terminals are paced to the link as files are, but ahead of them, and
+  over a link to another host go compressed (zstd, built from its sources
+  in Sources/CZstd), each stream's output against what it sent before:
+  history after a break comes in a fraction of a second, not seconds. A
   terminal's menu (right-click) has, under Copy, Paste and Clear, the tree
   of what runs under its shell, the shell first, each process a submenu of
   End, Force End and what runs under it.
@@ -512,7 +514,10 @@ around it, and comes back with its history.
   of it on the way at once than the link holds (its rate and its
   round trip, measured as it goes), so a file on its way — an image or
   a PDF opening too — leaves a keystroke, an edit or an answer behind
-  at most a piece of it, on a slow link or a fast one. The host reads
+  at most a piece of it, on a slow link or a fast one. To and from
+  another host a copy goes compressed, as terminals do (one that doesn't
+  get smaller — an image, an archive — soon goes as it is), but not on a
+  link fast enough not to gain. The host reads
   and writes them aside from its terminals and other clients, and a
   file being replaced is only put in place once all of it has come.
 - **Another host's ports come here**: open a `localhost` address from
@@ -524,7 +529,9 @@ around it, and comes back with its history.
   one; each forward is listed there, to open or stop. A forward keeps
   listening while the host is away, and its connections go again when
   it's back. Each forwarded connection is a stream of the host's
-  connection, paced as files are, and keeps no more than a megabyte on
+  connection, paced as files are (not compressed: what goes through a
+  port is mostly compressed already, or encrypted, and its size could
+  tell what it holds), and keeps no more than a megabyte on
   the way each way, so a fast server and a slow reader (or the other
   way round) fill nothing but themselves; and one side done sending
   still hears the other's answer.

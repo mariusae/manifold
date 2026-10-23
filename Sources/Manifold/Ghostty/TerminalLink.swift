@@ -105,8 +105,9 @@ final class TerminalLink {
         }
     }
 
-    /// Whether the host's link is up, so a stream can be opened.
-    var linkUp: Bool { client?.mux != nil }
+    /// Whether the host's link is up, so a stream can be opened: its
+    /// server has answered (and said what it can do: compressed streams).
+    var linkUp: Bool { client?.mux != nil && client?.link == .connected }
 
     // MARK: From Ghostty (its own threads)
 
@@ -146,14 +147,16 @@ final class TerminalLink {
     }
 
     private func attach(resume: Bool = false) {
-        guard let mux = client?.mux else {
-            // No link yet: closed now, made again once there is one.
+        guard let mux = client?.mux, linkUp else {
+            // No link yet (or its server hasn't answered): closed now, made
+            // again once there is one.
             lock.withLock { attaching = false }
             onClosed?(true)
             return
         }
         // Paced, ahead of files: a flood of output doesn't fill the link.
-        let stream = mux.open(bulk: true, urgent: true, callbackQueue: queue)
+        // Compressed (where the link and the host's server take it).
+        let stream = mux.open(bulk: true, urgent: true, compress: true, callbackQueue: queue)
         stream.onFrame = { [weak self] frame in self?.received(frame) }
         stream.onClose = { [weak self, weak mux] in
             // Its connection closed with it: the link went, not the shell
@@ -259,14 +262,13 @@ final class TerminalLink {
 
     private func fill(_ gap: Gap) {
         guard let mux = client?.mux else { return }
-        let stream = mux.open(bulk: true, callbackQueue: queue)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: queue)
         gap.stream = stream
         stream.onFrame = { [weak self, weak gap, weak stream] frame in
             // Not what an earlier asking (since given up) sends still.
             guard let self, let gap, let stream, gap.stream === stream else { return }
             switch frame.kind {
             case .data: self.filled(gap, frame.payload)
-            case .zstd: if let piece = Zstd.decompress(frame.payload) { self.filled(gap, piece) }
             case .replayDone: self.drop(gap)
             default: break
             }
@@ -274,7 +276,7 @@ final class TerminalLink {
         stream.onClose = { [weak gap, weak stream] in
             if let gap, gap.stream === stream { gap.stream = nil }
         }
-        stream.send(.message(ClientMessage.backfill(BackfillRequest(block: block, epoch: gap.epoch, from: gap.from, to: gap.to, limit: gap.limit, zstd: true))))
+        stream.send(.message(ClientMessage.backfill(BackfillRequest(block: block, epoch: gap.epoch, from: gap.from, to: gap.to, limit: gap.limit))))
     }
 
     /// A piece of a gap's rows (the newest of what's missing): into the

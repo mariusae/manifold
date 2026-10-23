@@ -237,7 +237,8 @@ final class Server {
             }
             let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
-                                                     attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots)))
+                                                     attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots,
+                                                     features: serverFeatures)))
         case .attach(let req)?:
             attach(conn, req)
         case .backfill(let req)?:

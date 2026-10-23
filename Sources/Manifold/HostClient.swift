@@ -788,7 +788,10 @@ final class HostClient {
 
     private func handle(_ message: ServerMessage) {
         switch message {
-        case let .welcome(version, _, host, label, _, home, snapshots):
+        case let .welcome(version, _, host, label, _, home, snapshots, features):
+            // Streams opened compressed from now on, where they ask to be:
+            // over a link to another machine, to a server that takes them.
+            mux?.compression = isRemote && features?.contains("zstd") == true
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 if isRemote {
