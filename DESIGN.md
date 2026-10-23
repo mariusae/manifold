@@ -712,15 +712,17 @@ remote hosts (§8) will need.
 
 ### 7.4 Directory
 
-Finder's, in the content area, in three modes: a list (sortable columns:
-name, date, size, kind; folders on top) that is an outline, each folder
-opening in place into the tree under it; columns (`NSBrowser`), with the
-file chosen previewed in a last column; and a gallery, the file chosen
-large over a strip of Quick Look thumbnails. The preview is Quick Look's
-(`QLPreviewView`) over the name, kind, size and date; a remote file is
-fetched first (`readPath`, 20 MB at most) into a folder by host and path.
-Over them, a bar: the way up (an arrow, ⌘↑, and the path, each folder in
-it a link), a filter, and the modes.
+One tree, as Claude Code's file panel has it, in the content area: an
+outline (folders on top, by name), flat, each folder opening in place
+into the tree under it, files marked by a small symbol in their type's
+colour; the file chosen previewed at the right (`DirectoryTreeMode`, a
+split the tile keeps) when the tile is wide enough. The preview is Quick
+Look's (`QLPreviewView`) over the name, kind, size and date; a remote file
+is fetched first (`readPath`, 20 MB at most) into a folder by host and
+path. Over them, the way up (an arrow, ⌘↑) and a filter: typed, it lists
+the tree's files matching it, ranked as the finder ranks (`FileFinder`),
+the letters matched shown; "?" and words search the files' contents, in a
+search block (§7.5) beside.
 
 The host lists (§4): a folder's entries come with `isIgnored` set from
 the repository it's in (`git check-ignore`, or for Sapling whatever isn't

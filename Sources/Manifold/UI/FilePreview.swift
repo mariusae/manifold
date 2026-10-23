@@ -1,6 +1,5 @@
 import AppKit
 import Quartz
-import QuickLookThumbnailing
 
 /// A file as the Finder previews it (§7.4): Quick Look's view of it over
 /// its name, its kind and size, and when it changed; a folder, its icon.
@@ -18,8 +17,6 @@ final class FilePreviewView: NSView {
     private let date = NSTextField(labelWithString: "")
     private(set) var node: BrowserNode?
     private var token = 0
-    /// Centred, the info beneath in one block (the gallery); else at the left (a column).
-    var centered = false { didSet { for f in [name, info, date] { f.alignment = centered ? .center : .left } } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -112,29 +109,5 @@ final class FilePreviewController: NSViewController {
 
     override var representedObject: Any? {
         didSet { preview.show(representedObject as? BrowserNode) }
-    }
-}
-
-/// Thumbnails, as the Finder draws them: Quick Look's, for files here;
-/// the type's icon, for those on another host.
-enum Thumbnails {
-    private static var cache: [String: NSImage] = [:]
-
-    static func load(_ node: BrowserNode, local: Bool, size: CGFloat, scale: CGFloat, done: @escaping (NSImage) -> Void) {
-        let key = "\(node.path)|\(node.entry.modified)|\(Int(size))"
-        if let i = cache[key] { return done(i) }
-        done(node.icon)
-        guard local, !node.isDirectory else { return }
-        let request = QLThumbnailGenerator.Request(fileAt: URL(fileURLWithPath: node.path), size: CGSize(width: size, height: size),
-                                                   scale: scale, representationTypes: .thumbnail)
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
-            guard let rep else { return }
-            let image = rep.nsImage
-            DispatchQueue.main.async {
-                cache[key] = image
-                if cache.count > 2000 { cache.removeAll() }
-                done(image)
-            }
-        }
     }
 }

@@ -94,8 +94,35 @@ public enum FileFinder {
         return s - path.count / 4
     }
 
-    /// Greedy subsequence match from `start`, scored.
+    /// Where a query's letters fall in a path (character offsets), as
+    /// `score` matches them — in the name if they can be, else anywhere —
+    /// for showing them; nil if they don't.
+    public static func positions(_ query: String, _ path: String) -> [Int]? {
+        let q = Array(query.lowercased().filter { $0 != " " })
+        guard !q.isEmpty else { return [] }
+        let p = Array(path)
+        let lower = Array(path.lowercased())
+        let nameStart = (path.lastIndex(of: "/").map { path.distance(from: path.startIndex, to: $0) + 1 }) ?? 0
+        // Unbroken in the name, if it's there so: that run.
+        let name = Array(lower[nameStart...])
+        if !q.contains("/"), q.count <= name.count {
+            for i in 0...(name.count - q.count) where Array(name[i..<(i + q.count)]) == q {
+                return Array((nameStart + i)..<(nameStart + i + q.count))
+            }
+        }
+        var at: [Int] = []
+        if !q.contains("/"), match(q, lower, p, from: nameStart, positions: &at) != nil { return at }
+        at = []
+        return match(q, lower, p, from: 0, positions: &at) != nil ? at : nil
+    }
+
     private static func match(_ q: [Character], _ lower: [Character], _ p: [Character], from start: Int) -> Int? {
+        var unused: [Int] = []
+        return match(q, lower, p, from: start, positions: &unused)
+    }
+
+    /// Greedy subsequence match from `start`, scored; where each letter fell.
+    private static func match(_ q: [Character], _ lower: [Character], _ p: [Character], from start: Int, positions: inout [Int]) -> Int? {
         var score = 0, qi = 0, last = -2
         var i = start
         while i < lower.count, qi < q.count {
@@ -111,6 +138,7 @@ public enum FileFinder {
                 }
                 if last >= 0 { score -= min(2 * (i - last - 1), 16) }
                 last = i
+                positions.append(i)
                 qi += 1
             }
             i += 1

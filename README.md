@@ -490,27 +490,29 @@ around it, and comes back with its history.
   the terminal is), text to edit; `path:line:column` (as grep and compilers print it) goes to
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
-- **Folders** open as the Finder shows them, in three modes chosen at the
-  bar's right (columns at first; each tile keeps the one it was left in): a **list** (name, date modified, size, kind; sorted by any,
-  folders on top) whose folders open in place into the tree under it;
-  **columns**, each folder chosen opening the next, a file chosen
-  previewed in the last by Quick Look with its kind, size and date; and a
-  **gallery**, the file chosen large over a strip of thumbnails. What the
-  folder's repository ignores (git's or Sapling's rules) and hidden files
-  are left out; ⇧⌘. shows them, dimmed. The **filter** (⌘F) looks
-  through the whole tree beneath, less what's ignored — the matches
-  shown with the folders on the way to them — ⏎ or ↓ to the files, ⎋ to
-  clear it. Along the bar, the path: each folder in it clicked, or the
-  arrow, ⌘↑, goes up. ⏎ or a double-click opens an entry — a folder in
-  the same tile, as a browser goes; ⌘-double-click for a listing beside,
-  this one staying; ⌥-double-click for one over it. Drag an entry out
+- **Folders** open as one tree, as Claude Code's file panel shows one:
+  flat, in the system font, each folder opening in place (a click on its
+  row or its chevron, ⏎), a file a small symbol in its type's colour; the
+  file chosen is previewed at the right by Quick Look with its kind, size
+  and date, as the Finder's columns do (the divider dragged as you like;
+  a narrow tile shows the tree alone). What the folder's repository
+  ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
+  shows them, dimmed. The **filter** at the top (⌘F) looks through the
+  whole tree beneath as it's typed, less what's ignored, and lists the
+  files that match — their letters in order, as the picker matches —
+  best first, the letters matched in bold and the folder each is in
+  beside it; ⏎ opens the best, ↓ goes to the list, ⎋ clears it. "?" and
+  some words, then ⏎, searches inside the files instead, in a search
+  beside. The arrow, or ⌘↑, goes up to the enclosing folder; ⌘↓ goes into
+  the folder chosen, in the same tile. A double-click (or ⏎) opens a file
+  beside. Drag an entry out
   and it's its path — a terminal types it, an editor inserts it, the
   grid opens it where it lands (on its host, another's too), another
   app takes the file (one of this Mac's); ⇧-drag it
   and it's its block too, as a pill ⇧-dragged is: a note mentions it, a
   terminal or a tile it's dropped on is linked to it; ⌥⇧-drag it for
-  the link alone. The mode, the
-  selection, the folders left open, the sort and the filter are kept
+  the link alone. The
+  selection, the folders left open, the divider and the filter are kept
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
   preview).

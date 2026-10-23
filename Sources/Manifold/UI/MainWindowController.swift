@@ -6070,6 +6070,14 @@ extension MainWindowController: SmartlogViewDelegate {
 }
 
 extension MainWindowController: DirectoryViewDelegate {
+    /// "?text" in a folder's filter: the files under it searched, the
+    /// search's tile beside the folder's.
+    func directoryView(_ view: DirectoryView, searchContents text: String) {
+        guard let client = hosts.client(view.block.host), let root = hosts.block(view.block)?.path else { return }
+        let id = client.newSearch(SearchQuery(text: text, root: root))
+        show(id, lens: .search, .besideOpener(view.placement), context: "search in \(root.lastPathComponent)")
+    }
+
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool) {
         let block = hosts.directoryBlock(for: path, on: view.block.host)
         let mods = Self.clickModifiers ?? []

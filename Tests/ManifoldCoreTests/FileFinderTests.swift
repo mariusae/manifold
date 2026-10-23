@@ -48,3 +48,15 @@ import Testing
     #expect(FileLocation.split("12:34") == FileLocation(path: "12", line: 34))
     #expect(FileLocation.split("C:notes.txt") == nil)
 }
+
+@Test func aMatchSaysWhereItsLettersFellTheNameFirst() {
+    // In the name, when they're all there.
+    #expect(FileFinder.positions("swif", "Sources/Mux.swift") == [12, 13, 14, 15])
+    // Across the path, when the name alone hasn't them.
+    #expect(FileFinder.positions("smux", "Sources/Mux.swift") == [0, 8, 9, 10])
+    #expect(FileFinder.positions("zz", "Sources/Mux.swift") == nil)
+    // Unbroken in the name, when it is there so (not its letters strewn).
+    #expect(FileFinder.positions("swif", "Tests/MuxTests.swift") == [15, 16, 17, 18])
+    // Agreeing with the score.
+    #expect((FileFinder.positions("mxs", "Sources/Mux.swift") != nil) == (FileFinder.score("mxs", "Sources/Mux.swift") != nil))
+}
