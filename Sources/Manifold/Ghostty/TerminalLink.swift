@@ -46,6 +46,10 @@ final class TerminalLink {
     /// When a keystroke went up that no output has answered yet (under the
     /// lock: typed on Ghostty's thread, answered on `queue`).
     private var keySent: Date?
+    /// How the host's pty takes what's typed, as it last said (under the
+    /// lock); nil from a host that doesn't say.
+    private var _ttyMode: TTYMode?
+    var ttyMode: TTYMode? { lock.withLock { _ttyMode } }
     /// How long keystrokes took to be answered, the last few (on `queue`).
     private var echoTimes: [TimeInterval] = []
 
@@ -155,7 +159,8 @@ final class TerminalLink {
         queue.sync {
             let ms = { (t: TimeInterval) in String(format: "%.0f", t * 1000) }
             let echo = echoTime.map { "echo \(ms($0)) ms (median of \(echoTimes.count); \(echoTimes.map(ms).joined(separator: " ")))" } ?? "echo: no keystrokes yet"
-            return echo + " · " + (client?.mux?.debugPacing ?? "no link")
+            let mode = ttyMode.map { m in [m.contains(.echo) ? "echo" : "no echo", m.contains(.canonical) ? "lines" : "raw", m.contains(.echoErase) ? "erase" : nil].compactMap { $0 }.joined(separator: " ") } ?? "no tty mode"
+            return echo + " · tty: " + mode + " · " + (client?.mux?.debugPacing ?? "no link")
         }
     }
 
@@ -202,7 +207,7 @@ final class TerminalLink {
             everAttached = true
             return self.size
         }
-        stream.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume))))
+        stream.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume, ttyModes: true))))
     }
 
     /// On `queue`.
@@ -226,6 +231,8 @@ final class TerminalLink {
             }
         case .historyMark:
             if let m = HistoryMark(frame) { marked(m) }
+        case .ttyMode:
+            if let m = TTYMode(frame) { lock.withLock { _ttyMode = m } }
         case .replayDone:
             // A replay no one has seen yet is live output (a shell just
             // started, its queries waiting for answers): typing goes through

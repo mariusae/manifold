@@ -55,12 +55,25 @@ final class Session {
     private func checkPassword() {
         var t = termios()
         guard tcgetattr(master, &t) == 0 else { return }
+        // How it takes what's typed: to the attachments that want it, when
+        // it changes (for echoing keystrokes before the host does).
+        var mode: TTYMode = []
+        if t.c_lflag & tcflag_t(ECHO) != 0 { mode.insert(.echo) }
+        if t.c_lflag & tcflag_t(ICANON) != 0 { mode.insert(.canonical) }
+        if t.c_lflag & tcflag_t(ECHOE) != 0 { mode.insert(.echoErase) }
+        if mode != ttyMode {
+            ttyMode = mode
+            for conn in attachments where wantsModes.contains(ObjectIdentifier(conn)) { conn.send(mode.frame) }
+        }
         let password = t.c_lflag & tcflag_t(ECHO) == 0 && t.c_lflag & tcflag_t(ICANON) != 0
         guard password != readingPassword else { return }
         readingPassword = password
         onPasswordInput?(password)
     }
     private var statuses = StatusScanner()
+    /// The pty's modes as last seen, and the attachments that want them.
+    private var ttyMode: TTYMode?
+    private var wantsModes: Set<ObjectIdentifier> = []
     /// Where each command's output lies in the replay buffer (§3.8), by
     /// the command's id: from just after the shell said it would run it
     /// (OSC 7502) to where it said it had ended (OSC 133;D).
@@ -168,8 +181,14 @@ final class Session {
     /// answers it is still waiting for — and the attachment is told so.
     private var replayShown = false
 
-    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16, resume: Bool = false) {
+    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16, resume: Bool = false, ttyModes: Bool = false) {
         attachments.append(conn)
+        if ttyModes {
+            wantsModes.insert(ObjectIdentifier(conn))
+            // As they are now, ahead of anything typed.
+            ttyMode = nil
+            checkPassword()
+        }
         sizes[ObjectIdentifier(conn)] = (cols, rows)
         // At its size first, so the snapshot is drawn for it.
         resize(cols: cols, rows: rows)
@@ -198,6 +217,7 @@ final class Session {
     func detach(_ conn: any Channel) {
         attachments.removeAll { $0 === conn }
         behind.remove(ObjectIdentifier(conn))
+        wantsModes.remove(ObjectIdentifier(conn))
         sizes.removeValue(forKey: ObjectIdentifier(conn))
         if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
     }

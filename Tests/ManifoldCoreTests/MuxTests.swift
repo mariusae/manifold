@@ -355,3 +355,17 @@ private final class Inbox: @unchecked Sendable {
     guard case let .welcome(_, _, _, _, _, _, _, none)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
     #expect(none == nil)
 }
+
+@Test func aTTYModeGoesAsAByteAndOnlyToAnAppThatAsks() throws {
+    let mode: TTYMode = [.echo, .canonical]
+    #expect(TTYMode(mode.frame) == mode)
+    #expect(TTYMode(Frame(.data, Data([3]))) == nil)
+    // An app that asks says so; one from before doesn't (and isn't sent them).
+    let block = try #require(BlockID(string: "h4z3gpme3et/01M5HWNAR9X5JKASZVKVFM4GX2"))
+    let asks = Frame.message(ClientMessage.attach(AttachRequest(block: block, cols: 80, rows: 24, env: [:], ttyModes: true)))
+    guard case .attach(let a)? = asks.decode(ClientMessage.self) else { Issue.record("no attach"); return }
+    #expect(a.ttyModes == true)
+    let before = Frame.message(ClientMessage.attach(AttachRequest(block: block, cols: 80, rows: 24, env: [:])))
+    guard case .attach(let b)? = before.decode(ClientMessage.self) else { Issue.record("no attach"); return }
+    #expect(b.ttyModes == nil)
+}

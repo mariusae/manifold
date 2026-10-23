@@ -28,6 +28,10 @@ public enum FrameKind: UInt8, Sendable {
     /// that scrolled rows into it, and after a screen sent whole (an attach,
     /// a catch-up), whose history comes after, by backfill.
     case historyMark = 5
+    /// How the terminal's pty takes what's typed (`TTYMode`): sent to an
+    /// attachment that asked (`AttachRequest.ttyModes`) when it attaches and
+    /// whenever it changes.
+    case ttyMode = 7
     /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
     /// op (open, a frame, close, credit), then the op's bytes — for a
     /// frame, the stream's own frame, encoded.
@@ -363,6 +367,26 @@ public enum ClientMessage: Codable, Sendable {
     case saveImage(block: BlockID, name: String, folder: String?)
 }
 
+/// How a terminal's pty takes what's typed, as its program set it: whether
+/// it gathers it into lines (canonical: the kernel's own editing — `cat`,
+/// `read`; off: raw, for a program that edits and echoes for itself — a
+/// shell's line editor, a full-screen program); whether the kernel echoes
+/// it (off with lines gathered: a password); and whether a backspace
+/// echoes as erasing.
+public struct TTYMode: OptionSet, Equatable, Sendable {
+    public let rawValue: UInt8
+    public init(rawValue: UInt8) { self.rawValue = rawValue }
+    public static let echo = TTYMode(rawValue: 1)
+    public static let canonical = TTYMode(rawValue: 2)
+    public static let echoErase = TTYMode(rawValue: 4)
+
+    public var frame: Frame { Frame(.ttyMode, Data([rawValue])) }
+    public init?(_ frame: Frame) {
+        guard frame.kind == .ttyMode, let b = frame.payload.first else { return nil }
+        rawValue = b
+    }
+}
+
 /// Where a terminal's history (its primary screen's scrollback, as the host
 /// keeps it) has got to: how many rows have ever scrolled into it, counted
 /// in the host's terminal of this `epoch` (a new one when the terminal is
@@ -434,13 +458,17 @@ public struct AttachRequest: Codable, Sendable {
     /// host's link went and came back): it's caught up with the screen as
     /// it is, its own history kept, not sent a whole snapshot.
     public var resume: Bool?
+    /// The pty's modes wanted (`FrameKind.ttyMode`): an app that knows them
+    /// says so (one from before would take the frame for a broken one).
+    public var ttyModes: Bool?
 
-    public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String], resume: Bool = false) {
+    public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String], resume: Bool = false, ttyModes: Bool = false) {
         self.block = block
         self.cols = cols
         self.rows = rows
         self.env = env
         self.resume = resume ? true : nil
+        self.ttyModes = ttyModes ? true : nil
     }
 }
 
