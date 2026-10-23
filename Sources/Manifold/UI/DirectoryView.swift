@@ -590,6 +590,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "refresh":
+            // As the timer does while the app's in use: listed again.
+            delegate?.directoryViewRefresh(self)
+            if let shown = content?.shownFolders { model?.refresh(shown) }
         case "focusfilter": performTextFinderAction(nil)
         case "drag":
             // "drag [shift] [opt]": what dragging the selection carries.

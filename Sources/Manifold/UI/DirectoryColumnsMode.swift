@@ -67,7 +67,13 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
 
     func rootItem(for browser: NSBrowser) -> Any? { model.rootNode }
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int { kids(item)?.count ?? 0 }
-    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any { kids(item)![index] }
+    /// A row the browser still has from before its folder changed (it asks
+    /// before it's reloaded) is a blank stand-in, not a crash.
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        guard let k = kids(item), k.indices.contains(index) else { return Self.stale }
+        return k[index]
+    }
+    private static let stale = BrowserNode(path: "", entry: DirectoryEntry(name: "", isDirectory: false, size: 0, modified: 0, isHidden: false))
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool { (item as? BrowserNode)?.isDirectory == false }
     func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? { (item as? BrowserNode)?.name }
 
@@ -154,7 +160,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
     var selectedPath: String? {
         let c = browser.selectedColumn
         guard c >= 0, case let r = browser.selectedRow(inColumn: c), r >= 0 else { return nil }
-        return (browser.item(atRow: r, inColumn: c) as? BrowserNode)?.path
+        guard let path = (browser.item(atRow: r, inColumn: c) as? BrowserNode)?.path, !path.isEmpty else { return nil }
+        return path
     }
 
     @objc private func chosen() {
@@ -197,8 +204,10 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, DebugDescribing, NSBrow
     // MARK: Changes
 
     func folderChanged(_ folder: String) {
-        cache.removeValue(forKey: folder)
+        // The selection as it was, read before the folder's old entries go:
+        // the browser's rows are still theirs.
         let keep = pendingSelect ?? selectedPath
+        cache.removeValue(forKey: folder)
         guard (0...max(0, browser.lastColumn)).contains(where: { (browser.parentForItems(inColumn: $0) as? BrowserNode)?.path == folder }) || folder == model.root else {
             return
         }
