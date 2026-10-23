@@ -439,6 +439,31 @@ public final class Mux {
     /// Paced bytes sent, in all (from anywhere).
     var pacedSent: UInt64 { onQueueNow { bulkSent } }
 
+    /// How the link stands, as the pacing sees it (from anywhere).
+    public struct LinkStats: Sendable {
+        /// Its shortest round trip, and its best rate lately (bytes a second).
+        public var roundTrip: TimeInterval?
+        public var rate: Double?
+        /// How long what's sent waits in queues on the way now.
+        public var queueDelay: TimeInterval
+        /// How much may be on its way at once, and how much is.
+        public var budget: Int
+        public var inFlight: Int
+        /// Compressed streams' bytes: sent (as they were, as they went) and
+        /// received (as they came, as they were).
+        public var sent: (raw: Int, wire: Int)
+        public var received: (wire: Int, raw: Int)
+        public var streams: Int
+    }
+
+    public var stats: LinkStats {
+        onQueueNow {
+            LinkStats(roundTrip: minRTT?.rtt, rate: rates.map(\.rate).max(), queueDelay: queueDelay, budget: budget,
+                      inFlight: Int(bulkSent - bulkAcked), sent: (compressedFrom, compressedTo), received: (inflatedFrom, inflatedTo),
+                      streams: streams.count)
+        }
+    }
+
     /// Debugging: the pacing's state (from anywhere).
     public var debugPacing: String { onQueueNow { pacing } }
 
@@ -461,12 +486,25 @@ public final class ControlChannel: Channel {
     public var onClose: (() -> Void)?
     /// Where its handlers run (nil: the mux's queue).
     public var callbackQueue: DispatchQueue?
+    /// When the frame being handled now came off the link (set before its
+    /// handler runs): a pong's round trip without the wait for the handler's
+    /// queue, which may be busy.
+    public private(set) var arrived = Date()
     public var isClosed: Bool { mux?.onQueueNow { mux?.connection.isClosed ?? true } ?? true }
     public func send(_ frame: Frame) { mux?.onQueue { [weak mux] in mux?.connection.send(frame) } }
     public func close() { mux?.close() }
 
     fileprivate func deliver(_ frame: Frame) {
-        if let q = callbackQueue { q.async { [self] in onFrame?(frame) } } else { onFrame?(frame) }
+        let at = Date()
+        if let q = callbackQueue {
+            q.async { [self] in
+                arrived = at
+                onFrame?(frame)
+            }
+        } else {
+            arrived = at
+            onFrame?(frame)
+        }
     }
 
     fileprivate func closed() {

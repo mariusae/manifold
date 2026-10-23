@@ -159,6 +159,28 @@ final class HostClient {
     private var lastContact: Date?
     /// How long a pong may take at least before the link counts as dead.
     static let answerWithin: TimeInterval = 6
+    /// Pings' round trips over the last five minutes — nil for one that went
+    /// unanswered, the link given up on — for its sparkline and dashboard.
+    private(set) var pings: [(at: Date, rtt: TimeInterval?)] = []
+    static let pingHistory: TimeInterval = 300
+    /// Links that went in the last hour: when, and why.
+    private(set) var drops: [(at: Date, why: String)] = []
+    /// Since when its link has been up (answered), if it is.
+    private(set) var connectedSince: Date?
+
+    private func recordPing(_ rtt: TimeInterval?) {
+        let now = Date()
+        pings.append((now, rtt))
+        pings.removeAll { now.timeIntervalSince($0.at) > Self.pingHistory }
+    }
+
+    private func recordDrop(_ why: String) {
+        let now = Date()
+        drops.append((now, why))
+        drops.removeAll { now.timeIntervalSince($0.at) > 3600 }
+        recordPing(nil)
+    }
+
     /// Whether the host was quiet at the last heartbeat (`silence`): its
     /// row in the sidebar says so as it starts and ends.
     private var silent = false
@@ -711,6 +733,7 @@ final class HostClient {
             let wait = max(Self.answerWithin, 4 * (pingRTT ?? 0.5))
             if heard < sent, now.timeIntervalSince(sent) > wait {
                 NSLog("host %@: no answer to a ping in %.1f s; dropping the connection", host.raw, wait)
+                recordDrop(String(format: "no answer for %.0f s", wait))
                 pingSent = nil
                 droppedSilent = true
                 link = .unreachable("not answering")
@@ -783,6 +806,9 @@ final class HostClient {
         conn.onClose = { [weak self] in
             guard let self else { return }
             NSLog("host %@: connection closed", self.host.raw)
+            // Gone of its own accord (not given up on here): said so.
+            if self.isRemote, self.link == .connected, !self.droppedSilent { self.recordDrop("the connection closed") }
+            self.connectedSince = nil
             // Its last word, for how long it's been (the heartbeat goes on).
             if let heard = self.mux?.linkState().lastRead { self.lastContact = heard }
             self.conn = nil
@@ -874,6 +900,7 @@ final class HostClient {
             backoff = 2
             closedUnanswered = 0
             lastContact = nil
+            connectedSince = Date()
             startPinging()
             fenced = []
             clock = Clock(host: host)
@@ -889,7 +916,13 @@ final class HostClient {
             onConnected?()
             scheduleChange()
         case .pong:
-            if let sent = pingSent { pingRTT = Date().timeIntervalSince(sent) }
+            if let sent = pingSent {
+                // As it came off the link: not counting the wait for this
+                // (main) thread, busy now and then.
+                let arrived = conn?.arrived ?? Date()
+                pingRTT = max(0, arrived.timeIntervalSince(sent))
+                recordPing(pingRTT)
+            }
             pingSent = nil
             lastHeard = Date()
             let waiting = pongWaiters

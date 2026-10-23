@@ -352,7 +352,14 @@ around it, and comes back with its history.
   stream. A terminal whose host goes away keeps what it showed, and
   picks up where it was when the host is back — its history, scroll and
   selection kept, caught up with the screen; a remote host is one ssh session
-  however many terminals it has. A host that's gone quiet (a ping every two
+  however many terminals it has. By each remote host's name in the sidebar,
+  a sparkline of its ping times over the last five minutes (amber when the
+  latest is well above the rest, a red mark where a ping went unanswered);
+  resting the pointer on the host shows its link's dashboard: those times
+  plotted with their numbers (now, median, 95th percentile, best), where
+  links were given up on, how it stands and since when, the links that went
+  in the last hour and why, and how its link is paced and what compression
+  saves. A host that's gone quiet (a ping every two
   seconds, one unanswered with nothing else heard for three) shows a broken
   amber ring by its name in the sidebar, which on hover says how long since
   it was last heard from; quiet for six (or four round trips), its link is

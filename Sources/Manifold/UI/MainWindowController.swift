@@ -3120,6 +3120,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// reached, a slashed ring when it can't be, dimmed; clicked, its
     /// home folder opens there.
     private func hostStanding(_ n: OrgNode, _ c: HostClient) {
+        // Its ping times lately, by its name (a remote host's).
+        if c.isRemote { n.pings = { [weak c] in c?.pings ?? [] } }
         switch c.link {
         case .connected:
             // Up, but quiet a while: a broken ring, and on hover, how long.
@@ -6901,6 +6903,13 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
+        // A remote host's row: its link's dashboard, live.
+        if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote, let window {
+            HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: HostDashboard.standing(c), body: "", font: nil,
+                                  lend: { HoverCard.LiveLoan(view: HostDashboard(client: c), size: HostDashboard.size) { $0.removeFromSuperview() } },
+                                  beside: rect, in: window)
+            return
+        }
         guard let node, let id = node.block, let b = hosts.block(id), let window else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
         if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }

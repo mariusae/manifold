@@ -60,6 +60,8 @@ final class OrgNode {
     /// A word at the right, before the glyph: how long ago.
     var trailing: String?
     var tooltip: String?
+    /// A host's ping times lately, drawn by its name (`Sparkline`).
+    var pings: (() -> Sparkline.Pings)?
     /// A tooltip made as it's about to show, over the whole row, for
     /// what changes by the second (how long a host has been connecting).
     var liveTooltip: (() -> String)?
@@ -584,7 +586,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard row != trackedRow else { return }
         trackedRow = row
         hoverReveal(row: row)
-        if row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.block != nil {
+        // A block's row has its card; a remote host's, its link's dashboard.
+        if row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.block != nil || node.pings != nil {
             delegate?.organizationHover(node, at: outline.convert(outline.rect(ofRow: row), to: nil), in: self)
         } else {
             delegate?.organizationHover(nil, at: .zero, in: self)
@@ -650,6 +653,7 @@ final class OrgRowView: NSTableCellView {
     private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
     private let trailing = NSTextField(labelWithString: "")
+    private let sparkline = Sparkline()
     private var symbol = ""
     private var detailSymbol = ""
     private var node: OrgNode?
@@ -673,7 +677,7 @@ final class OrgRowView: NSTableCellView {
         trailing.alignment = .right
         detailIcon.contentTintColor = Theme.secondaryText
         detailIcon.isHidden = true
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph] { addSubview(v) }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -683,6 +687,8 @@ final class OrgRowView: NSTableCellView {
         glyph.look = node.look
         glyph.isHidden = node.look == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
+        sparkline.pings = node.pings
+        sparkline.isHidden = node.pings == nil
         trailing.stringValue = node.trailing ?? ""
         trailing.isHidden = node.trailing == nil
         trailing.textColor = Theme.secondaryText
@@ -771,6 +777,10 @@ final class OrgRowView: NSTableCellView {
                 let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
                 trailing.frame = NSRect(x: right - w, y: y + 0.5, width: w, height: 15)
                 right -= w + 8
+            }
+            if !sparkline.isHidden {
+                sparkline.frame = NSRect(x: right - Sparkline.width, y: y + (17 - Sparkline.height) / 2, width: Sparkline.width, height: Sparkline.height)
+                right -= Sparkline.width + 8
             }
         }
         if let node, flat, node.style == .row, !detail.isHidden {
