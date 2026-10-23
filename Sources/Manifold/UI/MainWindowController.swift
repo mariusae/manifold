@@ -3504,10 +3504,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         f.special = { [weak self] query in
-            // A web address typed: opened as a page, first.
-            guard query.hasPrefix("http://") || query.hasPrefix("https://") || (query.contains(".") && !query.contains(" ") && !query.contains("/") && query.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true) else { return nil }
-            let url = query.contains("://") ? query : "https://" + query
-            return FinderItem(symbol: "globe", title: url, detail: "Open as a web page", note: "web", run: { [weak self] in self?.open(url, from: nil) })
+            // A web address typed: opened as a page, first — as a page's bar
+            // takes it: `host:port` an attached host's own localhost (or a
+            // site's port), localhost and numbers, http(s) addresses, a domain.
+            // (A name with a dot and no more, `README.md`, is a file's here.)
+            guard let self else { return nil }
+            let q = query.trimmingCharacters(in: .whitespaces)
+            let parsed = WebAddress.parse(q)
+            let domain = q.contains(".") && !q.contains(" ") && !q.contains("/") && q.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true
+            let local = q.range(of: #"^(localhost|\d{1,3}(\.\d{1,3}){3})([:/].*)?$"#, options: .regularExpression) != nil
+            var detail = "Open as a web page"
+            switch parsed {
+            case let .hostPort(name, port, _):
+                if let h = self.hostNamedInAddress(name) { detail = "localhost:\(port) on \(self.hosts.label(of: h))" }
+            case .page:
+                guard q.hasPrefix("http://") || q.hasPrefix("https://") || domain || local else { return nil }
+                if let u = URL(string: q.contains("://") ? q : "http://" + q), let name = u.host, let h = self.hostNamedInAddress(name) {
+                    detail = "localhost:\(u.port ?? 80) on \(self.hosts.label(of: h))"
+                }
+            case .search:
+                return nil
+            }
+            let title: String = { if case let .page(a) = parsed { return a } else { return q } }()
+            return FinderItem(symbol: "globe", title: title, detail: detail, note: "web", run: { [weak self] in self?.openAddress(q, place: .here) })
         }
         f.openFile = { [weak self] path in self?.open(path, from: nil) }
         f.onQueryChanged = { [weak self] query, scope in self?.finderQueryChanged(query, scope) }
@@ -4484,6 +4503,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]
+
+    /// An address typed (in ⌘T, as in a page's bar) opened in a web tile:
+    /// an attached host's name, with a port (`anotherone:8080`) or in a whole
+    /// address (`http://anotherone:8080/`), is that host's own localhost — the
+    /// port forwarded here first; anything else as it is.
+    func openAddress(_ typed: String, place: Where) {
+        let q = typed.trimmingCharacters(in: .whitespaces)
+        var target: (host: HostID, port: Int, scheme: String, rest: String)?
+        switch WebAddress.parse(q) {
+        case let .hostPort(name, port, rest):
+            if let h = hostNamedInAddress(name) { target = (h, port, "http", rest) } else if let u = URL(string: "http://\(name):\(port)\(rest)") {
+                return openWeb(u, place: place, here: true, context: q)
+            }
+        case let .page(address):
+            guard let url = URL(string: address) else { return }
+            if let name = url.host, url.scheme == "http" || url.scheme == "https", let h = hostNamedInAddress(name) {
+                var rest = url.path.isEmpty ? "/" : url.path
+                if let qs = url.query { rest += "?" + qs }
+                target = (h, url.port ?? (url.scheme == "https" ? 443 : 80), url.scheme ?? "http", rest)
+            } else {
+                return openWeb(url, place: place, here: true, context: q)
+            }
+        case let .search(words):
+            guard let u = URL(string: "https://duckduckgo.com/?q=" + (words.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? words)) else { return }
+            return openWeb(u, place: place, here: true, context: q)
+        }
+        guard let target else { return }
+        forward(target.port, on: target.host) { [weak self] local in
+            guard let local, let u = URL(string: "\(target.scheme)://localhost:\(local)\(target.rest)") else { return }
+            self?.openWeb(u, place: place, here: true, context: q)
+        }
+    }
+
+    /// The attached host an address names (its label), connected or not.
+    func hostNamedInAddress(_ name: String) -> HostID? {
+        let n = name.lowercased()
+        return hosts.all.first { !$0.transport.isLocal && hosts.label(of: $0.host).lowercased().replacingOccurrences(of: " ", with: "-") == n }?.host
+    }
 
     /// An address: in the web lens (where `here` says), else the system's browser.
     func openWeb(_ url: URL, place: Where, here: Bool, context: String? = nil) {
