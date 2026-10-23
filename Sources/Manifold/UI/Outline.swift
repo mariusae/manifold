@@ -234,6 +234,8 @@ final class FloatingList: NSView {
         var menu: (() -> NSMenu?)?
         /// What it carries dragged, with the modifiers held.
         var drag: ((NSEvent.ModifierFlags) -> NSPasteboardWriting?)?
+        /// The part of the title in bold (what was typed, in a completion).
+        var bold: NSRange?
     }
 
     enum Place {
@@ -241,6 +243,8 @@ final class FloatingList: NSView {
         case overTopRight(NSRect)
         /// To the right of a rectangle (in the window), its first row level with it.
         case rightOf(NSRect)
+        /// Under a rectangle (in the window), as wide as it: a field's completions.
+        case below(NSRect)
     }
 
     private let scroll = ClippingScrollView()
@@ -293,11 +297,15 @@ final class FloatingList: NSView {
     var isShown: Bool { panel.isVisible && panel.parent != nil }
     func isShown(for owner: AnyObject) -> Bool { isShown && opener === owner }
 
-    func show(_ rows: [Row], for owner: AnyObject, in window: NSWindow, place: Place, scrollToCurrent: Bool = false) {
+    /// `sticky`: kept while its owner wants it (a field's completions, while
+    /// it's edited), not gone as the pointer leaves.
+    func show(_ rows: [Row], for owner: AnyObject, in window: NSWindow, place: Place, scrollToCurrent: Bool = false, sticky: Bool = false) {
         hideWork?.cancel()
         let same = opener === owner && isShown && host === window
         opener = owner
         self.place = place
+        self.sticky = sticky
+        if !same { chosen = nil }
         host = window
         panel.appearance = window.effectiveAppearance
         fill(rows)
@@ -370,7 +378,7 @@ final class FloatingList: NSView {
         guard isShown, let host else { return false }
         let p = pointer
         let opener: NSRect = switch place {
-        case let .overTopRight(r), let .rightOf(r): r
+        case let .overTopRight(r), let .rightOf(r), let .below(r): r
         }
         return panel.frame.insetBy(dx: -2, dy: -2).contains(p) || host.convertToScreen(opener).insetBy(dx: -2, dy: -2).contains(p)
     }
@@ -388,7 +396,8 @@ final class FloatingList: NSView {
     }
 
     private func position(in window: NSWindow) {
-        let width = min(380, max(200, rowViews.map(\.wantedWidth).max() ?? 200)) + 2 * Self.pad
+        var width = min(380, max(200, rowViews.map(\.wantedWidth).max() ?? 200)) + 2 * Self.pad
+        if case let .below(r) = place { width = r.width }
         let content = CGFloat(rows.count) * Self.rowHeight
         // Within the window's content, in its coordinates.
         let root = window.contentView.map { $0.convert($0.bounds, to: nil) } ?? .zero
@@ -400,6 +409,8 @@ final class FloatingList: NSView {
             frame = NSRect(x: r.maxX + 6 - width, y: r.maxY + 6 - height, width: width, height: height)
         case let .rightOf(r):
             frame = NSRect(x: r.maxX + 4, y: r.midY + Self.rowHeight / 2 + Self.pad - height, width: width, height: height)
+        case let .below(r):
+            frame = NSRect(x: r.minX, y: r.minY - 4 - height, width: width, height: height)
         }
         frame.origin.x = min(max(frame.minX, room.minX), room.maxX - width)
         frame.origin.y = min(max(frame.minY, room.minY), room.maxY - height)
@@ -423,7 +434,7 @@ final class FloatingList: NSView {
         updateHover()
     }
     override func mouseExited(with event: NSEvent) {
-        scheduleHide()
+        if !sticky { scheduleHide() }
         updateHover()
     }
     override func mouseMoved(with event: NSEvent) {
@@ -446,13 +457,28 @@ final class FloatingList: NSView {
         let inClip = scroll.contentView.convert(p, from: nil)
         let inStack = stack.convert(p, from: nil)
         let row = scroll.contentView.bounds.contains(inClip) ? rowViews.firstIndex { $0.frame.contains(inStack) } : nil
-        for (i, r) in rowViews.enumerated() { r.hovering = i == row }
+        pointerRow = row
+        for (i, r) in rowViews.enumerated() { r.hovering = i == row || i == chosen }
         // Its own cursor, all over it (a window that's never key has no
         // cursor rectangles): a hand on a row that does something, else
         // the arrow — between rows too.
         if bounds.contains(p) {
             (row.map { !rows[$0].header && rows[$0].action != nil } == true ? NSCursor.pointingHand : NSCursor.arrow).set()
         }
+    }
+
+    /// Kept while its owner wants it, not gone as the pointer leaves.
+    private var sticky = false
+    /// The row under the pointer, and the one chosen from the keyboard (a
+    /// field's completion): both marked.
+    private var pointerRow: Int?
+    private(set) var chosen: Int?
+
+    /// A row chosen from the keyboard (nil: none), kept in sight.
+    func choose(_ i: Int?) {
+        chosen = i.flatMap { rows.indices.contains($0) ? $0 : nil }
+        for (j, r) in rowViews.enumerated() { r.hovering = j == pointerRow || j == chosen }
+        if let c = chosen { stack.scrollToVisible(rowViews[c].frame) }
     }
 
     /// Debugging: where the pointer is taken to be (in the window), in place
@@ -522,7 +548,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         label.maximumNumberOfLines = 1
         detail.font = .systemFont(ofSize: 11.5)
         detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingHead
+        detail.lineBreakMode = .byTruncatingTail
         detail.alignment = .right
         icon.imageScaling = .scaleProportionallyDown
         more.isHidden = true
@@ -536,9 +562,15 @@ final class FloatingListRow: NSView, NSDraggingSource {
 
     func show(_ r: FloatingList.Row) {
         row = r
-        label.stringValue = r.title
         label.font = r.code ? FontTheme.code(12.5) : .systemFont(ofSize: 13, weight: r.header ? .medium : .regular)
         label.textColor = r.header ? Theme.secondaryText : r.failed ? Theme.statusError : Theme.text
+        if let bold = r.bold, let font = label.font, NSMaxRange(bold) <= (r.title as NSString).length {
+            let a = NSMutableAttributedString(string: r.title, attributes: [.font: font, .foregroundColor: label.textColor ?? Theme.text])
+            a.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask), range: bold)
+            label.attributedStringValue = a
+        } else {
+            label.stringValue = r.title
+        }
         detail.stringValue = r.detail
         detail.isHidden = r.detail.isEmpty
         icon.isHidden = r.symbol == nil

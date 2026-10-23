@@ -1297,6 +1297,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     /// Debugging: the focused tile's own sidebar — "toggle", "pick N",
     /// or nothing: what it lists. "pdf …": the focused PDF's controls.
+    /// Debugging: the focused tile's address bar — "begin" (its pill a
+    /// field), "type <text>", "key <down|up|tab|return|escape|delete|shiftdelete>",
+    /// or nothing: the field and its completions.
+    func debugOmni(_ arg: String) -> String {
+        guard let f = arrangement?.focused, let pill = content.debugPill(f), let v = views[f] else { return "no tile focused" }
+        let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        switch words.first {
+        case "begin":
+            guard let e = v.pillEdit else { return "no address to edit" }
+            pill.beginEditing(e)
+        case "type": pill.debugType(words.count > 1 ? words[1] : "")
+        case "key": pill.debugKey(words.count > 1 ? words[1] : "")
+        default: break
+        }
+        return pill.debugCompletions
+    }
+
     func debugTicks(_ arg: String) -> String {
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch words.first {
@@ -5822,6 +5839,118 @@ extension MainWindowController: WebViewDelegate {
 
     func webView(_ view: WebView, open url: URL, over: Bool) {
         open(url.absoluteString, from: view.placement, here: true, over: over)
+    }
+
+    /// An attached host as the address bar names it: its label, without
+    /// case, spaces as hyphens.
+    private static func addressName(_ label: String) -> String {
+        label.lowercased().replacingOccurrences(of: " ", with: "-")
+    }
+
+    /// The other hosts attached now, by the name the address bar knows them by.
+    private var addressHosts: [(name: String, client: HostClient)] {
+        hosts.all.filter { !$0.transport.isLocal && $0.isConnected }.map { (Self.addressName(hosts.label(of: $0.host)), $0) }
+    }
+
+    func webView(_ view: WebView, hostNamed name: String) -> HostID? {
+        addressHosts.first { $0.name == name.lowercased() }?.client.host
+    }
+
+    func webView(_ view: WebView, forward port: Int, on host: HostID, done: @escaping (Int?) -> Void) {
+        forward(port, on: host, done: done)
+    }
+
+    /// A page on this Mac's localhost at a port forwarded from a host: by
+    /// that host and its port, as it's typed.
+    func webView(_ view: WebView, addressOf url: URL) -> String {
+        guard let h = url.host, Self.loopbackNames.contains(h), let port = url.port else { return url.absoluteString }
+        for (name, c) in addressHosts {
+            if let f = c.forwards.forwards.values.first(where: { $0.local == port }) {
+                var rest = url.path.isEmpty ? "/" : url.path
+                if let q = url.query { rest += "?" + q }
+                if let fr = url.fragment { rest += "#" + fr }
+                return "\(name):\(f.remote)\(rest == "/" ? "" : rest)"
+            }
+        }
+        return url.absoluteString
+    }
+
+    func webView(_ view: WebView, visited url: URL, title: String?, again: Bool) {
+        let address = webView(view, addressOf: url)
+        if again { WebHistory.shared.titled(address, title) } else { WebHistory.shared.visited(address, title: title) }
+    }
+
+    /// The address bar's completions, as Chrome's: first a page begun by
+    /// what's typed (completed in the field) if there is one, then what's
+    /// typed itself (the address, or a search), other pages it matches, the
+    /// attached hosts (`slowbox:`, and their ports here before), and a
+    /// search for it.
+    func webView(_ view: WebView, suggestionsFor typed: String) -> [PillSuggestion] {
+        let q = typed.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        let plainQ = WebAddress.plain(q).lowercased()
+        // The history, and pages open in tiles from before it was kept.
+        var history = WebHistory.shared.matches(q, limit: 12)
+        let known = Set(history.map { WebAddress.plain($0.address) })
+        for b in hosts.blocks where b.kind == .web {
+            guard let u = b.web?.url, let url = URL(string: u), !u.hasPrefix("file:") else { continue }
+            let address = webView(view, addressOf: url), plain = WebAddress.plain(address)
+            guard !known.contains(plain), !WebHistory.shared.forgotten.contains(plain), plain.lowercased().contains(plainQ) || (b.web?.title ?? "").lowercased().contains(plainQ) else { continue }
+            history.append(WebHistory.Entry(address: address, title: b.web?.title ?? "", visits: 0, last: .distantPast))
+        }
+        func page(_ e: WebHistory.Entry, inline: Bool) -> PillSuggestion {
+            let plain = WebAddress.plain(e.address)
+            return PillSuggestion(fill: plain, title: plain, detail: e.title, symbol: "globe", inline: inline, commitText: e.address,
+                                  remove: { WebHistory.shared.forget(e.address) })
+        }
+        var out: [PillSuggestion] = []
+        var shown = Set<String>()
+        let parsed = WebAddress.parse(q)
+        if !q.contains(" "), !q.contains("://"), let i = history.firstIndex(where: { WebAddress.plain($0.address).lowercased().hasPrefix(plainQ) }) {
+            let e = history.remove(at: i)
+            out.append(page(e, inline: true))
+            shown.insert(WebAddress.plain(e.address).lowercased())
+        }
+        // What's typed, as it would go — unless the page begun by it is it.
+        let search = PillSuggestion(fill: q, title: q, detail: "Search DuckDuckGo", symbol: "magnifyingglass",
+                                    run: { [weak view] in view?.search(q) })
+        switch parsed {
+        case _ where shown.contains(plainQ):
+            break
+        case .search:
+            out.append(search)
+        case let .page(address):
+            out.append(PillSuggestion(fill: q, title: WebAddress.plain(address), symbol: "globe"))
+        case let .hostPort(name, port, rest):
+            let on = addressHosts.first { $0.name == name.lowercased() }
+            out.append(PillSuggestion(fill: q, title: q, detail: on.map { "localhost:\(port)\(rest == "/" ? "" : rest) on \(hosts.label(of: $0.client.host))" } ?? "",
+                                      symbol: on == nil ? "globe" : "network"))
+        }
+        shown.insert(WebAddress.plain(q).lowercased())
+        for e in history where out.count < 6 {
+            let plain = WebAddress.plain(e.address).lowercased()
+            guard shown.insert(plain).inserted else { continue }
+            out.append(page(e, inline: false))
+        }
+        // The hosts: a name begun (to type its port after), or its ports
+        // forwarded before.
+        for (name, c) in addressHosts {
+            let label = hosts.label(of: c.host)
+            if !q.contains(":"), name.hasPrefix(plainQ), shown.insert(name + ":").inserted {
+                out.append(PillSuggestion(fill: name + ":", title: name + ":", detail: "a port on \(label)'s localhost", symbol: "network", fillsOnly: true))
+            } else if plainQ.hasPrefix(name + ":") {
+                var ports = Set(c.forwards.forwards.filter { !$0.value.hidden }.keys)
+                for e in WebHistory.shared.entries.values where e.address.hasPrefix(name + ":") {
+                    if let p = Int(e.address.dropFirst(name.count + 1).prefix { $0.isNumber }) { ports.insert(p) }
+                }
+                for p in ports.sorted() where "\(name):\(p)".hasPrefix(plainQ) && shown.insert("\(name):\(p)").inserted {
+                    out.append(PillSuggestion(fill: "\(name):\(p)", title: "\(name):\(p)", detail: "localhost:\(p) on \(label)", symbol: "network"))
+                }
+            }
+        }
+        // A search for it, always on offer (last, if not first).
+        if !out.contains(where: { $0.run != nil }) { out.append(search) }
+        return Array(out.prefix(9))
     }
 }
 

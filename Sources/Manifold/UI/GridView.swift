@@ -950,6 +950,8 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: the focused tile's ticks, and its outline.
     func debugTicks(_ id: PlacementID) -> OutlineTicks? { ticks[id] }
+    /// Debugging: a tile's pill.
+    func debugPill(_ id: PlacementID) -> TilePill? { pills[id] }
 
     /// A tile's own buttons changed (a page could go back, or loads): its bar
     /// shows them as they are.
@@ -1460,6 +1462,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// click on it edits, the I-beam over it says so.
     var editsPlace = false { didSet { if editsPlace != oldValue { window?.invalidateCursorRects(for: self) } } }
     private var edit: PillEdit?
+    /// Completing what's typed (an address, as Chrome's bar does): what was
+    /// typed (the inline completion aside), the completions under the field,
+    /// and the one chosen — the first, the default, unless ↑↓ moved.
+    private var typed = ""
+    private var completions: [PillSuggestion] = []
+    private var chosen = 0
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
     var onClose: (() -> Void)?
@@ -1626,6 +1634,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     func endEditing() {
         guard edit != nil else { return }
         edit = nil
+        closeCompletions()
+        typed = ""
         if window?.firstResponder === editor.currentEditor() { window?.makeFirstResponder(nil) }
         editor.isHidden = true
         name.isHidden = false
@@ -1633,7 +1643,23 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        let listing = !completions.isEmpty
         switch selector {
+        case #selector(moveDown(_:)), #selector(insertTab(_:)) where listing:
+            choose(min(chosen + 1, completions.count - 1))
+            return true
+        case #selector(moveUp(_:)), #selector(insertBacktab(_:)) where listing:
+            choose(max(chosen - 1, 0))
+            return true
+        case #selector(deleteBackward(_:)), #selector(deleteForward(_:)):
+            // ⇧⌫ (⇧⌦): the chosen completion forgotten, as Chrome does.
+            guard listing, NSApp.currentEvent?.modifierFlags.contains(.shift) == true else { return false }
+            return forgetChosen()
+        case #selector(insertNewline(_:)) where listing:
+            // The completion chosen, if the field still says it; else what's in it.
+            let c = completions[chosen]
+            if c.run != nil || textView.string == c.fill || c.fillsOnly { return commitCompletion(chosen) }
+            fallthrough
         case #selector(insertNewline(_:)):
             let text = editor.stringValue.trimmingCharacters(in: .whitespaces)
             let commit = edit?.commit
@@ -1643,11 +1669,135 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if !text.isEmpty || emptied { commit?(text) }
             return true
         case #selector(cancelOperation(_:)):
+            // The first ⎋ closes the completions (and drops the inline one);
+            // the second leaves the field.
+            if listing {
+                textView.string = typed
+                closeCompletions()
+                return true
+            }
             endEditing()
             return true
         default:
             return false
         }
+    }
+
+    // MARK: Completions
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard edit?.suggest != nil, let tv = editor.currentEditor() as? NSTextView else { return }
+        let s = tv.string
+        // Completed inline only typing on (not deleting, which takes the
+        // completion away and leaves it away).
+        let forward = s.count > typed.count && s.lowercased().hasPrefix(typed.lowercased())
+        typed = s
+        complete(inline: forward)
+    }
+
+    /// The completions for what's typed, the first chosen; with `inline`,
+    /// the first completed in the field, the rest selected.
+    private func complete(inline: Bool) {
+        guard let suggest = edit?.suggest, let window else { return }
+        completions = typed.trimmingCharacters(in: .whitespaces).isEmpty ? [] : suggest(typed)
+        chosen = 0
+        guard !completions.isEmpty else { return closeCompletions() }
+        if inline, let first = completions.first, first.inline, first.fill.lowercased().hasPrefix(typed.lowercased()),
+           first.fill.count > typed.count, let tv = editor.currentEditor() as? NSTextView {
+            let rest = String(first.fill.dropFirst(typed.count))
+            tv.string = typed + rest
+            tv.setSelectedRange(NSRange(location: (typed as NSString).length, length: (rest as NSString).length))
+        }
+        var r = editor.convert(editor.bounds, to: nil)
+        r.origin.x -= 8
+        r.size.width = max(r.width + 16, 380)
+        let q = typed.lowercased()
+        let rows = completions.enumerated().map { i, c -> FloatingList.Row in
+            let found = (c.title.lowercased() as NSString).range(of: q)
+            return FloatingList.Row(title: c.title, detail: c.detail, symbol: c.symbol,
+                                    action: { [weak self] in _ = self?.commitCompletion(i) },
+                                    bold: found.location == NSNotFound || q.isEmpty ? nil : found)
+        }
+        FloatingList.shared.show(rows, for: self, in: window, place: .below(r), sticky: true)
+        FloatingList.shared.choose(0)
+    }
+
+    /// ↑↓: another completion chosen, and in the field — the first, what
+    /// was typed and its inline completion, as it was.
+    private func choose(_ i: Int) {
+        guard let tv = editor.currentEditor() as? NSTextView, completions.indices.contains(i) else { return }
+        chosen = i
+        FloatingList.shared.choose(i)
+        let c = completions[i]
+        if i == 0, c.inline, c.fill.lowercased().hasPrefix(typed.lowercased()) {
+            tv.string = c.fill
+            tv.setSelectedRange(NSRange(location: (typed as NSString).length, length: (c.fill as NSString).length - (typed as NSString).length))
+        } else {
+            tv.string = c.run != nil ? typed : c.fill
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        }
+    }
+
+    /// A completion chosen (⏎, or clicked): a name to type on from goes in
+    /// the field; anything else is done.
+    private func commitCompletion(_ i: Int) -> Bool {
+        guard completions.indices.contains(i) else { return true }
+        let c = completions[i]
+        if c.fillsOnly, let tv = editor.currentEditor() as? NSTextView {
+            tv.string = c.fill
+            tv.setSelectedRange(NSRange(location: (c.fill as NSString).length, length: 0))
+            typed = c.fill
+            complete(inline: false)
+            return true
+        }
+        let commit = edit?.commit
+        endEditing()
+        if let run = c.run { run() } else { commit?(c.commitText ?? c.fill) }
+        return true
+    }
+
+    /// The chosen completion forgotten (a page from the history), the rest
+    /// completed again.
+    private func forgetChosen() -> Bool {
+        guard completions.indices.contains(chosen), let remove = completions[chosen].remove,
+              let tv = editor.currentEditor() as? NSTextView else { return false }
+        remove()
+        tv.string = typed
+        complete(inline: false)
+        return true
+    }
+
+    private func closeCompletions() {
+        completions = []
+        chosen = 0
+        FloatingList.shared.hide(for: self)
+    }
+
+    /// Debugging: the field and its completions, the chosen one starred.
+    var debugCompletions: String {
+        let field = (editor.currentEditor() as? NSTextView).map { "field “\($0.string)” selected \(NSStringFromRange($0.selectedRange()))" } ?? "not editing"
+        return field + "\n" + completions.enumerated().map { "\($0.offset == chosen ? "*" : " ")\($0.element.symbol) \($0.element.title)\($0.element.detail.isEmpty ? "" : " — " + $0.element.detail)" }.joined(separator: "\n")
+    }
+
+    /// Debugging: typed into the field, as keys would.
+    func debugType(_ text: String) {
+        guard let tv = editor.currentEditor() as? NSTextView else { return }
+        tv.insertText(text, replacementRange: tv.selectedRange())
+    }
+
+    /// Debugging: a key in the field ("down", "up", "tab", "return", "escape", "delete", "shiftdelete").
+    func debugKey(_ key: String) {
+        guard let tv = editor.currentEditor() as? NSTextView else { return }
+        if key == "shiftdelete" { _ = forgetChosen(); return }
+        let selector: Selector = switch key {
+        case "down": #selector(NSResponder.moveDown(_:))
+        case "up": #selector(NSResponder.moveUp(_:))
+        case "tab": #selector(NSResponder.insertTab(_:))
+        case "return": #selector(NSResponder.insertNewline(_:))
+        case "escape": #selector(NSResponder.cancelOperation(_:))
+        default: #selector(NSResponder.deleteBackward(_:))
+        }
+        if !control(editor, textView: tv, doCommandBy: selector) { tv.doCommand(by: selector) }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {

@@ -645,6 +645,9 @@ enum DebugControl {
             return wc?.debugDirectory(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
+        case "omni":
+            // The focused tile's address bar: "begin", "type <text>", "key <k>".
+            return wc?.debugOmni(arg) ?? "no window"
         case "ticks":
             // "ticks": the focused tile's outline ticks and items; "ticks
             // open", its outline over them; "ticks rows", the list shown;

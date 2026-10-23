@@ -812,7 +812,19 @@ around it, and comes back with its history.
   terminal, typed in the finder, or asked for in the palette: the page
   has the whole tile, its pill has the address (click it, or ⌘L), and
   back, forward and reload (stop, while it loads) are buttons on its bar
-  as well as ⌘[ and ⌘]; its pages are in its log. It's known to sites as
+  as well as ⌘[ and ⌘]; its pages are in its log. The address works as
+  Chrome's: `localhost:3000`, `10.0.0.5`, any `name:port` are addresses
+  (not searches); **`host:port`, an attached host's name** (`slowbox:3000/api`)
+  is that host's own localhost — the port forwarded here and opened, the
+  pill showing it as `slowbox:3000` still; words, a search. As you type,
+  completions come under it: the page you've been to that begins with
+  it, filled in inline (the rest selected — type on, or ⌫ it away),
+  else what you typed (to go to, or search for); pages you've been to
+  that match it by address or title; the attached hosts (`slowbox:`,
+  and their ports you've been to); a search. ↑↓ or ⇥ move through them,
+  ⏎ goes, ⎋ closes them (a second ⎋ leaves the address), ⇧⌫ forgets a
+  page. The pages any web tile shows are kept for this, with their
+  titles, in `web-history.json` in the app's folder. It's known to sites as
   the Safari that's installed (a site that doesn't know it by WebKit's name
   alone — Google — would serve an old, plain page). A link that
   opens a new window (`target=_blank`, `window.open`) opens a web block

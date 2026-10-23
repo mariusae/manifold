@@ -148,6 +148,30 @@ struct PillEdit {
     /// place after it (a page's address).
     var overName = false
     var commit: (String) -> Void
+    /// What's typed so far, completed (a page's address, as a browser's
+    /// address bar does): the rows under the field, the first the default.
+    var suggest: ((String) -> [PillSuggestion])? = nil
+}
+
+/// A completion for a pill being edited: what it puts in the field, how it
+/// reads in the list, and what choosing it does.
+struct PillSuggestion {
+    /// In the field, chosen (and completed inline, if `inline`).
+    var fill: String
+    var title: String
+    var detail = ""
+    var symbol = "globe"
+    /// Its `fill` begins with what's typed: completed in the field as you
+    /// type, the rest selected to type over.
+    var inline = false
+    /// Chosen, it goes in the field to type on from (a host's `name:`).
+    var fillsOnly = false
+    /// What's committed for it, if not its `fill` (a page's whole address).
+    var commitText: String?
+    /// Chosen: done, instead of the field's commit (a search).
+    var run: (() -> Void)?
+    /// ⇧⌫ on it: forgotten (a page in the history).
+    var remove: (() -> Void)?
 }
 
 /// A lens's keeper of its state (DESIGN.md §3.5): what it notes is written

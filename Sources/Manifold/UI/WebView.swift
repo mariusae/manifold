@@ -12,6 +12,18 @@ protocol WebViewDelegate: AnyObject {
     /// Whether it can go back or forward, or loads, changed: its bar's
     /// buttons say so.
     func webViewBarChanged(_ view: WebView)
+    /// What's typed in its address bar, completed: pages it's been to, the
+    /// attached hosts.
+    func webView(_ view: WebView, suggestionsFor typed: String) -> [PillSuggestion]
+    /// The attached host a name in the address bar is (its label), if any.
+    func webView(_ view: WebView, hostNamed name: String) -> HostID?
+    /// A port of another host's brought here: the port here, or nil.
+    func webView(_ view: WebView, forward port: Int, on host: HostID, done: @escaping (Int?) -> Void)
+    /// An address as the bar shows it (a forwarded page by its host and
+    /// port, `slowbox:3000/x`) and the history keeps it.
+    func webView(_ view: WebView, addressOf url: URL) -> String
+    /// A page shown (`again`: only its title come since): for the history.
+    func webView(_ view: WebView, visited url: URL, title: String?, again: Bool)
 }
 
 /// The web lens: an embedded browser on a web block, with an address bar,
@@ -66,6 +78,11 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
                 DispatchQueue.main.async { if let self { self.delegate?.webViewBarChanged(self) } }
             }
         }
+        // Its title as the page sets it, which may be after it has loaded
+        // (or as it changes): the block's, and the history's.
+        watching.append(web.observe(\.title, options: []) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.titleChanged() }
+        })
         web.allowsBackForwardNavigationGestures = true
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
@@ -174,13 +191,40 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     }
 
     /// What was typed into the pill: an address, or words to search for.
+    /// What was typed in the pill: an address (`localhost:3000` and the
+    /// like as one), a port on an attached host's localhost (`slowbox:3000/x`,
+    /// forwarded here first), or words to search for.
     private func go(_ typed: String) {
-        var s = typed.trimmingCharacters(in: .whitespaces)
+        let s = typed.trimmingCharacters(in: .whitespaces)
         guard !s.isEmpty else { return }
-        if !s.contains("://") {
-            s = s.contains(" ") || !s.contains(".") ? "https://duckduckgo.com/?q=" + (s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s) : "https://" + s
+        switch WebAddress.parse(s) {
+        case let .page(address):
+            load(address)
+        case let .search(words):
+            search(words)
+            return
+        case let .hostPort(name, port, rest):
+            if let h = delegate?.webView(self, hostNamed: name) {
+                delegate?.webView(self, forward: port, on: h) { [weak self] local in
+                    guard let local else { return }
+                    self?.load("http://localhost:\(local)\(rest)")
+                }
+            } else {
+                load("http://\(name):\(port)\(rest)")
+            }
         }
-        load(s)
+        window?.makeFirstResponder(web)
+    }
+
+    private func titleChanged() {
+        guard let title = web.title, !title.isEmpty, !web.isLoading || web.url?.absoluteString == shownURL else { return }
+        if title != source()?.web?.title { delegate?.webView(self, append: [.title(title)]) }
+        if let u = web.url { delegate?.webView(self, visited: u, title: title, again: true) }
+    }
+
+    /// Words looked for (a search engine's page).
+    func search(_ words: String) {
+        load("https://duckduckgo.com/?q=" + (words.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? words))
         window?.makeFirstResponder(web)
     }
 
@@ -210,7 +254,13 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
 
     /// The pill, clicked, is the address to type over (⌘L too).
     var pillEdit: PillEdit? {
-        PillEdit(text: web.url?.absoluteString ?? shownURL ?? "", placeholder: "Address, or words to search for") { [weak self] in self?.go($0) }
+        let text = web.url.map { delegate?.webView(self, addressOf: $0) ?? $0.absoluteString } ?? shownURL ?? ""
+        var e = PillEdit(text: text, placeholder: "Address, or words to search for") { [weak self] in self?.go($0) }
+        e.suggest = { [weak self] typed in
+            guard let self else { return [] }
+            return self.delegate?.webView(self, suggestionsFor: typed) ?? []
+        }
+        return e
     }
 
     var pillItems: [NSMenuItem] {
@@ -251,6 +301,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
             events.append(.url(url, viaHost: false))
         }
         if let title = web.title, !title.isEmpty, title != source()?.web?.title { events.append(.title(title)) }
+        if let u = web.url { delegate?.webView(self, visited: u, title: web.title, again: false) }
         if !events.isEmpty { delegate?.webView(self, append: events) }
     }
 
