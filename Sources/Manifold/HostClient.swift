@@ -149,6 +149,21 @@ final class HostClient {
         conn.send(.message(ClientMessage.ping))
     }
     private var pingSent: Date?
+    /// When the last ping went, and how long the last pong took.
+    private var lastPing = Date.distantPast
+    private var pingRTT: TimeInterval?
+    /// Dropped for not answering: made again at once (the network may be
+    /// back already), not after the back-off.
+    private var droppedSilent = false
+    /// When this host's link last brought anything, kept once it's gone.
+    private var lastContact: Date?
+    /// How long a pong may take at least before the link counts as dead.
+    static let answerWithin: TimeInterval = 3
+    /// The host has said nothing for this long while it should have (a ping
+    /// unanswered), or its link is gone and not yet back: posted for its
+    /// terminals each second (`silence` in userInfo, none once it's over).
+    static let silenceChanged = Notification.Name("ManifoldHostSilence")
+    private var silent = false
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
@@ -667,55 +682,77 @@ final class HostClient {
     func networkMayHaveChanged() {
         guard !disconnected else { return }
         if retryWork != nil { return retryNow() }
-        guard isRemote, let conn else { return }
-        let sent = Date()
-        pingSent = sent
-        conn.send(.message(ClientMessage.ping))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self, self.pingSent == sent, self.conn === conn, !self.busy(within: 5) else { return }
-            NSLog("host %@: no answer after waking; dropping the connection", self.host.raw)
-            self.pingSent = nil
-            self.link = .unreachable("not answering")
-            conn.close()
-        }
+        guard isRemote, conn != nil else { return }
+        // Asked now (judged by the heartbeat, as any ping is).
+        ping(force: true)
     }
 
-    /// Every so often, a ping over a remote bridge; no pong in time, and
-    /// the connection is given up on, to be made again.
+    /// Each second, for a remote host: over its link, a ping every two, and
+    /// the link given up on — to be made again at once — when one goes
+    /// unanswered for a few seconds (three, or four round trips) with
+    /// nothing at all coming meanwhile (a link busy bringing a file is
+    /// alive, its pong behind the file); with or without one, how long the
+    /// host's been silent, for its terminals.
     private func startPinging() {
         pingTimer?.invalidate()
         guard isRemote else { return }
-        pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, let conn = self.conn else { return }
-                if let sent = self.pingSent, Date().timeIntervalSince(sent) > 12 {
-                    // Still busy (a file coming, one going): the pong is
-                    // behind it; asked again when it's quiet.
-                    if self.busy(within: 12) { return }
-                    NSLog("host %@: no answer to a ping; dropping the connection", self.host.raw)
-                    self.pingSent = nil
-                    self.link = .unreachable("not answering")
-                    conn.close()
-                    return
-                }
-                self.pingSent = Date()
-                conn.send(.message(ClientMessage.ping))
-            }
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.heartbeat() }
         }
+    }
+
+    private func heartbeat() {
+        defer { postSilence() }
+        guard let conn, let mux else { return }
+        let now = Date()
+        if let sent = pingSent {
+            let heard = mux.linkState().lastRead
+            let wait = max(Self.answerWithin, 4 * (pingRTT ?? 0.5))
+            if heard < sent, now.timeIntervalSince(sent) > wait {
+                NSLog("host %@: no answer to a ping in %.1f s; dropping the connection", host.raw, wait)
+                pingSent = nil
+                droppedSilent = true
+                link = .unreachable("not answering")
+                conn.close()
+            }
+            return
+        }
+        if now.timeIntervalSince(lastPing) >= 2 { ping() }
+    }
+
+    private func ping(force: Bool = false) {
+        guard let conn, force || pingSent == nil else { return }
+        let now = Date()
+        if pingSent == nil || force { pingSent = now }
+        lastPing = now
+        conn.send(.message(ClientMessage.ping))
+    }
+
+    /// How long the host has been silent while it should have spoken, or
+    /// since its link went (not back yet); nil while it's fine.
+    var silence: TimeInterval? {
+        let now = Date()
+        if link == .connected, let mux {
+            guard let sent = pingSent else { return nil }
+            let heard = mux.linkState().lastRead
+            guard heard < sent else { return nil }
+            let s = now.timeIntervalSince(heard)
+            return s >= 1.5 ? s : nil
+        }
+        guard isRemote, !disconnected, let lastContact else { return nil }
+        return now.timeIntervalSince(lastContact)
+    }
+
+    private func postSilence() {
+        let s = silence
+        guard s != nil || silent else { return }
+        silent = s != nil
+        NotificationCenter.default.post(name: Self.silenceChanged, object: self,
+                                        userInfo: s.map { ["silence": $0, "connected": link == .connected] } ?? [:])
     }
 
     /// Ports of this host's forwarded to this Mac (§8).
     lazy var forwards = PortForwards(client: self)
-
-
-    /// Whether the link is plainly alive without its pong: bytes came in
-    /// lately, or what's being sent is still being taken. A big piece
-    /// ahead of the pong on a slow link isn't the host gone.
-    private func busy(within seconds: TimeInterval) -> Bool {
-        guard let link = mux?.linkState() else { return false }
-        let now = Date()
-        return now.timeIntervalSince(link.lastRead) < seconds || (link.pending > 0 && now.timeIntervalSince(link.lastWrite) < seconds)
-    }
 
     private func attach(_ connection: Connection) {
         let mux = Mux(connection)
@@ -735,13 +772,14 @@ final class HostClient {
         conn.onClose = { [weak self] in
             guard let self else { return }
             NSLog("host %@: connection closed", self.host.raw)
+            // Its last word, for how long it's been (the heartbeat goes on).
+            if let heard = self.mux?.linkState().lastRead { self.lastContact = heard }
             self.conn = nil
             self.mux = nil
             self.isConnected = false
             // Reads asked over this link won't be answered: asked again on the next.
             self.readsInFlight = []
             self.forwards.linkClosed()
-            self.pingTimer?.invalidate()
             self.pingSent = nil
             // Gone before it answered: unreachable, not still connecting.
             let answered = self.link == .connected
@@ -759,7 +797,11 @@ final class HostClient {
             // remote one after a while, longer each time it can't be.
             if self.isRemote {
                 let again = self.closedUnanswered >= 3 && self.onNeedsBootstrap != nil
-                let delay = self.serverRestarting ? 1 : self.nextRetryDelay()
+                // Given up on for silence: at once (the network may be back
+            // already, a roam done), the back-off from its start.
+            if self.droppedSilent { self.backoff = 2 }
+            let delay = self.serverRestarting ? 1 : self.droppedSilent ? 0.3 : self.nextRetryDelay()
+            self.droppedSilent = false
                 self.serverRestarting = false
                 self.scheduleRetry(after: delay) { [weak self] in
                     guard let self else { return }
@@ -820,6 +862,7 @@ final class HostClient {
             link = .connected
             backoff = 2
             closedUnanswered = 0
+            lastContact = nil
             startPinging()
             fenced = []
             clock = Clock(host: host)
@@ -835,6 +878,7 @@ final class HostClient {
             onConnected?()
             scheduleChange()
         case .pong:
+            if let sent = pingSent { pingRTT = Date().timeIntervalSince(sent) }
             pingSent = nil
             lastHeard = Date()
             let waiting = pongWaiters

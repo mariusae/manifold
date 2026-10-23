@@ -53,6 +53,15 @@ final class EchoPrediction {
     static let on: TimeInterval = 0.030, off: TimeInterval = 0.020, glowFrom: TimeInterval = 0.080
     private var active = false
 
+    /// The link is away: no guess is a miss for not being shown (nothing
+    /// can be), and when it's back, their time starts again.
+    var linkAway = false {
+        didSet {
+            guard !linkAway, oldValue else { return }
+            for i in guesses.indices { guesses[i].at = Date() }
+        }
+    }
+
     init(surface: ghostty_surface_t, queue: DispatchQueue) {
         self.surface = surface
         self.queue = queue
@@ -183,7 +192,7 @@ final class EchoPrediction {
                 confirmed = true
                 guesses.removeFirst(j)
             }
-        } else if let first = guesses.dropFirst().first, Date().timeIntervalSince(first.at) > Self.deadline(echoTime) {
+        } else if !linkAway, let first = guesses.dropFirst().first, Date().timeIntervalSince(first.at) > Self.deadline(echoTime) {
             return stop(missed: true)
         }
         if guesses.count == 1 { return withdraw() }

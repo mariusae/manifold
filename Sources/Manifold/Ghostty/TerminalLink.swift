@@ -130,6 +130,40 @@ final class TerminalLink {
         }
     }
 
+    /// The host it's on (for how its link stands).
+    var host: HostClient? { client }
+
+    /// What's typed, numbered from its first byte (under the lock): the
+    /// last few seconds of it kept, so attaching again after the link went
+    /// sends it with the attach — the host writes what it hadn't taken (a
+    /// keystroke sent into the dying link, or typed while it was away), and
+    /// not what it had. Older than `holdFor` it isn't sent: what's on the
+    /// screen may be another program's by then.
+    let inputID = UUID().uuidString
+    private var inputLog: [(offset: UInt64, at: Date, data: Data)] = []
+    private var inputEnd: UInt64 = 0
+    /// What's been sent of it (on a stream, or with an attach).
+    private var inputSent: UInt64 = 0
+    static let holdFor: TimeInterval = 15, holdAtMost = 4096
+
+    /// The log trimmed: to `holdFor`, and `holdAtMost` bytes (under the lock).
+    private func trimInput() {
+        let now = Date()
+        while let first = inputLog.first, now.timeIntervalSince(first.at) > Self.holdFor || inputLog.reduce(0, { $0 + $1.data.count }) > Self.holdAtMost {
+            inputLog.removeFirst()
+        }
+    }
+
+    /// What's typed but not sent yet (under the lock).
+    private func unsentInput() -> Data {
+        var out = Data()
+        for e in inputLog where e.offset + UInt64(e.data.count) > inputSent {
+            out.append(e.data.dropFirst(Int(inputSent > e.offset ? inputSent - e.offset : 0)))
+        }
+        inputSent = inputEnd
+        return out
+    }
+
     /// Whether the host's link is up, so a stream can be opened: its
     /// server has answered (and said what it can do: compressed streams).
     var linkUp: Bool { client?.mux != nil && client?.link == .connected }
@@ -154,17 +188,38 @@ final class TerminalLink {
 
     /// Typed (or the terminal's answer to a query): up to the shell.
     func typed(_ data: Data) {
-        let (s, key): (MuxStream?, Bool) = lock.withLock {
-            guard acceptInput else { return (nil, false) }
+        let (s, out, key): (MuxStream?, Data, Bool) = lock.withLock {
+            // The terminal's answer to a query in a replay: not for the
+            // program now (as before).
+            if answering, !acceptInput { return (nil, Data(), false) }
+            // Logged (to go again, attaching after the link went; numbered
+            // as the host counts what it takes, answers too), and sent if
+            // typing goes through now.
+            guard everAttached else { return (nil, Data(), false) }
+            inputLog.append((inputEnd, Date(), data))
+            inputEnd += UInt64(data.count)
+            trimInput()
+            guard acceptInput, let stream else { return (nil, Data(), !answering) }
             if !answering, keySent == nil { keySent = Date() }
-            return (stream, !answering)
+            return (stream, unsentInput(), !answering)
         }
-        guard let s else { return }
-        s.send(Frame(.data, data))
+        if let s, !out.isEmpty { s.send(Frame(.data, out)) }
         // A keystroke (not an answer): shown before its echo, where that helps.
         if key {
             queue.async { [self] in prediction?.typed(data, echoTime: echoTime, mode: ttyMode) }
         }
+    }
+
+    /// Typing goes through again: what was typed meanwhile (after the
+    /// attach went) goes first.
+    private func takeInput() {
+        let (s, out): (MuxStream?, Data) = lock.withLock {
+            acceptInput = true
+            trimInput()
+            return (stream, unsentInput())
+        }
+        if let s, !out.isEmpty { s.send(Frame(.data, out)) }
+        queue.async { [self] in prediction?.linkAway = false }
     }
 
     /// How long a keystroke takes to be answered here now (the median of
@@ -213,6 +268,7 @@ final class TerminalLink {
             // Its connection closed with it: the link went, not the shell
             // (asked now: the client may not have let go of the link yet).
             let linkWent = mux?.connection.isClosed ?? true
+            if linkWent { self?.queue.async { self?.prediction?.linkAway = true } }
             self?.lock.withLock {
                 self?.stream = nil
                 self?.attached = false
@@ -222,14 +278,22 @@ final class TerminalLink {
         }
         // Round trips measured anew: this link may be another network's.
         queue.async { self.echoTimes = [] }
-        let size: (cols: UInt16, rows: UInt16) = lock.withLock {
+        let (size, input): ((cols: UInt16, rows: UInt16), InputResume?) = lock.withLock {
             self.stream = stream
             attaching = false
             attached = true
             everAttached = true
-            return self.size
+            // What it typed lately, from its start: the host writes the
+            // part it hasn't taken.
+            trimInput()
+            let input = inputLog.first.map { first in InputResume(from: first.offset, data: inputLog.reduce(Data()) { $0 + $1.data }) }
+            inputSent = inputEnd
+            return (self.size, resume ? input : nil)
         }
-        stream.send(.message(ClientMessage.attach(AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume, ttyModes: true))))
+        var req = AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume, ttyModes: true)
+        req.inputID = inputID
+        req.input = input
+        stream.send(.message(ClientMessage.attach(req)))
     }
 
     /// On `queue`.
@@ -265,9 +329,9 @@ final class TerminalLink {
             // again now; those answers aren't for the shell, so typing
             // waits a moment longer.
             if frame.payload.first == 1 {
-                lock.withLock { acceptInput = true }
+                takeInput()
             } else {
-                queue.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.lock.withLock { self?.acceptInput = true } }
+                queue.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.takeInput() }
             }
         default:
             break

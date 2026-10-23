@@ -369,3 +369,16 @@ private final class Inbox: @unchecked Sendable {
     guard case .attach(let b)? = before.decode(ClientMessage.self) else { Issue.record("no attach"); return }
     #expect(b.ttyModes == nil)
 }
+
+@Test func anAttachCarriesItsInputsNumberingAndWhatItTypedLately() throws {
+    let block = try #require(BlockID(string: "h4z3gpme3et/01M5HWNAR9X5JKASZVKVFM4GX2"))
+    var req = AttachRequest(block: block, cols: 80, rows: 24, env: [:], resume: true, ttyModes: true)
+    req.inputID = "link-1"
+    req.input = InputResume(from: 120, data: Data("echo hi\r".utf8))
+    guard case .attach(let a)? = Frame.message(ClientMessage.attach(req)).decode(ClientMessage.self) else { Issue.record("no attach"); return }
+    #expect(a.inputID == "link-1" && a.input?.from == 120 && a.input?.data == Data("echo hi\r".utf8))
+    // From an app before it: neither (and the host writes nothing again).
+    let before = Frame.message(ClientMessage.attach(AttachRequest(block: block, cols: 80, rows: 24, env: [:])))
+    guard case .attach(let b)? = before.decode(ClientMessage.self) else { Issue.record("no attach"); return }
+    #expect(b.inputID == nil && b.input == nil)
+}

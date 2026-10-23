@@ -95,6 +95,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         link.onClosed = { [weak self] linkWent in self?.linkClosed(linkWent: linkWent) }
         link.onPrediction = { [weak self] cells, glows, info in self?.glow.show(cells, glow: glows, info: info) }
+        silenceBar.layer?.zPosition = 6
+        silenceObserver = NotificationCenter.default.addObserver(forName: HostClient.silenceChanged, object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let host = self.link.host, note.object as? HostClient === host else { return }
+                self.silenceBar.set(silence: note.userInfo?["silence"] as? TimeInterval, connected: note.userInfo?["connected"] as? Bool ?? true)
+                self.layoutSilenceBar()
+            }
+        }
         glow.layer?.zPosition = 4
         dots.layer?.zPosition = 5
         connecting.wantsLayer = true
@@ -140,6 +148,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         dots.removeFromSuperview()
         connecting.removeFromSuperview()
         glow.removeFromSuperview()
+        silenceBar.removeFromSuperview()
+        if let silenceObserver { NotificationCenter.default.removeObserver(silenceObserver) }
         locateWork?.cancel()
         link.stop()
         guard let surface else { return }
@@ -245,6 +255,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private let connecting = BusyNote()
     /// The glow over keystrokes shown before the host echoes them.
     private let glow = PredictionGlow(frame: .zero)
+    /// How long since the host was heard from, while it's quiet.
+    private let silenceBar = SilenceBar(frame: .zero)
+    private var silenceObserver: NSObjectProtocol?
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
     /// What the core says of the screen and its history: how many rows,
@@ -380,12 +393,21 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if glow.superview !== parent { parent.addSubview(glow) }
         glow.frame = frame
         glow.isHidden = isHidden
+        layoutSilenceBar()
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
         scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len
         scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
         updateDots()
+    }
+
+    /// The silence bar at the top centre of the terminal, in its parent.
+    private func layoutSilenceBar() {
+        guard let parent = superview else { return }
+        if silenceBar.superview !== parent { parent.addSubview(silenceBar) }
+        let s = silenceBar.fitting
+        silenceBar.frame = NSRect(x: (frame.midX - s.width / 2).rounded(), y: frame.maxY - s.height - 10, width: s.width, height: s.height)
     }
 
     /// The dots where the shell's commands are on the screen now: in the

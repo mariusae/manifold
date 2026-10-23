@@ -367,6 +367,16 @@ public enum ClientMessage: Codable, Sendable {
     case saveImage(block: BlockID, name: String, folder: String?)
 }
 
+/// A terminal's input typed lately, from byte `from` of all it's typed.
+public struct InputResume: Codable, Sendable {
+    public var from: UInt64
+    public var data: Data
+    public init(from: UInt64, data: Data) {
+        self.from = from
+        self.data = data
+    }
+}
+
 /// How a terminal's pty takes what's typed, as its program set it: whether
 /// it gathers it into lines (canonical: the kernel's own editing — `cat`,
 /// `read`; off: raw, for a program that edits and echoes for itself — a
@@ -461,6 +471,13 @@ public struct AttachRequest: Codable, Sendable {
     /// The pty's modes wanted (`FrameKind.ttyMode`): an app that knows them
     /// says so (one from before would take the frame for a broken one).
     public var ttyModes: Bool?
+    /// The terminal's input numbered (`InputResume`): which it is, so the
+    /// host counts what it takes of it; and, attaching again after the
+    /// link went, what it typed lately — the host writes what it hasn't
+    /// taken yet, so a keystroke sent into a dying link isn't lost, nor
+    /// one that arrived written twice.
+    public var inputID: String?
+    public var input: InputResume?
 
     public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String], resume: Bool = false, ttyModes: Bool = false) {
         self.block = block
@@ -469,6 +486,8 @@ public struct AttachRequest: Codable, Sendable {
         self.env = env
         self.resume = resume ? true : nil
         self.ttyModes = ttyModes ? true : nil
+        self.inputID = nil
+        self.input = nil
     }
 }
 

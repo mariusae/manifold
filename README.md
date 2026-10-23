@@ -352,7 +352,14 @@ around it, and comes back with its history.
   stream. A terminal whose host goes away keeps what it showed, and
   picks up where it was when the host is back — its history, scroll and
   selection kept, caught up with the screen; a remote host is one ssh session
-  however many terminals it has. The host keeps each terminal itself, in
+  however many terminals it has. A link that's gone dead is noticed in a few
+  seconds (a ping every two, unanswered for three or four round trips with
+  nothing else coming) and made again at once, as it is when the Mac wakes
+  or moves to another network; meanwhile its terminals say "Last contact
+  4 s ago" (and "reconnecting…"), as mosh does. What's typed into a dying
+  link or while it's away isn't lost: a terminal attaching again sends its
+  last 15 seconds of input, and the host writes only what it hadn't taken —
+  a keystroke the host had already isn't written twice. The host keeps each terminal itself, in
   the same emulator (Ghostty's, built into the server): a terminal
   attaching is sent a snapshot of it — screen, modes, cursor, a full-
   screen program on its own screen — not the output that made it; and

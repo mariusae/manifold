@@ -71,6 +71,10 @@ final class Session {
         onPasswordInput?(password)
     }
     private var statuses = StatusScanner()
+    /// How much of each terminal's input (by its id) has been taken, and
+    /// the id of each attachment's.
+    private var inputTaken: [String: UInt64] = [:]
+    private var inputIDs: [ObjectIdentifier: String] = [:]
     /// The pty's modes as last seen, and the attachments that want them.
     private var ttyMode: TTYMode?
     private var wantsModes: Set<ObjectIdentifier> = []
@@ -181,8 +185,23 @@ final class Session {
     /// answers it is still waiting for — and the attachment is told so.
     private var replayShown = false
 
-    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16, resume: Bool = false, ttyModes: Bool = false) {
+    func attach(_ conn: any Channel, cols: UInt16, rows: UInt16, resume: Bool = false, ttyModes: Bool = false,
+                inputID: String? = nil, input: InputResume? = nil) {
         attachments.append(conn)
+        if let inputID {
+            inputIDs[ObjectIdentifier(conn)] = inputID
+            // What it typed lately: the part not taken yet (sent into the
+            // link that went), written now.
+            if let input {
+                let taken = inputTaken[inputID] ?? input.from
+                let skip = taken > input.from ? Int(min(taken - input.from, UInt64(input.data.count))) : 0
+                if skip < input.data.count {
+                    self.input.append(input.data.dropFirst(skip))
+                    writeInput()
+                }
+                inputTaken[inputID] = max(taken, input.from + UInt64(input.data.count))
+            }
+        }
         if ttyModes {
             wantsModes.insert(ObjectIdentifier(conn))
             // As they are now, ahead of anything typed.
@@ -218,6 +237,7 @@ final class Session {
         attachments.removeAll { $0 === conn }
         behind.remove(ObjectIdentifier(conn))
         wantsModes.remove(ObjectIdentifier(conn))
+        inputIDs.removeValue(forKey: ObjectIdentifier(conn))
         sizes.removeValue(forKey: ObjectIdentifier(conn))
         if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
     }
@@ -227,6 +247,7 @@ final class Session {
     func handle(_ frame: Frame, from conn: (any Channel)? = nil) {
         switch frame.kind {
         case .data:
+            if let conn, let id = inputIDs[ObjectIdentifier(conn)] { inputTaken[id, default: 0] += UInt64(frame.payload.count) }
             input.append(frame.payload)
             writeInput()
         case .resize:
