@@ -653,6 +653,18 @@ enum DebugControl {
                                                isARepeat: false, keyCode: 37) else { return "usage: keyequiv <key>" }
             if window.performKeyEquivalent(with: event) { return "a view took it" }
             return NSApp.mainMenu?.performKeyEquivalent(with: event) == true ? "the menu took it" : "nothing took it"
+        case "pillstyle":
+            // "pillstyle <a line of Markdown>": the titles its block links'
+            // pills would show, a block's own name standing as BLOCKNAME.
+            let line = NSMutableAttributedString(string: arg)
+            let tv = TextView(frame: .zero)
+            MarkdownStyle.apply(to: line, base: .systemFont(ofSize: 13), code: .monospacedSystemFont(ofSize: 12, weight: .regular),
+                                palette: tv.markdownPalette, reveal: false, look: { _ in PillLook(title: "BLOCKNAME", symbol: "doc", status: nil) })
+            var titles: [String] = []
+            line.enumerateAttribute(MarkdownStyle.pill, in: NSRange(location: 0, length: line.length)) { v, _, _ in
+                if let look = v as? PillLook { titles.append(look.title) }
+            }
+            return titles.isEmpty ? "no pills" : titles.joined(separator: " | ")
         case "omni":
             // The focused tile's address bar: "begin", "type <text>", "key <k>".
             return wc?.debugOmni(arg) ?? "no window"

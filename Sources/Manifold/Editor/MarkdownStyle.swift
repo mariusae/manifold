@@ -15,7 +15,8 @@ struct PillLook: Equatable {
 /// links as their words — and the markers themselves are drawn too small
 /// to see, as Prism hides them, unless the caret is on the line, where
 /// they show as written, dimmed. A link to a block is its pill, live: the
-/// block's symbol, name and status, as its tile wears them.
+/// block's symbol, name and status, as its tile wears them — a link to a
+/// place in it (`#page=6`, `#line=12`) named by its own words instead.
 enum MarkdownStyle {
     /// A tint behind a run: a code span, a block's chip.
     static let chip = NSAttributedString.Key("manifold.chip")
@@ -116,8 +117,12 @@ enum MarkdownStyle {
             let words = m.range(at: 2), address = s.substring(with: m.range(at: 4))
             a.addAttribute(target, value: address, range: m.range)
             let rest = NSRange(location: m.range(at: 3).location, length: m.range(at: 3).length + m.range(at: 4).length + m.range(at: 5).length)
-            if address.hasPrefix("manifold:"), let id = BlockID.link(address)?.block {
-                if !reveal, let look = look(id) {
+            if address.hasPrefix("manifold:"), let (id, place) = BlockID.link(address) {
+                if !reveal, var look = look(id) {
+                    // A link to a place in the block (a heading, a PDF's page):
+                    // its own words, which name the place, not the block's name.
+                    let named = s.substring(with: words).trimmingCharacters(in: .whitespaces)
+                    if place != nil, !named.isEmpty { look.title = named }
                     let width = pillWidth(look)
                     let first = NSRange(location: m.range.location, length: 1)
                     a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: width, font: base)], range: first)
