@@ -4569,9 +4569,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Opens a path on another host, where it can't be looked at from
-    /// here: a folder if it ends in a slash, Markdown by its name, else
-    /// text; `path:line:column` as from this host.
+    /// Opens a path on another host: a folder if it ends in a slash, or if
+    /// the host lists it as one (asked: it can't be looked at from here);
+    /// a picture or a PDF by its name; else text, Markdown by its name;
+    /// `path:line:column` as from this host.
     private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?, place: Where) {
         var text = target
         var line: Int?, column: Int?
@@ -4586,6 +4587,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             show(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, place, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
             show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
+        } else if line == nil, let client = hosts.client(on) {
+            // No slash: a folder if the host can list it (/home/marius), else
+            // a file — as when it can't be asked.
+            var asked = path
+            if asked == "~" || asked.hasPrefix("~/"), let home = client.home { asked = home + asked.dropFirst() }
+            client.listFolder(asked) { [weak self] entries in
+                guard let self else { return }
+                if entries != nil {
+                    self.show(self.hosts.directoryBlock(for: path, on: on), lens: .directory, place, context: target)
+                } else {
+                    self.show(self.hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
+                }
+            }
         } else {
             if let line { pendingJump = (path, line, column) }
             show(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
