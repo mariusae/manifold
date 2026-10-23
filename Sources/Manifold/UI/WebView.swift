@@ -204,6 +204,21 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         guard !s.isEmpty else { return }
         switch WebAddress.parse(s) {
         case let .page(address):
+            // An attached host's name in a whole address (http://anotherone:8080/,
+            // typed or a page completed): its own localhost, as host:port is.
+            if let url = URL(string: address), let name = url.host, url.scheme == "http" || url.scheme == "https",
+               let h = delegate?.webView(self, hostNamed: name) {
+                let port = url.port ?? (url.scheme == "https" ? 443 : 80)
+                var rest = url.path.isEmpty ? "/" : url.path
+                if let q = url.query { rest += "?" + q }
+                if let f = url.fragment { rest += "#" + f }
+                let scheme = url.scheme ?? "http"
+                delegate?.webView(self, forward: port, on: h) { [weak self] local in
+                    guard let local else { return }
+                    self?.load("\(scheme)://localhost:\(local)\(rest)")
+                }
+                break
+            }
             load(address)
         case let .search(words):
             search(words)
