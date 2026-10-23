@@ -1936,9 +1936,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         link(block, to: t.id)
     }
 
-    /// ⌘L: the focused tile's pill edits what it offers (a page's address).
+    /// Edit Address: the focused tile's pill edits what it offers (a page's address).
     @objc func editAddress(_ sender: Any?) {
         if !content.editFocusedPill() { NSSound.beep() }
+    }
+
+    /// ⌘L: in an editor, Go to Line; elsewhere, the tile's address edited
+    /// (a page's, as a browser's ⌘L).
+    @objc func goToLineOrAddress(_ sender: Any?) {
+        if let e = arrangement?.focused.flatMap({ views[$0] }) as? EditorView { return e.goToLine(sender) }
+        editAddress(sender)
     }
 
     /// Open Folder…: a folder chosen, browsed beside the focused block.
@@ -2198,6 +2205,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return !inboxOrder().isEmpty
         case #selector(printTile(_:)):
             return arrangement?.focused.flatMap { views[$0] } is Printable
+        case #selector(goToLineOrAddress(_:)):
+            // Named for what it will do in the focused tile.
+            let v = arrangement?.focused.flatMap { views[$0] }
+            if v is EditorView { item.title = "Go to Line…"; return true }
+            item.title = v?.pillEdit != nil ? "Edit Address" : "Go to Line…"
+            return v?.pillEdit != nil
         case #selector(toggleTileSidebar(_:)):
             guard let v = arrangement?.focused.flatMap({ views[$0] }), v.hasSidebar else { item.title = "Show Outline"; return false }
             item.title = v.sidebarShown ? "Hide Outline" : "Show Outline"

@@ -645,6 +645,14 @@ enum DebugControl {
             return wc?.debugDirectory(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
+        case "keyequiv":
+            // "keyequiv <key>": the key with ⌘ through the main menu, as typed; which item took it.
+            guard let window = wc?.window, let key = arg.first.map(String.init),
+                  let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+                                               windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
+                                               isARepeat: false, keyCode: 37) else { return "usage: keyequiv <key>" }
+            if window.performKeyEquivalent(with: event) { return "a view took it" }
+            return NSApp.mainMenu?.performKeyEquivalent(with: event) == true ? "the menu took it" : "nothing took it"
         case "omni":
             // The focused tile's address bar: "begin", "type <text>", "key <k>".
             return wc?.debugOmni(arg) ?? "no window"

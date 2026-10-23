@@ -810,7 +810,8 @@ around it, and comes back with its history.
   Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
   terminal, typed in the finder, or asked for in the palette: the page
-  has the whole tile, its pill has the address (click it, or ⌘L), and
+  has the whole tile, its pill has the address (click it, or ⌘L — Go to
+  Line's key in an editor, the address's elsewhere), and
   back, forward and reload (stop, while it loads) are buttons on its bar
   as well as ⌘[ and ⌘]; its pages are in its log. The address works as
   Chrome's: `localhost:3000`, `10.0.0.5`, any `name:port` are addresses

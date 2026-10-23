@@ -280,7 +280,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let findItem = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
         findItem.submenu = find
         edit.addItem(findItem)
-        item(edit, "Go to Line…", #selector(EditorView.goToLine(_:)), "l")
+        // ⌘L is one key for two things, by the tile: a line, in an editor
+        // (as Xcode's); its address, in a page (as a browser's).
+        item(edit, "Go to Line…", #selector(MainWindowController.goToLineOrAddress(_:)), "l")
         edit.addItem(.separator())
         item(edit, "Edit or View", #selector(MainWindowController.toggleEditPreview(_:)), "\r")
         item(edit, "Edit or View Beside", #selector(MainWindowController.editPreviewBeside(_:)), "p", [.command, .option, .shift])
@@ -389,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Scroll to Top", #selector(TerminalView.scrollToTop(_:)), String(UnicodeScalar(NSHomeFunctionKey)!), [.command])
         item(view, "Scroll to Bottom", #selector(TerminalView.scrollToBottom(_:)), String(UnicodeScalar(NSEndFunctionKey)!), [.command])
         view.addItem(.separator())
-        item(view, "Edit Address", #selector(MainWindowController.editAddress(_:)), "l", [.command])
+        item(view, "Edit Address", #selector(MainWindowController.editAddress(_:)), "")
         item(view, "Back", #selector(WebView.goBack(_:)), "[", [.command])
         item(view, "Forward", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
