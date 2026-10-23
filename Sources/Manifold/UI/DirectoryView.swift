@@ -98,7 +98,8 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     /// can't be, or that there's nothing in it.
     private let note = BusyNote()
     private var footerWork: DispatchWorkItem?
-    private(set) var mode = Mode.list
+    /// Columns unless the tile was left in another.
+    private(set) var mode = Mode.columns
     private var content: DirectoryMode?
     private var listedAt: Stamp?
     /// The selection, relative to the root, as all modes share it.
@@ -222,7 +223,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         }
         model = m
         selected = keeper.value("selected").flatMap { $0.isEmpty ? nil : $0 }
-        mode = keeper.value("mode").flatMap(Mode.init) ?? .list
+        mode = keeper.value("mode").flatMap(Mode.init) ?? .columns
         if let f = keeper.value("filter"), !f.isEmpty {
             search.stringValue = f
             m.setFilter(f)

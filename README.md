@@ -455,7 +455,7 @@ around it, and comes back with its history.
   that place. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open as the Finder shows them, in three modes chosen at the
-  bar's right: a **list** (name, date modified, size, kind; sorted by any,
+  bar's right (columns at first; each tile keeps the one it was left in): a **list** (name, date modified, size, kind; sorted by any,
   folders on top) whose folders open in place into the tree under it;
   **columns**, each folder chosen opening the next, a file chosen
   previewed in the last by Quick Look with its kind, size and date; and a
