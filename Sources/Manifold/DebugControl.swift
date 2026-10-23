@@ -89,6 +89,22 @@ enum DebugControl {
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
             // Its identity first: whether it's the same view as before.
             return "view \(UInt(bitPattern: ObjectIdentifier(t).hashValue))\n" + t.visibleText
+        case "rows":
+            // The focused terminal's rows as Ghostty keeps them: pages,
+            // wrap flags, the screen's top, tracked pins.
+            guard let t = wc?.debugFocusedTerminal, let s = t.surface else { return "no terminal focused" }
+            var n: UInt = 0
+            guard let p = ghostty_surface_debug_rows(s, &n) else { return "none" }
+            defer { ghostty_surface_free_debug(s, p, n) }
+            return String(decoding: UnsafeBufferPointer(start: p, count: Int(n)), as: UTF8.self)
+        case "scrollback":
+            // The focused terminal's history and screen, as text, and how
+            // its backfill stands: "scrollback" for all, "scrollback N" for
+            // the last N lines.
+            guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
+            let lines = (t.transcriptLines ?? "").split(separator: "\n", omittingEmptySubsequences: false)
+            let n = Int(arg) ?? lines.count
+            return t.link.debugHistory + "\nlines \(lines.count)\n" + lines.suffix(n).joined(separator: "\n")
         case "text":
             guard let t = wc?.debugFocusedTerminal, let s = t.surface else { return "no terminal focused" }
             let text = arg.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\n", with: "\n")

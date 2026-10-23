@@ -175,8 +175,10 @@ final class Session {
         resize(cols: cols, rows: rows)
         if let screen {
             // The terminal as it is: its queries were answered when they came,
-            // so what's typed now goes straight through.
+            // so what's typed now goes straight through. Its screen at once;
+            // the history above it after, by backfill, from where its mark says.
             conn.send(Frame(.data, resume ? screen.catchUp : screen.attaching))
+            conn.send(screen.mark(screen: true).frame)
             conn.send(Frame(.replayDone, Data([1])))
         } else {
             conn.send(Frame(.data, replay.replay))
@@ -288,8 +290,70 @@ final class Session {
         guard cols > 0, rows > 0, (cols, rows) != size else { return }
         size = (cols, rows)
         _ = mf_pty_resize(master, cols, rows)
-        screen?.resize(cols: cols, rows: rows)
+        guard let screen else { return }
+        let epoch = screen.epoch
+        screen.resize(cols: cols, rows: rows)
+        // A new width renumbers the history (rows rewrapped): said at once.
+        if screen.epoch != epoch { sendMark(force: true) }
     }
+
+    /// Where the history has got to, as last told the attachments.
+    private var markedEnd: UInt64?
+
+    /// The attachments told where the history has got to, when it moved.
+    private func sendMark(force: Bool = false) {
+        guard let screen else { return }
+        let mark = screen.mark(screen: false)
+        guard force || mark.end != markedEnd else { return }
+        markedEnd = mark.end
+        let frame = mark.frame
+        for conn in attachments where !behind.contains(ObjectIdentifier(conn)) { conn.send(frame) }
+    }
+
+    /// A terminal's history after its screen (`BackfillRequest`): the rows
+    /// asked for that are still kept, at most `limit` (the newest), newest
+    /// first in pieces, each its rows' first and end, its width, its rows;
+    /// a seam above them if older ones were asked for that won't come;
+    /// then `replayDone`: all there is. Another numbering (the terminal
+    /// made again, or reflowed since): nothing, closed.
+    func backfill(_ req: BackfillRequest, to stream: MuxStream) {
+        defer { stream.close() }
+        guard let screen, screen.epoch == req.epoch else { return }
+        defer { stream.send(Frame(.replayDone, Data())) }
+        let to = min(req.to, screen.historyEnd)
+        var from = max(req.from, screen.historyStart)
+        if to > req.limit { from = max(from, to - req.limit) }
+        let lost = from > req.from
+        func piece(_ lo: UInt64, _ hi: UInt64, _ rows: Data) -> Frame {
+            var d = Data(capacity: 18 + rows.count)
+            withUnsafeBytes(of: lo.bigEndian) { d.append(contentsOf: $0) }
+            withUnsafeBytes(of: hi.bigEndian) { d.append(contentsOf: $0) }
+            withUnsafeBytes(of: screen.width.bigEndian) { d.append(contentsOf: $0) }
+            d.append(rows)
+            return Frame(.data, d)
+        }
+        let seam = Data("\u{1b}[0m\u{1b}[2m── earlier output not kept ──\u{1b}[0m".utf8)
+        var hi = to
+        while hi > from {
+            // Cut at the first row of a line (found within another piece's
+            // rows up), so a line wrapped over rows comes whole.
+            var lo = max(from, hi >= Self.backfillPiece ? hi - Self.backfillPiece : 0)
+            if lo > from {
+                let floor = max(from, lo >= Self.backfillPiece ? lo - Self.backfillPiece : 0)
+                let start = screen.lineStart(lo, floor: floor)
+                if start > floor || start == from { lo = start }
+            }
+            var rows = screen.history(from: lo, to: hi)
+            if lo == from, lost { rows = seam + Data("\r\n".utf8) + rows }
+            stream.send(piece(lo, hi, rows))
+            hi = lo
+        }
+        if from >= to, lost { stream.send(piece(from, from, seam + Data("\r\n".utf8))) }
+    }
+
+    /// Rows in a piece of backfill: small enough that a keystroke's frames
+    /// interleave, big enough not to be many frames.
+    static let backfillPiece: UInt64 = 400
 
     /// Output to each attachment, as it comes — but not to one whose stream
     /// is full (a slow link, a flood): that one waits, and is sent the
@@ -307,11 +371,16 @@ final class Session {
             }
             conn.send(frame)
         }
+        // After the output, in order with it: where it took the history.
+        sendMark()
     }
 
+    /// Caught up with the screen as it is; what it skipped of the history,
+    /// by backfill (its mark says from where).
     private func caughtUp(_ stream: MuxStream) {
         guard behind.remove(ObjectIdentifier(stream)) != nil, let screen else { return }
         stream.send(Frame(.data, screen.catchUp))
+        stream.send(screen.mark(screen: true).frame)
     }
 
     private func readOutput() {

@@ -355,14 +355,22 @@ around it, and comes back with its history.
   however many terminals it has. The host keeps each terminal itself, in
   the same emulator (Ghostty's, built into the server): a terminal
   attaching is sent a snapshot of it — screen, modes, cursor, a full-
-  screen program on its own screen, and the last 5,000 lines of history —
-  not the output that made it; and one that falls behind (a flood of
-  output on a slow link) skips to the screen as it is now, as mosh does,
-  instead of draining all it missed. Terminals are paced to the link as
-  files are, but ahead of them. A terminal's
-  menu (right-click) has, under Copy, Paste and Clear, the tree of what
-  runs under its shell, the shell first, each process a submenu of End,
-  Force End and what runs under it.
+  screen program on its own screen — not the output that made it; and
+  one that falls behind (a flood of output on a slow link) skips to the
+  screen as it is now, as mosh does, instead of draining all it missed.
+  Either way the screen comes at once, and the history it hasn't got
+  comes after, behind everything else of the terminal's: the host numbers
+  each line as it scrolls off, the app says how far it has them, and what's
+  missing is sent newest first and put into the scrollback above the
+  lines already there (a line wrapped over rows still one line), without
+  moving what you're looking at. Up to 5,000 lines for a terminal opened
+  anew, and up to 10,000 of what a terminal missed (after a break, or
+  behind a flood), past which an “earlier output not kept” line marks the
+  hole; a break while history is still coming sends the rest after it.
+  Terminals are paced to the link as files are, but ahead of them. A
+  terminal's menu (right-click) has, under Copy, Paste and Clear, the tree
+  of what runs under its shell, the shell first, each process a submenu of
+  End, Force End and what runs under it.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:

@@ -153,3 +153,18 @@ private final class Inbox: @unchecked Sendable {
     #expect(server.inFlight == 0)
     #expect(client.inFlight == 0)
 }
+
+@Test func aHistoryMarkAndABackfillRequestSayWhatTheyWereMadeWith() throws {
+    let mark = HistoryMark(epoch: 0xDEAD_BEEF_0000_0001, end: 1_234_567, screen: true)
+    #expect(HistoryMark(mark.frame) == mark)
+    // Not a mark: some other frame, or one the wrong length.
+    #expect(HistoryMark(Frame(.data, mark.frame.payload)) == nil)
+    #expect(HistoryMark(Frame(.historyMark, Data([1, 2, 3]))) == nil)
+
+    let req = BackfillRequest(block: try #require(BlockID(string: "h4z3gpme3et/01M5HWNAR9X5JKASZVKVFM4GX2")), epoch: 7, from: 10, to: 400, limit: 5_000)
+    guard case .backfill(let back)? = Frame.message(ClientMessage.backfill(req)).decode(ClientMessage.self) else {
+        Issue.record("not a backfill")
+        return
+    }
+    #expect(back.block == req.block && back.epoch == 7 && back.from == 10 && back.to == 400 && back.limit == 5_000)
+}

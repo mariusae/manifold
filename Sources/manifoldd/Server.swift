@@ -240,6 +240,10 @@ final class Server {
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots)))
         case .attach(let req)?:
             attach(conn, req)
+        case .backfill(let req)?:
+            // A terminal's history after its screen, on a stream of its own.
+            guard let stream = conn as? MuxStream, let session = sessions[req.block] else { return conn.close() }
+            session.backfill(req, to: stream)
         case let .tunnel(port)?:
             guard let stream = conn as? MuxStream else { return conn.close() }
             tunnel(stream, to: port)

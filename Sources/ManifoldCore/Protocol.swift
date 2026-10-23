@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 50
+public let protocolVersion = 51
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -20,6 +20,10 @@ public enum FrameKind: UInt8, Sendable {
     case resize = 3
     /// Sent by the server after it has replayed a session's recent output.
     case replayDone = 4
+    /// Where a terminal's history has got to (`HistoryMark`): after output
+    /// that scrolled rows into it, and after a screen sent whole (an attach,
+    /// a catch-up), whose history comes after, by backfill.
+    case historyMark = 5
     /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
     /// op (open, a frame, close, credit), then the op's bytes — for a
     /// frame, the stream's own frame, encoded.
@@ -312,6 +316,9 @@ public enum ClientMessage: Codable, Sendable {
     case resync(shard: ShardID)
     case propose(id: Int, Proposal)
     case attach(AttachRequest)
+    /// A terminal's history after its screen (`BackfillRequest`), the first
+    /// frame on a stream of its own.
+    case backfill(BackfillRequest)
     /// Asks the server to exit, ending every session.
     case shutdown
     /// The `manifold` command: open these, beside a block if run in one
@@ -350,6 +357,65 @@ public enum ClientMessage: Codable, Sendable {
     /// Manifold's own folder for a note — "name 2" if it's taken — and an
     /// image block made for it.
     case saveImage(block: BlockID, name: String, folder: String?)
+}
+
+/// Where a terminal's history (its primary screen's scrollback, as the host
+/// keeps it) has got to: how many rows have ever scrolled into it, counted
+/// in the host's terminal of this `epoch` (a new one when the terminal is
+/// made again or reflowed to a new width, renumbering its rows). `screen`:
+/// sent right after a screen sent whole, everything above which is history
+/// the app may not have — its backfill.
+public struct HistoryMark: Equatable, Sendable {
+    public var epoch: UInt64
+    public var end: UInt64
+    public var screen: Bool
+
+    public init(epoch: UInt64, end: UInt64, screen: Bool) {
+        self.epoch = epoch
+        self.end = end
+        self.screen = screen
+    }
+
+    public var frame: Frame {
+        var d = Data(capacity: 17)
+        withUnsafeBytes(of: epoch.bigEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: end.bigEndian) { d.append(contentsOf: $0) }
+        d.append(screen ? 1 : 0)
+        return Frame(.historyMark, d)
+    }
+
+    public init?(_ frame: Frame) {
+        let p = frame.payload
+        guard frame.kind == .historyMark, p.count == 17 else { return nil }
+        func u64(_ at: Int) -> UInt64 { p[p.startIndex + at..<p.startIndex + at + 8].reduce(0) { $0 << 8 | UInt64($1) } }
+        epoch = u64(0)
+        end = u64(8)
+        screen = p[p.startIndex + 16] != 0
+    }
+}
+
+/// A terminal's history rows asked for after its screen (§8), on a stream of
+/// their own at a lower priority than the terminal's: rows `from` to `to`
+/// of the host's terminal of `epoch`, at most `limit` of them (the newest).
+/// They come newest first, in pieces: each a data frame of the first and
+/// end rows it holds (8 bytes each), the width it's drawn at (2 bytes),
+/// then the rows as escape sequences, ending with a newline unless the last
+/// row goes on in the row after it; then `replayDone` (all there is) and
+/// the stream closes. Closed without it, the rest may be asked for again.
+public struct BackfillRequest: Codable, Sendable {
+    public var block: BlockID
+    public var epoch: UInt64
+    public var from: UInt64
+    public var to: UInt64
+    public var limit: UInt64
+
+    public init(block: BlockID, epoch: UInt64, from: UInt64, to: UInt64, limit: UInt64) {
+        self.block = block
+        self.epoch = epoch
+        self.from = from
+        self.to = to
+        self.limit = limit
+    }
 }
 
 public struct AttachRequest: Codable, Sendable {

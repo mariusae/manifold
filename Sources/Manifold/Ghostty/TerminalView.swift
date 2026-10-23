@@ -93,7 +93,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         } else {
             NSLog("manifold: could not create a terminal surface for %@", block.description)
         }
-        link.onClosed = { [weak self] in self?.linkClosed() }
+        link.onClosed = { [weak self] linkWent in self?.linkClosed(linkWent: linkWent) }
         dots.layer?.zPosition = 5
         connecting.wantsLayer = true
         connecting.layer?.zPosition = 5
@@ -108,9 +108,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// The stream closed: the shell ended (or the server let it go), and
     /// the tile closes, to be made again; or the host went, and what it
-    /// shows stays until the host is back (`resumeIfLinkBack`).
-    private func linkClosed() {
-        if link.linkUp { surfaceClosed() } else { linkLost = true }
+    /// shows stays until the host is back (`resumeIfLinkBack`) — at once,
+    /// if it's back already.
+    private func linkClosed(linkWent: Bool) {
+        if !linkWent {
+            surfaceClosed()
+        } else if link.linkUp {
+            link.resume()
+        } else {
+            linkLost = true
+        }
     }
 
     /// Its host is back: attached again where it was — its history, its

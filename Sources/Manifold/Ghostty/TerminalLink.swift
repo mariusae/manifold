@@ -7,6 +7,12 @@ import ManifoldCore
 /// runs no command and has no pty here (the shell's is on the host); what
 /// the shell prints goes into the surface on the terminal's own queue, off
 /// the main thread, and what's typed and the size go up the stream.
+///
+/// Attaching, or caught up after falling behind, it's sent the screen as it
+/// is, at once; the history it hasn't got above that screen comes after on
+/// a stream of its own, behind the terminal's (`Gap`), newest first, each
+/// piece put into the scrollback above the rows it already has, the view
+/// staying where it is.
 final class TerminalLink {
     let block: BlockID
     private weak var client: HostClient?
@@ -28,14 +34,51 @@ final class TerminalLink {
     /// queries answered by the terminal as it was, not typed now).
     private var acceptInput = false
 
-    /// The stream closed (the shell ended, or the link went): on the main
-    /// thread.
-    var onClosed: (() -> Void)?
+    /// The stream closed: on the main thread, whether because the link
+    /// went (true) or the shell ended (false).
+    var onClosed: ((Bool) -> Void)?
     /// The first of the shell's output arrived (on the main thread): the
     /// terminal is reached.
     var onFirstOutput: (() -> Void)?
     /// On `queue`.
     private var sawOutput = false
+
+    // On `queue`: the history.
+    /// Where the host said its history had got to, as this terminal has it
+    /// — all the rows before `end` (but the gaps' rows), at the width it
+    /// had then.
+    private var mark: HistoryMark?
+    private var markCols: UInt16 = 0
+    /// History rows not yet here, each to go in above its anchor.
+    private var gaps: [Gap] = []
+
+    /// History rows the host has that this terminal hasn't, and where in
+    /// its scrollback they go: above `anchor` (a row Ghostty keeps track of
+    /// as the scrollback grows below it and is trimmed above), rows `from`
+    /// to `to`, at most `limit` more of them. Asked for on `stream`; what's
+    /// still missing when that closes early is asked for again on the next
+    /// attach, if the host's numbering is the same.
+    private final class Gap {
+        let epoch: UInt64
+        var from: UInt64
+        var to: UInt64
+        var limit: UInt64
+        let anchor: UnsafeMutableRawPointer
+        var stream: MuxStream?
+
+        init(epoch: UInt64, from: UInt64, to: UInt64, limit: UInt64, anchor: UnsafeMutableRawPointer) {
+            self.epoch = epoch
+            self.from = from
+            self.to = to
+            self.limit = limit
+            self.anchor = anchor
+        }
+    }
+
+    /// How much history a terminal attaching anew is sent; and, after a
+    /// break, the most of what it missed.
+    static let freshHistory: UInt64 = 5_000
+    static let missedHistory: UInt64 = 10_000
 
     init(block: BlockID, client: HostClient?) {
         self.block = block
@@ -56,7 +99,10 @@ final class TerminalLink {
             return stream
         }
         s?.close()
-        queue.sync { surface = nil }
+        queue.sync {
+            dropGaps()
+            surface = nil
+        }
     }
 
     /// Whether the host's link is up, so a stream can be opened.
@@ -103,19 +149,22 @@ final class TerminalLink {
         guard let mux = client?.mux else {
             // No link yet: closed now, made again once there is one.
             lock.withLock { attaching = false }
-            onClosed?()
+            onClosed?(true)
             return
         }
         // Paced, ahead of files: a flood of output doesn't fill the link.
         let stream = mux.open(bulk: true, urgent: true, callbackQueue: queue)
         stream.onFrame = { [weak self] frame in self?.received(frame) }
-        stream.onClose = { [weak self] in
+        stream.onClose = { [weak self, weak mux] in
+            // Its connection closed with it: the link went, not the shell
+            // (asked now: the client may not have let go of the link yet).
+            let linkWent = mux?.connection.isClosed ?? true
             self?.lock.withLock {
                 self?.stream = nil
                 self?.attached = false
                 self?.acceptInput = false
             }
-            DispatchQueue.main.async { self?.onClosed?() }
+            DispatchQueue.main.async { self?.onClosed?(linkWent) }
         }
         let size: (cols: UInt16, rows: UInt16) = lock.withLock {
             self.stream = stream
@@ -140,6 +189,8 @@ final class TerminalLink {
                 guard let base = raw.baseAddress else { return }
                 ghostty_surface_process_output(surface, base.assumingMemoryBound(to: CChar.self), UInt(raw.count))
             }
+        case .historyMark:
+            if let m = HistoryMark(frame) { marked(m) }
         case .replayDone:
             // A replay no one has seen yet is live output (a shell just
             // started, its queries waiting for answers): typing goes through
@@ -153,6 +204,120 @@ final class TerminalLink {
             }
         default:
             break
+        }
+    }
+
+    // MARK: The history (on `queue`)
+
+    /// Where the host's history has got to. After output, it's where this
+    /// terminal's own has: the same rows, numbered so. After a screen sent
+    /// whole (`screen`), the rows between where it had got to and here
+    /// are missing, just above that screen: asked for.
+    private func marked(_ m: HistoryMark) {
+        let cols = lock.withLock { size.cols }
+        defer { mark = m; markCols = cols }
+        // Numbered anew (the session made again, or reflowed to a new
+        // width): what's on its way, and what it was to fill, is no more.
+        if let old = mark, old.epoch != m.epoch { dropGaps(of: old.epoch) }
+        guard m.screen, let surface else { return }
+        let from: UInt64
+        if let old = mark, old.epoch == m.epoch {
+            from = old.end
+        } else {
+            // Reflowed while it was away (this terminal's width changed,
+            // the host's rows rewrapped): which of them it has can't be
+            // told, so its own go and the host's come instead. Otherwise
+            // (a terminal new here, or a session started again) what it
+            // has stays, the host's newest above the screen.
+            if mark != nil, cols != markCols {
+                let clear = "\u{1b}[3J"
+                clear.withCString { ghostty_surface_process_output(surface, $0, UInt(strlen($0))) }
+            }
+            from = m.end > Self.freshHistory ? m.end - Self.freshHistory : 0
+        }
+        let limit = mark?.epoch == m.epoch ? Self.missedHistory : Self.freshHistory
+        if m.end > from, let anchor = ghostty_surface_history_anchor(surface) {
+            gaps.append(Gap(epoch: m.epoch, from: from, to: m.end, limit: limit, anchor: anchor))
+        }
+        // No more than `limit` rows on their way altogether (a flood falls
+        // behind, and is caught up, again and again): the newest; older gaps
+        // get what's left, or only the seam that says rows are missing —
+        // asked for again if they were coming.
+        var left = limit
+        for gap in gaps.reversed() where gap.epoch == m.epoch {
+            if gap.limit > left {
+                gap.limit = left
+                gap.stream?.abort()
+                gap.stream = nil
+            }
+            left -= gap.limit
+        }
+        // The newest first; and those left from before, if the link went
+        // while they came.
+        for gap in gaps.reversed() where gap.epoch == m.epoch && gap.stream == nil { fill(gap) }
+    }
+
+    private func fill(_ gap: Gap) {
+        guard let mux = client?.mux else { return }
+        let stream = mux.open(bulk: true, callbackQueue: queue)
+        gap.stream = stream
+        stream.onFrame = { [weak self, weak gap, weak stream] frame in
+            // Not what an earlier asking (since given up) sends still.
+            guard let self, let gap, let stream, gap.stream === stream else { return }
+            switch frame.kind {
+            case .data: self.filled(gap, frame.payload)
+            case .replayDone: self.drop(gap)
+            default: break
+            }
+        }
+        stream.onClose = { [weak gap, weak stream] in
+            if let gap, gap.stream === stream { gap.stream = nil }
+        }
+        stream.send(.message(ClientMessage.backfill(BackfillRequest(block: block, epoch: gap.epoch, from: gap.from, to: gap.to, limit: gap.limit))))
+    }
+
+    /// A piece of a gap's rows (the newest of what's missing): into the
+    /// scrollback above the anchor, which moves to its first row.
+    private func filled(_ gap: Gap, _ p: Data) {
+        guard p.count >= 18, let surface, gaps.contains(where: { $0 === gap }) else { return }
+        func u64(_ at: Int) -> UInt64 { p[p.startIndex + at..<p.startIndex + at + 8].reduce(0) { $0 << 8 | UInt64($1) } }
+        let lo = u64(0), hi = u64(8)
+        let cols = UInt16(p[p.startIndex + 16]) << 8 | UInt16(p[p.startIndex + 17])
+        let rows = p[(p.startIndex + 18)...]
+        // Older gaps' anchors where this one's is (no rows between them)
+        // go up with it, so their rows stay above these.
+        let older: [UnsafeMutableRawPointer?] = gaps.prefix { $0 !== gap }.filter { $0.epoch == gap.epoch }.map(\.anchor)
+        if !rows.isEmpty {
+            rows.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
+                older.withUnsafeBufferPointer { o in
+                    _ = ghostty_surface_history_insert(surface, gap.anchor, o.baseAddress, UInt(o.count), base.assumingMemoryBound(to: CChar.self), UInt(raw.count), cols)
+                }
+            }
+        }
+        gap.limit -= min(gap.limit, hi > lo ? hi - lo : 0)
+        gap.to = min(gap.to, lo)
+    }
+
+    private func drop(_ gap: Gap) {
+        guard let i = gaps.firstIndex(where: { $0 === gap }) else { return }
+        gaps.remove(at: i)
+        gap.stream?.abort()
+        gap.stream = nil
+        if let surface { ghostty_surface_history_release(surface, gap.anchor) }
+    }
+
+    /// The gaps (all, or those of another numbering): not filled.
+    private func dropGaps(of epoch: UInt64? = nil) {
+        for gap in gaps where epoch == nil || gap.epoch == epoch { drop(gap) }
+    }
+
+    /// Debugging: where the history stands — the host's mark as it has it,
+    /// and what's still on its way.
+    var debugHistory: String {
+        queue.sync {
+            let m = mark.map { "mark \($0.end) epoch \(String($0.epoch, radix: 16).prefix(6))" } ?? "no mark"
+            return ([m] + gaps.map { "gap \($0.from)..<\($0.to) limit \($0.limit)\($0.stream == nil ? " waiting" : "")" }).joined(separator: "; ")
         }
     }
 

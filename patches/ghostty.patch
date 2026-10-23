@@ -34,7 +34,7 @@ index f9d861b..6b49c77 100644
      // up here just so that they are more self-documenting.
      const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 40ff55c..6521f72 100644
+index 40ff55c..fa6c9a5 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
 @@ -450,6 +450,12 @@ typedef struct {
@@ -50,11 +50,19 @@ index 40ff55c..6521f72 100644
  } ghostty_surface_config_s;
  
  typedef struct {
-@@ -1086,6 +1092,7 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+@@ -1086,6 +1092,15 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
  void ghostty_surface_set_focus(ghostty_surface_t, bool);
  void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
  void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
 +void ghostty_surface_process_output(ghostty_surface_t, const char*, uintptr_t);
++// Manifold: history from elsewhere (a host's terminal) put into the
++// scrollback above an anchor (the top of the screen when made), drawn
++// `cols` wide; the anchor moves to the first row put in.
++void* ghostty_surface_history_anchor(ghostty_surface_t);
++uint32_t ghostty_surface_history_insert(ghostty_surface_t, void*, void* const*, uintptr_t, const char*, uintptr_t, uint16_t);
++void ghostty_surface_history_release(ghostty_surface_t, void*);
++uint8_t* ghostty_surface_debug_rows(ghostty_surface_t, uintptr_t*);
++void ghostty_surface_free_debug(ghostty_surface_t, uint8_t*, uintptr_t);
  ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
  void ghostty_surface_set_color_scheme(ghostty_surface_t,
                                        ghostty_color_scheme_e);
@@ -139,7 +147,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..b2b4bc8 100644
+index 0d5a4f8..851af6f 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -205,7 +213,7 @@ index 0d5a4f8..b2b4bc8 100644
      pub fn defaultTermioEnv(self: *const Surface) !std.process.EnvMap {
          const alloc = self.app.core_app.alloc;
          var env = try internal_os.getEnvMap(alloc);
-@@ -1696,6 +1722,12 @@ pub const CAPI = struct {
+@@ -1696,6 +1722,136 @@ pub const CAPI = struct {
          surface.updateSize(w, h);
      }
  
@@ -213,6 +221,130 @@ index 0d5a4f8..b2b4bc8 100644
 +    /// bytes (`io_write` set); from any one thread at a time.
 +    export fn ghostty_surface_process_output(surface: *Surface, ptr: [*]const u8, len: usize) void {
 +        surface.core_surface.io.processOutput(ptr[0..len]);
++    }
++
++    /// Manifold: a place in the surface's scrollback, kept as it changes —
++    /// the top of the screen now (the primary screen's, whatever shows) —
++    /// where history from elsewhere goes, just above
++    /// (`ghostty_surface_history_insert`). Null if it couldn't be made.
++    export fn ghostty_surface_history_anchor(surface: *Surface) ?*anyopaque {
++        const core = &surface.core_surface;
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const s = core.io.terminal.screens.get(.primary) orelse return null;
++        const pin = s.pages.trackPin(s.pages.getTopLeft(.active)) catch return null;
++        return @ptrCast(pin);
++    }
++
++    /// Manifold: rows of history from elsewhere — `ptr`, escape sequences
++    /// drawn `cols` wide (a host's terminal's), reflowed to this one's width —
++    /// put into the scrollback just above `anchor`, as though they'd
++    /// scrolled off before it; the anchor is left on the first of them, so
++    /// the next, older rows go above these, and so are those of `others`
++    /// (anchors for older rows still) that were where it was. What shows
++    /// doesn't move. The number of rows put in: 0 if none could be (the
++    /// anchor's rows gone).
++    export fn ghostty_surface_history_insert(surface: *Surface, anchor: *anyopaque, others: [*]const *anyopaque, n_others: usize, ptr: [*]const u8, len: usize, cols: u16) u32 {
++        if (len == 0) return 0;
++        const core = &surface.core_surface;
++        const alloc = core.alloc;
++        // Read into a terminal of the rows' own, one row high, so every row
++        // but the last goes into its history; reflowed to this width.
++        var scratch = terminal.Terminal.init(alloc, .{
++            .cols = @max(cols, 1),
++            .rows = 1,
++            .max_scrollback = std.math.maxInt(usize),
++        }) catch return 0;
++        defer scratch.deinit(alloc);
++        var stream = scratch.vtStream();
++        defer stream.deinit();
++        stream.nextSlice(ptr[0..len]) catch {};
++
++        const n = n: {
++            core.renderer_state.mutex.lock();
++            defer core.renderer_state.mutex.unlock();
++            const t = &core.io.terminal;
++            if (scratch.cols != t.cols) scratch.resize(alloc, t.cols, 1) catch break :n 0;
++            const s = t.screens.get(.primary) orelse break :n 0;
++            const src = scratch.screens.get(.primary) orelse break :n 0;
++            const pin: *terminal.Pin = @ptrCast(@alignCast(anchor));
++            const with: []const *terminal.Pin = @ptrCast(others[0..n_others]);
++            // Ended with a newline (the cursor at the start of the row after
++            // it), or a row that goes on in the anchor's.
++            const c = &scratch.screens.active.cursor;
++            const end: terminal.PageList.ManifoldEnd = if (c.x == 0 and !c.pending_wrap) .newline else .wraps;
++            const n = s.manifoldInsertHistory(pin, with, &src.pages, end) catch break :n 0;
++            t.flags.dirty.clear = true;
++            break :n n;
++        };
++        // Drawn again (feeding nothing schedules a frame).
++        core.io.processOutput("");
++        return @intCast(n);
++    }
++
++    /// Manifold, debugging: the primary screen's rows, one a line — its
++    /// page (counted from the first), its row in it, its flags (w: wraps
++    /// on, c: goes on from the row above), the start of its text — and
++    /// where the screen's top and the tracked pins are. Freed with
++    /// `ghostty_surface_free_debug`.
++    export fn ghostty_surface_debug_rows(surface: *Surface, out_len: *usize) ?[*]u8 {
++        const core = &surface.core_surface;
++        const alloc = core.alloc;
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const s = core.io.terminal.screens.get(.primary) orelse return null;
++        var w: std.Io.Writer.Allocating = .init(alloc);
++        const top = s.pages.getTopLeft(.active);
++        w.writer.print("rows {d} total {d} pins {d} cursor page_y {d}\n", .{ s.pages.rows, s.pages.total_rows, s.pages.tracked_pins.count(), s.cursor.page_pin.y }) catch {};
++        var page_i: usize = 0;
++        var node = s.pages.pages.first;
++        while (node) |n| : ({
++            node = n.next;
++            page_i += 1;
++        }) {
++            const page = &n.data;
++            for (0..page.size.rows) |y| {
++                const row = page.getRow(y);
++                const cells = page.getCells(row);
++                var text: [16]u8 = undefined;
++                var tl: usize = 0;
++                for (cells) |c| {
++                    if (tl == text.len) break;
++                    const cp = c.content.codepoint;
++                    text[tl] = if (cp == 0) ' ' else if (cp < 128) @intCast(cp) else '?';
++                    tl += 1;
++                }
++                var pins: usize = 0;
++                for (s.pages.tracked_pins.keys()) |p| {
++                    if (p.node == n and p.y == y) pins += 1;
++                }
++                const is_top = top.node == n and top.y == y;
++                w.writer.print("{d}:{d} {s}{s}{s} {s}{s}\n", .{
++                    page_i, y,
++                    if (row.wrap) "w" else "-",
++                    if (row.wrap_continuation) "c" else "-",
++                    if (is_top) " TOP" else "",
++                    text[0..tl],
++                    if (pins > 0) " <pin>" else "",
++                }) catch {};
++            }
++        }
++        const bytes = w.toOwnedSlice() catch return null;
++        out_len.* = bytes.len;
++        return bytes.ptr;
++    }
++
++    export fn ghostty_surface_free_debug(surface: *Surface, ptr: [*]u8, len: usize) void {
++        surface.core_surface.alloc.free(ptr[0..len]);
++    }
++
++    /// Manifold: an anchor let go of.
++    export fn ghostty_surface_history_release(surface: *Surface, anchor: *anyopaque) void {
++        const core = &surface.core_surface;
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const s = core.io.terminal.screens.get(.primary) orelse return;
++        s.pages.untrackPin(@ptrCast(@alignCast(anchor)));
 +    }
 +
      /// Return the size information a surface has.
@@ -324,10 +456,10 @@ index e7cf860..5ee7919 100644
              .expect = "~/Documents/notes.md",
 diff --git a/src/manifold_vt.zig b/src/manifold_vt.zig
 new file mode 100644
-index 0000000..e97a26a
+index 0000000..428148f
 --- /dev/null
 +++ b/src/manifold_vt.zig
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,209 @@
 +//! Manifold: a terminal kept on the host for each shell (in manifoldd), by
 +//! the same emulator the app draws with. It's fed the shell's output as it
 +//! comes and resized with the shell's pty, and is written out on asking as
@@ -418,6 +550,12 @@ index 0000000..e97a26a
 +    var extra: vt.formatter.TerminalFormatter.Extra = .all;
 +    extra.palette = false;
 +
++    // A line wrapped over rows is written as one, to wrap again where it's
++    // drawn (and be one line there, to copy or reflow): with autowrap on to
++    // begin with, whatever that terminal had; this one's own setting comes
++    // with its modes, and if it's off, its rows are written as they are.
++    try writer.writeAll("\x1b[?7h");
++
 +    // A full-screen program showing: the primary screen's history and
 +    // screen first (as a shell left them), then the terminal's own state,
 +    // which switches to the alternate screen, and what's on it.
@@ -426,6 +564,7 @@ index 0000000..e97a26a
 +            var pf: vt.formatter.ScreenFormatter = .init(primary, .vt);
 +            pf.content = content(primary, history);
 +            pf.extra = .styles;
++            pf.opts.unwrap = true;
 +            try pf.format(writer);
 +            try writer.writeAll("\x1b[0m");
 +        }
@@ -434,11 +573,101 @@ index 0000000..e97a26a
 +    var f: vt.formatter.TerminalFormatter = .init(t, .vt);
 +    f.content = content(t.screens.active, history);
 +    f.extra = extra;
++    f.opts.unwrap = t.modes.get(.wraparound);
 +    try f.format(writer);
++
++    // The cursor where it is: the scrolling region and tab stops, written
++    // after it, moved it (to the top, to the last tab stop).
++    const c = &t.screens.active.cursor;
++    var y: usize = c.y;
++    var x: usize = c.x;
++    if (t.modes.get(.origin)) {
++        y -|= t.scrolling_region.top;
++        x -|= t.scrolling_region.left;
++    }
++    try writer.print("\x1b[{d};{d}H", .{ y + 1, x + 1 });
 +}
 +
 +export fn mvt_free_bytes(bytes: [*]u8, len: usize) void {
 +    alloc.free(bytes[0..len]);
++}
++
++/// The primary screen (where a shell's history is, whatever shows).
++fn primaryScreen(h: *Handle) ?*vt.Screen {
++    return h.terminal.screens.get(.primary);
++}
++
++/// How many rows have ever gone into the primary screen's history: a row's
++/// number there stays its own as more scroll off after it.
++export fn mvt_history_end(h: *Handle) u64 {
++    const s = primaryScreen(h) orelse return 0;
++    return s.pages.manifoldHistoryEnd();
++}
++
++/// The number of the earliest row of history still kept.
++export fn mvt_history_start(h: *Handle) u64 {
++    const s = primaryScreen(h) orelse return 0;
++    return s.pages.manifold_dropped;
++}
++
++/// The primary screen's history rows `from` to `to` (numbered as
++/// `mvt_history_end` counts; those no longer kept left out) as escape
++/// sequences: their text and styles, a soft-wrapped line written as one,
++/// no newline after the last. Freed with `mvt_free_bytes`; null if
++/// there's nothing in that range or it couldn't be made.
++/// The first row (as `mvt_history_end` counts them) of the line history row
++/// `row` is part of, looking no further up than `floor` (and what's kept):
++/// where history can be cut without cutting a line wrapped over rows.
++export fn mvt_history_line_start(h: *Handle, row: u64, floor: u64) u64 {
++    const s = primaryScreen(h) orelse return row;
++    const pages = &s.pages;
++    const low = @max(floor, pages.manifold_dropped);
++    var r = row;
++    while (r > low) : (r -= 1) {
++        const p = pages.pin(.{ .screen = .{ .y = @intCast(r - 1 - pages.manifold_dropped) } }) orelse break;
++        if (!p.rowAndCell().row.wrap) break;
++    }
++    return r;
++}
++
++export fn mvt_history_range(h: *Handle, from: u64, to: u64, out_len: *usize) ?[*]u8 {
++    const s = primaryScreen(h) orelse return null;
++    const pages = &s.pages;
++    const start = @max(from, pages.manifold_dropped);
++    const end = @min(to, pages.manifoldHistoryEnd());
++    if (start >= end) return null;
++    const top = pages.pin(.{ .screen = .{ .x = 0, .y = @intCast(start - pages.manifold_dropped) } }) orelse return null;
++    const bottom = pages.pin(.{ .screen = .{ .x = pages.cols - 1, .y = @intCast(end - 1 - pages.manifold_dropped) } }) orelse return null;
++    var w: std.Io.Writer.Allocating = .init(alloc);
++    var f: vt.formatter.ScreenFormatter = .init(s, .vt);
++    f.content = .{ .selection = vt.Selection.init(top, bottom, false) };
++    f.extra = .styles;
++    // A line wrapped over rows is written as one, so it wraps again where
++    // it goes (and is one line there, to copy or reflow).
++    f.opts.unwrap = true;
++    f.format(&w.writer) catch {
++        w.deinit();
++        return null;
++    };
++    w.writer.writeAll("\x1b[0m") catch {};
++    // Ended with a newline, unless the last row goes on in the row after it
++    // (the line is cut there): so the rows' end is told, and blank rows at
++    // the end (which the formatter leaves off) are kept.
++    if (!bottom.rowAndCell().row.wrap) {
++        var blank: u64 = 0;
++        while (blank < end - start) : (blank += 1) {
++            const p = pages.pin(.{ .screen = .{ .y = @intCast(end - 1 - blank - pages.manifold_dropped) } }) orelse break;
++            if (vt.Cell.hasTextAny(p.cells(.all))) break;
++        }
++        const newlines = if (blank == end - start) blank else blank + 1;
++        for (0..newlines) |_| w.writer.writeAll("\r\n") catch {};
++    }
++    const bytes = w.toOwnedSlice() catch {
++        w.deinit();
++        return null;
++    };
++    out_len.* = bytes.len;
++    return bytes.ptr;
 +}
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
 index ff632f6..5ebee40 100644
@@ -916,6 +1145,281 @@ index 0be0235..4b2bf98 100644
      );
      try checkError(err);
  
+diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
+index 6e39428..f59f0f6 100644
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -157,6 +157,11 @@ min_max_size: usize,
+ /// specifically for scrollbar information so we can have the total size.
+ total_rows: usize,
+ 
++/// Manifold: rows of history dropped from the top so far (pruned as the
++/// scrollback filled, erased, reset): with those there now, every row that
++/// has gone into the history has a number of its own (`manifoldHistoryEnd`).
++manifold_dropped: u64 = 0,
++
+ /// The list of tracked pins. These are kept up to date automatically.
+ tracked_pins: PinSet,
+ 
+@@ -654,6 +659,7 @@ pub fn deinit(self: *PageList) void {
+ /// memory to fit the active area.
+ pub fn reset(self: *PageList) void {
+     defer self.assertIntegrity();
++    self.manifold_dropped += self.total_rows -| self.rows;
+ 
+     // We need enough pages/nodes to keep our active area. This should
+     // never fail since we by definition have allocated a page already
+@@ -2834,6 +2840,117 @@ pub const SplitError = error{
+     OutOfSpace,
+ };
+ 
++/// Manifold: how many rows have ever gone into this list's history, those
++/// there now and those dropped: a row of history keeps its number as more
++/// scroll off after it.
++pub fn manifoldHistoryEnd(self: *const PageList) u64 {
++    return self.manifold_dropped + (self.total_rows -| self.rows);
++}
++
++/// Manifold: the rows of `src` (all of them, top to bottom, its width this
++/// list's) put into this list just above the row `at` is on, as though they
++/// had scrolled off before it: history from elsewhere (a host's, sent after
++/// its screen). `at`, a tracked pin, is left on the first of them, so the
++/// next (older) rows go above these, and so are those of `with` that were
++/// where it was. What shows doesn't move. Returns how many rows went in.
++/// The rows from `at` down may move to a page of their own (`split`): a
++/// screen's cursor among them must be reloaded (`Screen.manifoldInsertHistory`).
++/// `end`: how `src` ends — its last row the empty one after a newline (not
++/// put in), or a row that goes on in the row at `at` (joined to it).
++pub const ManifoldEnd = enum { newline, wraps };
++
++pub fn manifoldInsertBefore(self: *PageList, at: *Pin, with: []const *Pin, src: *const PageList, end: ManifoldEnd) (Allocator.Error || error{ WidthMismatch, OutOfSpace })!usize {
++    if (src.cols != self.cols) return error.WidthMismatch;
++    if (at.garbage) return 0;
++    // The anchor where it says: on a page of this list, a row it has.
++    // (Never otherwise, but rows put in the wrong place, or a page freed
++    // and read, would be worse than none.)
++    {
++        var found = false;
++        var n = self.pages.first;
++        while (n) |node| : (n = node.next) if (node == at.node) {
++            found = true;
++            break;
++        };
++        if (!found or at.y >= at.node.data.size.rows) {
++            log.warn("manifold: a history anchor isn't where it says (page {s}, row {d})", .{
++                if (found) "kept" else "gone",
++                at.y,
++            });
++            if (found) log.warn("manifold: its page has {d} rows", .{at.node.data.size.rows});
++            return 0;
++        }
++    }
++    defer self.assertIntegrity();
++
++    // The pin at its page's first row: the new pages go between that page
++    // and the one before it (splitting moves the tracked pin with its row).
++    if (at.y > 0) {
++        // A copy: split moves the tracked pins, `at` among them.
++        const here = at.*;
++        try self.split(here);
++    }
++    const next = at.node;
++    // Those of `with` where `at` is go above with it (rows older than these).
++    var along: [16]*Pin = undefined;
++    var n_along: usize = 0;
++    for (with) |w| {
++        if (w == at or w.garbage or w.node != at.node or w.y != at.y) continue;
++        if (n_along == along.len) break;
++        along[n_along] = w;
++        n_along += 1;
++    }
++
++    var first: ?*List.Node = null;
++    var node: ?*List.Node = null;
++    var inserted: usize = 0;
++    var last_row: ?*Row = null;
++    const src_last = src.getBottomRight(.screen);
++    var it = src.rowIterator(.right_down, .{ .screen = .{} }, null);
++    while (it.next()) |p| {
++        if (end == .newline) if (src_last) |l| if (l.node == p.node and l.y == p.y) break;
++        var tries: u8 = 0;
++        while (tries < 2) : (tries += 1) {
++            if (node == null or tries > 0 or node.?.data.size.rows == node.?.data.capacity.rows) {
++                const n = try self.createPage(initialCapacity(self.cols));
++                self.pages.insertBefore(next, n);
++                node = n;
++                if (first == null) first = n;
++            }
++            const page = &node.?.data;
++            const y = page.size.rows;
++            page.size.rows += 1;
++            const dst_row = page.getRow(y);
++            if (page.cloneRowFrom(&p.node.data, dst_row, p.rowAndCell().row)) |_| {
++                inserted += 1;
++                last_row = dst_row;
++                break;
++            } else |_| {
++                // No room left in this page for the row's styles or
++                // graphemes: a new page for it.
++                page.clearCells(dst_row, 0, page.size.cols);
++                dst_row.* = .{ .cells = dst_row.cells };
++                page.size.rows -= 1;
++            }
++        }
++    }
++    self.total_rows += inserted;
++    // The last row goes on in the row that was at `at`: one line.
++    if (end == .wraps) if (last_row) |r| {
++        r.wrap = true;
++        next.data.getRow(0).wrap_continuation = true;
++    };
++    if (first) |f| {
++        at.node = f;
++        at.y = 0;
++        at.x = 0;
++        for (along[0..n_along]) |w| w.* = at.*;
++    }
++    // Rows went in above whatever is scrolled to: its cached place is stale.
++    if (self.viewport == .pin) self.viewport_pin_row_offset = null;
++    return inserted;
++}
++
+ /// Split the given node in the PageList at the given pin.
+ ///
+ /// The row at the pin and after will be moved into a new page with
+@@ -2853,6 +2970,9 @@ pub fn split(
+     // fixes this.
+     const original_node = p.node;
+     const page: *Page = &original_node.data;
++    // Manifold: its row too — read after a tracked pin passed in (moved
++    // below) has changed, it would move pins above the split as well.
++    const split_y = p.y;
+ 
+     // A page that is already 1 row can't be split. In the future we can
+     // theoretically maybe split by soft-wrapping multiple pages but that
+@@ -2861,7 +2981,7 @@ pub fn split(
+     if (page.size.rows <= 1) return error.OutOfSpace;
+ 
+     // Splitting at row 0 is a no-op since there's nothing before the split point.
+-    if (p.y == 0) return;
++    if (split_y == 0) return;
+ 
+     // At this point we're doing actual modification so make sure
+     // on the return that we're good.
+@@ -2872,7 +2992,7 @@ pub fn split(
+     errdefer self.destroyNode(target);
+ 
+     // Determine how many rows we're copying
+-    const y_start = p.y;
++    const y_start = split_y;
+     const y_end = page.size.rows;
+     target.data.size.rows = y_end - y_start;
+     assert(target.data.size.rows <= target.data.capacity.rows);
+@@ -2898,10 +3018,10 @@ pub fn split(
+     // Move any tracked pins from the copied rows
+     for (self.tracked_pins.keys()) |tracked| {
+         if (&tracked.node.data != page or
+-            tracked.y < p.y) continue;
++            tracked.y < split_y) continue;
+ 
+         tracked.node = target;
+-        tracked.y -= p.y;
++        tracked.y -= split_y;
+         // p.x remains the same since we're copying the row as-is
+     }
+ 
+@@ -2912,6 +3032,9 @@ pub fn split(
+             0,
+             page.size.cols,
+         );
++        // Manifold: their flags too (wraps, prompts), as clearRows does —
++        // grow() takes a page's unused rows as they are.
++        row.* = .{ .cells = row.cells };
+     }
+     page.size.rows -= y_end - y_start;
+ 
+@@ -3094,6 +3217,11 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+     if (last.data.capacity.rows > last.data.size.rows) {
+         // Fast path: we have capacity in the last page.
+         last.data.size.rows += 1;
++        // Manifold: a row taken back (its cells cleared when it was let go
++        // of, as by eraseRows) is new in its flags too — or a line wrapped
++        // there before, or a prompt, is taken to go on here.
++        const row = last.data.getRow(last.data.size.rows - 1);
++        row.* = .{ .cells = row.cells };
+         last.data.assertIntegrity();
+ 
+         // Increase our total rows by one
+@@ -3136,6 +3264,8 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+             break :prune;
+         }
+ 
++        self.manifold_dropped += first.data.size.rows;
++
+         // If we have a pin viewport cache then we need to update it.
+         if (self.viewport == .pin) viewport: {
+             if (self.viewport_pin_row_offset) |*v| {
+@@ -3799,6 +3929,8 @@ pub fn eraseRows(
+                 0,
+                 chunk.node.data.size.cols,
+             );
++            // Manifold: and their flags (wraps, prompts).
++            row.* = .{ .cells = row.cells };
+         }
+ 
+         // Update any tracked pins to shift their y. If it was in the erased
+@@ -3821,6 +3953,7 @@ pub fn eraseRows(
+ 
+     // Update our total row count
+     self.total_rows -= erased;
++    if (tl_pt == .history) self.manifold_dropped += erased;
+ 
+     // If we deleted active, we need to regrow because one of our invariants
+     // is that we always have full active space.
+diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
+index ea8ca14..a5ff74d 100644
+--- a/src/terminal/Screen.zig
++++ b/src/terminal/Screen.zig
+@@ -780,6 +780,39 @@ pub fn cursorReload(self: *Screen) void {
+     }
+ }
+ 
++/// Manifold: history from elsewhere put in above `at` (see
++/// `PageList.manifoldInsertBefore`), the cursor kept right: if its rows
++/// moved to a page of their own, its style and hyperlink are added to that
++/// page (as `increaseCapacity` does), and its row and cell found again.
++pub fn manifoldInsertHistory(
++    self: *Screen,
++    at: *Pin,
++    with: []const *Pin,
++    src: *const PageList,
++    end: PageList.ManifoldEnd,
++) !usize {
++    const node = self.cursor.page_pin.node;
++    const n = try self.pages.manifoldInsertBefore(at, with, src, end);
++    if (self.cursor.page_pin.node != node) {
++        const page: *Page = &self.cursor.page_pin.node.data;
++        if (self.cursor.style_id != style.default_id) {
++            self.cursor.style_id = page.styles.add(page.memory, self.cursor.style) catch id: {
++                self.cursor.style = .{};
++                break :id style.default_id;
++            };
++        }
++        if (self.cursor.hyperlink) |link| {
++            self.cursor.hyperlink_id = 0;
++            self.cursor.hyperlink = null;
++            self.startHyperlinkOnce(link.*) catch {};
++            link.deinit(self.alloc);
++            self.alloc.destroy(link);
++        }
++    }
++    self.cursorReload();
++    return n;
++}
++
+ /// Scroll the active area and keep the cursor at the bottom of the screen.
+ /// This is a very specialized function but it keeps it fast.
+ pub fn cursorDownScroll(self: *Screen) !void {
 diff --git a/src/termio.zig b/src/termio.zig
 index b168851..03e8817 100644
 --- a/src/termio.zig
