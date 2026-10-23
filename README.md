@@ -353,8 +353,10 @@ around it, and comes back with its history.
   picks up where it was when the host is back — its history, scroll and
   selection kept, caught up with the screen; a remote host is one ssh session
   however many terminals it has. By each remote host's name in the sidebar,
-  a sparkline of its ping times over the last five minutes (amber when the
-  latest is well above the rest, a red mark where a ping went unanswered);
+  a sparkline of its ping times over the last five minutes, relative to
+  their median, which sits at the middle — a settled link is a line across
+  it, slower above, faster below (amber when the latest is well above the
+  rest, a red band where pings went unanswered);
   resting the pointer on the host shows its link's dashboard: those times
   plotted with their numbers (now, median, 95th percentile, best), where
   links were given up on, how it stands and since when, the links that went
