@@ -1028,11 +1028,13 @@ enum DebugControl {
                 return
             }
             guard v.bounds.width >= 1, v.bounds.height >= 1, let img = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
-            // Draw this view alone, then its subviews in order.
-            let hidden = v.subviews.map(\.isHidden)
-            v.subviews.forEach { $0.isHidden = true }
+            // Draw this view alone, then its subviews in order: they're made
+            // clear for it, not hidden, which would take the keyboard from
+            // the one that has it (and draw its field unfocused).
+            let alphas = v.subviews.map(\.alphaValue)
+            v.subviews.forEach { $0.alphaValue = 0 }
             v.cacheDisplay(in: v.bounds, to: img)
-            for (s, h) in zip(v.subviews, hidden) { s.isHidden = h }
+            for (s, a) in zip(v.subviews, alphas) { s.alphaValue = a }
             if let cg = img.cgImage {
                 ctx.saveGState()
                 ctx.setAlpha(v.alphaValue)

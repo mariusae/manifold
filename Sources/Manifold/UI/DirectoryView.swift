@@ -46,7 +46,7 @@ enum DroppedItem {
 /// whole tree beneath (⌘F), which lists the files matching it as it's
 /// typed; "?text" searches inside them instead. What a repository ignores
 /// and hidden files are left out (⇧⌘. shows them).
-final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDelegate {
+final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
@@ -56,7 +56,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     private(set) var model: DirectoryModel?
     private let header = NSView()
     private let up = NSButton()
-    private let search = NSSearchField()
+    /// The filter, in its box: flat, as Claude Code's (`FlatFieldBox`).
+    private let searchBox = FlatFieldBox()
+    private var search: FlatField { searchBox.field }
     private let footer = NSTextField(labelWithString: "")
     /// Over the files: "Reading…" until the folder's listed, why if it
     /// can't be, or that there's nothing in it.
@@ -86,15 +88,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         up.target = self
         up.action = #selector(goUp)
         search.placeholderString = "Filter, or ? to search in files"
-        search.font = .systemFont(ofSize: 13)
-        search.controlSize = .regular
-        search.sendsSearchStringImmediately = true
-        search.sendsWholeSearchString = false
-        search.focusRingType = .none
         search.delegate = self
-        search.target = self
-        search.action = #selector(filterTyped)
-        for v in [up, search] as [NSView] { header.addSubview(v) }
+        searchBox.cleared = { [weak self] in self?.filterTyped() }
+        for v in [up, searchBox] as [NSView] { header.addSubview(v) }
         addSubview(header)
         footer.font = .systemFont(ofSize: 11)
         footer.textColor = Theme.secondaryText
@@ -184,6 +180,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         selected = keeper.value("selected").flatMap { $0.isEmpty ? nil : $0 }
         if let f = keeper.value("filter"), !f.isEmpty {
             search.stringValue = f
+            searchBox.update()
             if !f.hasPrefix("?") { m.setFilter(f) }
         }
         keeper.restored = true
@@ -424,12 +421,19 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
     /// "?text": the files' insides to be searched (on ⏎), not their names.
     private var searchingContents: Bool { search.stringValue.hasPrefix("?") }
 
+    func controlTextDidChange(_ obj: Notification) { filterTyped() }
+
     @objc private func filterTyped() {
+        searchBox.update()
         model?.setFilter(searchingContents ? "" : search.stringValue)
         keeper.note(["filter": search.stringValue])
         updateFooter()
         updateNote()
     }
+
+    // The box's hairline in the accent while the filter has the keyboard
+    // (from when it takes it, `FlatField`, to when it lets it go).
+    func controlTextDidEndEditing(_ obj: Notification) { searchBox.needsDisplay = true }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
@@ -520,7 +524,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         let midY = Self.headerHeight / 2
         up.frame = NSRect(x: 8, y: midY - 12, width: 26, height: 24)
-        search.frame = NSRect(x: up.frame.maxX + 6, y: midY - 14, width: max(60, w - up.frame.maxX - 6 - 12), height: 28)
+        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - 15, width: max(60, w - up.frame.maxX - 6 - 12), height: 30)
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
         footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
         content?.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
@@ -573,6 +577,95 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSSearchFieldDel
 }
 
 protocol DebugDescribing { var debugRows: String { get } }
+
+/// A field that says when it takes the keyboard (its box shows it).
+final class FlatField: NSTextField {
+    var focused: () -> Void = {}
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { focused() }
+        return ok
+    }
+}
+
+/// A filter's box, flat as Claude Code's: a hairline round it on a faint
+/// fill, in the accent while it has the keyboard; no bezel, no shadow. A
+/// magnifier at the left, the field, and a cross at the right to clear it
+/// once there's something in it. (Made of these rather than a search field,
+/// which without its bezel lets the text it's editing run under its
+/// magnifier.)
+final class FlatFieldBox: NSView {
+    let field = FlatField()
+    private let glass = NSImageView()
+    private let clear = NSButton()
+    /// The field emptied by its cross.
+    var cleared: () -> Void = {}
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        glass.image = Theme.symbol("magnifyingglass", size: 12, weight: .regular)
+        glass.contentTintColor = Theme.secondaryText
+        field.font = .systemFont(ofSize: 13)
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.usesSingleLineMode = true
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
+        field.focused = { [weak self] in self?.needsDisplay = true }
+        clear.isBordered = false
+        clear.image = Theme.symbol("xmark", size: 10, weight: .semibold)
+        clear.contentTintColor = Theme.secondaryText
+        clear.toolTip = "Clear"
+        clear.target = self
+        clear.action = #selector(clearField)
+        clear.isHidden = true
+        for v in [glass, field, clear] as [NSView] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// The cross shown once there's something to clear.
+    func update() { clear.isHidden = field.stringValue.isEmpty }
+
+    @objc private func clearField() {
+        field.stringValue = ""
+        update()
+        cleared()
+        window?.makeFirstResponder(field)
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height, button: CGFloat = 22
+        glass.frame = NSRect(x: 6, y: 0, width: 18, height: h)
+        clear.frame = NSRect(x: bounds.width - button - 4, y: (h - button) / 2, width: button, height: button)
+        let fh = ceil(field.intrinsicContentSize.height)
+        field.frame = NSRect(x: glass.frame.maxX + 4, y: ((h - fh) / 2).rounded(), width: max(0, clear.frame.minX - glass.frame.maxX - 6), height: fh)
+    }
+
+    /// Whether the window's field editor is editing its field now.
+    var hasKeyboard: Bool {
+        guard let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor,
+              let field = editor.delegate as? NSView else { return false }
+        return field.isDescendant(of: self)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let focused = hasKeyboard
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
+        Theme.text.withAlphaComponent(0.025).setFill()
+        path.fill()
+        path.lineWidth = 1
+        (focused ? Theme.accent.withAlphaComponent(0.75) : Theme.text.withAlphaComponent(0.14)).setStroke()
+        path.stroke()
+    }
+
+    /// A click anywhere in it is the field's.
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+}
 
 extension NSImage {
     /// A template image drawn in a colour.
