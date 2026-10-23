@@ -64,7 +64,13 @@ final class TextView: NSView, NSTextInputClient {
     /// to, in the link color go.dev's docs have.
     var linkRanges: [TextRange] = [] { didSet { if linkRanges != oldValue { layouts = [:]; needsDisplay = true } } }
     /// The link under the pointer, underlined as a hovered link is.
-    var hoveredLink: TextRange? { didSet { if hoveredLink != oldValue { needsDisplay = true } } }
+    var hoveredLink: TextRange? {
+        didSet {
+            guard hoveredLink != oldValue else { return }
+            needsDisplay = true
+            updateCursor()
+        }
+    }
     static let linkColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
                                            NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1))
     /// The line numbers' color (go.dev's for its listings, in view mode).
@@ -1807,7 +1813,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 
-    /// The pointer over a link, or a block's pill: the pointing hand.
+    /// The pointer over a link, or a name ⌘ shows as one: the pointing hand.
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
@@ -1819,16 +1825,18 @@ final class TextView: NSView, NSTextInputClient {
         let over = linkTarget(at: convert(event.locationInWindow, from: nil)) != nil
         if over != overLink {
             overLink = over
-            (over ? NSCursor.pointingHand : NSCursor.iBeam).set()
+            updateCursor()
         }
     }
 
-    override func cursorUpdate(with event: NSEvent) {
-        guard isUnderPointer else { return }
-        (overLink ? NSCursor.pointingHand : NSCursor.iBeam).set()
-    }
+    override func cursorUpdate(with event: NSEvent) { updateCursor() }
 
     private var overLink = false
+
+    private func updateCursor() {
+        guard isUnderPointer else { return }
+        (overLink || hoveredLink.map { !$0.isEmpty } == true ? NSCursor.pointingHand : NSCursor.iBeam).set()
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
