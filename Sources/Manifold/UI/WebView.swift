@@ -36,6 +36,9 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     weak var delegate: WebViewDelegate?
     var source: () -> Block? = { nil }
     private let web: WKWebView
+    /// Why a page couldn't be opened (a name not found, nothing listening),
+    /// in its place until the next goes — not a blank page.
+    private let failure = BusyNote()
     fileprivate var webForPrinting: WKWebView { web }
 
     /// A picture of the page as it is now, when it's ready (for a card).
@@ -87,6 +90,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
         addSubview(web)
+        addSubview(failure)
         documentChanged()
     }
 
@@ -110,6 +114,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
         web.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height)
+        failure.frame = web.frame
         finder.layout(in: web.frame)
     }
 
@@ -289,6 +294,28 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         }
         decisionHandler(.cancel)
         if action.modifierFlags.contains(.shift) { delegate?.webView(self, open: url, over: action.modifierFlags.contains(.option)) } else { NSWorkspace.shared.open(url) }
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        failure.set(.idle)
+        web.isHidden = false
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
+
+    /// A page that couldn't be opened: said, in its place. (One left for
+    /// another, or handed to another app, isn't a failure.)
+    private func failed(_ error: Error) {
+        let e = error as NSError
+        guard !(e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled), !(e.domain == "WebKitErrorDomain" && e.code == 102) else { return }
+        let url = (e.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? (e.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap(URL.init(string:))
+        let shown = url.map { delegate?.webView(self, addressOf: $0) ?? $0.absoluteString }.map(WebAddress.plain) ?? "the page"
+        failure.set(.message("Can't open \(shown): \(e.localizedDescription)"))
+        web.isHidden = true
+        // The last page's headings went with it.
+        headingsOutline.set([])
+        delegate?.webViewBarChanged(self)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

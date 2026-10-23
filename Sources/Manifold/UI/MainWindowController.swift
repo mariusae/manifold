@@ -5860,9 +5860,11 @@ extension MainWindowController: WebViewDelegate {
         label.lowercased().replacingOccurrences(of: " ", with: "-")
     }
 
-    /// The other hosts attached now, by the name the address bar knows them by.
+    /// The other hosts attached, by the name the address bar knows them by —
+    /// connected or not yet (one being reached again: a port forwarded from
+    /// it waits for it, rather than the name being looked up as a site's).
     private var addressHosts: [(name: String, client: HostClient)] {
-        hosts.all.filter { !$0.transport.isLocal && $0.isConnected }.map { (Self.addressName(hosts.label(of: $0.host)), $0) }
+        hosts.all.filter { !$0.transport.isLocal }.map { (Self.addressName(hosts.label(of: $0.host)), $0) }
     }
 
     func webView(_ view: WebView, hostNamed name: String) -> HostID? {
