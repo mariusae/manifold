@@ -80,7 +80,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         }
         scroll.documentView = rowsView
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false

@@ -64,7 +64,6 @@ final class OutlineLensView: NSView, PaneContent, KeepsViewState, NSTableViewDat
         table.selectionHighlightStyle = .regular
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

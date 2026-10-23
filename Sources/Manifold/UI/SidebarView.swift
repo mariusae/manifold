@@ -42,7 +42,8 @@ final class SidebarView: NSView {
     /// The tree; the filter over it, shown by the bar's search; the bar
     /// at the bottom: search, by workspace or by file, the inbox, and the
     /// counts of what's doing something, which go to Status.
-    private let filter = NSSearchField()
+    private let filterBox = FlatFieldBox(fontSize: 12)
+    private var filter: FlatField { filterBox.field }
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
     private let searchButton: IconButton
@@ -60,7 +61,7 @@ final class SidebarView: NSView {
     private var filterShown = false
 
     static let headerHeight: CGFloat = 40
-    static let filterHeight: CGFloat = 30
+    static let filterHeight: CGFloat = 34
     static let barHeight: CGFloat = 34
     /// A list pushed over the tree (Kept, Recently Closed): the header
     /// grows to a back button, the list's name and what it holds.
@@ -79,13 +80,10 @@ final class SidebarView: NSView {
         inboxButton = IconButton(symbol: Organization.inbox.symbol, size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
         wantsLayer = true
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.16
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = NSSize(width: 0, height: -2)
+        if let layer { Flat.shadow(layer) }
 
         card.wantsLayer = true
-        card.layer?.cornerRadius = 10
+        card.layer?.cornerRadius = Flat.panelRadius
         card.layer?.cornerCurve = .continuous
         card.layer?.masksToBounds = true
         addSubview(card)
@@ -105,9 +103,6 @@ final class SidebarView: NSView {
         backButton.target = self
         backButton.action = #selector(backClicked)
         backButton.toolTip = "Back to Workspaces"
-        backButton.wantsLayer = true
-        backButton.layer?.cornerRadius = 12
-        backButton.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
         pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
@@ -127,16 +122,10 @@ final class SidebarView: NSView {
         for v in [searchButton, byButton, inboxButton, counts, keptRow, closedRow, transfers] { card.addSubview(v) }
         keptRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .kept ? .desk : .kept) }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
-        filter.isHidden = true
+        filterBox.isHidden = true
         filter.placeholderString = "Filter"
-        filter.controlSize = .small
-        filter.font = .systemFont(ofSize: 11.5)
-        filter.focusRingType = .none
-        filter.target = self
-        filter.action = #selector(filterTyped)
-        filter.sendsSearchStringImmediately = true
-        filter.sendsWholeSearchString = false
-        card.addSubview(filter)
+        filterBox.onChange = { [weak self] in self?.filterTyped() }
+        card.addSubview(filterBox)
         card.addSubview(organizationView)
 
         resizeHandle.onDrag = { [weak self] x in
@@ -168,7 +157,7 @@ final class SidebarView: NSView {
             top -= Self.pushedHeight + 6
         }
         if filterShown {
-            filter.frame = NSRect(x: 10, y: top - Self.filterHeight + 5, width: bounds.width - 20, height: 22)
+            filterBox.frame = NSRect(x: 10, y: top - Self.filterHeight + 1, width: bounds.width - 20, height: Flat.fieldHeight)
             top -= Self.filterHeight
         }
         // The bar along the bottom: its buttons at the left, the counts at the right.
@@ -214,8 +203,8 @@ final class SidebarView: NSView {
         let searching = org == .search
         if searching != filterShown {
             filterShown = searching
-            filter.isHidden = !searching
-            if !searching { filter.stringValue = "" }
+            filterBox.isHidden = !searching
+            if !searching { filterBox.stringValue = "" }
         }
         filter.placeholderString = "Search every block"
         if searching { DispatchQueue.main.async { [weak self] in guard let self else { return }; self.window?.makeFirstResponder(self.filter) } }
@@ -251,11 +240,11 @@ final class SidebarView: NSView {
         needsLayout = true
     }
 
-    var filterText: String { filter.isHidden ? "" : filter.stringValue }
+    var filterText: String { filterBox.isHidden ? "" : filter.stringValue }
 
     /// Debugging: as if typed into the field; and whether it has the keyboard.
     func debugTypeFilter(_ text: String) -> String {
-        filter.stringValue = text
+        filterBox.stringValue = text
         filterTyped()
         return window?.firstResponder === filter.currentEditor() ? "typed (field has the keyboard)" : "typed"
     }
@@ -282,7 +271,7 @@ final class SidebarView: NSView {
     @objc private func filterTyped() { delegate?.sidebarFilterChanged(filter.stringValue) }
 
     private func updateChrome() {
-        layer?.shadowOpacity = pinned ? 0 : 0.16
+        layer?.shadowOpacity = pinned ? 0 : Float(Flat.shadowOpacity)
         card.themed { [weak self] v in
             guard let self else { return }
             v.layer?.backgroundColor = self.pinned ? NSColor.clear.cgColor : Theme.panel.withAlphaComponent(0.94).cgColor

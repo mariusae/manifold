@@ -21,10 +21,11 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     weak var delegate: ProcessViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let field = NSTextField()
+    private let fieldBox = FlatFieldBox(fontSize: 12)
+    private var field: FlatField { fieldBox.field }
     private let status = NSTextField(labelWithString: "")
-    private let end = NSButton(title: "End", target: nil, action: nil)
-    private let kill = NSButton(title: "Force End", target: nil, action: nil)
+    private let end = FlatButton("End")
+    private let kill = FlatButton("Force End")
     private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let rowMenu = NSMenu()
@@ -51,29 +52,22 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         field.placeholderString = "Filter"
-        field.font = .systemFont(ofSize: 11.5)
-        field.bezelStyle = .roundedBezel
-        field.controlSize = .small
-        field.focusRingType = .none
         field.delegate = self
+        fieldBox.onChange = { [weak self] in self?.filterChanged() }
         status.font = .systemFont(ofSize: 11)
         status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingTail
         for (b, action) in [(end, #selector(endClicked)), (kill, #selector(killClicked))] {
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            b.font = .systemFont(ofSize: 11)
             b.target = self
             b.action = action
             b.isEnabled = false
         }
-        for v in [field, status, end, kill] { addSubview(v) }
+        for v in [fieldBox, status, end, kill] { addSubview(v) }
         for (id, title, width) in [("command", "Command", 300.0), ("pid", "PID", 56.0), ("cpu", "CPU", 48.0), ("memory", "Memory", 64.0), ("path", "Path", 300.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
             c.width = width
             c.minWidth = 40
-            c.headerCell.font = .systemFont(ofSize: 10.5, weight: .medium)
             table.addTableColumn(c)
         }
         table.target = self
@@ -83,14 +77,13 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         table.rowHeight = Self.rowHeight
         table.intercellSpacing = NSSize(width: 4, height: 0)
         table.style = .plain
-        table.usesAlternatingRowBackgroundColors = true
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
         rowMenu.delegate = self
         table.menu = rowMenu
+        Flat.headers(table)
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
@@ -110,7 +103,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         guard !keeper.restored, !all.isEmpty else { return }
         keeper.restored = true
         if let f = keeper.value("filter"), f != field.stringValue {
-            field.stringValue = f
+            fieldBox.stringValue = f
             refilter()
         }
         if let s = keeper.value("selected") {
@@ -130,19 +123,20 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         let buttons: CGFloat = 84 + 6 + 56
         let wide = w >= 12 + 140 + 12 + buttons + 12
         let fieldWidth = wide ? min(220, w - buttons - 36) : w - 24
-        field.frame = NSRect(x: 12, y: top - 20, width: max(fieldWidth, 60), height: 20)
-        let buttonY = wide ? top - 20 : top - 20 - 6 - 19
-        kill.frame = NSRect(x: max(w - 12 - 84, 12), y: buttonY, width: 84, height: 19)
+        let fh = Flat.fieldHeight, bh = Flat.buttonHeight
+        fieldBox.frame = NSRect(x: 12, y: top - fh, width: max(fieldWidth, 60), height: fh)
+        let buttonY = wide ? top - fh + (fh - bh) / 2 : top - fh - 6 - bh
+        kill.frame = NSRect(x: max(w - 12 - 84, 12), y: buttonY, width: 84, height: bh)
         if wide || w >= 12 + 56 + 6 + 84 + 12 {
-            end.frame = NSRect(x: kill.frame.minX - 6 - 56, y: buttonY, width: 56, height: 19)
+            end.frame = NSRect(x: kill.frame.minX - 6 - 56, y: buttonY, width: 56, height: bh)
         } else {
             // Too narrow for both side by side: End on a row of its own.
-            end.frame = NSRect(x: 12, y: buttonY - 6 - 19, width: 56, height: 19)
+            end.frame = NSRect(x: 12, y: buttonY - 6 - bh, width: 56, height: bh)
         }
-        let statusWidth = wide ? end.frame.minX - field.frame.maxX - 24 : 0
+        let statusWidth = wide ? end.frame.minX - fieldBox.frame.maxX - 24 : 0
         status.isHidden = statusWidth < 80
-        status.frame = NSRect(x: field.frame.maxX + 12, y: top - 18, width: max(0, statusWidth), height: 15)
-        let bottom = (wide ? field.frame.minY : end.frame.minY) - 6
+        status.frame = NSRect(x: fieldBox.frame.maxX + 12, y: top - fh / 2 - 8, width: max(0, statusWidth), height: 15)
+        let bottom = (wide ? fieldBox.frame.minY : end.frame.minY) - 6
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
         note.frame = scroll.frame
     }
@@ -250,7 +244,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         }
     }
 
-    func controlTextDidChange(_ obj: Notification) {
+    private func filterChanged() {
         refilter()
         keeper.note(["filter": field.stringValue])
     }

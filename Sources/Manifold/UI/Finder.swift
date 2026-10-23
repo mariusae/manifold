@@ -194,7 +194,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// The scope or query changed: what's asked of a host can start.
     var onQueryChanged: ((String, Scope) -> Void)?
     private(set) var scope: Scope = .names
-    private let scopes = NSSegmentedControl(labels: Scope.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
     var isShowing: Bool { panel.isVisible }
     /// ⌘\: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
@@ -236,15 +236,13 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         }
         panel.onResign = { [weak self] in self?.close() }
 
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
+        // Flat, as the other panels are: their background, not the glass.
+        let background = FlatBackground()
         panel.contentView = background
 
         let glass = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!
             .withSymbolConfiguration(.init(pointSize: 20, weight: .regular))!)
-        glass.contentTintColor = .secondaryLabelColor
+        glass.contentTintColor = Theme.secondaryText
         glass.frame = NSRect(x: 18, y: 0, width: 24, height: Self.fieldHeight)
         background.addSubview(glass)
 
@@ -278,15 +276,11 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         background.addSubview(scroll)
 
         hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .tertiaryLabelColor
+        hint.textColor = Theme.tertiaryText
         hint.alignment = .right
         background.addSubview(hint)
-        scopes.segmentStyle = .capsule
-        scopes.controlSize = .mini
-        scopes.font = .systemFont(ofSize: 10)
         scopes.selectedSegment = 0
-        scopes.target = self
-        scopes.action = #selector(scopeChosen)
+        scopes.onChange = { [weak self] _ in self?.scopeChosen() }
         background.addSubview(scopes)
     }
 
@@ -452,7 +446,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.frame = NSRect(x: 52, y: height - Self.fieldHeight + 13, width: Self.width - 70, height: 30)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
         scopes.sizeToFit()
-        scopes.frame = NSRect(x: 14, y: 3, width: scopes.frame.width, height: 18)
+        scopes.frame = NSRect(x: 10, y: 1, width: scopes.frame.width, height: 22)
         hint.frame = NSRect(x: scopes.frame.maxX + 8, y: 4, width: Self.width - scopes.frame.maxX - 24, height: 16)
         panel.contentView?.subviews.first { $0 is NSImageView }?.frame.origin.y = height - Self.fieldHeight
     }
@@ -612,12 +606,13 @@ final class FileCell: NSTableCellView {
         super.init(frame: .zero)
         identifier = Self.identifier
         symbol.symbolConfiguration = .init(pointSize: 16, weight: .regular)
-        symbol.contentTintColor = .secondaryLabelColor
+        symbol.contentTintColor = Theme.secondaryText
         title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.textColor = Theme.text
         detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
+        detail.textColor = Theme.secondaryText
         note.font = .systemFont(ofSize: 11)
-        note.textColor = .tertiaryLabelColor
+        note.textColor = Theme.tertiaryText
         note.alignment = .right
         for field in [title, detail, note] {
             field.lineBreakMode = .byTruncatingMiddle
@@ -675,17 +670,17 @@ final class ExcerptCell: NSTableCellView {
         super.init(frame: .zero)
         identifier = Self.identifier
         symbol.symbolConfiguration = .init(pointSize: 15, weight: .regular)
-        symbol.contentTintColor = .secondaryLabelColor
+        symbol.contentTintColor = Theme.secondaryText
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1
         detail.font = .systemFont(ofSize: 11, weight: .medium)
-        detail.textColor = .tertiaryLabelColor
+        detail.textColor = Theme.tertiaryText
         detail.lineBreakMode = .byTruncatingMiddle
         excerpt.maximumNumberOfLines = 2
         excerpt.lineBreakMode = .byTruncatingTail
         excerpt.cell?.truncatesLastVisibleLine = true
         note.font = .systemFont(ofSize: 11)
-        note.textColor = .tertiaryLabelColor
+        note.textColor = Theme.tertiaryText
         note.alignment = .right
         for v in [symbol, title, detail, excerpt, note] { addSubview(v) }
     }
@@ -701,7 +696,7 @@ final class ExcerptCell: NSTableCellView {
         while true {
             let r = ns.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: range)
             guard r.location != NSNotFound else { break }
-            s.addAttributes([.font: bold, .foregroundColor: NSColor.controlAccentColor], range: r)
+            s.addAttributes([.font: bold, .foregroundColor: Theme.accent], range: r)
             range = NSRange(location: r.upperBound, length: ns.length - r.upperBound)
         }
         return s
@@ -710,10 +705,10 @@ final class ExcerptCell: NSTableCellView {
     func show(_ item: FinderItem, excerpt text: String) {
         symbol.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
         title.attributedStringValue = Self.marking(item.title, item.marked, font: .systemFont(ofSize: 14, weight: .semibold),
-                                                   bold: .systemFont(ofSize: 14, weight: .bold), color: .labelColor)
+                                                   bold: .systemFont(ofSize: 14, weight: .bold), color: Theme.text)
         detail.stringValue = item.detail.uppercased()
         excerpt.attributedStringValue = Self.marking(text, item.marked, font: .systemFont(ofSize: 12.5),
-                                                     bold: .systemFont(ofSize: 12.5, weight: .semibold), color: .secondaryLabelColor)
+                                                     bold: .systemFont(ofSize: 12.5, weight: .semibold), color: Theme.secondaryText)
         note.stringValue = item.note
         needsLayout = true
     }

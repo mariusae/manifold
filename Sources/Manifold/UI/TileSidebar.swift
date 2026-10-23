@@ -29,7 +29,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let empty = NSTextField(labelWithString: "")
-    private let tabs: NSSegmentedControl?
+    private let tabs: FlatSegments?
     private let pagesView: NSView?
     /// Being marked from the view's scrolling: not a pick.
     private var marking = false
@@ -41,8 +41,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     init(outline: Outline, pages: NSView? = nil, emptyText: String = "No headings") {
         self.outline = outline
         pagesView = pages
-        tabs = pages == nil ? nil : NSSegmentedControl(images: ["list.bullet.indent", "rectangle.grid.1x2"].compactMap { Theme.symbol($0, size: 12) },
-                                                       trackingMode: .selectOne, target: nil, action: nil)
+        tabs = pages == nil ? nil : FlatSegments(symbols: ["list.bullet.indent", "rectangle.grid.1x2"])
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
@@ -69,13 +68,9 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         empty.alignment = .center
         addSubview(empty)
         if let tabs {
-            tabs.controlSize = .small
-            tabs.segmentStyle = .automatic
-            tabs.target = self
-            tabs.action = #selector(tabChosen)
+            tabs.onChange = { [weak self] _ in self?.tabChosen() }
             tabs.setToolTip("Table of Contents", forSegment: 0)
             tabs.setToolTip("Pages", forSegment: 1)
-            for i in 0..<2 { tabs.setWidth(34, forSegment: i) }
             tabs.selectedSegment = 0
             addSubview(tabs)
         }

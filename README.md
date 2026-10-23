@@ -953,6 +953,20 @@ around it, and comes back with its history.
   buttons or a row's menu, which also goes to the row's block. Its
   controls sit under the pill, and stack as the tile narrows.
 
+## Look
+
+One flat style throughout, in the system font. A field or a button has
+no bezel: a hairline on a faint fill, darker under the pointer; a field
+outlined in the accent while it has the keyboard, a magnifier at its left
+when it filters and a cross at its right to clear it (⎋ clears it too). A
+toggle (Aa, .*) that's on is in the accent; the one thing to do (Attach)
+is filled in it. A choice of a few (the picker's scopes, the state view's
+modes) is a row of words or symbols, the chosen one on a grey band. Every
+list's chosen row is a soft grey band, a fainter one under the pointer.
+Panels floating over the window (the palette, cards, toasts, history, the
+sidebar unpinned) are rounded alike with one soft shadow; the picker is
+plain, not glass. The system's own alerts are left as they are.
+
 ## Contrast correction
 
 Programs pick their colors for dark terminals, so on light paper `fd`'s greens

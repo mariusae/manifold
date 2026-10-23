@@ -55,7 +55,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     private(set) var model: DirectoryModel?
     private let header = NSView()
-    private let up = NSButton()
+    private let up = IconButton(symbol: "arrow.turn.left.up", size: 13, weight: .medium, target: nil, action: nil)
     /// The filter, in its box: flat, as Claude Code's (`FlatFieldBox`).
     private let searchBox = FlatFieldBox()
     private var search: FlatField { searchBox.field }
@@ -80,16 +80,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
 
-        up.isBordered = false
-        up.bezelStyle = .accessoryBarAction
-        up.image = Theme.symbol("arrow.turn.left.up", size: 13, weight: .medium)
-        up.contentTintColor = Theme.secondaryText
         up.toolTip = "Enclosing Folder (⌘↑)"
         up.target = self
         up.action = #selector(goUp)
         search.placeholderString = "Filter, or ? to search in files"
         search.delegate = self
-        searchBox.cleared = { [weak self] in self?.filterTyped() }
+        searchBox.onChange = { [weak self] in self?.filterTyped() }
         for v in [up, searchBox] as [NSView] { header.addSubview(v) }
         addSubview(header)
         footer.font = .systemFont(ofSize: 11)
@@ -179,7 +175,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         model = m
         selected = keeper.value("selected").flatMap { $0.isEmpty ? nil : $0 }
         if let f = keeper.value("filter"), !f.isEmpty {
-            search.stringValue = f
+            searchBox.stringValue = f
             searchBox.update()
             if !f.hasPrefix("?") { m.setFilter(f) }
         }
@@ -421,8 +417,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// "?text": the files' insides to be searched (on ⏎), not their names.
     private var searchingContents: Bool { search.stringValue.hasPrefix("?") }
 
-    func controlTextDidChange(_ obj: Notification) { filterTyped() }
-
     @objc private func filterTyped() {
         searchBox.update()
         model?.setFilter(searchingContents ? "" : search.stringValue)
@@ -442,7 +436,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if search.stringValue.isEmpty {
                 window?.makeFirstResponder(focusView)
             } else {
-                search.stringValue = ""
+                searchBox.stringValue = ""
                 filterTyped()
             }
             return true
@@ -524,7 +518,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         let midY = Self.headerHeight / 2
         up.frame = NSRect(x: 8, y: midY - 12, width: 26, height: 24)
-        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - 15, width: max(60, w - up.frame.maxX - 6 - 12), height: 30)
+        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, w - up.frame.maxX - 6 - 12), height: Flat.fieldHeight)
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
         footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
         content?.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
@@ -539,7 +533,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch words.first {
         case "filter":
-            search.stringValue = words.count > 1 ? words[1] : ""
+            searchBox.stringValue = words.count > 1 ? words[1] : ""
             filterTyped()
         case "select": if words.count > 1, let model { content?.select(model.absolute(words[1])) }
         case "open": openSelected()
@@ -577,95 +571,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 }
 
 protocol DebugDescribing { var debugRows: String { get } }
-
-/// A field that says when it takes the keyboard (its box shows it).
-final class FlatField: NSTextField {
-    var focused: () -> Void = {}
-
-    override func becomeFirstResponder() -> Bool {
-        let ok = super.becomeFirstResponder()
-        if ok { focused() }
-        return ok
-    }
-}
-
-/// A filter's box, flat as Claude Code's: a hairline round it on a faint
-/// fill, in the accent while it has the keyboard; no bezel, no shadow. A
-/// magnifier at the left, the field, and a cross at the right to clear it
-/// once there's something in it. (Made of these rather than a search field,
-/// which without its bezel lets the text it's editing run under its
-/// magnifier.)
-final class FlatFieldBox: NSView {
-    let field = FlatField()
-    private let glass = NSImageView()
-    private let clear = NSButton()
-    /// The field emptied by its cross.
-    var cleared: () -> Void = {}
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        glass.image = Theme.symbol("magnifyingglass", size: 12, weight: .regular)
-        glass.contentTintColor = Theme.secondaryText
-        field.font = .systemFont(ofSize: 13)
-        field.isBezeled = false
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.usesSingleLineMode = true
-        field.cell?.isScrollable = true
-        field.cell?.wraps = false
-        field.focused = { [weak self] in self?.needsDisplay = true }
-        clear.isBordered = false
-        clear.image = Theme.symbol("xmark", size: 10, weight: .semibold)
-        clear.contentTintColor = Theme.secondaryText
-        clear.toolTip = "Clear"
-        clear.target = self
-        clear.action = #selector(clearField)
-        clear.isHidden = true
-        for v in [glass, field, clear] as [NSView] { addSubview(v) }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// The cross shown once there's something to clear.
-    func update() { clear.isHidden = field.stringValue.isEmpty }
-
-    @objc private func clearField() {
-        field.stringValue = ""
-        update()
-        cleared()
-        window?.makeFirstResponder(field)
-    }
-
-    override func layout() {
-        super.layout()
-        let h = bounds.height, button: CGFloat = 22
-        glass.frame = NSRect(x: 6, y: 0, width: 18, height: h)
-        clear.frame = NSRect(x: bounds.width - button - 4, y: (h - button) / 2, width: button, height: button)
-        let fh = ceil(field.intrinsicContentSize.height)
-        field.frame = NSRect(x: glass.frame.maxX + 4, y: ((h - fh) / 2).rounded(), width: max(0, clear.frame.minX - glass.frame.maxX - 6), height: fh)
-    }
-
-    /// Whether the window's field editor is editing its field now.
-    var hasKeyboard: Bool {
-        guard let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor,
-              let field = editor.delegate as? NSView else { return false }
-        return field.isDescendant(of: self)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let focused = hasKeyboard
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
-        Theme.text.withAlphaComponent(0.025).setFill()
-        path.fill()
-        path.lineWidth = 1
-        (focused ? Theme.accent.withAlphaComponent(0.75) : Theme.text.withAlphaComponent(0.14)).setStroke()
-        path.stroke()
-    }
-
-    /// A click anywhere in it is the field's.
-    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
-}
 
 extension NSImage {
     /// A template image drawn in a colour.

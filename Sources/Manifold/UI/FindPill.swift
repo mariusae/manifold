@@ -40,9 +40,9 @@ final class FindPill: NSView, NSTextFieldDelegate {
     private let previous = IconButton(symbol: "chevron.up", size: 10, target: nil, action: nil)
     private let next = IconButton(symbol: "chevron.down", size: 10, target: nil, action: nil)
     private let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
-    private let caseButton = NSButton(title: "Aa", target: nil, action: nil)
-    private let replaceButton = NSButton(title: "Replace", target: nil, action: nil)
-    private let replaceAllButton = NSButton(title: "All", target: nil, action: nil)
+    private let caseButton = FlatButton("Aa", toggles: true, font: .systemFont(ofSize: 10.5, weight: .medium))
+    private let replaceButton = FlatButton("Replace", font: .systemFont(ofSize: 10.5, weight: .medium))
+    private let replaceAllButton = FlatButton("All", font: .systemFont(ofSize: 10.5, weight: .medium))
 
     var query: String {
         get { field.stringValue }
@@ -71,19 +71,10 @@ final class FindPill: NSView, NSTextFieldDelegate {
         count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         count.textColor = Theme.secondaryText
         count.alignment = .right
-        caseButton.setButtonType(.pushOnPushOff)
-        caseButton.bezelStyle = .inline
-        caseButton.controlSize = .mini
-        caseButton.font = .systemFont(ofSize: 10, weight: .medium)
         caseButton.toolTip = "Match Case"
         caseButton.target = self
         caseButton.action = #selector(optionChanged)
-        for b in [replaceButton, replaceAllButton] {
-            b.bezelStyle = .inline
-            b.controlSize = .mini
-            b.font = .systemFont(ofSize: 10, weight: .medium)
-            b.target = self
-        }
+        for b in [replaceButton, replaceAllButton] { b.target = self }
         replaceButton.action = #selector(replaceClicked)
         replaceAllButton.action = #selector(replaceAllClicked)
         previous.target = self
@@ -118,7 +109,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
         count.isHidden = bounds.width < 240
         var left = previous.frame.minX
         if !caseButton.isHidden {
-            caseButton.frame = NSRect(x: left - 30, y: top + (h - 16) / 2, width: 26, height: 16)
+            caseButton.frame = NSRect(x: left - 30, y: top + (h - 20) / 2, width: 26, height: 20)
             left = caseButton.frame.minX
         }
         if !count.isHidden {
@@ -131,8 +122,8 @@ final class FindPill: NSView, NSTextFieldDelegate {
         replaceButton.isHidden = !shown
         replaceAllButton.isHidden = !shown
         if shown {
-            replaceAllButton.frame = NSRect(x: bounds.width - 40, y: (h - 16) / 2, width: 32, height: 16)
-            replaceButton.frame = NSRect(x: replaceAllButton.frame.minX - 62, y: (h - 16) / 2, width: 58, height: 16)
+            replaceAllButton.frame = NSRect(x: bounds.width - 40, y: (h - 20) / 2, width: 32, height: 20)
+            replaceButton.frame = NSRect(x: replaceAllButton.frame.minX - 62, y: (h - 20) / 2, width: 58, height: 20)
             replaceField.frame = NSRect(x: 14, y: (h - 17) / 2, width: replaceButton.frame.minX - 18, height: 17)
         }
     }

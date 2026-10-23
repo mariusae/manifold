@@ -865,13 +865,13 @@ final class EditorBanner: NSView {
     var onReload: (() -> Void)?
     var onKeep: (() -> Void)?
     private let label: NSTextField
-    private let reload: NSButton
-    private let keep: NSButton
+    private let reload: FlatButton
+    private let keep: FlatButton
 
     init(message: String) {
         label = NSTextField(labelWithString: message)
-        reload = NSButton(title: "Reload", target: nil, action: nil)
-        keep = NSButton(title: "Keep Mine", target: nil, action: nil)
+        reload = FlatButton("Reload")
+        keep = FlatButton("Keep Mine")
         super.init(frame: .zero)
         wantsLayer = true
         themed {
@@ -880,12 +880,7 @@ final class EditorBanner: NSView {
         }
         label.font = .systemFont(ofSize: 12.5)
         label.textColor = Theme.text
-        for b in [reload, keep] {
-            b.bezelStyle = .push
-            b.controlSize = .small
-            b.font = .systemFont(ofSize: 12)
-            b.target = self
-        }
+        for b in [reload, keep] { b.target = self }
         reload.action = #selector(reloadClicked)
         keep.action = #selector(keepClicked)
         for v in [label, reload, keep] { addSubview(v) }

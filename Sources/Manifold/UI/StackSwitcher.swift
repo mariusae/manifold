@@ -315,7 +315,7 @@ final class SwitcherCard: NSView {
         didSet {
             guard chrome != oldValue else { return }
             holder.layer?.cornerRadius = 8 * chrome
-            layer?.shadowOpacity = Float(0.22 * chrome)
+            if let layer { Flat.shadow(layer, strength: chrome) }
             needsLayout = true
         }
     }
@@ -327,9 +327,7 @@ final class SwitcherCard: NSView {
         self.contentSize = contentSize
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.shadowOpacity = 0.22
-        layer?.shadowRadius = 10
-        layer?.shadowOffset = CGSize(width: 0, height: -3)
+        if let layer { Flat.shadow(layer) }
         holder.wantsLayer = true
         holder.layer?.cornerRadius = 8
         holder.layer?.cornerCurve = .continuous

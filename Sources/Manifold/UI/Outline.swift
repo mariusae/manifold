@@ -271,7 +271,7 @@ final class FloatingList: NSView {
     private init() {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = Flat.panelRadius
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         applyColors()

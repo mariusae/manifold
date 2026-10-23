@@ -13,7 +13,7 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
 
     private var providers: [RemoteProvider] = []
     private let table = NSTableView()
-    private let remove = NSButton(title: "−", target: nil, action: nil)
+    private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 320),
@@ -29,9 +29,10 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
 
     private func build() {
         guard let content = window?.contentView else { return }
+        window?.backgroundColor = Theme.windowBackground
         let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
+        Flat.outline(scroll)
         scroll.translatesAutoresizingMaskIntoConstraints = false
         for (id, title, width) in [("name", "Provider", 120), ("command", "Command", 440)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
@@ -45,34 +46,35 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
             table.addTableColumn(column)
         }
         table.rowHeight = 22
-        table.usesAlternatingRowBackgroundColors = true
         table.dataSource = self
         table.delegate = self
+        Flat.headers(table)
         scroll.documentView = table
         content.addSubview(scroll)
 
-        let add = NSButton(title: "+", target: self, action: #selector(addRow))
+        let add = IconButton(symbol: "plus", size: 12, weight: .medium, target: self, action: #selector(addRow))
         remove.target = self
         remove.action = #selector(removeRow)
-        let attach = NSButton(title: "Attach to Host…", target: self, action: #selector(attachClicked))
+        let attach = FlatButton("Attach to Host…", target: self, action: #selector(attachClicked))
         let note = NSTextField(wrappingLabelWithString: "A provider runs a command line on a destination with stdio connected, as ssh does: %h is the destination, %c the command (appended when there is no %c). Attach to a host as user@host for ssh, or provider:target for another. Manifold installs its server on the host, in ~/.manifold/bin, if it isn't already there.")
         note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.textColor = Theme.secondaryText
         for v in [add, remove, attach, note] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
-        for b in [add, remove, attach] { b.bezelStyle = .rounded; b.controlSize = .small; b.font = .systemFont(ofSize: 11) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
             add.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
             add.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            add.widthAnchor.constraint(equalToConstant: 28),
+            add.widthAnchor.constraint(equalToConstant: 24),
+            add.heightAnchor.constraint(equalToConstant: 24),
             remove.topAnchor.constraint(equalTo: add.topAnchor),
             remove.leadingAnchor.constraint(equalTo: add.trailingAnchor, constant: 4),
-            remove.widthAnchor.constraint(equalToConstant: 28),
+            remove.widthAnchor.constraint(equalToConstant: 24),
+            remove.heightAnchor.constraint(equalToConstant: 24),
             attach.topAnchor.constraint(equalTo: add.topAnchor),
             attach.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
             note.topAnchor.constraint(equalTo: add.bottomAnchor, constant: 10),

@@ -38,7 +38,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     // A PDF's controls, along the top (see the extension below).
     fileprivate let previousButton = IconButton(symbol: "chevron.left", size: 11, target: nil, action: nil)
     fileprivate let nextButton = IconButton(symbol: "chevron.right", size: 11, target: nil, action: nil)
-    fileprivate let pageField = NSTextField()
+    fileprivate let pageBox = FlatFieldBox(symbol: nil, clears: false, fontSize: 11.5)
+    fileprivate var pageField: FlatField { pageBox.field }
     fileprivate let pageCount = NSTextField(labelWithString: "")
     fileprivate let zoomOutButton = IconButton(symbol: "minus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
     fileprivate let zoomInButton = IconButton(symbol: "plus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
@@ -112,7 +113,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             scroll.minMagnification = 0.1
             scroll.maxMagnification = 16
             scroll.hasVerticalScroller = true
-            scroll.scrollerStyle = .legacy
             scroll.hasHorizontalScroller = true
             scroll.autohidesScrollers = true
             scroll.drawsBackground = false
@@ -291,17 +291,15 @@ extension MediaView: Searchable {
         }
         pageField.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
         pageField.alignment = .center
-        pageField.bezelStyle = .roundedBezel
-        pageField.controlSize = .small
         pageField.target = self
         pageField.action = #selector(pageEntered)
-        pageField.toolTip = "Go to Page"
+        pageBox.toolTip = "Go to Page"
         pageCount.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
         pageCount.textColor = Theme.secondaryText
         zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         zoomLabel.textColor = Theme.secondaryText
         zoomLabel.alignment = .center
-        for v in [previousButton, nextButton, pageField, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] {
+        for v in [previousButton, nextButton, pageBox, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] {
             v.isHidden = true
             addSubview(v)
         }
@@ -318,12 +316,12 @@ extension MediaView: Searchable {
             v.frame = NSRect(x: right - width, y: (mid - height / 2).rounded(), width: width, height: height)
             right -= width
         }
-        for v in [previousButton, nextButton, pageField, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] { v.isHidden = !ready }
+        for v in [previousButton, nextButton, pageBox, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] { v.isHidden = !ready }
         let showZoom = ready && bounds.width >= 420
         let showPages = ready && bounds.width >= 260
         layoutButton.isHidden = !showZoom
         for v in [zoomOutButton, zoomInButton, zoomLabel] { v.isHidden = !showZoom }
-        for v in [previousButton, nextButton, pageField, pageCount] { v.isHidden = !showPages }
+        for v in [previousButton, nextButton, pageBox, pageCount] { v.isHidden = !showPages }
         if showZoom {
             place(layoutButton, width: 22)
             right -= 10
@@ -338,7 +336,7 @@ extension MediaView: Searchable {
             place(pageCount, width: cw, height: 14)
             right -= 4
             let digits = CGFloat(max(String(pdfView?.document?.pageCount ?? 1).count, 2))
-            place(pageField, width: 16 + digits * 8, height: 20)
+            place(pageBox, width: 16 + digits * 8, height: 22)
             right -= 2
             place(previousButton, width: 22)
             right -= 8
@@ -550,7 +548,7 @@ extension MediaView: Searchable {
         layoutSubtreeIfNeeded()
         let page = p.currentPage.flatMap { pg in p.document.map { $0.index(for: pg) + 1 } } ?? 0
         var lines = ["page \(page) \(pageCount.stringValue) field \(pageField.stringValue) zoom \(zoomLabel.stringValue) display \(p.displayMode.rawValue) found \(found.count) at \(foundAt)"]
-        let shown: [(String, NSView)] = [("prev", previousButton), ("field", pageField), ("zoom", zoomLabel), ("layout", layoutButton)]
+        let shown: [(String, NSView)] = [("prev", previousButton), ("field", pageBox), ("zoom", zoomLabel), ("layout", layoutButton)]
         lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " ") + " header \(Int(header.frame.width))")
         if let sidebar, !sidebar.isHidden { lines.append(sidebar.debugEntries) } else { lines.append("sidebar hidden") }
         return lines.joined(separator: "\n")

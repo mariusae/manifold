@@ -25,15 +25,16 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     weak var delegate: SearchViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let field = NSTextField()
-    private let caseButton = NSButton(title: "Aa", target: nil, action: nil)
-    private let regexButton = NSButton(title: ".*", target: nil, action: nil)
+    private let fieldBox = FlatFieldBox()
+    private var field: FlatField { fieldBox.field }
+    private let caseButton = FlatButton("Aa", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
+    private let regexButton = FlatButton(".*", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
     private let rootLabel = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
     private let table = NSTableView()
     private let preview = SearchPreviewView()
-    private let split = NSBox()
+    private let split = FlatDivider()
     /// The code face, for the preview.
     var codeFont: NSFont {
         get { preview.font }
@@ -62,18 +63,11 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
 
         field.placeholderString = "Find in files"
-        field.font = .systemFont(ofSize: 13)
         field.delegate = self
-        field.bezelStyle = .roundedBezel
-        field.focusRingType = .none
         field.cell?.sendsActionOnEndEditing = false
         field.target = self
         field.action = #selector(fieldEntered)
         for b in [caseButton, regexButton] {
-            b.setButtonType(.pushOnPushOff)
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            b.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
             b.target = self
             b.action = #selector(optionChanged)
         }
@@ -86,7 +80,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         status.font = .systemFont(ofSize: 11.5)
         status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingTail
-        for v in [field, caseButton, regexButton, rootLabel, status] { addSubview(v) }
+        for v in [fieldBox, caseButton, regexButton, rootLabel, status] { addSubview(v) }
 
         let column = NSTableColumn(identifier: .init("hit"))
         column.resizingMask = .autoresizingMask
@@ -105,12 +99,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
-        split.boxType = .separator
         addSubview(split)
         preview.read = { [weak self] path, done in
             guard let self, let d = self.delegate else { return done(nil) }
@@ -149,7 +141,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private func restoreState() {
         guard !keeper.restored else { return }
         keeper.restored = true
-        if let draft = keeper.value("draft"), !draft.isEmpty, field.currentEditor() == nil { field.stringValue = draft }
+        if let draft = keeper.value("draft"), !draft.isEmpty, field.currentEditor() == nil { fieldBox.stringValue = draft }
         if let key = keeper.value("selected"), let i = rows.firstIndex(where: { if case let .hit(h) = $0 { return "\(h.path):\(h.line)" == key } else { return false } }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
@@ -160,9 +152,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         super.layout()
         let top = bounds.height - 12
         let w = bounds.width
-        caseButton.frame = NSRect(x: w - 12 - 36, y: top - 24, width: 36, height: 22)
-        regexButton.frame = NSRect(x: w - 12 - 36 - 4 - 36, y: top - 24, width: 36, height: 22)
-        field.frame = NSRect(x: 12, y: top - 25, width: regexButton.frame.minX - 8 - 12, height: 24)
+        let midY = top - 13
+        caseButton.frame = NSRect(x: w - 12 - 32, y: midY - Flat.buttonHeight / 2, width: 32, height: Flat.buttonHeight)
+        regexButton.frame = NSRect(x: caseButton.frame.minX - 4 - 32, y: caseButton.frame.minY, width: 32, height: Flat.buttonHeight)
+        fieldBox.frame = NSRect(x: 12, y: midY - Flat.fieldHeight / 2, width: regexButton.frame.minX - 8 - 12, height: Flat.fieldHeight)
         rootLabel.frame = NSRect(x: w / 2, y: top - 46, width: w / 2 - 12, height: 16)
         status.frame = NSRect(x: 12, y: top - 46, width: w / 2 - 16, height: 16)
         // The preview beside the hits when there's width for both, else
@@ -197,7 +190,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             query = s.query
             ranAt = s.ranAt
             if let q = s.query, field.currentEditor() == nil {
-                field.stringValue = q.text
+                fieldBox.stringValue = q.text
                 caseButton.state = q.caseSensitive ? .on : .off
                 regexButton.state = q.regex ? .on : .off
             }
@@ -331,7 +324,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     /// or "query <text>" asked.
     func debugPreview(_ arg: String) -> String {
         if arg.hasPrefix("query ") {
-            field.stringValue = String(arg.dropFirst(6))
+            fieldBox.stringValue = String(arg.dropFirst(6))
             fieldEntered()
             return "asked"
         }

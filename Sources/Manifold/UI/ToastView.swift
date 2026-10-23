@@ -6,30 +6,16 @@ import AppKit
 /// gone after a while or when the action is taken.
 final class ToastView: NSView {
     private let label = NSTextField(labelWithString: "")
-    private let button = NSButton(title: "Restore", target: nil, action: nil)
+    private let button = FlatButton("Restore")
     private var hideWork: DispatchWorkItem?
     private var action: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 0.5
-        themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
-        shadow = NSShadow()
-        shadow?.shadowColor = NSColor.black.withAlphaComponent(0.2)
-        shadow?.shadowBlurRadius = 12
-        shadow?.shadowOffset = NSSize(width: 0, height: -3)
+        Flat.float(self)
         label.font = .systemFont(ofSize: 12.5)
         label.textColor = Theme.text
         label.lineBreakMode = .byTruncatingMiddle
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11.5, weight: .medium)
         button.target = self
         button.action = #selector(act)
         addSubview(label)
@@ -77,15 +63,15 @@ final class ToastView: NSView {
 
     var wantedSize: NSSize {
         let lw = min(ceil(label.intrinsicContentSize.width), 520)
-        let bw = button.isHidden ? -12 : ceil(button.intrinsicContentSize.width) + 8
+        let bw = button.isHidden ? -12 : ceil(button.intrinsicContentSize.width)
         return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
     }
 
     override func layout() {
         super.layout()
         let h = bounds.height
-        let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width) + 8
-        button.frame = NSRect(x: bounds.width - 10 - bw, y: (h - 22) / 2, width: bw, height: 22)
+        let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
+        button.frame = NSRect(x: bounds.width - 10 - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
         label.frame = NSRect(x: 14, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - 10 : button.frame.minX - 12) - 14), height: 17)
     }
 

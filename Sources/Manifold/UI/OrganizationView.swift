@@ -245,7 +245,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
         addSubview(scroll)
     }
 

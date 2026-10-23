@@ -56,23 +56,16 @@ final class NeighborhoodView: NSView {
     private let panel = NSView()
     private let title = NSTextField(labelWithString: "")
     private let hint = NSTextField(labelWithString: "Click a block to look around it · double-click or ⏎ to go there · ⎋ closes")
-    private let back = NSButton(title: "Back", target: nil, action: nil)
-    private let close = NSButton(title: "Done", target: nil, action: nil)
+    private let back = FlatButton("Back", symbol: "chevron.left")
+    private let close = FlatButton("Done")
     private let canvas = GraphCanvas()
     private var centers: [BlockID] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        panel.wantsLayer = true
-        themed {
-            $0.layer?.backgroundColor = Theme.scrim.cgColor
-            $0.panel.layer?.backgroundColor = Theme.panel.cgColor
-            $0.panel.layer?.borderColor = Theme.panelBorder.cgColor
-        }
-        panel.layer?.cornerRadius = 12
-        panel.layer?.cornerCurve = .continuous
-        panel.layer?.borderWidth = 0.5
+        themed { $0.layer?.backgroundColor = Theme.scrim.cgColor }
+        Flat.float(panel)
         addSubview(panel)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = Theme.text
@@ -82,12 +75,8 @@ final class NeighborhoodView: NSView {
         hint.alignment = .center
         back.target = self
         back.action = #selector(backClicked)
-        back.bezelStyle = .rounded
-        back.controlSize = .small
-        back.font = .systemFont(ofSize: 11.5)
         close.target = self
         close.action = #selector(closeClicked)
-        close.bezelStyle = .rounded
         close.keyEquivalent = "\u{1b}"
         canvas.onCenter = { [weak self] id in self?.center(on: id) }
         canvas.onGo = { [weak self] id in self?.onGo?(id) }
@@ -121,9 +110,9 @@ final class NeighborhoodView: NSView {
         super.layout()
         let w = min(1100, bounds.width - 60), h = min(760, bounds.height - 60)
         panel.frame = NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h).integral
-        back.frame = NSRect(x: 16, y: h - 38, width: 64, height: 24)
+        back.frame = NSRect(x: 16, y: h - 38, width: back.intrinsicContentSize.width, height: Flat.buttonHeight)
         title.frame = NSRect(x: 90, y: h - 36, width: w - 190, height: 20)
-        close.frame = NSRect(x: w - 96, y: h - 40, width: 80, height: 28)
+        close.frame = NSRect(x: w - 16 - 64, y: h - 38, width: 64, height: Flat.buttonHeight)
         hint.frame = NSRect(x: 16, y: 12, width: w - 32, height: 16)
         canvas.frame = NSRect(x: 8, y: 34, width: w - 16, height: h - 84)
     }

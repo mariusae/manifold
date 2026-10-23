@@ -143,7 +143,7 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
         !model.filtering && (item as? BrowserNode)?.isDirectory == true
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { TreeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { SelectionRowView() }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let n = item as? BrowserNode else { return nil }
@@ -358,39 +358,6 @@ final class TreeOutline: NSOutlineView {
         f.size.width += chevronWidth
         return f
     }
-}
-
-/// A row: chosen, a soft grey rounded band (a little stronger with the
-/// keyboard); under the pointer, a fainter one.
-final class TreeRowView: NSTableRowView {
-    private var hovered = false {
-        didSet { if hovered != oldValue { needsDisplay = true } }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-
-    private var band: NSRect { bounds.insetBy(dx: 6, dy: 1) }
-
-    override func drawBackground(in dirtyRect: NSRect) {
-        guard hovered, !isSelected else { return }
-        Theme.text.withAlphaComponent(0.045).setFill()
-        NSBezierPath(roundedRect: band, xRadius: 6, yRadius: 6).fill()
-    }
-
-    override func drawSelection(in dirtyRect: NSRect) {
-        Theme.text.withAlphaComponent(isEmphasized ? 0.11 : 0.07).setFill()
-        NSBezierPath(roundedRect: band, xRadius: 6, yRadius: 6).fill()
-    }
-
-    /// Its text stays as it is, chosen or not (not the strong selection's white).
-    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 }
 
 /// An entry's row: a file's type as a small symbol in its colour (a folder

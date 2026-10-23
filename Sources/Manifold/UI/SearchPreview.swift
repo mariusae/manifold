@@ -45,7 +45,7 @@ final class SearchPreviewView: NSView {
     private let empty = NSTextField(labelWithString: "")
     /// "Reading…" while a match's file comes from its host.
     private let note = BusyNote()
-    private let divider = NSBox()
+    private let divider = FlatDivider()
     private let gutter = LineGutter()
     private var cache: [String: String?] = [:]
     private(set) var hit: SearchHit?
@@ -71,7 +71,6 @@ final class SearchPreviewView: NSView {
         title.textColor = Theme.secondaryText
         title.lineBreakMode = .byTruncatingHead
         addSubview(title)
-        divider.boxType = .separator
         addSubview(divider)
         text.isEditable = false
         text.isSelectable = true

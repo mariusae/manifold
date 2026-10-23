@@ -17,15 +17,19 @@ final class HistoryView: NSView {
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
 
     private let panel = NSView()
-    private let slider = NSSlider()
+    private let slider: NSSlider = {
+        let s = NSSlider()
+        s.cell = FlatSliderCell()
+        return s
+    }()
     private let when = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
     private let textView = TextView()
     private let textDocument = StaticDocument()
-    private let compare = NSButton(title: "Compare with Now", target: nil, action: nil)
-    private let open = NSButton(title: "Open This Version", target: nil, action: nil)
-    private let restore = NSButton(title: "Restore This Text", target: nil, action: nil)
-    private let close = NSButton(title: "Done", target: nil, action: nil)
+    private let compare = FlatButton("Compare with Now")
+    private let open = FlatButton("Open This Version")
+    private let restore = FlatButton("Restore This Text")
+    private let close = FlatButton("Done")
     private var entries: [Entry] = []
     private var texts: [String] = []
     private var blockID: BlockID?
@@ -33,15 +37,8 @@ final class HistoryView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        panel.wantsLayer = true
-        themed {
-            $0.layer?.backgroundColor = Theme.scrim.cgColor
-            $0.panel.layer?.backgroundColor = Theme.panel.cgColor
-            $0.panel.layer?.borderColor = Theme.panelBorder.cgColor
-        }
-        panel.layer?.cornerRadius = 12
-        panel.layer?.cornerCurve = .continuous
-        panel.layer?.borderWidth = 0.5
+        themed { $0.layer?.backgroundColor = Theme.scrim.cgColor }
+        Flat.float(panel)
         addSubview(panel)
         slider.target = self
         slider.action = #selector(scrubbed)
@@ -51,23 +48,18 @@ final class HistoryView: NSView {
         when.alignment = .center
         restore.target = self
         restore.action = #selector(restoreClicked)
-        restore.bezelStyle = .rounded
         close.target = self
         close.action = #selector(closeClicked)
-        close.bezelStyle = .rounded
         close.keyEquivalent = "\u{1b}"
         compare.target = self
         compare.action = #selector(compareClicked)
-        compare.bezelStyle = .rounded
         open.target = self
         open.action = #selector(openClicked)
-        open.bezelStyle = .rounded
         textView.document = textDocument
         textView.isEditable = false
         textView.autoresizingMask = [.width]
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.automaticallyAdjustsContentInsets = false
@@ -144,11 +136,13 @@ final class HistoryView: NSView {
         when.frame = NSRect(x: 20, y: h - 66, width: w - 40, height: 16)
         scroll.frame = NSRect(x: 20, y: 56, width: w - 40, height: h - 132)
         textView.frame.size.width = scroll.contentSize.width
-        close.frame = NSRect(x: w - 100, y: 16, width: 80, height: 28)
-        let restoreWidth: CGFloat = 150
-        restore.frame = NSRect(x: w - 108 - restoreWidth, y: 16, width: restoreWidth, height: 28)
-        compare.frame = NSRect(x: restore.frame.minX - 160, y: 16, width: 150, height: 28)
-        open.frame = NSRect(x: compare.frame.minX - 160, y: 16, width: 150, height: 28)
+        // The buttons along the foot, from the right, each its own width.
+        var right = w - 20
+        for b in [close, restore, compare, open] {
+            let bw = max(64, b.intrinsicContentSize.width)
+            b.frame = NSRect(x: right - bw, y: 18, width: bw, height: Flat.buttonHeight)
+            right -= bw + 8
+        }
         open.isHidden = open.frame.minX < 20
     }
 

@@ -21,8 +21,8 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private let header = NSView()
     private let prompt = NSTextField(labelWithString: "")
     private let outcome = NSTextField(labelWithString: "")
-    private let back = NSButton(title: "Show in Terminal", target: nil, action: nil)
-    private let copy = NSButton(title: "Copy", target: nil, action: nil)
+    private let back = FlatButton("Show in Terminal", symbol: "arrow.uturn.backward", font: .systemFont(ofSize: 11))
+    private let copy = FlatButton("Copy", symbol: "doc.on.doc", font: .systemFont(ofSize: 11))
     private let scroll = ClippingScrollView()
     private let text = OutputFindTextView()
     private var shown: OutputState?
@@ -60,12 +60,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         outcome.lineBreakMode = .byTruncatingTail
         outcome.font = .systemFont(ofSize: 11)
         outcome.textColor = Theme.secondaryText
-        for (b, symbol, action) in [(back, "arrow.uturn.backward", #selector(backClicked)), (copy, "doc.on.doc", #selector(copyClicked))] {
-            b.bezelStyle = .accessoryBarAction
-            b.controlSize = .small
-            b.font = .systemFont(ofSize: 11)
-            b.image = Theme.symbol(symbol, size: 10)
-            b.imagePosition = .imageLeading
+        for (b, action) in [(back, #selector(backClicked)), (copy, #selector(copyClicked))] {
             b.target = self
             b.action = action
         }
@@ -169,8 +164,8 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         let titled = w >= Self.titledWidth
         back.title = titled ? "Show in Terminal" : ""
         copy.title = titled ? (copied ? "Copied" : "Copy") : ""
-        copy.image = Theme.symbol(copied ? "checkmark" : "doc.on.doc", size: 10)
-        for b in [back, copy] { b.imagePosition = titled ? .imageLeading : .imageOnly; b.sizeToFit() }
+        copy.symbolName = copied ? "checkmark" : "doc.on.doc"
+        for b in [back, copy] { b.sizeToFit() }
         let by = ((Self.headerHeight - copy.frame.height) / 2).rounded()
         copy.frame = NSRect(x: w - 10 - copy.frame.width, y: by, width: copy.frame.width, height: copy.frame.height)
         back.frame = NSRect(x: copy.frame.minX - 4 - back.frame.width, y: by, width: back.frame.width, height: back.frame.height)

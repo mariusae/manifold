@@ -14,7 +14,7 @@ final class PlaceholderView: NSView, PaneContent {
     var onAttach: (() -> Void)?
     private let title = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
-    private let button = NSButton(title: "Attach", target: nil, action: nil)
+    private let button = FlatButton("Attach", style: .primary)
 
     init(placement: PlacementID, block: BlockID, label: String) {
         self.placement = placement
@@ -30,8 +30,6 @@ final class PlaceholderView: NSView, PaneContent {
         note.font = .systemFont(ofSize: 12)
         note.textColor = Theme.secondaryText
         note.alignment = .center
-        button.bezelStyle = .rounded
-        button.controlSize = .small
         button.target = self
         button.action = #selector(attachClicked)
         button.isHidden = HostsFile.load().destination(of: block.host) == nil

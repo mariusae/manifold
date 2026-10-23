@@ -14,7 +14,7 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
     private var configs: [LanguageServerConfig] = []
     private let table = NSTableView()
     private let status = NSTextField(wrappingLabelWithString: "")
-    private let remove = NSButton(title: "−", target: nil, action: nil)
+    private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 420),
@@ -30,9 +30,10 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
 
     private func build() {
         guard let content = window?.contentView else { return }
+        window?.backgroundColor = Theme.windowBackground
         let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
+        Flat.outline(scroll)
         scroll.translatesAutoresizingMaskIntoConstraints = false
         for (id, title, width) in [("enabled", "", 24), ("id", "Language", 90), ("extensions", "Files", 150), ("command", "Command", 220), ("rootMarkers", "Root Markers", 200)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
@@ -40,10 +41,7 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
             column.width = CGFloat(width)
             column.minWidth = CGFloat(id == "enabled" ? 24 : 60)
             if id == "enabled" {
-                let cell = NSButtonCell()
-                cell.setButtonType(.switch)
-                cell.title = ""
-                column.dataCell = cell
+                column.dataCell = FlatCheckboxCell(textCell: "")
             } else {
                 let cell = NSTextFieldCell()
                 cell.isEditable = true
@@ -53,37 +51,38 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
             table.addTableColumn(column)
         }
         table.rowHeight = 22
-        table.usesAlternatingRowBackgroundColors = true
         table.dataSource = self
         table.delegate = self
         table.allowsEmptySelection = true
+        Flat.headers(table)
         scroll.documentView = table
         content.addSubview(scroll)
 
-        let add = NSButton(title: "+", target: self, action: #selector(addRow))
+        let add = IconButton(symbol: "plus", size: 12, weight: .medium, target: self, action: #selector(addRow))
         remove.target = self
         remove.action = #selector(removeRow)
-        let defaults = NSButton(title: "Restore Defaults", target: self, action: #selector(restoreDefaults))
+        let defaults = FlatButton("Restore Defaults", target: self, action: #selector(restoreDefaults))
         let note = NSTextField(wrappingLabelWithString: "Files are matched by extension. Commands run through the shell, in the workspace root: the nearest folder up from the file with a root marker, else the repository, else the file's own folder. Each host runs its own; a server stops and restarts with its next file when its command changes.")
         note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.textColor = Theme.secondaryText
         status.font = .systemFont(ofSize: 11)
-        status.textColor = .secondaryLabelColor
+        status.textColor = Theme.secondaryText
         for v in [add, remove, defaults, note, status] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
-        for b in [add, remove, defaults] { b.bezelStyle = .rounded; b.controlSize = .small; b.font = .systemFont(ofSize: 11) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
             add.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
             add.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            add.widthAnchor.constraint(equalToConstant: 28),
+            add.widthAnchor.constraint(equalToConstant: 24),
+            add.heightAnchor.constraint(equalToConstant: 24),
             remove.topAnchor.constraint(equalTo: add.topAnchor),
             remove.leadingAnchor.constraint(equalTo: add.trailingAnchor, constant: 4),
-            remove.widthAnchor.constraint(equalToConstant: 28),
+            remove.widthAnchor.constraint(equalToConstant: 24),
+            remove.heightAnchor.constraint(equalToConstant: 24),
             defaults.topAnchor.constraint(equalTo: add.topAnchor),
             defaults.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
             note.topAnchor.constraint(equalTo: add.bottomAnchor, constant: 10),

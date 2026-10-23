@@ -30,17 +30,7 @@ final class HoverCard: NSObject {
 
     private override init() {
         super.init()
-        box.wantsLayer = true
-        box.layer?.cornerRadius = 10
-        box.layer?.cornerCurve = .continuous
-        box.layer?.borderWidth = 0.5
-        box.layer?.shadowOpacity = 0.22
-        box.layer?.shadowRadius = 14
-        box.layer?.shadowOffset = CGSize(width: 0, height: -4)
-        box.themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
+        Flat.float(box)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingMiddle

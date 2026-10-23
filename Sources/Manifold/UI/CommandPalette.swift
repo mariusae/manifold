@@ -29,22 +29,8 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        panel.wantsLayer = true
-        themed {
-            $0.layer?.backgroundColor = Theme.scrim.cgColor
-            $0.panel.layer?.backgroundColor = Theme.panel.cgColor
-            $0.panel.layer?.borderColor = Theme.panelBorder.cgColor
-        }
-        panel.layer?.cornerRadius = 12
-        panel.layer?.cornerCurve = .continuous
-        panel.layer?.borderWidth = 0.5
-        panel.shadow = {
-            let s = NSShadow()
-            s.shadowColor = NSColor(white: 0, alpha: 0.2)
-            s.shadowBlurRadius = 24
-            s.shadowOffset = NSSize(width: 0, height: -6)
-            return s
-        }()
+        themed { $0.layer?.backgroundColor = Theme.scrim.cgColor }
+        Flat.float(panel)
         addSubview(panel)
 
         searchIcon.image = Theme.symbol("magnifyingglass", size: 13)
@@ -166,9 +152,6 @@ final class PaletteRowView: NSView {
 
     init(item: PaletteItem) {
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 7
-        layer?.cornerCurve = .continuous
         icon.image = Theme.symbol(item.symbol, size: 13)
         title.stringValue = item.title
         title.font = .systemFont(ofSize: 13.5)
@@ -201,11 +184,18 @@ final class PaletteRowView: NSView {
         subtitle.frame = NSRect(x: 38 + tw + 10, y: (h - 16) / 2, width: max(0, bounds.width - tw - 60), height: 16)
     }
 
+    /// Chosen: the grey band every list's chosen row has.
     private func update() {
-        layer?.backgroundColor = highlighted ? Theme.accent.cgColor : NSColor.clear.cgColor
-        title.textColor = highlighted ? .white : Theme.text
-        subtitle.textColor = highlighted ? NSColor(white: 1, alpha: 0.8) : Theme.secondaryText
-        icon.contentTintColor = highlighted ? .white : Theme.secondaryText
+        title.textColor = Theme.text
+        subtitle.textColor = Theme.secondaryText
+        icon.contentTintColor = highlighted ? Theme.text : Theme.secondaryText
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard highlighted else { return }
+        Flat.chosen().setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: Flat.radius, yRadius: Flat.radius).fill()
     }
 
     override func updateTrackingAreas() {

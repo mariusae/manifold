@@ -21,7 +21,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
 
     private let header = NSTextField(labelWithString: "")
     private let branchLabel = NSTextField(labelWithString: "")
-    private let refresh = NSButton(title: "", target: nil, action: nil)
+    private let refresh = IconButton(symbol: "arrow.clockwise", size: 11, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
     private let table = NSTableView()
 
@@ -56,9 +56,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         branchLabel.textColor = Theme.text
         branchLabel.alignment = .right
         branchLabel.lineBreakMode = .byTruncatingTail
-        refresh.image = Theme.symbol("arrow.clockwise", size: 11, weight: .medium)
-        refresh.bezelStyle = .accessoryBarAction
-        refresh.isBordered = false
         refresh.target = self
         refresh.action = #selector(refreshClicked)
         refresh.toolTip = "Look again"
@@ -79,7 +76,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)

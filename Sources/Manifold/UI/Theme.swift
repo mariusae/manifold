@@ -9,23 +9,19 @@ enum Theme {
     static let rowHeight: CGFloat = 30
     static let text = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.89, alpha: 1))
     static let secondaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.6, alpha: 1))
+    /// Quieter still: a hint, a note at a row's end.
+    static let tertiaryText = NSColor.dynamic(NSColor(white: 0.6, alpha: 1), NSColor(white: 0.45, alpha: 1))
     static let hover = NSColor.dynamic(NSColor(white: 0, alpha: 0.055), NSColor(white: 1, alpha: 0.07))
     static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
     /// A selected row in a list: a step in lightness, not a hue, so it
     /// reads the same to every eye and the row's own colors stay.
     static let selection = NSColor.dynamic(NSColor(white: 0, alpha: 0.09), NSColor(white: 1, alpha: 0.14))
+    /// The same, in a list without the keyboard.
+    static let selectionInactive = NSColor.dynamic(NSColor(white: 0, alpha: 0.065), NSColor(white: 1, alpha: 0.1))
     static let divider = NSColor.dynamic(NSColor(white: 0, alpha: 0.1), NSColor(white: 1, alpha: 0.1))
     static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
     /// A block that failed (§3.7).
     static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
-    /// A folder tile's selection (§7.4), for eyes that don't tell colors
-    /// apart: it stands off the background by lightness, not hue, and its
-    /// text off it, about 7:1 or more either way — blue while the tile has
-    /// the keyboard, grey while it doesn't.
-    static let strongSelection = NSColor.dynamic(NSColor(srgbRed: 0.10, green: 0.30, blue: 0.75, alpha: 1),
-                                                 NSColor(srgbRed: 0.55, green: 0.72, blue: 1.0, alpha: 1))
-    static let strongSelectionInactive = NSColor.dynamic(NSColor(white: 0.40, alpha: 1), NSColor(white: 0.72, alpha: 1))
-    static let strongSelectionText = NSColor.dynamic(.white, .black)
     static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
     /// Floating panels: the palette, a stack's list.
     /// A text in view mode, as go.dev's docs (the Go spec) set code: on
@@ -190,8 +186,8 @@ final class IconButton: NSButton {
 
     override func draw(_ dirtyRect: NSRect) {
         if hovering {
-            Theme.hover.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
+            (isHighlighted ? Flat.pressed : Flat.hovered).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: Flat.radius, yRadius: Flat.radius).fill()
         }
         super.draw(dirtyRect)
     }
@@ -213,15 +209,30 @@ final class ClippingScrollView: NSScrollView {
     }
 }
 
-/// A list's selected row drawn as a lightness change with a bar at the
-/// left, instead of the system's hue — colorblind-safe, and the row's
-/// text and highlights keep their colors (`interiorBackgroundStyle`
-/// stays normal). Every table and outline makes its rows from this.
+/// A list's row, flat: chosen, a soft grey rounded band (a little stronger
+/// with the keyboard); under the pointer, a fainter one. A step in
+/// lightness, not a hue, so it reads the same to every eye, and the row's
+/// text and highlights keep their colors (`interiorBackgroundStyle` stays
+/// normal). Every table and outline makes its rows from this.
 final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
     override var isFloating: Bool { didSet { needsDisplay = true } }
+    private var hovered = false {
+        didSet { if hovered != oldValue { needsDisplay = true } }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
+    private var band: NSRect { bounds.insetBy(dx: 6, dy: 1) }
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
@@ -231,6 +242,10 @@ final class SelectionRowView: NSTableRowView {
             Theme.windowBackground.setFill()
             bounds.fill()
         }
+        if hovered, !isSelected, !isGroupRowStyle {
+            Flat.hovered.setFill()
+            NSBezierPath(roundedRect: band, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+        }
         guard marked else { return }
         Theme.accent.withAlphaComponent(0.85).setFill()
         NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: 3, height: bounds.height - 10), xRadius: 1.5, yRadius: 1.5).fill()
@@ -238,13 +253,7 @@ final class SelectionRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
-        let style = (superview as? NSTableView)?.effectiveStyle ?? .plain
-        let inset: CGFloat = style == .plain || style == .fullWidth ? 0 : 6
-        let r = bounds.insetBy(dx: inset, dy: 0)
-        Theme.selection.setFill()
-        NSBezierPath(roundedRect: r, xRadius: inset == 0 ? 0 : 5, yRadius: inset == 0 ? 0 : 5).fill()
-        let bar = NSRect(x: r.minX, y: r.minY + 3, width: 3, height: r.height - 6)
-        Theme.accent.withAlphaComponent(isEmphasized ? 1 : 0.5).setFill()
-        NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
+        Flat.chosen(emphasized: isEmphasized).setFill()
+        NSBezierPath(roundedRect: band, xRadius: Flat.radius, yRadius: Flat.radius).fill()
     }
 }

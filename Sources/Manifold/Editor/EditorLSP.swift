@@ -307,8 +307,9 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         window.isReleasedWhenClosed = false
         let box = NSView(frame: window.contentView!.bounds)
         box.wantsLayer = true
-        box.layer?.cornerRadius = 8
-        box.layer?.borderWidth = 1
+        box.layer?.cornerRadius = Flat.panelRadius
+        box.layer?.cornerCurve = .continuous
+        box.layer?.borderWidth = 0.5
         box.layer?.masksToBounds = true
         box.autoresizingMask = [.width, .height]
         box.themed {
@@ -399,6 +400,8 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let item = shown[row]
