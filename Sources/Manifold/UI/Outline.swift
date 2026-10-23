@@ -274,10 +274,7 @@ final class FloatingList: NSView {
         layer?.cornerRadius = 10
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
-        themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
+        applyColors()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -294,6 +291,21 @@ final class FloatingList: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Its layer's colors, as its appearance is now: set as it shows and as
+    /// its appearance changes (its window, closed, may hear of light and dark
+    /// switching before it has taken the new one on).
+    private func applyColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = Theme.panel.cgColor
+            layer?.borderColor = Theme.panelBorder.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
+    }
+
     var isShown: Bool { panel.isVisible && panel.parent != nil }
     func isShown(for owner: AnyObject) -> Bool { isShown && opener === owner }
 
@@ -307,9 +319,11 @@ final class FloatingList: NSView {
         self.sticky = sticky
         if !same { chosen = nil }
         host = window
-        panel.appearance = window.effectiveAppearance
+        // (Its appearance the app's, as the window's is — not pinned to the
+        // one it had when it last showed: light and dark switch under it.)
         fill(rows)
         position(in: window)
+        applyColors()
         if panel.parent !== window {
             panel.parent?.removeChildWindow(panel)
             window.addChildWindow(panel, ordered: .above)
@@ -503,7 +517,8 @@ final class FloatingList: NSView {
     /// Debugging: the rows, the current one starred.
     var debugRows: String {
         guard isShown else { return "not shown" }
-        return "frame \(NSStringFromRect(host?.convertFromScreen(panel.frame) ?? .zero))\n" + rows.enumerated().map { i, r in
+        let bg = layer?.backgroundColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) }.map { String(format: "%.2f", $0.brightnessComponent) } ?? "-"
+        return "frame \(NSStringFromRect(host?.convertFromScreen(panel.frame) ?? .zero)) \(effectiveAppearance.isDark ? "dark" : "light") background \(bg)\n" + rows.enumerated().map { i, r in
             (rowViews[i].hovering ? "h" : " ") + (r.current ? "*" : " ") + (r.header ? "# " : "") + String(repeating: "  ", count: r.level)
                 + (r.symbol.map { "[\($0)] " } ?? "") + r.title + (r.menu == nil ? "" : " ⋯")
         }.joined(separator: "\n")
