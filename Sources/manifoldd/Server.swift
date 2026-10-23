@@ -1240,7 +1240,7 @@ final class Server {
         stream.manualCredit = true
         relay.onData = { [weak relay, weak stream] data in
             guard let stream else { return }
-            stream.send(Frame(.data, data))
+            stream.sendPieces(data)
             if !stream.wantsMore { relay?.pause() }
         }
         stream.onDrain = { [weak relay] in relay?.resume() }

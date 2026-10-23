@@ -48,7 +48,7 @@ final class FileSender {
     /// The next piece, read off the queue, if the stream wants it.
     private func more() {
         guard !reading, !done, stream.wantsMore else { return }
-        let want = min(Int64(Mux.bulkPiece), left ?? Int64.max)
+        let want = min(Int64(stream.piece), left ?? Int64.max)
         guard want > 0 else { return end(nil) }
         reading = true
         io.async { [self] in

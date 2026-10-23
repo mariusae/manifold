@@ -77,6 +77,7 @@ case "serve":
     ToolPath.extend()
     var server: Server?
     do {
+        Mux.log = { log($0) }
         server = try Server()
         try server?.run()
     } catch ServerError.alreadyRunning {

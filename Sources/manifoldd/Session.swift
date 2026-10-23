@@ -187,7 +187,7 @@ final class Session {
         replayShown = true
         if let stream = conn as? MuxStream {
             // Behind once a piece waits: then caught up with the screen.
-            stream.highWater = Mux.bulkPiece
+            stream.highWater = Self.highWater(stream)
             stream.onDrain = { [weak self, weak stream] in
                 guard let self, let stream else { return }
                 self.caughtUp(stream)
@@ -359,17 +359,26 @@ final class Session {
     /// is full (a slow link, a flood): that one waits, and is sent the
     /// screen as it is once its stream has room (`caughtUp`), skipping what
     /// it would never have caught up with.
+    /// How much of a terminal's output may wait to go before it's behind:
+    /// what the link holds (a round trip of it), so a ^C's answer is never
+    /// more than that behind what's on its way — no less than a little, so a
+    /// slow link isn't caught up with all the time; no more than a piece.
+    static func highWater(_ stream: MuxStream) -> Int { min(Mux.bulkPiece, max(4 << 10, stream.linkHolds)) }
+
     private func passOn(_ data: Data) {
         screen?.feed(data)
         let frame = Frame(.data, data)
         for conn in attachments {
             let key = ObjectIdentifier(conn)
             if behind.contains(key) { continue }
+            if let stream = conn as? MuxStream { stream.highWater = Self.highWater(stream) }
             if let stream = conn as? MuxStream, screen != nil, !stream.wantsMore {
                 behind.insert(key)
                 continue
             }
-            conn.send(frame)
+            // In the link's pieces: a flood here doesn't sit in front of
+            // another terminal's keystroke.
+            if let stream = conn as? MuxStream { stream.sendPieces(data) } else { conn.send(frame) }
         }
         // After the output, in order with it: where it took the history.
         sendMark()

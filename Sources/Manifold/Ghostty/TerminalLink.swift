@@ -43,6 +43,12 @@ final class TerminalLink {
     /// On `queue`.
     private var sawOutput = false
 
+    /// When a keystroke went up that no output has answered yet (under the
+    /// lock: typed on Ghostty's thread, answered on `queue`).
+    private var keySent: Date?
+    /// How long keystrokes took to be answered, the last few (on `queue`).
+    private var echoTimes: [TimeInterval] = []
+
     // On `queue`: the history.
     /// Where the host said its history had got to, as this terminal has it
     /// — all the rows before `end` (but the gaps' rows), at the width it
@@ -129,8 +135,28 @@ final class TerminalLink {
 
     /// Typed (or the terminal's answer to a query): up to the shell.
     func typed(_ data: Data) {
-        let s: MuxStream? = lock.withLock { acceptInput ? stream : nil }
+        let s: MuxStream? = lock.withLock {
+            guard acceptInput else { return nil }
+            if keySent == nil { keySent = Date() }
+            return stream
+        }
         s?.send(Frame(.data, data))
+    }
+
+    /// How long a keystroke takes to be answered here now (the median of
+    /// the last few), if any have been (on `queue`).
+    var echoTime: TimeInterval? {
+        guard !echoTimes.isEmpty else { return nil }
+        return echoTimes.sorted()[echoTimes.count / 2]
+    }
+
+    /// Debugging: keystrokes' round trips, and the link's.
+    var debugLatency: String {
+        queue.sync {
+            let ms = { (t: TimeInterval) in String(format: "%.0f", t * 1000) }
+            let echo = echoTime.map { "echo \(ms($0)) ms (median of \(echoTimes.count); \(echoTimes.map(ms).joined(separator: " ")))" } ?? "echo: no keystrokes yet"
+            return echo + " · " + (client?.mux?.debugPacing ?? "no link")
+        }
     }
 
     // MARK: The stream
@@ -183,6 +209,12 @@ final class TerminalLink {
     private func received(_ frame: Frame) {
         switch frame.kind {
         case .data:
+            // Output after a keystroke: its round trip (or near enough —
+            // output that would have come anyway is the odd short one).
+            if let sent = lock.withLock({ () -> Date? in defer { keySent = nil }; return keySent }) {
+                echoTimes.append(Date().timeIntervalSince(sent))
+                if echoTimes.count > 20 { echoTimes.removeFirst() }
+            }
             if !sawOutput {
                 sawOutput = true
                 DispatchQueue.main.async { [weak self] in self?.onFirstOutput?() }

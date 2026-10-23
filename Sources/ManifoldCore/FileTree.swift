@@ -74,7 +74,7 @@ public final class TreeSource {
         while !finished, stream.wantsMore {
             if let h = handle {
                 let piece: Data
-                do { piece = try h.read(upToCount: Int(min(Int64(Mux.bulkPiece), left))) ?? Data() } catch { return fail(error.localizedDescription) }
+                do { piece = try h.read(upToCount: Int(min(Int64(stream.piece), left))) ?? Data() } catch { return fail(error.localizedDescription) }
                 // Shorter than it was: the file changed under us.
                 guard !piece.isEmpty || left == 0 else { return fail("\((root + "/" + entries[index - 1].path).lastPathComponent) changed while it was copied") }
                 stream.send(Frame(.data, piece))

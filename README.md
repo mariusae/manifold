@@ -510,11 +510,16 @@ around it, and comes back with its history.
   onto its disk; a copy within a host is made by the host. Each copy is
   a stream of its own in the host's one connection — a whole folder
   one stream, its files' permissions, times and links kept — paced to
-  what the link can take: no more
-  of it on the way at once than the link holds (its rate and its
-  round trip, measured as it goes), so a file on its way — an image or
-  a PDF opening too — leaves a keystroke, an edit or an answer behind
-  at most a piece of it, on a slow link or a fast one. To and from
+  what the link can take: the round trips it measures as it goes show
+  how long what's sent waits in queues on the way, and how much may be on
+  its way at once is steered to keep that wait small (15 ms, or a fifth
+  of the round trip on a long link), following a link that slows within
+  round trips; files go in pieces of half that, so a file on its way — an
+  image or a PDF opening too — leaves a keystroke, an edit or an answer
+  behind little of it, on a slow link or a fast one. A terminal's small
+  frames (a keystroke, its echo) go as soon as it's their turn, held for
+  nothing else; and its output waits to go no more than the link holds
+  before it's behind, and skips to the screen as it is. To and from
   another host a copy goes compressed, as terminals do (one that doesn't
   get smaller — an image, an archive — soon goes as it is), but not on a
   link fast enough not to gain. The host reads

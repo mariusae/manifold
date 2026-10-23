@@ -46,6 +46,8 @@ public final class Mux {
     public static let window = 1 << 20
     /// The most a bulk stream's frame carries, so frames interleave.
     public static let bulkPiece = 64 << 10
+    /// The least a piece is, however slow the link (`MuxStream.piece`).
+    public static let leastPiece = 2 << 10
 
     public let connection: Connection
     public var queue: DispatchQueue { connection.queue }
@@ -85,7 +87,28 @@ public final class Mux {
     static let probeWait: TimeInterval = 5
     private var probe: UInt64?
     private var rates: [(at: Date, rate: Double)] = []
-    public private(set) var budget = 256 << 10
+    public private(set) var budget = 16 << 10
+    /// Round trips measured lately, for the queue they show (`acked`).
+    private var recentRTTs: [(at: Date, rtt: TimeInterval)] = []
+    /// The last pump stopped at the budget with frames waiting: the
+    /// budget, not the senders, held them (it may grow only then).
+    private var budgetLimited = false
+    /// How long paced bytes wait in the link's queues now (last measured).
+    private var queueDelay: TimeInterval = 0
+    /// The queue aimed for: enough that the link is kept busy, little
+    /// enough that a keystroke behind it is hardly slowed.
+    static let queueTarget: TimeInterval = 0.015
+    /// How much of itself the budget may grow, or shrink, in a round trip
+    /// at most (the queue far under the target, or over it): gently, so a
+    /// round trip that's long by chance (a hiccup on the way) doesn't empty
+    /// the link.
+    static let growGain = 0.5, shrinkGain = 0.25
+    /// Debugging: the pacing logged once a second while it's acknowledged
+    /// (MANIFOLD_DEBUG_PACING set).
+    static let logPacing = ProcessInfo.processInfo.environment["MANIFOLD_DEBUG_PACING"] != nil
+    /// Where that goes (the server's log, there).
+    public static var log: (String) -> Void = { NSLog("%@", $0) }
+    private var lastPacingLog = Date.distantPast
 
     /// Whether the other end takes streams compressed (its server said so,
     /// and it isn't this machine): set by the client once it's heard.
@@ -100,6 +123,15 @@ public final class Mux {
     fileprivate var compressedFrom = 0, compressedTo = 0
     /// Compressed frames received, and what they came to.
     private var inflatedFrom = 0, inflatedTo = 0
+
+    /// What the link is given to hold (the budget, steered by the queue it
+    /// shows): read from anywhere.
+    public var linkHolds: Int { lock.withLock { _linkHolds } }
+    private var _linkHolds = 16 << 10
+
+    /// A frame of a terminal's this small (a keystroke, its echo) goes as
+    /// soon as it's its turn, ahead of the pacing.
+    static let smallFrame = 1 << 10
 
     /// Faster than this, a link isn't worth compressing for.
     static var compressBelow = Double(32 << 20)
@@ -291,6 +323,14 @@ public final class Mux {
             probe = nil
             minRTT = (m.rtt, now)
         }
+        // A terminal's small frames (a keystroke, its echo), in their turn on
+        // their stream, go now: not held for a probe or the budget, which
+        // they'd hardly add to — a key isn't left waiting a round trip.
+        for s in ready where s.urgent {
+            while let size = s.nextSize, size <= Self.smallFrame, let f = s.next() { sendPaced(s, f) }
+            s.drainedIfEmpty()
+        }
+        ready.removeAll { $0.urgent && !$0.hasNext }
         while !ready.isEmpty, connection.pending < Self.bulkPiece, bulkSent - bulkAcked < UInt64(budget) {
             // Probing: nothing more until all that's out has arrived, then
             // one piece alone.
@@ -301,16 +341,22 @@ public final class Mux {
                 s.drainedIfEmpty()
                 continue
             }
-            let frame = Self.opFrame(s.id, f.zstd ? .zstdPacedFrame : .pacedFrame, f.bytes)
-            bulkSent &+= UInt64(frame.payload.count + 5)
-            marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
+            sendPaced(s, f)
             if probing { probe = bulkSent }
-            connection.send(frame)
             // Its producer may send more now (onto its queue, not out).
             s.drainedIfEmpty()
             if s.hasNext, !ready.contains(where: { $0 === s }) { ready.append(s) }
         }
+        budgetLimited = !ready.isEmpty && bulkSent - bulkAcked >= UInt64(budget)
         pumping = false
+    }
+
+    /// A paced frame out, counted for the pacing.
+    private func sendPaced(_ s: MuxStream, _ f: (bytes: Data, zstd: Bool)) {
+        let frame = Self.opFrame(s.id, f.zstd ? .zstdPacedFrame : .pacedFrame, f.bytes)
+        bulkSent &+= UInt64(frame.payload.count + 5)
+        marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
+        connection.send(frame)
     }
 
     /// The other end has received this much of the bulk streams' bytes:
@@ -318,14 +364,16 @@ public final class Mux {
     private func acked(_ total: UInt64) {
         guard total > bulkAcked else { return }
         let now = Date()
+        let newly = total - bulkAcked
         bulkAcked = total
-        let rate = rates.map(\.rate).max()
         if probing { probingSince = now }
         while let m = marks.first, m.sent <= total {
             marks.removeFirst()
-            // Less the time the piece itself took to go out: on a slow link
-            // that's most of it, and it isn't the link's round trip.
-            let rtt = max(0.0005, now.timeIntervalSince(m.at) - (rate.map { Double(m.size) / $0 } ?? 0))
+            // As it was: pieces are small enough (a part of what the link
+            // holds) that the time one takes to go out hardly counts — and
+            // taken off with a rate measured low, it would make the round
+            // trip look shorter than it is, and every queue too long.
+            let rtt = max(0.0005, now.timeIntervalSince(m.at))
             if m.sent == probe {
                 // Sent into an empty queue: the link's round trip, now.
                 minRTT = (rtt, now)
@@ -334,6 +382,7 @@ public final class Mux {
             } else if minRTT == nil || rtt <= minRTT!.rtt {
                 minRTT = (rtt, now)
             }
+            recentRTTs.append((now, rtt))
             let span = now.timeIntervalSince(m.ackedAt)
             if span > 0.001 { rates.append((now, Double(total - m.acked) / span)) }
         }
@@ -341,9 +390,34 @@ public final class Mux {
         // The best rate of the last five seconds and the shortest round
         // trip: what the link is, apart from its queues.
         rates.removeAll { now.timeIntervalSince($0.at) > 5 }
-        // What the link holds, and a half again; never less than a piece.
-        if let rtt = minRTT?.rtt, let rate = rates.map(\.rate).max() {
-            budget = min(32 << 20, max(Self.bulkPiece, Int(1.5 * rate * rtt)))
+        // The budget steered by the queue the round trips show (the least
+        // of the last one's, less the shortest there's been): grown while
+        // it's under the target and the budget is what holds frames back,
+        // shrunk while it's over, in proportion — as LEDBAT does. It follows
+        // a link that slows (Wi-Fi, other traffic) within round trips, where
+        // a rate measured over seconds would leave a queue for seconds.
+        if let base = minRTT?.rtt {
+            recentRTTs.removeAll { now.timeIntervalSince($0.at) > max(0.05, base) }
+            if let current = recentRTTs.map(\.rtt).min() {
+                queueDelay = max(0, current - base)
+                let target = max(Self.queueTarget, 0.2 * base)
+                let off = max(-1, min(1, (target - queueDelay) / target))
+                // Of what's acknowledged now: a round trip's acknowledgments
+                // come to the budget, so this is that much of it a round trip.
+                let gain = off > 0 ? Self.growGain : Self.shrinkGain
+                if off < 0 || budgetLimited { budget += Int(gain * off * Double(newly)) }
+            }
+            // Never less than two of the least pieces, so one always goes. Not
+            // capped by the rate measured: while the budget is what holds
+            // frames back, that's only the budget over the round trip, and
+            // would keep it where it is.
+            budget = max(2 * Self.leastPiece, min(budget, 32 << 20))
+            let given = budget
+            lock.withLock { _linkHolds = given }
+        }
+        if Self.logPacing, now.timeIntervalSince(lastPacingLog) >= 1 {
+            lastPacingLog = now
+            Self.log("pacing: " + pacing)
         }
         pumpBulk()
     }
@@ -373,7 +447,8 @@ public final class Mux {
         let rate = rates.map(\.rate).max().map { String(format: "%.0f KB/s", $0 / 1024) } ?? "?"
         let zstd = (compressedFrom == 0 ? "" : ", sent compressed \(compressedFrom >> 10) → \(compressedTo >> 10) KB")
             + (inflatedFrom == 0 ? "" : ", received compressed \(inflatedFrom >> 10) → \(inflatedTo >> 10) KB")
-        return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), rate \(rate), streams \(streams.count)\(zstd)"
+        let queue = String(format: "%.0f ms", queueDelay * 1000)
+        return "budget \(budget >> 10) KB, in flight \((bulkSent - bulkAcked) >> 10) KB, rtt \(rtt), queue \(queue), rate \(rate), streams \(streams.count)\(zstd)"
     }
 }
 
@@ -611,6 +686,30 @@ public final class MuxStream: Channel {
     /// A frame goes while there's any window left (one bigger than the
     /// window still goes, alone).
     var hasNext: Bool { !outbox.isEmpty && window > 0 }
+    /// The size of the frame that goes next, if one can.
+    var nextSize: Int? { hasNext ? outbox[0].bytes.count : nil }
+
+    /// What its link holds (its rate times its round trip): how much of a
+    /// terminal's output may wait to go before it's behind.
+    public var linkHolds: Int { mux?.linkHolds ?? Mux.bulkPiece }
+
+    /// How much a frame of bulk data should carry on this link: half what
+    /// it's given to hold, between the least and a full piece — a file's
+    /// 64 KB pieces on a slow link would sit in front of everything else (a
+    /// keystroke's echo) for half a second.
+    public var piece: Int { min(Mux.bulkPiece, max(Mux.leastPiece, linkHolds / 2)) }
+
+    /// `data` sent as frames of `kind`, each no more than a piece.
+    public func sendPieces(_ data: Data, kind: FrameKind = .data) {
+        let piece = self.piece
+        guard data.count > piece else { return send(Frame(kind, data)) }
+        var at = data.startIndex
+        while at < data.endIndex {
+            let end = min(data.endIndex, at + piece)
+            send(Frame(kind, data.subdata(in: at..<end)))
+            at = end
+        }
+    }
 
     /// The next frame, if the window lets it go.
     func next() -> (bytes: Data, zstd: Bool)? {

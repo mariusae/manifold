@@ -120,7 +120,7 @@ final class PortForwards {
 
     private func pump(_ key: Int) {
         guard let (c, stream) = streams[key], stream.wantsMore, !finished.contains(key), reading.insert(key).inserted else { return }
-        c.receive(minimumIncompleteLength: 1, maximumLength: Mux.bulkPiece) { [weak self] data, _, complete, error in
+        c.receive(minimumIncompleteLength: 1, maximumLength: stream.piece) { [weak self] data, _, complete, error in
             guard let self else { return }
             self.reading.remove(key)
             // Gone meanwhile (closed from the host's side): nothing more.

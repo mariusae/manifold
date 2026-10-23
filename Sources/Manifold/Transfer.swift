@@ -269,7 +269,7 @@ extension HostClient {
         }
         func produce() {
             while !finished, stream.wantsMore {
-                let piece = data.subdata(in: offset..<min(data.count, offset + Mux.bulkPiece))
+                let piece = data.subdata(in: offset..<min(data.count, offset + stream.piece))
                 offset += piece.count
                 stream.send(Frame(.data, piece))
                 if piece.isEmpty { finished = true }

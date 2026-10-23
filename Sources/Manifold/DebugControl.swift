@@ -89,6 +89,10 @@ enum DebugControl {
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
             // Its identity first: whether it's the same view as before.
             return "view \(UInt(bitPattern: ObjectIdentifier(t).hashValue))\n" + t.visibleText
+        case "latency":
+            // The focused terminal's keystrokes' round trips, and its link's.
+            guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
+            return t.link.debugLatency
         case "rows":
             // The focused terminal's rows as Ghostty keeps them: pages,
             // wrap flags, the screen's top, tracked pins.
