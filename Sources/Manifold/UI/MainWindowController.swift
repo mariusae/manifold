@@ -3447,11 +3447,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.setString(id.description, forType: .manifoldBlock)
             return item
         }
+        // ⌃- and ⌃⇧- go back and forward; ⌃⇥ and ⌃⇧⇥ walk the workspaces
+        // here, before anything else sees them — whatever has the keyboard,
+        // or nothing (a workspace's row clicked, its tile not taking it,
+        // where AppKit's own going round the views took ⌃⇥ before the menu).
         navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window, event.keyCode == 27 else { return event }
+            guard let self, event.window === self.window, event.keyCode == 27 || event.keyCode == 48 else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard mods == .control || mods == [.control, .shift] else { return event }
-            if mods.contains(.shift) { self.navigateForward(nil) } else { self.navigateBack(nil) }
+            if event.keyCode == 48 {
+                if mods.contains(.shift) { self.walkTabsBack(nil) } else { self.walkTabs(nil) }
+            } else if mods.contains(.shift) {
+                self.navigateForward(nil)
+            } else {
+                self.navigateBack(nil)
+            }
             return nil
         }
         historyButtonsMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in

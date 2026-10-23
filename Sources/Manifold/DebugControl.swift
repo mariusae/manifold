@@ -812,9 +812,12 @@ enum DebugControl {
             // the window, as typed (so popups see it).
             guard let window = wc?.window else { return "no window" }
             // "cmd+g", "cmd+shift+g": with modifiers, through the app, as
-            // the menus and the views' key equivalents see a press.
+            // the menus and the views' key equivalents see a press. "app
+            // ctrl+tab": through the app's own dispatch (its key monitors
+            // first), as a real press goes.
             var mods: NSEvent.ModifierFlags = []
-            var key = arg
+            let viaApp = arg.hasPrefix("app ")
+            var key = viaApp ? String(arg.dropFirst(4)) : arg
             while let plus = key.firstIndex(of: "+"), key.count > 1 {
                 switch key[..<plus] {
                 case "cmd": mods.insert(.command)
@@ -838,7 +841,7 @@ enum DebugControl {
                 if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                             windowNumber: window.windowNumber, context: nil, characters: chars,
                                             charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
-                    if mods.isEmpty { window.sendEvent(e) } else if type == .keyDown {
+                    if viaApp { NSApp.sendEvent(e) } else if mods.isEmpty { window.sendEvent(e) } else if type == .keyDown {
                         // As AppKit offers a key equivalent: the window's views, then the menus.
                         if window.performKeyEquivalent(with: e) { took = "a view" }
                         else if NSApp.mainMenu?.performKeyEquivalent(with: e) == true { took = "the menus" }
