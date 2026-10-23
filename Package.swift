@@ -21,7 +21,14 @@ let package = Package(
                 .unsafeFlags(["-L", Context.packageDirectory + "/Frameworks/manifold-vt/linux"], .when(platforms: [.linux])),
             ]
         ),
-        .target(name: "ManifoldCore"),
+        // Zstandard, built from its sources here (Sources/CZstd), for the
+        // app and every manifoldd alike: no assembly (the same C everywhere),
+        // one thread.
+        .target(
+            name: "CZstd",
+            cSettings: [.define("ZSTD_DISABLE_ASM")]
+        ),
+        .target(name: "ManifoldCore", dependencies: ["CZstd"]),
         .target(
             name: "ManifoldMarkdown",
             dependencies: [

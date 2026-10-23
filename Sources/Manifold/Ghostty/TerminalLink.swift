@@ -266,6 +266,7 @@ final class TerminalLink {
             guard let self, let gap, let stream, gap.stream === stream else { return }
             switch frame.kind {
             case .data: self.filled(gap, frame.payload)
+            case .zstd: if let piece = Zstd.decompress(frame.payload) { self.filled(gap, piece) }
             case .replayDone: self.drop(gap)
             default: break
             }
@@ -273,7 +274,7 @@ final class TerminalLink {
         stream.onClose = { [weak gap, weak stream] in
             if let gap, gap.stream === stream { gap.stream = nil }
         }
-        stream.send(.message(ClientMessage.backfill(BackfillRequest(block: block, epoch: gap.epoch, from: gap.from, to: gap.to, limit: gap.limit))))
+        stream.send(.message(ClientMessage.backfill(BackfillRequest(block: block, epoch: gap.epoch, from: gap.from, to: gap.to, limit: gap.limit, zstd: true))))
     }
 
     /// A piece of a gap's rows (the newest of what's missing): into the

@@ -24,6 +24,9 @@ public enum FrameKind: UInt8, Sendable {
     /// that scrolled rows into it, and after a screen sent whole (an attach,
     /// a catch-up), whose history comes after, by backfill.
     case historyMark = 5
+    /// A `data` frame's payload compressed (`Zstd`): sent only where it was
+    /// asked for (`BackfillRequest.zstd`).
+    case zstd = 6
     /// One stream's part of the connection (`Mux`): a 4-byte stream id, an
     /// op (open, a frame, close, credit), then the op's bytes — for a
     /// frame, the stream's own frame, encoded.
@@ -400,7 +403,9 @@ public struct HistoryMark: Equatable, Sendable {
 /// They come newest first, in pieces: each a data frame of the first and
 /// end rows it holds (8 bytes each), the width it's drawn at (2 bytes),
 /// then the rows as escape sequences, ending with a newline unless the last
-/// row goes on in the row after it; then `replayDone` (all there is) and
+/// row goes on in the row after it — compressed, in a `zstd` frame, if
+/// `zstd` was asked for and it's smaller so (a server from before it sends
+/// `data` frames, as to one that doesn't ask); then `replayDone` (all there is) and
 /// the stream closes. Closed without it, the rest may be asked for again.
 public struct BackfillRequest: Codable, Sendable {
     public var block: BlockID
@@ -408,13 +413,16 @@ public struct BackfillRequest: Codable, Sendable {
     public var from: UInt64
     public var to: UInt64
     public var limit: UInt64
+    /// Pieces compressed, where that makes them smaller.
+    public var zstd: Bool?
 
-    public init(block: BlockID, epoch: UInt64, from: UInt64, to: UInt64, limit: UInt64) {
+    public init(block: BlockID, epoch: UInt64, from: UInt64, to: UInt64, limit: UInt64, zstd: Bool? = nil) {
         self.block = block
         self.epoch = epoch
         self.from = from
         self.to = to
         self.limit = limit
+        self.zstd = zstd
     }
 }
 

@@ -361,9 +361,10 @@ around it, and comes back with its history.
   Either way the screen comes at once, and the history it hasn't got
   comes after, behind everything else of the terminal's: the host numbers
   each line as it scrolls off, the app says how far it has them, and what's
-  missing is sent newest first and put into the scrollback above the
-  lines already there (a line wrapped over rows still one line), without
-  moving what you're looking at. Up to 5,000 lines for a terminal opened
+  missing is sent newest first, compressed (zstd, built from its sources
+  in Sources/CZstd), and put into the scrollback above the lines already
+  there (a line wrapped over rows still one line), without moving what
+  you're looking at. Up to 5,000 lines for a terminal opened
   anew, and up to 10,000 of what a terminal missed (after a break, or
   behind a flood), past which an “earlier output not kept” line marks the
   hole; a break while history is still coming sends the rest after it.

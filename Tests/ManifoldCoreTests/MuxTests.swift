@@ -167,4 +167,14 @@ private final class Inbox: @unchecked Sendable {
         return
     }
     #expect(back.block == req.block && back.epoch == 7 && back.from == 10 && back.to == 400 && back.limit == 5_000)
+    #expect(back.zstd == nil)
+
+    // Compressed pieces asked for: a server from before reads the rest as
+    // it did (and sends them plain), and one asking now is heard.
+    var zreq = req
+    zreq.zstd = true
+    let encoded = Frame.message(zreq)
+    struct Before: Codable { var block: BlockID; var epoch, from, to, limit: UInt64 }
+    #expect(encoded.decode(Before.self)?.limit == 5_000)
+    #expect(encoded.decode(BackfillRequest.self)?.zstd == true)
 }
