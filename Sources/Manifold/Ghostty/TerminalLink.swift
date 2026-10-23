@@ -20,6 +20,14 @@ final class TerminalLink {
     private let queue: DispatchQueue
     /// On `queue`: the surface output goes into (nil once it's freed).
     private var surface: ghostty_surface_t?
+    /// On `queue`: what's typed shown before the host echoes it.
+    private var prediction: EchoPrediction?
+    /// What it shows changed (on the main thread): its cells, whether
+    /// they glow, the grid.
+    var onPrediction: ((_ cells: [(x: Int, y: Int)], _ glow: Bool, _ info: ghostty_manifold_info_s) -> Void)?
+    /// Output going into the surface now (under the lock): what Ghostty
+    /// writes meanwhile is its answer to a query in it, not a keystroke.
+    private var answering = false
 
     /// Read from Ghostty's thread (typing, sizes) and the main thread.
     private let lock = NSLock()
@@ -98,7 +106,12 @@ final class TerminalLink {
 
     /// The surface made: output may go into it.
     func start(_ surface: ghostty_surface_t) {
-        queue.async { self.surface = surface }
+        queue.async {
+            self.surface = surface
+            let p = EchoPrediction(surface: surface, queue: self.queue)
+            p.onShown = { [weak self] cells, glow, info in self?.onPrediction?(cells, glow, info) }
+            self.prediction = p
+        }
     }
 
     /// Before the surface is freed: nothing more goes into it, and the
@@ -111,6 +124,8 @@ final class TerminalLink {
         s?.close()
         queue.sync {
             dropGaps()
+            prediction?.stop()
+            prediction = nil
             surface = nil
         }
     }
@@ -139,12 +154,17 @@ final class TerminalLink {
 
     /// Typed (or the terminal's answer to a query): up to the shell.
     func typed(_ data: Data) {
-        let s: MuxStream? = lock.withLock {
-            guard acceptInput else { return nil }
-            if keySent == nil { keySent = Date() }
-            return stream
+        let (s, key): (MuxStream?, Bool) = lock.withLock {
+            guard acceptInput else { return (nil, false) }
+            if !answering, keySent == nil { keySent = Date() }
+            return (stream, !answering)
         }
-        s?.send(Frame(.data, data))
+        guard let s else { return }
+        s.send(Frame(.data, data))
+        // A keystroke (not an answer): shown before its echo, where that helps.
+        if key {
+            queue.async { [self] in prediction?.typed(data, echoTime: echoTime, mode: ttyMode) }
+        }
     }
 
     /// How long a keystroke takes to be answered here now (the median of
@@ -160,7 +180,7 @@ final class TerminalLink {
             let ms = { (t: TimeInterval) in String(format: "%.0f", t * 1000) }
             let echo = echoTime.map { "echo \(ms($0)) ms (median of \(echoTimes.count); \(echoTimes.map(ms).joined(separator: " ")))" } ?? "echo: no keystrokes yet"
             let mode = ttyMode.map { m in [m.contains(.echo) ? "echo" : "no echo", m.contains(.canonical) ? "lines" : "raw", m.contains(.echoErase) ? "erase" : nil].compactMap { $0 }.joined(separator: " ") } ?? "no tty mode"
-            return echo + " · tty: " + mode + " · " + (client?.mux?.debugPacing ?? "no link")
+            return echo + " · tty: " + mode + " · predicting: " + (prediction?.debugState ?? "-") + " · " + (client?.mux?.debugPacing ?? "no link")
         }
     }
 
@@ -200,6 +220,8 @@ final class TerminalLink {
             }
             DispatchQueue.main.async { self?.onClosed?(linkWent) }
         }
+        // Round trips measured anew: this link may be another network's.
+        queue.async { self.echoTimes = [] }
         let size: (cols: UInt16, rows: UInt16) = lock.withLock {
             self.stream = stream
             attaching = false
@@ -225,10 +247,13 @@ final class TerminalLink {
                 DispatchQueue.main.async { [weak self] in self?.onFirstOutput?() }
             }
             guard let surface else { return }
+            lock.withLock { answering = true }
             frame.payload.withUnsafeBytes { raw in
                 guard let base = raw.baseAddress else { return }
                 ghostty_surface_process_output(surface, base.assumingMemoryBound(to: CChar.self), UInt(raw.count))
             }
+            lock.withLock { answering = false }
+            prediction?.output(echoTime: echoTime)
         case .historyMark:
             if let m = HistoryMark(frame) { marked(m) }
         case .ttyMode:

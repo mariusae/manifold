@@ -89,6 +89,18 @@ enum DebugControl {
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
             // Its identity first: whether it's the same view as before.
             return "view \(UInt(bitPattern: ObjectIdentifier(t).hashValue))\n" + t.visibleText
+        case "overlay":
+            // "overlay <text>": the text laid over the focused terminal at its
+            // cursor, as a prediction is ("overlay" alone takes it away).
+            guard let t = wc?.debugFocusedTerminal, let s = t.surface else { return "no terminal focused" }
+            var info = ghostty_manifold_info_s()
+            ghostty_surface_manifold_info(s, &info)
+            let cells = arg.unicodeScalars.enumerated().map { i, c in
+                ghostty_manifold_cell_s(x: info.cursor_x + UInt16(i), y: info.cursor_y, codepoint: c.value, source: -1, _pad: 0)
+            }
+            if cells.isEmpty { ghostty_surface_manifold_predict(s, nil, 0, -1, -1); return "cleared" }
+            cells.withUnsafeBufferPointer { ghostty_surface_manifold_predict(s, $0.baseAddress, UInt($0.count), Int32(info.cursor_x) + Int32(cells.count), Int32(info.cursor_y)) }
+            return "at \(info.cursor_x),\(info.cursor_y) of \(info.cols)x\(info.rows), flags \(info.flags), cell \(info.cell_width)x\(info.cell_height)"
         case "latency":
             // The focused terminal's keystrokes' round trips, and its link's.
             guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
@@ -1004,6 +1016,10 @@ enum DebugControl {
             ctx.saveGState()
             defer { ctx.restoreGState() }
             ctx.clip(to: inside)
+            if let g = v as? PredictionGlow {
+                g.drawSnapshot(ctx, in: r)
+                return
+            }
             if let t = v as? TerminalView {
                 if let contents = t.layer?.contents, CFGetTypeID(contents as CFTypeRef) == IOSurfaceGetTypeID() {
                     let ci = CIImage(ioSurface: contents as! IOSurface)

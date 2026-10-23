@@ -367,6 +367,16 @@ around it, and comes back with its history.
   anew, and up to 10,000 of what a terminal missed (after a break, or
   behind a flood), past which an “earlier output not kept” line marks the
   hole; a break while history is still coming sends the rest after it.
+  On a link slow enough to feel (a keystroke's echo taking 30 ms or more),
+  what's typed shows at once, as mosh's does: characters, backspaces and
+  ← on the cursor's row are drawn over the screen before the host echoes
+  them — never put in the terminal — and, from 80 ms on, glow softly until
+  the host's echo takes their place. A guess shows only once the host has
+  echoed one as guessed since the last miss, so a program that takes keys
+  for commands (vi's normal mode) shows none; a password the host's pty
+  reads without echoing isn't guessed at all (the host says how its pty
+  takes what's typed), and anything else typed (a return, a tab, a paste)
+  waits for the screen's answer.
   Terminals are paced to the link as files are, but ahead of them, and
   over a link to another host go compressed (zstd, built from its sources
   in Sources/CZstd), each stream's output against what it sent before:

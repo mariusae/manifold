@@ -94,6 +94,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             NSLog("manifold: could not create a terminal surface for %@", block.description)
         }
         link.onClosed = { [weak self] linkWent in self?.linkClosed(linkWent: linkWent) }
+        link.onPrediction = { [weak self] cells, glows, info in self?.glow.show(cells, glow: glows, info: info) }
+        glow.layer?.zPosition = 4
         dots.layer?.zPosition = 5
         connecting.wantsLayer = true
         connecting.layer?.zPosition = 5
@@ -137,6 +139,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         scrubber.removeFromSuperview()
         dots.removeFromSuperview()
         connecting.removeFromSuperview()
+        glow.removeFromSuperview()
         locateWork?.cancel()
         link.stop()
         guard let surface else { return }
@@ -240,6 +243,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// "Connecting…" until the shell's first output comes (a host far off,
     /// a shell slow to start), over it in the same way.
     private let connecting = BusyNote()
+    /// The glow over keystrokes shown before the host echoes them.
+    private let glow = PredictionGlow(frame: .zero)
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
     /// What the core says of the screen and its history: how many rows,
@@ -372,6 +377,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if scrubber.superview !== parent { parent.addSubview(scrubber) }
         if dots.superview !== parent { parent.addSubview(dots) }
         if connecting.superview !== parent { parent.addSubview(connecting) }
+        if glow.superview !== parent { parent.addSubview(glow) }
+        glow.frame = frame
+        glow.isHidden = isHidden
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))

@@ -34,7 +34,7 @@ index f9d861b..6b49c77 100644
      // up here just so that they are more self-documenting.
      const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 40ff55c..fa6c9a5 100644
+index 40ff55c..3cc8e2b 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
 @@ -450,6 +450,12 @@ typedef struct {
@@ -50,7 +50,7 @@ index 40ff55c..fa6c9a5 100644
  } ghostty_surface_config_s;
  
  typedef struct {
-@@ -1086,6 +1092,15 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+@@ -1086,6 +1092,36 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
  void ghostty_surface_set_focus(ghostty_surface_t, bool);
  void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
  void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
@@ -61,6 +61,27 @@ index 40ff55c..fa6c9a5 100644
 +void* ghostty_surface_history_anchor(ghostty_surface_t);
 +uint32_t ghostty_surface_history_insert(ghostty_surface_t, void*, void* const*, uintptr_t, const char*, uintptr_t, uint16_t);
 +void ghostty_surface_history_release(ghostty_surface_t, void*);
++typedef struct {
++  uint16_t x;
++  uint16_t y;
++  uint32_t codepoint;
++  int16_t source;
++  uint16_t _pad;
++} ghostty_manifold_cell_s;
++typedef struct {
++  uint16_t cursor_x;
++  uint16_t cursor_y;
++  uint16_t cols;
++  uint16_t rows;
++  uint32_t flags;
++  double pad_left;
++  double pad_top;
++  double cell_width;
++  double cell_height;
++} ghostty_manifold_info_s;
++void ghostty_surface_manifold_predict(ghostty_surface_t, const ghostty_manifold_cell_s*, uintptr_t, int32_t, int32_t);
++void ghostty_surface_manifold_info(ghostty_surface_t, ghostty_manifold_info_s*);
++uintptr_t ghostty_surface_manifold_row(ghostty_surface_t, uint16_t, uint32_t*, uintptr_t);
 +uint8_t* ghostty_surface_debug_rows(ghostty_surface_t, uintptr_t*);
 +void ghostty_surface_free_debug(ghostty_surface_t, uint8_t*, uintptr_t);
  ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
@@ -147,7 +168,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..851af6f 100644
+index 0d5a4f8..96cbf28 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -213,7 +234,7 @@ index 0d5a4f8..851af6f 100644
      pub fn defaultTermioEnv(self: *const Surface) !std.process.EnvMap {
          const alloc = self.app.core_app.alloc;
          var env = try internal_os.getEnvMap(alloc);
-@@ -1696,6 +1722,136 @@ pub const CAPI = struct {
+@@ -1696,6 +1722,232 @@ pub const CAPI = struct {
          surface.updateSize(w, h);
      }
  
@@ -336,6 +357,102 @@ index 0d5a4f8..851af6f 100644
 +
 +    export fn ghostty_surface_free_debug(surface: *Surface, ptr: [*]u8, len: usize) void {
 +        surface.core_surface.alloc.free(ptr[0..len]);
++    }
++
++    /// Manifold: keystrokes' echo predicted, shown over the screen until
++    /// it's taken away (n 0 and no cursor) or replaced — never in the
++    /// terminal (renderer/manifold_predict.zig). The cursor at
++    /// (cursor_x, cursor_y) of the active screen, if those aren't negative.
++    export fn ghostty_surface_manifold_predict(
++        surface: *Surface,
++        cells: ?[*]const renderer.State.ManifoldPrediction.Cell,
++        n: usize,
++        cursor_x: i32,
++        cursor_y: i32,
++    ) void {
++        const core = &surface.core_surface;
++        {
++            core.renderer_state.mutex.lock();
++            defer core.renderer_state.mutex.unlock();
++            if (n == 0 and cursor_x < 0) {
++                core.renderer_state.manifold_prediction = null;
++            } else {
++                var p: renderer.State.ManifoldPrediction = .{};
++                const count = @min(n, renderer.State.ManifoldPrediction.max);
++                if (cells) |c| @memcpy(p.cells[0..count], c[0..count]);
++                p.len = if (cells == null) 0 else count;
++                if (cursor_x >= 0 and cursor_y >= 0) p.cursor = .{ .x = @intCast(cursor_x), .y = @intCast(cursor_y) };
++                core.renderer_state.manifold_prediction = p;
++            }
++            // The frame's copy of the screen made whole again: rows that
++            // had predicted cells and don't now.
++            core.io.terminal.flags.dirty.preedit = true;
++        }
++        core.renderer_thread.wakeup.notify() catch {};
++    }
++
++    /// Manifold: the active screen's cursor and size, and its grid's place
++    /// in the view (points), for predicting what's typed.
++    pub const ManifoldInfo = extern struct {
++        cursor_x: u16,
++        cursor_y: u16,
++        cols: u16,
++        rows: u16,
++        /// 1: the alternate screen; 2: scrolled to the bottom; 4: the
++        /// cursor visible; 8: a write would wrap first.
++        flags: u32,
++        pad_left: f64,
++        pad_top: f64,
++        cell_width: f64,
++        cell_height: f64,
++    };
++
++    export fn ghostty_surface_manifold_info(surface: *Surface, out: *ManifoldInfo) void {
++        const core = &surface.core_surface;
++        const scale = surface.core_surface.rt_surface.getContentScale() catch .{ .x = 1, .y = 1 };
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const t = &core.io.terminal;
++        const s = t.screens.active;
++        var flags: u32 = 0;
++        if (t.screens.active_key == .alternate) flags |= 1;
++        if (s.viewportIsBottom()) flags |= 2;
++        if (t.modes.get(.cursor_visible)) flags |= 4;
++        if (s.cursor.pending_wrap) flags |= 8;
++        out.* = .{
++            .cursor_x = s.cursor.x,
++            .cursor_y = s.cursor.y,
++            .cols = t.cols,
++            .rows = t.rows,
++            .flags = flags,
++            .pad_left = @as(f64, @floatFromInt(core.size.padding.left)) / scale.x,
++            .pad_top = @as(f64, @floatFromInt(core.size.padding.top)) / scale.y,
++            .cell_width = @as(f64, @floatFromInt(core.size.cell.width)) / scale.x,
++            .cell_height = @as(f64, @floatFromInt(core.size.cell.height)) / scale.y,
++        };
++    }
++
++    /// Manifold: a row of the active screen, its characters (0: blank; a
++    /// cell of several codepoints, or a wide one's tail: 0xFFFFFFFF, so it
++    /// isn't taken for anything typed). How many there are.
++    export fn ghostty_surface_manifold_row(surface: *Surface, y: u16, out: [*]u32, cap: usize) usize {
++        const core = &surface.core_surface;
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const t = &core.io.terminal;
++        const s = t.screens.active;
++        if (y >= t.rows) return 0;
++        const pin = s.pages.pin(.{ .active = .{ .y = y } }) orelse return 0;
++        const cells = pin.cells(.all);
++        const n = @min(cells.len, cap);
++        for (cells[0..n], 0..) |c, i| {
++            out[i] = switch (c.content_tag) {
++                .codepoint => c.content.codepoint,
++                else => 0xFFFFFFFF,
++            };
++            if (c.wide == .spacer_tail) out[i] = 0xFFFFFFFF;
++        }
++        return n;
 +    }
 +
 +    /// Manifold: an anchor let go of.
@@ -669,19 +786,56 @@ index 0000000..428148f
 +    out_len.* = bytes.len;
 +    return bytes.ptr;
 +}
+diff --git a/src/renderer/State.zig b/src/renderer/State.zig
+index e882ddc..0a88484 100644
+--- a/src/renderer/State.zig
++++ b/src/renderer/State.zig
+@@ -30,6 +30,31 @@ preedit: ?Preedit = null,
+ /// need about the mouse.
+ mouse: Mouse = .{},
+ 
++/// Manifold: keystrokes' echo predicted — shown before the host's comes —
++/// laid over each frame's copy of the screen, never put in the terminal
++/// (renderer/manifold_predict.zig). Null: none.
++manifold_prediction: ?ManifoldPrediction = null,
++
++pub const ManifoldPrediction = struct {
++    pub const max = 512;
++    /// A cell of the active screen predicted: a character (0: blank) in
++    /// the cursor's style, or (`source` ≥ 0) the cell that's now at that
++    /// column of the row, as it is — one moved along by an insertion or a
++    /// deletion keeps its colors.
++    pub const Cell = extern struct {
++        x: u16,
++        y: u16,
++        codepoint: u32,
++        source: i16,
++        _pad: u16 = 0,
++    };
++
++    cells: [max]Cell = undefined,
++    len: usize = 0,
++    /// Where the cursor would be.
++    cursor: ?struct { x: u16, y: u16 } = null,
++};
++
+ pub const Mouse = struct {
+     /// The point on the viewport where the mouse currently is. We use
+     /// viewport points to avoid the complexity of mapping the mouse to
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
-index ff632f6..5ebee40 100644
+index ff632f6..7030096 100644
 --- a/src/renderer/generic.zig
 +++ b/src/renderer/generic.zig
-@@ -18,6 +18,7 @@ const constraintWidth = cellpkg.constraintWidth;
+@@ -18,6 +18,8 @@ const constraintWidth = cellpkg.constraintWidth;
  const isCovering = cellpkg.isCovering;
  const rowNeverExtendBg = @import("row.zig").neverExtendBg;
  const Overlay = @import("Overlay.zig");
++const manifold_predict = @import("manifold_predict.zig");
 +const manifold_contrast = @import("manifold_contrast.zig");
  const imagepkg = @import("image.zig");
  const ImageState = imagepkg.State;
  const shadertoy = @import("shadertoy.zig");
-@@ -103,6 +104,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -103,6 +105,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          /// The configuration we need derived from the main config.
          config: DerivedConfig,
  
@@ -691,7 +845,7 @@ index ff632f6..5ebee40 100644
          /// The mailbox for communicating with the window.
          surface_mailbox: apprt.surface.Mailbox,
  
-@@ -557,6 +561,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -557,6 +562,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
              bold_color: ?configpkg.BoldColor,
              faint_opacity: u8,
              min_contrast: f32,
@@ -699,7 +853,7 @@ index ff632f6..5ebee40 100644
              padding_color: configpkg.WindowPaddingColor,
              custom_shaders: configpkg.RepeatablePath,
              bg_image: ?configpkg.Path,
-@@ -623,6 +628,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -623,6 +629,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                      .faint_opacity = @intFromFloat(@ceil(config.@"faint-opacity" * 255)),
  
                      .min_contrast = @floatCast(config.@"minimum-contrast"),
@@ -707,7 +861,17 @@ index ff632f6..5ebee40 100644
                      .padding_color = config.@"window-padding-color",
  
                      .selection_background = config.@"selection-background",
-@@ -2312,6 +2318,13 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -1202,6 +1209,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                 // Update our terminal state
+                 try self.terminal_state.update(self.alloc, state.terminal);
+ 
++                // Manifold: keystrokes' echo predicted, over it.
++                if (state.manifold_prediction) |*p| manifold_predict.apply(&self.terminal_state, p, state.terminal);
++
+                 // If our terminal state is dirty at all we need to redo
+                 // the viewport search.
+                 if (self.terminal_state.dirty != .false) {
+@@ -2312,6 +2322,13 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          ) Allocator.Error!void {
              const state: *terminal.RenderState = &self.terminal_state;
  
@@ -721,7 +885,7 @@ index ff632f6..5ebee40 100644
              // const start = try std.time.Instant.now();
              // const start_micro = std.time.microTimestamp();
              // defer {
-@@ -2839,7 +2852,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2839,7 +2856,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                          bg_style,
                  };
  
@@ -730,7 +894,7 @@ index ff632f6..5ebee40 100644
                      // Our happy-path non-selection background color
                      // is our style or our configured defaults.
                      const final_bg = bg_style orelse state.colors.background;
-@@ -2874,6 +2887,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2874,6 +2891,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                      };
                  };
  
@@ -749,7 +913,7 @@ index ff632f6..5ebee40 100644
                  // Foreground alpha for this cell.
                  const alpha: u8 = if (style.flags.faint) self.config.faint_opacity else 255;
  
-@@ -3372,3 +3397,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -3372,3 +3401,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          }
      };
  }
@@ -1110,6 +1274,82 @@ index 0000000..8a853dc
 +        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
 +        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
 +    }
++}
+diff --git a/src/renderer/manifold_predict.zig b/src/renderer/manifold_predict.zig
+new file mode 100644
+index 0000000..1521429
+--- /dev/null
++++ b/src/renderer/manifold_predict.zig
+@@ -0,0 +1,70 @@
++//! Manifold: keystrokes' echo predicted (`State.ManifoldPrediction`), laid
++//! over a frame's copy of the screen — never the terminal itself, which
++//! only the host's output changes — and the cursor moved to where it would
++//! be. Only while the screen is scrolled to the bottom, where they are.
++
++const std = @import("std");
++const terminal = @import("../terminal/main.zig");
++const State = @import("State.zig");
++
++pub fn apply(rs: *terminal.RenderState, p: *const State.ManifoldPrediction, t: *const terminal.Terminal) void {
++    if (!t.screens.active.viewportIsBottom()) return;
++    const rows = rs.row_data.slice();
++    const row_cells = rows.items(.cells);
++    const row_dirty = rows.items(.dirty);
++    const pen = rs.cursor.style;
++
++    // The rows' cells as they are, for those moved along (copied before
++    // any is written over).
++    const max_cols = 1024;
++    var saved_y: ?usize = null;
++    var saved_raw: [max_cols]terminal.page.Cell = undefined;
++    var saved_style: [max_cols]terminal.Style = undefined;
++
++    for (p.cells[0..p.len]) |c| {
++        if (c.y >= rs.rows or c.x >= rs.cols) continue;
++        const cells = row_cells[c.y].slice();
++        const raws = cells.items(.raw);
++        const styles = cells.items(.style);
++        if (c.source >= 0) {
++            const src: usize = @intCast(c.source);
++            if (src >= rs.cols or rs.cols > max_cols) continue;
++            if (saved_y != c.y) {
++                saved_y = c.y;
++                @memcpy(saved_raw[0..rs.cols], raws[0..rs.cols]);
++                @memcpy(saved_style[0..rs.cols], styles[0..rs.cols]);
++            }
++            // A plain cell (a wide one, or one of several codepoints, isn't
++            // predicted: its parts would come apart).
++            var raw = saved_raw[src];
++            if (raw.wide != .narrow or raw.content_tag == .codepoint_grapheme) continue;
++            raw.hyperlink = false;
++            raws[c.x] = raw;
++            styles[c.x] = saved_style[src];
++        } else {
++            // Saved first, if this row's cells are to be moved along too.
++            if (saved_y != c.y and rs.cols <= max_cols) {
++                saved_y = c.y;
++                @memcpy(saved_raw[0..rs.cols], raws[0..rs.cols]);
++                @memcpy(saved_style[0..rs.cols], styles[0..rs.cols]);
++            }
++            var raw: terminal.page.Cell = .{};
++            raw.content_tag = .codepoint;
++            raw.content = .{ .codepoint = @intCast(c.codepoint) };
++            // In the cursor's style (a blank: plain). The id only says it has
++            // one; the renderer takes the style from the copy.
++            const styled = c.codepoint != 0 and !pen.default();
++            if (styled) raw.style_id = 1;
++            raws[c.x] = raw;
++            styles[c.x] = if (styled) pen else .{};
++        }
++        row_dirty[c.y] = true;
++    }
++    if (p.cursor) |cur| if (cur.y < rs.rows and cur.x < rs.cols) {
++        rs.cursor.viewport = .{ .x = cur.x, .y = cur.y, .wide_tail = false };
++        rs.cursor.active = .{ .x = cur.x, .y = cur.y };
++        rs.cursor.cell = row_cells[cur.y].slice().items(.raw)[cur.x];
++        row_dirty[cur.y] = true;
++    };
++    if (rs.dirty == .false) rs.dirty = .partial;
 +}
 diff --git a/src/renderer/metal/shaders.zig b/src/renderer/metal/shaders.zig
 index 0be0235..4b2bf98 100644
