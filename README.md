@@ -600,7 +600,8 @@ around it, and comes back with its history.
   Ghostty itself finds through the screen and its history and marks
   every match.
 - **Copy on Select**: text selected with the mouse in a terminal is on
-  the clipboard at once, the selection pulsing once to say so (not in
+  the clipboard at once, the text in the highlight pulsing once with the
+  glow typed-ahead keystrokes have, to say so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
 - **Every tile prints** (File ▸ Print…, ⌘P), as it best goes on paper:

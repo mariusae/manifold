@@ -540,17 +540,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// How many cells a line takes: wide characters two.
-    static func cells(_ s: Substring) -> Int {
-        var n = 0
-        for u in s.unicodeScalars {
-            let v = u.value
-            if v < 0x20 || (0x7F...0x9F).contains(v) || (0x300...0x36F).contains(v) || v == 0x200B || v == 0xFE0F { continue }
-            n += (0x1100...0x115F).contains(v) || (0x2E80...0xA4CF).contains(v) || (0xAC00...0xD7A3).contains(v)
-                || (0xF900...0xFAFF).contains(v) || (0xFE30...0xFE4F).contains(v) || (0xFF00...0xFF60).contains(v)
-                || (0xFFE0...0xFFE6).contains(v) || (0x1F300...0x1F64F).contains(v) || (0x1F900...0x1F9FF).contains(v)
-                || (0x20000...0x3FFFD).contains(v) ? 2 : 1
-        }
-        return n
+    static func cells(_ s: Substring) -> Int { s.unicodeScalars.reduce(0) { $0 + width($1) } }
+
+    /// The cells a character takes: wide ones two; marks over the one
+    /// before, and controls, none.
+    static func width(_ u: Unicode.Scalar) -> Int {
+        let v = u.value
+        if v < 0x20 || (0x7F...0x9F).contains(v) || (0x300...0x36F).contains(v) || v == 0x200B || v == 0xFE0F { return 0 }
+        return (0x1100...0x115F).contains(v) || (0x2E80...0xA4CF).contains(v) || (0xAC00...0xD7A3).contains(v)
+            || (0xF900...0xFAFF).contains(v) || (0xFE30...0xFE4F).contains(v) || (0xFF00...0xFF60).contains(v)
+            || (0xFFE0...0xFFE6).contains(v) || (0x1F300...0x1F64F).contains(v) || (0x1F900...0x1F9FF).contains(v)
+            || (0x20000...0x3FFFD).contains(v) ? 2 : 1
     }
 
     /// Whether a line is the one a command was typed on: the prompt, then
@@ -620,6 +620,20 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
+        case "pulse":
+            // "scrub pulse <row> <from> <to>": cells of the viewport selected
+            // (through ghostty, nothing copied) and pulsed as a copy is.
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count == 3, let surface else { return "usage: scrub pulse <row> <from col> <to col>" }
+            var info = ghostty_manifold_info_s()
+            ghostty_surface_manifold_info(surface, &info)
+            let y = info.pad_top + (Double(n[0]) + 0.5) * info.cell_height
+            ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[1]) + 0.2) * info.cell_width, y, GHOSTTY_MODS_NONE)
+            _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+            ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[2]) - 0.2) * info.cell_width, y, GHOSTTY_MODS_NONE)
+            _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+            pulseSelection("")
+            return selectedText ?? "no selection"
         case "dot":
             // "scrub dot <id>": as the pointer resting on the command's dot.
             guard let id = Int(arg), let d = dots.dot(id) else { return "no dot for \(arg)" }
@@ -809,51 +823,57 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
-    /// The selection just copied, pulsed once: its cells lit for a moment
-    /// and fading, so the copy is seen to happen (§3.8).
+    /// The selection just copied, its text pulsed with the glow typing
+    /// ahead has (§3.8): the highlight stays as it is, the characters in it
+    /// lit for a moment and fading, so the copy is seen to happen.
     private func pulseSelection(_ text: String) {
-        guard let surface, let layer else { return }
+        guard let surface else { return }
         var t = ghostty_text_s()
         guard ghostty_surface_read_selection(surface, &t) else { return }
+        let start = Int(t.offset_start), len = Int(t.offset_len)
         ghostty_surface_free_text(surface, &t)
-        let size = ghostty_surface_size(surface)
-        guard size.cell_width_px > 0, size.cell_height_px > 0, size.columns > 0, t.offset_len > 0 else { return }
-        let scale = window?.backingScaleFactor ?? 2
-        let cw = CGFloat(size.cell_width_px) / scale, ch = CGFloat(size.cell_height_px) / scale
-        let cols = Int(size.columns)
-        // The offsets count cells of the viewport; the point is the first
-        // cell's left and baseline, in points from the surface's top left.
-        let start = Int(t.offset_start), end = start + Int(t.offset_len)
-        let r0 = start / cols, c0 = start % cols
-        let r1 = end / cols, c1 = end % cols
-        let left = CGFloat(t.tl_px_x) - CGFloat(c0) * cw
-        let firstTop = CGFloat(t.tl_px_y) - ch * 0.8
-        func rowRect(_ r: Int, from: Int, to: Int) -> NSRect {
-            NSRect(x: left + CGFloat(from) * cw, y: bounds.height - firstTop - CGFloat(r - r0 + 1) * ch, width: CGFloat(max(to - from, 1)) * cw, height: ch)
+        var info = ghostty_manifold_info_s()
+        ghostty_surface_manifold_info(surface, &info)
+        let cols = Int(info.cols)
+        guard cols > 0, len > 0, info.cell_width > 0 else { return }
+        // The offsets count cells of the viewport, the end past the last.
+        let end = start + len
+        let r0 = start / cols, r1 = (end - 1) / cols
+        var runs: [(y: Int, from: Int, to: Int)] = []
+        for r in r0...min(r1, Int(info.rows) - 1) {
+            let from = r == r0 ? start % cols : 0, to = r == r1 ? (end - 1) % cols + 1 : cols
+            for run in textRuns(viewportRow: r, cols: cols) {
+                let a = max(run.from, from), b = min(run.to, to)
+                if a < b { runs.append((r, a, b)) }
+            }
         }
-        let path = CGMutablePath()
-        if r1 == r0 {
-            path.addRect(rowRect(r0, from: c0, to: c1))
-        } else {
-            path.addRect(rowRect(r0, from: c0, to: cols))
-            for r in (r0 + 1)..<r1 { path.addRect(rowRect(r, from: 0, to: cols)) }
-            if c1 > 0 { path.addRect(rowRect(r1, from: 0, to: c1)) }
+        glow.pulse(runs, info: info)
+    }
+
+    /// Where a row of the viewport has characters (not blanks): runs of
+    /// columns, each end past its last.
+    private func textRuns(viewportRow r: Int, cols: Int) -> [(from: Int, to: Int)] {
+        guard let surface else { return [] }
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(r))
+        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(r))
+        sel.rectangle = false
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &out) else { return [] }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text else { return [] }
+        let line = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
+        var runs: [(from: Int, to: Int)] = []
+        var col = 0
+        for u in line.unicodeScalars where u != "\n" {
+            let w = Self.width(u)
+            guard w > 0 else { continue }
+            if !u.properties.isWhitespace {
+                if let last = runs.last, last.to == col { runs[runs.count - 1].to = col + w } else { runs.append((col, col + w)) }
+            }
+            col += w
         }
-        let pulse = CAShapeLayer()
-        pulse.path = path
-        pulse.fillColor = Theme.accent.withAlphaComponent(0.45).cgColor
-        pulse.opacity = 0
-        pulse.frame = bounds
-        layer.addSublayer(pulse)
-        let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = [0, 1, 0]
-        fade.keyTimes = [0, 0.25, 1]
-        fade.duration = 0.5
-        fade.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeIn)]
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { pulse.removeFromSuperlayer() }
-        pulse.add(fade, forKey: "pulse")
-        CATransaction.commit()
+        return runs
     }
 
     var pillItems: [NSMenuItem] {

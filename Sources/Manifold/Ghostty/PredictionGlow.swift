@@ -5,9 +5,11 @@ import QuartzCore
 /// The glow over keystrokes shown before the host has echoed them
 /// (`EchoPrediction`), on a link slow enough that the wait shows: a soft
 /// light over each such cell, there at once, fading as the host's echo
-/// takes its place. Over the terminal's own drawing; clicks go through.
+/// takes its place. A selection copied pulses with it too (`pulse`). Over
+/// the terminal's own drawing; clicks go through.
 final class PredictionGlow: NSView {
     private var glows: [Int: CALayer] = [:]
+    private var pulses: [CALayer] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -49,17 +51,63 @@ final class PredictionGlow: NSView {
         }
     }
 
+    static let pulseIn: TimeInterval = 0.12, pulseOut: TimeInterval = 0.6
+
+    /// Runs of cells (a row, the columns from one to past another) lit at
+    /// once and fading: the text of a selection just copied. One layer,
+    /// its glow the shape of every run.
+    func pulse(_ runs: [(y: Int, from: Int, to: Int)], info: ghostty_manifold_info_s) {
+        guard !runs.isEmpty, let root = layer else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height)
+        let shape = CGMutablePath()
+        for r in runs {
+            let rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(r.from) * cw,
+                              y: bounds.height - CGFloat(info.pad_top) - CGFloat(r.y + 1) * ch,
+                              width: CGFloat(r.to - r.from) * cw, height: ch)
+            shape.addPath(Self.round(rect, cell: cw))
+        }
+        let l = Self.style(CALayer(), cellHeight: ch, dark: dark)
+        l.frame = bounds
+        l.shadowPath = shape
+        l.opacity = 0
+        root.addSublayer(l)
+        pulses.append(l)
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = [0, 1, 0]
+        let total = Self.pulseIn + Self.pulseOut
+        a.keyTimes = [0, NSNumber(value: Self.pulseIn / total), 1]
+        a.duration = total
+        a.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeIn)]
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            l.removeFromSuperlayer()
+            self?.pulses.removeAll { $0 === l }
+        }
+        l.add(a, forKey: "pulse")
+        CATransaction.commit()
+    }
+
+    /// A cell's (or a run of cells') round: set in a little from its edges.
+    private static func round(_ rect: CGRect, cell: CGFloat) -> CGPath {
+        CGPath(roundedRect: rect.insetBy(dx: cell * 0.05, dy: rect.height * 0.12),
+               cornerWidth: cell * 0.4, cornerHeight: cell * 0.4, transform: nil)
+    }
+
     /// A cell's light: a blurred round over it — lightening what's under it
     /// on a dark screen, tinting it on a light one.
     private static func glowLayer(_ rect: CGRect, dark: Bool) -> CALayer {
-        let l = CALayer()
+        let l = style(CALayer(), cellHeight: rect.height, dark: dark)
         l.frame = rect
         l.opacity = 0
-        let shape = CGPath(roundedRect: CGRect(origin: .zero, size: rect.size).insetBy(dx: rect.width * 0.05, dy: rect.height * 0.12),
-                           cornerWidth: rect.width * 0.4, cornerHeight: rect.width * 0.4, transform: nil)
-        l.shadowPath = shape
+        l.shadowPath = round(CGRect(origin: .zero, size: rect.size), cell: rect.width)
+        return l
+    }
+
+    /// The glow's look, on a layer whose shadow is the light.
+    private static func style(_ l: CALayer, cellHeight: CGFloat, dark: Bool) -> CALayer {
         l.shadowOffset = .zero
-        l.shadowRadius = max(3, rect.height * 0.3)
+        l.shadowRadius = max(3, cellHeight * 0.3)
         l.shadowOpacity = dark ? 0.9 : 0.35
         l.shadowColor = (dark ? NSColor(srgbRed: 0.45, green: 0.75, blue: 1.0, alpha: 1) : Theme.accent).cgColor
         l.compositingFilter = dark ? "screenBlendMode" : "multiplyBlendMode"
@@ -70,7 +118,7 @@ final class PredictionGlow: NSView {
     /// their layers), at `r` (this view's place in it) — as Core Animation
     /// does them: each round's blur alone, blended.
     func drawSnapshot(_ ctx: CGContext, in r: CGRect) {
-        for l in glows.values {
+        for l in Array(glows.values) + pulses {
             guard let shape = l.shadowPath, let color = l.shadowColor else { continue }
             ctx.saveGState()
             ctx.setBlendMode(l.compositingFilter as? String == "screenBlendMode" ? .screen : .multiply)
