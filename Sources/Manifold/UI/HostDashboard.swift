@@ -102,6 +102,12 @@ final class HostDashboard: NSView {
         say("now", at: NSPoint(x: plot.maxX, y: plot.maxY + 3), font: small, color: grey, right: true)
         func x(_ at: Date) -> CGFloat { plot.minX + plot.width * CGFloat(1 - min(1, now.timeIntervalSince(at) / Sparkline.span)) }
         func y(_ rtt: TimeInterval) -> CGFloat { plot.maxY - plot.height * CGFloat(min(rtt, top) / top) }
+        // Out of touch: a band, faintly red, from the last ping answered to
+        // the next.
+        for g in Sparkline.gaps(points, now: now) {
+            Theme.statusError.withAlphaComponent(0.1).setFill()
+            NSRect(x: x(g.from), y: plot.minY, width: max(2, x(g.to) - x(g.from)), height: plot.height).fill()
+        }
         // Links given up on: a red line where each went.
         for d in c.drops where now.timeIntervalSince(d.at) <= Sparkline.span {
             Theme.statusError.withAlphaComponent(0.5).setFill()
@@ -127,8 +133,17 @@ final class HostDashboard: NSView {
             for p in run.dropFirst() { line.line(to: p) }
             run = []
         }
+        // Runs of answered pings, each drawn alone: none across a gap.
+        var previous: Date?
         for p in points {
-            if let rtt = p.rtt { run.append(NSPoint(x: x(p.at), y: y(rtt))) } else { endRun() }
+            guard let rtt = p.rtt else {
+                endRun()
+                previous = nil
+                continue
+            }
+            if let previous, p.at.timeIntervalSince(previous) > Sparkline.breakAfter { endRun() }
+            run.append(NSPoint(x: x(p.at), y: y(rtt)))
+            previous = p.at
         }
         endRun()
         ink.setStroke()

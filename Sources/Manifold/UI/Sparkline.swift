@@ -33,6 +33,30 @@ final class Sparkline: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    /// Where the host was out of touch: from the last ping answered before
+    /// one went unanswered (the link given up on) to the next answered —
+    /// or to now, if none has been since. Shaded, not drawn across.
+    static func gaps(_ points: Pings, now: Date) -> [(from: Date, to: Date)] {
+        var out: [(from: Date, to: Date)] = []
+        var lastAnswered: Date?
+        var open: Date?
+        for p in points {
+            if p.rtt == nil {
+                if open == nil { open = lastAnswered ?? p.at }
+            } else {
+                if let o = open { out.append((o, p.at)) }
+                open = nil
+                lastAnswered = p.at
+            }
+        }
+        if let o = open { out.append((o, now)) }
+        return out
+    }
+
+    /// Two answered pings this far apart (none between: the Mac asleep, say)
+    /// aren't joined by a line.
+    static let breakAfter: TimeInterval = 6
+
     /// The top of the scale: what most round trips come to, not a spike's
     /// (a spike goes past it, drawn at the top) — the 90th percentile and
     /// some, or twice the median; never above the most there is.
@@ -68,18 +92,20 @@ final class Sparkline: NSView {
         let line = NSBezierPath()
         line.lineWidth = 1.1
         line.lineJoinStyle = .round
-        var drawing = false
+        // Out of touch: a band, faintly red.
+        for g in Self.gaps(points, now: now) {
+            Theme.statusError.withAlphaComponent(0.22).setFill()
+            NSRect(x: x(g.from), y: 0, width: max(1.5, x(g.to) - x(g.from)), height: bounds.height).fill()
+        }
+        var previous: Date?
         for p in points {
             guard let rtt = p.rtt else {
-                // Unanswered: a break, and a mark at the bottom.
-                drawing = false
-                Theme.statusError.withAlphaComponent(0.8).setFill()
-                NSRect(x: x(p.at) - 0.75, y: inset - 0.5, width: 1.5, height: 3).fill()
+                previous = nil
                 continue
             }
             let pt = NSPoint(x: x(p.at), y: y(rtt))
-            if drawing { line.line(to: pt) } else { line.move(to: pt) }
-            drawing = true
+            if let previous, p.at.timeIntervalSince(previous) <= Self.breakAfter { line.line(to: pt) } else { line.move(to: pt) }
+            previous = p.at
         }
         ink.setStroke()
         line.stroke()

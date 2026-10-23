@@ -163,6 +163,8 @@ final class HostClient {
     /// unanswered, the link given up on — for its sparkline and dashboard.
     private(set) var pings: [(at: Date, rtt: TimeInterval?)] = []
     static let pingHistory: TimeInterval = 300
+    /// Pings sent this soon after the link came up aren't recorded.
+    static let settling: TimeInterval = 3
     /// Links that went in the last hour: when, and why.
     private(set) var drops: [(at: Date, why: String)] = []
     /// Since when its link has been up (answered), if it is.
@@ -921,7 +923,10 @@ final class HostClient {
                 // (main) thread, busy now and then.
                 let arrived = conn?.arrived ?? Date()
                 pingRTT = max(0, arrived.timeIntervalSince(sent))
-                recordPing(pingRTT)
+                // Not one sent as the link came up: it waits behind the
+                // link's own catching up (the state, the terminals' screens),
+                // the reconnect's time, not the link's — the gap goes on.
+                if let since = connectedSince, sent.timeIntervalSince(since) >= Self.settling { recordPing(pingRTT) }
             }
             pingSent = nil
             lastHeard = Date()
