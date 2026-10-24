@@ -450,12 +450,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// A command and its output, as shown: the rows from its prompt to
-    /// the next command's (or the end).
+    /// the next command's (or the end), the next prompt left off.
     private func transcript(ofCommand id: Int) -> (ShellCommand, String)? {
         guard let c = commands.first(where: { $0.id == id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
-        var output = text(rows: (row + 1)..<min(next, row + 20000))
-        while output.hasSuffix("\n") || output.hasSuffix(" ") { output.removeLast() }
+        let line = screenLines()?.first { $0.row == row }.map { String($0.text) } ?? ""
+        let output = ShellCommand.output(text(rows: (row + 1)..<min(next, row + 20000)), prompt: ShellCommand.prompt(onLine: line, command: c.text))
         return (c, output)
     }
 

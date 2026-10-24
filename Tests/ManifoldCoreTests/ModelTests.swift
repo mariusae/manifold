@@ -794,6 +794,20 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     try? FileManager.default.removeItem(at: dir)
 }
 
+@Test func aCommandsOutputLeavesTheNextPromptOff() {
+    let line = "fbsource[f]/monarch› def run_worker_loop_forever"
+    let prompt = ShellCommand.prompt(onLine: line, command: "def run_worker_loop_forever")
+    #expect(prompt == "fbsource[f]/monarch›")
+    // The next prompt, nothing typed at it, a right prompt's host before it.
+    let shown = "./python/monarch/_src/actor/bootstrap.py:177:1:def run_worker_loop_forever(\ndevvm34959 fbsource[f]/monarch›\n"
+    #expect(ShellCommand.output(shown, prompt: prompt) == "./python/monarch/_src/actor/bootstrap.py:177:1:def run_worker_loop_forever(")
+    // A prompt whose path changed: it still ends in the same mark.
+    #expect(ShellCommand.output("ok\n~/elsewhere ›", prompt: "~/src ›") == "ok")
+    // Output ending in a word (not a mark) stays; so does output in the middle.
+    #expect(ShellCommand.output("a ›\nb\n~ $", prompt: "~ $") == "a ›\nb")
+    #expect(ShellCommand.output("done", prompt: nil) == "done")
+}
+
 @Test func aTileMovedUnderAStackDoesntTakeIt() {
     var a = ArrangementState()
     let top = Placement(block: BlockID(), lens: .terminal), x = Placement(block: BlockID(), lens: .terminal)

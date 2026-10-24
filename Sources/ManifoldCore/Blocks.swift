@@ -257,6 +257,37 @@ public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
 
     public var isRunning: Bool { ended == nil }
     public var failed: Bool { (status ?? 0) != 0 }
+
+    /// The prompt a command was typed at, as its line on the screen shows
+    /// it: what comes before the command. Nil if the line doesn't show it.
+    public static func prompt(onLine line: String, command: String) -> String? {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard !command.isEmpty, let r = t.range(of: command) else { return nil }
+        let p = t[..<r.lowerBound].trimmingCharacters(in: .whitespaces)
+        return p.isEmpty ? nil : p
+    }
+
+    /// A command's output as the screen shows it (the rows to the next
+    /// command's, or the end), less the next prompt at its end: lines that
+    /// show the prompt the command was typed at, or end as it does (in its
+    /// last word, ending in a prompt's mark: "›", "$", "❯") — the next
+    /// command not typed yet, or the first lines of a prompt over several,
+    /// a right prompt's host on them — and blank ones.
+    public static func output(_ output: String, prompt: String?) -> String {
+        var lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let mark = prompt?.split(separator: " ").last.map(String.init).flatMap { w in
+            w.unicodeScalars.last.map { !CharacterSet.alphanumerics.contains($0) } == true ? w : nil
+        }
+        func isPrompt(_ line: String) -> Bool {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.isEmpty { return true }
+            if let prompt, t.contains(prompt) { return true }
+            if let mark, t.hasSuffix(mark) { return true }
+            return false
+        }
+        while let last = lines.last, isPrompt(last) { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
 }
 
 // MARK: Status (§3.7)

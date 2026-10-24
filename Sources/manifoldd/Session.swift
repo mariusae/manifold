@@ -607,11 +607,18 @@ final class Session {
         env.removeValue(forKey: "TERM_PROGRAM_VERSION")
 
         env["MANIFOLD_BIN"] = toolDirectories.joined(separator: ":")
-        // fish finds Ghostty's integration (working directory, titles) among
-        // its vendor configuration.
-        if shell.lastPathComponent == "fish", let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/fish") {
-            env["XDG_DATA_DIRS"] = res + "/shell-integration" + (env["XDG_DATA_DIRS"].map { ":" + $0 } ?? ":/usr/local/share:/usr/share")
-            env["GHOSTTY_SHELL_FEATURES"] = "title"
+        // fish finds Ghostty's integration (working directory, titles, the
+        // prompt's marks) among its vendor configuration. Where there's none
+        // (a remote host), Manifold's startup marks the prompt and each
+        // command's end itself (OSC 133;A, 133;D): without the end, a
+        // command's output ran on through the prompts after it.
+        if shell.lastPathComponent == "fish" {
+            if let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/fish") {
+                env["XDG_DATA_DIRS"] = res + "/shell-integration" + (env["XDG_DATA_DIRS"].map { ":" + $0 } ?? ":/usr/local/share:/usr/share")
+                env["GHOSTTY_SHELL_FEATURES"] = "title"
+            } else {
+                env["MANIFOLD_SHELL_MARKS"] = "1"
+            }
         }
         // zsh starts through Manifold's own layer (a .zshenv in the data
         // folder), which hands over to Ghostty's integration (working
@@ -622,6 +629,10 @@ final class Session {
             if let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/zsh") {
                 env["MANIFOLD_GHOSTTY_ZDOTDIR"] = res + "/shell-integration/zsh"
                 env["GHOSTTY_SHELL_FEATURES"] = "title"
+            } else {
+                // No Ghostty here: the layer marks the prompt and each
+                // command's end itself, as for fish.
+                env["MANIFOLD_SHELL_MARKS"] = "1"
             }
             env["ZDOTDIR"] = layer
         }
@@ -660,9 +671,23 @@ final class Session {
             # Each command the shell runs, told to Manifold (OSC 7502) for
             # the terminal's scrubber: control characters blanked.
             __manifold_cmd() {
+                __manifold_ran=1
                 'builtin' 'print' -rn -- $'\\e]7502;'"${1//[[:cntrl:]]/ }"$'\\a'
             }
             add-zsh-hook preexec __manifold_cmd
+            # Without Ghostty's integration (a remote host): the prompt and
+            # each command's end with its status (OSC 133), first among
+            # the precmd hooks, so the status is the command's.
+            if [[ -n "${MANIFOLD_SHELL_MARKS+X}" ]]; then
+                'builtin' 'unset' 'MANIFOLD_SHELL_MARKS'
+                __manifold_marks() {
+                    'builtin' 'local' st=$?
+                    [[ -z "$__manifold_ran" ]] || 'builtin' 'print' -rn -- $'\\e]133;D;'"$st"$'\\a'
+                    __manifold_ran=
+                    'builtin' 'print' -rn -- $'\\e]133;A\\a'
+                }
+                precmd_functions=(__manifold_marks $precmd_functions)
+            fi
             if [[ -n "$MANIFOLD_BIN" ]]; then
                 __manifold_path() {
                     'builtin' 'typeset' -gU path
@@ -687,7 +712,12 @@ final class Session {
     /// What fish runs after its configuration: $MANIFOLD_BIN's folders
     /// first on the PATH, in their order.
     static let fishStartup = "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end; "
-        + "function __manifold_cmd --on-event fish_preexec; printf '\\e]7502;%s\\a' (string replace -ra '[\\x00-\\x1f\\x7f]' ' ' -- \"$argv\"); end"
+        + "function __manifold_cmd --on-event fish_preexec; printf '\\e]7502;%s\\a' (string replace -ra '[\\x00-\\x1f\\x7f]' ' ' -- \"$argv\"); end; "
+        // Without Ghostty's integration: each command's end, with its
+        // status, and the prompt (OSC 133;D, 133;A).
+        + "if set -q MANIFOLD_SHELL_MARKS; set -e MANIFOLD_SHELL_MARKS; "
+        + "function __manifold_ended --on-event fish_postexec; printf '\\e]133;D;%s\\a' $status; end; "
+        + "function __manifold_prompt --on-event fish_prompt; printf '\\e]133;A\\a'; end; end"
 
     /// The startup arguments Manifold gives a shell, as `ps` shows them,
     /// so a listing can leave them out: they are Manifold's, not yours.
