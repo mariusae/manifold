@@ -801,6 +801,18 @@ around it, and comes back with its history.
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
   `[words](file.md)` — become edges the moment they're typed, so the
   map shows a note's backlinks whether or not anyone followed them.
+  A row says what its block's status adds to its glyph (a question's
+  kind, its message — not "Done"); an untitled note goes by its first
+  words, as its links name it; a text with unsaved edits has its bar's
+  dot after the name; a page has its site's icon.
+- **Pin in Workspace** (a tile's bar menu, or a row's): the block stays
+  at the top of its workspace in the sidebar, above a hairline, in the
+  order pinned — and stays there with its tile closed, dimmed, to click
+  for the tile back in that workspace. A pin is an edge from the
+  workspace to the block, a strong one: the workspace keeps the block,
+  and a workspace with anything pinned is kept itself — a root, as a
+  named one is; it doesn't drift off the desk, nor go when its last
+  tile closes. Unpin from the same menus.
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
   finder row chosen with ⏎: plain **goes to** it

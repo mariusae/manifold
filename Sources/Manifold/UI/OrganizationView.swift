@@ -72,8 +72,9 @@ final class OrgNode {
     /// what changes by the second (how long a host has been connecting).
     var liveTooltip: (() -> String)?
     /// How the row is set: a host's heading, a section's label (a
-    /// workspace, a group), or a block's row.
-    enum Style { case host, section, row }
+    /// workspace, a group), a block's row, or a hairline between rows (a
+    /// workspace's pinned tiles and the rest).
+    enum Style { case host, section, row, divider }
     var style: Style = .row
     /// On the desk: the arrangement this row is, or is a column of.
     var arrangement: BlockID?
@@ -383,6 +384,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         case .host: return 30
         case .section: return 24
         case .row: return flat && !n.detail.isEmpty ? 40 : 26
+        case .divider: return 9
         }
     }
 
@@ -726,6 +728,8 @@ final class OrgRowView: NSTableCellView {
     private let glyph = StatusGlyph()
     private let trailing = NSTextField(labelWithString: "")
     private let sparkline = Sparkline()
+    /// The hairline a divider row is.
+    private let rule = FlatDivider()
     private var symbol = ""
     private var detailSymbol = ""
     private var node: OrgNode?
@@ -749,13 +753,25 @@ final class OrgRowView: NSTableCellView {
         trailing.alignment = .right
         detailIcon.contentTintColor = Theme.secondaryText
         detailIcon.isHidden = true
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline] { addSubview(v) }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline, rule] { addSubview(v) }
+        rule.isHidden = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ node: OrgNode) {
         self.node = node
+        // A divider: the hairline alone.
+        let divider = node.style == .divider
+        rule.isHidden = !divider
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline] as [NSView] where divider { v.isHidden = true }
+        if divider {
+            toolTip = nil
+            needsLayout = true
+            return
+        }
+        icon.isHidden = false
+        name.isHidden = false
         glyph.look = node.look
         glyph.isHidden = node.look == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
@@ -779,7 +795,7 @@ final class OrgRowView: NSTableCellView {
         case .section:
             name.font = .systemFont(ofSize: 11.5, weight: .semibold)
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
-        case .row:
+        case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
             name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
         }
@@ -824,6 +840,10 @@ final class OrgRowView: NSTableCellView {
     override func layout() {
         super.layout()
         let h = bounds.height
+        if let node, node.style == .divider {
+            rule.frame = NSRect(x: 22, y: (h / 2).rounded(), width: max(0, bounds.width - 26), height: 1)
+            return
+        }
         if let node, node.style == .section {
             // A label across: the name in its grey, a count at the right.
             var right = bounds.width - 4

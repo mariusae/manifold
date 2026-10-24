@@ -269,7 +269,7 @@ final class GraphCanvas: NSView {
 
     static func color(_ kind: EdgeKind?) -> NSColor {
         switch kind {
-        case .placed?, .contains?: Theme.secondaryText
+        case .placed?, .contains?, .link(.pinned)?: Theme.secondaryText
         case .link(.opened)?: Theme.accent
         case .link(.linked)?: NSColor.systemPurple
         case .link(.embeds)?: NSColor.systemTeal

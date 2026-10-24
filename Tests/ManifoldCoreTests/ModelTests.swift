@@ -1720,3 +1720,24 @@ private final class Seen: @unchecked Sendable {
     b.search = s
     #expect(b.place == "/tmp/project")
 }
+
+@Test func aWorkspaceWithPinsIsKeptAndKeepsThem() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    // An unnamed workspace off the desk, its tile closed, its block pinned in it.
+    let ws = BlockID(host: host), note = BlockID(host: host)
+    put(.create(kind: .text, title: nil, path: nil), to: .block(note), at: 1)
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 2)
+    #expect(!node.roots(on: host).contains(ws))
+    put(.link(Link(from: ws, to: note, kind: .pinned, at: stamp(3), context: "pinned")), to: .links(host), at: 3)
+    #expect(node.hasPins(ws))
+    #expect(node.roots(on: host).contains(ws))
+    #expect(node.reachable(on: host).contains(note))
+    // Unpinned: neither is kept any longer.
+    let pin = node.links(host).links.first { $0.kind == .pinned }!
+    put(.unlink(pin.id), to: .links(host), at: 4)
+    #expect(!node.hasPins(ws))
+    #expect(!node.reachable(on: host).contains(note) && !node.roots(on: host).contains(ws))
+}

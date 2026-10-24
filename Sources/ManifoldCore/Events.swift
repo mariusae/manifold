@@ -70,11 +70,20 @@ public enum LinkKind: String, Codable, Sendable {
     /// An image shown in a text (`![words](image)`), strong: the image is
     /// kept while a text shows it, and goes with the last one that did.
     case embeds
+    /// A block pinned in a workspace, strong: from the workspace to it.
+    /// Shown at the top of the workspace in the sidebar, there to recall
+    /// with its tile closed — the workspace keeps it.
+    case pinned
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         // Once many kinds by the way, and "about" for a note's subject.
-        self = raw == "embeds" ? .embeds : raw == "linked" || raw == "about" ? .linked : .opened
+        switch raw {
+        case "embeds": self = .embeds
+        case "linked", "about": self = .linked
+        case "pinned": self = .pinned
+        default: self = .opened
+        }
     }
 }
 

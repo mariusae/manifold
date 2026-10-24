@@ -988,6 +988,11 @@ enum DebugControl {
             var out: [String] = []
             while let x = r { out.append("\(type(of: x))"); r = x.nextResponder }
             return out.joined(separator: " → ")
+        case "wspin":
+            // "wspin": the focused tile's block pinned in its workspace, or unpinned.
+            guard let wc else { return "no window" }
+            wc.togglePinInWorkspace(nil)
+            return "ok"
         case "settings":
             // "settings show [pane]", "settings tint <name>", "settings close",
             // or nothing: the Settings window's state.

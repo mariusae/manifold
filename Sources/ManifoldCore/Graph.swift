@@ -33,7 +33,7 @@ public enum EdgeKind: Hashable, Sendable, CustomStringConvertible {
     public var isStrong: Bool {
         switch self {
         case .placed: true
-        case .link(let k): k == .linked || k == .embeds
+        case .link(let k): k == .linked || k == .embeds || k == .pinned
         case .contains: false
         }
     }

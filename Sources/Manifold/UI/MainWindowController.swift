@@ -2014,7 +2014,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
-        if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
+        if isLeftEmpty(id), !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
 
@@ -2071,7 +2071,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
         }
-        if hosts.arrangement(id)?.isEmpty == true, !a.isNamed {
+        if isLeftEmpty(id), !a.isNamed {
             removeFromDesk(id)
         }
         afterClosing(reachedBefore: before)
@@ -3143,6 +3143,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Every workspace whole (§3.6): nothing folds by itself; one
             // closed by its chevron stays closed.
             var tiles: [OrgNode] = []
+            let pinned = pins(of: id).map(\.to)
             for (c, column) in a.columns.enumerated() {
                 for p in column {
                     let b = hosts.block(p.block)
@@ -3169,6 +3170,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.placement = p.id
                     n.emphasis = id == selected && p.id == a.focused
                     tiles.append(n)
+                }
+            }
+            // Its pinned blocks first, in the order pinned — each its tiles,
+            // or, closed, a row to recall it here — then a hairline, then
+            // the rest.
+            if !pinned.isEmpty {
+                var top: [OrgNode] = []
+                for block in pinned {
+                    let open = tiles.filter { $0.block == block }
+                    if !open.isEmpty { top += open; continue }
+                    guard let b = hosts.block(block) else { continue }
+                    let title = Self.linkTitle(b)
+                    guard matches(filter, [title, b.path]) else { continue }
+                    let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
+                    n.arrangement = id
+                    n.dimmed = true
+                    n.age = nil
+                    n.action = { [weak self] in self?.recallPinned(block, in: id) }
+                    top.append(n)
+                }
+                let rest = tiles.filter { t in !pinned.contains { $0 == t.block } }
+                if !top.isEmpty {
+                    let rule = OrgNode(id: "\(aid)/pins", title: "", symbol: "", detail: "")
+                    rule.style = .divider
+                    tiles = top + (rest.isEmpty ? [] : [rule]) + rest
                 }
             }
             let titleMatches = matches(filter, [title(of: a)])
@@ -4131,6 +4157,52 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let t = tiles.first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }) { return t }
         if let c = a.locate(near)?.column, let t = tiles.first(where: { a.locate($0.id)?.column == c }) { return t }
         return tiles.first
+    }
+
+    // MARK: Pins (§3.6)
+
+    /// A workspace's pinned blocks, in the order pinned: each a strong link
+    /// from the workspace, which keeps it while the workspace is kept.
+    func pins(of workspace: BlockID) -> [Edge] {
+        let edges = hosts.client(of: workspace)?.node.graph.edges(from: workspace, kind: .link(.pinned)).filter(\.isLive) ?? []
+        var seen = Set<BlockID>()
+        return edges.sorted { $0.at < $1.at }.filter { seen.insert($0.to).inserted }
+    }
+
+    func isPinned(_ block: BlockID, in workspace: BlockID) -> Bool { pins(of: workspace).contains { $0.to == block } }
+
+    /// A workspace with no tiles and nothing pinned: an unnamed one goes.
+    func isLeftEmpty(_ workspace: BlockID) -> Bool {
+        hosts.arrangement(workspace)?.isEmpty == true && pins(of: workspace).isEmpty
+    }
+
+    /// Pinned in a workspace, or let go of there.
+    func setPinned(_ block: BlockID, in workspace: BlockID, _ on: Bool) {
+        if on {
+            guard !isPinned(block, in: workspace) else { return }
+            hosts.link(from: workspace, to: block, kind: .pinned, context: "pinned")
+        } else {
+            for e in pins(of: workspace) where e.to == block { hosts.propose(.unlink(e.id)) }
+        }
+        refreshOrganization(now: true)
+    }
+
+    /// A pinned block with no tile, chosen in the sidebar: its workspace
+    /// shown, the block in a tile there again.
+    func recallPinned(_ block: BlockID, in workspace: BlockID) {
+        guard let b = hosts.block(block) else { return }
+        if selected != workspace { hosts.select(workspace) }
+        if let a = hosts.arrangement(workspace), let t = a.placements(of: block).first {
+            return hosts.append(arriving(t.id, in: a), to: .block(workspace))
+        }
+        show(block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "pinned")
+    }
+
+    /// Pin in Workspace: the focused tile's block pinned in the workspace
+    /// shown, or let go of.
+    @objc func togglePinInWorkspace(_ sender: Any?) {
+        guard let id = selected, let f = focusedShown else { return NSSound.beep() }
+        setPinned(f.placement.block, in: id, !isPinned(f.placement.block, in: id))
     }
 
     /// **Bring here** (§3.1): where a tile is made for a block. Nothing
@@ -5493,7 +5565,7 @@ extension MainWindowController: GridDelegate {
         var events: [Event] = a.full == placement ? [.full(nil)] : []
         events += stack.map { .remove($0.id) }
         appendToSelected(events)
-        if hosts.arrangement(id)?.isEmpty == true, !a.isNamed { removeFromDesk(id) }
+        if isLeftEmpty(id), !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
 
@@ -5678,6 +5750,12 @@ extension MainWindowController: GridDelegate {
             } else {
                 menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "S") { [weak self] in self?.save(block, from: placement) })
             }
+        }
+        if let ws = selected {
+            let on = isPinned(block, in: ws)
+            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Workspace", symbol: on ? "pin.slash" : "pin") { [weak self] in
+                self?.setPinned(block, in: ws, !on)
+            })
         }
         if views[placement]?.outline != nil {
             menu.addItem(ClosureMenuItem("Search Outline…", symbol: "list.bullet.rectangle", key: "O") { [weak self] in
@@ -7349,6 +7427,13 @@ extension MainWindowController: OrganizationViewDelegate {
             return menu
         }
         guard let id = node.block else { return nil }
+        if let arr = node.arrangement, node.style == .row {
+            let on = isPinned(id, in: arr)
+            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Workspace", symbol: on ? "pin.slash" : "pin") { [weak self] in
+                self?.setPinned(id, in: arr, !on)
+            })
+            menu.addItem(.separator())
+        }
         if hosts.block(id)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(id)) })
             menu.addItem(.separator())
@@ -7357,7 +7442,7 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
                 guard let self else { return }
                 self.hosts.append(.remove(p), to: .block(arr))
-                if self.hosts.arrangement(arr)?.isEmpty == true, self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
+                if self.isLeftEmpty(arr), self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
             })
             menu.addItem(.separator())
         } else {

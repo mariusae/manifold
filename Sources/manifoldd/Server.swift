@@ -434,7 +434,7 @@ final class Server {
         let desk = node.desk(host)
         let registry = node.registry(host)
         let kept = desk.order.filter { id in
-            guard id.host == host, let b = node.block(id), let a = b.arrangement, !a.isNamed, (b.title ?? "").isEmpty else { return true }
+            guard id.host == host, let b = node.block(id), let a = b.arrangement, !a.isNamed, (b.title ?? "").isEmpty, !node.hasPins(id) else { return true }
             let seen = registry.blocks[id]?.lastSeen.wall ?? b.created.wall
             return seen >= cutoff
         }

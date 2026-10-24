@@ -12,10 +12,17 @@ extension Node {
         for id in desk(host).order where id.host == host { roots.insert(id) }
         for b in blocks where b.id.host == host {
             if b.isPinned { roots.insert(b.id) }
-            if let a = b.arrangement, a.isNamed || !(b.title ?? "").isEmpty { roots.insert(b.id) }
+            if let a = b.arrangement, a.isNamed || !(b.title ?? "").isEmpty || hasPins(b.id) { roots.insert(b.id) }
         }
         for h in registry(host).holds.values where h.block.host == host { roots.insert(h.block) }
         return roots
+    }
+
+    /// Whether a workspace has anything pinned in it (a live pin edge out of
+    /// it): one that does is a root, kept as a named one is, and doesn't
+    /// drift off the desk.
+    public func hasPins(_ workspace: BlockID) -> Bool {
+        graph.edges(from: workspace, kind: .link(.pinned)).contains(where: \.isLive)
     }
 
     /// Everything on a host that its roots reach, over its own graph.
