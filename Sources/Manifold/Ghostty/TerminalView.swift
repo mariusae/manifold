@@ -621,16 +621,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
         case "pulse":
-            // "scrub pulse <row> <from> <to>": cells of the viewport selected
-            // (through ghostty, nothing copied) and pulsed as a copy is.
+            // "scrub pulse <row> <from> <to> [<to row>]": cells of the viewport
+            // selected (through ghostty, nothing copied) and pulsed as a copy is.
             let n = arg.split(separator: " ").compactMap { Int($0) }
-            guard n.count == 3, let surface else { return "usage: scrub pulse <row> <from col> <to col>" }
+            guard n.count >= 3, let surface else { return "usage: scrub pulse <row> <from col> <to col> [<to row>]" }
             var info = ghostty_manifold_info_s()
             ghostty_surface_manifold_info(surface, &info)
             let y = info.pad_top + (Double(n[0]) + 0.5) * info.cell_height
+            let y2 = info.pad_top + (Double(n.count > 3 ? n[3] : n[0]) + 0.5) * info.cell_height
             ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[1]) + 0.2) * info.cell_width, y, GHOSTTY_MODS_NONE)
             _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
-            ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[2]) - 0.2) * info.cell_width, y, GHOSTTY_MODS_NONE)
+            ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[2]) - 0.2) * info.cell_width, y2, GHOSTTY_MODS_NONE)
             _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
             pulseSelection("")
             return selectedText ?? "no selection"
@@ -823,9 +824,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
-    /// The selection just copied, its text pulsed with the glow typing
-    /// ahead has (§3.8): the highlight stays as it is, the characters in it
-    /// lit for a moment and fading, so the copy is seen to happen.
+    /// The selection just copied, pulsed with the glow typing ahead has
+    /// (§3.8): around it, the highlight lit from behind for a moment and
+    /// fading, so the copy is seen to happen.
     private func pulseSelection(_ text: String) {
         guard let surface else { return }
         var t = ghostty_text_s()
@@ -841,39 +842,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let r0 = start / cols, r1 = (end - 1) / cols
         var runs: [(y: Int, from: Int, to: Int)] = []
         for r in r0...min(r1, Int(info.rows) - 1) {
-            let from = r == r0 ? start % cols : 0, to = r == r1 ? (end - 1) % cols + 1 : cols
-            for run in textRuns(viewportRow: r, cols: cols) {
-                let a = max(run.from, from), b = min(run.to, to)
-                if a < b { runs.append((r, a, b)) }
-            }
+            runs.append((r, r == r0 ? start % cols : 0, r == r1 ? (end - 1) % cols + 1 : cols))
         }
-        glow.pulse(runs, info: info)
-    }
-
-    /// Where a row of the viewport has characters (not blanks): runs of
-    /// columns, each end past its last.
-    private func textRuns(viewportRow r: Int, cols: Int) -> [(from: Int, to: Int)] {
-        guard let surface else { return [] }
-        var sel = ghostty_selection_s()
-        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(r))
-        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(r))
-        sel.rectangle = false
-        var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, sel, &out) else { return [] }
-        defer { ghostty_surface_free_text(surface, &out) }
-        guard let p = out.text else { return [] }
-        let line = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
-        var runs: [(from: Int, to: Int)] = []
-        var col = 0
-        for u in line.unicodeScalars where u != "\n" {
-            let w = Self.width(u)
-            guard w > 0 else { continue }
-            if !u.properties.isWhitespace {
-                if let last = runs.last, last.to == col { runs[runs.count - 1].to = col + w } else { runs.append((col, col + w)) }
-            }
-            col += w
-        }
-        return runs
+        glow.pulse(around: runs, info: info)
     }
 
     var pillItems: [NSMenuItem] {

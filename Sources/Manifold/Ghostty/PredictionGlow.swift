@@ -5,7 +5,8 @@ import QuartzCore
 /// The glow over keystrokes shown before the host has echoed them
 /// (`EchoPrediction`), on a link slow enough that the wait shows: a soft
 /// light over each such cell, there at once, fading as the host's echo
-/// takes its place. A selection copied pulses with it too (`pulse`). Over
+/// takes its place. A selection copied pulses with it too, around it
+/// (`pulse`). Over
 /// the terminal's own drawing; clicks go through.
 final class PredictionGlow: NSView {
     private var glows: [Int: CALayer] = [:]
@@ -53,24 +54,37 @@ final class PredictionGlow: NSView {
 
     static let pulseIn: TimeInterval = 0.12, pulseOut: TimeInterval = 0.6
 
-    /// Runs of cells (a row, the columns from one to past another) lit at
-    /// once and fading: the text of a selection just copied. One layer,
-    /// its glow the shape of every run.
-    func pulse(_ runs: [(y: Int, from: Int, to: Int)], info: ghostty_manifold_info_s) {
+    /// Around a selection (rows of cells, the columns from one to past
+    /// another) a glow lit at once and fading: a selection just copied.
+    /// One shape, the rows joined; the light outside it only (inside, the
+    /// highlight stays as it is).
+    func pulse(around runs: [(y: Int, from: Int, to: Int)], info: ghostty_manifold_info_s) {
         guard !runs.isEmpty, let root = layer else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height)
-        let shape = CGMutablePath()
+        var shape = CGPath(rect: .null, transform: nil)
         for r in runs {
             let rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(r.from) * cw,
                               y: bounds.height - CGFloat(info.pad_top) - CGFloat(r.y + 1) * ch,
                               width: CGFloat(r.to - r.from) * cw, height: ch)
-            shape.addPath(Self.round(rect, cell: cw))
+            shape = shape.isEmpty ? CGPath(rect: rect, transform: nil) : shape.union(CGPath(rect: rect, transform: nil))
         }
         let l = Self.style(CALayer(), cellHeight: ch, dark: dark)
         l.frame = bounds
         l.shadowPath = shape
+        l.shadowRadius = max(4, ch * 0.45)
+        // On light paper, outside the highlight, the tint needs more to show.
+        if !dark { l.shadowOpacity = 0.75 }
         l.opacity = 0
+        // Outside the selection only: the window, less it.
+        let outside = CGMutablePath()
+        outside.addRect(bounds.insetBy(dx: -ch * 2, dy: -ch * 2))
+        outside.addPath(shape)
+        let mask = CAShapeLayer()
+        mask.frame = bounds
+        mask.path = outside
+        mask.fillRule = .evenOdd
+        l.mask = mask
         root.addSublayer(l)
         pulses.append(l)
         let a = CAKeyframeAnimation(keyPath: "opacity")
@@ -123,6 +137,14 @@ final class PredictionGlow: NSView {
             ctx.saveGState()
             ctx.setBlendMode(l.compositingFilter as? String == "screenBlendMode" ? .screen : .multiply)
             ctx.setAlpha(CGFloat(l.presentation()?.opacity ?? l.opacity))
+            // Masked (a selection's glow: outside it only), as it is on screen.
+            if let mask = l.mask as? CAShapeLayer, let p = mask.path {
+                var move = CGAffineTransform(translationX: r.minX + l.frame.minX, y: r.minY + l.frame.minY)
+                if let moved = p.copy(using: &move) {
+                    ctx.addPath(moved)
+                    ctx.clip(using: mask.fillRule == .evenOdd ? .evenOdd : .winding)
+                }
+            }
             // Drawn far off, its shadow back in place: the blur only.
             let far: CGFloat = 100_000
             ctx.setShadow(offset: CGSize(width: far, height: 0), blur: l.shadowRadius * 2, color: color.copy(alpha: CGFloat(l.shadowOpacity)))
