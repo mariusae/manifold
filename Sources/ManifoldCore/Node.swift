@@ -8,17 +8,24 @@ public enum ShardState: Codable, Equatable, Sendable {
     case links(Links)
 
     public mutating func apply(_ event: Event, at: Stamp) {
+        // Each payload taken out with an empty one left in its place, so
+        // it's the only reference and changes in place — not copied (a
+        // text's rope, a block's lists) at every keystroke.
         switch self {
         case .block(var b):
+            self = .links(Links())
             b.apply(event, at: at)
             self = .block(b)
         case .desk(var d):
+            self = .links(Links())
             d.apply(event)
             self = .desk(d)
         case .registry(var r):
+            self = .links(Links())
             r.apply(event)
             self = .registry(r)
         case .links(var l):
+            self = .links(Links())
             l.apply(event)
             self = .links(l)
         }
@@ -57,7 +64,8 @@ public final class Node {
     public private(set) var shards: [ShardID: Replica] = [:]
     /// The graph over the shards (§3.5), kept in step with them.
     public let graph = Graph()
-    /// How many recent entries a replica keeps in memory.
+    /// How many recent entries a replica keeps in memory (a quarter more
+    /// before they are trimmed).
     public var keptEntries = 4096
     /// Called with each shard that changed.
     public var onChange: ((ShardID) -> Void)?
@@ -114,14 +122,16 @@ public final class Node {
     /// (a gap, or a repeat) is refused: the caller should fetch a snapshot.
     @discardableResult
     public func apply(_ entry: Entry, to shard: ShardID) -> Bool {
-        if var r = shards[shard] {
-            guard entry.seq == r.seq + 1 else { return entry.seq <= r.seq }
-            r.state.apply(entry.event, at: entry.at)
-            r.seq = entry.seq
-            r.entries.append(entry)
-            if r.entries.count > keptEntries { r.entries.removeFirst(r.entries.count - keptEntries) }
-            shards[shard] = r
-            graph.apply(entry, to: shard, state: r.state)
+        if let seq = shards[shard]?.seq {
+            guard entry.seq == seq + 1 else { return entry.seq <= seq }
+            // Changed where it's kept, not copied out and back (its entries,
+            // its state) at every keystroke.
+            shards[shard]!.state.apply(entry.event, at: entry.at)
+            shards[shard]!.seq = entry.seq
+            shards[shard]!.entries.append(entry)
+            // Trimmed a quarter at a time, not one shifted off every entry.
+            if let n = shards[shard]?.entries.count, n > keptEntries + keptEntries / 4 { shards[shard]!.entries.removeFirst(n - keptEntries) }
+            graph.apply(entry, to: shard, state: shards[shard]!.state)
         } else {
             guard entry.seq == 1, let state = Self.initialState(shard, entry) else { return false }
             shards[shard] = Replica(seq: 1, state: state, entries: [entry])
