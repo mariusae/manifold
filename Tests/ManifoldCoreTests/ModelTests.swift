@@ -1711,3 +1711,12 @@ private final class Seen: @unchecked Sendable {
     #expect(Rope("abc") != Rope("abd"))
     #expect(Rope("") == Rope(""))
 }
+
+@Test func aSearchIsPlacedWhereItLooks() {
+    var b = Block(id: BlockID(host: .local), kind: .search, created: Stamp(wall: 1), title: nil, path: nil)
+    #expect(b.place == nil)
+    var s = SearchState()
+    s.query = SearchQuery(text: "needle", root: "/tmp/project")
+    b.search = s
+    #expect(b.place == "/tmp/project")
+}

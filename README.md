@@ -186,7 +186,8 @@ and Mona Sans (bundled).
   new column, ⌥⌘T a new workspace with one. A note is at home in the
   folder of the block it was made from: it is found there, and saved
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
-  beside the focused block; Browse This Folder (⌃⌘O) its own.
+  beside the focused block; Browse This Folder (⌃⌘O) its own (a
+  terminal's working directory, a file's folder, the folder a search looks under).
   The **block navigation stack**: **Navigate Back** and **Navigate
   Forward** (⌃- and ⌃⇧-, as in VS Code; or the mouse's back and forward
   buttons) go along every place you've been — the tiles focused and,

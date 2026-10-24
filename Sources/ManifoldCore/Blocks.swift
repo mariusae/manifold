@@ -1052,7 +1052,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
 
     /// Where it is, for finding it, and where a new terminal from it
     /// starts: a file's folder; a listing's or a repository's own folder;
-    /// a terminal's working directory; the folder a note was made in.
+    /// a terminal's working directory; the folder a search looks under;
+    /// the folder a note was made in.
     public var place: String? {
         if let path {
             switch kind {
@@ -1060,6 +1061,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
             default: return path.deletingLastPathComponent
             }
         }
+        if let root = search?.query?.root, !root.isEmpty { return root }
         return terminal?.cwd ?? home
     }
 }
