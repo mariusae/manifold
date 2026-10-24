@@ -107,8 +107,8 @@ and Mona Sans (bundled).
   click that opens something** puts what opens over the tile clicked
   in, that tile going behind it (as ⌥-drag stacks): a link or a
   block's pill in a note, a badge's link, a sidebar row, a listing's
-  file or folder, ⌘⌥-click on a terminal's link,
-  ⌥⇧⌘-click on a page's. Drop a pill on
+  file or folder, ⌘⌥-click on a terminal's link or on a symbol in an
+  editor (its definition stacked over the editor), ⌥⇧⌘-click on a page's. Drop a pill on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
   while you drag is the target tile's shape, to say so; ⇧-drag a pill
@@ -473,7 +473,7 @@ around it, and comes back with its history.
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
-  Definition (⌃⌘J, or ⌘-click: with ⌘ held, everything there's somewhere
+  Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
   color, the one under the pointer on a soft band — a step in lightness,
   not a hue, as a chosen row's), Find References (⌃⌘R: a

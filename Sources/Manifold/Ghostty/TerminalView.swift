@@ -1142,7 +1142,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var runs: [(row: Int, from: Int, to: Int)] = []
         var targets: [String] = []
         for r in 0..<Int(info.rows) {
-            for l in links(inRow: r, cols: cols, exists: exists) { runs.append((r, l.from, l.to)); targets.append("\(r):\(l.from)-\(l.to) \(l.link.target)") }
+            for l in links(inRow: r, cols: cols, exists: exists) {
+                runs.append((r, l.from, l.to))
+                // Its middle in the window's coordinates from the top left (as `cmdclick` takes them).
+                let p = convert(NSPoint(x: info.pad_left + (Double(l.from + l.to) / 2) * info.cell_width,
+                                        y: Double(bounds.height) - info.pad_top - (Double(r) + 0.5) * info.cell_height), to: nil)
+                let top = (window?.contentView?.bounds.height ?? 0) - p.y
+                targets.append("\(r):\(l.from)-\(l.to) \(l.link.target) at \(Int(p.x)) \(Int(top))")
+            }
         }
         let hovered = hoverRow.flatMap { hr in runs.firstIndex { $0.row == hr && $0.from <= (col ?? 0) && (col ?? 0) < $0.to } }
         showLinks(runs, hovered: hovered)

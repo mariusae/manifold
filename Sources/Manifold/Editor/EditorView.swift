@@ -12,7 +12,7 @@ protocol EditorViewDelegate: AnyObject {
     /// an image block, and shown where the caret is.
     func editor(_ view: EditorView, image data: Data, kind: String)
     /// A web address was ⌘-clicked.
-    func editor(_ view: EditorView, open url: URL)
+    func editor(_ view: EditorView, open url: URL, over: Bool)
     /// A block was ⇧-dragged in as a link: linked to this one.
     func editor(_ view: EditorView, linkedFrom block: BlockID)
     /// A link in the text was clicked: a block's pill, or an address;
@@ -29,7 +29,7 @@ protocol EditorViewDelegate: AnyObject {
     /// The editor asks the block's language server something.
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
-    func editor(_ view: EditorView, open path: String, line: Int, column: Int)
+    func editor(_ view: EditorView, open path: String, line: Int, column: Int, over: Bool)
     /// The places the language server says use `word`, as a block of them.
     func editor(_ view: EditorView, references places: [LSPLocation], of word: String)
     /// Applies a server's edits to files other than this one.

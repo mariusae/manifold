@@ -19,7 +19,8 @@ protocol TextViewDelegate: AnyObject {
     /// A block was dropped in as a link to it (a note about it, a mention).
     func textView(_ view: TextView, mentioned block: BlockID)
     /// ⌘-click on a place in the text.
-    func textView(_ view: TextView, commandClickAt offset: Int)
+    /// `over`: ⌥ held too — what it opens goes over this tile, stacked.
+    func textView(_ view: TextView, commandClickAt offset: Int, over: Bool)
     /// A link in Markdown clicked: a block's pill (manifold:id), or an
     /// address; `over`: ⌥ was held, for what opens to go over this tile.
     func textView(_ view: TextView, follow target: String, over: Bool)
@@ -1793,7 +1794,7 @@ final class TextView: NSView, NSTextInputClient {
         if flags.contains(.command), event.clickCount == 1 {
             setSelections([Selection(at: offset)])
             dragAnchor = nil
-            delegate?.textView(self, commandClickAt: offset)
+            delegate?.textView(self, commandClickAt: offset, over: flags.contains(.option))
             return
         }
         if flags.contains(.shift), let last = selections.last {

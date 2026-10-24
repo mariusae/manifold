@@ -5880,8 +5880,8 @@ extension MainWindowController: EditorViewDelegate {
         hosts.lsp(request, done: done)
     }
 
-    func editor(_ view: EditorView, open url: URL) {
-        open(url.absoluteString, from: view.placement)
+    func editor(_ view: EditorView, open url: URL, over: Bool) {
+        open(url.absoluteString, from: view.placement, over: over)
     }
 
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool) {
@@ -5986,12 +5986,14 @@ extension MainWindowController: EditorViewDelegate {
     /// A link in the text clicked: a block's gone to; an address opened.
     func editor(_ view: EditorView, follow target: String, over: Bool) { open(target, from: view.placement, over: over) }
 
-    func editor(_ view: EditorView, open path: String, line: Int, column: Int) {
+    /// A definition found (⌘-click): its file at its line, beside the
+    /// editor — or, ⌘⌥-clicked, stacked over it.
+    func editor(_ view: EditorView, open path: String, line: Int, column: Int, over: Bool) {
         let on = view.block.host
         pendingJump = (path, line, column)
         let block = hosts.textBlock(for: path, on: on)
         hosts.link(from: view.block, to: block, kind: .opened, context: view.lineAtCaret)
-        show(block, lens: Lens.default(for: .text, path: path), opener(view.placement), context: view.lineAtCaret)
+        show(block, lens: Lens.default(for: .text, path: path), opener(view.placement, over: over), context: view.lineAtCaret)
     }
 
     /// References as a search block: each place's line read from its file

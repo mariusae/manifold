@@ -887,6 +887,12 @@ enum DebugControl {
         case "editor":
             // The focused editor's text, selections, and undo depth.
             guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
+            // "editor at <offset>": where that character is, in window
+            // coordinates from the top left (as `click` and `cmdclick` take them).
+            if arg.hasPrefix("at "), let offset = Int(arg.dropFirst(3)), let content = tv.window?.contentView {
+                let r = tv.caretRectInWindow(offset)
+                return "\(Int(r.maxX + 4)) \(Int(content.bounds.height - r.midY))"
+            }
             return "selections \(tv.selections.map { "\($0.min)-\($0.max)" }) undo \(tv.undoDepth) line \(tv.caretLine + 1) col \(tv.caretColumn)\n" + tv.text.string
         case "scheme":
             guard let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
@@ -907,24 +913,25 @@ enum DebugControl {
             wc?.setEditorFont(item)
             return "ok"
         case "cmdclick":
-            // "cmdclick x y": ⌘ down, the mouse moved there, and a ⌘-click,
-            // all through the window (window coordinates from the top-left).
+            // "cmdclick x y [opt]": ⌘ down, the mouse moved there, and a ⌘-click
+            // (⌘⌥ with opt), all through the window (window coordinates from the top-left).
             let a = arg.split(separator: " ").compactMap { Double($0) }
-            guard a.count == 2, let window = wc?.window else { return "usage: cmdclick x y" }
+            guard a.count == 2, let window = wc?.window else { return "usage: cmdclick x y [opt]" }
+            let mods: NSEvent.ModifierFlags = arg.hasSuffix(" opt") ? [.command, .option] : .command
             let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
             let now = ProcessInfo.processInfo.systemUptime
             let t = window.contentView?.hitTest(p) as? TerminalView
-            if let flags = NSEvent.keyEvent(with: .flagsChanged, location: p, modifierFlags: .command, timestamp: now,
+            if let flags = NSEvent.keyEvent(with: .flagsChanged, location: p, modifierFlags: mods, timestamp: now,
                                             windowNumber: window.windowNumber, context: nil, characters: "",
                                             charactersIgnoringModifiers: "", isARepeat: false, keyCode: 0x37) {
                 t?.flagsChanged(with: flags)
             }
-            if let moved = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: .command, timestamp: now,
+            if let moved = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: mods, timestamp: now,
                                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
                 t?.mouseMoved(with: moved)
             }
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: .command, timestamp: now,
+                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: now,
                                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
                     window.sendEvent(e)
                 }

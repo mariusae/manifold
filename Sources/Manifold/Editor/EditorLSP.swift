@@ -66,19 +66,21 @@ extension EditorView {
 
     @objc func goToDefinition(_ sender: Any?) { definition(at: caret) }
 
-    func definition(at offset: Int) {
+    /// `over`: what's found goes over this tile (⌘⌥-click) — said with
+    /// the click, as the answer comes after it.
+    func definition(at offset: Int, over: Bool = false) {
         ask(.definition(block, offset: offset), busy: "Looking for the definition…") { [weak self] result in
             guard let self, case .locations(let places) = result else { return }
             guard let place = places.first else { return self.flash("No definition found") }
-            self.go(to: place)
+            self.go(to: place, over: over)
         }
     }
 
-    private func go(to place: LSPLocation) {
+    private func go(to place: LSPLocation, over: Bool) {
         if place.path == path {
             select(line: place.line + 1, column: place.character + 1)
         } else {
-            delegate?.editor(self, open: place.path, line: place.line + 1, column: place.character + 1)
+            delegate?.editor(self, open: place.path, line: place.line + 1, column: place.character + 1, over: over)
         }
     }
 
@@ -250,9 +252,9 @@ extension EditorView {
     func textView(_ view: TextView, mentioned block: BlockID) { delegate?.editor(self, linkedFrom: block) }
     func textView(_ view: TextView, follow target: String, over: Bool) { delegate?.editor(self, follow: target, over: over) }
 
-    func textView(_ view: TextView, commandClickAt offset: Int) {
-        if let url = urlAt(offset) { delegate?.editor(self, open: url); return }
-        definition(at: offset)
+    func textView(_ view: TextView, commandClickAt offset: Int, over: Bool) {
+        if let url = urlAt(offset) { delegate?.editor(self, open: url, over: over); return }
+        definition(at: offset, over: over)
     }
 
     /// A web address under an offset, if the line has one there.
