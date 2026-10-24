@@ -4,10 +4,11 @@ import ManifoldCore
 /// Settings (⌘,): every setting in one window, a pane each — how things
 /// look, terminals, history, how hosts are reached, language servers.
 final class SettingsWindow: NSWindowController {
-    enum Pane: Int, CaseIterable { case appearance, terminals, history, remoting, languageServers }
+    enum Pane: Int, CaseIterable { case appearance, typography, terminals, history, remoting, languageServers }
 
     let source = SettingsSource()
     let appearance: AppearancePane
+    let typography: TypographyPane
     let terminals: TerminalsPane
     let history: HistoryPane
     let remoting = RemotingPane()
@@ -16,12 +17,13 @@ final class SettingsWindow: NSWindowController {
 
     init() {
         appearance = AppearancePane(source)
+        typography = TypographyPane(source)
         terminals = TerminalsPane(source)
         history = HistoryPane(source)
         tabs.tabStyle = .toolbar
         tabs.transitionOptions = [.crossfade, .allowUserInteraction]
         let panes: [(NSViewController, String)] = [
-            (appearance, "paintpalette"), (terminals, "terminal"), (history, "clock.arrow.circlepath"),
+            (appearance, "paintpalette"), (typography, "textformat"), (terminals, "terminal"), (history, "clock.arrow.circlepath"),
             (remoting, "network"), (languageServers, "curlybraces"),
         ]
         for (vc, symbol) in panes {
@@ -52,7 +54,7 @@ final class SettingsWindow: NSWindowController {
     /// `tables`: the remoting and language servers' too (not at every render).
     func refresh(tables: Bool = true) {
         guard window?.isVisible == true else { return }
-        for vc in [appearance, terminals, history] as [SettingsPane] where vc.isViewLoaded { vc.refresh() }
+        for vc in [appearance, typography, terminals, history] as [SettingsPane] where vc.isViewLoaded { vc.refresh() }
         guard tables else { return }
         if remoting.isViewLoaded { remoting.refresh() }
         if languageServers.isViewLoaded { languageServers.refresh() }
@@ -181,7 +183,7 @@ final class AppearancePane: SettingsPane {
         row("Accent", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop.")
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
-        row("Fonts", themes, top: true)
+        row("Fonts", themes, note: "Custom is set in Typography: each role's face, size, spacing and features.", top: true)
         let (editor, e) = segments(["Editing Font", "Monospaced"], [EditorFont.proportional, .monospaced]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.editorFont = v }
         }

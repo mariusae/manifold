@@ -269,8 +269,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func renderNow() {
         guard let window else { return }
-        if FontTheme.current != hosts.state.appearance.theme {
-            FontTheme.current = hosts.state.appearance.theme
+        let appearance = hosts.state.appearance
+        if FontTheme.current != appearance.theme || FontTheme.typography != appearance.typography {
+            // Custom typography changed under the same theme too: what's
+            // set in it is told, as for a new theme.
+            FontTheme.current = appearance.theme
+            FontTheme.typography = appearance.typography
             for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
         }
         if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
@@ -5005,6 +5009,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let w = settings()
             w.show(.languageServers)
             return w.languageServers.debug(words.dropFirst().joined(separator: " "))
+        case "type":
+            // "settings type <role> [family=<name with _ for spaces>] [size=n] [weight=n] [leading=n]
+            // [tracking=n] [features=a,b] [measure=n] [gap=n]": custom typography, as the pane sets it.
+            let w = settings()
+            w.show(.typography)
+            guard words.count > 1, let role = FontRole(rawValue: words[1]) else { return w.typography.debugState }
+            w.typography.debugSet(role: role) { s in
+                for kv in words.dropFirst(2) {
+                    let parts = kv.split(separator: "=", maxSplits: 1).map(String.init)
+                    guard parts.count == 2 else { continue }
+                    let v = parts[1]
+                    switch parts[0] {
+                    case "family": s.family = v == "system" ? "" : v.replacingOccurrences(of: "_", with: " ")
+                    case "size": s.size = Double(v) ?? s.size
+                    case "weight": s.weight = Int(v) ?? s.weight
+                    case "leading": s.lineHeight = Double(v) ?? s.lineHeight
+                    case "tracking": s.tracking = Double(v) ?? s.tracking
+                    case "features": s.features = v.replacingOccurrences(of: ",", with: ", ")
+                    case "measure": s.measure = Double(v) ?? s.measure
+                    case "gap": s.paragraphSpacing = Double(v) ?? s.paragraphSpacing
+                    default: break
+                    }
+                }
+            }
+            return w.typography.debugState
         case "tint":
             guard words.count > 1, let t = Tint(rawValue: words[1]) else { return "tints: \(Tint.allCases.map(\.rawValue).joined(separator: " "))" }
             settings().appearance.loadViewIfNeeded()

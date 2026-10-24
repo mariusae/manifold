@@ -472,6 +472,20 @@ around it, and comes back with its history.
   Tiempos Text is licensed, so the build copies it from your own fonts
   (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts) rather
   than fetching it — without it, Humanist previews read in the system font.
+  A third, **Custom**, is set in **Settings ▸ Typography**, a role at a
+  time: any installed family (the monospaced role's list leads with
+  those of fixed pitch) and its face (by weight), the size, the line
+  height (a multiple of the size), letter spacing (thousandths of an
+  em), and OpenType features by tag (`ss01, zero, -liga, cv05=2`, or
+  checked off a menu of those the font has); the reading role also its
+  measure (the longest line in a preview, in characters) and the space
+  between paragraphs. Each role's size scales everything set in it, and
+  all of it reaches everywhere the role is used: editors and notes (the
+  editor's lines and letters too), previews (as CSS), and terminals (as
+  Ghostty's font family, style, size and features, its cells' height and
+  width giving the line height and spacing). A sample shows the role as
+  it's set; changes apply as you make them (and choose Custom); Start
+  From copies Humanist's or System's, all of it or the role's.
 - **Language servers** run on the file's host, one per language and
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom

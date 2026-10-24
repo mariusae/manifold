@@ -513,3 +513,9 @@ extension MarkdownView {
         await PageSelection.text(in: web).map { ManiSelected(text: $0) }
     }
 }
+
+extension MarkdownView: FollowsFontTheme {
+    func fontThemeChanged() {
+        if loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) }
+    }
+}

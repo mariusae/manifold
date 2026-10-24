@@ -654,10 +654,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     private func applyFont() {
-        textView.font = textFont
+        let f = textFont
+        textView.font = f
         textView.codeFont = theme.font(.monospaced, size: max(8, theme.editorSize(.monospaced) + sizeAdjust - 1))
-        // Viewed, set as go.dev sets code: lines at 1.4.
-        textView.lineHeightMultiple = viewing ? 1.4 : font == .proportional ? 1.25 : 1.2
+        // Viewed, set as go.dev sets code: lines at 1.4 (or as custom typography sets code).
+        let kind: EditorFont = viewing ? .monospaced : font
+        textView.lineHeightMultiple = theme.editorLineHeight(kind, font: f, fallback: viewing ? 1.4 : font == .proportional ? 1.25 : 1.2)
+        textView.tracking = theme.tracking(kind, font: f)
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }
@@ -999,4 +1002,9 @@ extension EditorView {
         let first = rope.line(at: sel.min) + 1, last = rope.line(at: max(sel.max - 1, sel.min)) + 1
         return ManiSelected(text: text, lines: first...last)
     }
+}
+
+extension EditorView: FollowsFontTheme {
+    /// Custom typography changed (the theme the same): set again.
+    func fontThemeChanged() { applyFont() }
 }

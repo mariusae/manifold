@@ -60,6 +60,8 @@ final class TextView: NSView, NSTextInputClient {
     // Appearance.
     var font: NSFont = .systemFont(ofSize: 14) { didSet { fontChanged() } }
     var lineHeightMultiple: CGFloat = 1.2 { didSet { fontChanged() } }
+    /// Letter spacing, in points (custom typography's).
+    var tracking: CGFloat = 0 { didSet { if tracking != oldValue { fontChanged() } } }
     var textColor = Theme.text { didSet { if textColor != oldValue { layouts = [:]; needsDisplay = true } } }
     /// What ⌘ shows as links: byte ranges of names there's somewhere to go
     /// to, in the link color go.dev's docs have.
@@ -480,7 +482,9 @@ final class TextView: NSView, NSTextInputClient {
         style.tabStops = []
         style.defaultTabInterval = space * CGFloat(tabWidth)
         style.lineBreakMode = .byCharWrapping
-        return [.font: font, .foregroundColor: textColor, .paragraphStyle: style]
+        var out: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor, .paragraphStyle: style]
+        if tracking != 0 { out[.kern] = tracking }
+        return out
     }
 
     /// The y of a logical line's first row.

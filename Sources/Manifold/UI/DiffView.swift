@@ -536,3 +536,10 @@ extension DiffView: Printable {
         return TextPrint.operation(lines.joined(separator: "\n"), title: source()?.displayTitle ?? "Diff", font: TextPrint.codeFont)
     }
 }
+
+extension DiffView: FollowsFontTheme {
+    func fontThemeChanged() {
+        rowsView.font = theme.font(.monospaced, size: 12)
+        rowsView.needsDisplay = true
+    }
+}

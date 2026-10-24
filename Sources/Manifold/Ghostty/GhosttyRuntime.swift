@@ -95,7 +95,7 @@ final class GhosttyRuntime {
         }
         // The caret and selection in the app's tint, over the palette's.
         let tint = "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
-        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + tint + appearance.theme.terminalConfig + "\ncontrast-correction = \(mode)\n"
+        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\n"
     }
 
     private static func makeConfig(_ appearance: Appearance, dark: Bool) -> ghostty_config_t? {

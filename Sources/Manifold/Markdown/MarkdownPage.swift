@@ -213,7 +213,7 @@ enum MarkdownPage {
     /// The theme's fonts, as the CSS variables the page is set in.
     static func themeVariables(_ theme: FontTheme) -> String {
         let css = theme.css
-        return "--sans: \(css.sans); --mono: \(css.mono); --mono-features: \(css.features); --sans-features: \(css.sansFeatures);"
+        return "--sans: \(css.sans); --mono: \(css.mono); --mono-features: \(css.features); --sans-features: \(css.sansFeatures); " + theme.cssExtras
     }
 
     /// Script that sets the page in `theme`'s fonts.
@@ -236,16 +236,16 @@ enum MarkdownPage {
         html { background: #ffffff; }
         body {
           margin: 0; color: #202224;
-          font: 16px/1.4 var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-          font-feature-settings: var(--sans-features);
+          font: var(--read-weight, 400) var(--read-size, 16px)/var(--read-leading, 1.4) var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          font-feature-settings: var(--sans-features); letter-spacing: var(--read-tracking, normal);
           -webkit-font-smoothing: antialiased; word-wrap: break-word;
         }
-        main { max-width: 75.75rem; margin: 0 auto; padding: 1.5rem 1.5rem 96px; }
+        main { max-width: var(--read-measure, 75.75rem); margin: 0 auto; padding: 1.5rem 1.5rem 96px; }
         main > :first-child { margin-top: 0; }
         h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.25; margin: 1.25rem 0 0.75rem; color: #202224; }
         h1 { font-size: 2.25rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.125rem; }
         h4, h5, h6 { font-size: 1rem; }
-        p, ul, ol, blockquote, pre, table, details { margin: 1rem 0; }
+        p, ul, ol, blockquote, pre, table, details { margin: var(--read-gap, 1rem) 0; }
         ul, ol { padding-left: 1.8em; } li + li { margin-top: 0.2em; }
         li > input[type=checkbox] { margin: 0 0.45em 0 -1.35em; vertical-align: -1px; }
         ul:has(> li > input[type=checkbox]) { list-style: none; }
@@ -255,8 +255,8 @@ enum MarkdownPage {
         a[href^="manifold:"]:hover { text-decoration: none; background: rgba(127,127,127,0.24); }
         a { color: #007d9c; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
-          font-family: var(--mono), Menlo, monospace; font-size: 0.83rem;
-          font-feature-settings: var(--mono-features);
+          font-family: var(--mono), Menlo, monospace; font-size: calc(0.83rem * var(--mono-scale, 1));
+          font-feature-settings: var(--mono-features); font-weight: var(--mono-weight, 400); letter-spacing: var(--mono-tracking, normal);
         }
         :not(pre) > code { font-size: 0.9em; }
         pre { background: #f8f8f8; color: #202224; padding: 0.5rem 1.75rem; border-radius: 4px; overflow-x: auto; line-height: 1.4; }

@@ -56,6 +56,8 @@ public struct Appearance: Codable, Equatable, Sendable {
     /// The color the app's own marks take: the focus ring, selections,
     /// the caret, a pool of light in the backdrop.
     public var tint: Tint = .blue
+    /// The custom font theme's typography (used when `theme` is `.custom`).
+    public var typography: Typography = .humanist
 
     public init(theme: FontTheme = .humanist, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
@@ -75,6 +77,7 @@ public struct Appearance: Codable, Equatable, Sendable {
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
         tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .blue
+        typography = (try? c.decodeIfPresent(Typography.self, forKey: .typography)) ?? .humanist
     }
 }
 
@@ -193,13 +196,107 @@ public struct HostPreferences: Codable, Equatable, Sendable {
 /// **Humanist** — Lato to edit, Tiempos Text to read, Source Code Pro for
 /// terminals and code — or **System**: SF, and SF Mono.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
-    case humanist, system
+    /// Custom: the typography set in Settings (`Appearance.typography`).
+    case humanist, system, custom
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         // The themes there once were: SF's (Notes) as System, the rest as Humanist.
-        self = raw == "system" || raw == "notes" ? .system : .humanist
+        self = raw == "custom" ? .custom : raw == "system" || raw == "notes" ? .system : .humanist
     }
+}
+
+/// How a font role is set (custom typography): its face, size and how
+/// its lines and letters are spaced, and the OpenType features it's set
+/// with.
+public struct TypeStyle: Codable, Equatable, Sendable {
+    /// The family, as the system names it; "" for the system's own (SF,
+    /// SF Mono for the monospaced role).
+    public var family: String
+    /// Points, where the role is set at its usual size (an editor's text,
+    /// a preview's paragraphs, a terminal): the rest scale with it.
+    public var size: Double
+    /// From 100 (thin) to 900 (black), as CSS counts; 400 is regular. The
+    /// family's upright face nearest it is used.
+    public var weight: Int
+    /// Lines apart, as a multiple of the size.
+    public var lineHeight: Double
+    /// Letter spacing, in thousandths of an em.
+    public var tracking: Double
+    /// OpenType features, as CSS and Ghostty write them: "ss01, zero,
+    /// -liga, cv05=2".
+    public var features: String
+    /// For reading: the longest line, in characters (0: the page's own).
+    public var measure: Double
+    /// For reading: the space between paragraphs, in ems.
+    public var paragraphSpacing: Double
+
+    public init(family: String, size: Double, weight: Int = 400, lineHeight: Double, tracking: Double = 0,
+                features: String = "", measure: Double = 0, paragraphSpacing: Double = 1) {
+        self.family = family
+        self.size = size
+        self.weight = weight
+        self.lineHeight = lineHeight
+        self.tracking = tracking
+        self.features = features
+        self.measure = measure
+        self.paragraphSpacing = paragraphSpacing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        family = (try? c.decodeIfPresent(String.self, forKey: .family)) ?? ""
+        size = (try? c.decodeIfPresent(Double.self, forKey: .size)) ?? 14
+        weight = (try? c.decodeIfPresent(Int.self, forKey: .weight)) ?? 400
+        lineHeight = (try? c.decodeIfPresent(Double.self, forKey: .lineHeight)) ?? 1.3
+        tracking = (try? c.decodeIfPresent(Double.self, forKey: .tracking)) ?? 0
+        features = (try? c.decodeIfPresent(String.self, forKey: .features)) ?? ""
+        measure = (try? c.decodeIfPresent(Double.self, forKey: .measure)) ?? 0
+        paragraphSpacing = (try? c.decodeIfPresent(Double.self, forKey: .paragraphSpacing)) ?? 1
+    }
+
+    /// The features as tags and values: "-liga" is liga 0, "cv05=2" cv05 2,
+    /// "ss01" ss01 1; what isn't a tag of four letters or digits is left out.
+    public var featureTags: [(tag: String, value: Int)] {
+        features.split(whereSeparator: { $0 == "," || $0 == " " || $0 == "\n" }).compactMap { word in
+            var w = word.trimmingCharacters(in: .whitespaces)
+            var value = 1
+            if w.hasPrefix("-") { value = 0; w.removeFirst() } else if w.hasPrefix("+") { w.removeFirst() }
+            if let eq = w.firstIndex(of: "=") {
+                guard let v = Int(w[w.index(after: eq)...]) else { return nil }
+                value = v
+                w = String(w[..<eq])
+            }
+            guard w.count == 4, w.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
+            return (w, value)
+        }
+    }
+}
+
+/// Custom typography (§3.1): how each of the three font roles is set.
+public struct Typography: Codable, Equatable, Sendable {
+    public var editing: TypeStyle
+    public var reading: TypeStyle
+    public var monospaced: TypeStyle
+
+    public init(editing: TypeStyle, reading: TypeStyle, monospaced: TypeStyle) {
+        self.editing = editing
+        self.reading = reading
+        self.monospaced = monospaced
+    }
+
+    /// Humanist's, to start from: Lato to edit, Tiempos Text to read,
+    /// Source Code Pro for code.
+    public static let humanist = Typography(
+        editing: TypeStyle(family: "Lato", size: 14.5, lineHeight: 1.45),
+        reading: TypeStyle(family: "Tiempos Text", size: 16, lineHeight: 1.4),
+        monospaced: TypeStyle(family: "Source Code Pro", size: 13, lineHeight: 1.3, features: "calt"))
+
+    /// System's: SF, and SF Mono.
+    public static let system = Typography(
+        editing: TypeStyle(family: "", size: 14, lineHeight: 1.45),
+        reading: TypeStyle(family: "", size: 16, lineHeight: 1.4),
+        monospaced: TypeStyle(family: "", size: 13, lineHeight: 1.3, features: "calt"))
 }
 
 /// Light or dark: as the system is, or always one.
