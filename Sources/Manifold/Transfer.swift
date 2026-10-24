@@ -235,10 +235,12 @@ extension HostClient {
     /// A file's bytes from the host, down a stream of its own as they come
     /// (`onData`), from `offset`, `length` of them at most; then `done`,
     /// with why not if it wasn't all there (unreadable, bigger than
-    /// `limit`, the link gone).
+    /// `limit`, the link gone). What it returns stops it (and then `done`
+    /// says the link went).
+    @discardableResult
     func readFile(_ path: String, offset: Int64 = 0, length: Int64? = nil, limit: Int64? = nil,
-                  onData: @escaping (Data) -> Void, done: @escaping (String?) -> Void) {
-        guard let mux else { return done("not connected") }
+                  onData: @escaping (Data) -> Void, done: @escaping (String?) -> Void) -> () -> Void {
+        guard let mux else { done("not connected"); return {} }
         let stream = mux.open(bulk: true, compress: true, callbackQueue: .main)
         var ended: String??
         stream.onFrame = { frame in
@@ -247,6 +249,7 @@ extension HostClient {
         }
         stream.onClose = { done(ended ?? "the link to the host went") }
         stream.send(.message(ClientMessage.readFile(path: path, offset: offset, length: length, limit: limit)))
+        return { [weak stream] in stream?.abort() }
     }
 
     /// An image kept on the host as `name` in `folder` (Manifold's own, if
@@ -281,10 +284,11 @@ extension HostClient {
     }
 
     /// A file's bytes by its path (all of them, nil past `limit` or
-    /// unreadable).
-    func readBytes(path: String, limit: Int, done: @escaping (Data?) -> Void) {
+    /// unreadable); what it returns stops it.
+    @discardableResult
+    func readBytes(path: String, limit: Int, done: @escaping (Data?) -> Void) -> () -> Void {
         var whole = Data()
-        readFile(path, limit: Int64(limit), onData: { whole.append($0) }) { error in done(error == nil ? whole : nil) }
+        return readFile(path, limit: Int64(limit), onData: { whole.append($0) }) { error in done(error == nil ? whole : nil) }
     }
 
     /// A file block's bytes (an image, a PDF), as big as it is.

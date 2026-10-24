@@ -7,8 +7,8 @@ import Quartz
 /// small enough to (else its icon stands in).
 final class FilePreviewView: NSView {
     /// A local URL for a path: the file itself here; a copy fetched from
-    /// another host; nil when it can't be had.
-    var resolve: (String, @escaping (URL?) -> Void) -> Void = { p, done in done(URL(fileURLWithPath: p)) }
+    /// another host; nil when it can't be had. What it returns gives up.
+    var resolve: (String, @escaping (URL?) -> Void) -> () -> Void = { p, done in done(URL(fileURLWithPath: p)); return {} }
 
     private var quickLook: QLPreviewView?
     private let icon = NSImageView()
@@ -17,6 +17,11 @@ final class FilePreviewView: NSView {
     private let date = NSTextField(labelWithString: "")
     private(set) var node: BrowserNode?
     private var token = 0
+    /// Gives up on the file being fetched for the preview, if one is.
+    private var cancel: (() -> Void)?
+    /// When the last was shown: another soon after is the selection
+    /// moving through, its preview put off till it stops.
+    private var lastShown = Date.distantPast
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -36,6 +41,8 @@ final class FilePreviewView: NSView {
 
     /// Quick Look let go of (it holds the file).
     func close() {
+        cancel?()
+        cancel = nil
         quickLook?.close()
         quickLook?.removeFromSuperview()
         quickLook = nil
@@ -51,15 +58,27 @@ final class FilePreviewView: NSView {
         icon.image = n?.icon
         icon.isHidden = n == nil
         quickLook?.isHidden = true
+        cancel?()
+        cancel = nil
+        let now = Date(), passing = now.timeIntervalSince(lastShown) < 0.25
+        lastShown = now
         guard let n, !n.isDirectory else { return needsLayout = true }
         let t = token
-        resolve(n.path) { [weak self] url in
-            guard let self, self.token == t, let url else { return }
-            let q = self.quickLook ?? self.makeQuickLook()
-            q.previewItem = url as NSURL
-            q.isHidden = false
-            self.icon.isHidden = true
-            self.needsLayout = true
+        // Arrowing through: the name and kind at once, Quick Look (and a
+        // remote file's fetch) once the selection stays a moment.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (passing ? 0.12 : 0)) { [weak self] in
+            guard let self, self.token == t else { return }
+            let stop = self.resolve(n.path) { [weak self] url in
+                guard let self, self.token == t else { return }
+                self.cancel = nil
+                guard let url else { return }
+                let q = self.quickLook ?? self.makeQuickLook()
+                q.previewItem = url as NSURL
+                q.isHidden = false
+                self.icon.isHidden = true
+                self.needsLayout = true
+            }
+            if self.token == t { self.cancel = stop }
         }
         needsLayout = true
     }

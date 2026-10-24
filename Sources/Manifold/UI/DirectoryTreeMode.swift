@@ -65,8 +65,8 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
         scroll.drawsBackground = false
         left.addSubview(scroll)
         preview.resolve = { [weak owner] path, done in
-            guard let owner else { return done(nil) }
-            owner.resolve(path, done: done)
+            guard let owner else { done(nil); return {} }
+            return owner.resolve(path, done: done)
         }
         nothing.font = .systemFont(ofSize: 12)
         nothing.textColor = Theme.secondaryText
@@ -328,7 +328,7 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
     }
 
     var debugRows: String {
-        "preview \(right.isHidden ? "hidden" : "\(Int(right.frame.width)) wide: " + (preview.node?.name ?? "nothing")) tree \(Int(left.frame.width))\n"
+        "preview \(right.isHidden ? "hidden" : "\(Int(right.frame.width)) wide: " + (preview.node?.name ?? "nothing") + " (" + preview.debugState + ")") tree \(Int(left.frame.width))\n"
             + (0..<min(outline.numberOfRows, 60)).compactMap { r -> String? in
                 guard let n = outline.item(atRow: r) as? BrowserNode else { return nil }
                 let mark = n.isDirectory ? (outline.isItemExpanded(n) ? "▾ " : "▸ ") : "  "

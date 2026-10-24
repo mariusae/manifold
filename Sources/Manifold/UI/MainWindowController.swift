@@ -6533,18 +6533,21 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
-    /// A file here, as it is; one on another host, fetched afresh (20 MB at
-    /// most) into a folder by host and path.
-    func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil) }
-        if client.transport.isLocal { return done(URL(fileURLWithPath: path)) }
+    /// A file here, as it is; one on another host, fetched afresh (4 MB at
+    /// most: a preview, gone past as the selection moves on, and stopped
+    /// then) into a folder by host and path, written off the main thread.
+    func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) -> () -> Void {
+        guard let client = hosts.client(view.block.host) else { done(nil); return {} }
+        if client.transport.isLocal { done(URL(fileURLWithPath: path)); return {} }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-previews/\(view.block.host.raw)" + path.deletingLastPathComponent)
         let url = dir.appendingPathComponent(path.lastPathComponent)
-        client.readBytes(path: path, limit: 20 << 20) { data in
+        return client.readBytes(path: path, limit: 4 << 20) { data in
             guard let data else { return done(nil) }
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            guard (try? data.write(to: url)) != nil else { return done(nil) }
-            done(url)
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let written = (try? data.write(to: url)) != nil
+                DispatchQueue.main.async { done(written ? url : nil) }
+            }
         }
     }
 }
