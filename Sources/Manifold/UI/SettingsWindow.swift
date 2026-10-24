@@ -178,7 +178,7 @@ final class AppearancePane: SettingsPane {
         showScheme = s
         row("Appearance", scheme)
         tints.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.tint = t } }
-        row("Tint", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop.")
+        row("Accent", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop.")
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
         row("Fonts", themes, top: true)

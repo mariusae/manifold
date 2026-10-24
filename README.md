@@ -997,9 +997,9 @@ patch](patches/ghostty.patch). Its Appearance follows the system, or
 keeps to light or dark.
 
 **Settings** (⌘,) holds every setting, a pane each: Appearance (light or
-dark, the tint, the fonts, the editor's text, contrast), Terminals (copy
+dark, the accent color, the fonts, the editor's text, contrast), Terminals (copy
 on select, ending idle shells), History, Remoting and Language Servers.
-The **tint** — System (the macOS accent color), Blue, Orange (Overcast's),
+The **accent color** — System (the macOS one), Blue, Orange (Overcast's),
 Purple, Pink, Green or Graphite — colors the app's own marks: the focus
 ring, what's chosen or toggled, the selection bands, progress, the caret
 and selected text in editors and terminals, and one of the backdrop's
