@@ -816,6 +816,33 @@ failed with the cell's exit. The shell ends with the server (or the
 block); the cells and their outputs stay, and the next run starts a new
 shell.
 
+### 7.8 Panels
+
+A block of widgets an agent (or a script) describes, for what a terminal
+can't do well: a form to fill, a choice to make among rows, a slider
+to steer by, progress to watch. `mani ui new` makes one from JSON — a
+title and items, each `{"type", "id", …}`: labels and Markdown, buttons,
+fields and text, checkboxes, selects, sliders, progress, tables and
+lists, images, rows and groups of these, dividers — drawn with the
+system's controls (`PanelView`), in a column. What the native set can't
+do goes in an `html` widget: a page, with `mani.emit(name, value)` to say
+what's done in it.
+
+The block holds the JSON whole (`uiSpec`) and the widgets' values by id
+(`uiValues`, each JSON): what's set from the shell (`mani ui set id=…`)
+and what's changed by hand alike, so a panel comes back as it was after
+a restart, and on another Mac. `mani ui set id.property=…` changes a
+widget (its label, its rows) by changing the JSON.
+
+What's done in a panel — a click, a change, an emit — is an event: the
+widget's id, its value, and all the panel's values. It goes to a `mani ui
+wait` on the panel, or waits in the app for the next one (so a loop of
+waits misses nothing), and to `mani watch`. A widget with `run` runs that
+command on the panel's host, by sh in the panel's folder, with the event
+in its environment (`MANI_EVENT`, `MANI_VALUE`) and the panel as
+`MANIFOLD_BLOCK`, so `mani ui set @here …` answers in the panel itself;
+nothing asks first, but the widget's tooltip says what it runs.
+
 ---
 
 ## 8. Hosts, attachments and the wire

@@ -394,6 +394,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let m as MediaView in views.values { m.documentChanged() }
             for case let pv as ProcessView in views.values { pv.documentChanged() }
             for case let d as DiffView in views.values { d.documentChanged() }
+            for case let panel as PanelView in views.values { panel.documentChanged() }
         } else {
             content.clear()
             window.title = "Manifold"
@@ -643,6 +644,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // The host's smartlog may have stopped since (a restart): asked for.
             smartlogStart(s)
             v = s
+        case .ui:
+            let panel = PanelView(placement: p.id, block: p.block)
+            panel.delegate = self
+            panel.source = { [weak self] in self?.hosts.block(p.block) }
+            panel.documentChanged()
+            v = panel
         case .notebook:
             let n = NotebookView(placement: p.id, block: p.block)
             n.delegate = self
@@ -3999,6 +4006,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .output:
                 secondary = "output " + (block.place ?? "")
                 detail = "Output" + (block.output?.status.map { $0 == 0 ? ", ok" : ", exit \($0)" } ?? "") + (block.place.map { " · " + $0.abbreviatingHome } ?? "")
+            case .ui:
+                secondary = "panel ui form " + (block.place ?? "")
+                detail = "Panel" + (block.place.map { " · " + $0.abbreviatingHome } ?? "")
             }
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"
@@ -7683,5 +7693,11 @@ enum PinMenu {
         let item = NSMenuItem(title: "Pin in Workspace", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "")
         item.representedObject = placement
         return item
+    }
+}
+
+extension MainWindowController: PanelViewDelegate {
+    func panel(_ view: PanelView, event: [String: Any], changed: [String: String], run: String?) {
+        maniDesk.panelEvent(view.block, event: event, changed: changed, run: run)
     }
 }

@@ -37,6 +37,10 @@ final class ManiDesk {
     private var runs: [Asker: (block: BlockID, after: Int, started: Date)] = [:]
     /// What a `watch` compares against, as of the last change.
     private var seen: Seen?
+    /// What's been done in each panel that no `ui wait` has had yet.
+    private var panelEvents: [BlockID: [String]] = [:]
+    /// `ui wait`s: the panel, and the widget waited on, if one.
+    private var panelWaits: [Asker: (block: BlockID, id: String?)] = [:]
 
     init(_ wc: MainWindowController) {
         self.wc = wc
@@ -72,6 +76,7 @@ final class ManiDesk {
     func ended(_ asker: Asker) {
         watchers.removeValue(forKey: asker)
         runs.removeValue(forKey: asker)
+        panelWaits.removeValue(forKey: asker)
     }
 
     private func run(_ r: ManiRequest, _ asker: Asker) async throws -> String? {
@@ -100,6 +105,10 @@ final class ManiDesk {
             let t = try await target(r.args[0], scope)
             hosts.append(.title(r.args[1].isEmpty ? nil : r.args[1]), to: .block(t.block))
             return ""
+        case "ui new": return try newPanel(r, scope)
+        case "ui set": return try setPanel(r, scope)
+        case "ui get": return try getPanel(r, scope)
+        case "ui wait": return try waitPanel(r, scope, asker)
         case "watch":
             let only = r.flags["only"].map { Set($0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
             watchers[asker] = only
@@ -219,7 +228,7 @@ final class ManiDesk {
     }
 
     static let kindWords: Set<String> = ["note", "file", "terminal", "agent", "folder", "web", "image", "pdf", "search", "diff",
-                                         "output", "notebook", "git", "smartlog", "process", "preview", "editor"]
+                                         "output", "notebook", "git", "smartlog", "process", "preview", "editor", "ui"]
 
     /// A row naming a tile, for a choice to be made among them.
     private func describe(_ id: PlacementID, in a: ArrangementState) -> String {
@@ -504,6 +513,8 @@ final class ManiDesk {
             return ([head] + g.status.map { "\($0.index)\($0.workTree) \($0.path)" }).joined(separator: "\n")
         case .arrangement:
             return try ls(ManiRequest(verb: "ls", flags: [:], args: [], cwd: r.cwd, here: r.here), scope)
+        case .ui:
+            return json(panelValues(b))
         default:
             throw Failure(message: "\(b.displayTitle) (\(b.kind.rawValue)) has no text to read")
         }
@@ -856,6 +867,156 @@ final class ManiDesk {
         }
     }
 
+    // MARK: Panels
+
+    private func newPanel(_ r: ManiRequest, _ scope: Scope) throws -> String {
+        let spec = try panelSpec(r.flags["text"] ?? r.input)
+        guard let client = hosts.client(scope.host) else { throw Failure(message: "that host isn't attached") }
+        let block = client.newPanel(home: r.cwd, spec: spec.json)
+        if let title = r.flags["title"] ?? spec.object["title"] as? String { hosts.append(.title(title), to: .block(block)) }
+        try place(block, lens: .ui, r, scope, context: "mani ui new")
+        last = block
+        shown(block, line: nil, scope: scope)
+        return block.description
+    }
+
+    /// Widgets as JSON, checked: an object (with items), or a list of items.
+    private func panelSpec(_ text: String?) throws -> (json: String, object: [String: Any]) {
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw Failure(message: "a panel's widgets come as JSON, from --text or the input: {\"items\": [...]}", status: 2)
+        }
+        guard let data = text.data(using: .utf8), let parsed = try? JSONSerialization.jsonObject(with: data) else {
+            throw Failure(message: "the widgets aren't JSON", status: 2)
+        }
+        let object: [String: Any]
+        if let o = parsed as? [String: Any] { object = o } else if let items = parsed as? [Any] { object = ["items": items] } else {
+            throw Failure(message: "the widgets are an object with items, or a list of them", status: 2)
+        }
+        return (json(object), object)
+    }
+
+    private func panel(_ name: String, _ scope: Scope) throws -> Block {
+        let t = try resolve(name, scope)
+        guard let b = hosts.block(t.block), b.kind == .ui else { throw Failure(message: "\(name) isn't a panel") }
+        return b
+    }
+
+    private func setPanel(_ r: ManiRequest, _ scope: Scope) throws -> String {
+        let b = try panel(r.args[0], scope)
+        let assignments = Array(r.args.dropFirst())
+        var spec = b.ui.flatMap { $0.spec.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
+        var specChanged = false
+        if r.flags["text"] != nil || (r.input.map { !$0.isEmpty } ?? false) {
+            spec = try panelSpec(r.flags["text"] ?? r.input).object
+            specChanged = true
+        } else if assignments.isEmpty {
+            throw Failure(message: "ui set needs values (id=value, id.property=value) or widgets on its input", status: 2)
+        }
+        var values: [String: String] = [:]
+        for a in assignments {
+            guard let eq = a.firstIndex(of: "="), eq != a.startIndex else { throw Failure(message: "\(a) isn't id=value", status: 2) }
+            let key = String(a[..<eq]), raw = String(a[a.index(after: eq)...])
+            let value: Any = PanelView.parse(raw) ?? raw
+            if let dot = key.firstIndex(of: ".") {
+                let id = String(key[..<dot]), prop = String(key[key.index(after: dot)...])
+                guard Self.setProperty(&spec, id: id, prop, value) else { throw Failure(message: "no widget \(id) in the panel") }
+                specChanged = true
+            } else {
+                values[key] = PanelView.json(value)
+            }
+        }
+        if specChanged { hosts.append(.uiSpec(json(spec)), to: .block(b.id)) }
+        if !values.isEmpty { hosts.append(.uiValues(values), to: .block(b.id)) }
+        return ""
+    }
+
+    /// A widget's property set, wherever it is among the items.
+    private static func setProperty(_ node: inout [String: Any], id: String, _ prop: String, _ value: Any) -> Bool {
+        if node["id"] as? String == id {
+            node[prop] = value
+            return true
+        }
+        guard var items = node["items"] as? [Any] else { return false }
+        for i in items.indices {
+            guard var child = items[i] as? [String: Any] else { continue }
+            if setProperty(&child, id: id, prop, value) {
+                items[i] = child
+                node["items"] = items
+                return true
+            }
+        }
+        return false
+    }
+
+    /// A panel's values: those set or changed, else those its widgets began with.
+    private func panelValues(_ b: Block) -> [String: Any] {
+        var out: [String: Any] = [:]
+        func walk(_ node: [String: Any]) {
+            if let id = node["id"] as? String, let v = node["value"] { out[id] = v }
+            for child in node["items"] as? [[String: Any]] ?? [] { walk(child) }
+        }
+        if let data = b.ui?.spec.data(using: .utf8), let spec = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] { walk(spec) }
+        for (k, v) in b.ui?.values ?? [:] { out[k] = PanelView.parse(v) ?? NSNull() }
+        return out
+    }
+
+    private func getPanel(_ r: ManiRequest, _ scope: Scope) throws -> String {
+        let b = try panel(r.args[0], scope)
+        let values = panelValues(b)
+        guard r.args.count > 1 else { return json(values) }
+        guard let v = values[r.args[1]] else { throw Failure(message: "the panel has no value \(r.args[1])") }
+        return (v as? String) ?? PanelView.json(v)
+    }
+
+    private func waitPanel(_ r: ManiRequest, _ scope: Scope, _ asker: Asker) throws -> String? {
+        let b = try panel(r.args[0], scope)
+        let id = r.flags["id"]
+        if var queue = panelEvents[b.id], let i = queue.firstIndex(where: { id == nil || Self.eventID($0) == id }) {
+            let line = queue.remove(at: i)
+            panelEvents[b.id] = queue
+            return line
+        }
+        panelWaits[asker] = (b.id, id)
+        if let s = r.flags["timeout"] {
+            guard let seconds = Double(s), seconds > 0 else { throw Failure(message: "--timeout is a number of seconds", status: 2) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+                guard let self, self.panelWaits.removeValue(forKey: asker) != nil else { return }
+                self.reply(asker, err: "mani: nothing happened in \(s) seconds\n", status: 124)
+            }
+        }
+        return nil
+    }
+
+    private static func eventID(_ line: String) -> String? {
+        (line.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any])?["id"] as? String
+    }
+
+    /// Something done in a panel: its values kept, its widget's command
+    /// run, and told to a `ui wait` on it (else kept for the next) and to
+    /// watchers.
+    func panelEvent(_ block: BlockID, event: [String: Any], changed: [String: String], run: String?) {
+        if !changed.isEmpty { hosts.append(.uiValues(changed), to: .block(block)) }
+        var e = event
+        e["block"] = block.description
+        if let b = hosts.block(block) {
+            var values = panelValues(b)
+            for (k, v) in changed { values[k] = PanelView.parse(v) ?? NSNull() }
+            e["values"] = values
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: PanelView.tidy(e), options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
+        let line = String(decoding: data, as: UTF8.self)
+        if let run { hosts.propose(.runPanel(block: block, command: run, event: line)) }
+        tell("panel", e)
+        let id = event["id"] as? String
+        if let waiting = panelWaits.first(where: { $0.value.block == block && ($0.value.id == nil || $0.value.id == id) }) {
+            panelWaits.removeValue(forKey: waiting.key)
+            reply(waiting.key, out: line + "\n", status: 0)
+        } else {
+            panelEvents[block, default: []].append(line)
+            if panelEvents[block]!.count > 200 { panelEvents[block]!.removeFirst() }
+        }
+    }
+
     // MARK: JSON
 
     /// A share, to three places, as JSON writes it exactly (a Double's
@@ -865,7 +1026,7 @@ final class ManiDesk {
     }
 
     private func json(_ object: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
+        guard let data = try? JSONSerialization.data(withJSONObject: PanelView.tidy(object), options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 56
+public let protocolVersion = 57
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -165,6 +165,9 @@ public enum Proposal: Codable, Sendable {
     case commandReply(id: Int, client: Int, ManiReply)
     /// Typed into a terminal's shell, as if at its keyboard (`mani run`).
     case input(block: BlockID, text: String)
+    /// A panel widget's command (§7.8), run on the panel's host with what
+    /// happened (`event`, JSON) in its environment.
+    case runPanel(block: BlockID, command: String, event: String)
     /// Which language servers to run for which files (the app's settings,
     /// given to every host).
     case languageServers([LanguageServerConfig])

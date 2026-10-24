@@ -546,6 +546,16 @@ final class HostClient {
 
     /// A note: text with no file, at home in `home` — the folder of the
     /// block it was made from, where it is found and saved by default.
+    /// A panel (§7.8): widgets as JSON, made in a folder (where its
+    /// widgets' commands run).
+    func newPanel(home: String?, spec: String) -> BlockID {
+        let id = BlockID(host: host)
+        append(.create(kind: .ui, title: nil, path: nil), to: .block(id))
+        if let home { append(.cwd(home), to: .block(id)) }
+        append(.uiSpec(spec), to: .block(id))
+        return id
+    }
+
     func newNote(home: String? = nil, text: String = "") -> BlockID {
         let id = BlockID(host: host)
         append(.create(kind: .text, title: nil, path: nil), to: .block(id))

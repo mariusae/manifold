@@ -177,7 +177,55 @@ public enum Mani {
                  happens: focus (a tile focused), selection (text selected,
                  where), command (a terminal's command started or ended, with its
                  status), status (a block's status), open and close (a tile shown,
-                 taken off), save (a file saved), workspace (another shown).
+                 taken off), save (a file saved), workspace (another shown), panel
+                 (something done in a panel, as `ui wait` prints it).
+                 """, inApp: true),
+        Verb(words: ["ui", "new"], args: "< widgets", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "title", short: "t", value: "title", help: "its title (else the widgets')"),
+                     Flag(name: "text", value: "json", help: "the widgets (else the input)")] + placing,
+             summary: "Make a panel of widgets, from JSON",
+             details: """
+                 A panel: native widgets described as JSON, {"title": …, "items":
+                 [widget, …]}, each widget {"type": …, "id": …, …}:
+                   label, markdown  {"text"}; "style": heading | secondary
+                   button           {"label", "run"?}; "style": primary
+                   field, text      {"label", "value", "placeholder"} (text: lines)
+                   checkbox         {"label", "value": true|false}
+                   select           {"label", "options": […], "value"}
+                   slider           {"label", "min", "max", "step", "value"}
+                   progress         {"label", "value": 0…1, or null for busy}
+                   table            {"columns": […], "rows": [[…]], "select": single|multiple}
+                   list             {"items": […], "select": single|multiple}
+                   image            {"path", "height"}
+                   row, group       {"items": […]} side by side; boxed, with a "label"
+                   divider
+                   html             {"html", "height"}: a page; mani.emit(name, value)
+                 Any can have "disabled", "tip". A widget with "run" runs that
+                 command (sh, in the panel's folder) when used, with MANI_EVENT
+                 (JSON) and MANI_VALUE set, and the panel as @here. Prints the
+                 panel's id.
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["ui", "set"], args: "<panel> [id=value ...]", minArgs: 1, maxArgs: nil,
+             flags: [Flag(name: "text", value: "json", help: "new widgets in place of the old (else the input, if piped)")],
+             summary: "Set a panel's values, its widgets' properties, or its widgets",
+             details: """
+                 id=value sets a widget's value (JSON if it reads as JSON: 0.4,
+                 true, [1,2]; else a string); id.property=value sets one of its
+                 properties (label, text, rows, options, disabled, …). Widgets on
+                 the input replace the panel's.
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["ui", "get"], args: "<panel> [id]", minArgs: 1, maxArgs: 2, flags: [],
+             summary: "Print a panel's values",
+             details: "Every value, as a JSON object by widget id; or one, as itself (a string bare, anything else as JSON).", inApp: true),
+        Verb(words: ["ui", "wait"], args: "<panel>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "id", value: "id", help: "only what's done to this widget"),
+                     Flag(name: "timeout", value: "seconds", help: "give up after this long (status 124)")],
+             summary: "Wait for something to be done in a panel",
+             details: """
+                 Prints the next thing done in the panel, as a JSON line: event
+                 (click, change, emit), the widget's id, its value, and all the
+                 panel's values. What's done while nothing waits is kept for the
+                 next wait, so a loop of waits misses nothing.
                  """, inApp: true),
         Verb(words: ["diff"], args: "< patch", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "title", short: "t", value: "name", help: "the diff block's title")],
@@ -226,8 +274,8 @@ public enum Mani {
           @under       the tile stacked under @here     @1 … @9   tiles in order
         A kind narrows one: @right:diff, @:pdf (the one PDF shown). Kinds:
         note, file, terminal, agent, folder, web, image, pdf, search, diff,
-        output, notebook, git, preview, editor. A name that could be more than
-        one is an error, listing them.
+        output, notebook, git, preview, editor, ui. A name that could be more
+        than one is an error, listing them.
         """
 
     /// What was asked for.
@@ -431,7 +479,7 @@ public enum Mani {
             if verb(invocation.verb)?.readsInput == true, invocation.value("text") == nil {
                 request.input = readInput()
             }
-            let shows = ["open", "new", "show"].contains(invocation.verb)
+            let shows = ["open", "new", "show", "ui new"].contains(invocation.verb)
             let status = platform.request(shows) { ManiClient.run(fd: $0, request: request) }
             if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
             exit(status)

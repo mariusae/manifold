@@ -25,6 +25,9 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case notebook
     /// Placements of other blocks, laid out (§3 of DESIGN.md).
     case arrangement
+    /// A form made from a shell (`mani ui`): widgets an agent describes,
+    /// their values, kept (§7.8).
+    case ui
 
     public var defaultTitle: String {
         switch self {
@@ -43,6 +46,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .output: "Output"
         case .notebook: "Shell Notebook"
         case .arrangement: "Untitled"
+        case .ui: "Panel"
         }
     }
 }
@@ -69,6 +73,8 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     case output
     /// A shell notebook's cells (§7.7).
     case notebook
+    /// A `ui` block's widgets (§7.8).
+    case ui
     /// What a block's scrubber marks — a terminal's commands, a text's
     /// headings — as a list to steer the block's tile by (§3.8).
     case outline
@@ -101,6 +107,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .output: return .output
         case .notebook: return .notebook
         case .arrangement: return .card
+        case .ui: return .ui
         }
     }
 
@@ -905,6 +912,28 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: Panels
+
+/// A `ui` block's state (§7.8): its widgets, as the JSON `mani ui` was
+/// given (a title and items, each a widget, some holding others), and the
+/// values they hold by id, each as JSON — what's set from the shell and
+/// what's changed by hand alike.
+public struct UIState: Codable, Equatable, Sendable {
+    public var spec = #"{"items":[]}"#
+    public var values: [String: String] = [:]
+
+    public init() {}
+
+    public mutating func apply(_ event: Event) {
+        switch event {
+        case let .uiSpec(json): spec = json
+        case let .uiValues(changed):
+            for (k, v) in changed { values[k] = v.isEmpty ? nil : v }
+        default: break
+        }
+    }
+}
+
 // MARK: Block
 
 /// A block's state, built from its log by `apply`.
@@ -930,6 +959,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var notebook: NotebookState?
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
+    public var ui: UIState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
     public var status: [String: StatusRecord]?
     /// What each placement's lens needs to come back as it was — scroll
@@ -964,6 +994,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .output: output = OutputState()
         case .notebook: notebook = NotebookState()
         case .arrangement: arrangement = ArrangementState()
+        case .ui: ui = UIState()
         default: break
         }
     }

@@ -1192,10 +1192,26 @@ is migrated into logs on first run.
     types a command into a terminal's shell (through its host, shown or
     not); `--wait` waits for it to end, prints its output and exits with
     its status (`--timeout`: 124 if it doesn't).
+  - **Panels.** `mani ui new < widgets.json` makes a panel: widgets an
+    agent describes as JSON — labels and Markdown, buttons, fields,
+    text, checkboxes, selects, sliders, progress, tables and lists,
+    images, rows and groups, and an `html` widget (a page, with
+    `mani.emit(name, value)`) for the rest — drawn with the system's
+    controls, below `@here` unless placed elsewhere. `mani ui set panel
+    progress=0.4 status=Building` sets values (`go.label="Deploy now"`
+    a widget's property; widgets on the input replace them), `mani ui
+    get` prints them, and `mani ui wait` waits for the next thing done
+    in it — a click, a change — and prints it as JSON with all the
+    values; what's done while nothing waits is kept for the next wait. A
+    widget with `"run": "…"` runs that command on the panel's host when
+    used (the panel as `@here`, the event in `MANI_EVENT`), so a button
+    can answer in the panel itself. Values are kept in the block, and
+    come back with it.
   - **Watching.** `mani watch` prints a JSON line for each thing that
     happens — focus, selection, a command started or ended (with its
     status), a block's status, a tile shown or taken off, a file saved,
-    another workspace — until it's interrupted (`--only` some).
+    another workspace, something done in a panel — until it's
+    interrupted (`--only` some).
   - `mani diff`, `mani skill install`/`uninstall`, `mani agent` (what
     agents' hooks run) and `mani help` are done by `mani` itself; the
     rest are passed to the app through the host, so they work alike from

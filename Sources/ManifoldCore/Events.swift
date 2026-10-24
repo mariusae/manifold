@@ -283,6 +283,10 @@ public enum Event: Codable, Equatable, Sendable {
     case output(OutputState)
     /// A shell notebook's cells and runs (§7.7).
     case notebook(NotebookEdit)
+    /// A panel's widgets, the whole of them, as JSON (§7.8).
+    case uiSpec(String)
+    /// Some of a panel's values, by widget id, each as JSON ("" takes it away).
+    case uiValues([String: String])
     /// An outline block's subject (§3.8).
     case diffLoaded(oldText: String?, newText: String?, patch: String?, error: String?, at: Stamp)
 
@@ -436,6 +440,7 @@ extension Block {
         if diff != nil { diff!.apply(event) }
         if case let .output(o) = event { output = o }
         if case let .notebook(edit) = event { notebook?.apply(edit) }
+        if ui != nil { ui!.apply(event) }
         if processes != nil { processes!.apply(event) }
         if arrangement != nil { arrangement!.apply(event, at: at) }
     }

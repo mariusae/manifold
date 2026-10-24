@@ -50,6 +50,7 @@ struct Shown: Equatable {
         case .output: .output
         case .notebook: .notebook
         case .outline: .terminal
+        case .ui: .ui
         }
     }
 }

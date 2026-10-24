@@ -85,6 +85,7 @@ enum Theme {
         case .output: "text.alignleft"
         case .notebook: "text.and.command.macwindow"
         case .outline: "list.bullet.rectangle"
+        case .ui: "slider.horizontal.3"
         }
     }
 

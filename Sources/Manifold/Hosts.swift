@@ -392,7 +392,7 @@ final class Hosts {
                 client(host)?.propose(.seen(group))
             }
             done?(nil)
-        case let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _):
+        case let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
             (client(of: block) ?? local).propose(proposal, done: done)
         case let .hold(h):
             client(h.block.host)?.propose(proposal, done: done)
