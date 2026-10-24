@@ -919,9 +919,20 @@ final class TextView: NSView, NSTextInputClient {
         caretTimer?.invalidate()
         caretTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: true) { [weak self] _ in
             guard let self else { return }
+            // Not blinking where it's drawn steady (another window key, the
+            // app in the back); blinking, only the carets drawn again — the
+            // whole text was, every half second.
+            guard self.window?.isKeyWindow == true, NSApp.isActive else {
+                if !self.caretVisible { self.caretVisible = true; self.redrawCarets() }
+                return
+            }
             self.caretVisible.toggle()
-            self.needsDisplay = true
+            self.redrawCarets()
         }
+    }
+
+    private func redrawCarets() {
+        for sel in selections { setNeedsDisplay(caretRect(sel.head).insetBy(dx: -2, dy: -1)) }
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -1898,7 +1909,7 @@ final class TextView: NSView, NSTextInputClient {
         menu.addItem(withTitle: "Cut", action: #selector(cut(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
-        if !selectedText.isEmpty {
+        if hasSelectedText {
             menu.addItem(withTitle: "New Note from Selection", action: #selector(MainWindowController.newNoteFromSelection(_:)), keyEquivalent: "")
         }
         menu.addItem(withTitle: "Copy Link to This Line", action: #selector(MainWindowController.copyLinkToLine(_:)), keyEquivalent: "")
@@ -1946,6 +1957,11 @@ final class TextView: NSView, NSTextInputClient {
     var selectedText: String {
         selections.filter { !$0.isCaret }.map { text[$0.range] }.joined(separator: "\n")
     }
+
+    /// Whether anything is selected — asked by menus and Services as they
+    /// validate, which made the whole selection as text to see (all of a
+    /// big file, after ⌘A, at every look at the menu bar).
+    var hasSelectedText: Bool { selections.contains { !$0.isCaret } }
 
     @objc func copy(_ sender: Any?) {
         let s = selectedText
@@ -2084,7 +2100,7 @@ final class TextView: NSView, NSTextInputClient {
     // MARK: Services
 
     override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
-        if sendType == .string, !selectedText.isEmpty { return self }
+        if sendType == .string, hasSelectedText { return self }
         if returnType == .string, isEditable { return self }
         if let returnType, isEditable, onImage != nil, [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")].contains(returnType) { return self }
         return super.validRequestor(forSendType: sendType, returnType: returnType)

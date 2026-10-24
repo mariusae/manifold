@@ -381,6 +381,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     /// The headings again, a moment after the text changed.
+    private var headingsVersion = -2
+
     private func scheduleHeadings() {
         guard hasOutline else { return }
         headingsWork?.cancel()
@@ -390,6 +392,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     private func findHeadings() {
+        // Not again for a text as it was (every render came here, and a
+        // selection's change: the whole text parsed each time).
+        let version = document?.version ?? -1
+        guard version != headingsVersion || version < 0 else { return markCurrentHeading() }
+        headingsVersion = version
         let found = MarkdownOutline.headings(in: textView.text.string)
         headingLines = found.map(\.line)
         headingsOutline.set(Outline.headings(found.map { (title: $0.text, level: $0.level) }))
@@ -824,8 +831,9 @@ extension TextView: NSMenuItemValidation {
         switch item.action {
         case #selector(undo(_:)): return canUndo
         case #selector(redo(_:)): return canRedo
-        case #selector(cut(_:)), #selector(copy(_:)): return !selectedText.isEmpty
-        case #selector(paste(_:)): return isEditable && NSPasteboard.general.string(forType: .string) != nil
+        case #selector(cut(_:)), #selector(copy(_:)): return hasSelectedText
+        // Whether there's text to paste, not the text itself read out.
+        case #selector(paste(_:)): return isEditable && NSPasteboard.general.availableType(from: [.string]) != nil
         default: return true
         }
     }
