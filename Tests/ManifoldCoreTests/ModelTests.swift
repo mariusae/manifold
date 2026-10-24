@@ -1741,3 +1741,14 @@ private final class Seen: @unchecked Sendable {
     #expect(!node.hasPins(ws))
     #expect(!node.reachable(on: host).contains(note) && !node.roots(on: host).contains(ws))
 }
+
+@Test func themesThereOnceWereReadAsTheTwoThereAre() throws {
+    func theme(_ raw: String) throws -> FontTheme {
+        try JSONDecoder().decode(Appearance.self, from: Data("{\"theme\":\"\(raw)\"}".utf8)).theme
+    }
+    #expect(try theme("humanist") == .humanist)
+    #expect(try theme("system") == .system)
+    #expect(try theme("notes") == .system)
+    for old in ["lato", "tiempos", "tiemposAnthrosevka", "mona", "recursive", "go"] { #expect(try theme(old) == .humanist) }
+    #expect(Appearance().theme == .humanist)
+}

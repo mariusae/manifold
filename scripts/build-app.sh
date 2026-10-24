@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
-for d in monaspace monasans recursive gofont firacode jetbrainsmono anthrosevka lato sourcecodepro; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
+for d in lato sourcecodepro; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -40,18 +40,6 @@ cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Reso
 # Ghostty looks for terminfo next to its resources directory.
 cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/Contents/Resources/"
 mkdir -p "$app/Contents/Resources/Fonts"
-cp Frameworks/monaspace/* "$app/Contents/Resources/Fonts/"
-cp Frameworks/monasans/*.otf "$app/Contents/Resources/Fonts/"
-cp Frameworks/monasans/OFL.txt "$app/Contents/Resources/Fonts/MonaSans-OFL.txt"
-cp Frameworks/recursive/*.otf Frameworks/gofont/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/recursive/OFL.txt "$app/Contents/Resources/Fonts/Recursive-OFL.txt"
-cp Frameworks/gofont/LICENSE "$app/Contents/Resources/Fonts/Go-LICENSE"
-cp Frameworks/firacode/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/firacode/LICENSE "$app/Contents/Resources/Fonts/FiraCode-LICENSE"
-cp Frameworks/jetbrainsmono/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/jetbrainsmono/OFL.txt "$app/Contents/Resources/Fonts/JetBrainsMono-OFL.txt"
-cp Frameworks/anthrosevka/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/anthrosevka/LICENSE "$app/Contents/Resources/Fonts/Anthrosevka-LICENSE"
 cp Frameworks/lato/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/lato/OFL.txt "$app/Contents/Resources/Fonts/Lato-OFL.txt"
 cp Frameworks/sourcecodepro/*.otf "$app/Contents/Resources/Fonts/"

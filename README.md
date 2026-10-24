@@ -466,17 +466,12 @@ around it, and comes back with its history.
   **monospaced** one for terminals and code, an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
-  Markdown preview); most themes edit and read in one face. The themes: **Notes** (the default: SF Pro with its
-  single-story "a", as Apple's Notes sets its text, Menlo for fixed
-  width, the system font for the UI), Tiempos (Tiempos Text, Menlo),
-  Tiempos/Fira (Tiempos Text, Fira Code), Tiempos/JetBrains (Tiempos
-  Text, JetBrains Mono), Tiempos/Anthrosevka (Tiempos Text,
-  [Anthrosevka Mono](https://nanx.me/anthrosevka/)), Mona (Mona Sans, Monaspace),
-  Recursive, Go, Lato (Lato to edit, Tiempos Text to read, Source Code
-  Pro), or System (SF, SF Mono). All but SF are bundled;
+  Markdown preview). Two themes: **Humanist** (the default: Lato to edit,
+  Tiempos Text to read, Source Code Pro for terminals and code) and
+  **System** (SF, and SF Mono). Lato and Source Code Pro are bundled;
   Tiempos Text is licensed, so the build copies it from your own fonts
-  (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts)
-  rather than fetching them.
+  (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts) rather
+  than fetching it — without it, Humanist previews read in the system font.
 - **Language servers** run on the file's host, one per language and
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom

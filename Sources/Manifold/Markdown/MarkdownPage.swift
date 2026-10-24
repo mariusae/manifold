@@ -187,48 +187,10 @@ enum MarkdownPage {
     private static var fontFaces: String {
         guard let fonts = Bundle.main.resourceURL?.appendingPathComponent("Fonts") else { return "" }
         let faces: [(String, String, Int, String)] = [
-            ("Monaspace Xenon", "MonaspaceXenon-Regular.otf", 400, "normal"),
-            ("Monaspace Xenon", "MonaspaceXenon-Bold.otf", 700, "normal"),
-            ("Monaspace Xenon", "MonaspaceRadon-Italic.otf", 400, "italic"),
-            ("Monaspace Xenon", "MonaspaceXenon-BoldItalic.otf", 700, "italic"),
-            ("Mona Sans", "MonaSans-Regular.otf", 400, "normal"),
-            ("Mona Sans", "MonaSans-Italic.otf", 400, "italic"),
-            ("Mona Sans", "MonaSans-Medium.otf", 500, "normal"),
-            ("Mona Sans", "MonaSans-SemiBold.otf", 600, "normal"),
-            ("Mona Sans", "MonaSans-Bold.otf", 700, "normal"),
-            ("Mona Sans", "MonaSans-BoldItalic.otf", 700, "italic"),
             ("Tiempos Text", "TiemposText-Regular.otf", 400, "normal"),
             ("Tiempos Text", "TiemposText-RegularItalic.otf", 400, "italic"),
             ("Tiempos Text", "TiemposText-Bold.otf", 700, "normal"),
             ("Tiempos Text", "TiemposText-BoldItalic.otf", 700, "italic"),
-            ("Fira Code", "FiraCode-Regular.ttf", 400, "normal"),
-            ("Fira Code", "FiraCode-Bold.ttf", 700, "normal"),
-            ("JetBrains Mono", "JetBrainsMono-Regular.ttf", 400, "normal"),
-            ("JetBrains Mono", "JetBrainsMono-Italic.ttf", 400, "italic"),
-            ("JetBrains Mono", "JetBrainsMono-Bold.ttf", 700, "normal"),
-            ("JetBrains Mono", "JetBrainsMono-BoldItalic.ttf", 700, "italic"),
-            ("Anthrosevka Mono", "AnthrosevkaMono-Regular.ttf", 400, "normal"),
-            ("Anthrosevka Mono", "AnthrosevkaMono-Italic.ttf", 400, "italic"),
-            ("Anthrosevka Mono", "AnthrosevkaMono-Bold.ttf", 700, "normal"),
-            ("Anthrosevka Mono", "AnthrosevkaMono-BoldItalic.ttf", 700, "italic"),
-        ] + ["Sans", "Mono"].flatMap { kind -> [(String, String, Int, String)] in [
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Regular.otf", 400, "normal"),
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Italic.otf", 400, "italic"),
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Med.otf", 500, "normal"),
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-SemiBold.otf", 600, "normal"),
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-Bold.otf", 700, "normal"),
-            ("Recursive \(kind)", "Recursive\(kind)LnrSt-BoldItalic.otf", 700, "italic"),
-        ] } + [
-            ("Go", "Go-Regular.ttf", 400, "normal"),
-            ("Go", "Go-Italic.ttf", 400, "italic"),
-            ("Go", "Go-Medium.ttf", 500, "normal"),
-            ("Go", "Go-Bold.ttf", 600, "normal"),
-            ("Go", "Go-Bold.ttf", 700, "normal"),
-            ("Go", "Go-Bold-Italic.ttf", 700, "italic"),
-            ("Go Mono", "Go-Mono.ttf", 400, "normal"),
-            ("Go Mono", "Go-Mono-Italic.ttf", 400, "italic"),
-            ("Go Mono", "Go-Mono-Bold.ttf", 700, "normal"),
-            ("Go Mono", "Go-Mono-Bold-Italic.ttf", 700, "italic"),
             ("Lato", "Lato-Regular.ttf", 400, "normal"),
             ("Lato", "Lato-Italic.ttf", 400, "italic"),
             ("Lato", "Lato-Medium.ttf", 500, "normal"),
@@ -267,7 +229,7 @@ enum MarkdownPage {
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
         \(fontFaces)
-        :root { color-scheme: light dark; \(themeVariables(.notes)) }
+        :root { color-scheme: light dark; \(themeVariables(.humanist)) }
         /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
            spacing and its links; the theme's fonts for its text and its
            code (Menlo where a theme has none of its own). */

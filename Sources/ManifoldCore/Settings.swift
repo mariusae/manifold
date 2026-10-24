@@ -49,7 +49,7 @@ public struct ClientState: Codable, Equatable, Sendable {
 
 /// How things look: the theme's fonts, and how terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
-    public var theme: FontTheme = .notes
+    public var theme: FontTheme = .humanist
     public var colorScheme: ColorScheme = .system
     public var contrastCorrection: ContrastCorrection = .deuteranopia
     public var editorFont: EditorFont = .proportional
@@ -57,7 +57,7 @@ public struct Appearance: Codable, Equatable, Sendable {
     /// the caret, a pool of light in the backdrop.
     public var tint: Tint = .blue
 
-    public init(theme: FontTheme = .notes, colorScheme: ColorScheme = .system,
+    public init(theme: FontTheme = .humanist, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
                 editorFont: EditorFont = .proportional, tint: Tint = .blue) {
         self.theme = theme
@@ -70,7 +70,7 @@ public struct Appearance: Codable, Equatable, Sendable {
     // Settings saved before a setting existed get its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .notes
+        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .humanist
         colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
@@ -189,14 +189,17 @@ public struct HostPreferences: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey { case shell, lsp }
 }
 
-/// The fonts everything is set in, a proportional one and a fixed-width
-/// one, chosen together: SF Pro (with its single-story a, as Notes sets
-/// it) and Menlo; Tiempos Text and Menlo, Fira Code, JetBrains Mono or
-/// Anthrosevka Mono;
-/// Mona Sans and Monaspace; Recursive Sans and Mono; Go and Go Mono; Lato
-/// and Source Code Pro; or SF and SF Mono. Fixed, not configurable.
+/// The fonts everything is set in, besides the interface's system font:
+/// **Humanist** — Lato to edit, Tiempos Text to read, Source Code Pro for
+/// terminals and code — or **System**: SF, and SF Mono.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
-    case notes, tiempos, tiemposFira, tiemposJetBrains, tiemposAnthrosevka, mona, recursive, go, lato, system
+    case humanist, system
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        // The themes there once were: SF's (Notes) as System, the rest as Humanist.
+        self = raw == "system" || raw == "notes" ? .system : .humanist
+    }
 }
 
 /// Light or dark: as the system is, or always one.

@@ -286,7 +286,7 @@ final class TintPicker: NSView {
 /// The font themes, each named in its own two fonts: the chosen one on
 /// a band, as a chosen row is.
 final class FontThemeList: NSView {
-    var theme: FontTheme = .notes { didSet { needsDisplay = true } }
+    var theme: FontTheme = .humanist { didSet { needsDisplay = true } }
     var onPick: ((FontTheme) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private static let rowHeight: CGFloat = 26

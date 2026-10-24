@@ -209,8 +209,8 @@ final class GhosttyRuntime {
         }
     }
 
-    /// Makes the fonts in Resources/Fonts (Monaspace, Mona Sans, Tiempos
-    /// Text, Fira Code, JetBrains Mono, Anthrosevka Mono, Recursive, Go) available to
+    /// Makes the fonts in Resources/Fonts (Lato, Source Code Pro, Tiempos
+    /// Text) available to
     /// this process only;
     /// nothing is installed.
     private static func registerBundledFonts() {
