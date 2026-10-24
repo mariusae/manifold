@@ -84,6 +84,7 @@ final class GhosttyRuntime {
         clipboard-read = allow
         clipboard-write = allow
         app-notifications = false
+        link-url = false
         """
 
     private static func configText(_ appearance: Appearance, dark: Bool) -> String {

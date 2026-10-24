@@ -885,10 +885,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func mouseDown(with event: NSEvent) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         guard let surface else { return }
-        // ⌘ on a file (a path, `path:line:column`): opened on the way up,
-        // ghostty not told (an address is ghostty's, as it was).
+        // ⌘ on a link (an address, a path, `path:line:column`): opened on
+        // the way up, ghostty not told — its own matching of addresses is
+        // off (it underlined them under the pointer); a program's own
+        // links (OSC 8) are still its.
         pendingLink = nil
-        if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)), !hit.target.contains("://") {
+        if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)) {
             pendingLink = (hit.target, event.locationInWindow, event.modifierFlags.contains(.option))
             return
         }
