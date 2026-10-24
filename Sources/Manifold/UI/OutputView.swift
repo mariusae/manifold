@@ -105,7 +105,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         // A file's old version (§3.6) is no command: no prompt.
         let ran = o.source != nil
         prompt.attributedStringValue = NSAttributedString(string: (ran ? "$ " : "") + o.line, attributes: [
-            .font: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask), .foregroundColor: Theme.text])
+            .font: font.emphasized(bold: true), .foregroundColor: Theme.text])
         var words: [String] = []
         if let s = o.status { words.append(s == 0 ? "ok" : "exit \(s)") } else if o.ran != nil { words.append(o.ended == nil ? "running" : "ok") }
         if let at = o.ended ?? o.ran { words.append(Age.ago(at)) }
@@ -345,8 +345,8 @@ enum ANSIText {
         while let last = lines.last, last.isEmpty, lines.count > 1 { lines.removeLast() }
 
         let out = NSMutableAttributedString()
-        let bold = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
-        let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        let bold = font.emphasized(bold: true)
+        let italic = font.emphasized(italic: true)
         func resolve(_ c: Color?, default d: NSColor) -> NSColor {
             switch c {
             case .palette(let n)?: palette.color(n)

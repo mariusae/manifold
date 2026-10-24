@@ -479,7 +479,10 @@ around it, and comes back with its history.
   em), and OpenType features by tag (`ss01, zero, -liga, cv05=2`, or
   checked off a menu of those the font has); the reading role also its
   measure (the longest line in a preview, in characters) and the space
-  between paragraphs. Each role's size scales everything set in it, and
+  between paragraphs. Bold and italic come from the family's own faces,
+  by their weights: bold a face about three hundred heavier (Light's
+  Semibold, Regular's Bold), italic the slanted face of the weight, in
+  editors, previews and terminals alike. Each role's size scales everything set in it, and
   all of it reaches everywhere the role is used: editors and notes (the
   editor's lines and letters too), previews (as CSS), and terminals (as
   Ghostty's font family, style, size and features, its cells' height and

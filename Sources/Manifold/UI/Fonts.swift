@@ -148,6 +148,9 @@ extension FontTheme {
         var out = "--read-size: \(r.size)px; --read-weight: \(r.weight); --read-leading: \(r.lineHeight); --read-tracking: \(r.tracking / 1000)em;"
         out += " --read-gap: \(r.paragraphSpacing)em; --mono-weight: \(m.weight); --mono-tracking: \(m.tracking / 1000)em;"
         out += " --mono-scale: \(m.size / 13);"
+        // Bold as the editor takes it: a face heavier by a step, not CSS's
+        // "bolder" (from Light, only Regular).
+        out += " --read-bold: \(min(900, r.weight + FontFace.boldStep)); --read-heading: \(min(900, max(700, r.weight + FontFace.boldStep)));"
         if r.measure > 0 { out += " --read-measure: \(r.measure)ch;" }
         return out
     }
@@ -197,36 +200,115 @@ extension Typography {
     }
 }
 
-/// A family's upright faces, as the system has them: the face's name (as
-/// it's called within its family: Light, Regular, Semibold), its
-/// PostScript name, and its weight as CSS counts.
+/// A family's faces, as the system has them: the face's name (as it's
+/// called within its family: Light, Regular, Semibold Italic), its
+/// PostScript name, its weight as CSS counts (the font's own, from its
+/// OS/2 table, where it says), and whether it's italic.
 struct FontFace: Equatable {
     var name: String
     var postScript: String
     var weight: Int
+    var italic = false
 
-    /// The faces of a family ("" is the system's, named by weight), lightest first.
+    /// A family's upright faces ("" is the system's, named by weight),
+    /// lightest first, one to a weight.
     static func faces(of family: String, role: FontRole) -> [FontFace] {
         let real = family.isEmpty && role == .monospaced ? "SF Mono" : family
         if real.isEmpty {
             return [("Ultralight", 100), ("Thin", 200), ("Light", 300), ("Regular", 400), ("Medium", 500),
                     ("Semibold", 600), ("Bold", 700), ("Heavy", 800), ("Black", 900)].map { FontFace(name: $0.0, postScript: "", weight: $0.1) }
         }
-        let members = NSFontManager.shared.availableMembers(ofFontFamily: real) ?? []
         var out: [FontFace] = []
-        for m in members where m.count >= 4 {
-            guard let ps = m[0] as? String, let name = m[1] as? String, let w = m[2] as? Int, let traits = m[3] as? UInt else { continue }
-            if NSFontTraitMask(rawValue: traits).contains(.italicFontMask) { continue }
-            let face = FontFace(name: name, postScript: ps, weight: cssWeight(w))
-            if !out.contains(where: { $0.weight == face.weight }) { out.append(face) }
-        }
-        return out.sorted { $0.weight < $1.weight }
+        for f in all(of: real) where !f.italic && !out.contains(where: { $0.weight == f.weight }) { out.append(f) }
+        return out
     }
 
-    /// NSFontManager's weights (0–15, 5 regular, 9 bold) as CSS's.
+    nonisolated(unsafe) private static var families: [String: [FontFace]] = [:]
+
+    /// Every face of a family, italics too, lightest first.
+    static func all(of family: String) -> [FontFace] {
+        if let known = families[family] { return known }
+        var out: [FontFace] = []
+        for m in NSFontManager.shared.availableMembers(ofFontFamily: family) ?? [] where m.count >= 4 {
+            guard let ps = m[0] as? String, let name = m[1] as? String, let w = m[2] as? Int, let traits = m[3] as? UInt else { continue }
+            out.append(FontFace(name: name, postScript: ps, weight: weightClass(ps) ?? cssWeight(w),
+                                italic: NSFontTraitMask(rawValue: traits).contains(.italicFontMask)))
+        }
+        out.sort { $0.weight < $1.weight }
+        families[family] = out
+        return out
+    }
+
+    /// A face's weight as its font says (OS/2's usWeightClass), from 100 to 900.
+    static func weightClass(_ postScript: String) -> Int? {
+        let font = CTFontCreateWithName(postScript as CFString, 12, nil)
+        guard let data = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) as Data?, data.count >= 6 else { return nil }
+        let w = Int(data[data.startIndex + 4]) << 8 | Int(data[data.startIndex + 5])
+        return (1...1000).contains(w) ? w : nil
+    }
+
+    /// NSFontManager's weights (0–15, 5 regular, 9 bold) as CSS's, for a
+    /// font that doesn't say its own.
     static func cssWeight(_ w: Int) -> Int {
         let table = [0: 100, 1: 100, 2: 100, 3: 200, 4: 300, 5: 400, 6: 500, 7: 600, 8: 600, 9: 700, 10: 800, 11: 900, 12: 900]
         return table[w] ?? (w > 12 ? 900 : 400)
+    }
+
+    /// How much heavier bold is than what it's in: Light's is Semibold,
+    /// Regular's Bold, as a type designer pairs them.
+    static let boldStep = 300
+
+    /// The face for emphasis in a family, from a face of `weight`: bold, a
+    /// face heavier by about `boldStep` (the nearest heavier one); italic,
+    /// the slanted face of the weight (or the bold one's). Nil if the
+    /// family has none.
+    static func emphasis(in family: String, from weight: Int, bold: Bool, italic: Bool) -> FontFace? {
+        let target = bold ? min(900, weight + boldStep) : weight
+        let pool = all(of: family).filter { $0.italic == italic && (!bold || $0.weight > weight) }
+        return pool.min { a, b in
+            let da = abs(a.weight - target), db = abs(b.weight - target)
+            return da != db ? da < db : a.weight < b.weight
+        }
+    }
+}
+
+extension NSFont {
+    /// The font made bold or italic as its family has it, its features
+    /// kept: from a light face, bold is a heavier face, not the light one
+    /// unchanged — as asking the font manager for the bold trait gives, in
+    /// a family with more weights than regular and bold.
+    func emphasized(bold: Bool = false, italic: Bool = false) -> NSFont {
+        guard bold || italic else { return self }
+        var out: NSFont?
+        if let family = familyName, !family.hasPrefix(".") {
+            let weight = FontFace.weightClass(fontName) ?? FontFace.all(of: family).first { $0.postScript == fontName }?.weight ?? 400
+            if let face = FontFace.emphasis(in: family, from: weight, bold: bold, italic: italic) {
+                out = NSFont(name: face.postScript, size: pointSize)
+            }
+        } else {
+            // The system's: a heavier weight of it, slanted by its descriptor.
+            var f = self
+            if bold {
+                let traits = fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
+                let w = (traits?[.weight] as? CGFloat) ?? 0
+                let weights: [NSFont.Weight] = [.ultraLight, .thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
+                let i = weights.indices.min { abs(weights[$0].rawValue - w) < abs(weights[$1].rawValue - w) } ?? 3
+                let heavier = weights[min(weights.count - 1, i + 3)]
+                f = isFixedPitch ? .monospacedSystemFont(ofSize: pointSize, weight: heavier) : .systemFont(ofSize: pointSize, weight: heavier)
+            }
+            if italic, let d = Optional(f.fontDescriptor.withSymbolicTraits(.italic)) { f = NSFont(descriptor: d, size: pointSize) ?? f }
+            out = f
+        }
+        var f = out ?? {
+            var f = self
+            if bold { f = NSFontManager.shared.convert(f, toHaveTrait: .boldFontMask) }
+            if italic { f = NSFontManager.shared.convert(f, toHaveTrait: .italicFontMask) }
+            return f
+        }()
+        if let features = fontDescriptor.object(forKey: .featureSettings) {
+            f = NSFont(descriptor: f.fontDescriptor.addingAttributes([.featureSettings: features]), size: pointSize) ?? f
+        }
+        return f
     }
 }
 
@@ -280,7 +362,14 @@ extension TypeStyle {
     var terminalConfig: String {
         let family = self.family.isEmpty ? "SF Mono" : self.family
         var lines = ["font-family = \(family)", "font-size = \(size)"]
-        if let face = face(.monospaced) { lines.append("font-style = \(face.name)") }
+        if let face = face(.monospaced) {
+            lines.append("font-style = \(face.name)")
+            // Bold and italic from the family's faces, as the editor takes them.
+            let real = self.family.isEmpty ? "SF Mono" : self.family
+            if let bold = FontFace.emphasis(in: real, from: face.weight, bold: true, italic: false) { lines.append("font-style-bold = \(bold.name)") }
+            if let italic = FontFace.emphasis(in: real, from: face.weight, bold: false, italic: true) { lines.append("font-style-italic = \(italic.name)") }
+            if let both = FontFace.emphasis(in: real, from: face.weight, bold: true, italic: true) { lines.append("font-style-bold-italic = \(both.name)") }
+        }
         for (tag, value) in featureTags { lines.append("font-feature = " + (value == 0 ? "-\(tag)" : value == 1 ? tag : "\(tag)=\(value)")) }
         let f = font(size: CGFloat(size), role: .monospaced)
         let natural = f.ascender - f.descender + f.leading

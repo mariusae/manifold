@@ -39,6 +39,7 @@ enum MarkdownStyle {
         var chipTint: NSColor
     }
 
+    private static let both = try! NSRegularExpression(pattern: #"(\*\*\*|___)(?=\S)(.+?)(?<=\S)\1"#)
     private static let bold = try! NSRegularExpression(pattern: #"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
     private static let italic = try! NSRegularExpression(pattern: #"(?<![\*\w])(\*|_)(?=\S)([^\*_]+?)(?<=\S)\1(?![\*\w])"#)
     private static let strike = try! NSRegularExpression(pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#)
@@ -67,9 +68,11 @@ enum MarkdownStyle {
         let s = a.string as NSString
         let all = NSRange(location: 0, length: s.length)
         guard all.length > 0 else { return }
-        let manager = NSFontManager.shared
-        let boldFont = manager.convert(base, toHaveTrait: .boldFontMask)
-        let italicFont = manager.convert(base, toHaveTrait: .italicFontMask)
+        // From the base's family, a face heavier or slanted (not the trait
+        // asked of the font manager, which a light face of a family of many
+        // weights doesn't change for).
+        let boldFont = base.emphasized(bold: true)
+        let italicFont = base.emphasized(italic: true)
         let tiny = NSFont(descriptor: base.fontDescriptor, size: 0.01) ?? base
         func dim(_ r: NSRange) { a.addAttribute(.foregroundColor, value: palette.dim, range: r) }
         func hide(_ r: NSRange) {
@@ -140,15 +143,27 @@ enum MarkdownStyle {
         }
 
         // Emphasis: the face changes, the markers go.
-        for m in bold.matches(in: a.string, range: all) where !inCode(m.range) {
+        // ***Both***: the bold-italic face, its markers gone; neither bold's
+        // nor italic's to take after.
+        var bothRanges: [NSRange] = []
+        for m in both.matches(in: a.string, range: all) where !inCode(m.range) {
+            bothRanges.append(m.range)
+            a.addAttribute(.font, value: base.emphasized(bold: true, italic: true), range: m.range(at: 2))
+            mark(m.range(at: 1))
+            mark(NSRange(location: m.range.location + m.range.length - 3, length: 3))
+        }
+        func inBoth(_ r: NSRange) -> Bool { bothRanges.contains { NSIntersectionRange($0, r).length > 0 } }
+        for m in bold.matches(in: a.string, range: all) where !inCode(m.range) && !inBoth(m.range) {
             a.addAttribute(.font, value: boldFont, range: m.range(at: 2))
             mark(m.range(at: 1))
             mark(NSRange(location: m.range.location + m.range.length - m.range(at: 1).length, length: m.range(at: 1).length))
         }
-        for m in italic.matches(in: a.string, range: all) where !inCode(m.range) {
+        for m in italic.matches(in: a.string, range: all) where !inCode(m.range) && !inBoth(m.range) {
             let inner = m.range(at: 2)
             let current = a.attribute(.font, at: inner.location, effectiveRange: nil) as? NSFont ?? base
-            a.addAttribute(.font, value: manager.convert(current, toHaveTrait: .italicFontMask), range: inner)
+            // Bold and italic both: the bold-italic face, from the base.
+            let bolded = current != base && current != italicFont
+            a.addAttribute(.font, value: base.emphasized(bold: bolded, italic: true), range: inner)
             mark(m.range(at: 1))
             mark(NSRange(location: m.range.location + m.range.length - 1, length: 1))
         }

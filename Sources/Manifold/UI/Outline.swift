@@ -581,7 +581,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         label.textColor = r.header ? Theme.secondaryText : r.failed ? Theme.statusError : Theme.text
         if let bold = r.bold, let font = label.font, NSMaxRange(bold) <= (r.title as NSString).length {
             let a = NSMutableAttributedString(string: r.title, attributes: [.font: font, .foregroundColor: label.textColor ?? Theme.text])
-            a.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask), range: bold)
+            a.addAttribute(.font, value: font.emphasized(bold: true), range: bold)
             label.attributedStringValue = a
         } else {
             label.stringValue = r.title

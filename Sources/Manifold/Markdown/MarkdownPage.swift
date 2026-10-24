@@ -242,7 +242,8 @@ enum MarkdownPage {
         }
         main { max-width: var(--read-measure, 75.75rem); margin: 0 auto; padding: 1.5rem 1.5rem 96px; }
         main > :first-child { margin-top: 0; }
-        h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.25; margin: 1.25rem 0 0.75rem; color: #202224; }
+        strong, b { font-weight: var(--read-bold, bolder); }
+        h1, h2, h3, h4, h5, h6 { font-weight: var(--read-heading, 700); line-height: 1.25; margin: 1.25rem 0 0.75rem; color: #202224; }
         h1 { font-size: 2.25rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.125rem; }
         h4, h5, h6 { font-size: 1rem; }
         p, ul, ol, blockquote, pre, table, details { margin: var(--read-gap, 1rem) 0; }
