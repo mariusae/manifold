@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CrashGuard.armHandler()
         NSApp.mainMenu = makeMainMenu()
         AppearanceWatcher.shared.start()
+        Tints.watchSystemAccent()
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
             [weak self] _ in
             guard let self else { return }
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosts.pushLanguageServers()
         let scheme = hosts.state.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
+        Tints.apply(hosts.state.appearance.tint)
         GhosttyRuntime.shared.apply(hosts.state.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
             let wc = MainWindowController(hosts: hosts)
@@ -202,6 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let app = submenu(main, "Manifold")
         app.addItem(withTitle: "About Manifold", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         app.addItem(.separator())
+        item(app, "Settings…", #selector(MainWindowController.showSettings(_:)), ",")
+        app.addItem(.separator())
         app.addItem(withTitle: "Hide Manifold", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         item(app, "Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])
         app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
@@ -209,8 +213,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(app, "Secure Keyboard Entry", #selector(toggleSecureInput(_:)), "")
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
         item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
-        item(app, "Remoting…", #selector(MainWindowController.showRemoting(_:)), "")
-        item(app, "Language Servers…", #selector(MainWindowController.showLanguageServers(_:)), "")
         app.addItem(.separator())
         item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
         item(app, "End All Sessions and Quit…", #selector(MainWindowController.stopServer(_:)), "")
@@ -317,40 +319,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
         item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
         view.addItem(.separator())
-        let schemes = NSMenu(title: "Appearance")
-        for scheme in ColorScheme.allCases {
-            item(schemes, scheme.title, #selector(MainWindowController.setColorScheme(_:)), "", [])
-                .representedObject = scheme.rawValue
-            if scheme == .system { schemes.addItem(.separator()) }
-        }
-        let schemesItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
-        schemesItem.submenu = schemes
-        view.addItem(schemesItem)
-        let themes = NSMenu(title: "Theme")
-        for theme in FontTheme.allCases {
-            item(themes, "\(theme.title) (\(theme.proportionalName), \(theme.monospacedName))",
-                 #selector(MainWindowController.setTheme(_:)), "", []).representedObject = theme.rawValue
-        }
-        let themesItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
-        themesItem.submenu = themes
-        view.addItem(themesItem)
-        let contrast = NSMenu(title: "Contrast Correction")
-        for (mode, title) in [(ContrastCorrection.off, "Off"),
-                              (.typical, "For Typical Vision"),
-                              (.deuteranopia, "For Typical Vision and Deuteranopia")] {
-            item(contrast, title, #selector(MainWindowController.setContrastCorrection(_:)), "", [])
-                .representedObject = mode.rawValue
-        }
-        let contrastItem = NSMenuItem(title: "Contrast Correction", action: nil, keyEquivalent: "")
-        contrastItem.submenu = contrast
-        view.addItem(contrastItem)
-        let fonts = NSMenu(title: "Editor Font")
-        for (font, title) in [(EditorFont.proportional, "Proportional"), (.monospaced, "Fixed Width")] {
-            item(fonts, title, #selector(MainWindowController.setEditorFont(_:)), "", []).representedObject = font.rawValue
-        }
-        let fontsItem = NSMenuItem(title: "Editor Font", action: nil, keyEquivalent: "")
-        fontsItem.submenu = fonts
-        view.addItem(fontsItem)
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
                                   ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3"),
@@ -360,30 +328,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
         organizeItem.submenu = organize
         view.addItem(organizeItem)
-        view.addItem(.separator())
-        let dormancy = NSMenu(title: "End Idle Shells")
-        for (hours, title) in [(2, "After 2 Hours Off Screen"), (8, "After 8 Hours Off Screen"), (24, "After a Day Off Screen"),
-                               (168, "After a Week Off Screen"), (0, "Never")] {
-            item(dormancy, title, #selector(MainWindowController.setTerminalDormancy(_:)), "", []).tag = hours
-        }
-        let dormancyItem = NSMenuItem(title: "End Idle Shells", action: nil, keyEquivalent: "")
-        dormancyItem.submenu = dormancy
-        view.addItem(dormancyItem)
-        let keep = NSMenu(title: "Keep History")
-        for (days, title) in [(0, "Text Changes: Forever"), (30, "Text Changes: 30 Days"), (90, "Text Changes: 90 Days"), (365, "Text Changes: a Year")] {
-            item(keep, title, #selector(MainWindowController.setTextHistory(_:)), "", []).tag = days
-        }
-        keep.addItem(.separator())
-        for (days, title) in [(30, "Transcripts: 30 Days"), (90, "Transcripts: 90 Days"), (365, "Transcripts: a Year"), (0, "Transcripts: Forever")] {
-            item(keep, title, #selector(MainWindowController.setTranscriptHistory(_:)), "", []).tag = days
-        }
-        keep.addItem(.separator())
-        for (depth, title) in [(0, "Undo: Everything"), (100, "Undo: 100 Steps"), (1000, "Undo: 1,000 Steps")] {
-            item(keep, title, #selector(MainWindowController.setUndoDepth(_:)), "", []).tag = depth
-        }
-        let keepItem = NSMenuItem(title: "Keep History", action: nil, keyEquivalent: "")
-        keepItem.submenu = keep
-        view.addItem(keepItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")

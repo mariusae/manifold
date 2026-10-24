@@ -13,16 +13,16 @@ enum Theme {
     static let tertiaryText = NSColor.dynamic(NSColor(white: 0.6, alpha: 1), NSColor(white: 0.45, alpha: 1))
     static let hover = NSColor.dynamic(NSColor(white: 0, alpha: 0.055), NSColor(white: 1, alpha: 0.07))
     static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
-    /// A selected row in a list: a step in lightness, not a hue, so it
-    /// reads the same to every eye and the row's own colors stay.
-    static let selection = NSColor.dynamic(NSColor(white: 0, alpha: 0.09), NSColor(white: 1, alpha: 0.14))
+    /// A selected row in a list: the tint, thin, so the row's own colors stay.
+    static let selection = Tints.band
     /// The same, in a list without the keyboard.
-    static let selectionInactive = NSColor.dynamic(NSColor(white: 0, alpha: 0.065), NSColor(white: 1, alpha: 0.1))
+    static let selectionInactive = Tints.bandInactive
     static let divider = NSColor.dynamic(NSColor(white: 0, alpha: 0.1), NSColor(white: 1, alpha: 0.1))
-    static let accent = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 1)
+    /// The app's tint (`Tints`).
+    static let accent = Tints.accent
     /// A block that failed (§3.7).
     static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
-    static let dropHighlight = NSColor(srgbRed: 0.2, green: 0.45, blue: 0.95, alpha: 0.18)
+    static let dropHighlight = Tints.dropHighlight
     /// Floating panels: the palette, a stack's list.
     /// A text in view mode, as go.dev's docs (the Go spec) set code: on
     /// their grey (#F8F8F8; #2D2D2D in the dark), in their text color

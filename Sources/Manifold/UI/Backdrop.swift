@@ -6,7 +6,8 @@ import ManifoldCore
 /// the dark, deep tints on a near-black one — placed afresh each day by a
 /// seed from the date, so no two days' desks are quite the same — and
 /// lit by the hour: warmer while the sun is low, cooler when it's high
-/// (Daylight), looked at again every few minutes and eased into.
+/// (Daylight), looked at again every few minutes and eased into. One of
+/// the pools is the app's tint.
 final class BackdropView: NSView {
     /// The light it was last drawn in.
     private(set) var cast = Daylight.Cast.neutral
@@ -14,6 +15,7 @@ final class BackdropView: NSView {
     var clock: Date? { didSet { relight(fade: true) } }
     private var timer: Timer?
     private var wake: NSObjectProtocol?
+    private var tinted: NSObjectProtocol?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -21,6 +23,10 @@ final class BackdropView: NSView {
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         layerContentsPlacement = .scaleAxesIndependently
         cast = Daylight.cast(at: Date(), from: Daylight.place())
+        // The tint changed: its pool drawn again, cross-faded.
+        tinted = NotificationCenter.default.addObserver(forName: .manifoldTintChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.redraw(fade: true) }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -28,6 +34,7 @@ final class BackdropView: NSView {
     deinit {
         timer?.invalidate()
         if let wake { NSWorkspace.shared.notificationCenter.removeObserver(wake) }
+        if let tinted { NotificationCenter.default.removeObserver(tinted) }
     }
 
     override func viewDidMoveToWindow() {
@@ -51,10 +58,14 @@ final class BackdropView: NSView {
         let now = Daylight.cast(at: clock ?? Date(), from: Daylight.place())
         guard now != cast else { return }
         cast = now
+        redraw(fade: fade, over: 4)
+    }
+
+    private func redraw(fade: Bool, over duration: CFTimeInterval = 0.6) {
         if fade, let layer {
             let t = CATransition()
             t.type = .fade
-            t.duration = 4
+            t.duration = duration
             layer.add(t, forKey: "relight")
         }
         needsDisplay = true
@@ -127,9 +138,21 @@ final class BackdropView: NSView {
             ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: bounds.height), end: CGPoint(x: bounds.width, y: 0), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         }
         let w = bounds.width, h = bounds.height
-        for _ in 0..<2 {
+        // The tint's hue and how colored it is (graphite: hardly).
+        var tintHue: CGFloat = 0, tintSaturation: CGFloat = 0
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let t = Tints.accent.usingColorSpace(.sRGB) ?? Tints.accent
+            var b: CGFloat = 0, a: CGFloat = 0
+            t.getHue(&tintHue, saturation: &tintSaturation, brightness: &b, alpha: &a)
+        }
+        for pool in 0..<2 {
             let hue = (stops[Int(r.next() * 3)].0 + turn + 1).truncatingRemainder(dividingBy: 1)
-            let color = dark
+            // The first pool is the tint's — a little more colored than the
+            // wash's own, so it reads as the tint.
+            let color: NSColor = pool == 0
+                ? (dark ? NSColor(calibratedHue: tintHue, saturation: 0.6 * tintSaturation, brightness: 0.45, alpha: 1)
+                        : NSColor(calibratedHue: tintHue, saturation: 0.32 * tintSaturation, brightness: 1, alpha: 1))
+                : dark
                 ? NSColor(calibratedHue: hue, saturation: 0.5, brightness: 0.4, alpha: 1)
                 : NSColor(calibratedHue: hue, saturation: 0.18, brightness: 1, alpha: 1)
             let center = CGPoint(x: CGFloat(r.next()) * w, y: CGFloat(r.next()) * h)

@@ -92,7 +92,9 @@ final class GhosttyRuntime {
         case .typical: "typical"
         case .deuteranopia: "deuteranopia"
         }
-        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + appearance.theme.terminalConfig + "\ncontrast-correction = \(mode)\n"
+        // The caret and selection in the app's tint, over the palette's.
+        let tint = "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
+        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + tint + appearance.theme.terminalConfig + "\ncontrast-correction = \(mode)\n"
     }
 
     private static func makeConfig(_ appearance: Appearance, dark: Bool) -> ghostty_config_t? {
@@ -113,8 +115,10 @@ final class GhosttyRuntime {
     private var dark = NSApp.effectiveAppearance.isDark
 
     /// Recolors (and resets in the theme's fonts) every terminal.
-    func apply(_ appearance: Appearance, dark: Bool) {
-        guard appearance != self.appearance || dark != self.dark, let app else { return }
+    /// `force`: though nothing in it changed (the system's accent color,
+    /// which the System tint follows, did).
+    func apply(_ appearance: Appearance, dark: Bool, force: Bool = false) {
+        guard force || appearance != self.appearance || dark != self.dark, let app else { return }
         self.appearance = appearance
         self.dark = dark
         guard let config = Self.makeConfig(appearance, dark: dark) else { return }
@@ -124,6 +128,9 @@ final class GhosttyRuntime {
         if let old = self.config { ghostty_config_free(old) }
         self.config = config
     }
+
+    /// Every terminal recolored as it is (the system's accent changed).
+    func reapply() { apply(appearance, dark: dark, force: true) }
 
     private init() {
         Self.registerBundledFonts()

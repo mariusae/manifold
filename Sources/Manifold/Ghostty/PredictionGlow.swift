@@ -130,7 +130,8 @@ final class PredictionGlow: NSView {
         l.shadowOffset = .zero
         l.shadowRadius = max(3, cellHeight * 0.3)
         l.shadowOpacity = dark ? 0.9 : 0.35
-        l.shadowColor = (dark ? NSColor(srgbRed: 0.45, green: 0.75, blue: 1.0, alpha: 1) : Theme.accent).cgColor
+        // The tint; in the dark, lighter, to glow on near-black.
+        l.shadowColor = Tints.glow(dark: dark).cgColor
         l.compositingFilter = dark ? "screenBlendMode" : "multiplyBlendMode"
         return l
     }

@@ -67,7 +67,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var pendingJump: (path: String, line: Int, column: Int?)?
     /// Tiles ⌘↩ made, each with the line the tile it replaced had at its top.
     private var pendingTopLines: [PlacementID: Double] = [:]
-    private var languageServersWindow: LanguageServersWindow?
     private var clickMonitor: Any?
     /// Blocks whose terminal just closed; they get a new one after a moment
     /// if their shell is still there (the server was restarted, not the
@@ -178,7 +177,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onShow = { [weak self] host, id, client, block, beside in
             self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
         }
-        hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.languageServersWindow?.refresh() }
+        hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.settingsWindow?.refresh() }
         hosts.onGutter = { [weak self] block in
             guard let self else { return }
             for case let e as EditorView in self.views.values where e.block == block { e.gutterChanged() }
@@ -265,6 +264,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
         }
         if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
+        settingsWindow?.refresh(tables: false)
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
 
@@ -4746,53 +4746,72 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Language Servers…: the table of what runs for which files.
-    @objc func showLanguageServers(_ sender: Any?) {
-        if languageServersWindow == nil {
-            let wc = LanguageServersWindow()
-            wc.source = { [weak self] in self?.desk.settings.languageServers ?? LanguageServerConfig.defaults }
-            wc.states = { [weak self] in
-                guard let self else { return [:] }
-                var out: [String: String] = [:]
-                for c in self.hosts.all {
-                    for (key, state) in c.languageServerStates { out[hosts.label(of: c.host) + ": " + key] = state }
-                }
-                return out
-            }
-            wc.onChange = { [weak self] configs in
-                guard let self else { return }
-                var s = self.desk.settings
-                s.languageServers = configs
-                self.host.setSettings(s)
-            }
-            languageServersWindow = wc
+    /// Settings (⌘,): every setting in one window.
+    private var settingsWindow: SettingsWindow?
+
+    private func settings() -> SettingsWindow {
+        if let w = settingsWindow { return w }
+        let w = SettingsWindow()
+        w.source.appearance = { [weak self] in self?.hosts.state.appearance ?? Appearance() }
+        w.source.setAppearance = { [weak self] a in self?.hosts.setAppearance(a) }
+        w.source.settings = { [weak self] in self?.desk.settings ?? Settings() }
+        w.source.setSettings = { [weak self] s in
+            TerminalView.copyOnSelect = s.copyOnSelect
+            self?.host.setSettings(s)
         }
-        languageServersWindow?.showWindow(nil)
-        languageServersWindow?.refresh()
+        // Language servers: what runs for which files, and how each is doing.
+        w.languageServers.source = { [weak self] in self?.desk.settings.languageServers ?? LanguageServerConfig.defaults }
+        w.languageServers.states = { [weak self] in
+            guard let self else { return [:] }
+            var out: [String: String] = [:]
+            for c in self.hosts.all {
+                for (key, state) in c.languageServerStates { out[self.hosts.label(of: c.host) + ": " + key] = state }
+            }
+            return out
+        }
+        w.languageServers.onChange = { [weak self] configs in
+            guard let self else { return }
+            var s = self.desk.settings
+            s.languageServers = configs
+            self.host.setSettings(s)
+        }
+        // Remoting: the providers that reach hosts (§8), kept in the hosts file.
+        w.remoting.source = { HostsFile.load().providers }
+        w.remoting.onChange = { providers in
+            var file = HostsFile.load()
+            file.providers = providers
+            file.save()
+        }
+        w.remoting.onAttach = { [weak self] in self?.attachToHost(nil) }
+        settingsWindow = w
+        return w
     }
 
-    private var remotingWindow: RemotingWindow?
+    @objc func showSettings(_ sender: Any?) { settings().show() }
+    @objc func showLanguageServers(_ sender: Any?) { settings().show(.languageServers) }
+    @objc func showRemoting(_ sender: Any?) { settings().show(.remoting) }
 
-    /// Remoting…: the providers that reach hosts (§8), kept in the hosts file.
+    /// Debugging: Settings — "show [pane]", "tint <name>", or nothing: its state.
+    func debugSettings(_ arg: String) -> String {
+        let words = arg.split(separator: " ").map(String.init)
+        switch words.first {
+        case "show":
+            let pane = words.count > 1 ? SettingsWindow.Pane.allCases.first { "\($0)".lowercased() == words[1].lowercased() } : nil
+            settings().show(pane)
+        case "close": settingsWindow?.close()
+        case "tint":
+            guard words.count > 1, let t = Tint(rawValue: words[1]) else { return "tints: \(Tint.allCases.map(\.rawValue).joined(separator: " "))" }
+            settings().appearance.loadViewIfNeeded()
+            settings().appearance.debugPickTint(t)
+        default: break
+        }
+        return settingsWindow?.debugState ?? "no settings window"
+    }
+
     func debugRemoting(_ arg: String) -> String {
-        if arg == "add" { remotingWindow?.debugAdd() }
-        return remotingWindow?.debugRows ?? "no remoting window"
-    }
-
-    @objc func showRemoting(_ sender: Any?) {
-        if remotingWindow == nil {
-            let wc = RemotingWindow()
-            wc.source = { HostsFile.load().providers }
-            wc.onChange = { providers in
-                var file = HostsFile.load()
-                file.providers = providers
-                file.save()
-            }
-            wc.onAttach = { [weak self] in self?.attachToHost(nil) }
-            remotingWindow = wc
-        }
-        remotingWindow?.showWindow(nil)
-        remotingWindow?.refresh()
+        guard let r = settingsWindow?.remoting, r.isViewLoaded else { return "no remoting window" }
+        if arg == "add" { r.debugAdd() }
+        return r.debugRows
     }
 
     /// Attach to Host…: a destination, as ssh takes them, or
@@ -4801,7 +4820,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Attach to a Host"
-        alert.informativeText = "A provider (Remoting… configures them) and a destination it understands. Manifold installs its server there, in ~/.manifold/bin, if it isn't already."
+        alert.informativeText = "A provider (Settings ▸ Remoting configures them) and a destination it understands. Manifold installs its server there, in ~/.manifold/bin, if it isn't already."
         let providers = HostsFile.load().providers
         let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 2, width: 110, height: 24), pullsDown: false)

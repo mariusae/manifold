@@ -575,10 +575,9 @@ final class TextView: NSView, NSTextInputClient {
 
     // MARK: Drawing
 
-    static let selectionColor = NSColor.dynamic(NSColor(srgbRed: 0.81, green: 0.886, blue: 0.984, alpha: 1),
-                                                NSColor(srgbRed: 0.149, green: 0.31, blue: 0.47, alpha: 1))
-    static let caretColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 1),
-                                            NSColor(srgbRed: 0.04, green: 0.518, blue: 1, alpha: 1))
+    /// Selected text and the caret, in the app's tint.
+    static let selectionColor = Tints.textSelection
+    static let caretColor = Tints.caret
     static let lineHighlight = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1),
                                                NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1))
     static let gutterText = NSColor.dynamic(NSColor(white: 0.62, alpha: 1), NSColor(white: 0.42, alpha: 1))

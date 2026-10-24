@@ -338,7 +338,7 @@ around it, and comes back with its history.
   and it's kept as it is until you change it. Named workspaces wear a
   bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
-  shell for eight hours (View ▸ End Idle Shells) has its shell ended and
+  shell for eight hours (Settings ▸ Terminals) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
   transcript, with a line across it saying when the last one ended and
   after how long idle, so it's never a surprise. The finder says
@@ -458,8 +458,8 @@ around it, and comes back with its history.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   finder, a folder listing, a link in a preview, or the `manifold`
-  command. View ▸ Editor Font chooses proportional or fixed
-  width; View ▸ Theme the fonts: **Notes** (the default: SF Pro with its
+  command. Settings ▸ Appearance chooses the editor's text, proportional or fixed
+  width, and the fonts: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
   width, the system font for the UI), Tiempos (Tiempos Text, Menlo),
   Tiempos/Fira (Tiempos Text, Fira Code), Tiempos/JetBrains (Tiempos
@@ -481,7 +481,7 @@ around it, and comes back with its history.
   first, each line previewed), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
   on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
-  Language Servers… is the table: the languages by extension, the command
+  Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
   off; it's a setting on the desk, so every host runs the same — unless a
@@ -991,10 +991,21 @@ its background as it's drawn and, where they don't reach WCAG AA (4.5:1),
 moves the text's color in Oklab lightness until they do. Its hue and chroma
 are kept, and nudged toward the nearest theme color. With deuteranopia
 correction (the default), the text must also read as a deuteranope sees it.
-**View ▸ Contrast Correction** switches between that, typical vision only,
+**Settings ▸ Appearance ▸ Contrast** switches between that, typical vision only,
 and off. This is a port of apex's `contrast.rs`, in [the Ghostty
-patch](patches/ghostty.patch). View ▸ Appearance follows the system, or
+patch](patches/ghostty.patch). Its Appearance follows the system, or
 keeps to light or dark.
+
+**Settings** (⌘,) holds every setting, a pane each: Appearance (light or
+dark, the tint, the fonts, the editor's text, contrast), Terminals (copy
+on select, ending idle shells), History, Remoting and Language Servers.
+The **tint** — System (the macOS accent color), Blue, Orange (Overcast's),
+Purple, Pink, Green or Graphite — colors the app's own marks: the focus
+ring, what's chosen or toggled, the selection bands, progress, the caret
+and selected text in editors and terminals, and one of the backdrop's
+pools of light. Each is set for light and for dark (in the light, deep
+enough to read as a thin line on white). Colors that say something keep
+their own: links, find matches, status, diffs, a terminal's palette.
 
 ## Host and app
 
@@ -1018,7 +1029,7 @@ is migrated into logs on first run.
   own there already, so it stops the old one and comes back through a
   bridge that starts the new; its shells start again, each in its
   directory, under their recent output.
-- **Remoting** (Manifold ▸ Remoting…) is a table of providers: a name and
+- **Remoting** (Settings ▸ Remoting) is a table of providers: a name and
   a command that runs a command line on a destination with stdio
   connected, `%h` the destination and `%c` the command (appended when
   there is no `%c`), such as `my_special_script.sh %h`; `ssh` is built
@@ -1137,11 +1148,11 @@ is migrated into logs on first run.
   folder, once, for finding what runs away; past 24 GB it ends the
   app — a renderer; the server keeps everything — rather than take the
   machine down, and says so in the log.
-- **Retention** is tunable, in View ▸ Keep History: how many days of text
+- **Retention** is tunable, in Settings ▸ History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long
   to keep the transcripts of dormant terminals, and how many undo steps
-  an editor holds. End Idle Shells sets when off-screen shells go
+  an editor holds. Settings ▸ Terminals sets when off-screen shells go
   dormant.
 - `manifoldd state` prints what the host has; `manifoldd stop` ends it.
 - Protocol: length-prefixed binary frames over a Unix socket

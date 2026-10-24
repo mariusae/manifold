@@ -53,14 +53,18 @@ public struct Appearance: Codable, Equatable, Sendable {
     public var colorScheme: ColorScheme = .system
     public var contrastCorrection: ContrastCorrection = .deuteranopia
     public var editorFont: EditorFont = .proportional
+    /// The color the app's own marks take: the focus ring, selections,
+    /// the caret, a pool of light in the backdrop.
+    public var tint: Tint = .blue
 
     public init(theme: FontTheme = .notes, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
-                editorFont: EditorFont = .proportional) {
+                editorFont: EditorFont = .proportional, tint: Tint = .blue) {
         self.theme = theme
         self.colorScheme = colorScheme
         self.contrastCorrection = contrastCorrection
         self.editorFont = editorFont
+        self.tint = tint
     }
 
     // Settings saved before a setting existed get its default.
@@ -70,6 +74,7 @@ public struct Appearance: Codable, Equatable, Sendable {
         colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
+        tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .blue
     }
 }
 
@@ -230,6 +235,12 @@ public enum FontTheme: String, Codable, CaseIterable, Sendable {
 /// Light or dark: as the system is, or always one.
 public enum ColorScheme: String, Codable, CaseIterable, Sendable {
     case system, light, dark
+}
+
+/// The app's tint (§3.1): as the system's accent color, or one of its own —
+/// orange as Overcast's.
+public enum Tint: String, Codable, CaseIterable, Sendable {
+    case system, blue, orange, purple, pink, green, graphite
 }
 
 /// The editor's text: the theme's proportional font, or its fixed-width one.

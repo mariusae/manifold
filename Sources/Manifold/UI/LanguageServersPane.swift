@@ -1,12 +1,12 @@
 import AppKit
 import ManifoldCore
 
-/// Language Servers…: which server runs for which files, on every host
+/// Settings ▸ Language Servers: which server runs for which files, on every host
 /// (DESIGN.md §7.1). A row per language: its name, the file extensions it
 /// takes, the command (run through the shell, in the workspace root), the
 /// files that mark a root, and whether it's on at all. Changes are settings
 /// on the desk, so they're everywhere this app is; each host runs its own.
-final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     var source: (() -> [LanguageServerConfig])?
     var states: (() -> [String: String])?
     var onChange: (([LanguageServerConfig]) -> Void)?
@@ -17,20 +17,31 @@ final class LanguageServersWindow: NSWindowController, NSTableViewDataSource, NS
     private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 420),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Language Servers"
-        window.minSize = NSSize(width: 600, height: 300)
-        super.init(window: window)
-        window.center()
+        super.init(nibName: nil, bundle: nil)
+        title = "Language Servers"
+    }
+
+    /// Settings' Language Servers pane.
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 780, height: 520))
+        // Its size fixed: Settings sizes its window to each pane's.
+        NSLayoutConstraint.activate([
+            view.widthAnchor.constraint(equalToConstant: 780),
+            view.heightAnchor.constraint(equalToConstant: 520),
+        ])
+        preferredContentSize = view.frame.size
         build()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        refresh()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     private func build() {
-        guard let content = window?.contentView else { return }
-        window?.backgroundColor = Theme.windowBackground
+        let content = view
         let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
         Flat.outline(scroll)

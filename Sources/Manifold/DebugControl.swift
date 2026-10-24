@@ -66,6 +66,21 @@ enum DebugControl {
             // from the one that has it; give it back.
             let responder = window.firstResponder
             defer { window.makeFirstResponder(responder) }
+            // "snapshot <path> backdrop": the window's backdrop alone.
+            if arg.hasSuffix(" backdrop") {
+                func find(_ v: NSView) -> BackdropView? { (v as? BackdropView) ?? v.subviews.lazy.compactMap(find).first }
+                guard let b = window.contentView.flatMap(find), let rep = b.bitmapImageRepForCachingDisplay(in: b.bounds) else { return "no backdrop" }
+                b.cacheDisplay(in: b.bounds, to: rep)
+                let path = String(arg.dropLast(9))
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                return "wrote \(path)"
+            }
+            // "snapshot <path> settings": the Settings window instead.
+            if arg.hasSuffix(" settings") {
+                guard let w = NSApp.windows.first(where: { $0.windowController is SettingsWindow && $0.isVisible }) else { return "no settings window" }
+                w.contentView?.layoutSubtreeIfNeeded()
+                return snapshot(w, to: String(arg.dropLast(9)))
+            }
             // "snapshot <path> picker": the picker's panel instead.
             if arg.hasSuffix(" picker") {
                 guard let panel = NSApp.windows.first(where: { $0 is PickerPanel && $0.isVisible }) else { return "no picker" }
@@ -970,6 +985,10 @@ enum DebugControl {
             var out: [String] = []
             while let x = r { out.append("\(type(of: x))"); r = x.nextResponder }
             return out.joined(separator: " → ")
+        case "settings":
+            // "settings show [pane]", "settings tint <name>", "settings close",
+            // or nothing: the Settings window's state.
+            return wc?.debugSettings(arg) ?? "no window"
         case "remoting":
             // "remoting add" presses +; "remoting" lists the rows.
             return wc?.debugRemoting(arg) ?? "no window"

@@ -1,12 +1,12 @@
 import AppKit
 import ManifoldCore
 
-/// Remoting…: how hosts are reached (DESIGN.md §8). A row per provider:
+/// Settings ▸ Remoting: how hosts are reached (DESIGN.md §8). A row per provider:
 /// its name, and the command that runs a command line on a destination
 /// with stdio connected — `%h` the destination, `%c` the command (appended
 /// when the template has no `%c`). `ssh` is the built-in one; add your
 /// own, such as `my_special_script.sh %h`, and attach to `name:target`.
-final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     var source: (() -> [RemoteProvider])?
     var onChange: (([RemoteProvider]) -> Void)?
     var onAttach: (() -> Void)?
@@ -16,20 +16,31 @@ final class RemotingWindow: NSWindowController, NSTableViewDataSource, NSTableVi
     private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 320),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Remoting"
-        window.minSize = NSSize(width: 480, height: 240)
-        super.init(window: window)
-        window.center()
+        super.init(nibName: nil, bundle: nil)
+        title = "Remoting"
+    }
+
+    /// Settings' Remoting pane.
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 340))
+        // Its size fixed: Settings sizes its window to each pane's.
+        NSLayoutConstraint.activate([
+            view.widthAnchor.constraint(equalToConstant: 640),
+            view.heightAnchor.constraint(equalToConstant: 340),
+        ])
+        preferredContentSize = view.frame.size
         build()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        refresh()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     private func build() {
-        guard let content = window?.contentView else { return }
-        window?.backgroundColor = Theme.windowBackground
+        let content = view
         let scroll = ClippingScrollView()
         scroll.hasVerticalScroller = true
         Flat.outline(scroll)
