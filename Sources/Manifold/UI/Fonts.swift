@@ -87,12 +87,10 @@ extension FontTheme {
 
     /// The editor's lines, as a multiple of the font's own height: the
     /// role's line height (a multiple of its size) made one of the font's.
-    /// A file viewed (`viewing`, set as go.dev sets code) at 1.4 at least.
-    func editorLineHeight(_ kind: EditorFont, font: NSFont, viewing: Bool = false) -> CGFloat {
+    func editorLineHeight(_ kind: EditorFont, font: NSFont) -> CGFloat {
         let style = kind == .monospaced ? styles.monospaced : styles.editing
         let natural = font.ascender - font.descender + font.leading
-        let lines = viewing ? max(style.lineHeight, 1.4) : style.lineHeight
-        return natural > 0 ? max(0.5, lines * font.pointSize / natural) : 1.2
+        return natural > 0 ? max(0.5, style.lineHeight * font.pointSize / natural) : 1.2
     }
 
     /// Letter spacing in points for a font set in a role.

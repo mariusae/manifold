@@ -137,14 +137,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
-        textView.markdown = hasOutline
-        if hasOutline {
+        textView.markdown = isMarkdownOutline
+        if isMarkdownOutline {
             textView.onImage = { [weak self] data, kind in
                 guard let self else { return }
                 self.delegate?.editor(self, image: data, kind: kind)
             }
         }
-        textView.showsLineNumbers = !hasOutline
+        textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
         status.font = .systemFont(ofSize: 11.5)
         status.textColor = Theme.text
@@ -318,6 +318,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private var headingsWork: DispatchWorkItem?
     /// Whether the text has an outline: Markdown, or a note (its headings);
     /// a source file whose language server says what it declares.
+    /// An outline: a text's Markdown headings, or a source file's symbols
+    /// from its language server — only the first of which makes the text
+    /// Markdown (rich, without line numbers).
     fileprivate var hasOutline: Bool { isMarkdownOutline || hasSymbols }
     private var isMarkdownOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
     /// The language server has answered with the file's symbols.
@@ -524,17 +527,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     static let lastPlacement: PlacementID = "last:text"
 
     /// View mode (⌘↩ to edit): the text as it is, not taken in, on the
-    /// grey of a page of code.
+    /// grey of a page of code — set as it's edited (face, size, lines,
+    /// colors), so going between the two changes only the page under it.
     var viewing = false {
         didSet {
             guard viewing != oldValue else { return }
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
             }
-            // As go.dev sets its code: its text and line numbers' colors.
-            textView.textColor = viewing ? Theme.codeText : Theme.bodyText
-            textView.gutterColor = viewing ? Theme.codeLineNumber : TextView.gutterText
-            applyFont()
             documentChanged()
         }
     }
@@ -557,9 +557,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// pill's menu chooses; kept with the placement's view state.
     var richMarkdown = true {
         didSet {
-            textView.markdown = hasOutline && richMarkdown
+            textView.markdown = isMarkdownOutline && richMarkdown
             // Rich, a note has no line numbers: it's prose.
-            textView.showsLineNumbers = !(hasOutline && richMarkdown)
+            textView.showsLineNumbers = !(isMarkdownOutline && richMarkdown)
         }
     }
     /// A block's look for its pill in the text, from whoever knows blocks.
@@ -573,7 +573,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     var pillItems: [NSMenuItem] {
         var items: [NSMenuItem] = []
-        if hasOutline {
+        if isMarkdownOutline {
             items.append(ClosureMenuItem(richMarkdown ? "Show Raw Markdown" : "Show Formatted", symbol: richMarkdown ? "textformat.abc" : "text.alignleft") { [weak self] in
                 guard let self else { return }
                 self.richMarkdown.toggle()
@@ -647,20 +647,18 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: Fonts
 
+    /// Edited or viewed alike: the tile's font, at its role's size.
     private var textFont: NSFont {
-        // Viewed, set as go.dev sets code — at its 0.83rem — in the theme's code face.
-        if viewing { return theme.font(.monospaced, size: max(8, 13.3 + sizeAdjust)) }
-        return theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
+        theme.font(font, size: max(8, theme.editorSize(font) + sizeAdjust))
     }
 
     private func applyFont() {
         let f = textFont
         textView.font = f
         textView.codeFont = theme.font(.monospaced, size: max(8, theme.editorSize(.monospaced) + sizeAdjust - 1))
-        // Lines as the role sets them; viewed, as go.dev sets code, at 1.4 at least.
-        let kind: EditorFont = viewing ? .monospaced : font
-        textView.lineHeightMultiple = theme.editorLineHeight(kind, font: f, viewing: viewing)
-        textView.tracking = theme.tracking(kind, font: f)
+        // Lines and letters as the role sets them, edited or viewed alike.
+        textView.lineHeightMultiple = theme.editorLineHeight(font, font: f)
+        textView.tracking = theme.tracking(font, font: f)
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }
@@ -981,7 +979,7 @@ final class EditorBanner: NSView {
 extension EditorView: Printable {
     /// The text as it is, in the code font (a note's too: its Markdown).
     func printOperation() -> NSPrintOperation? {
-        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: hasOutline ? .systemFont(ofSize: 10.5) : TextPrint.codeFont)
+        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: isMarkdownOutline ? .systemFont(ofSize: 10.5) : TextPrint.codeFont)
     }
 }
 
