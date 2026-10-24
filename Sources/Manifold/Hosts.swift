@@ -48,8 +48,55 @@ final class Hosts {
         }
     }
 
+    /// The state written, off the main thread and a moment later — a
+    /// workspace switch wrote it, atomically, before it showed.
     private func saveState() {
-        if let data = try? JSONEncoder().encode(state) { try? data.write(to: Self.stateURL, options: .atomic) }
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        stateLock.lock()
+        pendingState = data
+        stateLock.unlock()
+        Self.stateQueue.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.writePendingState() }
+    }
+
+    /// The last state asked for, if not yet written (one write for many).
+    private func writePendingState() {
+        stateLock.lock()
+        let data = pendingState
+        pendingState = nil
+        stateLock.unlock()
+        if let data { try? data.write(to: Self.stateURL, options: .atomic) }
+    }
+
+    /// Quitting: what's waiting written now.
+    func flushState() { Self.stateQueue.sync { writePendingState() } }
+
+    private static let stateQueue = DispatchQueue(label: "manifold.client-state", qos: .utility)
+    private let stateLock = NSLock()
+    private var pendingState: Data?
+
+    /// One render for every change in a turn of the run loop, whichever
+    /// hosts they came from — and no more than one a frame, however fast
+    /// they come. A change made here (`change`) renders at once, and the
+    /// one waiting then has nothing left to do.
+    private func scheduleChange() {
+        guard !changePending else { return }
+        changePending = true
+        let since = changesFired
+        let wait = max(0, lastChange + 1.0 / 60 - CACurrentMediaTime())
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            self.changePending = false
+            if self.changesFired == since { self.fireChange() }
+        }
+    }
+    private var changePending = false
+    private var changesFired = 0
+    private var lastChange: CFTimeInterval = 0
+
+    private func fireChange() {
+        changesFired &+= 1
+        lastChange = CACurrentMediaTime()
+        onChange?()
     }
 
     private func change(_ f: (inout ClientState) -> Void) {
@@ -58,7 +105,7 @@ final class Hosts {
         guard s != state else { return }
         state = s
         saveState()
-        onChange?()
+        fireChange()
     }
 
     /// Shows a workspace: it is this client's selection, and its host's
@@ -94,7 +141,7 @@ final class Hosts {
     func setAppearance(_ a: Appearance) { change { $0.appearance = a } }
 
     private func wire(_ client: HostClient) {
-        client.onChange = { [weak self] in self?.onChange?() }
+        client.onChange = { [weak self] in self?.scheduleChange() }
         client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
         client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
         client.onShow = { [weak self, weak client] id, who, block, beside in

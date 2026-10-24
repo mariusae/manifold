@@ -246,11 +246,13 @@ final class GridView: NSView, NSDraggingSource {
         self.heights = heights
         self.focused = focused
         self.full = full
+        var addedViews = false
         for column in columns {
             for tile in column {
                 if tile.view.superview !== self, !held(tile.shown.id) {
                     Self.styleBody(tile.view)
                     addSubview(tile.view)
+                    addedViews = true
                 }
                 let pill = pills[tile.shown.id] ?? {
                     let p = sparePills.removeValue(forKey: tile.shown.id) ?? TilePill()
@@ -418,10 +420,31 @@ final class GridView: NSView, NSDraggingSource {
                 self.delegate?.gridResized(heights: self.heights, stashed: stashed)
             }
         }
-        addSubview(dropOverlay)
-        if dragging { addSubview(dragCatcher) }
-        needsLayout = true
+        if subviews.last !== dropOverlay && !dragging { addSubview(dropOverlay) }
+        if dragging { addSubview(dropOverlay); addSubview(dragCatcher) }
+        // Laid out again only when what places the tiles changed: every
+        // render came here (every keystroke in a note), and every tile
+        // and pill was placed again.
+        let inputs = LayoutInputs(ids: columns.map { $0.map(\.shown.id) }, views: columns.flatMap { $0.map { ObjectIdentifier($0.view) } },
+                                  fractions: self.fractions, heights: heights, focused: focused, full: full,
+                                  links: columns.flatMap { $0.map { pills[$0.shown.id]?.linkWanted ?? 0 } })
+        if inputs != laidOutFor || addedViews || dragging {
+            laidOutFor = inputs
+            needsLayout = true
+        }
     }
+
+    /// What the tiles were last placed for.
+    private struct LayoutInputs: Equatable {
+        var ids: [[PlacementID]]
+        var views: [ObjectIdentifier]
+        var fractions: [Double]
+        var heights: [PlacementID: Double]
+        var focused: PlacementID?
+        var full: PlacementID?
+        var links: [CGFloat]
+    }
+    private var laidOutFor: LayoutInputs?
 
     func clear() {
         show([], fractions: [], heights: [:], focused: nil)

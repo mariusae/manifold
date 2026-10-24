@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        hosts.flushState()
         CrashGuard.launchedFine()
     }
 
