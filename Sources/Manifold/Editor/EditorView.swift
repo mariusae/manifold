@@ -657,9 +657,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let f = textFont
         textView.font = f
         textView.codeFont = theme.font(.monospaced, size: max(8, theme.editorSize(.monospaced) + sizeAdjust - 1))
-        // Viewed, set as go.dev sets code: lines at 1.4 (or as custom typography sets code).
+        // Lines as the role sets them; viewed, as go.dev sets code, at 1.4 at least.
         let kind: EditorFont = viewing ? .monospaced : font
-        textView.lineHeightMultiple = theme.editorLineHeight(kind, font: f, fallback: viewing ? 1.4 : font == .proportional ? 1.25 : 1.2)
+        textView.lineHeightMultiple = theme.editorLineHeight(kind, font: f, viewing: viewing)
         textView.tracking = theme.tracking(kind, font: f)
     }
 

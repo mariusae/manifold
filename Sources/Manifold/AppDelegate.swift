@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = makeMainMenu()
         AppearanceWatcher.shared.start()
         Tints.watchSystemAccent()
+        // Fonts installed or taken away (Humanist's faces, a family a custom
+        // role names): what's set in them set again.
+        NotificationCenter.default.addObserver(forName: NSFont.fontSetChangedNotification, object: nil, queue: .main) { [weak self] _ in
+            FontTheme.fontsChanged()
+            MainActor.assumeIsolated { self?.windowController?.fontsChanged() }
+        }
         // Agents' hooks put in when the command was `manifold`, moved over.
         DispatchQueue.global(qos: .utility).async { AgentSkill.refresh() }
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {

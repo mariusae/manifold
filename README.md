@@ -466,29 +466,37 @@ around it, and comes back with its history.
   **monospaced** one for terminals and code, an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
-  Markdown preview). Two themes: **Humanist** (the default: Lato to edit,
-  Tiempos Text to read, Source Code Pro for terminals and code) and
-  **System** (SF, and SF Mono). Lato and Source Code Pro are bundled;
-  Tiempos Text is licensed, so the build copies it from your own fonts
-  (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts) rather
-  than fetching it — without it, Humanist previews read in the system font.
-  A third, **Custom**, is set in **Settings ▸ Typography**, a role at a
-  time: any installed family (the monospaced role's list leads with
-  those of fixed pitch) and its face (by weight), the size, the line
-  height (a multiple of the size), letter spacing (thousandths of an
-  em), and OpenType features by tag (`ss01, zero, -liga, cv05=2`, or
-  checked off a menu of those the font has); the reading role also its
-  measure (the longest line in a preview, in characters) and the space
-  between paragraphs. Bold and italic come from the family's own faces,
-  by their weights: bold a face about three hundred heavier (Light's
-  Semibold, Regular's Bold), italic the slanted face of the weight, in
-  editors, previews and terminals alike. Each role's size scales everything set in it, and
-  all of it reaches everywhere the role is used: editors and notes (the
-  editor's lines and letters too), previews (as CSS), and terminals (as
-  Ghostty's font family, style, size and features, its cells' height and
-  width giving the line height and spacing). A sample shows the role as
-  it's set; changes apply as you make them (and choose Custom); Start
-  From copies Humanist's or System's, all of it or the role's.
+  Markdown preview). Each theme sets the three — face, size, line height
+  (a multiple of the size), letter spacing and OpenType features — and
+  no fonts are shipped: **System** (SF and SF Mono), **Apple** (the
+  default: Avenir Next 15 to edit, New York 16 to read — the system's
+  serif — and Menlo 13), and **Humanist** (Hoefler&Co.'s ScreenSmart
+  faces: Ideal Sans Book 14.5 to edit, with lining, tabular figures and
+  ligatures, `lnum, tnum, liga`; Chronicle 15.5 to read, at 1.55, with
+  ligatures; Menlo 13), which is offered only where Ideal Sans SSm and
+  Chronicle SSm are installed (without them, a saved Humanist is set as
+  Apple, and it comes back when they are). Lines are 1.45 to edit, 1.3
+  for code, and to read 1.45 (SF), 1.5 (New York), 1.55 (Chronicle).
+  **Settings ▸ Appearance ▸ Enable advanced typography** adds a
+  **Typography** pane and a fourth theme, **Custom**, set there a role
+  at a time: any installed family (the monospaced role's list leads with
+  those of fixed pitch; New York too) and its face (by weight), the
+  size, the line height, letter spacing (thousandths of an em), and
+  OpenType features by tag (`ss01, zero, -liga, cv05=2`, or checked off
+  a menu of those the font has); the reading role also its measure (the
+  longest line in a preview, in characters) and the space between
+  paragraphs. Bold and italic come from the family's own faces, by
+  their weights: bold a face about three hundred heavier (Regular's
+  Bold), italic the slanted face of the weight, in editors, previews and
+  terminals alike. Each role's size scales everything set in it, and all
+  of it reaches everywhere the role is used: editors and notes (the
+  editor's lines and letters too; a file viewed has lines of 1.4 at
+  least), previews (as CSS), and terminals (as Ghostty's font family,
+  style, size and features, its cells' height and width giving the line
+  height and spacing). A sample shows the role as it's set; changes
+  apply as you make them (and choose Custom); Start From copies a
+  theme's, all of it or the role's. Fonts installed while Manifold runs
+  are taken up at once.
 - **Language servers** run on the file's host, one per language and
   workspace root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
@@ -1317,7 +1325,6 @@ is migrated into logs on first run.
 
 ```
 scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds Frameworks/
-scripts/fetch-fonts.sh      # once: fetches Monaspace, Mona Sans, Recursive, Go, Fira Code, JetBrains Mono and Anthrosevka Mono into Frameworks/; copies Tiempos Text and Berkeley Mono
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```

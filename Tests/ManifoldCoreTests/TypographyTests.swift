@@ -15,7 +15,7 @@ import Testing
     #expect(back == a)
     // Saved before there was any.
     let old = try JSONDecoder().decode(Appearance.self, from: Data(#"{"theme":"system"}"#.utf8))
-    #expect(old.theme == .system && old.typography == .humanist)
+    #expect(old.theme == .system && old.typography == .apple && !old.advancedTypography)
     // A style saved with less than there is now.
     let partial = try JSONDecoder().decode(TypeStyle.self, from: Data(#"{"family":"Menlo","size":12}"#.utf8))
     #expect(partial.weight == 400 && partial.lineHeight == 1.3 && partial.paragraphSpacing == 1)

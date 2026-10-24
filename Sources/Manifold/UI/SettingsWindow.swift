@@ -14,6 +14,8 @@ final class SettingsWindow: NSWindowController {
     let remoting = RemotingPane()
     let languageServers = LanguageServersPane()
     private let tabs = NSTabViewController()
+    /// Typography's tab: there only with advanced typography on.
+    private var typographyItem: NSTabViewItem?
 
     init() {
         appearance = AppearancePane(source)
@@ -30,7 +32,7 @@ final class SettingsWindow: NSWindowController {
             let item = NSTabViewItem(viewController: vc)
             item.label = vc.title ?? ""
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: vc.title)
-            tabs.addTabViewItem(item)
+            if vc === typography { typographyItem = item } else { tabs.addTabViewItem(item) }
         }
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
@@ -42,9 +44,32 @@ final class SettingsWindow: NSWindowController {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Typography's tab put in or taken out, as advanced typography is on.
+    private func showTypographyTab() {
+        guard let item = typographyItem else { return }
+        let on = source.appearance().advancedTypography
+        let shown = tabs.tabViewItems.contains(item)
+        if on, !shown { tabs.insertTabViewItem(item, at: 1) }
+        if !on, shown { tabs.removeTabViewItem(item) }
+    }
+
+    /// The tab of a pane, if it's there.
+    private func index(of pane: Pane) -> Int? {
+        let vc: NSViewController = switch pane {
+        case .appearance: appearance
+        case .typography: typography
+        case .terminals: terminals
+        case .history: history
+        case .remoting: remoting
+        case .languageServers: languageServers
+        }
+        return tabs.tabViewItems.firstIndex { $0.viewController === vc }
+    }
+
     /// Shown, at `pane` if one is asked for.
     func show(_ pane: Pane? = nil) {
-        if let pane { tabs.selectedTabViewItemIndex = pane.rawValue }
+        showTypographyTab()
+        if let pane, let i = index(of: pane) { tabs.selectedTabViewItemIndex = i }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         refresh()
@@ -54,6 +79,7 @@ final class SettingsWindow: NSWindowController {
     /// `tables`: the remoting and language servers' too (not at every render).
     func refresh(tables: Bool = true) {
         guard window?.isVisible == true else { return }
+        showTypographyTab()
         for vc in [appearance, typography, terminals, history] as [SettingsPane] where vc.isViewLoaded { vc.refresh() }
         guard tables else { return }
         if remoting.isViewLoaded { remoting.refresh() }
@@ -61,7 +87,7 @@ final class SettingsWindow: NSWindowController {
     }
 
     var debugState: String {
-        let pane = Pane(rawValue: tabs.selectedTabViewItemIndex).map { "\($0)" } ?? "?"
+        let pane = Pane.allCases.first { index(of: $0) == tabs.selectedTabViewItemIndex }.map { "\($0)" } ?? "?"
         return "\(window?.isVisible == true ? "shown" : "hidden") at \(pane), \(Int(window?.frame.width ?? 0))×\(Int(window?.frame.height ?? 0))"
     }
 }
@@ -169,6 +195,7 @@ final class AppearancePane: SettingsPane {
     private var showContrast: ((ContrastCorrection) -> Void)?
     private let tints = TintPicker()
     private let themes = FontThemeList()
+    private let advanced = NSButton(checkboxWithTitle: "Enable advanced typography", target: nil, action: nil)
 
     init(_ source: SettingsSource) { super.init(source, title: "Appearance") }
     required init?(coder: NSCoder) { fatalError() }
@@ -183,7 +210,10 @@ final class AppearancePane: SettingsPane {
         row("Accent", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop.")
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
-        row("Fonts", themes, note: "Custom is set in Typography: each role's face, size, spacing and features.", top: true)
+        row("Fonts", themes, top: true)
+        advanced.target = self
+        advanced.action = #selector(toggleAdvanced)
+        row("", advanced, note: "A Typography pane, and a Custom theme: each role's face, size, spacing and OpenType features.")
         let (editor, e) = segments(["Editing Font", "Monospaced"], [EditorFont.proportional, .monospaced]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.editorFont = v }
         }
@@ -201,9 +231,27 @@ final class AppearancePane: SettingsPane {
         let a = source.appearance()
         showScheme?(a.colorScheme)
         tints.tint = a.tint
+        themes.advanced = a.advancedTypography
         themes.theme = a.theme
+        advanced.state = a.advancedTypography ? .on : .off
         showEditor?(a.editorFont)
         showContrast?(a.contrastCorrection)
+    }
+
+    /// Advanced typography on (Typography's pane, Custom offered) or off —
+    /// leaving Custom, if it was set in it, for Apple.
+    @objc private func toggleAdvanced() {
+        let on = advanced.state == .on
+        source.change { (a: inout Appearance) in
+            a.advancedTypography = on
+            if !on, a.theme == .custom { a.theme = .apple }
+        }
+    }
+
+    /// For DebugControl: advanced typography turned on or off, as a click would.
+    func debugSetAdvanced(_ on: Bool) {
+        advanced.state = on ? .on : .off
+        toggleAdvanced()
     }
 
     /// For DebugControl: a tint picked, as a click on its swatch.
@@ -288,22 +336,29 @@ final class TintPicker: NSView {
 /// The font themes, each named in its own two fonts: the chosen one on
 /// a band, as a chosen row is.
 final class FontThemeList: NSView {
-    var theme: FontTheme = .humanist { didSet { needsDisplay = true } }
+    var theme: FontTheme = .apple { didSet { needsDisplay = true } }
+    /// Custom offered (advanced typography on).
+    var advanced = false { didSet { if advanced != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
+    /// The themes to choose from: Humanist where its faces are installed,
+    /// Custom with advanced typography.
+    private var themes: [FontTheme] { FontTheme.allCases.filter { $0.isAvailable && ($0 != .custom || advanced) } }
     var onPick: ((FontTheme) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private static let rowHeight: CGFloat = 26
     private static let width: CGFloat = 400
 
     override var isFlipped: Bool { true }
-    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: CGFloat(FontTheme.allCases.count) * Self.rowHeight) }
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: CGFloat(themes.count) * Self.rowHeight) }
 
     private func rect(_ i: Int) -> NSRect { NSRect(x: 0, y: CGFloat(i) * Self.rowHeight, width: bounds.width, height: Self.rowHeight) }
 
     override func draw(_ dirtyRect: NSRect) {
-        for (i, t) in FontTheme.allCases.enumerated() {
+        // Humanist without its faces is Apple, chosen as such.
+        let chosen = theme.effective
+        for (i, t) in themes.enumerated() {
             let r = rect(i)
-            if t == theme || hovered == i {
-                (t == theme ? Theme.selection : Theme.hover).setFill()
+            if t == chosen || hovered == i {
+                (t == chosen ? Theme.selection : Theme.hover).setFill()
                 NSBezierPath(roundedRect: r.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
             }
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])
@@ -318,7 +373,7 @@ final class FontThemeList: NSView {
         }
     }
 
-    private func index(at p: NSPoint) -> Int? { FontTheme.allCases.indices.first { rect($0).contains(p) } }
+    private func index(at p: NSPoint) -> Int? { themes.indices.first { rect($0).contains(p) } }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -331,7 +386,7 @@ final class FontThemeList: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let i = index(at: convert(event.locationInWindow, from: nil)) else { return }
-        theme = FontTheme.allCases[i]
+        theme = themes[i]
         onPick?(theme)
     }
 }

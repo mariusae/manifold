@@ -7,7 +7,6 @@ cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
-for d in lato sourcecodepro; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -38,13 +37,7 @@ mkdir -p "$app/Contents/Resources/AgentIcons"
 cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Resources/AgentIcons/"
 # Ghostty looks for terminfo next to its resources directory.
 cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/Contents/Resources/"
-mkdir -p "$app/Contents/Resources/Fonts"
-cp Frameworks/lato/*.ttf "$app/Contents/Resources/Fonts/"
-cp Frameworks/lato/OFL.txt "$app/Contents/Resources/Fonts/Lato-OFL.txt"
-cp Frameworks/sourcecodepro/*.otf "$app/Contents/Resources/Fonts/"
-cp Frameworks/sourcecodepro/LICENSE.md "$app/Contents/Resources/Fonts/SourceCodePro-LICENSE.md"
-# Tiempos Text is licensed: bundled when scripts/fetch-fonts.sh found it.
-[ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"
+# No fonts are shipped: the themes are of those macOS has, or installed.
 
 # The icon is drawn from its SVG by a script, and only redrawn when either changes.
 icon=Resources/Icons/manifold-m.svg

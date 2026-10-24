@@ -9,6 +9,7 @@ import ManifoldCore
 final class TypographyPane: SettingsPane {
     private var role: FontRole = .editing
     private let use = NSButton(checkboxWithTitle: "Set Manifold in custom typography", target: nil, action: nil)
+    private let start = NSPopUpButton(frame: .zero, pullsDown: true)
     private var showRole: ((FontRole) -> Void)?
     private let family = NSPopUpButton()
     private let face = NSPopUpButton()
@@ -39,14 +40,8 @@ final class TypographyPane: SettingsPane {
         use.target = self
         use.action = #selector(toggleUse)
         row("Fonts", use, note: "The Custom font theme. Each role scales the sizes set in it everywhere it's used.")
-        let start = NSPopUpButton(frame: .zero, pullsDown: true)
         start.addItem(withTitle: "Start From")
-        for (title, preset) in [("Humanist", Typography.humanist), ("System", Typography.system)] {
-            let all = ClosureMenuItem("All Roles from \(title)") { [weak self] in self?.startFrom(preset, all: true) }
-            let one = ClosureMenuItem("This Role from \(title)") { [weak self] in self?.startFrom(preset, all: false) }
-            start.menu?.addItem(all)
-            start.menu?.addItem(one)
-        }
+        start.menu?.delegate = self
         row("", start)
         gap()
         let (roles, show) = segments(FontRole.allCases.map(\.title), FontRole.allCases) { [weak self] r in
@@ -187,6 +182,12 @@ final class TypographyPane: SettingsPane {
         let system = NSMenuItem(title: role == .monospaced ? "System (SF Mono)" : "System (SF)", action: nil, keyEquivalent: "")
         system.representedObject = ""
         menu.addItem(system)
+        // The system's serif, which has no family of its own.
+        if role != .monospaced {
+            let serif = NSMenuItem(title: "New York", action: nil, keyEquivalent: "")
+            serif.representedObject = "New York"
+            menu.addItem(serif)
+        }
         menu.addItem(.separator())
         let all = families ?? []
         let groups = role == .monospaced ? [all.filter { fixedPitch?.contains($0) == true }, all.filter { fixedPitch?.contains($0) != true }] : [all]
@@ -281,7 +282,7 @@ final class TypographyPane: SettingsPane {
         }
     }
 
-    private func startFrom(_ preset: Typography, all: Bool) {
+    fileprivate func startFrom(_ preset: Typography, all: Bool) {
         commit?.cancel()
         commit = nil
         let role = self.role
@@ -295,7 +296,7 @@ final class TypographyPane: SettingsPane {
     @objc private func toggleUse() {
         flush()
         let on = use.state == .on
-        source.change { (a: inout Appearance) in a.theme = on ? .custom : .humanist }
+        source.change { (a: inout Appearance) in a.theme = on ? .custom : .apple }
     }
 
     @objc private func pickFamily() {
@@ -363,5 +364,18 @@ final class TypographyPane: SettingsPane {
         refresh()
         edit(&style)
         changed(now: true)
+    }
+}
+
+extension TypographyPane: NSMenuDelegate {
+    /// Start From's presets, as they are when it opens: Humanist only
+    /// where its faces are installed.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        while menu.numberOfItems > 1 { menu.removeItem(at: 1) }
+        for theme in [FontTheme.system, .apple, .humanist] where theme.isAvailable {
+            let preset = theme.styles
+            menu.addItem(ClosureMenuItem("All Roles from \(theme.title)") { [weak self] in self?.startFrom(preset, all: true) })
+            menu.addItem(ClosureMenuItem("This Role from \(theme.title)") { [weak self] in self?.startFrom(preset, all: false) })
+        }
     }
 }

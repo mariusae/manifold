@@ -184,32 +184,6 @@ enum MarkdownPage {
 
         """
 
-    private static var fontFaces: String {
-        guard let fonts = Bundle.main.resourceURL?.appendingPathComponent("Fonts") else { return "" }
-        let faces: [(String, String, Int, String)] = [
-            ("Tiempos Text", "TiemposText-Regular.otf", 400, "normal"),
-            ("Tiempos Text", "TiemposText-RegularItalic.otf", 400, "italic"),
-            ("Tiempos Text", "TiemposText-Bold.otf", 700, "normal"),
-            ("Tiempos Text", "TiemposText-BoldItalic.otf", 700, "italic"),
-            ("Lato", "Lato-Regular.ttf", 400, "normal"),
-            ("Lato", "Lato-Italic.ttf", 400, "italic"),
-            ("Lato", "Lato-Medium.ttf", 500, "normal"),
-            ("Lato", "Lato-SemiBold.ttf", 600, "normal"),
-            ("Lato", "Lato-Bold.ttf", 700, "normal"),
-            ("Lato", "Lato-BoldItalic.ttf", 700, "italic"),
-            ("Source Code Pro", "SourceCodePro-Regular.otf", 400, "normal"),
-            ("Source Code Pro", "SourceCodePro-It.otf", 400, "italic"),
-            ("Source Code Pro", "SourceCodePro-Bold.otf", 700, "normal"),
-            ("Source Code Pro", "SourceCodePro-BoldIt.otf", 700, "italic"),
-        ]
-        return faces.map { family, file, weight, style in
-            """
-            @font-face { font-family: "\(family)"; src: url("\(fonts.appendingPathComponent(file).absoluteString)");
-              font-weight: \(weight); font-style: \(style); }
-            """
-        }.joined(separator: "\n")
-    }
-
     /// The theme's fonts, as the CSS variables the page is set in.
     static func themeVariables(_ theme: FontTheme) -> String {
         let css = theme.css
@@ -228,8 +202,7 @@ enum MarkdownPage {
         <!doctype html>
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
-        \(fontFaces)
-        :root { color-scheme: light dark; \(themeVariables(.humanist)) }
+        :root { color-scheme: light dark; \(themeVariables(.apple)) }
         /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
            spacing and its links; the theme's fonts for its text and its
            code (Menlo where a theme has none of its own). */

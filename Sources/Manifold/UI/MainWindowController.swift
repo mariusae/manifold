@@ -5010,6 +5010,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let w = settings()
             w.show(.languageServers)
             return w.languageServers.debug(words.dropFirst().joined(separator: " "))
+        case "advanced":
+            // "settings advanced on|off": advanced typography, as its checkbox.
+            settings().show()
+            settings().appearance.debugSetAdvanced(words.dropFirst().first == "on")
         case "type":
             // "settings type <role> [family=<name with _ for spaces>] [size=n] [weight=n] [leading=n]
             // [tracking=n] [features=a,b] [measure=n] [gap=n]": custom typography, as the pane sets it.
@@ -5172,6 +5176,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let lens: Lens = isDir ? .directory
             : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (wait ? .editor : Lens.default(for: .text, path: path))
         return (block, lens, !known)
+    }
+
+    /// Fonts came or went: what's set in them set again — the views, the
+    /// terminals, Settings' list of themes.
+    func fontsChanged() {
+        for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
+        GhosttyRuntime.shared.reapply()
+        settingsWindow?.refresh(tables: false)
     }
 
     /// A `mani` command for the app (`ManiDesk`).

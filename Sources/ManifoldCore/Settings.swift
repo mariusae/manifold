@@ -49,7 +49,7 @@ public struct ClientState: Codable, Equatable, Sendable {
 
 /// How things look: the theme's fonts, and how terminals are colored.
 public struct Appearance: Codable, Equatable, Sendable {
-    public var theme: FontTheme = .humanist
+    public var theme: FontTheme = .apple
     public var colorScheme: ColorScheme = .system
     public var contrastCorrection: ContrastCorrection = .deuteranopia
     public var editorFont: EditorFont = .proportional
@@ -57,9 +57,11 @@ public struct Appearance: Codable, Equatable, Sendable {
     /// the caret, a pool of light in the backdrop.
     public var tint: Tint = .blue
     /// The custom font theme's typography (used when `theme` is `.custom`).
-    public var typography: Typography = .humanist
+    public var typography: Typography = .apple
+    /// Settings ▸ Typography shown, and the Custom theme offered.
+    public var advancedTypography = false
 
-    public init(theme: FontTheme = .humanist, colorScheme: ColorScheme = .system,
+    public init(theme: FontTheme = .apple, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
                 editorFont: EditorFont = .proportional, tint: Tint = .blue) {
         self.theme = theme
@@ -72,12 +74,14 @@ public struct Appearance: Codable, Equatable, Sendable {
     // Settings saved before a setting existed get its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .humanist
+        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .apple
         colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
         tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .blue
-        typography = (try? c.decodeIfPresent(Typography.self, forKey: .typography)) ?? .humanist
+        typography = (try? c.decodeIfPresent(Typography.self, forKey: .typography)) ?? .apple
+        // On for those who set a custom theme before there was the switch.
+        advancedTypography = (try? c.decodeIfPresent(Bool.self, forKey: .advancedTypography)) ?? (theme == .custom)
     }
 }
 
@@ -192,17 +196,24 @@ public struct HostPreferences: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey { case shell, lsp }
 }
 
-/// The fonts everything is set in, besides the interface's system font:
-/// **Humanist** — Lato to edit, Tiempos Text to read, Source Code Pro for
-/// terminals and code — or **System**: SF, and SF Mono.
+/// The fonts everything is set in, besides the interface's system font,
+/// each theme a `Typography`. None are shipped: each is of fonts macOS
+/// has, or that are installed.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
+    /// System: SF. Apple: Avenir Next, New York, Menlo (the default).
+    /// Humanist: Ideal Sans, Chronicle, Menlo, where they're installed.
     /// Custom: the typography set in Settings (`Appearance.typography`).
-    case humanist, system, custom
+    case system, apple, humanist, custom
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         // The themes there once were: SF's (Notes) as System, the rest as Humanist.
-        self = raw == "custom" ? .custom : raw == "system" || raw == "notes" ? .system : .humanist
+        switch raw {
+        case "custom": self = .custom
+        case "apple": self = .apple
+        case "system", "notes": self = .system
+        default: self = .humanist
+        }
     }
 }
 
@@ -285,17 +296,27 @@ public struct Typography: Codable, Equatable, Sendable {
         self.monospaced = monospaced
     }
 
-    /// Humanist's, to start from: Lato to edit, Tiempos Text to read,
-    /// Source Code Pro for code.
+    /// Humanist: Hoefler&Co.'s ScreenSmart faces, set for the screen —
+    /// Ideal Sans Book to edit, with lining, tabular figures (its own are
+    /// old-style, proportional) and ligatures; Chronicle to read, with
+    /// ligatures; Menlo for code. Lines: 1.45 to edit, 1.55 to read (a
+    /// serif's longer lines and smaller eye want more), 1.3 for code.
     public static let humanist = Typography(
-        editing: TypeStyle(family: "Lato", size: 14.5, lineHeight: 1.45),
-        reading: TypeStyle(family: "Tiempos Text", size: 16, lineHeight: 1.4),
-        monospaced: TypeStyle(family: "Source Code Pro", size: 13, lineHeight: 1.3, features: "calt"))
+        editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga"),
+        reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga"),
+        monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"))
 
-    /// System's: SF, and SF Mono.
+    /// Apple: Avenir Next to edit (its tall x-height and long extenders
+    /// set at 1.45), New York to read (at 1.5), Menlo for code.
+    public static let apple = Typography(
+        editing: TypeStyle(family: "Avenir Next", size: 15, lineHeight: 1.45),
+        reading: TypeStyle(family: "New York", size: 16, lineHeight: 1.5),
+        monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"))
+
+    /// System: SF, and SF Mono.
     public static let system = Typography(
         editing: TypeStyle(family: "", size: 14, lineHeight: 1.45),
-        reading: TypeStyle(family: "", size: 16, lineHeight: 1.4),
+        reading: TypeStyle(family: "", size: 16, lineHeight: 1.45),
         monospaced: TypeStyle(family: "", size: 13, lineHeight: 1.3, features: "calt"))
 }
 

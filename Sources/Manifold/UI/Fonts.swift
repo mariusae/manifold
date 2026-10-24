@@ -5,116 +5,109 @@ import ManifoldCore
 /// a **monospaced** font for terminals and code; an **editing** font for
 /// what's edited (notes, text in an editor, unless it's set monospaced);
 /// and a **reading** font for previews, set for reading (a Markdown
-/// preview). Humanist edits in Lato and reads in Tiempos Text; System is
-/// SF, both ways; Custom is what Settings ▸ Typography sets (`Typography`):
-/// each role's face, size, line height, letter spacing and features.
+/// preview). Each theme is a `Typography` — each role's face, size, line
+/// height, letter spacing and features: System's SF, Apple's Avenir Next,
+/// New York and Menlo, Humanist's Ideal Sans, Chronicle and Menlo (when
+/// they're installed: none are shipped), Custom's what Settings ▸
+/// Typography sets.
 extension FontTheme {
     var title: String {
         switch self {
-        case .humanist: "Humanist"
         case .system: "System"
+        case .apple: "Apple"
+        case .humanist: "Humanist"
         case .custom: "Custom"
         }
     }
 
+    /// The roles as the theme sets them. Humanist's faces aren't shipped:
+    /// without them, it's set as Apple is.
+    var styles: Typography {
+        switch self {
+        case .system: .system
+        case .apple: .apple
+        case .humanist: Self.humanistInstalled ? .humanist : .apple
+        case .custom: Self.typography
+        }
+    }
+
+    /// Whether the theme can be chosen here: Humanist only with its faces.
+    var isAvailable: Bool { self != .humanist || Self.humanistInstalled }
+
+    /// The theme as it's set here: Humanist without its faces is Apple.
+    var effective: FontTheme { isAvailable ? self : .apple }
+
+    nonisolated(unsafe) private static var installed: Bool?
+
+    /// Whether Humanist's families are installed (asked again as fonts
+    /// come and go: `fontsChanged`).
+    static var humanistInstalled: Bool {
+        if let installed { return installed }
+        let families = FontFace.installedFamilies
+        let h = Typography.humanist
+        let all = [h.editing, h.reading, h.monospaced].allSatisfy { families.contains($0.family) }
+        installed = all
+        return all
+    }
+
+    /// Fonts were installed or taken away: what's known of them asked again.
+    static func fontsChanged() {
+        installed = nil
+        FontFace.forget()
+    }
+
     /// The editing font's name.
-    var proportionalName: String {
-        switch self {
-        case .humanist: "Lato"
-        case .system: "SF"
-        case .custom: Self.typography.editing.displayName(.editing)
-        }
-    }
-
+    var proportionalName: String { styles.editing.displayName(.editing) }
     /// The reading font's name.
-    var readingName: String {
-        switch self {
-        case .humanist: "Tiempos Text"
-        case .system: "SF"
-        case .custom: Self.typography.reading.displayName(.reading)
-        }
-    }
-
-    var monospacedName: String {
-        switch self {
-        case .humanist: "Source Code Pro"
-        case .system: "SF Mono"
-        case .custom: Self.typography.monospaced.displayName(.monospaced)
-        }
-    }
+    var readingName: String { styles.reading.displayName(.reading) }
+    var monospacedName: String { styles.monospaced.displayName(.monospaced) }
 
     /// The Ghostty config's font lines.
-    var terminalConfig: String {
-        switch self {
-        case .humanist: "font-family = Source Code Pro"
-        // Terminal.app's copy, registered for this process at launch.
-        case .system: "font-family = SF Mono"
-        case .custom: Self.typography.monospaced.terminalConfig
-        }
-    }
+    var terminalConfig: String { styles.monospaced.terminalConfig }
 
-    /// The editor's size for each kind: the fonts differ in how big they
-    /// look at a size.
-    func editorSize(_ kind: EditorFont) -> CGFloat {
-        switch (self, kind) {
-        case (.humanist, .proportional): 14.5
-        case (.system, .proportional): 14
-        case (.humanist, .monospaced): 13
-        case (.system, .monospaced): 13.5
-        // Humanist's: what custom sizes are scaled from (`font`).
-        case (.custom, .proportional): 14.5
-        case (.custom, .monospaced): 13
-        }
-    }
+    /// The sizes callers ask for, editing and monospaced: what each role's
+    /// own size is set in place of, the rest in proportion (`font`).
+    func editorSize(_ kind: EditorFont) -> CGFloat { kind == .proportional ? 14.5 : 13 }
 
-    /// The reading font: previews'.
+    /// The reading font: previews', where 16 is the role's size.
     func readingFont(size: CGFloat) -> NSFont {
-        switch self {
-        case .humanist: NSFont(name: "Tiempos Text", size: size) ?? .systemFont(ofSize: size)
-        case .system: .systemFont(ofSize: size)
-        case .custom: Self.typography.reading.font(size: size * Self.typography.reading.size / 16, role: .reading)
-        }
+        let r = styles.reading
+        return r.font(size: size * r.size / 16, role: .reading)
     }
 
-    /// The editing font (`.proportional`) or the monospaced one.
+    /// The editing font (`.proportional`) or the monospaced one: each role
+    /// at its size where 14.5 (or 13) is asked for, the rest in proportion.
     func font(_ kind: EditorFont, size: CGFloat) -> NSFont {
-        switch (self, kind) {
-        case (.humanist, .proportional): NSFont(name: "Lato", size: size) ?? .systemFont(ofSize: size)
-        case (.system, .proportional): .systemFont(ofSize: size)
-        case (.humanist, .monospaced):
-            NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: "Source Code Pro"]), size: size)
-                ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-        case (.system, .monospaced): .monospacedSystemFont(ofSize: size, weight: .regular)
-        // Each role at its size where the theme's would be at 14.5 (or 13), the rest in proportion.
-        case (.custom, .proportional): Self.typography.editing.font(size: size * Self.typography.editing.size / 14.5, role: .editing)
-        case (.custom, .monospaced): Self.typography.monospaced.font(size: size * Self.typography.monospaced.size / 13, role: .monospaced)
+        let t = styles
+        switch kind {
+        case .proportional: return t.editing.font(size: size * t.editing.size / 14.5, role: .editing)
+        case .monospaced: return t.monospaced.font(size: size * t.monospaced.size / 13, role: .monospaced)
         }
     }
 
     /// The editor's lines, as a multiple of the font's own height: the
-    /// theme's (`fallback`), or custom typography's, as a multiple of the
-    /// size, made one of the font's.
-    func editorLineHeight(_ kind: EditorFont, font: NSFont, fallback: CGFloat) -> CGFloat {
-        guard self == .custom else { return fallback }
-        let style = kind == .monospaced ? Self.typography.monospaced : Self.typography.editing
+    /// role's line height (a multiple of its size) made one of the font's.
+    /// A file viewed (`viewing`, set as go.dev sets code) at 1.4 at least.
+    func editorLineHeight(_ kind: EditorFont, font: NSFont, viewing: Bool = false) -> CGFloat {
+        let style = kind == .monospaced ? styles.monospaced : styles.editing
         let natural = font.ascender - font.descender + font.leading
-        return natural > 0 ? max(0.5, style.lineHeight * font.pointSize / natural) : fallback
+        let lines = viewing ? max(style.lineHeight, 1.4) : style.lineHeight
+        return natural > 0 ? max(0.5, lines * font.pointSize / natural) : 1.2
     }
 
-    /// Letter spacing in points for a font set in a role (custom only).
+    /// Letter spacing in points for a font set in a role.
     func tracking(_ kind: EditorFont, font: NSFont) -> CGFloat {
-        guard self == .custom else { return 0 }
-        let style = kind == .monospaced ? Self.typography.monospaced : Self.typography.editing
+        let style = kind == .monospaced ? styles.monospaced : styles.editing
         return style.tracking / 1000 * font.pointSize
     }
 
     /// The custom theme's typography, as Settings has it; kept by the window
     /// as it renders, with `current`.
-    nonisolated(unsafe) static var typography: Typography = .humanist
+    nonisolated(unsafe) static var typography: Typography = .apple
 
     /// The theme the window is set in, for what isn't handed one: a list
     /// of commands, a commit's hash. Kept by the window as it renders.
-    nonisolated(unsafe) static var current: FontTheme = .humanist
+    nonisolated(unsafe) static var current: FontTheme = .apple
 
     /// The current theme's code face: wherever code or a command is set.
     static func code(_ size: CGFloat) -> NSFont { current.font(.monospaced, size: size) }
@@ -130,21 +123,14 @@ extension FontTheme {
     /// CSS for the Markdown preview, set on its root element: it reads in
     /// the reading font, code in the monospaced one.
     var css: (sans: String, mono: String, features: String, sansFeatures: String) {
-        switch self {
-        case .humanist: return (#""Tiempos Text""#, #""Source Code Pro""#, #""calt""#, "normal")
-        case .system: return ("-apple-system", "ui-monospace", #""calt""#, "normal")
-        case .custom:
-            let t = Self.typography
-            return (t.reading.cssFamily(.reading), t.monospaced.cssFamily(.monospaced), t.monospaced.cssFeatures, t.reading.cssFeatures)
-        }
+        let t = styles
+        return (t.reading.cssFamily(.reading), t.monospaced.cssFamily(.monospaced), t.monospaced.cssFeatures, t.reading.cssFeatures)
     }
 
-    /// The rest of the preview's CSS variables for custom typography: the
-    /// reading role's size, weight, spacing and measure, the code's weight
-    /// and spacing; none for the other themes (the page's own).
+    /// The rest of the preview's CSS variables: the reading role's size,
+    /// weight, spacing and measure, the code's weight, spacing and scale.
     var cssExtras: String {
-        guard self == .custom else { return "" }
-        let r = Self.typography.reading, m = Self.typography.monospaced
+        let r = styles.reading, m = styles.monospaced
         var out = "--read-size: \(r.size)px; --read-weight: \(r.weight); --read-leading: \(r.lineHeight); --read-tracking: \(r.tracking / 1000)em;"
         out += " --read-gap: \(r.paragraphSpacing)em; --mono-weight: \(m.weight); --mono-tracking: \(m.tracking / 1000)em;"
         out += " --mono-scale: \(m.size / 13);"
@@ -156,7 +142,7 @@ extension FontTheme {
     }
 
     /// Makes Terminal.app's SF Mono available to this process (it isn't a
-    /// public font, and can't be bundled); nothing is installed.
+    /// public font): nothing is installed, and nothing shipped.
     static func registerSystemMono() {
         let dir = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts")
         guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
@@ -166,7 +152,6 @@ extension FontTheme {
         }
     }
 }
-
 
 /// The three roles custom typography sets.
 enum FontRole: String, CaseIterable {
@@ -214,7 +199,7 @@ struct FontFace: Equatable {
     /// lightest first, one to a weight.
     static func faces(of family: String, role: FontRole) -> [FontFace] {
         let real = family.isEmpty && role == .monospaced ? "SF Mono" : family
-        if real.isEmpty {
+        if real.isEmpty || TypeStyle.isNewYork(real) {
             return [("Ultralight", 100), ("Thin", 200), ("Light", 300), ("Regular", 400), ("Medium", 500),
                     ("Semibold", 600), ("Bold", 700), ("Heavy", 800), ("Black", 900)].map { FontFace(name: $0.0, postScript: "", weight: $0.1) }
         }
@@ -224,6 +209,22 @@ struct FontFace: Equatable {
     }
 
     nonisolated(unsafe) private static var families: [String: [FontFace]] = [:]
+
+    nonisolated(unsafe) private static var installed: Set<String>?
+
+    /// The families installed, as last looked.
+    static var installedFamilies: Set<String> {
+        if let installed { return installed }
+        let all = Set(NSFontManager.shared.availableFontFamilies)
+        installed = all
+        return all
+    }
+
+    /// Fonts installed or taken away: the families looked at again.
+    static func forget() {
+        families = [:]
+        installed = nil
+    }
 
     /// Every face of a family, italics too, lightest first.
     static func all(of family: String) -> [FontFace] {
@@ -286,7 +287,8 @@ extension NSFont {
                 out = NSFont(name: face.postScript, size: pointSize)
             }
         } else {
-            // The system's: a heavier weight of it, slanted by its descriptor.
+            // The system's (SF, SF Mono, New York): a heavier weight of it,
+            // its design kept, slanted by its descriptor.
             var f = self
             if bold {
                 let traits = fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
@@ -294,7 +296,9 @@ extension NSFont {
                 let weights: [NSFont.Weight] = [.ultraLight, .thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
                 let i = weights.indices.min { abs(weights[$0].rawValue - w) < abs(weights[$1].rawValue - w) } ?? 3
                 let heavier = weights[min(weights.count - 1, i + 3)]
-                f = isFixedPitch ? .monospacedSystemFont(ofSize: pointSize, weight: heavier) : .systemFont(ofSize: pointSize, weight: heavier)
+                var t = traits ?? [:]
+                t[.weight] = heavier.rawValue
+                f = NSFont(descriptor: fontDescriptor.addingAttributes([.traits: t]), size: pointSize) ?? f
             }
             if italic, let d = Optional(f.fontDescriptor.withSymbolicTraits(.italic)) { f = NSFont(descriptor: d, size: pointSize) ?? f }
             out = f
@@ -313,6 +317,11 @@ extension NSFont {
 }
 
 extension TypeStyle {
+    /// New York: no family of its own, but the system font's serif design.
+    static func isNewYork(_ family: String) -> Bool {
+        family == "New York" && !FontFace.installedFamilies.contains("New York")
+    }
+
     /// What to call it: its family and, if not regular, its face.
     func displayName(_ role: FontRole) -> String {
         let family = self.family.isEmpty ? (role == .monospaced ? "SF Mono" : "SF") : self.family
@@ -331,6 +340,9 @@ extension TypeStyle {
         if family.isEmpty {
             let w = Self.systemWeight(weight)
             base = role == .monospaced ? .monospacedSystemFont(ofSize: size, weight: w) : .systemFont(ofSize: size, weight: w)
+        } else if Self.isNewYork(family) {
+            let sf = NSFont.systemFont(ofSize: size, weight: Self.systemWeight(weight))
+            base = sf.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) }
         } else if let face = face(role) {
             base = NSFont(name: face.postScript, size: size)
         }
@@ -388,6 +400,7 @@ extension TypeStyle {
     /// As CSS names it, the theme's fallbacks after it.
     func cssFamily(_ role: FontRole) -> String {
         if family.isEmpty { return role == .monospaced ? "ui-monospace" : "-apple-system" }
+        if Self.isNewYork(family) { return "ui-serif" }
         return "\"" + family.replacingOccurrences(of: "\"", with: "") + "\""
     }
 

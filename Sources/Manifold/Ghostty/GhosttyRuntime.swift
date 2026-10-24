@@ -134,7 +134,6 @@ final class GhosttyRuntime {
     func reapply() { apply(appearance, dark: dark, force: true) }
 
     private init() {
-        Self.registerBundledFonts()
         FontTheme.registerSystemMono()
         // Ghostty finds terminfo and shell integration next to its resources.
         if let res = Bundle.main.resourceURL?.appendingPathComponent("ghostty"),
@@ -206,23 +205,6 @@ final class GhosttyRuntime {
             object: nil, queue: .main
         ) { [weak self] _ in
             if let app = self?.app { ghostty_app_keyboard_changed(app) }
-        }
-    }
-
-    /// Makes the fonts in Resources/Fonts (Lato, Source Code Pro, Tiempos
-    /// Text) available to
-    /// this process only;
-    /// nothing is installed.
-    private static func registerBundledFonts() {
-        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("Fonts"),
-              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-        else { return }
-        for url in files where ["otf", "ttf"].contains(url.pathExtension) {
-            var error: Unmanaged<CFError>?
-            if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
-                NSLog("manifold: could not register %@: %@", url.lastPathComponent,
-                      String(describing: error?.takeRetainedValue()))
-            }
         }
     }
 
