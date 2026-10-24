@@ -319,6 +319,26 @@ extension ArrangementState {
         return [.heights([first.id: height(of: id), id: 0])]
     }
 
+    /// A tile moved to a spot in a column, as dropped there: with `alone`,
+    /// without its stack (`leavingAlone`). Never into another's stack: a
+    /// spot among the stashed tiles under a shown one is past them — else
+    /// the moved tile would show with that stack behind it, the tile above
+    /// left without (a tile dragged out of a stack, dropped just under it,
+    /// took the rest of the stack along).
+    public func moving(_ id: PlacementID, column: Int, at: Int, alone: Bool) -> [Event] {
+        var spot = at
+        if column < columns.count, let (c, _) = locate(id) {
+            // The column as the move finds it: the tile (and the stack it
+            // takes) gone from it; leaving alone, the first behind it shows.
+            let heir = alone && !isStashed(id) ? followers(of: id).first?.id : nil
+            let taken = alone || isStashed(id) ? [] : followers(of: id).map(\.id)
+            var col = columns[column]
+            if c == column { col.removeAll { $0.id == id || taken.contains($0.id) } }
+            while spot < col.count, isStashed(col[spot].id), col[spot].id != heir { spot += 1 }
+        }
+        return (alone ? leavingAlone(id) : []) + [.move(id, column: column, at: spot)]
+    }
+
     /// A tile dropped on another's pill: into the stack behind it.
     public func stashing(_ id: PlacementID, behind target: PlacementID) -> [Event] {
         guard id != target, locate(id) != nil, locate(target) != nil, !isStashed(target) else { return [] }

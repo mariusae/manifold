@@ -794,6 +794,26 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     try? FileManager.default.removeItem(at: dir)
 }
 
+@Test func aTileMovedUnderAStackDoesntTakeIt() {
+    var a = ArrangementState()
+    let top = Placement(block: BlockID(), lens: .terminal), x = Placement(block: BlockID(), lens: .terminal)
+    let y = Placement(block: BlockID(), lens: .terminal), below = Placement(block: BlockID(), lens: .terminal)
+    for (i, p) in [top, x, y, below].enumerated() { a.apply(.place(p, column: 0, at: i)) }
+    a.apply(.stash(x.id, behind: top.id))
+    a.apply(.stash(y.id, behind: top.id))
+    #expect(a.columns[0].map(\.id) == [top.id, y.id, x.id, below.id])
+    // x, from the stack, dropped just under its top (between top and y):
+    // past the stack, which stays behind top.
+    for e in a.moving(x.id, column: 0, at: 1, alone: true) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [top.id, y.id, x.id, below.id])
+    #expect(!a.isStashed(x.id) && a.isStashed(y.id))
+    #expect(a.tile(behind: y.id)?.id == top.id)
+    // The top dragged out alone, dropped under its own spot: y shows in its
+    // place, and the top lands under it, not in front of it.
+    for e in a.moving(top.id, column: 0, at: 1, alone: true) { a.apply(e) }
+    #expect(a.columns[0].first?.id == y.id && !a.isStashed(y.id) && !a.isStashed(top.id))
+}
+
 @Test func aTileStashedBehindAnotherComesBackUnderIt() {
     var a = ArrangementState()
     let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)

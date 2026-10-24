@@ -5095,7 +5095,7 @@ extension MainWindowController: GridDelegate {
         if newColumn || column >= a.columns.count {
             movePlacement(placement, toNewColumn: column, in: a, alone: alone)
         } else {
-            appendToSelected((alone ? a.leavingAlone(placement) : []) + [.move(placement, column: column, at: at)])
+            appendToSelected(a.moving(placement, column: column, at: at, alone: alone))
         }
     }
 
