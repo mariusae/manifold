@@ -1151,7 +1151,13 @@ is migrated into logs on first run.
   `$MANIFOLD_DIR/app-debug.sock` for scripted commands (see
   [DebugControl.swift](Sources/Manifold/DebugControl.swift)).
   `MANIFOLD_NO_NOTIFY` keeps such an instance from posting notifications
-  (it shares the app's identity, and so its permission).
+  (it shares the app's identity, and so its permission), and
+  `MANIFOLD_NO_OCCLUSION` has its terminals and status glyphs drawn and
+  turning when its window is behind others. Its `busy start` / `busy stop`
+  time every turn of the main thread in between — the hitches a person
+  would feel — and `picker bench`, `layouts` and `spinners` look at the
+  finder's ranking, the grid's layouts and the backdrop's drawings, and
+  the turning glyphs.
 - **Secure Keyboard Entry** keeps what you type from other apps (as
   Terminal's does): on by hand in the Manifold menu, and on by itself
   while the focused terminal's program reads a password — `sudo`, `ssh`,
