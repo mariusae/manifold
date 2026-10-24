@@ -34,7 +34,7 @@ index f9d861b..6b49c77 100644
      // up here just so that they are more self-documenting.
      const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 40ff55c..3cc8e2b 100644
+index 40ff55c..5911133 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
 @@ -450,6 +450,12 @@ typedef struct {
@@ -50,7 +50,7 @@ index 40ff55c..3cc8e2b 100644
  } ghostty_surface_config_s;
  
  typedef struct {
-@@ -1086,6 +1092,36 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+@@ -1086,6 +1092,43 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
  void ghostty_surface_set_focus(ghostty_surface_t, bool);
  void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
  void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
@@ -81,6 +81,13 @@ index 40ff55c..3cc8e2b 100644
 +} ghostty_manifold_info_s;
 +void ghostty_surface_manifold_predict(ghostty_surface_t, const ghostty_manifold_cell_s*, uintptr_t, int32_t, int32_t);
 +void ghostty_surface_manifold_info(ghostty_surface_t, ghostty_manifold_info_s*);
++typedef struct {
++  uint16_t y;
++  uint16_t x0;
++  uint16_t x1;
++  uint16_t _pad;
++} ghostty_manifold_run_s;
++void ghostty_surface_manifold_links(ghostty_surface_t, const ghostty_manifold_run_s*, uintptr_t, uint32_t, int32_t, uint32_t);
 +uintptr_t ghostty_surface_manifold_row(ghostty_surface_t, uint16_t, uint32_t*, uintptr_t);
 +uint8_t* ghostty_surface_debug_rows(ghostty_surface_t, uintptr_t*);
 +void ghostty_surface_free_debug(ghostty_surface_t, uint8_t*, uintptr_t);
@@ -168,7 +175,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..96cbf28 100644
+index 0d5a4f8..2ff6e68 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -234,7 +241,7 @@ index 0d5a4f8..96cbf28 100644
      pub fn defaultTermioEnv(self: *const Surface) !std.process.EnvMap {
          const alloc = self.app.core_app.alloc;
          var env = try internal_os.getEnvMap(alloc);
-@@ -1696,6 +1722,232 @@ pub const CAPI = struct {
+@@ -1696,6 +1722,267 @@ pub const CAPI = struct {
          surface.updateSize(w, h);
      }
  
@@ -386,6 +393,41 @@ index 0d5a4f8..96cbf28 100644
 +            }
 +            // The frame's copy of the screen made whole again: rows that
 +            // had predicted cells and don't now.
++            core.io.terminal.flags.dirty.preedit = true;
++        }
++        core.renderer_thread.wakeup.notify() catch {};
++    }
++
++    /// Manifold: links shown over the screen (⌘ held) until taken away (n
++    /// 0) or replaced: runs of viewport cells in `fg` (0xRRGGBB), the run
++    /// `hovered` (if not negative) on `hover_bg` — never in the terminal
++    /// (renderer/manifold_links.zig).
++    export fn ghostty_surface_manifold_links(
++        surface: *Surface,
++        runs: ?[*]const renderer.State.ManifoldLinks.Run,
++        n: usize,
++        fg: u32,
++        hovered: i32,
++        hover_bg: u32,
++    ) void {
++        const core = &surface.core_surface;
++        {
++            core.renderer_state.mutex.lock();
++            defer core.renderer_state.mutex.unlock();
++            if (n == 0 or runs == null) {
++                core.renderer_state.manifold_links = null;
++            } else {
++                var l: renderer.State.ManifoldLinks = .{};
++                const count = @min(n, renderer.State.ManifoldLinks.max);
++                @memcpy(l.runs[0..count], runs.?[0..count]);
++                l.len = count;
++                l.fg = .{ .r = @truncate(fg >> 16), .g = @truncate(fg >> 8), .b = @truncate(fg) };
++                l.hover_bg = .{ .r = @truncate(hover_bg >> 16), .g = @truncate(hover_bg >> 8), .b = @truncate(hover_bg) };
++                if (hovered >= 0 and @as(usize, @intCast(hovered)) < count) l.hovered = @intCast(hovered);
++                core.renderer_state.manifold_links = l;
++            }
++            // The frame's copy of the screen made whole again: rows that
++            // had links marked and don't now.
 +            core.io.terminal.flags.dirty.preedit = true;
 +        }
 +        core.renderer_thread.wakeup.notify() catch {};
@@ -787,10 +829,10 @@ index 0000000..428148f
 +    return bytes.ptr;
 +}
 diff --git a/src/renderer/State.zig b/src/renderer/State.zig
-index e882ddc..0a88484 100644
+index e882ddc..a8b2176 100644
 --- a/src/renderer/State.zig
 +++ b/src/renderer/State.zig
-@@ -30,6 +30,31 @@ preedit: ?Preedit = null,
+@@ -30,6 +30,53 @@ preedit: ?Preedit = null,
  /// need about the mouse.
  mouse: Mouse = .{},
  
@@ -798,6 +840,11 @@ index e882ddc..0a88484 100644
 +/// laid over each frame's copy of the screen, never put in the terminal
 +/// (renderer/manifold_predict.zig). Null: none.
 +manifold_prediction: ?ManifoldPrediction = null,
++
++/// Manifold: links shown while ⌘ is held — runs of the viewport's cells in
++/// a link color, one with a background under it (the pointer's) — laid over
++/// each frame's copy of the screen (renderer/manifold_links.zig). Null: none.
++manifold_links: ?ManifoldLinks = null,
 +
 +pub const ManifoldPrediction = struct {
 +    pub const max = 512;
@@ -819,23 +866,41 @@ index e882ddc..0a88484 100644
 +    cursor: ?struct { x: u16, y: u16 } = null,
 +};
 +
++pub const ManifoldLinks = struct {
++    pub const max = 512;
++    /// Cells of a viewport row, from x0 to before x1.
++    pub const Run = extern struct {
++        y: u16,
++        x0: u16,
++        x1: u16,
++        _pad: u16 = 0,
++    };
++
++    runs: [max]Run = undefined,
++    len: usize = 0,
++    fg: terminalpkg.color.RGB = .{},
++    hovered: ?usize = null,
++    hover_bg: terminalpkg.color.RGB = .{},
++};
++
  pub const Mouse = struct {
      /// The point on the viewport where the mouse currently is. We use
      /// viewport points to avoid the complexity of mapping the mouse to
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
-index ff632f6..7030096 100644
+index ff632f6..3a8dfb2 100644
 --- a/src/renderer/generic.zig
 +++ b/src/renderer/generic.zig
-@@ -18,6 +18,8 @@ const constraintWidth = cellpkg.constraintWidth;
+@@ -18,6 +18,9 @@ const constraintWidth = cellpkg.constraintWidth;
  const isCovering = cellpkg.isCovering;
  const rowNeverExtendBg = @import("row.zig").neverExtendBg;
  const Overlay = @import("Overlay.zig");
 +const manifold_predict = @import("manifold_predict.zig");
++const manifold_links = @import("manifold_links.zig");
 +const manifold_contrast = @import("manifold_contrast.zig");
  const imagepkg = @import("image.zig");
  const ImageState = imagepkg.State;
  const shadertoy = @import("shadertoy.zig");
-@@ -103,6 +105,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -103,6 +106,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          /// The configuration we need derived from the main config.
          config: DerivedConfig,
  
@@ -845,7 +910,7 @@ index ff632f6..7030096 100644
          /// The mailbox for communicating with the window.
          surface_mailbox: apprt.surface.Mailbox,
  
-@@ -557,6 +562,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -557,6 +563,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
              bold_color: ?configpkg.BoldColor,
              faint_opacity: u8,
              min_contrast: f32,
@@ -853,7 +918,7 @@ index ff632f6..7030096 100644
              padding_color: configpkg.WindowPaddingColor,
              custom_shaders: configpkg.RepeatablePath,
              bg_image: ?configpkg.Path,
-@@ -623,6 +629,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -623,6 +630,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                      .faint_opacity = @intFromFloat(@ceil(config.@"faint-opacity" * 255)),
  
                      .min_contrast = @floatCast(config.@"minimum-contrast"),
@@ -861,17 +926,19 @@ index ff632f6..7030096 100644
                      .padding_color = config.@"window-padding-color",
  
                      .selection_background = config.@"selection-background",
-@@ -1202,6 +1209,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -1202,6 +1210,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                  // Update our terminal state
                  try self.terminal_state.update(self.alloc, state.terminal);
  
 +                // Manifold: keystrokes' echo predicted, over it.
 +                if (state.manifold_prediction) |*p| manifold_predict.apply(&self.terminal_state, p, state.terminal);
++                // Manifold: links (⌘ held), over that.
++                if (state.manifold_links) |*l| manifold_links.apply(&self.terminal_state, l);
 +
                  // If our terminal state is dirty at all we need to redo
                  // the viewport search.
                  if (self.terminal_state.dirty != .false) {
-@@ -2312,6 +2322,13 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2312,6 +2325,13 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          ) Allocator.Error!void {
              const state: *terminal.RenderState = &self.terminal_state;
  
@@ -885,7 +952,7 @@ index ff632f6..7030096 100644
              // const start = try std.time.Instant.now();
              // const start_micro = std.time.microTimestamp();
              // defer {
-@@ -2839,7 +2856,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2839,7 +2859,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                          bg_style,
                  };
  
@@ -894,7 +961,7 @@ index ff632f6..7030096 100644
                      // Our happy-path non-selection background color
                      // is our style or our configured defaults.
                      const final_bg = bg_style orelse state.colors.background;
-@@ -2874,6 +2891,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2874,6 +2894,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                      };
                  };
  
@@ -913,7 +980,7 @@ index ff632f6..7030096 100644
                  // Foreground alpha for this cell.
                  const alpha: u8 = if (style.flags.faint) self.config.faint_opacity else 255;
  
-@@ -3372,3 +3401,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -3372,3 +3404,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          }
      };
  }
@@ -1274,6 +1341,44 @@ index 0000000..8a853dc
 +        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
 +        try std.testing.expectEqual(want, cache.lookup(.deuteranopia, fg, paper));
 +    }
++}
+diff --git a/src/renderer/manifold_links.zig b/src/renderer/manifold_links.zig
+new file mode 100644
+index 0000000..2d307b9
+--- /dev/null
++++ b/src/renderer/manifold_links.zig
+@@ -0,0 +1,32 @@
++//! Manifold: links shown while ⌘ is held (`State.ManifoldLinks`), laid
++//! over a frame's copy of the screen — never the terminal itself: their
++//! cells' text in the link color, and a background under the one the
++//! pointer is on.
++
++const terminal = @import("../terminal/main.zig");
++const State = @import("State.zig");
++
++pub fn apply(rs: *terminal.RenderState, l: *const State.ManifoldLinks) void {
++    const rows = rs.row_data.slice();
++    const row_cells = rows.items(.cells);
++    const row_dirty = rows.items(.dirty);
++    for (l.runs[0..l.len], 0..) |run, i| {
++        if (run.y >= rs.rows) continue;
++        const cells = row_cells[run.y].slice();
++        const raws = cells.items(.raw);
++        const styles = cells.items(.style);
++        const end = @min(run.x1, rs.cols);
++        var x: usize = run.x0;
++        while (x < end) : (x += 1) {
++            var style = if (raws[x].style_id != 0) styles[x] else terminal.Style{};
++            style.fg_color = .{ .rgb = l.fg };
++            if (l.hovered == i) style.bg_color = .{ .rgb = l.hover_bg };
++            // The id only says it has one; the renderer takes the style
++            // from the copy.
++            raws[x].style_id = 1;
++            styles[x] = style;
++        }
++        row_dirty[run.y] = true;
++    }
++    if (rs.dirty == .false) rs.dirty = .partial;
 +}
 diff --git a/src/renderer/manifold_predict.zig b/src/renderer/manifold_predict.zig
 new file mode 100644

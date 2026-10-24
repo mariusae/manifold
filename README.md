@@ -473,7 +473,8 @@ around it, and comes back with its history.
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
   Definition (⌃⌘J, or ⌘-click: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
-  color, the one under the pointer underlined), Find References (⌃⌘R: a
+  color, the one under the pointer on a soft band — a step in lightness,
+  not a hue, as a chosen row's), Find References (⌃⌘R: a
   block of every use, beside, as a search's hits are shown — this file's
   first, each line previewed), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
@@ -499,7 +500,7 @@ around it, and comes back with its history.
   `~/a`, a name with an extension); a bare name, to be there (on this
   Mac). **Hold ⌘** over a terminal and what can be clicked shows, its text
   in the link color an editor shows ⌘'s links in, the one under the
-  pointer underlined. The **`manifold`** command (Manifold ▸ Install Command Line
+  pointer on the same soft band. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open as one tree, as Claude Code's file panel shows one:
   flat, in the system font, each folder opening in place (a click on its

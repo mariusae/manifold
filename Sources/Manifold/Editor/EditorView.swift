@@ -206,8 +206,15 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         while askingNavigable, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05)) }
         let names = textView.linkRanges.map { String(textView.text[$0]) }
         if keep {
-            // As if the pointer rested on the second link.
-            if textView.linkRanges.count > 1 { textView.hoveredLink = textView.linkRanges[1] }
+            // As if the pointer rested on the second link — with no server,
+            // on a word, as the pointer's is taken then.
+            if textView.linkRanges.count > 1 {
+                textView.hoveredLink = textView.linkRanges[1]
+            } else if textView.linkRanges.isEmpty {
+                let word = textView.wordRange(at: 9)
+                textView.linkRanges = word.isEmpty ? [] : [word]
+                textView.hoveredLink = word.isEmpty ? nil : word
+            }
         } else {
             commandDown = false
             textView.linkRanges = []

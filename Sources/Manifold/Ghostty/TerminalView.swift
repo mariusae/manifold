@@ -96,7 +96,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         link.onClosed = { [weak self] linkWent in self?.linkClosed(linkWent: linkWent) }
         link.onPrediction = { [weak self] cells, glows, info in self?.glow.show(cells, glow: glows, info: info) }
         glow.layer?.zPosition = 4
-        linkMarks.layer?.zPosition = 4
         dots.layer?.zPosition = 5
         connecting.wantsLayer = true
         connecting.layer?.zPosition = 5
@@ -141,7 +140,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         dots.removeFromSuperview()
         connecting.removeFromSuperview()
         glow.removeFromSuperview()
-        linkMarks.removeFromSuperview()
         if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
         linkMonitor = nil
         locateWork?.cancel()
@@ -249,8 +247,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private let connecting = BusyNote()
     /// The glow over keystrokes shown before the host echoes them.
     private let glow = PredictionGlow(frame: .zero)
-    /// The links on the screen, marked while ⌘ is held over it.
-    private let linkMarks = LinkMarks(frame: .zero)
     private var linkMonitor: Any?
     /// Where the shell is, when its files can be looked at from here (a
     /// terminal on this Mac): for telling that a bare name in its output
@@ -393,9 +389,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if glow.superview !== parent { parent.addSubview(glow) }
         glow.frame = frame
         glow.isHidden = isHidden
-        if linkMarks.superview !== parent { parent.addSubview(linkMarks) }
-        linkMarks.frame = frame
-        linkMarks.isHidden = isHidden
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
@@ -918,7 +911,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func watchCommandKey() {
         if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
         linkMonitor = nil
-        guard window != nil else { return linkMarks.hide() }
+        guard window != nil else {
+            markedRuns = nil
+            return clearLinks()
+        }
         linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer
@@ -927,7 +923,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 self.markLinks(reading: event.type == .flagsChanged || self.markedRuns == nil)
             } else if self.markedRuns != nil {
                 self.markedRuns = nil
-                self.linkMarks.hide()
+                self.clearLinks()
                 self.cursor.set()
             }
             return event
@@ -955,8 +951,44 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
         let hovered = under.flatMap { u in runs.firstIndex { $0.row == u.row && $0.from <= u.col && u.col < $0.to } }
-        linkMarks.show(runs, hovered: hovered, info: info)
+        showLinks(runs, hovered: hovered)
         (hovered != nil ? NSCursor.pointingHand : cursor).set()
+    }
+
+    /// The links drawn by ghostty, over its copy of the screen: their text
+    /// in the link color an editor's ⌘ links have, the one under the
+    /// pointer on a band a step lighter (darker, in the light) than the
+    /// background — a lightness, not a hue (`TextView.linkHover`).
+    private func showLinks(_ runs: [(row: Int, from: Int, to: Int)], hovered: Int?) {
+        guard let surface else { return }
+        guard !runs.isEmpty else { return clearLinks() }
+        var fg: UInt32 = 0, bg: UInt32 = 0
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let paper = TerminalPalette.current(for: self).background
+            fg = Self.rgb(TextView.linkColor)
+            bg = Self.rgb(Self.over(paper, TextView.linkHover))
+        }
+        let c = runs.map { ghostty_manifold_run_s(y: UInt16($0.row), x0: UInt16($0.from), x1: UInt16($0.to), _pad: 0) }
+        c.withUnsafeBufferPointer { ghostty_surface_manifold_links(surface, $0.baseAddress, UInt($0.count), fg, Int32(hovered ?? -1), bg) }
+    }
+
+    private func clearLinks() {
+        if let surface { ghostty_surface_manifold_links(surface, nil, 0, 0, -1, 0) }
+    }
+
+    /// A color as 0xRRGGBB.
+    private static func rgb(_ c: NSColor) -> UInt32 {
+        let s = c.usingColorSpace(.sRGB) ?? c
+        func b(_ v: CGFloat) -> UInt32 { UInt32(max(0, min(255, (v * 255).rounded()))) }
+        return b(s.redComponent) << 16 | b(s.greenComponent) << 8 | b(s.blueComponent)
+    }
+
+    /// A translucent color laid over an opaque one, as one color.
+    private static func over(_ base: NSColor, _ top: NSColor) -> NSColor {
+        let t = top.usingColorSpace(.sRGB) ?? top, b = base.usingColorSpace(.sRGB) ?? base
+        let a = t.alphaComponent
+        return NSColor(srgbRed: b.redComponent * (1 - a) + t.redComponent * a, green: b.greenComponent * (1 - a) + t.greenComponent * a,
+                       blue: b.blueComponent * (1 - a) + t.blueComponent * a, alpha: 1)
     }
 
     /// Debugging: the links marked as with ⌘ held (the pointer at a cell,
@@ -973,11 +1005,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             for l in links(inRow: r, cols: cols, exists: exists) { runs.append((r, l.from, l.to)); targets.append("\(r):\(l.from)-\(l.to) \(l.link.target)") }
         }
         let hovered = hoverRow.flatMap { hr in runs.firstIndex { $0.row == hr && $0.from <= (col ?? 0) && (col ?? 0) < $0.to } }
-        linkMarks.show(runs, hovered: hovered, info: info)
+        showLinks(runs, hovered: hovered)
         return targets.joined(separator: "\n")
     }
 
-    func debugUnmarkLinks() { linkMarks.hide() }
+    func debugUnmarkLinks() {
+        markedRuns = nil
+        clearLinks()
+    }
 
     /// The selection just copied, pulsed with the glow typing ahead has
     /// (§3.8): around it, the highlight lit from behind for a moment and

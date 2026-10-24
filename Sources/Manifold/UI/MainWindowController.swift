@@ -4436,6 +4436,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// `over`: ⌥ was held (else read off the click): what opens goes over
     /// the tile, not beside it.
+    /// Schemes an address has without "//" after them.
+    static let schemesWithoutSlashes: Set<String> = ["mailto", "tel", "sms", "facetime", "maps", "news", "data", "about"]
+
     func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil) {
         let place = opener(placement, over: over)
         // A link to a block (manifold:host/ulid, as a note's pill is): go to
@@ -4449,7 +4452,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let fragment, fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
             return
         }
-        if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file" {
+        // An address: a scheme and "//" (or one that goes without, as
+        // mailto: does) — not `README.md:781`, whose "README.md" a URL
+        // would take for a scheme.
+        if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file",
+           target.contains("://") || Self.schemesWithoutSlashes.contains(scheme.lowercased()) {
             let inWeb = here ?? Self.clickModifiers.map(Self.opensHere) ?? true
             // A server on another host's own localhost (one a remote
             // terminal names): its port forwarded here, then the address

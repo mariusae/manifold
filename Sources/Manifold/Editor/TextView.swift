@@ -63,7 +63,7 @@ final class TextView: NSView, NSTextInputClient {
     /// What ⌘ shows as links: byte ranges of names there's somewhere to go
     /// to, in the link color go.dev's docs have.
     var linkRanges: [TextRange] = [] { didSet { if linkRanges != oldValue { layouts = [:]; needsDisplay = true } } }
-    /// The link under the pointer, underlined as a hovered link is.
+    /// The link under the pointer, on a band (`linkHover`).
     var hoveredLink: TextRange? {
         didSet {
             guard hoveredLink != oldValue else { return }
@@ -71,6 +71,10 @@ final class TextView: NSView, NSTextInputClient {
             updateCursor()
         }
     }
+    /// Behind the link under the pointer (⌘ held): a band a step lighter
+    /// in the dark, darker in the light — a lightness, not a hue, as a
+    /// chosen row's, so every eye sees it. A terminal's links have it too.
+    static let linkHover = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.13))
     static let linkColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
                                            NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1))
     /// The line numbers' color (go.dev's for its listings, in view mode).
@@ -625,6 +629,13 @@ final class TextView: NSView, NSTextInputClient {
         for s in selections where !s.isCaret {
             drawSelection(s.range, from: first, to: last)
         }
+        // The link under the pointer (⌘ held), on its band.
+        if let h = hoveredLink, !h.isEmpty {
+            Self.linkHover.setFill()
+            rows(of: h, from: first, to: last) { r in
+                NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill()
+            }
+        }
 
         // Text.
         ctx.saveGState()
@@ -694,11 +705,6 @@ final class TextView: NSView, NSTextInputClient {
             }
         }
 
-        // The link under the pointer (⌘ held), underlined.
-        if let h = hoveredLink, !h.isEmpty {
-            Self.linkColor.setFill()
-            rows(of: h, from: first, to: last) { r in NSRect(x: r.minX, y: r.maxY - lineHeight * 0.2, width: r.width, height: 1).fill() }
-        }
 
         // Marked text (being composed) is underlined.
         if let m = marked, !m.isEmpty {
