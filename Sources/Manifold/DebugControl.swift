@@ -311,6 +311,9 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "tiles":
+            // Each tile's view: frame, hidden, its bar's frame.
+            return wc?.debugTiles ?? "no window"
         case "dirty":
             // "dirty": each tile's dirty dot; "dirty click": the focused one's clicked.
             return arg == "click" ? wc?.debugDirtyClick() ?? "no window" : wc?.debugDirty ?? "no window"

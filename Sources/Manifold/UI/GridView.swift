@@ -385,8 +385,12 @@ final class GridView: NSView, NSDraggingSource {
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
-                // Not a view the switcher holds: it shows in its card.
-                if !held(id) { setHidden(tile.view, stashed) }
+                // Not a view the switcher holds: it shows in its card. One
+                // collapsed to its bar stays out of sight, as layout left it:
+                // shown here, a sliver of it showed under its bar until the
+                // next layout (and blinked with each, typing in a note whose
+                // title is in its bar).
+                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id)) }
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
@@ -450,6 +454,10 @@ final class GridView: NSView, NSDraggingSource {
         var links: [CGFloat]
     }
     private var laidOutFor: LayoutInputs?
+    /// The tiles the last layout collapsed to their bars (less than a line
+    /// under them): their content stays hidden between layouts, as renders
+    /// (every keystroke) come and go.
+    private var collapsed: Set<PlacementID> = []
 
     func clear() {
         show([], fractions: [], heights: [:], focused: nil)
@@ -588,6 +596,16 @@ final class GridView: NSView, NSDraggingSource {
         columns.flatMap { $0 }.map { t in "\(t.shown.title): \(pills[t.shown.id]?.debugDirty ?? "-")" }.joined(separator: "\n")
     }
 
+    /// Debugging: each tile's view, as laid out: its frame, whether it's
+    /// hidden (and its layer), and its bar's.
+    var debugTiles: String {
+        columns.flatMap { $0 }.map { t in
+            let v = t.view
+            let p = pills[t.shown.id]
+            return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) stashed=\(isStashed(t.shown.id)) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false)"
+        }.joined(separator: "\n")
+    }
+
     var debugPills: String {
         columns.flatMap { $0 }.map { t in
             let p = pills[t.shown.id]
@@ -689,7 +707,10 @@ final class GridView: NSView, NSDraggingSource {
         }
         for t in columns.flatMap({ $0 }) where !held(t.shown.id) {
             let stashed = isStashed(t.shown.id)
-            setHidden(t.view, stashed)
+            // Hidden if stashed; shown or not, by whether it's collapsed,
+            // below — not shown here first and hidden again there, which
+            // pictured it and told the terminal it was seen at every layout.
+            if stashed { setHidden(t.view, true) }
             // A stashed tile's pill stays as it is — hidden behind the
             // top's, or out in the fan: shown here, it would be drawn over
             // the top pill for a frame, until the gather hid it again.
@@ -707,6 +728,7 @@ final class GridView: NSView, NSDraggingSource {
         let gliding = bounds == lastLayoutBounds && !dragging && !dividerDragging && !isSwitching
         lastLayoutBounds = bounds
         var frameNow: [PlacementID: NSRect] = [:]
+        var collapsedNow: Set<PlacementID> = []
         func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
             if gliding, let was, was != .zero, was != frame, !view.isHidden {
                 // A tile's content takes its new size at once and glides to
@@ -748,6 +770,7 @@ final class GridView: NSView, NSDraggingSource {
                 // Less than a line of content under the bar: the tile is
                 // collapsed to its bar, a pill, its content out of sight.
                 let collapsed = body.height < 20
+                if collapsed { collapsedNow.insert(tile.shown.id) }
                 frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
                 if !held {
                     settle(tile.view, body, was: was)
@@ -781,6 +804,7 @@ final class GridView: NSView, NSDraggingSource {
             _ = top
         }
         lastFrames = frameNow
+        self.collapsed = collapsedNow
         if dragging { dragCatcher.frame = bounds }
         // The focus ring: around the focused tile, over everything.
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
