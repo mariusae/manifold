@@ -164,13 +164,17 @@ public final class LogStore {
     }
 
     /// Writes a shard's snapshot, marking the log as read up to its end.
-    public func snapshot(_ node: Node, _ shard: ShardID) {
+    /// A shard's snapshot written: here, or — with `queue` — encoded and
+    /// written there (a serial one), the shard as it is now taken here.
+    public func snapshot(_ node: Node, _ shard: ShardID, on queue: DispatchQueue? = nil) {
         guard let snap = node.snapshot(shard) else { return }
         let size = (try? FileManager.default.attributesOfItem(atPath: logURL(shard).path))?[.size] as? UInt64 ?? 0
         let file = SnapshotFile(snapshot: snap, logOffset: size)
-        if let data = try? Codec.encode(file) {
-            try? data.write(to: snapURL(shard), options: .atomic)
+        let url = snapURL(shard)
+        let write = {
+            if let data = try? Codec.encode(file) { try? data.write(to: url, options: .atomic) }
         }
+        if let queue { queue.async(execute: write) } else { write() }
     }
 
     public func delete(_ shard: ShardID) {

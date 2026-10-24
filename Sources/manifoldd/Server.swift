@@ -178,7 +178,7 @@ final class Server {
         let snapshots = DispatchSource.makeTimerSource(queue: queue)
         snapshots.schedule(deadline: .now() + 60, repeating: 60)
         snapshots.setEventHandler { [weak self] in
-            self?.writeSnapshots()
+            self?.writeSnapshots(later: true)
             self?.collectTerminals()
             self?.collect()
             self?.retain()
@@ -1831,8 +1831,12 @@ final class Server {
         log("migrated \(out.count) shards from \(Paths.state.lastPathComponent)")
     }
 
-    private func writeSnapshots() {
-        for shard in dirtyShards { store.snapshot(node, shard) }
+    /// The changed shards' snapshots written. `later`: encoded and written
+    /// on the files' queue (every minute: the shards are big, this queue
+    /// answers every client); else here, once what's queued there is done.
+    private func writeSnapshots(later: Bool = false) {
+        if !later { Self.files.sync {} }
+        for shard in dirtyShards { store.snapshot(node, shard, on: later ? Self.files : nil) }
         dirtyShards = []
     }
 
