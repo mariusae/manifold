@@ -275,6 +275,10 @@ enum DebugControl {
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
             if a.first == "hold" || a.first == "release" { wc.debugOptionHeld = a.first == "hold" }
+            // "stack sheets": where each stack's sheets take a click.
+            if a.first == "sheets" { return wc.debugSheetTargets }
+            // "stack sheetclick [drag]": the first stack's sheets clicked, or dragged.
+            if a.first == "sheetclick" { return wc.debugClickSheets(drag: a.count > 1) }
             // "stack focus <placement suffix>": that tile focused.
             if a.first == "focus", a.count > 1, !wc.debugFocus(placementEndingIn: a[1]) { return "no \(a[1])" }
             return wc.debugStack(swap: a.first == "swap" || a.first == "next", index: a.first == "next" ? -1 : a.count > 1 ? Int(a[1]) ?? 0 : 0)

@@ -336,13 +336,15 @@ final class GridView: NSView, NSDraggingSource {
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
                 }
-                // Right-clicked, the title calls up the stack behind the
-                // tile; with none, the tile's menu.
+                // Right-clicked, the title calls up the tile's menu.
                 pill.onRightClick = { [weak self] _ in
                     guard let self, !stashed else { return }
                     self.delegate?.gridFocus(id)
-                    if self.full != nil || !self.openStackSwitcher(id, followingPointer: true) { self.showPillMenu(id) }
+                    self.showPillMenu(id)
                 }
+                // Its stack's button (or its sheets, clicked): the stack
+                // behind it fanned out.
+                pill.onFan = { [weak self] in self?.fanOut(id) }
                 // A fanned pill drags its tile out alone; the top's takes
                 // the stack along, unless ⌘ is held.
                 pill.onDragStart = { [weak self, weak pill] event in
@@ -489,14 +491,52 @@ final class GridView: NSView, NSDraggingSource {
         return "re-added"
     }
 
-    /// Debugging: the tile's title right-clicked; what came up.
+    /// Debugging: the tile's stack fanned out, as its sheets clicked
+    /// would; what came up.
     func debugRightClick(_ placement: PlacementID) -> String {
         guard let pill = pills[placement] else { return "no pill" }
         guard full == nil, stacks(columns.indices.first { columns[$0].contains { $0.shown.id == placement } } ?? 0)
-            .contains(where: { $0.top.shown.id == placement && !$0.behind.isEmpty }) else { return "no stack: the menu" }
-        pill.onRightClick?(NSEvent())
+            .contains(where: { $0.top.shown.id == placement && !$0.behind.isEmpty }) else { return "no stack" }
+        pill.onFan?()
         layoutSubtreeIfNeeded()
         return switcher.map { "switcher over \(NSStringFromRect($0.frame)), bar hidden \(pill.isHidden)" } ?? "nothing"
+    }
+
+    /// The stack behind `top` fanned out, the choice following the pointer.
+    private func fanOut(_ top: PlacementID) {
+        guard full == nil else { return }
+        delegate?.gridFocus(top)
+        openStackSwitcher(top, followingPointer: true)
+    }
+
+    /// Debugging: the first stack's sheets clicked (or, `drag`, dragged
+    /// down 30 points), the events sent to them as the window would.
+    func debugClickSheets(drag: Bool) -> String {
+        guard let t = sheetTargets.first, let window else { return "no sheets" }
+        let r = t.convert(t.bounds, to: nil)
+        let at = NSPoint(x: r.midX, y: r.midY)
+        func event(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        }
+        let before = heights
+        if let e = event(.leftMouseDown, at) { t.mouseDown(with: e) }
+        if drag { for dy in stride(from: 5, through: 30, by: 5) { if let e = event(.leftMouseDragged, NSPoint(x: at.x, y: at.y - CGFloat(dy))) { t.mouseDragged(with: e) } } }
+        if let e = event(.leftMouseUp, drag ? NSPoint(x: at.x, y: at.y - 30) : at) { t.mouseUp(with: e) }
+        layoutSubtreeIfNeeded()
+        return "switcher \(switcher.map { NSStringFromRect($0.frame) } ?? "none"); heights \(before == heights ? "same" : "changed")"
+    }
+
+    /// Debugging: where each stack's sheets take a click.
+    var debugSheetTargets: String {
+        let tiles = columns.flatMap { $0 }
+        return sheetTargets.map { t in
+            let title = tiles.first { $0.shown.id == t.top }?.shown.title ?? "?"
+            // In the window's coordinates from the top left (as `click` takes them).
+            let r = t.convert(t.bounds, to: nil)
+            let top = (window?.contentView?.bounds.height ?? 0) - r.midY
+            return "\(title) center \(Int(r.midX)) \(Int(top)) size \(Int(r.width))x\(Int(r.height))"
+        }.joined(separator: "\n")
     }
 
     /// Debugging: the open switcher's pointer resting on card `i`.
@@ -719,13 +759,14 @@ final class GridView: NSView, NSDraggingSource {
                 shownIndex += 1
             }
             // Each stack: its sheets' edges above the top's card; its
-            // tiles hang as cards over it when its title is right-clicked.
+            // tiles hang as cards over it when they or its bar's stack
+            // button are clicked.
             _ = top
             for stack in stacks(c) {
                 guard let topPill = pills[stack.top.shown.id] else { continue }
                 topPill.behind = stack.behind.count
                 topPill.toolTip = stack.behind.isEmpty ? nil
-                    : "\(stack.behind.count) behind this tile — right-click its title to see \(stack.behind.count == 1 ? "it" : "them")"
+                    : "\(stack.behind.count) behind this tile — click the sheets above it, or its stack button, to see \(stack.behind.count == 1 ? "it" : "them")"
                 for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
             }
         }
@@ -1316,6 +1357,32 @@ final class GridView: NSView, NSDraggingSource {
     /// card, the rest of it beneath — layers under the cards, as a stack
     /// of paper. Laid out with the cards.
     private var sheetLayers: [CAShapeLayer] = []
+    /// Where the sheets above each stacked tile's bar take a click.
+    private var sheetTargets: [SheetsTarget] = []
+
+    private func layoutSheetTargets(_ targets: [(PlacementID, NSRect)]) {
+        while sheetTargets.count > targets.count { sheetTargets.removeLast().removeFromSuperview() }
+        while sheetTargets.count < targets.count {
+            let t = SheetsTarget()
+            t.onClick = { [weak self, weak t] in
+                guard let self, let top = t?.top else { return }
+                self.fanOut(top)
+            }
+            // Dragged, it's the line between the tiles that moves.
+            t.divider = { [weak self, weak t] in
+                guard let self, let t else { return nil }
+                return self.rowDividers.first { !$0.isHidden && $0.frame.intersects(t.frame.insetBy(dx: 0, dy: -2)) }
+            }
+            sheetTargets.append(t)
+        }
+        // Over the line between the tiles, which is where they show.
+        let above = subviews.lastIndex { $0 is RowDividerView } ?? -1
+        for (t, (id, rect)) in zip(sheetTargets, targets) {
+            t.top = id
+            t.frame = rect
+            if t.superview !== self || (subviews.firstIndex(of: t) ?? -1) < above { addSubview(t, positioned: .above, relativeTo: nil) }
+        }
+    }
     /// A shadow under each card, in the light (§3.1): the cards lifted a
     /// little off the wash.
     private var shadowLayers: [CAShapeLayer] = []
@@ -1346,6 +1413,7 @@ final class GridView: NSView, NSDraggingSource {
 
     private func layoutSheets() {
         var wanted: [(NSRect, Int)] = []
+        var targets: [(PlacementID, NSRect)] = []
         for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id {
             let bar = pill.frame
             for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
@@ -1353,7 +1421,12 @@ final class GridView: NSView, NSDraggingSource {
                 let rise = CGFloat(level) * 3
                 wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Self.corner, width: bar.width - 2 * inset, height: Self.corner + rise), level))
             }
+            // What shows of the sheets above the bar takes a click — a
+            // little taller than they are, to be hit.
+            let rise = CGFloat(min(pill.behind, 3)) * 3
+            targets.append((id, NSRect(x: bar.minX + 6, y: bar.maxY, width: bar.width - 12, height: max(8, rise + 3))))
         }
+        layoutSheetTargets(targets)
         while sheetLayers.count > wanted.count { sheetLayers.removeLast().removeFromSuperlayer() }
         while sheetLayers.count < wanted.count {
             let l = CAShapeLayer()
@@ -1501,6 +1574,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let subtitle = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
+    /// With tiles behind it: the stack fanned out.
+    private let fanButton = IconButton(symbol: "square.stack", size: 10, weight: .medium, target: nil, action: nil)
+    var onFan: (() -> Void)?
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
     private let sidebarButton = IconButton(symbol: "sidebar.left", size: 10, weight: .medium, target: nil, action: nil)
@@ -1550,6 +1626,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
         if !sidebarButton.isHidden { w += 22 }
+        if !fanButton.isHidden { w += 22 }
         w += CGFloat(ownButtons.filter { !$0.isHidden }.count) * 22
         if !glyph.isHidden { w += StatusGlyph.size + 8 }
         return w
@@ -1592,6 +1669,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         sidebarButton.target = self
         sidebarButton.action = #selector(sidebarClicked)
         sidebarButton.isHidden = true
+        fanButton.target = self
+        fanButton.action = #selector(fanClicked)
+        fanButton.isHidden = true
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
@@ -1600,12 +1680,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, fanButton, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
 
     @objc private func closeClicked() { onClose?() }
+    @objc private func fanClicked() { onFan?() }
 
     var debugDirty: String { !isDirty ? "clean" : isStale ? "amber" : "grey" }
     private var isDirty = false
@@ -1908,6 +1989,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let showClose = !stashed && showsButtons
         var showCorner = !stashed && showsButtons
         var showSidebar = showCorner && sidebar != nil
+        var showFan = showCorner && behind > 0 && !maximized
         var showOwn = showCorner && !viewButtons.isEmpty
         let ownWidth = CGFloat(viewButtons.count) * 22 + 4
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
@@ -1920,6 +2002,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if showClose { used += 22 }
             if showCorner { used += 22 }
             if showSidebar { used += 22 }
+            if showFan { used += 22 }
             if showOwn { used += ownWidth }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
             return bounds.width - used
@@ -1929,6 +2012,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
         if spare() < nameNeed, showSidebar { showSidebar = false }
+        if spare() < nameNeed, showFan { showFan = false }
         if spare() < nameNeed, showCorner { showCorner = false }
         // Narrower still, the pill goes altogether: the symbol and a bit of
         // the name say what the tile is; the links are a hover away in the
@@ -1947,6 +2031,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         corner.isHidden = !showCorner
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            right -= 22
+        }
+        fanButton.isHidden = !showFan
+        if showFan {
+            fanButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            fanButton.toolTip = "Show the \(behind == 1 ? "tile" : "\(behind) tiles") behind this one (⌘E)"
             right -= 22
         }
         sidebarButton.isHidden = !showSidebar
@@ -2058,6 +2148,41 @@ final class TilePill: NSView, NSTextFieldDelegate {
             else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
+    }
+}
+
+/// What shows of a stack's sheets above its top tile's bar: clicked, the
+/// stack fans out; dragged, the line between the tiles under it moves.
+final class SheetsTarget: NSView {
+    var top: PlacementID?
+    var onClick: (() -> Void)?
+    var divider: (() -> RowDividerView?)?
+    private var downAt: NSPoint?
+    private var moved = false
+    private var dragging: RowDividerView?
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) {
+        downAt = event.locationInWindow
+        moved = false
+        dragging = nil
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if !moved, let at = downAt, hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) > 3 {
+            moved = true
+            dragging = divider?()
+            dragging?.mouseDown(with: event)
+            if dragging != nil { NSCursor.resizeUpDown.set() }
+        }
+        dragging?.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let d = dragging { d.mouseUp(with: event) } else if downAt != nil, !moved { onClick?() }
+        downAt = nil
+        moved = false
+        dragging = nil
     }
 }
 

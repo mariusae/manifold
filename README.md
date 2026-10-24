@@ -62,19 +62,21 @@ and Mona Sans (bundled).
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
-  out above its card, as a stack of paper. **Right-click the tile's
-  title** (or press ⌘E) and the stack's tiles hang over it as cards,
+  out above its card, as a stack of paper. **Click those sheets**, or
+  the stack button on the tile's bar (beside maximize), or press ⌘E, and
+  the stack's tiles hang over it as cards,
   live, the tile's own bar put away, on the window's own background
   (a stack too short to hold them, down to its bar say, first grows —
   more than a tile gone to does: 320 points, or half the column): each
   as wide as the column, the tile at its own size, a title bar lower than the
   one behind it, all leaning back a little alike, and the one chosen
   peeking out between the rest, those in front of it let down part of
-  the way. Right-clicked, the card under the pointer is
+  the way. Clicked open, the card under the pointer is
   the one chosen (scrolling works too): clicked, it takes the top,
   whole, the tile that showed going behind it with the rest of the
   stack, as with ⌘E; ⎋ or a click away from the cards leaves things be
-  (with no stack, the right-click is the tile's menu). With ⌘E, each E
+  (a drag on the sheets moves the line between the tiles, as it would
+  there; right-clicking a title is always the tile's menu). With ⌘E, each E
   moves the choice a card down (⇧⌘E back up), and letting go of ⌘ brings
   the chosen one forward to the top (Escape leaves things be; a card
   clicked is chosen at once); without a stack, ⌘E finds the word at
