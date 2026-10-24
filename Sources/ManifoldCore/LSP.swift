@@ -148,6 +148,8 @@ public enum LSPRequest: Codable, Sendable {
     /// a variable…), as the server's semantic tokens say: what ⌘ shows
     /// as links.
     case navigable(BlockID)
+    /// What the text declares (its types, functions…), for its outline.
+    case symbols(BlockID)
 }
 
 public enum LSPResult: Codable, Sendable {
@@ -157,6 +159,7 @@ public enum LSPResult: Codable, Sendable {
     case hover(String)
     case edits([LSPFileEdit])
     case completions([Completion])
+    case symbols([LSPSymbol])
     case none
     case error(String)
 }
@@ -179,6 +182,84 @@ extension Rope {
         let utf16 = text.utf16
         guard let i = utf16.index(utf16.startIndex, offsetBy: character, limitedBy: utf16.endIndex) else { return r.end }
         return r.start + text.utf8.distance(from: text.utf8.startIndex, to: i)
+    }
+}
+
+/// A name a text declares, as its language server says — a type, a
+/// function, a method — for its outline (§7.5).
+public struct LSPSymbol: Codable, Equatable, Sendable {
+    public var name: String
+    /// LSP's SymbolKind: 5 class, 6 method, 12 function, 23 struct…
+    public var kind: Int
+    /// The line its name is on (0-based), and how deep it is among them.
+    public var line: Int
+    public var level: Int
+
+    public init(name: String, kind: Int, line: Int, level: Int) {
+        self.name = name
+        self.kind = kind
+        self.line = line
+        self.level = level
+    }
+
+    /// The kinds an outline shows: what a text is made of — modules,
+    /// types, functions and methods — not its fields, variables and enum
+    /// cases, which would bury them.
+    public static let outlineKinds: Set<Int> = [2, 3, 4, 5, 6, 9, 10, 11, 12, 23, 25]
+    /// Kinds whose insides are their own business (a function's locals).
+    static let bodies: Set<Int> = [6, 9, 12]
+
+    /// A word for a kind, beside its name.
+    public static func word(_ kind: Int) -> String {
+        switch kind {
+        case 2: "module"
+        case 3: "namespace"
+        case 4: "package"
+        case 5: "class"
+        case 6: "method"
+        case 9: "init"
+        case 10: "enum"
+        case 11: "interface"
+        case 12: "func"
+        case 23: "struct"
+        case 25: "operator"
+        default: ""
+        }
+    }
+
+    /// A `textDocument/documentSymbol` answer as an outline, in the text's
+    /// order: nested symbols (DocumentSymbol) a level deeper each, not
+    /// into a function's body; flat ones (SymbolInformation) a level
+    /// deeper when they're in a container.
+    public static func outline(_ value: Any) -> [LSPSymbol] {
+        guard let items = value as? [[String: Any]] else { return [] }
+        func line(_ range: Any?) -> Int? { ((range as? [String: Any])?["start"] as? [String: Any])?["line"] as? Int }
+        var out: [LSPSymbol] = []
+        func walk(_ items: [[String: Any]], level: Int) {
+            for item in items {
+                guard let name = item["name"] as? String, let kind = item["kind"] as? Int else { continue }
+                let shown = outlineKinds.contains(kind)
+                if shown, let l = line(item["selectionRange"]) ?? line(item["range"]) {
+                    out.append(LSPSymbol(name: name, kind: kind, line: l, level: level))
+                }
+                if !bodies.contains(kind), let children = item["children"] as? [[String: Any]] {
+                    walk(children, level: shown ? level + 1 : level)
+                }
+            }
+        }
+        if items.first?["location"] != nil {
+            // Flat: by where each is, a level in for one in a container.
+            for item in items {
+                guard let name = item["name"] as? String, let kind = item["kind"] as? Int, outlineKinds.contains(kind),
+                      let l = line((item["location"] as? [String: Any])?["range"]) else { continue }
+                let inside = !((item["containerName"] as? String) ?? "").isEmpty
+                out.append(LSPSymbol(name: name, kind: kind, line: l, level: inside ? 1 : 0))
+            }
+            out.sort { $0.line < $1.line }
+        } else {
+            walk(items, level: 0)
+        }
+        return out
     }
 }
 

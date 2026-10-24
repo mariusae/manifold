@@ -315,8 +315,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// Each heading's line (0-based), in the outline's order.
     private var headingLines: [Int] = []
     private var headingsWork: DispatchWorkItem?
-    /// Whether the text is an outline's kind: Markdown, or a note.
-    fileprivate var hasOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
+    /// Whether the text has an outline: Markdown, or a note (its headings);
+    /// a source file whose language server says what it declares.
+    fileprivate var hasOutline: Bool { isMarkdownOutline || hasSymbols }
+    private var isMarkdownOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
+    /// The language server has answered with the file's symbols.
+    private var hasSymbols = false
 
     @objc private func scrolled() {
         updateScrubber()
@@ -325,7 +329,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: The outline (§7.5)
 
-    /// A Markdown text's (a note's) headings, the one you're in marked:
+    /// A Markdown text's (a note's) headings — or a source file's types and
+    /// functions, as its language server says — the one you're in marked:
     /// as ticks at the tile's upper right, and in the sidebar at its left.
     private let headingsOutline = Outline()
     var outline: Outline? { hasOutline ? headingsOutline : nil }
@@ -384,11 +389,36 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private var headingsVersion = -2
 
     private func scheduleHeadings() {
-        guard hasOutline else { return }
+        guard isMarkdownOutline || !path.isEmpty else { return }
         headingsWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.findHeadings() }
+        // A language server is asked less often than headings are parsed.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.isMarkdownOutline { self.findHeadings() } else { self.findSymbols() }
+        }
         headingsWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (isMarkdownOutline ? 0.3 : 0.8), execute: work)
+    }
+
+    /// A source file's symbols, as its language server says, once per
+    /// version: its outline. No server (or none that answers), no outline.
+    private func findSymbols() {
+        let version = document?.version ?? -1
+        guard isLoaded, version >= 0 else { return }
+        guard version != headingsVersion else { return markCurrentHeading() }
+        headingsVersion = version
+        delegate?.editor(self, lsp: .symbols(block)) { [weak self] result in
+            guard let self, self.document?.version == version else { return }
+            guard case .symbols(let symbols) = result else { return }
+            self.headingLines = symbols.map(\.line)
+            self.headingsOutline.set(symbols.map { Outline.Item(title: $0.name, level: $0.level, detail: LSPSymbol.word($0.kind), code: true) })
+            if !self.hasSymbols {
+                // An outline now: its ticks and the sidebar's button.
+                self.hasSymbols = true
+                self.delegate?.editorEditedChanged(self)
+            }
+            self.markCurrentHeading()
+        }
     }
 
     private func findHeadings() {

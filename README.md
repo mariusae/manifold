@@ -630,8 +630,11 @@ around it, and comes back with its history.
   copy theirs, and every tile's menu has Copy Link and, where it has a
   place, Copy Path and Reveal in Finder.
 - **Outline ticks**: a tile whose block has an outline — a Markdown
-  text's headings (in the editor or the preview), a PDF's contents, a
-  diff's files and changes, a web page's headings, an agent's turns —
+  text's headings (in the editor or the preview), a source file's types,
+  functions and methods (as its language server says, nested as they are,
+  each with its kind, not a function's locals or a type's fields), a
+  PDF's contents, a diff's files and changes, a web page's headings, an
+  agent's turns —
   shows it as a few short ticks at its content's upper right (five at
   most, however long the outline), the one nearest where you are longer
   and darker; they take no room of their own. Rest the pointer on them

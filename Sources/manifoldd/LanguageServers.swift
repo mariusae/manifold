@@ -150,7 +150,7 @@ final class LanguageServers {
         let block: BlockID
         switch request {
         case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
-             let .navigable(b):
+             let .navigable(b), let .symbols(b):
             block = b
         }
         guard let (text, path) = textOf(block), let path else { return done(.error("not a file")) }
@@ -201,6 +201,11 @@ final class LanguageServers {
                 guard let legend = server?.tokenTypes else { return done(.error("the language server has no semantic tokens")) }
                 guard case .success(let value) = result, let data = (value as? [String: Any])?["data"] as? [Int] else { return done(.ranges([])) }
                 done(.ranges(SemanticTokens.navigable(data, legend: legend, in: text)))
+            }
+        case .symbols:
+            server.request("textDocument/documentSymbol", ["textDocument": ["uri": uri]]) { result in
+                guard case .success(let value) = result else { return done(.symbols([])) }
+                done(.symbols(LSPSymbol.outline(value)))
             }
         case let .completion(_, offset):
             server.request("textDocument/completion", ["textDocument": ["uri": uri], "position": position(offset)]) { result in
@@ -406,6 +411,8 @@ final class LanguageServer {
                     "completion": ["completionItem": ["snippetSupport": true, "insertReplaceSupport": false]],
                     "publishDiagnostics": ["relatedInformation": false],
                     "rename": ["prepareSupport": false],
+                    // For a text's outline: what it declares, nested.
+                    "documentSymbol": ["hierarchicalDocumentSymbolSupport": true],
                     // For what ⌘ shows as links: the names in a text, by kind.
                     "semanticTokens": [
                         "requests": ["full": true],

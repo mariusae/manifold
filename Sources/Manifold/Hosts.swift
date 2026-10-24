@@ -196,7 +196,7 @@ final class Hosts {
         let block: BlockID
         switch request {
         case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
-             let .navigable(b):
+             let .navigable(b), let .symbols(b):
             block = b
         }
         guard let c = client(of: block) else { return done(.error("the block's host isn't attached")) }
