@@ -392,10 +392,13 @@ final class TextView: NSView, NSTextInputClient {
             while i < length {
                 let count = CTTypesetterSuggestLineBreak(typesetter, i, Double(wrapWidth))
                 let take = max(count, 1)
-                rows.append(CTTypesetterCreateLine(typesetter, CFRange(location: i, length: take)))
+                // Past 2,000 rows, the rest of the line on one row: it went
+                // undrawn (a minified file's one line).
+                let rest = rows.count >= 2000
+                let n = rest ? length - i : take
+                rows.append(CTTypesetterCreateLine(typesetter, CFRange(location: i, length: n)))
                 starts.append(i)
-                i += take
-                if rows.count > 2000 { break }
+                i += n
             }
         } else {
             rows.append(CTTypesetterCreateLine(typesetter, CFRange(location: 0, length: length)))

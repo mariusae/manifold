@@ -87,6 +87,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     /// The text as last rendered, to skip renders that would show the same.
     private var renderedVersion = -1
     private var renderWork: DispatchWorkItem?
+    /// The page's script, sent once a load (not with every render).
+    private var scriptSent = false
+    /// Renders asked for: one made on another thread is shown only if
+    /// none has been asked for since.
+    private var renderGeneration = 0
     /// Where the text comes from.
     var source: () -> (text: String, version: Int)? = { nil }
     /// Whether its file is still to be read by its host: "Reading…" meanwhile.
@@ -154,6 +159,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             guard lines.indices.contains(i) else { return nil }
             return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
         }
+        scriptSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -246,10 +252,15 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     func textChanged() {
         note.set(isUnread() ? .busy("Reading…") : .idle)
         guard let (_, version) = source(), version != renderedVersion else { return }
-        renderWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.render(scrollToTop: false) }
+        // At most every 0.15 s while it changes, not put off by each change
+        // (typing steadily, it was rendered after each pause, every key).
+        if let w = renderWork, !w.isCancelled { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.renderWork = nil
+            self?.render(scrollToTop: false)
+        }
         renderWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     override func layout() {
@@ -290,6 +301,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         loaded = false
         renderedVersion = -1
         restorePending = true
+        scriptSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -297,6 +309,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         loaded = false
         renderedVersion = -1
         restorePending = true
+        scriptSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -311,15 +324,26 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         render(scrollToTop: true)
     }
 
+    /// The page made from the text — the HTML on another thread (a long
+    /// note took the main thread for it at every change) — and shown.
     private func render(scrollToTop: Bool) {
         guard loaded else { return }
-        let body: String
-        if let (text, version) = source() {
-            renderedVersion = version
-            body = resolvingImages(MarkdownRenderer.html(text, sourcePositions: true))
-        } else {
-            body = "<p class=\"missing\">\(escape(path)) can't be read.</p>"
+        renderGeneration &+= 1
+        let generation = renderGeneration
+        guard let (text, version) = source() else {
+            return show(body: "<p class=\"missing\">\(escape(path)) can't be read.</p>", scrollToTop: scrollToTop)
         }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let html = MarkdownRenderer.html(text, sourcePositions: true)
+            DispatchQueue.main.async {
+                guard let self, self.renderGeneration == generation, self.loaded else { return }
+                self.renderedVersion = version
+                self.show(body: self.resolvingImages(html), scrollToTop: scrollToTop)
+            }
+        }
+    }
+
+    private func show(body: String, scrollToTop: Bool) {
         let base = URL(fileURLWithPath: path).deletingLastPathComponent().absoluteString
         var js = "manifoldRender(\(json(body)), \(json(base)), \(scrollToTop && !restorePending));"
         if restorePending {
@@ -335,7 +359,9 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
             pendingTopLine = nil
             js += " manifoldToLine(\(line));"
         }
-        web.evaluateJavaScript(MarkdownPage.script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
+        let script = scriptSent ? "" : MarkdownPage.script
+        scriptSent = true
+        web.evaluateJavaScript(script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
     }
 
     /// Where a block's image is, for the page: this Mac's file, or another
