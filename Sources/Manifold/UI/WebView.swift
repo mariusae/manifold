@@ -68,8 +68,11 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         config.userContentController.addUserScript(WKUserScript(source: "(function(){var s=document.createElement('style');s.textContent='::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:rgba(127,127,127,.5);border-radius:7px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:rgba(127,127,127,.8);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}';(document.head||document.documentElement).appendChild(s);})();", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let handler = StateMessages()
         config.userContentController.add(handler, name: "manifoldState")
+        let selectionOwner = WeakView()
+        PageSelection.watch(config) { selectionOwner.view }
         web = PageWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
+        selectionOwner.view = self
         handler.onState = { [weak self] _ in self?.keepInteraction() }
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
@@ -448,4 +451,12 @@ final class PageWebView: WKWebView {
         if mods == .command, event.charactersIgnoringModifiers?.lowercased() == "l" { return false }
         return super.performKeyEquivalent(with: event)
     }
+}
+
+extension WebView {
+    func maniSelection() async -> ManiSelected? {
+        await PageSelection.text(in: web).map { ManiSelected(text: $0) }
+    }
+
+    func maniText(_ options: ManiReadOptions) async -> String? { await PageSelection.pageText(in: web) }
 }

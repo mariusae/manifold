@@ -31,6 +31,12 @@ public enum WebAddress: Equatable {
         return s.contains(".") ? .page("https://" + s) : .search(s)
     }
 
+    /// Whether a command's argument is a web address rather than a path:
+    /// with a scheme of the web's, or localhost and a port.
+    public static func looksLikeURL(_ s: String) -> Bool {
+        s.hasPrefix("http://") || s.hasPrefix("https://") || s.range(of: #"^localhost:\d+"#, options: .regularExpression) != nil
+    }
+
     /// An address as it's shown and matched: without its scheme, a
     /// leading www., or a lone trailing slash.
     public static func plain(_ address: String) -> String {

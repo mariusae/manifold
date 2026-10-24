@@ -37,6 +37,9 @@ final class Server {
     /// Each client's attachment number, and the app among them (named so).
     private var clientIDs: [ObjectIdentifier: Int] = [:]
     private var appClients: Set<ObjectIdentifier> = []
+    /// `mani` commands passed on to the app and not yet answered in full,
+    /// by the client that asked: the app is told when it goes.
+    private var commandsOut: [Int: Set<Int>] = [:]
     /// Which attachment holds the pen for each shard a client may lead
     /// (§8.2): the last to focus its block, or the first to append.
     private var owners: [ShardID: ObjectIdentifier] = [:]
@@ -230,12 +233,14 @@ final class Server {
             }
             conn.onFrame = { [weak self, unowned conn] frame in self?.clientFrame(frame, from: conn) }
             conn.onClose = { [weak self, unowned conn] in
+                self?.commandsEnded(by: conn)
                 self?.clients.removeAll { $0 === conn }
                 self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
                 self?.appClients.remove(ObjectIdentifier(conn))
                 self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
             }
-            let snapshots = node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
+            // `mani` needs none of it: only that the versions agree.
+            let snapshots = name == Mani.name ? [] : node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots,
                                                      features: serverFeatures)))
@@ -302,6 +307,13 @@ final class Server {
         }
     }
 
+    /// A client gone with `mani` commands unanswered: the app stops on them.
+    private func commandsEnded(by conn: any Channel) {
+        guard let client = clientIDs[ObjectIdentifier(conn)], let ids = commandsOut.removeValue(forKey: client), !ids.isEmpty,
+              let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) && $0 !== conn }) else { return }
+        for id in ids { app.send(.message(ServerMessage.commandEnded(id: id, client: client))) }
+    }
+
     private func clientFrame(_ frame: Frame, from conn: any Channel) {
         switch frame.decode(ClientMessage.self) {
         case .ping?:
@@ -314,13 +326,15 @@ final class Server {
             if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
-        case let .open(id, paths, beside, wait)?:
-            // The command asks; the app, if attached, opens.
+        case let .command(id, request)?:
+            // `mani` asks; the app, if attached, does it and answers.
             guard let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) }) else {
                 conn.send(.message(ServerMessage.done(id: id, error: "Manifold isn't attached to this host")))
                 return
             }
-            app.send(.message(ServerMessage.open(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, paths: paths, beside: beside, wait: wait)))
+            let client = clientIDs[ObjectIdentifier(conn)] ?? 0
+            commandsOut[client, default: []].insert(id)
+            app.send(.message(ServerMessage.command(id: id, client: client, request)))
         case let .openPatch(id, patch, root, title, beside)?:
             // `mani diff`: the patch becomes a diff block here, and the
             // app, if attached, places it and answers the command.
@@ -765,6 +779,16 @@ final class Server {
             if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
                 c.send(.message(ServerMessage.done(id: openID, error: nil)))
             }
+            done()
+        case let .commandReply(commandID, client, reply):
+            if reply.status != nil { commandsOut[client]?.remove(commandID) }
+            if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
+                c.send(.message(ServerMessage.commandReply(id: commandID, reply)))
+            }
+            done()
+        case let .input(block, text):
+            guard let session = sessions[block] else { return done("that terminal has no shell running") }
+            session.type(text)
             done()
         case let .languageServers(configs):
             // The desk's table, with this host's own settings over it.

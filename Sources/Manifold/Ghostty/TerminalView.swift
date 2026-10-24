@@ -514,7 +514,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// A command and its output, as shown: the rows from its prompt to
     /// the next command's (or the end), the next prompt left off.
-    private func transcript(ofCommand id: Int) -> (ShellCommand, String)? {
+    func transcript(ofCommand id: Int) -> (ShellCommand, String)? {
         guard let c = commands.first(where: { $0.id == id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
         let line = screenLines()?.first { $0.row == row }.map { String($0.text) } ?? ""
@@ -929,6 +929,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, clickMods(event))
         ghostty_surface_mouse_pressure(surface, 0, 0)
+        if ghostty_surface_has_selection(surface) { NotificationCenter.default.post(name: .manifoldSelectionMade, object: self) }
         // A ⌘-click ghostty took for no link: the word there, for a folder.
         if let down = commandClickAt, hypot(event.locationInWindow.x - down.x, event.locationInWindow.y - down.y) < 4 {
             let over = openOver
@@ -1764,5 +1765,20 @@ extension TerminalView: Printable {
     func printOperation() -> NSPrintOperation? {
         guard let lines = transcriptLines else { return nil }
         return TextPrint.operation(lines, title: "Terminal", font: TextPrint.codeFont)
+    }
+}
+
+extension TerminalView {
+    func maniSelection() async -> ManiSelected? {
+        selectedText.flatMap { $0.isEmpty ? nil : ManiSelected(text: $0) }
+    }
+
+    /// The screen; with `all`, the whole transcript; a command and its output.
+    func maniText(_ options: ManiReadOptions) async -> String? {
+        if let id = options.command {
+            locate()
+            return transcript(ofCommand: id).map { "$ " + $0.0.text + "\n" + $0.1 }
+        }
+        return options.all ? transcriptLines : visibleText
     }
 }

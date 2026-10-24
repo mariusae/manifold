@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 import ManifoldCore
 
 /// What a placement shows, as the views need to know it: the placement, and
@@ -91,6 +92,36 @@ protocol PaneContent: NSView {
     var navLocation: NavLocation? { get }
     /// Back there.
     func go(to location: NavLocation)
+    /// What's selected in it, for `mani`'s @selection; nil if nothing.
+    func maniSelection() async -> ManiSelected?
+    /// What it shows, as text, for `mani read`, where only the view has it
+    /// (a terminal's screen, a page's text); nil where the block's state
+    /// says it.
+    func maniText(_ options: ManiReadOptions) async -> String?
+}
+
+/// Text selected in a view (`mani`'s @selection): where, as it can say.
+struct ManiSelected {
+    var text: String
+    /// The lines it spans, from 1 (an editor's).
+    var lines: ClosedRange<Int>? = nil
+    /// The page it's on, from 1 (a PDF's).
+    var page: Int? = nil
+}
+
+/// What `mani read` asks of a view.
+struct ManiReadOptions {
+    /// A terminal's whole transcript, not its screen.
+    var all = false
+    /// A terminal's command, by its id.
+    var command: Int?
+    /// A PDF's pages, from 1.
+    var pages: ClosedRange<Int>?
+}
+
+/// A view held weakly, for what's wired before the view is made.
+final class WeakView {
+    weak var view: NSView?
 }
 
 /// A place within a block (§3.5).
@@ -130,6 +161,8 @@ struct BarButton: Equatable {
 }
 
 extension PaneContent {
+    func maniSelection() async -> ManiSelected? { nil }
+    func maniText(_ options: ManiReadOptions) async -> String? { nil }
     var barButtons: [BarButton] { [] }
     var caretRectInWindow: NSRect? { nil }
     var pillItems: [NSMenuItem] { [] }
@@ -276,5 +309,50 @@ enum Drags {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title, symbol: "link") { copyLink?(block, fragment) })
         return menu
+    }
+}
+
+extension Notification.Name {
+    /// Text was selected in a view (the object, a `PaneContent`): what
+    /// `mani`'s @selection goes by.
+    static let manifoldSelectionMade = Notification.Name("ManifoldSelectionMade")
+}
+
+/// A page's selection, told of as it's made (`selectionchange`), in the
+/// content world of Manifold's own scripts, so a page's own can't stop it.
+enum PageSelection {
+    static let handlerName = "maniSelection"
+    static let script = WKUserScript(source: """
+        (function () { var t; document.addEventListener('selectionchange', function () {
+          clearTimeout(t); t = setTimeout(function () {
+            var s = String(window.getSelection() || '');
+            if (s.length) { try { window.webkit.messageHandlers.maniSelection.postMessage(1); } catch (e) {} }
+          }, 250);
+        }); })();
+        """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
+
+    /// The page's selected text, if any.
+    @MainActor static func text(in web: WKWebView) async -> String? {
+        let s = try? await web.callAsyncJavaScript("return String(window.getSelection() || '')", contentWorld: .defaultClient) as? String
+        return s?.isEmpty == false ? s : nil
+    }
+
+    /// The page's text, as it reads.
+    @MainActor static func pageText(in web: WKWebView) async -> String? {
+        try? await web.callAsyncJavaScript("return document.body ? document.body.innerText : ''", contentWorld: .defaultClient) as? String
+    }
+
+    /// Wires a configuration so `view` is said to have a selection as one's made.
+    static func watch(_ config: WKWebViewConfiguration, for view: @escaping () -> NSView?) {
+        config.userContentController.addUserScript(script)
+        config.userContentController.add(Handler(view), contentWorld: .defaultClient, name: handlerName)
+    }
+
+    private final class Handler: NSObject, WKScriptMessageHandler {
+        let view: () -> NSView?
+        init(_ view: @escaping () -> NSView?) { self.view = view }
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            NotificationCenter.default.post(name: .manifoldSelectionMade, object: view())
+        }
     }
 }

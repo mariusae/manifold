@@ -604,6 +604,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     // MARK: TextViewDelegate
 
     func textViewDidChangeSelection(_ view: TextView) {
+        if view.selections.contains(where: { !$0.isCaret }) { NotificationCenter.default.post(name: .manifoldSelectionMade, object: self) }
         scheduleHeadings()
         scheduleStateSave()
         updateStatus()
@@ -987,5 +988,15 @@ extension EditorView {
 
     func go(to location: NavLocation) {
         if case let .line(n) = location { select(line: n, column: nil) }
+    }
+}
+
+extension EditorView {
+    func maniSelection() async -> ManiSelected? {
+        let text = textView.selectedText
+        guard !text.isEmpty, let sel = textView.selections.first(where: { !$0.isCaret }) else { return nil }
+        let rope = textView.text
+        let first = rope.line(at: sel.min) + 1, last = rope.line(at: max(sel.max - 1, sel.min)) + 1
+        return ManiSelected(text: text, lines: first...last)
     }
 }

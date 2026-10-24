@@ -105,6 +105,10 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             p.backgroundColor = Theme.windowBackground
             addSubview(p)
             pdfView = p
+            NotificationCenter.default.addObserver(forName: .PDFViewSelectionChanged, object: p, queue: .main) { [weak self] _ in
+                guard let self, self.pdfView?.currentSelection?.string?.isEmpty == false else { return }
+                NotificationCenter.default.post(name: .manifoldSelectionMade, object: self)
+            }
         } else {
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.imageAlignment = .alignCenter
@@ -610,4 +614,24 @@ final class CenteringClipView: NSClipView {
 
 extension MediaView: NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { [.copy, .generic] }
+}
+
+extension MediaView {
+    func maniSelection() async -> ManiSelected? {
+        guard let sel = pdfView?.currentSelection, let text = sel.string, !text.isEmpty else { return nil }
+        let page = sel.pages.first.flatMap { pdfDocument?.index(for: $0) }.map { $0 + 1 }
+        return ManiSelected(text: text, page: page)
+    }
+
+    /// A PDF's text, its pages (all, or those asked for) one after another.
+    func maniText(_ options: ManiReadOptions) async -> String? {
+        guard let doc = pdfDocument else { return nil }
+        return MediaView.text(of: doc, pages: options.pages)
+    }
+
+    static func text(of doc: PDFDocument, pages: ClosedRange<Int>?) -> String {
+        let all = 1...max(doc.pageCount, 1)
+        let range = pages.map { $0.clamped(to: all) } ?? all
+        return range.compactMap { doc.page(at: $0 - 1)?.string }.joined(separator: "\n\u{0C}\n")
+    }
 }

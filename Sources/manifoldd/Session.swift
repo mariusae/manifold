@@ -474,6 +474,15 @@ final class Session {
         passOn(data)
     }
 
+    /// Typed into the shell, as if at its keyboard (`mani run`).
+    func type(_ text: String) {
+        queue.async { [weak self] in
+            guard let self, !self.exited else { return }
+            self.input.append(Data(text.utf8))
+            self.writeInput()
+        }
+    }
+
     private func writeInput() {
         while !input.isEmpty {
             let n = input.withUnsafeBytes { write(master, $0.baseAddress, $0.count) }

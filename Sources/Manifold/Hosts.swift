@@ -19,8 +19,10 @@ final class Hosts {
     var onChange: (() -> Void)?
     var onTerminalEnded: ((BlockID) -> Void)?
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
-    /// A `mani` command on `host` asks for paths to be opened.
-    var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
+    /// A `mani` command on `host`, for the app to do and answer; and that
+    /// the client that asked one has gone.
+    var onCommand: ((HostID, Int, Int, ManiRequest) -> Void)?
+    var onCommandEnded: ((HostID, Int, Int) -> Void)?
     var onShow: ((HostID, Int, Int, BlockID, BlockID?) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
@@ -148,9 +150,13 @@ final class Hosts {
             guard let self, let client else { return }
             self.onShow?(client.host, id, who, block, beside)
         }
-        client.onOpen = { [weak self, weak client] id, who, paths, beside, wait in
+        client.onCommand = { [weak self, weak client] id, who, request in
             guard let self, let client else { return }
-            self.onOpen?(client.host, id, who, paths, beside, wait)
+            self.onCommand?(client.host, id, who, request)
+        }
+        client.onCommandEnded = { [weak self, weak client] id, who in
+            guard let self, let client else { return }
+            self.onCommandEnded?(client.host, id, who)
         }
         client.onConnected = { [weak self, weak client] in
             guard let self, let client else { return }
@@ -386,7 +392,7 @@ final class Hosts {
                 client(host)?.propose(.seen(group))
             }
             done?(nil)
-        case let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block):
+        case let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _):
             (client(of: block) ?? local).propose(proposal, done: done)
         case let .hold(h):
             client(h.block.host)?.propose(proposal, done: done)
@@ -406,7 +412,7 @@ final class Hosts {
             done?(nil)
         case let .history(shard):
             (client(shard.host) ?? local).propose(proposal, done: done)
-        case .openDone, .editFile, .signal:
+        case .openDone, .commandReply, .editFile, .signal:
             local.propose(proposal, done: done)
         case let .editing(ids):
             for c in all { c.propose(.editing(ids.filter { $0.host == c.host })) }

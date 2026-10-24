@@ -114,9 +114,12 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         let handler = StateMessages()
         config.userContentController.add(handler, name: "manifoldState")
+        let selectionOwner = WeakView()
+        PageSelection.watch(config) { selectionOwner.view }
         // No scrollbar of the page's own: the scrubber is its scroll bar (§3.8).
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
+        selectionOwner.view = self
         handler.onState = { [weak self] values in
             self?.keeper.note(values)
             if values["scroll"] != nil { self?.scheduleOutline() }
@@ -502,5 +505,11 @@ extension MarkdownView {
         guard takesImages(sender) else { return grid?.performDragOperation(sender) ?? false }
         for (data, kind) in TextView.images(on: sender.draggingPasteboard) { delegate?.markdownView(self, image: data, kind: kind) }
         return true
+    }
+}
+
+extension MarkdownView {
+    func maniSelection() async -> ManiSelected? {
+        await PageSelection.text(in: web).map { ManiSelected(text: $0) }
     }
 }

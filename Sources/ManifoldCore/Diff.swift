@@ -242,3 +242,39 @@ public enum DiffRows {
         return rows
     }
 }
+
+/// Two texts' difference as a unified diff (what `diff -u` prints), three
+/// lines of context around each change, changes that near merged.
+public enum UnifiedDiff {
+    public static func make(old: String, new: String, path: String, context: Int = 3) -> String {
+        let a = LineDiff.lines(old), b = LineDiff.lines(new)
+        let hunks = LineDiff.hunks(old: a, new: b)
+        guard !hunks.isEmpty else { return "" }
+        // Changes near enough to share context, as one group each.
+        var groups: [[DiffHunk]] = []
+        for h in hunks {
+            if let last = groups.last?.last, h.oldStart - (last.oldStart + last.oldCount) <= 2 * context {
+                groups[groups.count - 1].append(h)
+            } else {
+                groups.append([h])
+            }
+        }
+        var out = ["--- a/\(path)", "+++ b/\(path)"]
+        for g in groups {
+            let first = g[0], end = g[g.count - 1]
+            let oldFrom = max(0, first.oldStart - context), newFrom = max(0, first.newStart - context)
+            let oldTo = min(a.count, end.oldStart + end.oldCount + context)
+            let newTo = min(b.count, end.newStart + end.newCount + context)
+            out.append("@@ -\(oldFrom + 1),\(oldTo - oldFrom) +\(newFrom + 1),\(newTo - newFrom) @@")
+            var i = oldFrom
+            for h in g {
+                while i < h.oldStart { out.append(" " + a[i]); i += 1 }
+                for k in h.oldStart..<(h.oldStart + h.oldCount) { out.append("-" + a[k]) }
+                for k in h.newStart..<(h.newStart + h.newCount) { out.append("+" + b[k]) }
+                i = h.oldStart + h.oldCount
+            }
+            while i < oldTo { out.append(" " + a[i]); i += 1 }
+        }
+        return out.joined(separator: "\n")
+    }
+}

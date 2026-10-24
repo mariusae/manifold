@@ -40,13 +40,13 @@ func connect() -> Int32 {
 }
 
 Mani.main(Array(CommandLine.arguments.dropFirst()), platform: Mani.Platform(
-    request: { body in
+    request: { activates, body in
         // The app must be attached for the host to pass the request on.
         var fd = connect()
         let beside = Mani.here != nil
-        if !beside { launchApp(activate: true) }
+        if !beside { launchApp(activate: activates) }
         var status = body(fd)
-        if status != 0, !beside {
+        if status == ManiClient.absent, !beside {
             // The app was starting: give it a moment and ask again.
             close(fd)
             sleep(2)

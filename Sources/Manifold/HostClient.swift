@@ -993,8 +993,12 @@ final class HostClient {
             onHistory?(shard, base, entries)
         case let .removed(shard):
             node.remove(shard)
-        case let .open(id, client, paths, beside, wait):
-            onOpen?(id, client, paths, beside, wait)
+        case let .command(id, client, request):
+            onCommand?(id, client, request)
+        case let .commandEnded(id, client):
+            onCommandEnded?(id, client)
+        case .commandReply:
+            break
         case let .show(id, client, block, beside):
             onShow?(id, client, block, beside)
         case let .diagnostics(block, items):
@@ -1030,8 +1034,9 @@ final class HostClient {
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
     /// A terminal's shell ended (not for dormancy), while we were attached.
     var onTerminalEnded: ((BlockID) -> Void)?
-    /// A `mani` command on this host asked for paths to be opened.
-    var onOpen: ((Int, Int, [String], BlockID?, Bool) -> Void)?
+    /// A `mani` command on this host, for the app to do; its asker gone.
+    var onCommand: ((Int, Int, ManiRequest) -> Void)?
+    var onCommandEnded: ((Int, Int) -> Void)?
     var onShow: ((Int, Int, BlockID, BlockID?) -> Void)?
 
     /// The host asked us, as the leader, to append something.

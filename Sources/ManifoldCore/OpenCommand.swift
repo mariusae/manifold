@@ -7,19 +7,15 @@ import Glibc
 import Musl
 #endif
 
-/// `mani open` and `mani diff`, on the app's host or a remote one (where
-/// `manifoldd mani` runs them): asks the host to have the app
-/// open some paths, beside the block the shell is in, and with `wait`,
-/// waits until they're put away again.
+/// `mani diff`, on the app's host or a remote one (where `manifoldd mani`
+/// runs it): asks the host to make a diff block of a patch, for the app to
+/// show beside the block the shell is in; and the paths `mani open` is
+/// given, made whole.
 public enum OpenCommand {
-    /// Runs over a connection already made to the host (a socket's fd).
-    /// Returns the exit status: 0 when done, 1 when the host or app
-    /// couldn't do it.
-    public static func run(fd: Int32, paths: [String], beside: BlockID?, wait: Bool, name: String = "mani") -> Int32 {
-        run(fd: fd, wait: wait, name: name) { .open(id: $0, paths: paths, beside: beside, wait: wait) }
-    }
-
-    /// `mani diff`: a patch, read from the input, shown as a diff block.
+    /// `mani diff`: a patch, read from the input, shown as a diff block,
+    /// over a connection already made to the host (a socket's fd). The
+    /// exit status: 0 when done, 1 when it couldn't be, `ManiClient.absent`
+    /// when the app wasn't there to ask.
     public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "mani") -> Int32 {
         run(fd: fd, wait: false, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
     }
@@ -71,6 +67,7 @@ public enum OpenCommand {
                     deadline = Date().addingTimeInterval(15)
                 case let .done(id, error)?:
                     guard id == 1 else { continue }
+                    if let error, error.contains("isn't attached") { return ManiClient.absent }
                     if let error { return fail(error) }
                     return 0
                 default:
@@ -108,3 +105,70 @@ public enum OpenCommand {
 }
 
 public struct ResolveError: Error { public var message: String }
+
+/// A `mani` command the app does: asked of the host, which passes it on,
+/// and its answer printed as it comes (some commands go on: `watch`).
+public enum ManiClient {
+    /// The status when the app wasn't there to ask (nothing printed): the
+    /// caller may start it and ask again.
+    public static let absent: Int32 = -1
+
+    public static func run(fd: Int32, request: ManiRequest) -> Int32 {
+        func send(_ message: ClientMessage) -> Bool {
+            let data = Frame.message(message).encoded
+            return data.withUnsafeBytes { raw in
+                var off = 0
+                while off < raw.count {
+                    let n = write(fd, raw.baseAddress! + off, raw.count - off)
+                    if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return false }
+                }
+                return true
+            }
+        }
+        func say(_ s: String, to handle: FileHandle) {
+            guard !s.isEmpty else { return }
+            handle.write(Data(s.utf8))
+        }
+        func fail(_ message: String) -> Int32 {
+            say("mani: \(message)\n", to: .standardError)
+            return 1
+        }
+        guard send(.hello(version: protocolVersion, name: Mani.name)) else { return absent }
+        var decoder = FrameDecoder()
+        var buf = [UInt8](repeating: 0, count: 1 << 20)
+        var welcomed = false
+        let deadline = Date().addingTimeInterval(10)
+        while true {
+            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            // Answered at once, once asked; then as long as it takes.
+            let left = welcomed ? Int32(60_000) : Int32(max(0, deadline.timeIntervalSinceNow) * 1000)
+            guard welcomed || left > 0 else { return fail("Manifold didn't answer") }
+            let r = poll(&pfd, 1, left)
+            if r == 0 { continue }
+            guard r > 0 else { if errno == EINTR { continue }; return fail("lost the connection to Manifold") }
+            let n = read(fd, &buf, buf.count)
+            guard n > 0 else { return welcomed ? fail("lost the connection to Manifold") : absent }
+            decoder.append(Data(buf[0..<n]))
+            while let frame = try? decoder.next() {
+                switch frame.decode(ServerMessage.self) {
+                case let .welcome(version, _, _, _, _, _, _, _)?:
+                    if version != protocolVersion {
+                        return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
+                    }
+                    welcomed = true
+                    guard send(.command(id: 1, request)) else { return fail("lost the connection to Manifold") }
+                case let .commandReply(id, reply)? where id == 1:
+                    say(reply.out, to: .standardOutput)
+                    say(reply.err, to: .standardError)
+                    if let status = reply.status { return status }
+                case let .done(id, error)? where id == 1:
+                    // Only when the host couldn't pass it on: the app isn't there.
+                    if let error, error.contains("isn't attached") { return absent }
+                    return error.map(fail) ?? 0
+                default:
+                    continue
+                }
+            }
+        }
+    }
+}

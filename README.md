@@ -1154,10 +1154,52 @@ is migrated into logs on first run.
   "Patch, n files"). Double-click a line to open the file there, against
   the directory the command ran in. On a remote host the same, through
   its `mani` script.
-- **The `mani` command** is Manifold from a shell: `mani <command>
-  [flags] [args]` — `open`, `diff`, `skill install`/`uninstall`, `agent`
-  and `help`. One table of its commands makes its parser, `mani help`
-  and each command's `--help`, so what it says it does is what it does.
+- **The `mani` command** is Manifold from a shell, for you and for the
+  agents in its terminals: `mani <command> [flags] [args]`. One table of
+  its commands makes its parser, `mani help` and each command's
+  `--help`, so what it says it does is what it does.
+  - **Names.** A block is named by its id (as `mani ls` prints it), a
+    path, a title, or a position: `@here` (the terminal it runs in),
+    `@focused`, `@selection` (the last text selected anywhere but
+    `@here` — an editor's, a terminal's, a PDF's, a page's — so "the code
+    I highlighted" is `mani read @selection`, and `mani info @selection`
+    says where: block, path, lines, page), `@last` (what `mani` last
+    made), `@workspace`; `@left`, `@right`, `@above`, `@below` (the
+    nearest tile that way from `@here`), `@leftmost`, `@rightmost`,
+    `@top`, `@bottom`, `@under` (stacked under `@here`), `@1`…`@9`
+    (columns left to right, each top down). A kind narrows any of them:
+    `@right:diff`, `@:pdf` (the one PDF shown). A name that could be
+    more than one is an error that lists them, ids and all.
+  - **Looking.** `mani ls` lists the workspace's tiles (`--all`, every
+    workspace); `--json` gives the whole layout — columns of tiles, each
+    with its block, kind, title, path, frame (x, y, width, height as
+    shares of the window), the tiles sharing each of its edges, the
+    names it answers to, and the tiles stacked under it. `mani info`
+    describes a block (its commands, links, outline); `mani read` prints
+    what it holds as text — a note's or file's text as it is now, saved
+    or not, a terminal's screen (`--all`, its transcript; `--command -1`,
+    its last command's output), a page's or PDF's text (`--pages`), a
+    diff, a listing, search results, a notebook — with `--lines a-b`.
+    `mani context` says it all at once: the layout, the selection, the
+    terminals' last commands and how they ended, unsaved files.
+  - **Doing.** `mani open` (files, folders, addresses), `mani new note |
+    terminal | agent | web | search` (a note's text from its input:
+    `… | mani new note --preview` renders it), `mani show`, `mani close`,
+    `mani write` (a note's or file's text; `--append`, `--save`),
+    `mani rename`, `mani pin`/`unpin`, `mani link`; what they show goes
+    below `@here` unless told `--above`, `--right`, `--left`, `--column`
+    or `--over`, by `--at` another tile. `mani run <terminal> <command>`
+    types a command into a terminal's shell (through its host, shown or
+    not); `--wait` waits for it to end, prints its output and exits with
+    its status (`--timeout`: 124 if it doesn't).
+  - **Watching.** `mani watch` prints a JSON line for each thing that
+    happens — focus, selection, a command started or ended (with its
+    status), a block's status, a tile shown or taken off, a file saved,
+    another workspace — until it's interrupted (`--only` some).
+  - `mani diff`, `mani skill install`/`uninstall`, `mani agent` (what
+    agents' hooks run) and `mani help` are done by `mani` itself; the
+    rest are passed to the app through the host, so they work alike from
+    a remote host's terminals.
   It's strict: an unknown command or flag, a flag missing its value, too
   many or too few arguments are errors, with the command's usage, status
   2 (a path given bare says to `mani open` it); failing to do what was

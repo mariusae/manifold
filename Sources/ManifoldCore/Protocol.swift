@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 55
+public let protocolVersion = 56
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -160,6 +160,11 @@ public enum Proposal: Codable, Sendable {
     case history(ShardID)
     /// The command's `open --wait` is done: what it opened was put away.
     case openDone(id: Int, client: Int)
+    /// The app's answer to a `mani` command (`ManiRequest`), passed on to
+    /// the client that asked: some of what it prints, and, last, its status.
+    case commandReply(id: Int, client: Int, ManiReply)
+    /// Typed into a terminal's shell, as if at its keyboard (`mani run`).
+    case input(block: BlockID, text: String)
     /// Which language servers to run for which files (the app's settings,
     /// given to every host).
     case languageServers([LanguageServerConfig])
@@ -331,9 +336,10 @@ public enum ClientMessage: Codable, Sendable {
     case backfill(BackfillRequest)
     /// Asks the server to exit, ending every session.
     case shutdown
-    /// `mani open`: open these, beside a block if run in one
-    /// of Manifold's terminals; with `wait`, answered when they're put away.
-    case open(id: Int, paths: [String], beside: BlockID?, wait: Bool)
+    /// A `mani` command the app does (`ManiRequest`): answered with
+    /// `commandReply`s, the last with its status — or `done`, with why
+    /// not, when there's no app.
+    case command(id: Int, ManiRequest)
     /// `mani diff`: a patch read from its input, shown as a diff block
     /// (its files opened against `root`, the command's directory).
     case openPatch(id: Int, patch: String, root: String, title: String?, beside: BlockID?)
@@ -515,8 +521,13 @@ public enum ServerMessage: Codable, Sendable {
     case history(shard: ShardID, base: ShardSnapshot?, entries: [Entry])
     /// A shard is gone (a block forgotten).
     case removed(shard: ShardID)
-    /// The command asked for these to be opened (the app places them).
-    case open(id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool)
+    /// A `mani` command, for the app to do and answer (`commandReply`).
+    case command(id: Int, client: Int, ManiRequest)
+    /// Some of what a command prints; the last says its status.
+    case commandReply(id: Int, ManiReply)
+    /// The client that asked for a command has gone (a `watch` ended):
+    /// nothing more to say to it.
+    case commandEnded(id: Int, client: Int)
     /// A block the host made at a command's asking (a patch): the app
     /// places it and answers the command.
     case show(id: Int, client: Int, block: BlockID, beside: BlockID?)
@@ -543,4 +554,41 @@ public enum ServerMessage: Codable, Sendable {
     /// echoing, lines edited): the Mac's keyboard kept from other apps
     /// while it is (§9). Said as it changes, not kept.
     case passwordInput(block: BlockID, Bool)
+}
+
+/// A `mani` command as the app is asked to do it: the command and what it
+/// was given, parsed (`Mani.parse`), where it was run, and its input.
+public struct ManiRequest: Codable, Sendable, Equatable {
+    public var verb: String
+    public var flags: [String: String]
+    public var args: [String]
+    /// The command's working directory, on its host.
+    public var cwd: String
+    /// The terminal block it was run in, if one of Manifold's.
+    public var here: BlockID?
+    /// What it read from its input, for a command that takes it.
+    public var input: String?
+
+    public init(verb: String, flags: [String: String], args: [String], cwd: String, here: BlockID?, input: String? = nil) {
+        self.verb = verb
+        self.flags = flags
+        self.args = args
+        self.cwd = cwd
+        self.here = here
+        self.input = input
+    }
+}
+
+/// Some of what a `mani` command prints: to its output, to its errors;
+/// with `status`, the last of it.
+public struct ManiReply: Codable, Sendable, Equatable {
+    public var out: String
+    public var err: String
+    public var status: Int32?
+
+    public init(out: String = "", err: String = "", status: Int32? = nil) {
+        self.out = out
+        self.err = err
+        self.status = status
+    }
 }

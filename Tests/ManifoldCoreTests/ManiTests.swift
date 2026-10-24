@@ -48,3 +48,57 @@ import Testing
     // A path given as it was before `open`: said how.
     #expect(error(["/tmp"])?.message == "no command /tmp (to open it: mani open /tmp)")
 }
+
+@Test func positionsAreTakenFromTheLayout() {
+    // Two columns: a diff at the left over its whole height; at the right
+    // a terminal (60%) over an editor (40%), a note stacked under the
+    // terminal.
+    let h = HostID("h")
+    func p(_ id: String) -> Placement { Placement(id: id, block: BlockID(host: h), lens: .editor) }
+    let diff = p("diff"), term = p("term"), note = p("note"), editor = p("editor")
+    var a = ArrangementState()
+    a.columns = [[diff], [term, note, editor]]
+    a.fractions = [0.4, 0.6]
+    a.heights = ["diff": 1, "term": 0.6, "note": 0, "editor": 0.4]
+    let layout = ManiLayout(a)
+    #expect(layout.order == ["diff", "term", "editor"])
+    #expect(layout.frames["editor"] == ManiLayout.Frame(x: 0.4, y: 0.6, width: 0.6, height: 0.4))
+    #expect(layout.frames["note"] == nil)
+    #expect(layout.stack(behind: "term") == ["note"])
+    // From the terminal.
+    #expect(layout.resolve("left", from: "term") == .tile("diff"))
+    #expect(layout.resolve("below", from: "term") == .tile("editor"))
+    #expect(layout.resolve("under", from: "term") == .tile("note"))
+    #expect(layout.resolve("right", from: "term") == .none("nothing to the right of it"))
+    #expect(layout.resolve("2", from: "term") == .tile("term"))
+    #expect(layout.resolve("rightmost", from: "editor") == .tile("editor"))
+    #expect(layout.resolve("top", from: "diff") == .tile("diff"))
+    // The diff touches both on its right.
+    #expect(layout.adjacent("diff") == [.right: ["term", "editor"]])
+    #expect(layout.adjacent("editor") == [.left: ["diff"], .above: ["term"]])
+    #expect(layout.names(of: "diff", from: "term") == ["@left", "@leftmost", "@1"])
+    // Both at the top: the one nearer across, the terminal itself.
+    #expect(layout.resolve("top", from: "term") == .tile("term"))
+    // A kind narrows: the one that matches, or which, if more than one.
+    #expect(layout.resolve("", from: "term") { $0 == "editor" } == .tile("editor"))
+    #expect(layout.resolve("", from: "term") { $0 != "diff" } == .ambiguous(["term", "editor"]))
+    #expect(layout.resolve("", from: "term") { $0 == "note" } == .tile("note"))
+    #expect(layout.resolve("left", from: "editor") { $0 == "term" } == .none("nothing to the left of it"))
+    #expect(ManiName("@right:diff") == .at("right", kind: "diff"))
+    #expect(ManiName("@:PDF") == .at("", kind: "pdf"))
+    #expect(ManiName("@here") == .at("here", kind: nil))
+    #expect(ManiName("notes.md") == .other("notes.md"))
+}
+
+@Test func aUnifiedDiffHasContextAndMergesNearChanges() {
+    let old = (1...20).map { "line \($0)" }.joined(separator: "\n")
+    var lines = (1...20).map { "line \($0)" }
+    lines[4] = "five"
+    lines[7] = "eight"
+    lines[18] = "nineteen"
+    let diff = UnifiedDiff.make(old: old, new: lines.joined(separator: "\n"), path: "x")
+    #expect(diff.hasPrefix("--- a/x\n+++ b/x\n@@ -2,10 +2,10 @@\n line 2\n"))
+    #expect(diff.contains("-line 5\n+five\n line 6\n line 7\n-line 8\n+eight"))
+    #expect(diff.contains("@@ -16,5 +16,5 @@"))
+    #expect(UnifiedDiff.make(old: "a", new: "a", path: "x") == "")
+}

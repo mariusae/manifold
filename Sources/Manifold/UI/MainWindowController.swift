@@ -58,7 +58,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
     /// Each placement's view, for every arrangement on the desk.
-    private var views: [PlacementID: PaneContent] = [:]
+    var views: [PlacementID: PaneContent] = [:]
+    /// `mani`'s commands, done here.
+    lazy var maniDesk = ManiDesk(self)
     private var seenTimer: Timer?
     private var lastSeenSent = Date.distantPast
     private var lastSeenSet: Set<BlockID> = []
@@ -88,8 +90,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let w = resizingWidth ?? hosts.state.window.sidebarWidth.map { CGFloat($0) } ?? Theme.sidebarWidth
         return min(max(w, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
     }
-    private var selected: BlockID? { hosts.state.selected }
-    private var arrangement: ArrangementState? { hosts.arrangement(selected) }
+    var selected: BlockID? { hosts.state.selected }
+    var arrangement: ArrangementState? { hosts.arrangement(selected) }
     private var pinned: Bool { hosts.state.window.sidebarPinned }
 
     init(hosts: Hosts) {
@@ -175,8 +177,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         hosts.onTerminalEnded = { [weak self] block in self?.terminalEnded(block) }
         hosts.onHistory = { [weak self] shard, base, entries in self?.historyArrived(shard, base?.state.block, entries) }
-        hosts.onOpen = { [weak self] host, id, client, paths, beside, wait in
-            self?.openRequest(on: host, id: id, client: client, paths: paths, beside: beside, wait: wait)
+        hosts.onCommand = { [weak self] host, id, client, request in
+            self?.maniCommand(on: host, id: id, client: client, request)
+        }
+        hosts.onCommandEnded = { [weak self] host, id, client in
+            self?.maniCommandEnded(on: host, id: id, client: client)
         }
         hosts.onShow = { [weak self] host, id, client, block, beside in
             self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
@@ -244,6 +249,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// right after, not inside itself: within, the view isn't kept yet,
     /// so it would be made again, and again, until the stack ran out.
     func render() {
+        maniDesk.modelChanged()
         guard !rendering else {
             renderAgain = true
             return
@@ -438,7 +444,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A workspace's name: the one given; else, by what it holds — the
     /// folder most of its blocks are at (with its repository's branch,
     /// when a git block is there), else the focused block's name.
-    private func title(of a: ArrangementState) -> String {
+    func title(of a: ArrangementState) -> String {
         if a.isNamed { return a.title! }
         let blocks = a.placements.compactMap { hosts.block($0.block) }
         var places: [String: Int] = [:]
@@ -794,7 +800,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var imageCount = 0 { didSet { if imageCount == 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in self?.imageCount = 0 } } } }
 
     /// A tile about to be taken off: remembered, so ⇧⌘T can put it back.
-    private func noteClosing(_ placement: PlacementID, in workspace: BlockID) {
+    func noteClosing(_ placement: PlacementID, in workspace: BlockID) {
         guard let a = hosts.arrangement(workspace), let p = a.placement(placement), let (c, i) = a.locate(placement) else { return }
         closedStack.append(.tile(workspace: workspace, column: c, index: i, placement: p, height: a.heights[placement]))
         if closedStack.count > 100 { closedStack.removeFirst(closedStack.count - 100) }
@@ -805,7 +811,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// what they placed and linked — is on its way to collection. When
     /// that would lose something — a text edited and unsaved, a terminal
     /// with a job running — a toast names each, with Restore.
-    private func afterClosing(reachedBefore before: Set<BlockID>) {
+    func afterClosing(reachedBefore before: Set<BlockID>) {
         let after = hosts.reachable()
         var lost: [String] = []
         for id in before.subtracting(after) {
@@ -1709,21 +1715,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Commands
 
-    private var focusedShown: Shown? {
+    var focusedShown: Shown? {
         guard let a = arrangement, let p = a.focusedPlacement else { return nil }
         return Shown(placement: p, block: hosts.block(p.block))
     }
 
-    private var focusedCwd: String? {
+    var focusedCwd: String? {
         guard let f = focusedShown else { return nil }
         return f.block?.terminal?.cwd ?? f.block?.place
     }
 
     /// The host the focused block is on: where new terminals and files go.
-    private var focusedHost: HostID { focusedShown?.placement.block.host ?? host.host }
+    var focusedHost: HostID { focusedShown?.placement.block.host ?? host.host }
 
     /// Changes the selected arrangement.
-    private func appendToSelected(_ events: [Event]) {
+    func appendToSelected(_ events: [Event]) {
         guard let id = selected else { return }
         hosts.append(events, to: .block(id))
     }
@@ -1761,7 +1767,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// An arrangement to put things in: the selected one, or a new one.
-    private func arrangementForPlacing() -> BlockID {
+    func arrangementForPlacing() -> BlockID {
         if let id = selected, hosts.arrangement(id) != nil { return id }
         let id = host.newArrangement()
         hosts.select(id)
@@ -2001,7 +2007,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Saves a text block: through an editor on it (this tile's first),
     /// which keeps its own count of what's saved and names a note's file;
     /// else straight to its file.
-    private func save(_ block: BlockID, from placement: PlacementID) {
+    func save(_ block: BlockID, from placement: PlacementID) {
         let editors = views.values.compactMap { $0 as? EditorView }.filter { $0.block == block }
         if let e = editors.first(where: { $0.placement == placement }) ?? editors.first { return e.saveDocument(nil) }
         guard let b = hosts.block(block), b.path != nil, !b.needsRead, let t = b.text else { return NSSound.beep() }
@@ -2086,9 +2092,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Every workspace on every host, in the sidebar's order.
-    private var allWorkspaces: [BlockID] { hosts.all.flatMap { $0.desk.order } }
+    var allWorkspaces: [BlockID] { hosts.all.flatMap { $0.desk.order } }
 
-    private func removeFromDesk(_ id: BlockID) {
+    func removeFromDesk(_ id: BlockID) {
         let all = allWorkspaces
         guard let i = all.firstIndex(of: id) else { return }
         // Remembered for ⇧⌘T: the workspace, if it holds anything; else
@@ -3042,7 +3048,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A text block gone to, at a line: its editor here focused there, or
     /// one brought here.
-    private func goToLine(_ line: Int, in block: BlockID) {
+    func goToLine(_ line: Int, in block: BlockID) {
         guard let b = hosts.block(block) else { return }
         if let a = arrangement, let p = a.placements(of: block).first(where: { $0.lens == .editor }), let e = views[p.id] as? EditorView {
             arrive(atTile: p.id)
@@ -5108,54 +5114,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Open requests being waited on: the placements that must go before
     /// the command returns.
-    private var openWaits: [(host: HostID, id: Int, client: Int, placements: [PlacementID], made: [BlockID])] = []
+    var openWaits: [(host: HostID, id: Int, client: Int, placements: [PlacementID], made: [BlockID])] = []
 
-    /// A `mani` command on `on` asks for paths: each goes beside the
-    /// block it was run in (or on the focused stack), and with `wait`, the
-    /// command is answered once they've all been put away.
-    private func openRequest(on: HostID, id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool) {
-        var placed: [PlacementID] = []
-        // The blocks this request makes ($EDITOR's): ephemeral, discarded
-        // once the editing is done, so a commit message or an agent's
-        // prompt leaves nothing in the graph.
-        var made: [BlockID] = []
-        // The arrangement with the block the command ran in, else the selected.
-        let besidePlacement = beside.flatMap { b in
-            allWorkspaces.lazy.compactMap { self.hosts.arrangement($0)?.placements.first { $0.block == b } }.first
-        }
-        if let besidePlacement, let aid = allWorkspaces.first(where: { hosts.arrangement($0)?.placement(besidePlacement.id) != nil }), aid != selected {
-            hosts.select(aid)
-        }
-        for path in paths {
-            let isDir = on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
-            let media = Self.mediaKind(path)
-            let html = Self.isHTML(path) && on == host.host
-            let known = hosts.blocks.contains { $0.id.host == on && $0.path == path }
-            let block = isDir || path.hasSuffix("/") ? hosts.directoryBlock(for: path, on: on)
-                : html ? host.webBlock(forFile: path)
-                : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
-            if wait, !known { made.append(block) }
-            // With --wait ($EDITOR), a file is for editing, Markdown too.
-            let lens: Lens = isDir || path.hasSuffix("/") ? .directory
-                : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (wait ? .editor : Lens.default(for: .text, path: path))
-            let before = Set(arrangement?.placements.map(\.id) ?? [])
-            if wait, placed.isEmpty, let opener = besidePlacement {
-                // $EDITOR: over the terminal that ran it, which comes back
-                // when the editing is done.
-                showOver(block, lens: lens, over: opener.id, again: true, context: "\(path.lastPathComponent)")
-            } else {
-                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "mani open")
-            }
-            if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
-                placed.append(p.id)
-            }
-        }
-        if wait, !placed.isEmpty {
-            openWaits.append((on, id, client, placed, made))
-        } else {
-            hosts.propose(.openDone(id: id, client: client), on: on)
-        }
-        NSApp.activate()
+    /// The block a path opens as, and how it's shown: a folder as a
+    /// listing, an HTML file or an address as a page, a PDF or picture as
+    /// itself, text in an editor (with `wait`, $EDITOR's, Markdown too);
+    /// `made` if there was none for it before.
+    func blockAndLens(forPath path: String, on: HostID, wait: Bool) -> (block: BlockID, lens: Lens, made: Bool) {
+        if WebAddress.looksLikeURL(path) { return (host.newWeb(url: path), .web, true) }
+        let isDir = path.hasSuffix("/") || on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
+        let media = Self.mediaKind(path)
+        let html = Self.isHTML(path) && on == host.host
+        let known = hosts.blocks.contains { $0.id.host == on && $0.path == path }
+        let block = isDir ? hosts.directoryBlock(for: path, on: on)
+            : html ? host.webBlock(forFile: path)
+            : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
+        let lens: Lens = isDir ? .directory
+            : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (wait ? .editor : Lens.default(for: .text, path: path))
+        return (block, lens, !known)
+    }
+
+    /// A `mani` command for the app (`ManiDesk`).
+    func maniCommand(on: HostID, id: Int, client: Int, _ request: ManiRequest) {
+        maniDesk.handle(request, from: ManiDesk.Asker(host: on, id: id, client: client))
+    }
+
+    func maniCommandEnded(on: HostID, id: Int, client: Int) {
+        maniDesk.ended(ManiDesk.Asker(host: on, id: id, client: client))
     }
 
     /// A block the host made for a command (`mani diff`): shown beside
@@ -5175,13 +5160,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Answers `open --wait` commands whose placements have all gone, and
     /// discards the blocks they made that nothing else took up.
-    private func checkOpenWaits() {
+    func checkOpenWaits() {
         guard !openWaits.isEmpty else { return }
         let present = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
         let placedBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         openWaits.removeAll { wait in
             if wait.placements.allSatisfy({ !present.contains($0) }) {
-                hosts.propose(.openDone(id: wait.id, client: wait.client), on: wait.host)
+                hosts.propose(.commandReply(id: wait.id, client: wait.client, ManiReply(status: 0)), on: wait.host)
                 for b in wait.made where !placedBlocks.contains(b) && hosts.block(b)?.text?.isDirty != true {
                     hosts.propose(.discard(b))
                 }
@@ -6983,6 +6968,11 @@ extension MainWindowController: TerminalViewDelegate {
             return turnBlock(command.id, of: view.block).id
         }
         return outputBlock(of: command, in: view.block, output: output).id
+    }
+
+    /// The block of a command's output, made by the host if there's none.
+    func outputBlockID(of command: ShellCommand, in terminal: BlockID) -> BlockID {
+        outputBlock(of: command, in: terminal, output: "").id
     }
 
     /// A command's output as a block (§3.8): the one made before, else one

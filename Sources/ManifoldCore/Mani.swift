@@ -38,27 +38,147 @@ public enum Mani {
         public var flags: [Flag]
         public var summary: String
         public var details: String
+        /// Done by the app (passed on through the host), not here.
+        public var inApp = false
+        /// Reads its input (piped, or a file), unless --text gives it.
+        public var readsInput = false
 
         public var name: String { words.joined(separator: " ") }
 
-        /// "mani open [--wait] [path ...]".
+        /// "mani open [--wait] [path ...]"; "[flags]" for more than three.
         public var usage: String {
-            let flagPart = flags.map { f in "[--\(f.name)\(f.value.map { " " + $0 } ?? "")]" }
+            let flagPart = flags.count > 3 ? ["[flags]"] : flags.map { f in "[--\(f.name)\(f.value.map { " " + $0 } ?? "")]" }
             return ([Mani.name, name] + flagPart + (args.isEmpty ? [] : [args])).joined(separator: " ")
         }
     }
 
+    /// Where a block a command shows goes: by a tile (`--at`, else the one
+    /// mani runs in, else the focused).
+    static let placing: [Flag] = [
+        Flag(name: "below", help: "below it, taking its lower half (where things go, unless told)"),
+        Flag(name: "above", help: "above it, taking its upper half"),
+        Flag(name: "right", help: "in the column to its right (a new one, if it's the last)"),
+        Flag(name: "left", help: "in the column to its left (a new one, if it's the first)"),
+        Flag(name: "column", help: "in a new column, right of it"),
+        Flag(name: "over", help: "stacked over it, as ⌥ stacks"),
+        Flag(name: "at", value: "name", help: "the tile it goes by"),
+    ]
+    static let json = Flag(name: "json", help: "as JSON")
+
     public static let verbs: [Verb] = [
-        Verb(words: ["open"], args: "[path ...]", minArgs: 0, maxArgs: nil,
-             flags: [Flag(name: "wait", short: "w", help: "return once they've been put away again (what $EDITOR runs)")],
-             summary: "Open files and folders in Manifold",
+        Verb(words: ["ls"], args: "", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "all", help: "every workspace, and pinned blocks"), json],
+             summary: "List the workspace's tiles: what each shows, where",
              details: """
-                 Markdown opens in a live preview, a folder in a listing, anything
-                 else in an editor. Run in one of Manifold's terminals, they open
-                 beside it; anywhere else, in the shown workspace, with Manifold
-                 brought forward (and started if need be). With no paths, brings
-                 Manifold forward.
-                 """),
+                 The shown workspace's tiles, a row each: number, block id, kind,
+                 title, and the names it answers to from here. With --json, the
+                 whole layout: columns of tiles, each with its block, kind, title,
+                 path, frame (x, y, width, height as shares of the window, from
+                 the top left), the tiles sharing each of its edges (adjacent),
+                 the names it answers to, and the tiles stacked under it.
+                 """, inApp: true),
+        Verb(words: ["info"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Describe a block, as JSON",
+             details: """
+                 A block: its id, kind, title, path, working directory, status,
+                 where it's shown, its links, its outline. For @selection, where
+                 the selection is (block, path, lines, page).
+                 """, inApp: true),
+        Verb(words: ["read"], args: "<name>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "lines", value: "a-b", help: "only these lines (from 1; a- to the end)"),
+                     Flag(name: "pages", value: "a-b", help: "a PDF's pages (from 1)"),
+                     Flag(name: "command", value: "n", help: "a terminal's command and its output: 1 the first, -1 the last"),
+                     Flag(name: "all", help: "a terminal's whole transcript, not just its screen"),
+                     Flag(name: "outline", help: "the block's outline: a line and title each")],
+             summary: "Print a block's content as text",
+             details: """
+                 What a block holds, as text: a note's or editor's text as it is
+                 now (saved or not), a terminal's screen, a page's text, a PDF's
+                 text, a diff's patch, a folder's listing, search results, a
+                 notebook's cells and output. @selection prints what's selected.
+                 """, inApp: true),
+        Verb(words: ["context"], args: "", minArgs: 0, maxArgs: 0, flags: [json],
+             summary: "Say where you are: workspace, focus, selection, commands",
+             details: """
+                 At a glance: the workspace and its tiles, the one mani runs in
+                 and the focused one, the last selection (and where), the last
+                 commands of the terminals shown with their status, and unsaved
+                 files.
+                 """, inApp: true),
+        Verb(words: ["open"], args: "[path|url ...]", minArgs: 0, maxArgs: nil,
+             flags: [Flag(name: "wait", short: "w", help: "return once they've been put away again (what $EDITOR runs)"),
+                     Flag(name: "line", value: "n", help: "at this line")] + placing,
+             summary: "Open files, folders and pages",
+             details: """
+                 Markdown opens in a live preview, a folder in a listing, a web
+                 address as a page, anything else in an editor. Run in one of
+                 Manifold's terminals, they go beside it; anywhere else, in the
+                 shown workspace, with Manifold brought forward (and started if
+                 need be). With no paths, brings Manifold forward.
+                 """, inApp: true),
+        Verb(words: ["new"], args: "<kind> [what]", minArgs: 1, maxArgs: 2,
+             flags: [Flag(name: "title", short: "t", value: "title", help: "its title"),
+                     Flag(name: "text", value: "text", help: "a note's text (else its input, if piped)"),
+                     Flag(name: "preview", help: "a note shown rendered, as Markdown"),
+                     Flag(name: "cwd", value: "dir", help: "a terminal's or agent's directory (else this one)")] + placing,
+             summary: "Make a block: note, terminal, agent, web, search",
+             details: """
+                 Makes a block and shows it, printing its id (and it's @last):
+                   note           a note, its text from --text or the input
+                   terminal       a terminal, in --cwd or this directory
+                   agent [cmd]    a coding agent (the one Settings name, else cmd)
+                   web <url>      a page
+                   search <text>  a search of the files under --cwd or here
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["write"], args: "<name>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "append", short: "a", help: "after what's there, not in its place"),
+                     Flag(name: "text", value: "text", help: "the text (else the input)"),
+                     Flag(name: "save", help: "a file's editor saved after")],
+             summary: "Replace (or add to) a note's or file's text",
+             details: """
+                 Puts text in a note, or in a file's text as Manifold has it (the
+                 file left unsaved unless --save).
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["show"], args: "<name>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "line", value: "n", help: "at this line")] + placing,
+             summary: "Bring a block to view and focus it",
+             details: """
+                 A tile on screen is focused (its workspace shown); a block that
+                 isn't is placed, by the tile it's told, else beside this one.
+                 """, inApp: true),
+        Verb(words: ["close"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Take a tile off its workspace (as ⌘W)",
+             details: "The tile goes, as ⌘W takes it; the block is kept, and comes back from the sidebar or ⌘O.", inApp: true),
+        Verb(words: ["run"], args: "<terminal> <command ...>", minArgs: 2, maxArgs: nil,
+             flags: [Flag(name: "wait", short: "w", help: "wait for it to end: print its output, exit with its status"),
+                     Flag(name: "timeout", value: "seconds", help: "with --wait, give up after this long (status 124)")],
+             summary: "Run a command in a terminal",
+             details: """
+                 Types the command into the terminal's shell, and return, as if
+                 at its keyboard. With --wait, waits for it to end (the shell's
+                 integration says when) and prints what it printed.
+                 """, inApp: true),
+        Verb(words: ["pin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Pin a block in its workspace",
+             details: "Pinned, it heads its workspace in the sidebar and stays there when its tile is closed.", inApp: true),
+        Verb(words: ["unpin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Unpin a block", details: "Takes the pin `mani pin` (or the menus) put on it.", inApp: true),
+        Verb(words: ["link"], args: "<from> <to>", minArgs: 2, maxArgs: 2,
+             flags: [Flag(name: "note", value: "text", help: "what the link is for")],
+             summary: "Link one block to another",
+             details: "A link by hand, as a drop on a block makes: on both blocks' badges, followed from either.", inApp: true),
+        Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
+             summary: "Give a block a title", details: "Its title, as the tile's menu's Rename sets it.", inApp: true),
+        Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "only", value: "events", help: "these events, by kind, comma-separated")],
+             summary: "Print what happens, a JSON line each",
+             details: """
+                 Until interrupted, a JSON object a line for each thing that
+                 happens: focus (a tile focused), selection (text selected,
+                 where), command (a terminal's command started or ended, with its
+                 status), status (a block's status), open and close (a tile shown,
+                 taken off), save (a file saved), workspace (another shown).
+                 """, inApp: true),
         Verb(words: ["diff"], args: "< patch", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "title", short: "t", value: "name", help: "the diff block's title")],
              summary: "Show a patch as a diff block",
@@ -94,6 +214,21 @@ public enum Mani {
              summary: "Say what mani does, or what a command does",
              details: "With a command, its usage, flags and what it does."),
     ]
+
+    /// How blocks are named, for the overview (and agents).
+    public static let namesHelp = """
+        Blocks are named by id (as ls prints it), path, title, or position:
+          @here        the terminal mani runs in       @focused   the focused tile
+          @selection   the last text selected outside @here (read it; info says where)
+          @last        the block mani last made         @workspace the workspace shown
+          @left @right @above @below   the nearest tile that way from @here
+          @leftmost @rightmost @top @bottom   the outermost tile that way
+          @under       the tile stacked under @here     @1 … @9   tiles in order
+        A kind narrows one: @right:diff, @:pdf (the one PDF shown). Kinds:
+        note, file, terminal, agent, folder, web, image, pdf, search, diff,
+        output, notebook, git, preview, editor. A name that could be more than
+        one is an error, listing them.
+        """
 
     /// What was asked for.
     public enum Parsed: Equatable, Sendable {
@@ -214,6 +349,10 @@ public enum Mani {
 
                 \(lines.joined(separator: "\n"))
 
+                \(namesHelp)
+
+                What's asked for goes to stdout, what went wrong to stderr; status 0
+                when done, 1 when it couldn't be, 2 when it was asked wrong.
                 mani <command> --help says more about one.
                 """
         }
@@ -232,14 +371,16 @@ public enum Mani {
     /// How a platform's `mani` reaches the host.
     public struct Platform {
         /// Has the host do `body` over a connection to it (a socket's fd),
-        /// starting what must be started and asking again if it was:
-        /// the exit status.
-        public var request: (_ body: (Int32) -> Int32) -> Int32
+        /// starting what must be started and asking again if the app
+        /// wasn't there (`ManiClient.absent`), and bringing Manifold
+        /// forward if `activates` (a command that shows something, run
+        /// outside it): the exit status.
+        public var request: (_ activates: Bool, _ body: (Int32) -> Int32) -> Int32
         /// Brings Manifold forward, starting it if need be; nil where
         /// there's no app (a remote host).
         public var bringForward: (() -> Void)?
 
-        public init(request: @escaping (_ body: (Int32) -> Int32) -> Int32, bringForward: (() -> Void)?) {
+        public init(request: @escaping (_ activates: Bool, _ body: (Int32) -> Int32) -> Int32, bringForward: (() -> Void)?) {
             self.request = request
             self.bringForward = bringForward
         }
@@ -261,22 +402,41 @@ public enum Mani {
             exit(0)
         case .success(.run(let i)): invocation = i
         }
-        switch invocation.verb {
-        case "open":
-            let paths: [String]
-            switch OpenCommand.resolve(invocation.args) {
-            case .success(let p): paths = p
-            case .failure(let error): fail(error.message)
-            }
-            if paths.isEmpty {
-                guard let bringForward = platform.bringForward else {
-                    usageError(UsageError(message: "open needs a path here: there's no Manifold on this host to bring forward", verb: "open"))
+        let ways = placing.filter { $0.value == nil && invocation.has($0.name) }.map { "--" + $0.name }
+        if ways.count > 1 {
+            usageError(UsageError(message: "one of \(ways.joined(separator: ", ")), not all", verb: invocation.verb))
+        }
+        if verb(invocation.verb)?.inApp == true {
+            var request = ManiRequest(verb: invocation.verb, flags: invocation.flags, args: invocation.args,
+                                      cwd: FileManager.default.currentDirectoryPath, here: here)
+            if invocation.verb == "open" {
+                // Paths made whole here, where they are; addresses as they are.
+                var resolved: [String] = []
+                for a in invocation.args {
+                    if WebAddress.looksLikeURL(a) { resolved.append(a); continue }
+                    switch OpenCommand.resolve([a]) {
+                    case .success(let p): resolved += p
+                    case .failure(let error): fail(error.message)
+                    }
                 }
-                bringForward()
-                exit(0)
+                request.args = resolved
+                if resolved.isEmpty {
+                    guard let bringForward = platform.bringForward else {
+                        usageError(UsageError(message: "open needs a path here: there's no Manifold on this host to bring forward", verb: "open"))
+                    }
+                    bringForward()
+                    exit(0)
+                }
             }
-            let wait = invocation.has("wait")
-            exit(platform.request { OpenCommand.run(fd: $0, paths: paths, beside: here, wait: wait) })
+            if verb(invocation.verb)?.readsInput == true, invocation.value("text") == nil {
+                request.input = readInput()
+            }
+            let shows = ["open", "new", "show"].contains(invocation.verb)
+            let status = platform.request(shows) { ManiClient.run(fd: $0, request: request) }
+            if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
+            exit(status)
+        }
+        switch invocation.verb {
         case "diff":
             let patch: String
             switch OpenCommand.readPatch() {
@@ -285,7 +445,9 @@ public enum Mani {
             }
             let root = FileManager.default.currentDirectoryPath
             let title = invocation.value("title")
-            exit(platform.request { OpenCommand.runPatch(fd: $0, patch: patch, root: root, title: title, beside: here) })
+            let status = platform.request(true) { OpenCommand.runPatch(fd: $0, patch: patch, root: root, title: title, beside: here) }
+            if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
+            exit(status)
         case "skill install", "skill uninstall":
             let names = invocation.args.map { $0.lowercased() }
             if let unknown = names.first(where: { !AgentSkill.known.contains($0) }) {
@@ -302,6 +464,15 @@ public enum Mani {
         default:
             fail("\(invocation.verb) isn't done yet")
         }
+    }
+
+    /// The input, if it's piped or a file (not a terminal, not nothing).
+    static func readInput() -> String? {
+        var st = stat()
+        guard fstat(0, &st) == 0 else { return nil }
+        let type = st.st_mode & S_IFMT
+        guard type == S_IFIFO || type == S_IFREG else { return nil }
+        return String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
     }
 
     /// What went wrong and the usage that goes with it, on stderr; status 2.

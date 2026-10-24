@@ -26,7 +26,7 @@ case "mani":
     // `mani` on a host Manifold installed this server on: a script beside
     // it runs us so.
     Mani.main(Array(args.dropFirst()), platform: Mani.Platform(
-        request: { body in
+        request: { _, body in
             guard let fd = try? UnixSocket.connect(path: Paths.socket) else { Mani.fail("the server isn't running here") }
             return body(fd)
         },
