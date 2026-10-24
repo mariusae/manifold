@@ -485,12 +485,16 @@ around it, and comes back with its history.
   Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
-  off; it's a setting on the desk, so every host runs the same — unless a
-  host's own preferences (Preferences for *host*…, in its menu, This Mac's
-  too) say otherwise, one setting a line as apex takes them:
-  `lsp.rust ~/.apex/fblsp-server rust` runs that for Rust there,
-  `lsp.root .hg` makes the folder holding `.hg` every language's workspace
-  root (a monorepo one workspace), `lsp.rust.root …` one language's. A
+  off; it's a setting on the desk, so every host runs the same — unless
+  the host says otherwise. Above the table, **All Hosts** or one host
+  (This Mac too; or Preferences for *host*… ▸ Language Servers… in its
+  menu): set for one host, the same table shows what that host runs, and a
+  command or root markers changed there are its own (in the accent color),
+  as apex's settings are — `~/.apex/fblsp-server rust` for Rust there, say;
+  set back to all hosts' value, they're let go of. Below it, a root marker
+  for every language on that host: `.hg` makes the folder holding it every
+  language's workspace root (a monorepo one workspace). A host's own
+  settings are its preferences, shared by every Mac attached to it. A
   change restarts the servers it touches, their open files with them.
 - **⌘-click** a file's name in a terminal to open it below the terminal,
   in its column: Markdown in a preview, folders in a listing (a folder's

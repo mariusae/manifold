@@ -4775,6 +4775,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             s.languageServers = configs
             self.host.setSettings(s)
         }
+        // And for one host: its own, as its preferences (§7.2).
+        w.languageServers.hosts = { [weak self] in
+            guard let self else { return [] }
+            return self.hosts.all.map { ($0.host, self.hosts.label(of: $0.host)) }
+        }
+        w.languageServers.preferences = { [weak self] h in self?.hosts.client(h)?.desk.preferences }
+        w.languageServers.setPreferences = { [weak self] h, p, done in self?.hosts.setPreferences(p, on: h, done: done) }
         // Remoting: the providers that reach hosts (§8), kept in the hosts file.
         w.remoting.source = { HostsFile.load().providers }
         w.remoting.onChange = { providers in
@@ -4789,6 +4796,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func showSettings(_ sender: Any?) { settings().show() }
     @objc func showLanguageServers(_ sender: Any?) { settings().show(.languageServers) }
+
+    /// Settings ▸ Language Servers, set for one host.
+    func showLanguageServers(for host: HostID) {
+        let w = settings()
+        w.languageServers.loadViewIfNeeded()
+        w.languageServers.select(host)
+        w.show(.languageServers)
+    }
     @objc func showRemoting(_ sender: Any?) { settings().show(.remoting) }
 
     /// Debugging: Settings — "show [pane]", "tint <name>", or nothing: its state.
@@ -4799,6 +4814,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let pane = words.count > 1 ? SettingsWindow.Pane.allCases.first { "\($0)".lowercased() == words[1].lowercased() } : nil
             settings().show(pane)
         case "close": settingsWindow?.close()
+        case "lsp":
+            // "settings lsp [all | host <name> | <language> <column> <text> | root <markers> | clear]".
+            let w = settings()
+            w.show(.languageServers)
+            return w.languageServers.debug(words.dropFirst().joined(separator: " "))
         case "tint":
             guard words.count > 1, let t = Tint(rawValue: words[1]) else { return "tints: \(Tint.allCases.map(\.rawValue).joined(separator: " "))" }
             settings().appearance.loadViewIfNeeded()
@@ -4845,17 +4865,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// A host's own preferences (its shell, for now), as every Mac
-    /// attached to it shares them; the host says if it can't do as asked.
+    /// A host's own preferences, as every Mac attached to it shares them:
+    /// its shell here; its language servers in Settings' table, set for it.
+    /// The host says if it can't do as asked.
     func editPreferences(_ host: HostID) {
         guard let window, let c = hosts.client(host) else { return }
         let prefs = c.desk.preferences
-        let languages = desk.settings.languageServers.map(\.id)
         let alert = NSAlert()
         alert.messageText = "Preferences for \(hosts.label(of: host))"
         alert.informativeText = "Every Mac attached to the host shares these."
         let w: CGFloat = 420
-        let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 236))
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 76))
         func label(_ text: String, y: CGFloat, small: Bool = false) {
             let l = NSTextField(wrappingLabelWithString: text)
             l.font = small ? .systemFont(ofSize: 11) : .systemFont(ofSize: 13, weight: .medium)
@@ -4865,46 +4885,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             box.addSubview(l)
         }
         // The shell new terminals start.
-        label("Shell", y: 214)
-        let shell = NSTextField(frame: NSRect(x: 0, y: 186, width: w, height: 24))
+        label("Shell", y: 54)
+        let shell = NSTextField(frame: NSRect(x: 0, y: 26, width: w, height: 24))
         shell.placeholderString = "Login shell"
         shell.stringValue = prefs.shell ?? ""
         box.addSubview(shell)
-        label("A name on the host's PATH, or a path. Shells already running keep theirs.", y: 168, small: true)
-        // Its language servers, over the desk's table, as apex's are set.
-        label("Language servers", y: 142)
-        let scroll = NSTextView.scrollableTextView()
-        scroll.frame = NSRect(x: 0, y: 46, width: w, height: 92)
-        scroll.borderType = .bezelBorder
-        let text = scroll.documentView as! NSTextView
-        text.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
-        text.isAutomaticQuoteSubstitutionEnabled = false
-        text.isAutomaticDashSubstitutionEnabled = false
-        text.isAutomaticTextReplacementEnabled = false
-        text.string = prefs.lspLines
-        box.addSubview(scroll)
-        label("""
-            One a line: lsp.LANG COMMAND runs a language's server; lsp.root MARKER makes \
-            the folder holding MARKER (.hg, say) every language's workspace root; \
-            lsp.LANG.root MARKER, one language's. LANG: \(languages.joined(separator: ", ")).
-            """, y: 0, small: true)
+        label("A name on the host's PATH, or a path. Shells already running keep theirs.", y: 4, small: true)
         alert.accessoryView = box
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
+        // Its language servers: the table, set for this host.
+        alert.addButton(withTitle: "Language Servers…")
         alert.window.initialFirstResponder = shell
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
+            guard let self, response != .alertSecondButtonReturn else { return }
             var p = prefs
             let typed = shell.stringValue.trimmingCharacters(in: .whitespaces)
             p.shell = typed.isEmpty ? nil : typed
-            switch HostPreferences.parseLSP(text.string, languages: languages) {
-            case .success(let lsp): p.lsp = lsp
-            case .failure(let error): return self.preferencesRefused(host, error.message)
+            if p != prefs {
+                self.hosts.setPreferences(p, on: host) { [weak self] error in
+                    guard let self, let error else { return }
+                    self.preferencesRefused(host, error)
+                }
             }
-            self.hosts.setPreferences(p, on: host) { [weak self] error in
-                guard let self, let error else { return }
-                self.preferencesRefused(host, error)
-            }
+            if response == .alertThirdButtonReturn { self.showLanguageServers(for: host) }
         }
     }
 

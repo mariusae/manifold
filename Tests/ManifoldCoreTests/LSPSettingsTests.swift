@@ -2,25 +2,6 @@ import Foundation
 import Testing
 @testable import ManifoldCore
 
-@Test func languageServerSettingsReadAsApexWritesThem() throws {
-    let text = """
-        lsp.root .hg
-        lsp.rust “$HOME/.apex/fblsp-server rust”
-        python "$HOME/.apex/fblsp-server python"
-        # a comment, and a blank line
-
-        lsp.c.root compile_commands.json, .hg
-        """
-    let ids = LanguageServerConfig.defaults.map(\.id)
-    let lsp = try HostPreferences.parseLSP(text, languages: ids).get()
-    #expect(lsp == ["root": ".hg", "rust": "$HOME/.apex/fblsp-server rust", "python": "$HOME/.apex/fblsp-server python",
-                    "c.root": "compile_commands.json, .hg"])
-    // Back to lines, and read again: the same.
-    #expect(try HostPreferences.parseLSP(HostPreferences(lsp: lsp).lspLines, languages: ids).get() == lsp)
-    // A language there's none of: refused, saying which there are.
-    if case .success = HostPreferences.parseLSP("lsp.cobol cobold", languages: ids) { Issue.record("cobol taken") }
-}
-
 @Test func languageServerSettingsChangeTheTable() {
     let applied = LanguageServerConfig.applying(LanguageServerConfig.defaults,
                                                 ["root": ".hg", "rust": "fblsp rust", "c.root": "compile_commands.json, .hg"])
