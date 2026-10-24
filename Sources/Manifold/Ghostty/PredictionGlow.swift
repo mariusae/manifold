@@ -6,11 +6,12 @@ import QuartzCore
 /// (`EchoPrediction`), on a link slow enough that the wait shows: a soft
 /// light over each such cell, there at once, fading as the host's echo
 /// takes its place. A selection copied pulses with it too, around it
-/// (`pulse`). Over
-/// the terminal's own drawing; clicks go through.
+/// (`pulse`). The links ⌘ marks glow in their color, shaped as their
+/// letters (`showLinks`). Over the terminal's own drawing; clicks go through.
 final class PredictionGlow: NSView {
     private var glows: [Int: CALayer] = [:]
     private var pulses: [CALayer] = []
+    private var linkGlow: CALayer?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -50,6 +51,43 @@ final class PredictionGlow: NSView {
             glows[key] = l
             fade(l, to: 1, over: Self.fadeIn)
         }
+    }
+
+    /// The links' letters (`glyphs`, in this view's coordinates) glowing
+    /// in `color`, as a soft light around them — nil: none.
+    func showLinks(_ glyphs: CGPath?, color: NSColor, cellHeight: CGFloat) {
+        guard let glyphs, !glyphs.isEmpty, let root = layer else {
+            linkGlow?.removeFromSuperlayer()
+            linkGlow = nil
+            return
+        }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let l = linkGlow ?? CALayer()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        l.frame = bounds
+        l.shadowPath = glyphs
+        l.shadowOffset = .zero
+        l.shadowRadius = max(3, cellHeight * 0.28)
+        var cg = color.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { cg = color.cgColor }
+        l.shadowColor = cg
+        // On light paper a glow is a smudge unless it's faint.
+        l.shadowOpacity = dark ? 0.85 : 0.55
+        l.compositingFilter = dark ? "screenBlendMode" : "multiplyBlendMode"
+        CATransaction.commit()
+        if linkGlow == nil {
+            root.addSublayer(l)
+            linkGlow = l
+            l.opacity = 0
+            fade(l, to: 1, over: Self.fadeIn)
+        }
+    }
+
+    var debugLinkGlow: String {
+        guard let l = linkGlow, let p = l.shadowPath else { return "no link glow" }
+        let b = p.boundingBoxOfPath
+        return "link glow over \(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))×\(Int(b.height)) radius \(Int(l.shadowRadius))"
     }
 
     static let pulseIn: TimeInterval = 0.12, pulseOut: TimeInterval = 0.6
@@ -140,7 +178,7 @@ final class PredictionGlow: NSView {
     /// their layers), at `r` (this view's place in it) — as Core Animation
     /// does them: each round's blur alone, blended.
     func drawSnapshot(_ ctx: CGContext, in r: CGRect) {
-        for l in Array(glows.values) + pulses {
+        for l in Array(glows.values) + pulses + [linkGlow].compactMap({ $0 }) {
             guard let shape = l.shadowPath, let color = l.shadowColor else { continue }
             ctx.saveGState()
             ctx.setBlendMode(l.compositingFilter as? String == "screenBlendMode" ? .screen : .multiply)

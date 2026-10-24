@@ -1088,6 +1088,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 for l in links(inRow: r, cols: cols, exists: exists) { runs.append((r, l.from, l.to)) }
             }
             markedRuns = runs
+            glow.showLinks(linkGlyphs(runs, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
         }
         let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
         let hovered = under.flatMap { u in runs.firstIndex { $0.row == u.row && $0.from <= u.col && u.col < $0.to } }
@@ -1114,7 +1115,42 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     private func clearLinks() {
         if let surface { ghostty_surface_manifold_links(surface, nil, 0, 0, -1, 0) }
+        glow.showLinks(nil, color: TextView.linkColor, cellHeight: 0)
     }
+
+    /// The links' letters as one outline, in this view's coordinates: each
+    /// character's glyph in the terminal's font (sized to its cells) on its
+    /// cell, at the baseline — what the glow is shaped as.
+    private func linkGlyphs(_ runs: [(row: Int, from: Int, to: Int)], _ info: ghostty_manifold_info_s) -> CGPath? {
+        guard !runs.isEmpty, info.cell_width > 0 else { return nil }
+        let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height), cols = Int(info.cols)
+        // The theme's code face, at the size whose advance is a cell.
+        let base = FontTheme.current.font(.monospaced, size: 13)
+        var zero: UniChar = 0x30, g: CGGlyph = 0
+        CTFontGetGlyphsForCharacters(base, &zero, &g, 1)
+        var advance = CGSize.zero
+        CTFontGetAdvancesForGlyphs(base, .horizontal, &g, &advance, 1)
+        guard advance.width > 0 else { return nil }
+        let font = CTFontCreateCopyWithAttributes(base, 13 * cw / advance.width, nil, nil)
+        let ascent = CTFontGetAscent(font), descent = CTFontGetDescent(font)
+        let path = CGMutablePath()
+        for row in Set(runs.map(\.row)) {
+            guard let (text, columns) = viewportRow(row, cols: cols) else { continue }
+            let spans = runs.filter { $0.row == row }
+            let cellBottom = bounds.height - CGFloat(info.pad_top) - CGFloat(row + 1) * ch
+            let baseline = cellBottom + descent + max(0, ch - ascent - descent) / 2
+            for (u, col) in zip(text.unicodeScalars, columns) where spans.contains(where: { $0.from <= col && col < $0.to }) {
+                guard u.value <= 0xFFFF, u.value > 0x20 else { continue }
+                var c = UniChar(u.value), glyph: CGGlyph = 0
+                guard CTFontGetGlyphsForCharacters(font, &c, &glyph, 1),
+                      let outline = CTFontCreatePathForGlyph(font, glyph, nil) else { continue }
+                path.addPath(outline, transform: CGAffineTransform(translationX: CGFloat(info.pad_left) + CGFloat(col) * cw, y: baseline))
+            }
+        }
+        return path.isEmpty ? nil : path
+    }
+
+    var debugLinkGlow: String { glow.debugLinkGlow }
 
     /// A color as 0xRRGGBB.
     private static func rgb(_ c: NSColor) -> UInt32 {
@@ -1153,7 +1189,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         let hovered = hoverRow.flatMap { hr in runs.firstIndex { $0.row == hr && $0.from <= (col ?? 0) && (col ?? 0) < $0.to } }
         showLinks(runs, hovered: hovered)
-        return targets.joined(separator: "\n")
+        glow.showLinks(linkGlyphs(runs, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+        return (targets + [glow.debugLinkGlow]).joined(separator: "\n")
     }
 
     func debugUnmarkLinks() {

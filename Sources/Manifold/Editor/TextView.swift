@@ -75,6 +75,8 @@ final class TextView: NSView, NSTextInputClient {
     /// Behind the link under the pointer (⌘ held): a band a step lighter
     /// in the dark, darker in the light — a lightness, not a hue, as a
     /// chosen row's, so every eye sees it. A terminal's links have it too.
+    /// A run that glows in its color (a link ⌘ shows), drawn under it.
+    static let glows = NSAttributedString.Key("ManifoldGlows")
     static let linkHover = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.13))
     static let linkColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
                                            NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1))
@@ -392,7 +394,7 @@ final class TextView: NSView, NSTextInputClient {
             for r in linkRanges where r.end > start && r.start < end {
                 let a = utf16Index(in: string, byteOffset: max(r.start, start) - start)
                 let b = utf16Index(in: string, byteOffset: min(r.end, end) - start)
-                if b > a { attributed.addAttribute(.foregroundColor, value: Self.linkColor, range: NSRange(location: a, length: b - a)) }
+                if b > a { attributed.addAttributes([.foregroundColor: Self.linkColor, Self.glows: true], range: NSRange(location: a, length: b - a)) }
             }
         }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
@@ -575,6 +577,37 @@ final class TextView: NSView, NSTextInputClient {
 
     // MARK: Drawing
 
+    /// The runs of a row that glow (`glows`): a soft light around their
+    /// letters in their color, under them — drawn with their shadow in a
+    /// layer of their own, the letters then cleared from it, so only the
+    /// light is left for the text to be drawn over.
+    private func drawGlow(_ row: CTLine, at origin: CGPoint, _ ctx: CGContext) {
+        let runs = (CTLineGetGlyphRuns(row) as? [CTRun] ?? []).filter { (CTRunGetAttributes($0) as NSDictionary)[Self.glows] != nil }
+        guard !runs.isEmpty else { return }
+        let dark = effectiveAppearance.isDark
+        var color = Self.linkColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { color = Self.linkColor.cgColor }
+        // The blur is in device pixels, not this view's points.
+        let scale = abs(ctx.convertToDeviceSpace(CGSize(width: 1, height: 0)).width)
+        ctx.saveGState()
+        ctx.setBlendMode(dark ? .screen : .multiply)
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        ctx.setBlendMode(.normal)
+        ctx.setShadow(offset: .zero, blur: max(3, font.pointSize * 0.4) * scale, color: color.copy(alpha: dark ? 0.9 : 0.6))
+        for run in runs {
+            ctx.textPosition = origin
+            CTRunDraw(run, ctx, CFRange())
+        }
+        ctx.setShadow(offset: .zero, blur: 0, color: nil)
+        ctx.setBlendMode(.clear)
+        for run in runs {
+            ctx.textPosition = origin
+            CTRunDraw(run, ctx, CFRange())
+        }
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
+    }
+
     /// Selected text and the caret, in the app's tint.
     static let selectionColor = Tints.textSelection
     static let caretColor = Tints.caret
@@ -716,7 +749,11 @@ final class TextView: NSView, NSTextInputClient {
             for (r, row) in l.rows.enumerated() {
                 let rowTop = lineTop + CGFloat(r) * lineHeight
                 if markdown { drawChips(in: row, at: rowTop, ctx) }
-                ctx.textPosition = CGPoint(x: textLeft, y: rowTop + ascent)
+                let origin = CGPoint(x: textLeft, y: rowTop + ascent)
+                // (The text position isn't part of the graphics state: set
+                // again after the glow's.)
+                if !linkRanges.isEmpty { drawGlow(row, at: origin, ctx) }
+                ctx.textPosition = origin
                 CTLineDraw(row, ctx)
                 if markdown { drawPills(in: row, at: rowTop, ctx) }
             }
