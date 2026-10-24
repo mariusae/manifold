@@ -41,13 +41,24 @@ final class SearchPreviewView: NSView {
 
     private let title = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
-    private let text = PreviewTextView()
+    /// The file's text: a view made afresh for each file, on the text
+    /// system laid out for it off the main thread.
+    private var text = PreviewTextView()
+    /// What owns the shown file's text system (its layout manager, its
+    /// container): kept while it's shown.
+    private var storage: NSTextStorage?
     private let empty = NSTextField(labelWithString: "")
     /// "Reading…" while a match's file comes from its host.
     private let note = BusyNote()
     private let divider = FlatDivider()
     private let gutter = LineGutter()
+    /// Files read, the latest last: kept for going back and forth among
+    /// a search's hits, a few dozen at most.
     private var cache: [String: String?] = [:]
+    private var cached: [String] = []
+    /// What's being made ready off the main thread, by its key.
+    private var preparing: String?
+    private static let preparation = DispatchQueue(label: "manifold.search-preview", qos: .userInitiated)
     private(set) var hit: SearchHit?
     private var query: SearchQuery?
     private var root = ""
@@ -72,17 +83,7 @@ final class SearchPreviewView: NSView {
         title.lineBreakMode = .byTruncatingHead
         addSubview(title)
         addSubview(divider)
-        text.isEditable = false
-        text.isSelectable = true
-        text.isRichText = false
-        text.drawsBackground = false
-        text.textContainerInset = NSSize(width: 4, height: 6)
-        text.isHorizontallyResizable = true
-        text.textContainer?.widthTracksTextView = false
-        text.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        text.autoresizingMask = [.height]
-        text.doubleClicked = { [weak self] offset in self?.doubleClicked(at: offset) }
+        configure(text)
         scroll.documentView = text
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -101,6 +102,21 @@ final class SearchPreviewView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    private func configure(_ text: PreviewTextView) {
+        text.isEditable = false
+        text.isSelectable = true
+        text.isRichText = false
+        text.drawsBackground = false
+        text.textContainerInset = NSSize(width: 4, height: 6)
+        text.isHorizontallyResizable = true
+        text.isVerticallyResizable = true
+        text.textContainer?.widthTracksTextView = false
+        text.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.autoresizingMask = [.height]
+        text.doubleClicked = { [weak self] offset in self?.doubleClicked(at: offset) }
+    }
 
     override func layout() {
         super.layout()
@@ -127,7 +143,13 @@ final class SearchPreviewView: NSView {
     }
 
     /// Files read again on the next look (the search ran again).
-    func forget() { cache.removeAll(); shownKey = nil }
+    func forget() { cache.removeAll(); cached.removeAll(); shownKey = nil }
+
+    private func remember(_ path: String, _ contents: String?) {
+        if cache.updateValue(contents, forKey: path) != nil { cached.removeAll { $0 == path } }
+        cached.append(path)
+        while cached.count > 24 { cache.removeValue(forKey: cached.removeFirst()) }
+    }
 
     func show(_ hit: SearchHit?, query: SearchQuery?, root: String) {
         self.hit = hit
@@ -159,7 +181,7 @@ final class SearchPreviewView: NSView {
         }
         read(hit.path) { [weak self] contents in
             guard let self else { return }
-            self.cache[hit.path] = contents
+            self.remember(hit.path, contents)
             guard self.token == t else { return }
             self.present(contents, hit: hit, query: query)
         }
@@ -177,26 +199,40 @@ final class SearchPreviewView: NSView {
         scroll.isHidden = false
         gutter.isHidden = false
         empty.isHidden = true
-        let key = "\(hit.path)|\(query.text)|\(query.regex)|\(query.caseSensitive)|\(contents.utf16.count)"
+        let key = "\(hit.path)|\(query.text)|\(query.regex)|\(query.caseSensitive)|\(contents.utf16.count)|\(font.fontName)\(font.pointSize)"
         if key != shownKey {
-            shownKey = key
-            let ns = contents as NSString
-            lineStarts = [0]
-            var i = 0
-            while i < ns.length {
-                let r = ns.lineRange(for: NSRange(location: i, length: 0))
-                i = NSMaxRange(r)
-                if i < ns.length { lineStarts.append(i) }
-                if r.length == 0 { break }
+            // Its lines, its matches and its text in the face made ready off
+            // the main thread (a 4 MB file's took it 0.1 s), then shown.
+            note.set(.busy("Reading…"))
+            guard preparing != key else { return }
+            preparing = key
+            let font = self.font, ink = Theme.codeText, mark = TextView.matchColor
+            let padding = text.textContainer?.lineFragmentPadding ?? 5
+            let current: () -> Bool = { [weak self] in DispatchQueue.main.sync { self?.preparing == key } }
+            Self.preparation.async { [weak self] in
+                guard let ready = Self.prepare(contents, query: query, font: font, ink: ink, mark: mark, padding: padding, current: current) else { return }
+                DispatchQueue.main.async {
+                    guard let self, self.preparing == key else { return }
+                    self.preparing = nil
+                    self.shownKey = key
+                    self.lineStarts = ready.lineStarts
+                    self.matches = ready.matches
+                    let fresh = PreviewTextView(frame: NSRect(origin: .zero, size: self.scroll.contentSize), textContainer: ready.container)
+                    self.configure(fresh)
+                    fresh.minSize = self.scroll.contentSize
+                    self.text = fresh
+                    self.storage = ready.storage
+                    self.scroll.documentView = fresh
+                    self.gutter.text = fresh
+                    self.text.sizeToFit()
+                    self.gutter.lineStarts = ready.lineStarts
+                    self.gutter.font = font
+                    self.needsLayout = true
+                    // The hit shown now, if it's still this file's.
+                    if let now = self.hit, now.path == hit.path, let q = self.query { self.present(contents, hit: now, query: q) }
+                }
             }
-            let s = NSMutableAttributedString(string: contents, attributes: [.font: font, .foregroundColor: Theme.codeText])
-            matches = query.ranges(in: contents)
-            for r in matches { s.addAttribute(.backgroundColor, value: TextView.matchColor, range: r) }
-            text.textStorage?.setAttributedString(s)
-            text.sizeToFit()
-            gutter.lineStarts = lineStarts
-            gutter.font = font
-            needsLayout = true
+            return
         }
         // The hit's line lit, its match marked strongest; centred.
         let line = max(0, min(hit.line - 1, lineStarts.count - 1))
@@ -205,10 +241,12 @@ final class SearchPreviewView: NSView {
         let lineRange = NSRange(location: start, length: max(0, end - start))
         text.litLine = lineRange
         let current = matches.first { NSIntersectionRange($0, lineRange).length > 0 && NSMaxRange($0) <= end }
-        if let old = text.current, old.location + old.length <= (text.string as NSString).length {
-            text.textStorage?.addAttribute(.backgroundColor, value: TextView.matchColor, range: old)
+        // Marked over the text's own marks, without touching the text: an
+        // attribute changed lays out again all that's after it.
+        if let old = text.current, NSMaxRange(old) <= (text.string as NSString).length {
+            text.layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: old)
         }
-        if let current { text.textStorage?.addAttribute(.backgroundColor, value: Self.currentMatch, range: current) }
+        if let current { text.layoutManager?.addTemporaryAttribute(.backgroundColor, value: Self.currentMatch, forCharacterRange: current) }
         text.current = current
         text.needsDisplay = true
         gutter.litLine = line
@@ -216,9 +254,53 @@ final class SearchPreviewView: NSView {
         scrollToCenter(lineRange, match: current)
     }
 
+    /// A file made ready to show: where its lines start (as NSString
+    /// counts them), its matches, and its text in the face, matches marked,
+    /// laid out whole in a text system of its own (a 4 MB file's layout
+    /// held the main thread 1.5 s; laid out only as far as looked at,
+    /// AppKit drew one line's text over another's). A piece at a time,
+    /// nil once given up on (`current` turned false).
+    private static func prepare(_ contents: String, query: SearchQuery, font: NSFont, ink: NSColor, mark: NSColor, padding: CGFloat,
+                                current: () -> Bool) -> (lineStarts: [Int], matches: [NSRange], storage: NSTextStorage, container: NSTextContainer)? {
+        var starts = [0]
+        var i = 0
+        var previousCR = false
+        for u in contents.utf16 {
+            i += 1
+            switch u {
+            case 0x0A: if !previousCR { starts.append(i) } else { starts[starts.count - 1] = i }
+            case 0x0D, 0x2028, 0x2029, 0x85: starts.append(i)
+            default: break
+            }
+            previousCR = u == 0x0D
+        }
+        // A last line break begins no line.
+        if starts.count > 1, starts.last == i { starts.removeLast() }
+        let s = NSMutableAttributedString(string: contents, attributes: [.font: font, .foregroundColor: ink])
+        let matches = query.ranges(in: contents)
+        for r in matches { s.addAttribute(.backgroundColor, value: mark, range: r) }
+        let storage = NSTextStorage(attributedString: s)
+        let layout = NSLayoutManager()
+        layout.allowsNonContiguousLayout = false
+        layout.backgroundLayoutEnabled = false
+        let container = NSTextContainer(size: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = false
+        container.lineFragmentPadding = padding
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        var at = 0
+        while at < storage.length {
+            guard current() else { return nil }
+            let end = min(storage.length, at + 256 << 10)
+            layout.ensureLayout(forCharacterRange: NSRange(location: 0, length: end))
+            at = end
+        }
+        return (starts, matches, storage, container)
+    }
+
     private func scrollToCenter(_ range: NSRange, match: NSRange?) {
         guard let lm = text.layoutManager, let tc = text.textContainer else { return }
-        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: NSMaxRange(range)))
+        lm.ensureLayout(forCharacterRange: range)
         let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         var rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
         rect.origin.y += text.textContainerInset.height
@@ -340,3 +422,4 @@ final class LineGutter: NSView {
         }
     }
 }
+
