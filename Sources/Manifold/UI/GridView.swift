@@ -1928,7 +1928,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         self.stashed = stashed
         if corner.isHidden != stashed { corner.isHidden = stashed }
-        if symbolName != shown.symbol {
+        // A page: its site's icon, once seen; else the kind's symbol.
+        if let favicon = shown.block?.web.flatMap({ Favicons.image(forPage: $0.url) }) {
+            if icon.image !== favicon { icon.image = favicon }
+            symbolName = ""
+        } else if symbolName != shown.symbol {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: 11)
         }

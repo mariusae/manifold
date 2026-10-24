@@ -345,6 +345,10 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
         if let title = web.title, !title.isEmpty, title != source()?.web?.title { events.append(.title(title)) }
         if let u = web.url { delegate?.webView(self, visited: u, title: web.title, again: false) }
         if !events.isEmpty { delegate?.webView(self, append: events) }
+        // Its site's icon, by the page's own hand (it reaches what the page does).
+        web.callAsyncJavaScript(Favicons.script, arguments: [:], in: nil, in: .defaultClient) { result in
+            if case .success(let value) = result, let data = value as? String { Favicons.take(data, forPage: url) }
+        }
     }
 
 }

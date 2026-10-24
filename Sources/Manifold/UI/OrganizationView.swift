@@ -43,6 +43,8 @@ final class OrgNode {
     var title: String
     var symbol: String
     var detail: String
+    /// A picture in place of the symbol: a page's site's icon.
+    var image: NSImage?
     /// A small symbol before the detail, in its grey: stashed, maximized.
     var detailSymbol: String?
     /// How many blocks beneath, shown as a count; nil for none.
@@ -116,7 +118,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale
+            && dirty == o.dirty && stale == o.stale && image === o.image
     }
 
     /// Takes another's values (the same row made again), its children
@@ -125,7 +127,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale
+        dirty = o.dirty; stale = o.stale; image = o.image
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -560,7 +562,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")"
         }.joined(separator: "\n")
     }
 
@@ -762,7 +764,10 @@ final class OrgRowView: NSTableCellView {
         trailing.stringValue = node.trailing ?? ""
         trailing.isHidden = node.trailing == nil
         trailing.textColor = Theme.secondaryText
-        if node.symbol != symbol {
+        if let image = node.image {
+            symbol = ""
+            icon.image = image
+        } else if node.symbol != symbol {
             symbol = node.symbol
             icon.image = Theme.symbol(node.symbol, size: 12)
         }

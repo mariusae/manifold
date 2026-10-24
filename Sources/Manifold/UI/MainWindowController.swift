@@ -165,6 +165,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         watchClicks()
         watchHistoryButtons()
         HostMenu.submenu = { [weak self] host in self?.hostSubmenu(host) }
+        // A site's icon arrived: its pages' rows and bars show it.
+        NotificationCenter.default.addObserver(forName: .manifoldFaviconsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.render() }
+        }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
             self?.collect()
@@ -1959,10 +1963,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// What to call a note: its title, else its first line, else "Note".
     static func noteTitle(_ b: Block) -> String {
         if let t = b.title, !t.isEmpty { return t }
-        if let first = b.text?.text.string.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
-            return String(first.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).prefix(60))
+        // The first line that says something, read as text: images left
+        // out, a link by its words, no emphasis, heading, quote or bullet marks.
+        for line in (b.text?.text.string ?? "").split(separator: "\n").prefix(40) {
+            let words = plainWords(String(line))
+            if !words.isEmpty { return String(words.prefix(60)) }
         }
         return b.displayTitle
+    }
+
+    /// A line of Markdown as its words.
+    static func plainWords(_ line: String) -> String {
+        var s = line.replacingOccurrences(of: #"!\[[^\]]*\]\([^)]*\)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"^\s*(#+|>|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
+        return s.trimmingCharacters(in: .whitespaces)
     }
 
     /// A linked block from a tile's badge: gone to where it is; placed
@@ -2694,6 +2710,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                         symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
         n.dirty = block.text?.isDirty == true
         n.stale = block.text?.stale == true
+        n.image = block.web.flatMap { Favicons.image(forPage: $0.url) }
         n.look = StatusGlyph.look(of: block)
         n.tooltip = StatusGlyph.tooltip(block)
         n.trailing = StatusGlyph.at(of: block).map(Age.short)
@@ -3143,6 +3160,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                     detail: notes.joined(separator: " · "))
                     n.dirty = b?.text?.isDirty == true
                     n.stale = b?.text?.stale == true
+                    n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
                     if a.isStashed(p.id) { n.detailSymbol = "tray.and.arrow.down" } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
                     n.trailing = StatusGlyph.at(of: b).map(Age.short)
