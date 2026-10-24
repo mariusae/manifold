@@ -219,18 +219,55 @@ final class SelectionRowView: NSTableRowView {
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
     override var isFloating: Bool { didSet { needsDisplay = true } }
+    /// Under the pointer: one row at a time, in every list — a row taking
+    /// it takes it from the last. Rows are reused and move under a still
+    /// pointer (scrolled, reloaded) with no exit to say so, so what a row
+    /// thinks is checked against where the pointer is whenever it moves.
     private var hovered = false {
-        didSet { if hovered != oldValue { needsDisplay = true } }
+        didSet {
+            guard hovered != oldValue else { return }
+            needsDisplay = true
+            if hovered {
+                if let last = Self.hoveredRow, last !== self { last.hovered = false }
+                Self.hoveredRow = self
+            } else if Self.hoveredRow === self {
+                Self.hoveredRow = nil
+            }
+        }
     }
+    private static weak var hoveredRow: SelectionRowView?
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        recheckHover()
     }
 
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        hovered = false
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        recheckHover()
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        if hovered { recheckHover() }
+    }
+
+    /// Hovered only if the pointer is over it now, in the key window.
+    private func recheckHover() {
+        guard let window, window.isKeyWindow, superview != nil else { return hovered = false }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        hovered = bounds.contains(p) && isUnderPointer
+    }
 
     private var band: NSRect { bounds.insetBy(dx: 6, dy: 1) }
 
