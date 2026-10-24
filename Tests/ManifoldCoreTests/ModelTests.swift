@@ -1692,3 +1692,22 @@ private final class Seen: @unchecked Sendable {
         #expect(Rope(text).lineLengths() == text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.utf8.count })
     }
 }
+
+@Test func ropesAreEqualByTheirTextHoweverChunked() {
+    var text = ""
+    for i in 0..<3000 { text += "line \(i) with some text in it é\n" }
+    let whole = Rope(text)
+    // The same text built up by edits: chunked otherwise.
+    var built = Rope(String(text.prefix(10)))
+    built.replace(TextRange(built.count, built.count), with: String(text.dropFirst(10)))
+    var typed = Rope("")
+    for piece in text.split(separator: "\n", omittingEmptySubsequences: false).dropLast() { typed.replace(TextRange(typed.count, typed.count), with: piece + "\n") }
+    #expect(whole == built)
+    #expect(whole == typed)
+    #expect(whole == whole)
+    var other = whole
+    other.replace(TextRange(50_000, 50_001), with: "Z")
+    #expect(whole != other)
+    #expect(Rope("abc") != Rope("abd"))
+    #expect(Rope("") == Rope(""))
+}

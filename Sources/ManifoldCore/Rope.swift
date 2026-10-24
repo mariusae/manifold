@@ -366,8 +366,27 @@ public struct Rope: Equatable, Sendable, CustomStringConvertible {
         return n
     }
 
+    /// Equal when their bytes are: the same chunks (a copy not changed
+    /// since) at once, else compared a run at a time — not both made into
+    /// strings (a big note's block compared at every render).
     public static func == (a: Rope, b: Rope) -> Bool {
-        a.count == b.count && a.string == b.string
+        guard a.count == b.count else { return false }
+        let same = a.chunks.withUnsafeBufferPointer { x in b.chunks.withUnsafeBufferPointer { y in x.baseAddress == y.baseAddress && x.count == y.count } }
+        if same { return true }
+        var i = 0, j = 0, ai = 0, bj = 0
+        while i < a.chunks.count, j < b.chunks.count {
+            let x = a.chunks[i].bytes, y = b.chunks[j].bytes
+            let n = min(x.count - ai, y.count - bj)
+            let equal = x.withUnsafeBufferPointer { xp in y.withUnsafeBufferPointer { yp in
+                n == 0 || memcmp(xp.baseAddress! + ai, yp.baseAddress! + bj, n) == 0
+            } }
+            guard equal else { return false }
+            ai += n
+            bj += n
+            if ai == x.count { i += 1; ai = 0 }
+            if bj == y.count { j += 1; bj = 0 }
+        }
+        return true
     }
 }
 
