@@ -95,7 +95,8 @@ final class TextView: NSView, NSTextInputClient {
     /// with: when a look changes, the line is laid out again.
     private var pillLines: [Int: [(BlockID, PillLook)]] = [:]
     /// The lines that are code fences, found once per text.
-    private var fenceLines: Set<Int>?
+    /// The lines that are fences, in order (counted below a line by halving).
+    private var fenceLines: [Int]?
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
     private var pillPhase: Double { Date.timeIntervalSinceReferenceDate }
     private var pillTimer: Timer?
@@ -223,11 +224,21 @@ final class TextView: NSView, NSTextInputClient {
     /// fences before it.
     private func inCodeBlock(_ n: Int) -> Bool {
         if fenceLines == nil {
-            var f = Set<Int>()
-            for i in 0..<text.lineCount where MarkdownStyle.isFence(text.lineText(i)) { f.insert(i) }
+            var f: [Int] = []
+            for i in 0..<text.lineCount where MarkdownStyle.isFence(text.lineText(i)) { f.append(i) }
             fenceLines = f
         }
-        return fenceLines!.filter { $0 < n }.count % 2 == 1
+        return Self.countBelow(n, in: fenceLines!) % 2 == 1
+    }
+
+    /// How many of the sorted `lines` are before `n`.
+    private static func countBelow(_ n: Int, in lines: [Int]) -> Int {
+        var lo = 0, hi = lines.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if lines[mid] < n { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
     }
 
     /// The blocks' pills, as their looks are now: lines drawn with a
@@ -1041,7 +1052,7 @@ final class TextView: NSView, NSTextInputClient {
         } else if let e = edits.first {
             let n = text.line(at: e.start)
             layouts.removeValue(forKey: n)
-            if markdown, let f = fenceLines, f.contains(n) != MarkdownStyle.isFence(text.lineText(n)) {
+            if markdown, let f = fenceLines, (Self.countBelow(n + 1, in: f) != Self.countBelow(n, in: f)) != MarkdownStyle.isFence(text.lineText(n)) {
                 // A fence came or went: every line after it is in or out of a block.
                 for k in layouts.keys where k > n { layouts.removeValue(forKey: k) }
                 fenceLines = nil
