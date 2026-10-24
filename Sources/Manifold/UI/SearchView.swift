@@ -222,13 +222,15 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         var out: [Row] = []
         var file: String?
         var files = 0
-        var count = 0
+        // Each file's count, in one pass (not every hit gone through again
+        // for each file: thousands of each, at every batch that comes).
+        var counts: [String: Int] = [:]
+        for h in hits { counts[h.path, default: 0] += 1 }
         for h in hits {
             if h.path != file {
                 file = h.path
                 files += 1
-                count = hits.filter { $0.path == h.path }.count
-                out.append(.file(h.path, count: count))
+                out.append(.file(h.path, count: counts[h.path] ?? 0))
             }
             out.append(.hit(h))
         }

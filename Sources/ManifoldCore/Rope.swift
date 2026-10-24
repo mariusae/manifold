@@ -384,13 +384,23 @@ extension Rope {
         return nil
     }
 
-    /// Every match, in order.
+    /// Every match, in order: the text read once, not again for each
+    /// match (which made finding in a big file quadratic).
     public func findAll(_ needle: String, caseInsensitive: Bool = false, limit: Int = 100_000) -> [TextRange] {
+        let hay = Array((caseInsensitive ? string.lowercased() : string).utf8)
+        let nb = Array((caseInsensitive ? needle.lowercased() : needle).utf8)
+        guard !nb.isEmpty, hay.count >= nb.count else { return [] }
         var out: [TextRange] = []
-        var from = 0
-        while out.count < limit, let r = find(needle, from: from, caseInsensitive: caseInsensitive) {
-            out.append(r)
-            from = max(r.end, r.start + 1)
+        hay.withUnsafeBytes { h in
+            nb.withUnsafeBytes { n in
+                guard let base = h.baseAddress, let nbase = n.baseAddress else { return }
+                var at = 0
+                while out.count < limit, at <= hay.count - nb.count, let p = memmem(base + at, hay.count - at, nbase, nb.count) {
+                    let i = base.distance(to: UnsafeRawPointer(p))
+                    out.append(TextRange(i, i + nb.count))
+                    at = i + nb.count
+                }
+            }
         }
         return out
     }

@@ -129,14 +129,28 @@ public struct HostsFile: Codable {
 
     public static var url: URL { Paths.directory.appendingPathComponent("hosts.json") }
 
+    /// The file as on disk: read again only when it changed (it's asked
+    /// for while drawing — a tile on a host not yet heard from, a label).
     public static func load() -> HostsFile {
+        let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let c = cache, c.modified == modified { return c.file }
         guard let data = try? Data(contentsOf: url) else { return HostsFile() }
-        return (try? JSONDecoder().decode(HostsFile.self, from: data)) ?? HostsFile()
+        let file = (try? JSONDecoder().decode(HostsFile.self, from: data)) ?? HostsFile()
+        cache = (modified, file)
+        return file
     }
 
     public func save() {
         if let data = try? JSONEncoder().encode(self) { try? data.write(to: Self.url, options: .atomic) }
+        Self.cacheLock.lock()
+        Self.cache = nil
+        Self.cacheLock.unlock()
     }
+
+    nonisolated(unsafe) private static var cache: (modified: Date?, file: HostsFile)?
+    private static let cacheLock = NSLock()
 
     public func destination(of host: HostID) -> Destination? { hosts[host.raw]?.destination }
     public func label(of host: HostID) -> String? { hosts[host.raw]?.label }

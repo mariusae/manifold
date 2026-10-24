@@ -426,6 +426,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     func documentChanged() {
         guard let doc = document else { return }
         let external = doc.version != lastVersion && doc.version != textView.undoKnownVersion
+        let versionChanged = doc.version != lastVersion
         lastVersion = doc.version
         textView.documentChanged()
         scheduleHeadings()
@@ -458,7 +459,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             isEdited = doc.isDirty
             delegate?.editorEditedChanged(self)
         }
-        finder.refresh()
+        // The find pill's matches again only when the text changed (every
+        // render came here, a keystroke's too).
+        if versionChanged { scheduleMatchRefresh() }
         diagnosticsChanged()
         gutterChanged()
     }
@@ -581,9 +584,27 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             delegate?.editor(self, append: [.clean(version: doc.version, fingerprint: nil)])
         }
         scheduleStateSave()
-        finder.refresh()
+        scheduleMatchRefresh()
         completionTextChanged()
     }
+
+    /// The find pill's matches found again after an edit — a moment after
+    /// typing stops, not at each key (the whole text gone through), and
+    /// the caret left where it is (it was thrown onto a match).
+    private func scheduleMatchRefresh() {
+        matchRefresh?.cancel()
+        guard !matches.isEmpty || textView.highlights.count > 0 else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.rehighlighting = true
+            self.finder.refresh()
+            self.rehighlighting = false
+        }
+        matchRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+    private var matchRefresh: DispatchWorkItem?
+    private var rehighlighting = false
 
     // MARK: Fonts
 
@@ -818,7 +839,7 @@ extension EditorView: Replaceable {
     func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
         matches = query.isEmpty ? [] : textView.text.findAll(query, caseInsensitive: !caseSensitive, limit: 20_000)
         textView.highlights = matches
-        if !matches.isEmpty {
+        if !matches.isEmpty, !rehighlighting {
             let from = textView.primarySelection.min
             if let m = matches.first(where: { $0.start >= from }) ?? matches.first { textView.setSelections([Selection(m.start, m.end)]) }
         }

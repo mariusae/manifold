@@ -1152,9 +1152,12 @@ final class Server {
 
     /// A text block's file read in, for the attachment that asked. What
     /// it already has, unedited and as on disk, isn't sent again (opening
-    /// a file checks it so). A file that seems not to be there is looked
-    /// for again a few times before it's taken for a new one — a file
-    /// being replaced, a slow file system, isn't read as empty.
+    /// a file checks it so). A file not there in a folder that is, is a
+    /// new one at once — watched, so one being replaced is read as it
+    /// comes (it waited 1.2 s, an empty editor ⌘-clicked to); one whose
+    /// folder isn't there either (a slow file system, a folder being made)
+    /// is looked for again a few times first. One there that can't be
+    /// read is tried once more (a file being written).
     private func readFile(_ block: BlockID, for conn: any Channel, attempt: Int = 0, done: @escaping (String?) -> Void) {
         guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
         let send = { (p: HostProposal) in conn.send(.message(ServerMessage.propose(shard: .block(block), p))) }
@@ -1167,13 +1170,13 @@ final class Server {
             watch(b, force: true)
             done(nil)
         } else if FileManager.default.fileExists(atPath: path) {
-            if attempt < 3 {
-                queue.asyncAfter(deadline: .now() + 0.2 * Double(attempt + 1)) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
+            if attempt < 1 {
+                queue.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
                 return
             }
             send(.unreadable)
             done("can't be read as text")
-        } else if attempt < 3 {
+        } else if attempt < 3, !FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent) {
             queue.asyncAfter(deadline: .now() + 0.2 * Double(attempt + 1)) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
         } else {
             // A new file: empty, clean, not yet on disk; watched, so it's
