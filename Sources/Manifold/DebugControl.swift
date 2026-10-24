@@ -710,6 +710,10 @@ enum DebugControl {
         case "omni":
             // The focused tile's address bar: "begin", "type <text>", "key <k>".
             return wc?.debugOmni(arg) ?? "no window"
+        case "spinners":
+            // The status glyphs turning: each one's angle now, as drawn.
+            guard let root = wc?.window?.contentView else { return "no window" }
+            return StatusGlyph.debugSpinners(in: root, force: arg == "force")
         case "ticks":
             // "ticks": the focused tile's outline ticks and items; "ticks
             // open", its outline over them; "ticks rows", the list shown;

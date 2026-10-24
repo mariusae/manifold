@@ -30,7 +30,11 @@ final class Sparkline: NSView {
         timer?.invalidate()
         timer = nil
         guard window != nil, pings != nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.needsDisplay = true }
+        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            // Drawn again only where it can be seen (the sidebar put away: not).
+            guard let self, !self.isHiddenOrHasHiddenAncestor else { return }
+            self.needsDisplay = true
+        }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }

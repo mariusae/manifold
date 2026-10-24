@@ -42,19 +42,36 @@ final class TransfersView: NSView {
             more.isHidden = hidden == 0
             needsLayout = true
             needsDisplay = true
-            // A bar whose total isn't known yet moves on its own.
-            let moving = items.contains { $0.isRunning && $0.fraction == nil }
-            if moving, animation == nil {
-                animation = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-                    self?.rows.forEach { $0.needsDisplay = true }
-                }
-            } else if !moving {
-                animation?.invalidate()
-                animation = nil
-            }
+            updateAnimation()
         }
     }
     private var animation: Timer?
+
+    /// A bar whose total isn't known yet moves on its own — while it can
+    /// be seen (the sidebar put away, it ran on at 30 a second).
+    private func updateAnimation() {
+        let moving = items.contains { $0.isRunning && $0.fraction == nil } && window != nil && !isHiddenOrHasHiddenAncestor
+        if moving, animation == nil {
+            animation = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                guard self.window != nil, !self.isHiddenOrHasHiddenAncestor else { return self.updateAnimation() }
+                self.rows.forEach { $0.needsDisplay = true }
+            }
+        } else if !moving {
+            animation?.invalidate()
+            animation = nil
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateAnimation()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        updateAnimation()
+    }
 
     var wantedHeight: CGFloat {
         guard !rows.isEmpty else { return 0 }

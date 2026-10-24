@@ -853,53 +853,6 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
     }
 
-    // MARK: The pill out of the cursor's way
-
-    private var caretTimer: Timer?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        caretTimer?.invalidate()
-        caretTimer = nil
-        guard window != nil else { return }
-        let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.dodgeCarets() }
-        RunLoop.main.add(t, forMode: .common)
-        caretTimer = t
-    }
-
-    /// A pill over the line the text cursor is on fades out, so what is
-    /// typed there can be seen; it comes back when the cursor moves on.
-    private func dodgeCarets() {
-        // The bar sits above the content now, never over the text cursor.
-        for p in pills.values where p.dodging { p.dodging = false }
-        return
-        guard window != nil else { return }
-        for column in columns {
-            for tile in column {
-                // Maximized, only that tile's pill is there to dodge.
-                if let full, tile.shown.id != full { continue }
-                guard let pill = pills[tile.shown.id] else { continue }
-                // A stashed tile's pill never dodges (its cursor is out of
-                // sight): one that was dodging when stashed comes back,
-                // or it would be lost — unseen in the fan, taking no clicks.
-                if isStashed(tile.shown.id) { pill.dodging = false; continue }
-                // Only the focused tile's pill dodges: nothing is being
-                // typed under the others, and their names are what you
-                // find them by.
-                if tile.shown.id != focused || pill.isEditing { pill.dodging = false; continue }
-                guard !pill.isHidden else { continue }
-                var away = false
-                if let caret = tile.view.caretRectInWindow {
-                    let capsule = pill.convert(pill.capsule(in: pill), to: nil)
-                    away = caret.minY < capsule.maxY && caret.maxY > capsule.minY
-                    // Unless the pointer is where the pill would be: then it shows.
-                    if away, let window, capsule.insetBy(dx: -8, dy: -6).contains(window.mouseLocationOutsideOfEventStream) { away = false }
-                }
-                pill.dodging = away
-            }
-        }
-    }
-
     /// Whether some pill is a field just now, the keyboard in it.
     var isEditingPill: Bool { pills.values.contains { $0.isEditing } }
 

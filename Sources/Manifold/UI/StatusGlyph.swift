@@ -26,12 +26,14 @@ final class StatusGlyph: NSView {
     var look: Look? {
         didSet {
             if look != oldValue { needsDisplay = true }
-            updateTimer()
+            updateTurning()
         }
     }
 
     static let size: CGFloat = 13
-    private var timer: Timer?
+    /// The turning ring, while it turns: a layer the render server spins
+    /// (it was drawn afresh on the main thread 30 times a second).
+    private var spinner: CAShapeLayer?
     /// Where in its turning: by the clock, so every glyph turns together
     /// and one made afresh (a row reloaded, a cell reused) doesn't jump.
     private var phase: Double { Date.timeIntervalSinceReferenceDate }
@@ -95,55 +97,133 @@ final class StatusGlyph: NSView {
     }
 
     override var intrinsicContentSize: NSSize { NSSize(width: Self.size, height: Self.size) }
-    override var isHidden: Bool { didSet { updateTimer() } }
+    override var isHidden: Bool { didSet { updateTurning() } }
 
     /// Turning only where it can be seen: not hidden (itself or by a view
     /// it's in — a stashed tile's pill, the sidebar put away), in a window
     /// that's on screen.
     private var animates: Bool {
-        guard !isHiddenOrHasHiddenAncestor, let window, window.occlusionState.contains(.visible), let look else { return false }
+        guard !isHiddenOrHasHiddenAncestor, let window, window.occlusionState.contains(.visible) || Self.ignoresWindowOcclusion, let look else { return false }
         if case .working(nil) = look { return true }
         if case .connecting = look { return true }
         return false
     }
 
-    private func updateTimer() {
-        if animates {
-            guard timer == nil else { return }
-            let t = Timer(timeInterval: 1 / 30, repeats: true) { [weak self] _ in
-                self?.needsDisplay = true
+    /// As terminals: MANIFOLD_NO_OCCLUSION (testing) has them turn all the same.
+    private static let ignoresWindowOcclusion = ProcessInfo.processInfo.environment["MANIFOLD_NO_OCCLUSION"] != nil
+
+    private func updateTurning() {
+        guard animates else {
+            if spinner != nil {
+                spinner?.removeFromSuperlayer()
+                spinner = nil
+                needsDisplay = true
             }
-            RunLoop.main.add(t, forMode: .common)
-            timer = t
-        } else {
-            timer?.invalidate()
-            timer = nil
+            return
         }
+        if spinner == nil {
+            wantsLayer = true
+            let ring = CAShapeLayer()
+            ring.fillColor = nil
+            ring.lineWidth = 2
+            ring.lineCap = .round
+            layer?.addSublayer(ring)
+            spinner = ring
+            placeSpinner()
+            // Turning by the clock, as the drawn ring did: every glyph
+            // together, one made afresh not jumping.
+            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+            turn.fromValue = 0
+            turn.toValue = -2 * Double.pi
+            turn.duration = 2
+            turn.repeatCount = .infinity
+            turn.isRemovedOnCompletion = false
+            turn.beginTime = CACurrentMediaTime() - phase.truncatingRemainder(dividingBy: 2)
+            ring.add(turn, forKey: "turn")
+            needsDisplay = true
+        }
+        colorSpinner()
+    }
+
+    /// Debugging: the glyphs under `root` that turn, and the angle each
+    /// is at on screen now (two looks apart differ if it turns).
+    static func debugSpinners(in root: NSView, force: Bool = false) -> String {
+        var out: [String] = []
+        var forced = !force
+        func walk(_ v: NSView) {
+            // "force": the first shown glyph made to turn (as running would).
+            if !forced, let g = v as? StatusGlyph, g.look != nil, !g.isHiddenOrHasHiddenAncestor { g.look = .working(progress: nil); forced = true }
+            if let g = v as? StatusGlyph, let look = g.look {
+                var line = "\(look) \(g.isHiddenOrHasHiddenAncestor ? "hidden" : "shown")"
+                if let ring = g.spinner {
+                    let angle = (ring.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double) ?? .nan
+                    line += String(format: " %.0f° %@", angle * 180 / .pi, ring.animation(forKey: "turn") == nil ? "still" : "turning")
+                }
+                out.append(line)
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(root)
+        return out.isEmpty ? "none" : out.joined(separator: "\n")
+    }
+
+    private func placeSpinner() {
+        guard let ring = spinner else { return }
+        let s = Self.size, radius = s / 2 - 1
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.bounds = CGRect(x: 0, y: 0, width: s, height: s)
+        ring.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let path = CGMutablePath()
+        let start = 45.0 * Double.pi / 180
+        path.addArc(center: CGPoint(x: s / 2, y: s / 2), radius: radius, startAngle: start, endAngle: start - 1.5 * Double.pi, clockwise: true)
+        ring.path = path
+        CATransaction.commit()
+    }
+
+    private func colorSpinner() {
+        guard let ring = spinner else { return }
+        let ink = look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.9)
+        var color: CGColor?
+        effectiveAppearance.performAsCurrentDrawingAppearance { color = ink.cgColor }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.strokeColor = color
+        CATransaction.commit()
+    }
+
+    override func layout() {
+        super.layout()
+        placeSpinner()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        colorSpinner()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
         occlusion = window.map { w in
-            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in self?.updateTimer() }
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in self?.updateTurning() }
         }
-        updateTimer()
+        updateTurning()
     }
 
     override func viewDidHide() {
         super.viewDidHide()
-        updateTimer()
+        updateTurning()
     }
 
     override func viewDidUnhide() {
         super.viewDidUnhide()
-        updateTimer()
+        updateTurning()
     }
 
     private var occlusion: NSObjectProtocol?
 
     deinit {
-        timer?.invalidate()
         if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
     }
 
@@ -151,6 +231,8 @@ final class StatusGlyph: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let look else { return }
+        // The ring turning is the spinner's to show.
+        if spinner != nil { return }
         let s = Self.size
         Self.draw(look, in: NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s), phase: phase)
     }
