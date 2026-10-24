@@ -602,6 +602,14 @@ final class FileCell: NSTableCellView {
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
 
+    /// A symbol's image, made once.
+    static func image(_ name: String) -> NSImage {
+        if let i = images[name] { return i }
+        let i = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+        images[name] = i
+        return i
+    }
+
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
@@ -627,7 +635,7 @@ final class FileCell: NSTableCellView {
     func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0) {
         if name != symbolName {
             symbolName = name
-            let image = Self.images[name] ?? { let i = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage(); Self.images[name] = i; return i }()
+            let image = Self.image(name)
             symbol.image = image
         }
         if title.stringValue != text { title.stringValue = text }
@@ -703,7 +711,7 @@ final class ExcerptCell: NSTableCellView {
     }
 
     func show(_ item: FinderItem, excerpt text: String) {
-        symbol.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
+        symbol.image = FileCell.image(item.symbol)
         title.attributedStringValue = Self.marking(item.title, item.marked, font: .systemFont(ofSize: 14, weight: .semibold),
                                                    bold: .systemFont(ofSize: 14, weight: .bold), color: Theme.text)
         detail.stringValue = item.detail.uppercased()

@@ -103,6 +103,25 @@ final class OrgNode {
     }
 
     var hasChildren: Bool { !given.isEmpty || (loadChildren != nil && !loaded) }
+
+    /// The children given, never loading any.
+    fileprivate var givenChildren: [OrgNode] { given }
+
+    /// Whether it would draw as another does: what its row shows.
+    fileprivate func looksLike(_ o: OrgNode) -> Bool {
+        title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
+            && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
+            && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
+    }
+
+    /// Takes another's values (the same row made again), its children
+    /// left to the caller.
+    fileprivate func take(_ o: OrgNode) {
+        block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
+        count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
+        trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
+        arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
+    }
 }
 
 /// What's being dragged over the sidebar.
@@ -260,6 +279,24 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// Shows a tree; rows open as they were, or as `openByDefault` says
     /// the first time; the row `selected` is highlighted.
     func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
+        // The same rows in the same places (most of what comes, as the
+        // sidebar is made again after each change): the new values taken
+        // over and only the rows that look different redrawn — a reload
+        // re-expands every open group, row by row.
+        if !roots.isEmpty, openByDefault == expandedByDefault, Self.sameShape(roots, nodes) {
+            var changed: [OrgNode] = []
+            Self.takeOver(roots, from: nodes, changed: &changed)
+            for n in changed {
+                outline.reloadItem(n, reloadChildren: false)
+                let row = outline.row(forItem: n)
+                guard row >= 0 else { continue }
+                outline.noteHeightOfRows(withIndexesChanged: [row])
+                // The row's view stays: its mark (the current workspace's) set again.
+                (outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView)?.marked = n.style == .section && n.emphasis && n.arrangement != nil
+            }
+            select(selected)
+            return
+        }
         roots = nodes
         expandedByDefault = openByDefault
         // Where it was scrolled to, kept: reloaded, its rows are closed for
@@ -277,12 +314,36 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             }
         }
         expandAll(nodes)
+        select(selected)
+    }
+
+    /// The row `selected` highlighted, or none.
+    private func select(_ selected: String?) {
         selecting = true
         defer { selecting = false }
         if let selected, let row = (0..<outline.numberOfRows).first(where: { (outline.item(atRow: $0) as? OrgNode)?.id == selected }) {
-            outline.selectRowIndexes([row], byExtendingSelection: false)
-        } else {
+            if outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
+        } else if outline.selectedRow >= 0 {
             outline.deselectAll(nil)
+        }
+    }
+
+    /// Two trees of the same rows, in the same places, none loading its
+    /// children as it's opened.
+    private static func sameShape(_ a: [OrgNode], _ b: [OrgNode]) -> Bool {
+        guard a.count == b.count else { return false }
+        for (x, y) in zip(a, b) {
+            guard x.id == y.id, x.style == y.style, x.isGroup == y.isGroup, x.loadChildren == nil, y.loadChildren == nil,
+                  sameShape(x.givenChildren, y.givenChildren) else { return false }
+        }
+        return true
+    }
+
+    private static func takeOver(_ old: [OrgNode], from new: [OrgNode], changed: inout [OrgNode]) {
+        for (o, n) in zip(old, new) {
+            if !o.looksLike(n) { changed.append(o) }
+            o.take(n)
+            takeOver(o.givenChildren, from: n.givenChildren, changed: &changed)
         }
     }
 

@@ -1037,9 +1037,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// The sidebar wasn't made again while it was put away.
+    private var organizationStale = false
+
     private func showSidebar(animated: Bool) {
         guard !sidebarShown else { return }
         sidebarShown = true
+        if organizationStale { refreshOrganization(now: true) }
         sidebar.isHidden = false
         root.addSubview(sidebar, positioned: .above, relativeTo: stage)
         if let palette { root.addSubview(palette, positioned: .above, relativeTo: sidebar) }
@@ -2542,6 +2546,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let org = organization
         if sidebar.organization != org { sidebar.setOrganization(org) }
         organizationWork?.cancel()
+        // Put away, it isn't made: it's made when it shows again.
+        guard sidebarShown || pinned else { return organizationStale = true }
+        organizationStale = false
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let filter = self.sidebar.filterText.lowercased()
@@ -2801,6 +2808,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// What Search reads of each block, by block: kept while the block's
+    /// content is as it was.
+    private var searchTexts: [BlockID: SearchText] = [:]
+
+    /// A block's text as Search reads it — a text's, a notebook's cells,
+    /// an output's, escapes taken out — made again only when it changed.
+    private func searchText(for b: Block) -> SearchText? {
+        let key: String
+        if let t = b.text { key = "t\(t.version)" }
+        else if let nb = b.notebook { key = "n\(nb.runs)/\(nb.cells.count)/\(nb.cells.reduce(0) { $0 + $1.source.utf8.count + ($1.output?.utf8.count ?? 0) })" }
+        else if let o = b.output { key = "o\(o.output.utf8.count)/\(o.ended != nil)" }
+        else { return nil }
+        if let st = searchTexts[b.id], st.key == key { return st }
+        func plain(_ s: String) -> String {
+            s.replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+        }
+        let text: String
+        if let t = b.text { text = t.text.string }
+        else if let nb = b.notebook { text = plain(nb.cells.map { "$ " + $0.source + "\n" + ($0.output ?? "") }.joined(separator: "\n")) }
+        else if let o = b.output { text = o.plain ? o.output : plain(o.output) }
+        else { return nil }
+        let st = SearchText(key: key, text: text)
+        if searchTexts.count > 4 * max(hosts.blocks.count, 64) { searchTexts = searchTexts.filter { hosts.block($0.key) != nil } }
+        searchTexts[b.id] = st
+        return st
+    }
+
     /// Search (§3.6): the words typed, in the contents of every block on
     /// every host — a text's lines, a terminal's commands, a page's title
     /// and address, a block's own name and place — each block a row with
@@ -2813,6 +2848,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return ([OrgNode(id: "search:hint", title: "Type to search every block", symbol: "text.magnifyingglass")], [])
         }
         let reachable = hosts.reachable()
+        let qBytes = Array(q.utf8)
         var open: Set<String> = []
         var rows: [(rank: Int, seen: Int64, node: OrgNode)] = []
         var lines = 0
@@ -2829,22 +2865,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 var hits: [OrgNode] = []
                 let id = b.id
                 let prefix = "search/\(id)"
-                // A text's lines; an output's, its escapes taken out.
-                let notebookText = b.notebook.map { nb in nb.cells.map { "$ " + $0.source + "\n" + ($0.output ?? "") }.joined(separator: "\n") }
-                let searched = b.text?.text.string ?? notebookText.map { $0
-                        .replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
-                        .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
-                } ?? b.output.map { o in
-                    o.plain ? o.output : o.output
-                        .replacingOccurrences(of: "\u{1b}\\][^\u{07}\u{1b}]*(\u{07}|\u{1b}\\\\)", with: "", options: .regularExpression)
-                        .replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
-                }
-                if let text = searched {
-                    var n = 0
-                    for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                        n += 1
-                        guard hits.count < 40, raw.lowercased().contains(q) else { continue }
-                        let line = n
+                // A text's lines; an output's, its escapes taken out — read
+                // through as made once per version of it (`SearchText`).
+                if let st = searchText(for: b) {
+                    for line in st.lines(matching: qBytes, limit: 40) {
+                        let raw = st.lines[line - 1]
                         let hit = OrgNode(id: "\(prefix)/\(line)", title: snippet(raw), symbol: "text.alignleft", detail: "line \(line)")
                         hit.action = b.kind == .output || b.kind == .notebook ? { [weak self] in self?.goTo(id) } : { [weak self] in self?.goToLine(line, in: id) }
                         hits.append(hit)
@@ -7316,5 +7341,50 @@ enum HostMenu {
         guard let item = submenu?(host) else { return }
         menu.addItem(.separator())
         menu.addItem(item)
+    }
+}
+
+/// A block's text as Search reads it: its lines as written, and lowercased
+/// bytes with where each line begins — looked through with memmem, not a
+/// line at a time.
+final class SearchText {
+    let key: String
+    let lines: [Substring]
+    private let bytes: [UInt8]
+    private let lineStarts: [Int]
+
+    init(key: String, text: String) {
+        self.key = key
+        lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        bytes = Array(text.lowercased().utf8)
+        var starts = [0]
+        for (i, c) in bytes.enumerated() where c == 0x0A { starts.append(i + 1) }
+        lineStarts = starts
+    }
+
+    /// The lines (from 1) `q` (lowercased) is in, the first `limit`.
+    func lines(matching q: [UInt8], limit: Int) -> [Int] {
+        guard !q.isEmpty, bytes.count >= q.count else { return [] }
+        var out: [Int] = []
+        bytes.withUnsafeBytes { hay in
+            q.withUnsafeBytes { needle in
+                guard let base = hay.baseAddress, let n = needle.baseAddress else { return }
+                var at = 0
+                while out.count < limit, at <= bytes.count - q.count,
+                      let p = memmem(base + at, bytes.count - at, n, q.count) {
+                    let offset = base.distance(to: UnsafeRawPointer(p))
+                    // Its line: the last start at or before it.
+                    var lo = 0, hi = lineStarts.count - 1
+                    while lo < hi {
+                        let mid = (lo + hi + 1) / 2
+                        if lineStarts[mid] <= offset { lo = mid } else { hi = mid - 1 }
+                    }
+                    if lo < lines.count { out.append(lo + 1) }
+                    // On from the next line: a line is a hit once.
+                    at = lo + 1 < lineStarts.count ? lineStarts[lo + 1] : bytes.count
+                }
+            }
+        }
+        return out
     }
 }

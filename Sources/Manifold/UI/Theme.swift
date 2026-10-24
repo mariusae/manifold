@@ -118,14 +118,22 @@ enum Theme {
         "arrow.left.arrow.right": ["arrow.right.arrow.left", "arrow.left.and.right"],
     ]
 
+    /// A symbol at a size and weight. Made once and kept: an image made
+    /// afresh is drawn afresh, each row of a list rasterizing its symbol
+    /// again whenever the list is made again.
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
+        let key = "\(name)/\(size)/\(weight.rawValue)"
+        if let image = symbols[key] { return image }
         for candidate in [name] + (symbolFallbacks[name] ?? []) + ["circle.fill"] {
-            if let image = NSImage(systemSymbolName: candidate, accessibilityDescription: nil) {
-                return image.withSymbolConfiguration(.init(pointSize: size, weight: weight))
+            if let image = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: size, weight: weight)) {
+                symbols[key] = image
+                return image
             }
         }
         return nil
     }
+
+    private static var symbols: [String: NSImage] = [:]
 }
 
 extension NSMutableAttributedString {
