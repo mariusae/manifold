@@ -821,6 +821,13 @@ final class Server {
             runPanel(block, command: command, event: event)
             done()
         case let .input(block, text):
+            // A terminal not shown since its shell ended (dormant, or before
+            // this server started): its shell started, as attaching would,
+            // at its last size; an attachment later takes it up.
+            if sessions[block] == nil, let b = node.block(block), b.kind == .terminal, let state = b.terminal {
+                let size = lastSizes[block] ?? (80, 24)
+                _ = startSession(block, state, cols: size.cols, rows: size.rows, env: attachedEnv ?? Session.unattachedEnvironment)
+            }
             guard let session = sessions[block] else { return done("that terminal has no shell running") }
             session.type(text)
             done()
@@ -1294,38 +1301,46 @@ final class Server {
             conn.close()
             return
         }
-        let session: Session
-        if let existing = sessions[id] {
-            session = existing
-        } else {
-            var history = (try? Data(contentsOf: historyFile(id))) ?? Data()
-            if let since = state.dormantSince, !history.isEmpty {
-                history.append(Session.seam(idle: state.dormantAfter ?? 0, since: since.date))
-            }
-            guard let s = Session(id: id, cwd: state.cwd, cols: req.cols, rows: req.rows,
-                                  env: req.env, history: history, command: state.command,
-                                  shell: node.desk(host).preferences.shell, queue: queue) else {
-                conn.close()
-                return
-            }
-            s.onExit = { [weak self] status in self?.sessionExited(id, status: status) }
-            s.onTitle = { [weak self] title in
-                guard self?.node.block(id)?.terminal?.title != title else { return }
-                self?.append(.title(title), to: .block(id))
-            }
-            s.onStatus = { [weak self] signals in self?.status(id, signals) }
-            s.onPasswordInput = { [weak self] on in
-                let frame = Frame.message(ServerMessage.passwordInput(block: id, on))
-                for c in self?.clients ?? [] { c.send(frame) }
-            }
-            sessions[id] = s
-            session = s
-            append(.shell(.started(pid: s.pid)), to: .block(id))
+        attachedEnv = req.env
+        guard let session = sessions[id] ?? startSession(id, state, cols: req.cols, rows: req.rows, env: req.env) else {
+            conn.close()
+            return
         }
         conn.onFrame = { [weak session, unowned conn] frame in session?.handle(frame, from: conn) }
         conn.onClose = { [weak session, unowned conn] in session?.detach(conn) }
         session.attach(conn, cols: req.cols, rows: req.rows, resume: req.resume == true, ttyModes: req.ttyModes == true,
                        inputID: req.inputID, input: req.input)
+    }
+
+    /// The terminal environment the last attachment gave (the app's), for
+    /// a shell started with none attached; and each terminal's size when
+    /// its shell last ended.
+    private var attachedEnv: [String: String]?
+    private var lastSizes: [BlockID: (cols: UInt16, rows: UInt16)] = [:]
+
+    /// A terminal's shell, started: with its transcript so far, in its
+    /// directory.
+    private func startSession(_ id: BlockID, _ state: TerminalState, cols: UInt16, rows: UInt16, env: [String: String]) -> Session? {
+        var history = (try? Data(contentsOf: historyFile(id))) ?? Data()
+        if let since = state.dormantSince, !history.isEmpty {
+            history.append(Session.seam(idle: state.dormantAfter ?? 0, since: since.date))
+        }
+        guard let s = Session(id: id, cwd: state.cwd, cols: cols, rows: rows,
+                              env: env, history: history, command: state.command,
+                              shell: node.desk(host).preferences.shell, queue: queue) else { return nil }
+        s.onExit = { [weak self] status in self?.sessionExited(id, status: status) }
+        s.onTitle = { [weak self] title in
+            guard self?.node.block(id)?.terminal?.title != title else { return }
+            self?.append(.title(title), to: .block(id))
+        }
+        s.onStatus = { [weak self] signals in self?.status(id, signals) }
+        s.onPasswordInput = { [weak self] on in
+            let frame = Frame.message(ServerMessage.passwordInput(block: id, on))
+            for c in self?.clients ?? [] { c.send(frame) }
+        }
+        sessions[id] = s
+        append(.shell(.started(pid: s.pid)), to: .block(id))
+        return s
     }
 
     // MARK: Forwarded ports (§8)
@@ -1772,6 +1787,7 @@ final class Server {
 
     private func sessionExited(_ id: BlockID, status: Int32) {
         guard let s = sessions.removeValue(forKey: id) else { return }
+        lastSizes[id] = s.size
         // Its transcript whole, to show as it was until a shell starts again.
         try? FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
         try? s.takeHistory().write(to: historyFile(id), options: .atomic)
@@ -1814,8 +1830,11 @@ final class Server {
         let cutoff = Int64(Date().addingTimeInterval(-Double(hours) * 3600).timeIntervalSince1970 * 1000)
         let registry = node.registry(host)
         for (id, session) in sessions {
-            guard let entry = registry.blocks[id], entry.lastSeen.wall < cutoff, !session.isBusy, !session.isAttached else { continue }
-            let idle = Int(Date().timeIntervalSince1970 - Double(entry.lastSeen.wall) / 1000)
+            // Typed into by `mani run` counts as seen.
+            guard let entry = registry.blocks[id], !session.isBusy, !session.isAttached else { continue }
+            let seen = max(entry.lastSeen.wall, session.typedAt.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0)
+            guard seen < cutoff else { continue }
+            let idle = Int(Date().timeIntervalSince1970 - Double(seen) / 1000)
             log("terminal \(id) idle \(idle)s off screen: going dormant")
             session.endForIdleness(idleSeconds: idle)
         }

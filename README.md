@@ -1228,7 +1228,11 @@ is migrated into logs on first run.
     or `--over`, by `--at` another tile. `mani run <terminal> <command>`
     types a command into a terminal's shell (through its host, shown or
     not); `--wait` waits for it to end, prints its output and exits with
-    its status (`--timeout`: 124 if it doesn't).
+    its status (`--timeout`: 124 if it doesn't). A terminal with no shell
+    running — dormant, or not shown since its host's server started —
+    has one started for it, as showing it would: in its directory, at
+    its last size (else 80×24), the command typed once it prompts; the
+    tile, shown later, takes up that shell.
   - **Panels.** `mani ui new < widgets.json` makes a panel: widgets an
     agent describes as JSON — labels and Markdown, buttons, fields,
     text, checkboxes, selects, sliders, progress, tables and lists,

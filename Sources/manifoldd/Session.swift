@@ -31,7 +31,7 @@ final class Session {
     private(set) var unsaved = false
     private var titles = TitleScanner()
     private var attachments: [any Channel] = []
-    private var size: (cols: UInt16, rows: UInt16)
+    private(set) var size: (cols: UInt16, rows: UInt16)
     private var input = Data()
     private var inputSource: DispatchSourceWrite?
     private var inputSourceActive = false
@@ -40,6 +40,14 @@ final class Session {
     /// as dormancy rather than an exit.
     private(set) var endedForIdleness = false
     private(set) var idleSeconds = 0
+    /// When `mani run` last typed here: as good as being looked at, for
+    /// going dormant.
+    private(set) var typedAt: Date?
+    /// Whether the shell has shown its first prompt (OSC 133;A). What
+    /// `mani run` types before then waits for it (`typedAhead`): a shell
+    /// starting up may set its terminal and lose what was typed ahead.
+    private var prompted = false
+    private var typedAhead = Data()
 
     var onExit: ((Int32) -> Void)?
     var onTitle: ((String) -> Void)?
@@ -462,6 +470,16 @@ final class Session {
             input.append(Data(StatusSignal.queryReply.utf8))
             writeInput()
         }
+        // Asked what the terminal is (DA1) with none attached to say (a
+        // shell `mani run` started): answered as the app's would, rather
+        // than leaving fish to wait 10 seconds and complain.
+        if attachments.isEmpty, data.range(of: Self.deviceQuery) != nil || data.range(of: Self.deviceQuery0) != nil {
+            input.append(Self.deviceAnswer)
+            writeInput()
+            // Answered: an attachment isn't to answer it again from the replay.
+            replayShown = true
+        }
+        if !prompted, signals.contains(.prompt) { promptShown() }
         if !signals.isEmpty { onStatus?(signals) }
         // A prompt for a password: looked at as output comes (sudo and ssh
         // set the terminal, then write the prompt), and again a moment after
@@ -474,13 +492,39 @@ final class Session {
         passOn(data)
     }
 
-    /// Typed into the shell, as if at its keyboard (`mani run`).
+    /// Typed into the shell, as if at its keyboard (`mani run`); held
+    /// until its first prompt, or a few seconds for a shell that never
+    /// marks one.
     func type(_ text: String) {
         queue.async { [weak self] in
             guard let self, !self.exited else { return }
-            self.input.append(Data(text.utf8))
-            self.writeInput()
+            self.typedAt = Date()
+            if self.prompted {
+                self.input.append(Data(text.utf8))
+                self.writeInput()
+                return
+            }
+            if self.typedAhead.isEmpty {
+                self.queue.asyncAfter(deadline: .now() + Self.promptWait) { [weak self] in self?.promptShown() }
+            }
+            self.typedAhead.append(Data(text.utf8))
         }
+    }
+
+    static let promptWait: TimeInterval = 5
+    /// Primary device attributes, asked and answered as Ghostty does (a VT220
+    /// with color).
+    private static let deviceQuery = Data("\u{1b}[c".utf8), deviceQuery0 = Data("\u{1b}[0c".utf8)
+    private static let deviceAnswer = Data("\u{1b}[?62;22c".utf8)
+
+    /// The first prompt (or the wait for it over): what was typed ahead, typed.
+    private func promptShown() {
+        guard !prompted else { return }
+        prompted = true
+        guard !typedAhead.isEmpty, !exited else { return }
+        input.append(typedAhead)
+        typedAhead = Data()
+        writeInput()
     }
 
     private func writeInput() {
@@ -802,6 +846,26 @@ final class Session {
         if FileManager.default.isExecutableFile(atPath: helpers.appendingPathComponent("mani").path) { dirs.append(helpers.path) }
         if FileManager.default.isExecutableFile(atPath: own.appendingPathComponent("mani").path) { dirs.append(own.path) }
         return dirs
+    }
+
+    /// The terminal's environment for a shell started with no terminal
+    /// attached (`mani run`), as the app's would give it: Ghostty's
+    /// resources and terminfo from the app bundle this server is in, if
+    /// it is in one.
+    static var unattachedEnvironment: [String: String] {
+        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let contents = exe.deletingLastPathComponent().deletingLastPathComponent()
+        let resources = contents.appendingPathComponent("Resources")
+        var env = ["TERM": "xterm-256color", "COLORTERM": "truecolor"]
+        if FileManager.default.fileExists(atPath: resources.appendingPathComponent("ghostty").path) {
+            env["GHOSTTY_RESOURCES_DIR"] = resources.appendingPathComponent("ghostty").path
+            env["GHOSTTY_BIN_DIR"] = contents.appendingPathComponent("MacOS").path
+        }
+        if FileManager.default.fileExists(atPath: resources.appendingPathComponent("terminfo").path) {
+            env["TERM"] = "xterm-ghostty"
+            env["TERMINFO"] = resources.appendingPathComponent("terminfo").path
+        }
+        return env
     }
 
     /// `mani open --wait`, as a shell's `$EDITOR`: the `mani` beside this
