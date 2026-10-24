@@ -3633,6 +3633,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let (c, _) = finderCorpus(verbs: true)
             return String(format: "snapshot of %d in %.1f ms", c.count, Date().timeIntervalSince(start) * 1000)
         }
+        if query.hasPrefix("blocks ") {
+            let q = String(query.dropFirst(7)), start = Date()
+            let n = finderBlockItems(q).count
+            return String(format: "%d rows in %.1f ms", n, Date().timeIntervalSince(start) * 1000)
+        }
         return finder.debugTime(query)
     }
     func debugFinderChoose() { finder.debugChoose() }
@@ -3756,24 +3761,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func finderBlockItems(_ query: String) -> [FinderItem] {
         guard !query.isEmpty else { return [] }
         let q = query.lowercased()
+        let needle = Array(q.utf8)
         var items: [FinderItem] = []
         var seen = Set<BlockID>()
         let here = arrangement.map { a in a.placements.map { ($0.block, Optional($0.id)) } } ?? []
         let rest = hosts.blocks.filter { $0.kind == .text }.map { ($0.id, PlacementID?.none) }
         for (blockID, placement) in here + rest where seen.insert(blockID).inserted {
-            guard let b = hosts.block(blockID), let text = b.text?.text.string, text.lowercased().contains(q) else { continue }
-            var line = 0, firstLine = 0
-            var matches: [String] = []
-            for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                line += 1
-                guard raw.lowercased().contains(q) else { continue }
-                if firstLine == 0 { firstLine = line }
-                matches.append(String(raw))
-            }
-            let at = firstLine, block = b.id
+            // Each text read through as made once per version (`SearchText`),
+            // not lowercased afresh, line by line, at every key.
+            guard let b = hosts.block(blockID), b.text != nil, let st = searchText(for: b) else { continue }
+            let hits = st.lines(matching: needle, limit: 10_000)
+            guard let at = hits.first else { continue }
+            let matches = hits.prefix(6).map { String(st.lines[$0 - 1]) }
+            let count = hits.count, block = b.id
             let place = b.path.map { $0.deletingLastPathComponent.abbreviatingHome } ?? (b.place.map { "Note · " + $0.abbreviatingHome } ?? "Note")
             items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle, detail: place,
-                                    note: matches.count == 1 ? "line \(at)" : "\(matches.count) lines",
+                                    note: count == 1 ? "line \(at)" : "\(count) lines",
                                     run: { [weak self] in
                                         guard let self else { return }
                                         if let id = placement, self.arrangement?.placement(id) != nil, let e = self.views[id] as? EditorView {
