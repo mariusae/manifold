@@ -313,7 +313,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 expandAll(n.children)
             }
         }
+        // As one change: each group opened alone has the outline measure
+        // every row again (groups × rows, 30 ms and more for a full desk).
+        outline.beginUpdates()
         expandAll(nodes)
+        outline.endUpdates()
         select(selected)
     }
 
