@@ -170,13 +170,13 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: .init("entry"), owner: nil) as? OutlineLensRow ?? {
-            let r = OutlineLensRow()
+        let cell = tableView.makeView(withIdentifier: .init("entry"), owner: nil) as? OutlineRow ?? {
+            let r = OutlineRow()
             r.identifier = .init("entry")
             return r
         }()
         let e = entries[row]
-        cell.show(OutlineLensView.Entry(id: row, line: e.code ? nil : 0, title: e.title, detail: e.detail, level: e.level, failed: e.failed, running: e.running))
+        cell.show(OutlineEntry(id: row, line: e.code ? nil : 0, title: e.title, detail: e.detail, level: e.level, failed: e.failed, running: e.running))
         return cell
     }
 

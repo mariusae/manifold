@@ -327,19 +327,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: The outline (§7.5)
 
     /// The commands (an agent's turns), each with how it ended; chosen,
-    /// the terminal goes there and the command's whole output opens beside
-    /// as a block of its own. An agent's is its tile's outline, as ticks
-    /// at its upper right; a shell's commands have their dots instead.
-    /// Either is listed in the sidebar at the tile's left — in the
+    /// the terminal goes there. Its tile's outline, as ticks at its upper
+    /// right, and listed in the sidebar at the tile's left — in the
     /// superview, as the scrubber is (Ghostty's layer is this view's): the
-    /// terminal moves over to make room for it.
+    /// terminal moves over to make room for it. A shell's commands keep
+    /// their dots too, for what's done with a command (copied, a block).
     private lazy var commandsOutline: Outline = {
         let o = Outline()
         o.onPick = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return }
-            let id = self.outlined[i].id
-            self.go(toCommand: id)
-            _ = self.showOutput(ofCommand: id, beside: self.placement)
+            self.go(toCommand: self.outlined[i].id)
             self.commandsOutline.current = i
         }
         // A command dragged out: its text (to type again, to keep in a note).
@@ -380,7 +377,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private var outlined: [ShellCommand] {
         isAgent && !turns.isEmpty ? commands.filter { turns.contains($0.id) } : commands
     }
-    var outline: Outline? { isAgent ? commandsOutline : nil }
+    var outline: Outline? { commandsOutline }
     private var sidebar: TileSidebar?
     /// The frame the grid gave, the sidebar's room taken from it.
     private var given: NSRect?

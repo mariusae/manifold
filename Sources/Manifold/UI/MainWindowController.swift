@@ -374,7 +374,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
-            for case let t as OutlineLensView in views.values { t.documentChanged() }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
             for case let n as NotebookView in views.values { n.codeFont = codeFont; n.documentChanged() }
@@ -497,6 +496,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func view(for shown: Shown) -> PaneContent {
+        // A tile kept from when there was an outline lens (a tile's sidebar
+        // is its outline now): the block through its own lens.
+        if shown.placement.lens == .outline, let b = shown.block {
+            var own = shown
+            own.placement.lens = Lens.default(for: b.kind, path: b.path)
+            return view(for: own)
+        }
         let p = shown.placement
         // A file shown is a file read: one whose text never came is asked
         // for until it does.
@@ -593,13 +599,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             v = pv
         case .outline:
-            // The block's commands or headings, as a list beside it (§3.8).
-            let tv = OutlineLensView(placement: p.id, block: p.block)
-            tv.delegate = self
-            let subject = p.block
-            tv.subject = subject
-            tv.source = { [weak self] in self?.hosts.block(subject) }
-            v = tv
+            // (Shown as the block's own view, above.)
+            v = PlaceholderView(placement: p.id, block: p.block, label: hosts.label(of: p.block.host))
         case .preview where Lens.viewRendering(for: shown.path) == .markdown:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.imageSource = { [weak self] id in self?.imageSource(id) }
@@ -1433,7 +1434,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }.joined(separator: "\n---\n")
     }
     /// The outline lens made last (placement ids sort by time).
-    var debugOutlineLens: OutlineLensView? { content.views.compactMap { $0 as? OutlineLensView }.max { $0.placement < $1.placement } }
     var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
     var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
 
@@ -3660,6 +3660,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return finder.debugTime(query)
     }
     func debugFinderChoose() { finder.debugChoose() }
+    func debugSearchOutline(_ query: String) -> String {
+        guard let f = arrangement?.focused, views[f]?.outline != nil else { return "no outline" }
+        if !finder.isShowing { searchOutline(of: f) }
+        return finder.debugQuery(query).joined(separator: "\n")
+    }
     func debugFinderScope(_ n: Int) { finder.debugScope(n) }
     func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
@@ -4434,6 +4439,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// its tiles by column, and the headings of the text in them, set in
     /// under their tile; those whose words have every word of the query.
     /// ↩ goes to a tile, or to a heading in its editor or preview.
+    /// ⇧⌘O: the focused tile's outline — a text's headings or symbols, a
+    /// terminal's commands, a PDF's contents, a diff's files — to search,
+    /// a query narrowing it; chosen, the tile goes there, as from its
+    /// sidebar.
+    @objc func searchOutline(_ sender: Any?) {
+        guard let f = arrangement?.focused else { return NSSound.beep() }
+        searchOutline(of: f)
+    }
+
+    func searchOutline(of placement: PlacementID) {
+        guard let view = views[placement], let outline = view.outline, !outline.items.isEmpty else { return NSSound.beep() }
+        let symbol: (Outline.Item) -> String = { item in
+            view is TerminalView ? "chevron.right" : item.code ? "curlybraces" : "number"
+        }
+        finder.showOutline({ query in
+            let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+            return outline.items.enumerated().compactMap { i, item -> FinderItem? in
+                guard words.isEmpty || words.allSatisfy({ (item.title + " " + item.detail).lowercased().contains($0) }) else { return nil }
+                // Nested as it is while all of it shows; found, flat.
+                return FinderItem(symbol: symbol(item), title: item.title, detail: item.detail, note: "",
+                                  level: words.isEmpty ? item.level : 0, run: { outline.pick(i) })
+            }
+        }, startingAt: outline.current, placeholder: "Search the outline…", over: window)
+    }
+
     @objc func goToTile(_ sender: Any?) {
         guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
         // It begins where you are: the focused tile, and in a text, the
@@ -5623,9 +5653,11 @@ extension MainWindowController: GridDelegate {
                 menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "S") { [weak self] in self?.save(block, from: placement) })
             }
         }
-        if [.terminal, .agent, .editor, .preview].contains(p.lens) {
-            menu.addItem(ClosureMenuItem("Show Outline Beside", symbol: "list.bullet.rectangle") { [weak self] in
-                self?.showOutline(of: block, beside: placement)
+        if views[placement]?.outline != nil {
+            menu.addItem(ClosureMenuItem("Search Outline…", symbol: "list.bullet.rectangle", key: "O") { [weak self] in
+                guard let self else { return }
+                self.focus(placement)
+                self.searchOutline(of: placement)
             })
         }
         if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
@@ -5887,39 +5919,6 @@ extension MainWindowController: EditorViewDelegate {
         guard let f = arrangement?.focused, let v = views[f], v.hasSidebar else { return NSSound.beep() }
         v.toggleSidebar()
         content.sidebarChanged(f)
-    }
-
-    /// ⇧⌘O: the focused tile's outline beside it.
-    @objc func showOutlineBeside(_ sender: Any?) {
-        guard let f = focusedShown, [.terminal, .agent, .editor, .preview].contains(f.lens) else { return NSSound.beep() }
-        showOutline(of: f.placement.block, beside: f.id)
-    }
-
-    /// A block through its outline lens (§3.8), beside its tile: its
-    /// commands or headings as a list, a view of the block itself.
-    func showOutline(of block: BlockID, beside placement: PlacementID) {
-        show(block, lens: .outline, .besideOpener(placement), exact: true)
-    }
-
-    func outline(_ view: OutlineLensView, go entry: OutlineLensView.Entry) {
-        let subject = view.subject ?? view.block
-        let shown = views.values.filter { $0.block == subject && $0.superview != nil && !$0.isHidden && !($0 is OutlineLensView) }
-        if shown.isEmpty, let b = hosts.block(subject) {
-            if let path = b.path, let line = entry.line { pendingJump = (path, line + 1, nil) }
-            show(subject, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(view.placement))
-            return
-        }
-        for v in shown {
-            switch v {
-            case let t as TerminalView:
-                t.go(toCommand: entry.id)
-                t.showOutput(ofCommand: entry.id, beside: view.placement)
-            case let e as EditorView: if let line = entry.line { e.select(line: line + 1, column: nil) }
-            case let m as MarkdownView: m.scroll(toHeading: entry.id)
-            default: break
-            }
-            if let p = arrangement?.placement(v.placement), arrangement?.isStashed(p.id) == true { focus(p.id) }
-        }
     }
 
     func editorEditedChanged(_ view: EditorView) {
@@ -7497,7 +7496,6 @@ enum StatusGroup: Int, CaseIterable {
     }
 }
 
-extension MainWindowController: OutlineLensViewDelegate {}
 
 extension MainWindowController: OutputViewDelegate {
     func output(_ view: OutputView, showSource source: BlockID, command: Int) {

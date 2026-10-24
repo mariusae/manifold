@@ -79,7 +79,10 @@ and Mona Sans (bundled).
   there; right-clicking a title is always the tile's menu). With ⌘E, each E
   moves the choice a card down (⇧⌘E back up), and letting go of ⌘ brings
   the chosen one forward to the top (Escape leaves things be; a card
-  clicked is chosen at once); without a stack, ⌘E finds the word at
+  clicked is chosen at once) — or move the pointer over the cards and
+  they follow it from then on, as when fanned from the sheets: the card
+  under it peeks out, a click brings it to the top, and letting go of ⌘
+  leaves them open; without a stack, ⌘E finds the word at
   hand. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
@@ -649,26 +652,26 @@ around it, and comes back with its history.
   carries the block it opens as when clicked — the turn, the command's
   output — made then if it wasn't yet. A diff's file carries itself, as a
   file ⇧-dragged from a listing does; dragged plainly, an item carries
-  what it does from the sidebar (a command's text, a diff's file). A **shell's commands** have a dot each instead, beside the
+  what it does from the sidebar (a command's text, a diff's file). A **shell's commands** have a dot each too, beside the
   prompt (red for one that failed, the accent for one still running):
   rest the pointer on a dot for **Copy Command and Output** and **Show as
   Block**.
 - **A tile's own sidebar**: the same outline — a terminal's commands (an
   agent's turns), each with how it ended and when, clicked, the terminal
-  goes there and the command's whole output opens beside as a block of
-  its own; a Markdown text's, a PDF's, a diff's or a web page's — as a
+  goes there (its ⋯ shows the command's output, or the turn, as a block);
+  a Markdown text's, a source file's, a PDF's, a diff's or a web page's — as a
   list at the tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
   at its top). Shown or not, it's kept with the tile.
-- **The outline lens**: Show Outline Beside
-  (⇧⌘O, or in a terminal's, editor's or preview's bar menu) shows the
-  block through its outline lens beside it, listing the commands (with
-  their outcome and when) or the headings, each clicked to go there in
-  the block's tile — or, with none shown, in one opened beside. A
-  terminal's command clicked there also opens its output as a block of
+- **Search Outline** (⇧⌘O, or in a tile's bar menu): the focused tile's
+  outline — its commands, headings, symbols, contents or files — in the
+  finder, nested as it is, where you are selected; type to narrow it
+  (every word somewhere in an entry), ↑↓ and ⏎ to go there, as clicking
+  it in the sidebar does. A command's **output** (Show Output in its ⋯,
+  or Show as Block on its dot) opens as a block of
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in
   the terminal's palette and font — read-only, with Copy (the command
@@ -926,7 +929,7 @@ around it, and comes back with its history.
   `manifold --install-skill`): what was asked, the working tree as the
   turn began and as it ended (a checkpoint, in a git repository), the
   files it changed, its last words. Its item in the terminal's outline
-  (its ticks, or its sidebar) or the outline lens opens the turn as a block
+  (its ticks, or its sidebar) goes to the turn; its ⋯ opens the turn as a block
   of its own: what was asked, what it did (its words and each tool it
   used, from Claude Code's transcript), what it said, the files it
   changed and **Changes in this turn** as links — a block linked from
