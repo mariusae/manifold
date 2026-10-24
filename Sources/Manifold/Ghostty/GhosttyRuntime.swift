@@ -273,7 +273,7 @@ final class GhosttyRuntime {
             return true
         case GHOSTTY_ACTION_SCROLLBAR:
             let s = action.action.scrollbar
-            DispatchQueue.main.async { view?.scrollbarChanged(total: Int(s.total), offset: Int(s.offset), len: Int(s.len)) }
+            view?.noteScrollbar(total: Int(s.total), offset: Int(s.offset), len: Int(s.len))
             return true
         case GHOSTTY_ACTION_RENDER, GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_PWD,
              GHOSTTY_ACTION_COLOR_CHANGE, GHOSTTY_ACTION_RENDERER_HEALTH,

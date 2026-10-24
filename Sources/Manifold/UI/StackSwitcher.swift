@@ -145,10 +145,15 @@ final class StackSwitcherView: NSView {
         let now = link.timestamp
         let dt = lastTick == 0 ? 1.0 / 60 : min(now - lastTick, 1.0 / 20)
         lastTick = now
-        // Eased toward where they're going, quickly at first.
-        place += (CGFloat(selection) - place) * CGFloat(1 - exp(-dt * 14))
-        openness += (targetOpenness - openness) * CGFloat(1 - exp(-dt * (isClosing ? 20 : 14)))
-        let settled = abs(place - CGFloat(selection)) < 0.002 && abs(openness - targetOpenness) < 0.002
+        // Eased toward where they're going, quickly at first. Closing, more
+        // quickly still, and done once the cards are all but flat: the tile
+        // chosen comes to the top then (and takes what's typed), not when
+        // the last of the easing has run out — a third of a second more.
+        let rate: Double = isClosing ? 26 : 14
+        place += (CGFloat(selection) - place) * CGFloat(1 - exp(-dt * rate))
+        openness += (targetOpenness - openness) * CGFloat(1 - exp(-dt * rate))
+        let near: (CGFloat, CGFloat) = isClosing ? (0.05, 0.03) : (0.002, 0.002)
+        let settled = abs(place - CGFloat(selection)) < near.0 && abs(openness - targetOpenness) < near.1
         if settled {
             place = CGFloat(selection)
             openness = targetOpenness

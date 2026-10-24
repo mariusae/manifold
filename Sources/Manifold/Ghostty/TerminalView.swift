@@ -142,6 +142,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         glow.removeFromSuperview()
         if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
         linkMonitor = nil
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
         locateWork?.cancel()
         link.stop()
         guard let surface else { return }
@@ -214,8 +216,60 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             layoutScroller()
             // The outline hides with the terminal (stashed, out of sight), and comes back with it.
             sidebar?.isHidden = isHidden || !sidebarOn
+            updateOcclusion()
         }
     }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        updateOcclusion()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        updateOcclusion()
+    }
+
+    /// Ghostty draws only a terminal that can be seen: in a window on
+    /// screen, not hidden itself or by a view it's in (a stashed tile, one
+    /// behind another maximized) — out of sight it only keeps its screen
+    /// up to date, drawing nothing, telling of no scrollbar.
+    private func updateOcclusion() {
+        guard let surface else { return }
+        let seen = window.map { $0.occlusionState.contains(.visible) } == true && !isHiddenOrHasHiddenAncestor
+        guard seen != occlusionSeen else { return }
+        occlusionSeen = seen
+        ghostty_surface_set_occlusion(surface, seen)
+        if seen, locateStale {
+            locateStale = false
+            scheduleLocate()
+        }
+    }
+    /// The commands weren't looked for while it was out of sight.
+    private var locateStale = false
+    private var occlusionSeen: Bool?
+    private var occlusionObserver: NSObjectProtocol?
+
+    /// The scrollbar as ghostty tells it, from its thread — at every frame
+    /// drawn while output streams: the latest kept, and taken up once on
+    /// the main thread however many came meanwhile.
+    nonisolated func noteScrollbar(total: Int, offset: Int, len: Int) {
+        scrollbarLock.lock()
+        let scheduled = pendingScrollbar != nil
+        pendingScrollbar = (total, offset, len)
+        scrollbarLock.unlock()
+        guard !scheduled else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scrollbarLock.lock()
+            let s = self.pendingScrollbar
+            self.pendingScrollbar = nil
+            self.scrollbarLock.unlock()
+            if let s, s != self.scrollbar { self.scrollbarChanged(total: s.0, offset: s.1, len: s.2) }
+        }
+    }
+    private let scrollbarLock = NSLock()
+    nonisolated(unsafe) private var pendingScrollbar: (Int, Int, Int)?
     /// The outline asked for, shown or not just now.
     private var sidebarOn = false
 
@@ -515,7 +569,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     private func scheduleLocate() {
         locateWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.locate() }
+        // Out of sight, nothing shows where they are: looked for once it's
+        // seen again (and at once by what needs one, `go(toCommand:)`).
+        guard occlusionSeen != false else { return locateStale = true }
+        let work = DispatchWorkItem { [weak self] in self?.locate(now: false) }
         locateWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
@@ -565,20 +622,36 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// newest from the bottom up, so one gone or not to be found leaves the
     /// rest found. They are all looked for again each time, so a screen
     /// cleared or trimmed is simply read anew.
-    func locate() {
+    /// `now`: here and now, for what needs the answer (going to one);
+    /// else the screen read here and looked through on another thread (a
+    /// scrollback's worth of lines, after every command), the answer taken
+    /// if nothing has been asked since.
+    func locate(now: Bool = true) {
+        locateGeneration &+= 1
         guard scrollbar.total > 0, !commands.isEmpty else {
             if !located.isEmpty { located = [:]; updateDots() }
             return
         }
         guard let lines = screenLines() else { return }
-        var found: [Int: Int] = [:]
-        for (k, l) in CommandLines.locate(commands.map(\.text), in: lines.map { String($0.text) }) { found[commands[k].id] = lines[l].row }
-        if found != located {
-            located = found
-            updateDots()
-            markCurrentCommand()
+        let texts = lines.map { String($0.text) }, rows = lines.map(\.row), commands = self.commands
+        let generation = locateGeneration
+        let take = { [weak self] (found: [Int: Int]) in
+            guard let self, self.locateGeneration == generation else { return }
+            var byID: [Int: Int] = [:]
+            for (k, l) in found { byID[commands[k].id] = rows[l] }
+            if byID != self.located {
+                self.located = byID
+                self.updateDots()
+                self.markCurrentCommand()
+            }
+        }
+        if now { return take(CommandLines.locate(commands.map(\.text), in: texts)) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = CommandLines.locate(commands.map(\.text), in: texts)
+            DispatchQueue.main.async { take(found) }
         }
     }
+    private var locateGeneration = 0
 
     /// What the screen shows now, as text: the rows in view, blank ones
     /// at the end left off (for a card of the terminal).
@@ -679,7 +752,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             ghostty_surface_set_display_id(surface, id)
         }
         viewDidChangeBackingProperties()
-        if let surface { ghostty_surface_set_occlusion(surface, window != nil) }
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = window.map { w in
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateOcclusion() }
+            }
+        }
+        occlusionSeen = nil
+        updateOcclusion()
         syncFocus()
         watchCommandKey()
     }

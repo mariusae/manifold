@@ -106,6 +106,10 @@ final class GridView: NSView, NSDraggingSource {
     /// mostly shows again the workspace it showed two switches ago, and a
     /// pill costs more to make than to show again.
     private var sparePills: [PlacementID: TilePill] = [:]
+    /// How long a tile takes to glide to a new place or size.
+    static let glide: TimeInterval = 0.18
+    /// Debugging: grid layouts so far (the debug "layouts").
+    static var layouts = 0
     private var columnDividers: [DividerView] = []
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
@@ -584,6 +588,7 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     override func layout() {
+        Self.layouts += 1
         super.layout()
         if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
             // One tile over everything; the rest wait behind it.
@@ -632,10 +637,16 @@ final class GridView: NSView, NSDraggingSource {
         var frameNow: [PlacementID: NSRect] = [:]
         func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
             if gliding, let was, was != .zero, was != frame, !view.isHidden {
+                // A tile's content takes its new size at once and glides to
+                // its place: sized at every step, a terminal would resize its
+                // shell at each (over the network, on another host), an
+                // editor lay its text out again at each.
+                let resized = view is PaneContent && was.size != frame.size
+                if resized { view.setFrameSize(frame.size) }
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.18
+                    ctx.duration = Self.glide
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                    view.animator().frame = frame
+                    if resized { view.animator().setFrameOrigin(frame.origin) } else { view.animator().frame = frame }
                 }
             } else {
                 view.frame = frame
@@ -1176,7 +1187,7 @@ final class GridView: NSView, NSDraggingSource {
         // and fans out once it has.
         if !roomMade, delegate?.gridRoomForFan(top) == true {
             fanWaiting = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.glide) { [weak self] in
                 guard let self else { return }
                 self.fanWaiting = false
                 let steps = self.fanSteps
