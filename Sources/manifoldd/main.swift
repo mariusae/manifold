@@ -6,8 +6,8 @@ import ManifoldCore
 // manifoldd bridge [--name NAME]
 //                           stdio to the server's socket, starting it if need
 //                           be (what a client runs on a remote host over ssh)
-// manifoldd open [--wait] FILE...
-//                           have the app open files (a remote shell's $EDITOR)
+// manifoldd mani ...       the `mani` command, on a host Manifold installed
+//                           this server on (a script there named so runs it)
 // manifoldd stop            end the server and every session
 // manifoldd state           print what the host has
 
@@ -22,59 +22,21 @@ case "bridge":
     }
     Bridge.run(name: name)
 
-case "open":
-    // What the `manifold` script on a host runs for agents' hooks too.
-    if args.dropFirst().first == "agent" { AgentHookCommand.run(Array(args.dropFirst(2))) }
-    if let flag = args.dropFirst().first, flag == "--install-skill" || flag == "--uninstall-skill" {
-        AgentSkill.runInstall(Array(args.dropFirst(2)), uninstall: flag == "--uninstall-skill")
-    }
-    var wait = false
-    var files: [String] = []
-    // `manifold diff` on a host where the `manifold` script runs us.
-    if args.dropFirst().first == "diff" {
-        var rest = Array(args.dropFirst(2))
-        var title: String?
-        if let i = rest.firstIndex(of: "--title"), i + 1 < rest.count {
-            title = rest[i + 1]
-            rest.removeSubrange(i...(i + 1))
-        } else if let t = rest.first, !t.hasPrefix("-") {
-            title = t
-        }
-        let patch: String
-        switch OpenCommand.readPatch() {
-        case .success(let p): patch = p
-        case .failure(let error):
-            FileHandle.standardError.write(Data("manifold: \(error.message)\n".utf8))
-            exit(1)
-        }
-        guard let fd = try? UnixSocket.connect(path: Paths.socket) else {
-            FileHandle.standardError.write(Data("manifold: the server isn't running here\n".utf8))
-            exit(1)
-        }
-        let beside = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:))
-        exit(OpenCommand.runPatch(fd: fd, patch: patch, root: FileManager.default.currentDirectoryPath, title: title, beside: beside, name: "manifoldd open"))
-    }
-    for a in args.dropFirst() {
-        if a == "--wait" || a == "-w" { wait = true } else { files.append(a) }
-    }
-    let paths: [String]
-    switch OpenCommand.resolve(files) {
-    case .success(let p): paths = p
-    case .failure(let error):
-        FileHandle.standardError.write(Data("manifold: \(error.message)\n".utf8))
-        exit(1)
-    }
-    guard let fd = try? UnixSocket.connect(path: Paths.socket) else {
-        FileHandle.standardError.write(Data("manifold: the server isn't running here\n".utf8))
-        exit(1)
-    }
-    let beside = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:))
-    exit(OpenCommand.run(fd: fd, paths: paths, beside: beside, wait: wait, name: "manifoldd open"))
+case "mani":
+    // `mani` on a host Manifold installed this server on: a script beside
+    // it runs us so.
+    Mani.main(Array(args.dropFirst()), platform: Mani.Platform(
+        request: { body in
+            guard let fd = try? UnixSocket.connect(path: Paths.socket) else { Mani.fail("the server isn't running here") }
+            return body(fd)
+        },
+        bringForward: nil))
 
 case "serve":
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
     ToolPath.extend()
+    AgentSkill.refresh()
     var server: Server?
     do {
         Mux.log = { log($0) }
@@ -142,6 +104,6 @@ case "state":
     }
 
 default:
-    FileHandle.standardError.write(Data("usage: manifoldd [serve | attach <block> | stop | state]\n".utf8))
+    FileHandle.standardError.write(Data("usage: manifoldd [serve | attach <block> | bridge | mani ... | stop | state]\n".utf8))
     exit(2)
 }

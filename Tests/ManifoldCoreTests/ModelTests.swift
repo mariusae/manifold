@@ -1153,8 +1153,8 @@ private func scratchDestination(_ name: String, filter: String? = nil) throws ->
         #expect(try Bootstrap.probe(dest).hash == Bootstrap.sha256(binary))
     }
     let left = try FileManager.default.contentsOfDirectory(atPath: bin.path).sorted()
-    #expect(left == ["manifold", "manifoldd"])
-    #expect(FileManager.default.isExecutableFile(atPath: bin.appendingPathComponent("manifold").path))
+    #expect(left == ["mani", "manifoldd"])
+    #expect(FileManager.default.isExecutableFile(atPath: bin.appendingPathComponent("mani").path))
 }
 
 private final class Seen: @unchecked Sendable {
@@ -1395,10 +1395,10 @@ private final class Seen: @unchecked Sendable {
     #expect(!note.needsRead)
 }
 
-@Test func hooksRunManifoldByItsFullPathAndReplaceTheOnesThatDidnt() throws {
-    let tool = "/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold"
+@Test func hooksRunManiByItsFullPathAndReplaceTheOnesThatDidnt() throws {
+    let tool = "/Users/me/My Apps/Manifold.app/Contents/Helpers/mani"
     let command = AgentSkill.command("stop", agent: "codex", tool: tool)
-    #expect(command == #"[ -z "$MANIFOLD_BLOCK" ] || '/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold' agent stop --agent codex"#)
+    #expect(command == #"[ -z "$MANIFOLD_BLOCK" ] || '/Users/me/My Apps/Manifold.app/Contents/Helpers/mani' agent stop --agent codex"#)
     #expect(AgentSkill.shellQuoted("it's") == #"'it'\''s'"#)
     // Ours whether by path or bare, as they were once put in; not another's.
     #expect(AgentSkill.isOurs(command))
@@ -1417,7 +1417,44 @@ private final class Seen: @unchecked Sendable {
     #expect(stop.count == 1 && !stop[0].contains("|| manifold agent"))
     // Pi's extension runs it by the path too.
     let pi = AgentSkill.piExtension(tool: tool)
-    #expect(pi.contains(#"pi.exec("/Users/me/My Apps/Manifold.app/Contents/Helpers/manifold", ["agent""#))
+    #expect(pi.contains(#"pi.exec("/Users/me/My Apps/Manifold.app/Contents/Helpers/mani", ["agent""#))
+}
+
+@Test func hooksPutInAsManifoldsMoveOverToManiInTheSameCopy() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mani-move-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let helpers = dir.appendingPathComponent("It's.app/Contents/Helpers")
+    try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+    let old = helpers.appendingPathComponent("manifold").path, new = helpers.appendingPathComponent("mani").path
+    let oldCommand = AgentSkill.command("stop", agent: "claude", tool: old)
+    // Not until that copy has a `mani`: never pointed at one that isn't there.
+    #expect(AgentSkill.movedOver(oldCommand) == nil)
+    FileManager.default.createFile(atPath: new, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+    #expect(AgentSkill.movedOver(oldCommand) == AgentSkill.command("stop", agent: "claude", tool: new))
+    #expect(AgentSkill.movedOver(#"[ -z "$MANIFOLD_BLOCK" ] || manifold agent stop --agent claude"#) == #"[ -z "$MANIFOLD_BLOCK" ] || mani agent stop --agent claude"#)
+    // Ours already, and another's: left as they are.
+    #expect(AgentSkill.movedOver(AgentSkill.command("stop", agent: "claude", tool: new)) == nil)
+    #expect(AgentSkill.movedOver("say done") == nil)
+    // In a settings file: ours moved over, the rest kept.
+    let url = dir.appendingPathComponent("settings.json")
+    let settings: [String: Any] = ["model": "x", "hooks": ["Stop": [["hooks": [
+        ["type": "command", "command": oldCommand, "timeout": 10],
+        ["type": "command", "command": "say done"],
+    ]]]]]
+    try AgentSkill.writeJSON(settings, to: url)
+    try AgentSkill.refreshClaudeStyle(at: url)
+    let read = try AgentSkill.readJSON(url)
+    let stop = ((read["hooks"] as! [String: Any])["Stop"] as! [[String: Any]]).flatMap { $0["hooks"] as! [[String: Any]] }
+    #expect(stop.map { $0["command"] as! String } == [AgentSkill.command("stop", agent: "claude", tool: new), "say done"])
+    #expect(stop[0]["timeout"] as? Int == 10)
+    #expect(read["model"] as? String == "x")
+    // Pi's extension, written by `manifold` as it was: written again for `mani`.
+    let pi = dir.appendingPathComponent("manifold.ts")
+    let oldPi = AgentSkill.piExtension(tool: old)
+        .replacingOccurrences(of: "`mani skill install`", with: "manifold --install-skill")
+    try Data(oldPi.utf8).write(to: pi)
+    try AgentSkill.refreshPiExtension(at: pi)
+    #expect(try String(contentsOf: pi, encoding: .utf8) == AgentSkill.piExtension(tool: new))
 }
 
 @Test func resettingTheGraphForgetsEveryLinkAndTheTrailButNotWhatsPlaced() {
@@ -1608,7 +1645,7 @@ private final class Seen: @unchecked Sendable {
 }
 
 @Test func openingAFolderSaysItIsOne() throws {
-    // `manifold DIR` on another host: the app can't look there, so the path says it.
+    // `mani open DIR` on another host: the app can't look there, so the path says it.
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("open-\(UUID().uuidString)").path
     try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(atPath: dir) }

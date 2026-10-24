@@ -322,7 +322,7 @@ final class Server {
             }
             app.send(.message(ServerMessage.open(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, paths: paths, beside: beside, wait: wait)))
         case let .openPatch(id, patch, root, title, beside)?:
-            // `manifold diff`: the patch becomes a diff block here, and the
+            // `mani diff`: the patch becomes a diff block here, and the
             // app, if attached, places it and answers the command.
             guard let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) }) else {
                 conn.send(.message(ServerMessage.done(id: id, error: "Manifold isn't attached to this host")))
@@ -1465,7 +1465,7 @@ final class Server {
     /// shell's commands they run within (an agent run by hand at a prompt).
     private var agentTurns: [BlockID: Set<Int>] = [:]
 
-    /// What an agent's hook said (`manifold agent`): each prompt a mark on
+    /// What an agent's hook said (`mani agent`): each prompt a mark on
     /// the terminal's scrubber and outline, as a shell's command is, open
     /// until the turn ends; and the agent's status the block's, by name.
     private func agentEvent(_ block: BlockID, _ event: AgentEvent) {

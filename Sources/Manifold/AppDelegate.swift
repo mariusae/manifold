@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = makeMainMenu()
         AppearanceWatcher.shared.start()
         Tints.watchSystemAccent()
+        // Agents' hooks put in when the command was `manifold`, moved over.
+        DispatchQueue.global(qos: .utility).async { AgentSkill.refresh() }
         NotificationCenter.default.addObserver(forName: .manifoldAppearanceChanged, object: nil, queue: .main) {
             [weak self] _ in
             guard let self else { return }
@@ -156,37 +158,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Command line tool
 
-    private static let cliLink = "/usr/local/bin/manifold"
+    private static let cliLink = "/usr/local/bin/mani"
+    /// Where the command was linked when it was `manifold`: taken away
+    /// with the new link put in, if it's a link into a Manifold.
+    private static let oldCLILink = "/usr/local/bin/manifold"
 
     private var cliPath: String {
-        Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/manifold").path
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mani").path
     }
 
-    /// Links `manifold` into /usr/local/bin, which takes an administrator's
+    /// Links `mani` into /usr/local/bin, which takes an administrator's
     /// password, as for other apps' command line tools.
     @objc func installCommandLineTool(_ sender: Any?) {
         let link = Self.cliLink
         let target = cliPath
         let alert = NSAlert()
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) == target {
-            alert.messageText = "The manifold command is installed"
-            alert.informativeText = "\(link) runs this copy of Manifold's. Try manifold README.md in a terminal."
+            alert.messageText = "The mani command is installed"
+            alert.informativeText = "\(link) runs this copy of Manifold's. Try mani open README.md in a terminal."
             alert.runModal()
             return
         }
-        alert.messageText = "Install the manifold command?"
-        alert.informativeText = "This links \(link) to Manifold, so you can run, say, manifold README.md to preview it. You'll be asked for an administrator's password."
+        alert.messageText = "Install the mani command?"
+        alert.informativeText = "This links \(link) to Manifold, so you can run, say, mani open README.md to preview it. You'll be asked for an administrator's password."
         alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        let shell = "mkdir -p /usr/local/bin && ln -sf \(quote(target)) \(quote(link))"
+        var shell = "mkdir -p /usr/local/bin && ln -sf \(quote(target)) \(quote(link))"
+        if let old = try? FileManager.default.destinationOfSymbolicLink(atPath: Self.oldCLILink), old.contains(".app/Contents/Helpers/") {
+            shell += " && rm -f \(quote(Self.oldCLILink))"
+        }
         let script = "do shell script \"\(shell.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\" with administrator privileges"
         var error: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&error)
         if let error, (error[NSAppleScript.errorNumber] as? Int) != -128 {
             let failed = NSAlert()
-            failed.messageText = "The manifold command wasn't installed"
+            failed.messageText = "The mani command wasn't installed"
             failed.informativeText = (error[NSAppleScript.errorMessage] as? String) ?? "Something went wrong."
             failed.runModal()
         }

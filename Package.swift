@@ -36,7 +36,7 @@ let package = Package(
                 .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
             ]
         ),
-        // The `manifold` command (named so in the app bundle).
+        // The `mani` command (named so in the app bundle).
         .executableTarget(name: "ManifoldCLI", dependencies: ["ManifoldCore"]),
         .executableTarget(name: "manifoldd", dependencies: ["ManifoldCore", "CPTY", "CManifoldVT"]),
         .executableTarget(

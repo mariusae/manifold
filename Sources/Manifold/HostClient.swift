@@ -489,7 +489,7 @@ final class HostClient {
     }
 
     func directoryBlock(for spelled: String) -> BlockID {
-        // Spelled with a trailing slash (a folder `manifold` said was one), kept without.
+        // Spelled with a trailing slash (a folder `mani` said was one), kept without.
         let path = spelled.count > 1 && spelled.hasSuffix("/") ? String(spelled.dropLast()) : spelled
         if let b = directoryBlock(path: path) { return b.id }
         let id = BlockID(host: host)
@@ -1030,7 +1030,7 @@ final class HostClient {
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
     /// A terminal's shell ended (not for dormancy), while we were attached.
     var onTerminalEnded: ((BlockID) -> Void)?
-    /// A `manifold` command on this host asked for paths to be opened.
+    /// A `mani` command on this host asked for paths to be opened.
     var onOpen: ((Int, Int, [String], BlockID?, Bool) -> Void)?
     var onShow: ((Int, Int, BlockID, BlockID?) -> Void)?
 

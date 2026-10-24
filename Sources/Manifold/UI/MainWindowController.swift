@@ -5110,7 +5110,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the command returns.
     private var openWaits: [(host: HostID, id: Int, client: Int, placements: [PlacementID], made: [BlockID])] = []
 
-    /// A `manifold` command on `on` asks for paths: each goes beside the
+    /// A `mani` command on `on` asks for paths: each goes beside the
     /// block it was run in (or on the focused stack), and with `wait`, the
     /// command is answered once they've all been put away.
     private func openRequest(on: HostID, id: Int, client: Int, paths: [String], beside: BlockID?, wait: Bool) {
@@ -5144,7 +5144,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // when the editing is done.
                 showOver(block, lens: lens, over: opener.id, again: true, context: "\(path.lastPathComponent)")
             } else {
-                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "manifold open")
+                show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "mani open")
             }
             if let a = arrangement, let p = a.placements.first(where: { $0.block == block && !before.contains($0.id) }) ?? a.placements.first(where: { $0.block == block }) {
                 placed.append(p.id)
@@ -5158,7 +5158,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate()
     }
 
-    /// A block the host made for a command (`manifold diff`): shown beside
+    /// A block the host made for a command (`mani diff`): shown beside
     /// the block the command ran in, else here, and the command answered.
     private func showRequest(on: HostID, id: Int, client: Int, block: BlockID, beside: BlockID?) {
         let besidePlacement = beside.flatMap { b in

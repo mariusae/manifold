@@ -461,7 +461,7 @@ around it, and comes back with its history.
   it is, below; `#anchors` scroll.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
-  finder, a folder listing, a link in a preview, or the `manifold`
+  finder, a folder listing, a link in a preview, or the `mani`
   command. Besides the interface's system font, a theme has three: a
   **monospaced** one for terminals and code, an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
@@ -509,8 +509,8 @@ around it, and comes back with its history.
   `~/a`, a name with an extension); a bare name, to be there (on this
   Mac). **Hold ⌘** over a terminal and what can be clicked shows, its text
   in the link color an editor shows ⌘'s links in, with the same glow
-  around its letters, the one under the pointer on the same soft band. The **`manifold`** command (Manifold ▸ Install Command Line
-  Tool…) does the same from a shell: `manifold README.md src/`.
+  around its letters, the one under the pointer on the same soft band. **`mani open`** (see **The `mani` command**) does the same from a
+  shell: `mani open README.md src/`.
 - **Folders** open as one tree, as Claude Code's file panel shows one:
   flat, in the system font, each folder opening in place (a click on its
   row or its chevron, ⏎), a file a small symbol in its type's colour; the
@@ -943,7 +943,7 @@ around it, and comes back with its history.
   has changed since as a diff block of its own, linked from it: edits,
   new files, commits, but nothing that was already changed before it
   began. **Each turn** is noted too (with the hooks Manifold installs,
-  `manifold --install-skill`): what was asked, the working tree as the
+  `mani skill install`): what was asked, the working tree as the
   turn began and as it ended (a checkpoint, in a git repository), the
   files it changed, its last words. Its item in the terminal's outline
   (its ticks, or its sidebar) goes to the turn; its ⋯ opens the turn as a block
@@ -970,18 +970,20 @@ around it, and comes back with its history.
   host has: the host looks for them through your login shell (the
   shell its preferences name, if any) when a Mac attaches, when its
   shell preference changes, and again as the menu opens.
-- **Agents' hooks** (`manifold --install-skill`, on any host, in one of
+- **Agents' hooks** (`mani skill install`, on any host, in one of
   its terminals or not) let an agent that doesn't speak OSC 7501 (Codex,
   say) show its status, and give every agent an outline: each prompt is
   an item in the terminal's outline, found on the screen where the agent echoes it, until the
-  turn ends. The hooks run `manifold agent <event> --agent <name>`
+  turn ends. The hooks run `mani agent <event> --agent <name>`
   (start, prompt, working, waiting, stop, end), which tells the host
   over its socket and does nothing outside Manifold's terminals; status
   goes working on a prompt or a tool, blocked on a permission, done (with
   the agent's last words) when the turn ends. Each hook runs the
-  `manifold` that installed it, by its full path (the app's Helpers, a
-  remote host's `~/.manifold/bin`), never another `manifold` an agent
-  finds first on its PATH. Installed for whichever of
+  `mani` that installed it, by its full path (the app's Helpers, a
+  remote host's `~/.manifold/bin`), never another `mani` an agent
+  finds first on its PATH. Hooks put in when the command was `manifold`
+  are moved over to the `mani` of the same copy of Manifold once it has
+  one, as the app and each host's server start. Installed for whichever of
   these are found (or those named): Claude Code (`~/.claude/settings.json`;
   MetaCode reads these too, and is told apart), Codex
   (`~/.codex/hooks.json`; Codex asks to review new hooks once), Muse
@@ -989,7 +991,7 @@ around it, and comes back with its history.
   `~/.pi/agent/extensions/manifold.ts`, as Pi has no command hooks).
   Installing again replaces Manifold's hooks and keeps the rest of each
   file (a copy of it as it was is left beside it, `.before-manifold`);
-  `manifold --uninstall-skill` takes them out.
+  `mani skill uninstall` takes them out.
 - **Processes** (File ▸ Processes) is a block per host listing what `ps`
   sees, again every few seconds while shown, in tight rows by block:
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
@@ -1139,22 +1141,32 @@ is migrated into logs on first run.
   through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its
   Static Linux SDK, if missing), since the SDK goes with the toolchain
   of its own version and not with Xcode's; `LINUX=0` skips them.
-- **`$EDITOR`** in Manifold's shells is `manifold --wait` (on a remote
-  host, `manifoldd open --wait`): `git commit` and friends edit in an
+- **`$EDITOR`** in Manifold's shells is `mani open --wait` (on a remote
+  host, `manifoldd mani open --wait`): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
   comes back. The block it edited in is ephemeral: once the command
   returns it is discarded, unless the file was a block already or the
   editor was moved somewhere else, so a commit message or an agent's
   prompt leaves nothing behind in the graph.
-- **`git diff | manifold diff`** shows a patch as a diff block, beside the
-  terminal it ran in (`manifold diff "before lunch"`, or `--title`, names
-  it; else it is "Patch, n files"). Double-click a line to open the file
-  there, against the directory the command ran in. On a remote host the
-  same, through its `manifold` script.
-- **`manifold` is first on the PATH** in Manifold's shells, once your rc
+- **`git diff | mani diff`** shows a patch as a diff block, beside the
+  terminal it ran in (`--title "before lunch"` names it; else it is
+  "Patch, n files"). Double-click a line to open the file there, against
+  the directory the command ran in. On a remote host the same, through
+  its `mani` script.
+- **The `mani` command** is Manifold from a shell: `mani <command>
+  [flags] [args]` — `open`, `diff`, `skill install`/`uninstall`, `agent`
+  and `help`. One table of its commands makes its parser, `mani help`
+  and each command's `--help`, so what it says it does is what it does.
+  It's strict: an unknown command or flag, a flag missing its value, too
+  many or too few arguments are errors, with the command's usage, status
+  2 (a path given bare says to `mani open` it); failing to do what was
+  asked is status 1. Manifold ▸ Install Command Line Tool… links it
+  into /usr/local/bin (taking away the `manifold` link of before). On a
+  remote host a `mani` script beside the server runs `manifoldd mani`.
+- **`mani` is first on the PATH** in Manifold's shells, once your rc
   files have run: the app's Helpers folder here, the server's folder on
-  a remote host (with a `manifold` script standing in). zsh gets it
+  a remote host (with a `mani` script standing in). zsh gets it
   through a .zshenv layer of Manifold's own that hands over to Ghostty's
   integration and then yours; fish through a command run after its
   configuration; bash through an rc file of Manifold's that sources the

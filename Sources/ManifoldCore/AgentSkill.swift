@@ -1,11 +1,13 @@
 import Foundation
 
-/// `manifold --install-skill`: hooks in each coding agent found on this
-/// machine (or those named) that run `manifold agent` on the agent's
+/// `mani skill install`: hooks in each coding agent found on this
+/// machine (or those named) that run `mani agent` on the agent's
 /// events, so a Manifold terminal running it shows its status and each of
 /// its turns. The hooks do nothing outside Manifold's terminals (no
-/// MANIFOLD_BLOCK), and installing again replaces them; --uninstall-skill
-/// takes them out. Whatever else the agents' settings hold is kept.
+/// MANIFOLD_BLOCK), and installing again replaces them; `mani skill
+/// uninstall` takes them out. Whatever else the agents' settings hold is
+/// kept. Hooks put in when the command was `manifold` are moved over to
+/// `mani` (`refresh`).
 public enum AgentSkill {
     /// An agent's hooks: where they go, and how.
     struct Target {
@@ -16,45 +18,50 @@ public enum AgentSkill {
         var present: () -> Bool
         var install: () throws -> Void
         var uninstall: () throws -> Void
+        /// Moves hooks put in as `manifold`'s over to `mani` (`refresh`).
+        var refresh: () throws -> Void
         /// What to tell the user once it's in.
         var note: String? = nil
     }
 
+    /// The agents there are hooks for.
+    public static var known: [String] { targets.map(\.name) }
+
     /// The command a hook runs for `event`: nothing outside Manifold's
-    /// terminals, else `manifold agent` — this `manifold`, by its full
-    /// path, not whichever one comes first on the agent's PATH — which
-    /// always succeeds.
-    static func command(_ event: String, agent: String, tool: String = manifoldTool) -> String {
+    /// terminals, else `mani agent` — this `mani`, by its full path, not
+    /// whichever one comes first on the agent's PATH — which always
+    /// succeeds.
+    static func command(_ event: String, agent: String, tool: String = maniTool) -> String {
         "[ -z \"$MANIFOLD_BLOCK\" ] || \(shellQuoted(tool)) agent \(event) --agent \(agent)"
     }
 
-    /// Whether a hook's command is one of ours (bare `manifold`, as they
-    /// were once put in, or by its path), to replace or take out.
+    /// Whether a hook's command is one of ours (bare, as they were once
+    /// put in, or by its path; `mani`, or `manifold` as it was), to replace
+    /// or take out.
     static func isOurs(_ command: String) -> Bool {
-        command.contains("manifold agent ") || command.contains("manifold' agent ")
+        ["mani", "manifold"].contains { command.contains("\($0) agent ") || command.contains("\($0)' agent ") }
     }
 
-    /// The `manifold` command installing the hooks, by its full path: this
-    /// program if it is `manifold` (the app's, in its Helpers), else the
-    /// `manifold` beside it (on a remote host, the script that runs this
+    /// The `mani` command installing the hooks, by its full path: this
+    /// program if it is `mani` (the app's, in its Helpers), else the
+    /// `mani` beside it (on a remote host, the script that runs this
     /// server); the bare name only if there's none to be found.
-    static var manifoldTool: String {
-        guard let exe = ownExecutable else { return "manifold" }
-        if exe.lastPathComponent == "manifold" { return exe.path }
+    static var maniTool: String {
+        guard let exe = ownExecutable else { return "mani" }
+        if exe.lastPathComponent == "mani" { return exe.path }
         let dir = exe.deletingLastPathComponent()
         // The app's Helpers first; and the name exactly so, as the folder
-        // lists it — on a disk that ignores case, the app's own `Manifold`
-        // beside the server would answer to `manifold`.
+        // lists it (a disk that ignores case answers to any spelling).
         for folder in [dir.deletingLastPathComponent().appendingPathComponent("Helpers"), dir] {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            let candidate = folder.appendingPathComponent("manifold")
-            if names.contains("manifold"), FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate.path }
+            let candidate = folder.appendingPathComponent("mani")
+            if names.contains("mani"), FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate.path }
         }
-        return "manifold"
+        return "mani"
     }
 
     /// This program's own file, wherever it was run from (argv[0] is only
-    /// what was typed: `manifold`, found on the PATH).
+    /// what was typed: `mani`, found on the PATH).
     static var ownExecutable: URL? {
         #if os(Linux)
         if let p = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe") { return URL(fileURLWithPath: p) }
@@ -93,20 +100,24 @@ public enum AgentSkill {
             { onPath(command) || FileManager.default.fileExists(atPath: dir.path) }
         }
         return [
-            // MetaCode reads Claude Code's hooks too; `manifold agent` tells them apart.
+            // MetaCode reads Claude Code's hooks too; `mani agent` tells them apart.
             Target(name: "claude", file: claude, present: here("claude", claude.deletingLastPathComponent()),
                    install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents) },
-                   uninstall: { try uninstallClaudeStyle(at: claude) }),
+                   uninstall: { try uninstallClaudeStyle(at: claude) },
+                   refresh: { try refreshClaudeStyle(at: claude) }),
             Target(name: "codex", file: codex, present: here("codex", codexHome),
                    install: { try installClaudeStyle(at: codex, agent: "codex", events: codexEvents) },
                    uninstall: { try uninstallClaudeStyle(at: codex) },
+                   refresh: { try refreshClaudeStyle(at: codex) },
                    note: "Codex asks to review new hooks once: choose Review hooks (or /hooks) and trust Manifold's."),
             Target(name: "muse", file: muse, present: here("muse", museDir),
                    install: { try installClaudeStyle(at: muse, agent: "muse", events: museEvents) },
-                   uninstall: { try uninstallClaudeStyle(at: muse) }),
+                   uninstall: { try uninstallClaudeStyle(at: muse) },
+                   refresh: { try refreshClaudeStyle(at: muse) }),
             Target(name: "pi", file: pi, present: here("pi", piDir),
                    install: { try installPiExtension(at: pi) },
                    uninstall: { try uninstallPiExtension(at: pi) },
+                   refresh: { try refreshPiExtension(at: pi) },
                    note: "In a running pi, /reload picks it up."),
         ]
     }
@@ -128,13 +139,9 @@ public enum AgentSkill {
     /// Muse's: Claude Code's.
     static let museEvents = claudeEvents
 
-    /// Installs (or takes out) the hooks, saying what it did; then exits.
-    public static func runInstall(_ names: [String], uninstall: Bool) -> Never {
-        let wanted = names.filter { !$0.hasPrefix("-") }.map { $0.lowercased() }
-        let unknown = wanted.filter { w in !targets.contains { $0.name == w } }
-        if !unknown.isEmpty {
-            print("manifold: no hooks known for \(unknown.joined(separator: ", ")); known: \(targets.map(\.name).joined(separator: ", "))")
-        }
+    /// Installs (or takes out) the hooks of the agents named (known ones),
+    /// or of those found here, saying what it did; then exits.
+    public static func runInstall(_ wanted: [String], uninstall: Bool) -> Never {
         var failed = false
         var did = 0
         for t in targets where wanted.isEmpty ? t.present() : wanted.contains(t.name) {
@@ -144,11 +151,11 @@ public enum AgentSkill {
                 if !uninstall, let note = t.note { print("  \(note)") }
                 did += 1
             } catch {
-                print("manifold: couldn't \(uninstall ? "uninstall" : "install") hooks for \(t.name) (\(short(t.file))): \(error)")
+                print("mani: couldn't \(uninstall ? "uninstall" : "install") hooks for \(t.name) (\(short(t.file))): \(error)")
                 failed = true
             }
         }
-        if did == 0, !failed { print("manifold: no coding agents found here (\(targets.map(\.name).joined(separator: ", ")))") }
+        if did == 0, !failed { print("mani: no coding agents found here (\(targets.map(\.name).joined(separator: ", ")))") }
         exit(failed ? 1 : 0)
     }
 
@@ -221,26 +228,25 @@ public enum AgentSkill {
     // MARK: Pi
 
     /// Pi has no command hooks: an extension of its own, in TypeScript, in
-    /// its user extensions, that runs `manifold agent` on its events
+    /// its user extensions, that runs `mani agent` on its events
     /// without waiting for it (and does nothing outside Manifold).
-    static func piExtension(tool: String = manifoldTool) -> String {
+    static func piExtension(tool: String = maniTool) -> String {
         // The path as a JavaScript string.
         let quoted = (try? String(data: JSONSerialization.data(withJSONObject: [tool], options: .withoutEscapingSlashes), encoding: .utf8))
-            .map { String($0.dropFirst().dropLast()) } ?? "\"manifold\""
-        return piExtensionTemplate.replacingOccurrences(of: "\"manifold\", [\"agent\"", with: "\(quoted), [\"agent\"")
+            .map { String($0.dropFirst().dropLast()) } ?? "\"mani\""
+        return piExtensionTemplate.replacingOccurrences(of: "\"mani\", [\"agent\"", with: "\(quoted), [\"agent\"")
     }
 
     static let piExtensionTemplate = """
-        // Manifold's hooks for pi (manifold --install-skill): a Manifold terminal
-        // shows pi's status and each of its turns on its scrubber and outline.
-        // Put here by `manifold --install-skill`; `manifold --uninstall-skill`
-        // takes it out.
+        // Manifold's hooks for pi: a Manifold terminal shows pi's status and
+        // each of its turns on its scrubber and outline. Put here by
+        // `mani skill install`; `mani skill uninstall` takes it out.
         import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
         export default function (pi: ExtensionAPI) {
           if (!process.env.MANIFOLD_BLOCK) return;
           const tell = (event: string, data: Record<string, unknown> = {}) => {
-            void pi.exec("manifold", ["agent", event, "--agent", "pi", "--no-input", JSON.stringify(data)], { timeout: 5000 }).catch(() => {});
+            void pi.exec("mani", ["agent", event, "--agent", "pi", "--no-input", JSON.stringify(data)], { timeout: 5000 }).catch(() => {});
           };
           pi.on("session_start", async () => tell("start"));
           pi.on("input", async (event) => {
@@ -260,8 +266,84 @@ public enum AgentSkill {
     }
 
     static func uninstallPiExtension(at url: URL) throws {
-        guard let text = try? String(contentsOf: url, encoding: .utf8), text.contains("manifold --install-skill") else { return }
+        guard let text = try? String(contentsOf: url, encoding: .utf8), isOurPiExtension(text) else { return }
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Whether pi's extension file is the one put there (by `mani`, or
+    /// by `manifold` as it was).
+    static func isOurPiExtension(_ text: String) -> Bool {
+        text.contains("mani skill install") || text.contains("manifold --install-skill")
+    }
+
+    // MARK: Moving hooks over
+
+    /// Hooks put in when the command was `manifold`, moved over to `mani`:
+    /// one running `<folder>/manifold` runs `<folder>/mani` once that's
+    /// there (the same copy of Manifold, renamed, never another); a bare
+    /// `manifold`, a bare `mani`. Nothing else is touched. Run as the app
+    /// and each host's server start.
+    /// A second instance (MANIFOLD_DIR) leaves them be: they're the user's,
+    /// for the Manifold they use.
+    public static func refresh() {
+        guard (ProcessInfo.processInfo.environment["MANIFOLD_DIR"] ?? "").isEmpty else { return }
+        for t in targets { try? t.refresh() }
+    }
+
+    /// A hook's command moved over to `mani`; nil if it needn't (or can't
+    /// yet) be.
+    static func movedOver(_ command: String) -> String? {
+        if command.contains("|| manifold agent ") {
+            return command.replacingOccurrences(of: "|| manifold agent ", with: "|| mani agent ")
+        }
+        guard let end = command.range(of: "/manifold' agent "),
+              let start = command.range(of: "|| '", options: .backwards, range: command.startIndex..<end.lowerBound) else { return nil }
+        let folder = command[start.upperBound..<end.lowerBound].replacingOccurrences(of: "'\\''", with: "'")
+        guard FileManager.default.isExecutableFile(atPath: folder + "/mani") else { return nil }
+        return command.replacingCharacters(in: end, with: "/mani' agent ")
+    }
+
+    static func refreshClaudeStyle(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        var settings = try readJSON(url)
+        guard let hooks = settings["hooks"] as? [String: Any] else { return }
+        var changed = false
+        var out: [String: Any] = [:]
+        for (event, value) in hooks {
+            guard let groups = value as? [[String: Any]] else { out[event] = value; continue }
+            out[event] = groups.map { group -> [String: Any] in
+                guard let list = group["hooks"] as? [[String: Any]] else { return group }
+                var g = group
+                g["hooks"] = list.map { hook -> [String: Any] in
+                    guard let c = hook["command"] as? String, isOurs(c), let moved = movedOver(c) else { return hook }
+                    changed = true
+                    var h = hook
+                    h["command"] = moved
+                    return h
+                }
+                return g
+            }
+        }
+        guard changed else { return }
+        settings["hooks"] = out
+        try writeJSON(settings, to: url)
+    }
+
+    static func refreshPiExtension(at url: URL) throws {
+        guard let text = try? String(contentsOf: url, encoding: .utf8), isOurPiExtension(text),
+              let call = text.range(of: "pi.exec("), let args = text.range(of: ", [\"agent\"", range: call.upperBound..<text.endIndex),
+              let data = ("[" + text[call.upperBound..<args.lowerBound] + "]").data(using: .utf8),
+              let tool = (try? JSONSerialization.jsonObject(with: data) as? [String])?.first else { return }
+        let moved: String
+        if tool == "manifold" {
+            moved = "mani"
+        } else if tool.hasSuffix("/manifold") {
+            moved = String(tool.dropLast("manifold".count)) + "mani"
+            guard FileManager.default.isExecutableFile(atPath: moved) else { return }
+        } else {
+            return
+        }
+        try Data(piExtension(tool: moved).utf8).write(to: url, options: .atomic)
     }
 
     struct SkillError: Error, CustomStringConvertible {

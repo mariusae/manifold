@@ -533,7 +533,7 @@ public enum DiffSubject: Codable, Equatable, Sendable {
     case commit(repo: String, sha: String)
     /// A text block at two moments of its log (`to` nil: as it is now).
     case versions(block: BlockID, from: Stamp, to: Stamp?)
-    /// A patch given to `manifold diff`, its paths against `root`.
+    /// A patch given to `mani diff`, its paths against `root`.
     case patch(root: String, title: String?)
     /// What's changed in a repository and not yet committed, as plain
     /// `git diff` (`sl diff`) shows it: read again as the repository moves.

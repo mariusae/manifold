@@ -35,7 +35,7 @@ public enum AgentEvent: Codable, Equatable, Sendable {
     }
 }
 
-/// `manifold agent <event> --agent <name>`: what an agent's hook runs.
+/// `mani agent <event> --agent <name>`: what an agent's hook runs.
 /// It reads what the agent hands its hooks (JSON on the input, or as the
 /// last argument, as Codex's notify has it), tells the host the block it
 /// runs in what happened, and gets out of the way: it prints nothing and
@@ -52,36 +52,21 @@ public struct AgentTodo: Codable, Equatable, Sendable {
 }
 
 public enum AgentHookCommand {
-    public static let usage = """
-        usage: manifold agent <start|prompt|working|stop|waiting|end> [--agent name]
+    /// The events a hook can say.
+    public static let events = ["start", "prompt", "working", "stop", "waiting", "end"]
 
-        What an agent's hooks run, so a Manifold terminal shows the agent's
-        status and each of its turns on the scrubber and in the outline.
-        Reads the hook's JSON from the input (or the last argument).
-        `manifold --install-skill` puts these hooks in the agents found here.
-        """
-
-    /// Runs and exits.
-    public static func run(_ args: [String]) -> Never {
-        var rest = args
-        var agent = "agent"
-        if let i = rest.firstIndex(of: "--agent"), i + 1 < rest.count {
-            agent = rest[i + 1]
-            rest.removeSubrange(i...(i + 1))
-        }
+    /// Tells the host `name` happened in the block this runs in, and exits:
+    /// `input` read from the input unless not `readsInput` (pi's extension
+    /// hands over nothing there), `payload` the JSON a caller passes as an
+    /// argument instead (Codex's notify).
+    public static func run(event name: String, agent: String, readsInput: Bool, payload: String?) -> Never {
+        var agent = agent
         // MetaCode runs Claude Code's hooks as its own.
         if agent == "claude", ProcessInfo.processInfo.environment["METACODE_SESSION_ID"] != nil { agent = "metacode" }
-        // A caller that hands over nothing on the input (pi's extension).
-        let readsInput = !rest.contains("--no-input")
-        rest.removeAll { $0 == "--no-input" }
-        guard let name = rest.first else {
-            FileHandle.standardError.write(Data((usage + "\n").utf8))
-            exit(0)
-        }
         // Outside Manifold's terminals there is no one to tell.
         guard let block = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:)) else { exit(0) }
         var input = readsInput ? readInput() : [:]
-        if let last = rest.dropFirst().last, last.hasPrefix("{"), let data = last.data(using: .utf8),
+        if let payload, payload.hasPrefix("{"), let data = payload.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             input.merge(json) { _, new in new }
         }

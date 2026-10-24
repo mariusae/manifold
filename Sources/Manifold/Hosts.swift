@@ -19,7 +19,7 @@ final class Hosts {
     var onChange: (() -> Void)?
     var onTerminalEnded: ((BlockID) -> Void)?
     var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
-    /// A `manifold` command on `host` asks for paths to be opened.
+    /// A `mani` command on `host` asks for paths to be opened.
     var onOpen: ((HostID, Int, Int, [String], BlockID?, Bool) -> Void)?
     var onShow: ((HostID, Int, Int, BlockID, BlockID?) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?

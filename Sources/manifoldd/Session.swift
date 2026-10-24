@@ -92,7 +92,7 @@ final class Session {
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           command: String? = nil, shell preferred: String? = nil, queue: DispatchQueue) {
         var (shell, environment) = Session.shellAndEnvironment(clientEnv: env, preferred: preferred)
-        // So `manifold` run in this shell knows where it is, and `$EDITOR`
+        // So `mani` run in this shell knows where it is, and `$EDITOR`
         // edits in Manifold, beside it.
         environment["MANIFOLD_BLOCK"] = id.description
         environment["MANIFOLD_HOST"] = id.host.raw
@@ -599,9 +599,9 @@ final class Session {
         }
         env["SHELL"] = shell
         if env["PATH"] == nil { env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin" }
-        // `manifold` on the PATH: beside the server in the app bundle
+        // `mani` on the PATH: beside the server in the app bundle
         // (Helpers/), or the server's own folder on a host it was installed
-        // on, where a `manifold` script stands in for it.
+        // on, where a `mani` script stands in for it.
         for dir in toolDirectories.reversed() where !(env["PATH"] ?? "").split(separator: ":").contains(Substring(dir)) {
             env["PATH"] = dir + ":" + (env["PATH"] ?? "")
         }
@@ -629,7 +629,7 @@ final class Session {
         // zsh starts through Manifold's own layer (a .zshenv in the data
         // folder), which hands over to Ghostty's integration (working
         // directory, titles), which hands over to yours — and then, once
-        // your rc files have run, puts `manifold` first on the PATH.
+        // your rc files have run, puts `mani` first on the PATH.
         if shell.lastPathComponent == "zsh", let layer = zshLayer() {
             if let old = env["ZDOTDIR"] { env["MANIFOLD_ZSH_ZDOTDIR"] = old }
             if let res = env["GHOSTTY_RESOURCES_DIR"], FileManager.default.fileExists(atPath: res + "/shell-integration/zsh") {
@@ -783,29 +783,29 @@ final class Session {
         }
     }
 
-    /// Folders with the `manifold` command: Helpers/ beside this server in
+    /// Folders with the `mani` command: Helpers/ beside this server in
     /// the app bundle, if there; the server's own folder.
     static var toolDirectories: [String] {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let own = exe.deletingLastPathComponent()
         let helpers = own.deletingLastPathComponent().appendingPathComponent("Helpers")
         var dirs: [String] = []
-        if FileManager.default.isExecutableFile(atPath: helpers.appendingPathComponent("manifold").path) { dirs.append(helpers.path) }
-        if FileManager.default.isExecutableFile(atPath: own.appendingPathComponent("manifold").path) { dirs.append(own.path) }
+        if FileManager.default.isExecutableFile(atPath: helpers.appendingPathComponent("mani").path) { dirs.append(helpers.path) }
+        if FileManager.default.isExecutableFile(atPath: own.appendingPathComponent("mani").path) { dirs.append(own.path) }
         return dirs
     }
 
-    /// The `manifold` command, as a shell runs it with `--wait`: beside
-    /// this server in the app bundle, else the server itself on a remote
-    /// host (`manifoldd open`).
+    /// `mani open --wait`, as a shell's `$EDITOR`: the `mani` beside this
+    /// server in the app bundle, else the server itself on a remote host
+    /// (`manifoldd mani`).
     static var editorCommand: String {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let helper = exe.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Helpers/manifold")
+        let helper = exe.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Helpers/mani")
         // Quoted only when it must be: a shell expands `$EDITOR` without
         // parsing quotes, and most paths have no spaces.
         func quote(_ s: String) -> String { s.contains(" ") ? "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" : s }
-        if FileManager.default.isExecutableFile(atPath: helper.path) { return quote(helper.path) + " --wait" }
-        return quote(exe.path) + " open --wait"
+        if FileManager.default.isExecutableFile(atPath: helper.path) { return quote(helper.path) + " open --wait" }
+        return quote(exe.path) + " mani open --wait"
     }
 
     private static let allowedClientEnv: Set<String> = [

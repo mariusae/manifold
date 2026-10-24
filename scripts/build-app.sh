@@ -22,9 +22,8 @@ app=${APP:-build/Manifold.app}
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/Manifold" "$bin/manifoldd" "$app/Contents/MacOS/"
-# The `manifold` command. It can't sit beside Manifold in MacOS/, as the
-# file system doesn't tell the two names apart.
-cp "$bin/ManifoldCLI" "$app/Contents/Helpers/manifold"
+# The `mani` command, in Helpers/ with the servers carried for other hosts.
+cp "$bin/ManifoldCLI" "$app/Contents/Helpers/mani"
 # The servers carried for other hosts (DESIGN.md §8): this machine's, and
 # Linux ones when scripts/build-linux.sh has made them. The Linux ones go
 # under Resources: codesign won't seal a bundle with ELF files among its
@@ -66,7 +65,7 @@ touch "$app"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
 
 codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
-codesign --force --sign - "$app/Contents/Helpers/manifold" >/dev/null 2>&1
+codesign --force --sign - "$app/Contents/Helpers/mani" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/manifoldd-darwin-aarch64" >/dev/null 2>&1
 codesign --force --sign - "$app" >/dev/null 2>&1
 echo "built $app"

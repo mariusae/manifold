@@ -827,7 +827,7 @@ shell.
 - **The app**, attached to any number of hosts at once, one connection
   each. It mirrors the shards its placements show and leads the ones you
   edit.
-- **Tools**: the `manifold` command and scripts, speaking the control side
+- **Tools**: the `mani` command and scripts, speaking the control side
   of the same protocol (open, find, place, link, read a block).
 
 A host's server is a **session**, and it names itself: an id minted once
@@ -943,7 +943,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 
 - Remote hosts (§8.1): providers, the bootstrap, the bridge, `Hosts` in
   the app over any number of `HostClient`s; Linux servers from the static
-  SDK; `$EDITOR` through `manifold --wait` and `manifoldd open --wait`.
+  SDK; `$EDITOR` through `mani open --wait` and `manifoldd mani open --wait`.
 - Language servers (§7.1): `LanguageServers` in `manifoldd`, JSON-RPC over
   the server's stdio; the editor's diagnostics, completion popup and Code
   menu; the Language Servers… table.
@@ -1090,7 +1090,7 @@ these are built on it:
 15. **The one open rule.** `show(here:)`, `show(beside:)` and
     `show(besideOpener:)` as the only three ways anything is placed; the
     palette, finder, sidebar, terminals, previews, search, git, diff,
-    LSP and the `manifold` command all through them.
+    LSP and the `mani` command all through them.
 16. **The sidebar as spine.** Pinned by default; Desk rows expand to
     columns and follow focus; drag onto a column; Links follows focus
     with context lines; the history view's diagram draws columns.

@@ -7,26 +7,26 @@ import Glibc
 import Musl
 #endif
 
-/// The `manifold` command's work, shared with `manifoldd open` (what a
-/// remote host's shells have as `$EDITOR`): asks the host to have the app
+/// `mani open` and `mani diff`, on the app's host or a remote one (where
+/// `manifoldd mani` runs them): asks the host to have the app
 /// open some paths, beside the block the shell is in, and with `wait`,
 /// waits until they're put away again.
 public enum OpenCommand {
     /// Runs over a connection already made to the host (a socket's fd).
     /// Returns the exit status: 0 when done, 1 when the host or app
     /// couldn't do it.
-    public static func run(fd: Int32, paths: [String], beside: BlockID?, wait: Bool, name: String = "manifold") -> Int32 {
+    public static func run(fd: Int32, paths: [String], beside: BlockID?, wait: Bool, name: String = "mani") -> Int32 {
         run(fd: fd, wait: wait, name: name) { .open(id: $0, paths: paths, beside: beside, wait: wait) }
     }
 
-    /// `manifold diff`: a patch, read from the input, shown as a diff block.
-    public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "manifold") -> Int32 {
+    /// `mani diff`: a patch, read from the input, shown as a diff block.
+    public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "mani") -> Int32 {
         run(fd: fd, wait: false, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
     }
 
     /// The patch on standard input, or why there is none.
     public static func readPatch() -> Result<String, ResolveError> {
-        guard isatty(0) == 0 else { return .failure(ResolveError(message: "diff reads a patch from its input: git diff | manifold diff")) }
+        guard isatty(0) == 0 else { return .failure(ResolveError(message: "diff reads a patch from its input: git diff | mani diff")) }
         let data = FileHandle.standardInput.readDataToEndOfFile()
         guard let text = String(data: data, encoding: .utf8) else { return .failure(ResolveError(message: "the patch isn't UTF-8")) }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failure(ResolveError(message: "the patch is empty")) }
@@ -81,7 +81,7 @@ public enum OpenCommand {
     }
 
     private static func fail(_ message: String) -> Int32 {
-        FileHandle.standardError.write(Data("manifold: \(message)\n".utf8))
+        FileHandle.standardError.write(Data("mani: \(message)\n".utf8))
         return 1
     }
 

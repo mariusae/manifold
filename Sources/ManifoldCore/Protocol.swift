@@ -331,13 +331,13 @@ public enum ClientMessage: Codable, Sendable {
     case backfill(BackfillRequest)
     /// Asks the server to exit, ending every session.
     case shutdown
-    /// The `manifold` command: open these, beside a block if run in one
+    /// `mani open`: open these, beside a block if run in one
     /// of Manifold's terminals; with `wait`, answered when they're put away.
     case open(id: Int, paths: [String], beside: BlockID?, wait: Bool)
-    /// `manifold diff`: a patch read from its input, shown as a diff block
+    /// `mani diff`: a patch read from its input, shown as a diff block
     /// (its files opened against `root`, the command's directory).
     case openPatch(id: Int, patch: String, root: String, title: String?, beside: BlockID?)
-    /// An agent's hook (`manifold agent`): what happened in the agent
+    /// An agent's hook (`mani agent`): what happened in the agent
     /// running in `block`. A connection's one message, with no hello.
     case agent(block: BlockID, AgentEvent)
     /// A stream's first frame: a forwarded port's connection (§8). The host

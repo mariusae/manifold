@@ -300,8 +300,8 @@ public enum Bootstrap {
                      hash: tagged("hash"), gunzip: lines.contains("gunzip"))
     }
 
-    /// Installs `binary` as the destination's server, with a `manifold`
-    /// script beside it that runs `manifoldd open`, so terminals there
+    /// Installs `binary` as the destination's server, with a `mani`
+    /// script beside it that runs `manifoldd mani`, so terminals there
     /// have the command on their PATH as terminals here do. Compressed
     /// on the way if the destination has gunzip; into a file of this
     /// upload's own, any left by earlier ones taken away first (one that
@@ -318,7 +318,7 @@ public enum Bootstrap {
             got=$( (sha256sum "$new" 2>/dev/null || shasum -a 256 "$new") | cut -d' ' -f1)
             if [ "$got" != \(sha256(binary)) ]; then size=$(wc -c < "$new"); rm -f "$new"; echo "what arrived isn't what was sent ($size of \(binary.count) bytes)"; exit 1; fi
             chmod +x "$new" && mv "$new" manifoldd || exit 1
-            printf '%s\\n' '#!/bin/sh' 'exec "$(dirname "$0")/manifoldd" open "$@"' > manifold && chmod +x manifold
+            printf '%s\\n' '#!/bin/sh' 'exec "$(dirname "$0")/manifoldd" mani "$@"' > mani && chmod +x mani && rm -f manifold
             """
         var argv = dest.invocation(posix(script))
         // Compressed here as it goes: gzip takes the binary, the provider
