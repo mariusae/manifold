@@ -465,7 +465,7 @@ around it, and comes back with its history.
   Tiempos/Fira (Tiempos Text, Fira Code), Tiempos/JetBrains (Tiempos
   Text, JetBrains Mono), Tiempos/Anthrosevka (Tiempos Text,
   [Anthrosevka Mono](https://nanx.me/anthrosevka/)), Mona (Mona Sans, Monaspace),
-  Recursive, Go, or System (SF, SF Mono). All but SF are bundled;
+  Recursive, Go, Lato (Lato, Source Code Pro), or System (SF, SF Mono). All but SF are bundled;
   Tiempos Text is licensed, so the build copies it from your own fonts
   (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts)
   rather than fetching them.

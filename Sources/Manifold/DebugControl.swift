@@ -916,11 +916,12 @@ enum DebugControl {
             wc?.setColorScheme(item)
             return "ok"
         case "theme":
-            guard let theme = FontTheme(rawValue: arg) else { return "notes, tiempos, tiemposFira, tiemposJetBrains, tiemposAnthrosevka, mona, recursive, go or system" }
+            guard let theme = FontTheme(rawValue: arg) else { return FontTheme.allCases.map(\.rawValue).joined(separator: ", ") }
             let item = NSMenuItem()
             item.representedObject = theme.rawValue
             wc?.setTheme(item)
-            return "ok"
+            // The fonts it resolved to (a missing one falls back to the system's).
+            return "ok: " + [EditorFont.proportional, .monospaced].map { theme.font($0, size: 13).fontName }.joined(separator: ", ")
         case "editorfont":
             guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
             let item = NSMenuItem()

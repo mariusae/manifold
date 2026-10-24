@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
-for d in monaspace monasans recursive gofont firacode jetbrainsmono anthrosevka; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
+for d in monaspace monasans recursive gofont firacode jetbrainsmono anthrosevka lato sourcecodepro; do [ -d Frameworks/$d ] || { scripts/fetch-fonts.sh; break; }; done
 
 config=${CONFIG:-release}
 swift build -c "$config"
@@ -50,6 +50,10 @@ cp Frameworks/jetbrainsmono/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/jetbrainsmono/OFL.txt "$app/Contents/Resources/Fonts/JetBrainsMono-OFL.txt"
 cp Frameworks/anthrosevka/*.ttf "$app/Contents/Resources/Fonts/"
 cp Frameworks/anthrosevka/LICENSE "$app/Contents/Resources/Fonts/Anthrosevka-LICENSE"
+cp Frameworks/lato/*.ttf "$app/Contents/Resources/Fonts/"
+cp Frameworks/lato/OFL.txt "$app/Contents/Resources/Fonts/Lato-OFL.txt"
+cp Frameworks/sourcecodepro/*.otf "$app/Contents/Resources/Fonts/"
+cp Frameworks/sourcecodepro/LICENSE.md "$app/Contents/Resources/Fonts/SourceCodePro-LICENSE.md"
 # Tiempos Text is licensed: bundled when scripts/fetch-fonts.sh found it.
 [ -d Frameworks/tiempos ] && cp Frameworks/tiempos/*.otf "$app/Contents/Resources/Fonts/"
 

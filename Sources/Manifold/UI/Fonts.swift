@@ -15,6 +15,7 @@ extension FontTheme {
         case .mona: "Mona"
         case .recursive: "Recursive"
         case .go: "Go"
+        case .lato: "Lato"
         case .system: "System"
         }
     }
@@ -26,6 +27,7 @@ extension FontTheme {
         case .mona: "Mona Sans"
         case .recursive: "Recursive Sans"
         case .go: "Go"
+        case .lato: "Lato"
         case .system: "SF"
         }
     }
@@ -40,6 +42,7 @@ extension FontTheme {
         case .mona: "Monaspace Xenon"
         case .recursive: "Recursive Mono"
         case .go: "Go Mono"
+        case .lato: "Source Code Pro"
         case .system: "SF Mono"
         }
     }
@@ -64,6 +67,7 @@ extension FontTheme {
         case .tiemposAnthrosevka: "font-family = Anthrosevka Mono"
         case .recursive: "font-family = Recursive Mono Linear Static"
         case .go: "font-family = Go Mono"
+        case .lato: "font-family = Source Code Pro"
         // Terminal.app's copy, registered for this process at launch.
         case .system: "font-family = SF Mono"
         }
@@ -87,9 +91,10 @@ extension FontTheme {
         switch (self, kind) {
         case (.mona, .proportional), (.tiempos, .proportional), (.tiemposFira, .proportional), (.tiemposJetBrains, .proportional),
              (.tiemposAnthrosevka, .proportional): 15
-        case (.recursive, .proportional): 14.5
+        case (.recursive, .proportional), (.lato, .proportional): 14.5
         case (.go, .proportional), (.system, .proportional), (.notes, .proportional): 14
-        case (.go, .monospaced), (.notes, .monospaced), (.tiempos, .monospaced), (.tiemposFira, .monospaced), (.tiemposJetBrains, .monospaced): 13
+        case (.go, .monospaced), (.notes, .monospaced), (.tiempos, .monospaced), (.tiemposFira, .monospaced), (.tiemposJetBrains, .monospaced),
+             (.lato, .monospaced): 13
         // Iosevka's letters are narrow, and look small at a size.
         case (.tiemposAnthrosevka, .monospaced): 14
         case (_, .monospaced): 13.5
@@ -104,6 +109,7 @@ extension FontTheme {
             case .mona: "Mona Sans"
             case .recursive: "Recursive Sans Linear Static"
             case .go: "Go"
+            case .lato: "Lato"
             case .system, .notes: nil
             }
             let base = name.flatMap { NSFont(name: $0, size: size) } ?? .systemFont(ofSize: size)
@@ -122,6 +128,7 @@ extension FontTheme {
             case .mona: "Monaspace Xenon"
             case .recursive: "Recursive Mono Linear Static"
             case .go: "Go Mono"
+            case .lato: "Source Code Pro"
             case .system: nil
             }
             guard let name else { return .monospacedSystemFont(ofSize: size, weight: .regular) }
@@ -162,6 +169,7 @@ extension FontTheme {
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
         case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)
+        case .lato: (#""Lato""#, #""Source Code Pro""#, features, sansFeatures)
         case .system: ("-apple-system", "ui-monospace", features, sansFeatures)
         }
     }

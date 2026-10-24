@@ -100,6 +100,25 @@ done
 github_file nanxstats/anthrosevka $anth LICENSE "$out/LICENSE"
 echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
 
+# Lato (OFL), Google Fonts' copy of its 2.0 statics, and Source Code Pro
+# (OFL), Adobe's, for the Lato theme.
+gf=5d3b76120a319730fda218cc7410174a462b32cb
+out=Frameworks/lato
+mkdir -p "$out"
+for face in Regular Italic Medium SemiBold Bold BoldItalic; do
+  github_file google/fonts $gf "ofl/lato/Lato-$face.ttf" "$out/Lato-$face.ttf"
+done
+github_file google/fonts $gf ofl/lato/OFL.txt "$out/OFL.txt"
+echo "fetched $(ls "$out"/*.ttf | wc -l | tr -d ' ') fonts into $out"
+scp=803b7e23ec97ae58b6232ea76519a76d428ba268
+out=Frameworks/sourcecodepro
+mkdir -p "$out"
+for face in Regular It Medium Semibold Bold BoldIt; do
+  github_file adobe-fonts/source-code-pro $scp "OTF/SourceCodePro-$face.otf" "$out/SourceCodePro-$face.otf"
+done
+github_file adobe-fonts/source-code-pro $scp LICENSE.md "$out/LICENSE.md"
+echo "fetched $(ls "$out"/*.otf | wc -l | tr -d ' ') fonts into $out"
+
 # Tiempos Text, for the Tiempos themes: copied, not fetched.
 tiempos=${TIEMPOS_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/Fonts/Tiempos Text"}
 out=Frameworks/tiempos

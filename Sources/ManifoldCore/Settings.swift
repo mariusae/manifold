@@ -226,10 +226,10 @@ public struct LSPSettingError: Error, Sendable {
 /// one, chosen together: SF Pro (with its single-story a, as Notes sets
 /// it) and Menlo; Tiempos Text and Menlo, Fira Code, JetBrains Mono or
 /// Anthrosevka Mono;
-/// Mona Sans and Monaspace; Recursive Sans and Mono; Go and Go Mono; or
-/// SF and SF Mono. Fixed, not configurable.
+/// Mona Sans and Monaspace; Recursive Sans and Mono; Go and Go Mono; Lato
+/// and Source Code Pro; or SF and SF Mono. Fixed, not configurable.
 public enum FontTheme: String, Codable, CaseIterable, Sendable {
-    case notes, tiempos, tiemposFira, tiemposJetBrains, tiemposAnthrosevka, mona, recursive, go, system
+    case notes, tiempos, tiemposFira, tiemposJetBrains, tiemposAnthrosevka, mona, recursive, go, lato, system
 }
 
 /// Light or dark: as the system is, or always one.

@@ -229,6 +229,16 @@ enum MarkdownPage {
             ("Go Mono", "Go-Mono-Italic.ttf", 400, "italic"),
             ("Go Mono", "Go-Mono-Bold.ttf", 700, "normal"),
             ("Go Mono", "Go-Mono-Bold-Italic.ttf", 700, "italic"),
+            ("Lato", "Lato-Regular.ttf", 400, "normal"),
+            ("Lato", "Lato-Italic.ttf", 400, "italic"),
+            ("Lato", "Lato-Medium.ttf", 500, "normal"),
+            ("Lato", "Lato-SemiBold.ttf", 600, "normal"),
+            ("Lato", "Lato-Bold.ttf", 700, "normal"),
+            ("Lato", "Lato-BoldItalic.ttf", 700, "italic"),
+            ("Source Code Pro", "SourceCodePro-Regular.otf", 400, "normal"),
+            ("Source Code Pro", "SourceCodePro-It.otf", 400, "italic"),
+            ("Source Code Pro", "SourceCodePro-Bold.otf", 700, "normal"),
+            ("Source Code Pro", "SourceCodePro-BoldIt.otf", 700, "italic"),
         ]
         return faces.map { family, file, weight, style in
             """
