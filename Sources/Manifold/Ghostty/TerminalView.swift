@@ -660,8 +660,18 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// What the screen shows now, as text: the rows in view, blank ones
     /// at the end left off (for a card of the terminal).
     var visibleText: String {
-        let rows = text(rows: scrollbar.offset..<(scrollbar.offset + scrollbar.len))
-        var lines = rows.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        // The viewport alone read (not the whole scrollback, to keep 14 lines).
+        guard let surface else { return "" }
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0)
+        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0)
+        sel.rectangle = false
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &out) else { return "" }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text else { return "" }
+        let rows = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
+        var lines = rows.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
         return lines.suffix(14).joined(separator: "\n")
     }
@@ -999,20 +1009,50 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             markedRuns = nil
             return clearLinks()
         }
-        linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved]) { [weak self] event in
+        linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
+            // A key with ⌘ (⌘C, ⌘T): a shortcut, not links looked for.
+            if event.type == .keyDown {
+                self.pendingMark?.cancel()
+                self.pendingMark = nil
+                return event
+            }
             let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer
             if down {
-                // The screen read as ⌘ goes down; the pointer moving moves the underline.
-                self.markLinks(reading: event.type == .flagsChanged || self.markedRuns == nil)
-            } else if self.markedRuns != nil {
-                self.markedRuns = nil
-                self.clearLinks()
-                self.cursor.set()
+                if event.type == .flagsChanged, self.markedRuns == nil {
+                    // The screen read a moment after ⌘ goes down, if no key
+                    // follows — or the links would flash at every shortcut.
+                    self.pendingMark?.cancel()
+                    let work = DispatchWorkItem { [weak self] in
+                        guard let self else { return }
+                        self.pendingMark = nil
+                        guard NSEvent.modifierFlags.contains(.command), self.isUnderPointer else { return }
+                        self.markLinks()
+                    }
+                    self.pendingMark = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+                } else if self.markedRuns != nil {
+                    // The pointer moving moves the band; ⌘ again, read again.
+                    self.markLinks(reading: event.type == .flagsChanged)
+                } else if event.type == .mouseMoved, self.pendingMark == nil {
+                    // ⌘ held, the pointer brought in: read now.
+                    self.markLinks()
+                }
+            } else {
+                self.pendingMark?.cancel()
+                self.pendingMark = nil
+                if self.markedRuns != nil {
+                    self.markedRuns = nil
+                    self.clearLinks()
+                    self.cursor.set()
+                }
             }
             return event
         }
     }
+
+    /// The links' reading, put off a moment after ⌘ goes down.
+    private var pendingMark: DispatchWorkItem?
 
     /// The links marked while ⌘ is held, as last read from the screen.
     private var markedRuns: [(row: Int, from: Int, to: Int)]?
