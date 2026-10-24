@@ -210,6 +210,27 @@ public struct Rope: Equatable, Sendable, CustomStringConvertible {
 
     public func lineText(_ n: Int) -> String { self[lineRange(n)] }
 
+    /// Every line's length in bytes (its break not counted), in one pass.
+    public func lineLengths() -> [Int] {
+        var out: [Int] = []
+        out.reserveCapacity(lineCount)
+        var run = 0
+        for c in chunks {
+            c.bytes.withUnsafeBufferPointer { p in
+                var start = 0
+                while start < p.count, let nl = memchr(p.baseAddress! + start, 0x0A, p.count - start) {
+                    let k = p.baseAddress!.distance(to: nl.assumingMemoryBound(to: UInt8.self))
+                    out.append(run + k - start)
+                    run = 0
+                    start = k + 1
+                }
+                run += p.count - start
+            }
+        }
+        out.append(run)
+        return out
+    }
+
     // MARK: UTF-16
 
     public func utf16Offset(ofByte offset: Int) -> Int {

@@ -1686,3 +1686,9 @@ private final class Seen: @unchecked Sendable {
     r.append(Data("\u{1b}[?1047l".utf8))
     #expect(!r.altScreen)
 }
+
+@Test func aRopesLineLengthsAreItsLines() {
+    for text in ["", "one", "one\ntwo\n", "\n\n", "a\nbb\n\nccc", String(repeating: "word ", count: 3000) + "\nend"] {
+        #expect(Rope(text).lineLengths() == text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.utf8.count })
+    }
+}

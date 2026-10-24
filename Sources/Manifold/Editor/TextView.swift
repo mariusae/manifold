@@ -142,7 +142,12 @@ final class TextView: NSView, NSTextInputClient {
     /// Visual rows per logical line, estimated as 1 until laid out.
     private var rowCounts: [Int] = []
     private var rowStarts: [Int] = []
-    private var rowStartsValid = false
+    /// `rowStarts` is right up to this index (-1: none): a line laid out
+    /// that wraps moves only what's after it, and what's looked up (the
+    /// lines being drawn) is summed only as far as it's needed — every
+    /// line that wrapped made the whole file be summed again, once for each
+    /// line drawn.
+    private var rowStartsValidThrough = -1
     private var lineHeight: CGFloat = 20
     private var ascent: CGFloat = 14
     private var layoutWidth: CGFloat = 0
@@ -261,15 +266,33 @@ final class TextView: NSView, NSTextInputClient {
         layouts = [:]
         pillLines = [:]
         fenceLines = nil
-        rowCounts = Array(repeating: 1, count: text.lineCount)
-        rowStartsValid = false
+        rowCounts = estimatedRowCounts()
+        rowStartsValidThrough = -1
         resizeToFit()
         needsDisplay = true
     }
 
+    /// Rows for the lines not yet laid out, guessed from their lengths at
+    /// the font's average width — not one each: a long line wraps to
+    /// several, and taking them for one put the end of a file of long
+    /// lines a third of the way down (and moved everything as they were
+    /// laid out).
+    private func estimatedRowCounts() -> [Int] {
+        guard wraps else { return Array(repeating: 1, count: text.lineCount) }
+        if lineLengthsFor?.version != knownVersion || lineLengthsFor?.lengths.count != text.lineCount {
+            lineLengthsFor = (knownVersion, text.lineLengths())
+        }
+        let perRow = max(1, Double(wrapWidth) / max(averageAdvance, 1))
+        return (lineLengthsFor?.lengths ?? []).map { max(1, Int((Double($0) / perRow).rounded(.up))) }
+    }
+    private var lineLengthsFor: (version: Int, lengths: [Int])?
+    /// A character's width, on the average (for guessing rows).
+    private var averageAdvance: CGFloat = 8
+
     private func fontChanged() {
         let a = CTFontGetAscent(font), d = CTFontGetDescent(font), l = CTFontGetLeading(font)
         lineHeight = ceil((a + d + l) * lineHeightMultiple)
+        averageAdvance = ("abcdefghijklmnopqrstuvwxyz " as NSString).size(withAttributes: [.font: font]).width / 27
         ascent = ceil(a + (lineHeight - (a + d + l)) / 2)
         invalidateAll()
     }
@@ -279,22 +302,41 @@ final class TextView: NSView, NSTextInputClient {
     private var textLeft: CGFloat { Self.insets.left + gutterWidth }
     private var wrapWidth: CGFloat { max(40, bounds.width - textLeft - Self.insets.right) }
 
-    private func ensureRowStarts() {
-        guard !rowStartsValid else { return }
-        if rowCounts.count != text.lineCount { rowCounts = Array(repeating: 1, count: text.lineCount) }
-        rowStarts = [0]
-        rowStarts.reserveCapacity(rowCounts.count + 1)
-        var n = 0
-        for c in rowCounts {
-            n += c
-            rowStarts.append(n)
+    /// `rowStarts` made right up to index `k` (the row line `k` starts at).
+    private func ensureRowStarts(through k: Int) {
+        if rowCounts.count != text.lineCount {
+            rowCounts = estimatedRowCounts()
+            rowStartsValidThrough = -1
         }
-        rowStartsValid = true
+        let n = rowCounts.count
+        if rowStarts.count < n + 1 {
+            rowStarts.append(contentsOf: repeatElement(0, count: n + 1 - rowStarts.count))
+        } else if rowStarts.count > n + 1 {
+            rowStarts.removeLast(rowStarts.count - n - 1)
+        }
+        rowStartsValidThrough = min(rowStartsValidThrough, n)
+        if rowStartsValidThrough < 0 {
+            rowStarts[0] = 0
+            rowStartsValidThrough = 0
+        }
+        let want = min(max(k, 0), n)
+        var i = rowStartsValidThrough
+        while i < want {
+            rowStarts[i + 1] = rowStarts[i] + rowCounts[i]
+            i += 1
+        }
+        rowStartsValidThrough = max(rowStartsValidThrough, want)
+    }
+
+    /// The rows after line `n` moved (its own count changed, or lines came
+    /// or went there).
+    private func invalidateRowStarts(after n: Int) {
+        rowStartsValidThrough = min(rowStartsValidThrough, max(n, 0))
     }
 
     private var totalRows: Int {
-        ensureRowStarts()
-        return rowStarts.last ?? 0
+        ensureRowStarts(through: rowCounts.count)
+        return rowStarts[min(rowCounts.count, rowStarts.count - 1)]
     }
 
     private func resizeToFit() {
@@ -309,8 +351,8 @@ final class TextView: NSView, NSTextInputClient {
         if wraps, abs(layoutWidth - wrapWidth) > 0.5 {
             layoutWidth = wrapWidth
             layouts = [:]
-            rowCounts = Array(repeating: 1, count: text.lineCount)
-            rowStartsValid = false
+            rowCounts = estimatedRowCounts()
+            rowStartsValidThrough = -1
             needsDisplay = true
             DispatchQueue.main.async { [weak self] in self?.resizeToFit() }
         }
@@ -367,7 +409,7 @@ final class TextView: NSView, NSTextInputClient {
         layouts[n] = l
         if n < rowCounts.count, rowCounts[n] != rows.count {
             rowCounts[n] = rows.count
-            rowStartsValid = false
+            invalidateRowStarts(after: n)
             DispatchQueue.main.async { [weak self] in
                 self?.resizeToFit()
                 self?.needsDisplay = true
@@ -445,17 +487,21 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     func top(ofLine n: Int) -> CGFloat {
-        ensureRowStarts()
-        let row = n < rowStarts.count ? rowStarts[n] : (rowStarts.last ?? 0)
+        ensureRowStarts(through: n)
+        let row = rowStarts[min(max(n, 0), rowStarts.count - 1)]
         return Self.insets.top + CGFloat(row) * lineHeight
     }
 
     /// The logical line at a y.
     private func line(atY y: CGFloat) -> Int {
-        ensureRowStarts()
+        ensureRowStarts(through: 0)
         let row = Int((y - Self.insets.top) / lineHeight)
         guard row >= 0 else { return 0 }
-        var lo = 0, hi = max(rowCounts.count - 1, 0)
+        // Summed only until past the row.
+        while rowStartsValidThrough < rowCounts.count, rowStarts[rowStartsValidThrough] <= row {
+            ensureRowStarts(through: rowStartsValidThrough + 512)
+        }
+        var lo = 0, hi = max(min(rowStartsValidThrough, rowCounts.count - 1), 0)
         while lo < hi {
             let mid = (lo + hi + 1) / 2
             if rowStarts[mid] <= row { lo = mid } else { hi = mid - 1 }
@@ -975,7 +1021,7 @@ final class TextView: NSView, NSTextInputClient {
                 let drop = min(knownLineCount - newCount, max(rowCounts.count - firstLine, 0))
                 rowCounts.removeSubrange(firstLine..<firstLine + drop)
             }
-            rowStartsValid = false
+            invalidateRowStarts(after: firstLine)
             knownLineCount = newCount
             fenceLines = nil
         } else if let e = edits.first {
