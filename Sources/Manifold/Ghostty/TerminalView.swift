@@ -836,9 +836,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         let cols = Int(info.cols)
-        guard cols > 0, len > 0, info.cell_width > 0 else { return }
-        // The offsets count cells of the viewport, the end past the last.
-        let end = start + len
+        guard cols > 0, info.cell_width > 0 else { return }
+        // The offsets count cells of the viewport; the length is from the
+        // first cell to the last (one cell selected: 0), so the end, past
+        // the last, is a cell further.
+        let end = start + len + 1
         let r0 = start / cols, r1 = (end - 1) / cols
         var runs: [(y: Int, from: Int, to: Int)] = []
         for r in r0...min(r1, Int(info.rows) - 1) {
