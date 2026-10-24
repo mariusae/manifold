@@ -126,7 +126,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         guard let d = source()?.directory, d.listedAt != nil else { return note.set(.busy("Reading…")) }
         if let e = d.error { return note.set(.message(e)) }
         if d.entries.isEmpty { return note.set(.message("Empty folder")) }
-        if model.children(of: model.root)?.isEmpty == true { return note.set(.message("Only hidden files")) }
+        // Whether any shows — not every entry sorted and made a node to
+        // see (every render came here).
+        if !d.entries.contains(where: model.shown) { return note.set(.message("Only hidden files")) }
         note.set(.idle)
     }
 

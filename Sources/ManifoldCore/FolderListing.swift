@@ -14,9 +14,44 @@ public enum FolderListing {
         return entries
     }
 
-    /// The names among `names`, in the folder at `path`, its repository ignores.
+    /// The names among `names`, in the folder at `path`, its repository
+    /// ignores — kept, and answered again without asking the repository
+    /// while nothing it hangs on has changed: the folder (entries come or
+    /// go), the repository's state (what's tracked), the ignore files at
+    /// its root and in the folder; half a minute at most. A folder shown
+    /// is listed again every few seconds, and in a Sapling repository each
+    /// asking ran `sl files .` (all under it) and `sl status`.
     static func ignoredNames(in path: String, names: [String]) -> Set<String> {
         guard !names.isEmpty, let repo = VCS.repository(of: path) else { return [] }
+        let token = ignoreToken(path, repo: repo)
+        let asked = Set(names)
+        ignoreLock.lock()
+        if let c = ignoreCache[path], c.token == token, c.names == asked, Date().timeIntervalSince(c.at) < 30 {
+            ignoreLock.unlock()
+            return c.ignored
+        }
+        ignoreLock.unlock()
+        let ignored = askIgnored(in: path, names: names, repo: repo)
+        ignoreLock.lock()
+        if ignoreCache.count > 500 { ignoreCache.removeAll() }
+        ignoreCache[path] = (token, Date(), asked, ignored)
+        ignoreLock.unlock()
+        return ignored
+    }
+
+    private static let ignoreLock = NSLock()
+    nonisolated(unsafe) private static var ignoreCache: [String: (token: String, at: Date, names: Set<String>, ignored: Set<String>)] = [:]
+
+    /// What an answer for a folder hangs on, as modification times.
+    private static func ignoreToken(_ path: String, repo: (root: String, vcs: VCS)) -> String {
+        func mtime(_ p: String) -> String {
+            ((try? FileManager.default.attributesOfItem(atPath: p))?[.modificationDate] as? Date).map { "\($0.timeIntervalSince1970)" } ?? "-"
+        }
+        let state = repo.vcs == .git ? ".git/index" : (FileManager.default.fileExists(atPath: repo.root + "/.sl") ? ".sl/dirstate" : ".hg/dirstate")
+        return [path, repo.root + "/" + state, repo.root + "/.gitignore", path + "/.gitignore"].map(mtime).joined(separator: "|")
+    }
+
+    private static func askIgnored(in path: String, names: [String], repo: (root: String, vcs: VCS)) -> Set<String> {
         switch repo.vcs {
         case .git:
             let input = Data((names.joined(separator: "\0") + "\0").utf8)

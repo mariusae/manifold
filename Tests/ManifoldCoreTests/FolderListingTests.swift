@@ -52,3 +52,19 @@ private func scratchRepository() throws -> String {
     let names = Set(FolderListing.tree(of: root).entries.map(\.name))
     #expect(names == ["a", "a/one.txt"])
 }
+
+@Test func folderChildrenFollowTheIgnoreFileAsItChanges() throws {
+    let root = try scratchRepository()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    func ignored() throws -> Set<String> { Set(try #require(FolderListing.children(of: root)).filter { $0.isIgnored == true }.map(\.name)) }
+    #expect(try ignored() == ["build", "debug.log"])
+    // Asked again, as a folder shown is: kept (the same answer).
+    #expect(try ignored() == ["build", "debug.log"])
+    // The ignore file changed: asked of the repository again.
+    try "build/\n".write(toFile: root + "/.gitignore", atomically: true, encoding: .utf8)
+    #expect(try ignored() == ["build"])
+    // A file came: the folder changed.
+    try "x".write(toFile: root + "/more.log", atomically: true, encoding: .utf8)
+    try "build/\n*.log\n".write(toFile: root + "/.gitignore", atomically: true, encoding: .utf8)
+    #expect(try ignored() == ["build", "debug.log", "more.log"])
+}
