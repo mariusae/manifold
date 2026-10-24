@@ -651,8 +651,13 @@ final class Server {
             done()
         case let .readFile(block):
             readFile(block, for: conn, done: done)
-        case let .writeFile(block, version, text):
+        case let .writeFile(block, version):
             guard let b = node.block(block), b.kind == .text, let path = b.path, let t = b.text else { return done("not a file") }
+            // Its own copy written, which the client's edits have brought to
+            // the version saved — or not, if they were refused (another has
+            // the pen): then nothing is.
+            guard t.version == version else { return done("This host's copy is at version \(t.version), not \(version); not written.") }
+            let text = t.text.string
             // Whatever asked, a file is never written over by a text that
             // never came from it.
             if b.needsRead, FileManager.default.fileExists(atPath: path) { return done("The file hasn't been read in yet; not written over.") }

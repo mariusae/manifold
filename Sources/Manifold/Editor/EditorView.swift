@@ -651,7 +651,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // Never a text that isn't the file's over the file.
         guard isLoaded else { return NSSound.beep() }
         textView.savedUndoDepth = textView.undoDepth
-        delegate?.editor(self, propose: .writeFile(block, version: doc.version, text: doc.text.string))
+        delegate?.editor(self, propose: .writeFile(block, version: doc.version))
     }
 
     /// Where the block lives (its folder): where a note is saved by default.
@@ -697,7 +697,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 self.textView.commentLeader = Self.commentLeader(for: path)
                 // Its file's name names it now.
                 self.delegate?.editor(self, append: [.path(path)] + (self.noteName == nil ? [] : [.title(nil)]))
-                self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
+                self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version))
             }
             return
         }
@@ -709,7 +709,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             self.path = url.path
             self.textView.commentLeader = Self.commentLeader(for: url.path)
             self.delegate?.editor(self, append: [.path(url.path)] + (self.noteName == nil ? [] : [.title(nil)]))
-            self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version, text: doc.text.string))
+            self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version))
         }
     }
 

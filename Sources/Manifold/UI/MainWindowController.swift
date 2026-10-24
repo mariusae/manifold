@@ -1970,7 +1970,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let editors = views.values.compactMap { $0 as? EditorView }.filter { $0.block == block }
         if let e = editors.first(where: { $0.placement == placement }) ?? editors.first { return e.saveDocument(nil) }
         guard let b = hosts.block(block), b.path != nil, !b.needsRead, let t = b.text else { return NSSound.beep() }
-        hosts.propose(.writeFile(block, version: t.version, text: t.text.string))
+        hosts.propose(.writeFile(block, version: t.version))
     }
 
     /// The bar's ×: the tile taken off, as ⌘W takes the focused one.

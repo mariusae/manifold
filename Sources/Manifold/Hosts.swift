@@ -372,7 +372,7 @@ final class Hosts {
     /// Sends a proposal to the host it concerns.
     func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
         switch proposal {
-        case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _, _),
+        case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
              let .git(block, _), let .refreshGit(block), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
              let .newAgent(block, _, _), let .processes(block),

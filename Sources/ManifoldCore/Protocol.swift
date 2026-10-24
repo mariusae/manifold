@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 52
+public let protocolVersion = 53
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -119,9 +119,11 @@ public enum Proposal: Codable, Sendable {
     case endTerminal(BlockID)
     /// Reads the file a text block names; the host proposes its content.
     case readFile(BlockID)
-    /// Writes a text block's text at `version` to its file; the host
-    /// proposes `clean`.
-    case writeFile(BlockID, version: Int, text: String)
+    /// Writes a text block's text to its file as the host has it at
+    /// `version` — the client's edits up to it come first, on the same
+    /// link, so the text isn't sent again; the host proposes `clean`.
+    /// Refused if the host's copy isn't at that version.
+    case writeFile(BlockID, version: Int)
     /// Makes (or finds) the directory block for a path, and lists it.
     case directory(block: BlockID, path: String)
     case listDirectory(BlockID)
