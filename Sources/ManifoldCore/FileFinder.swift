@@ -81,6 +81,12 @@ public enum FileFinder {
     /// the file's name, in runs, and at the starts of words count for more,
     /// and shorter paths win ties. Spaces in the query are ignored.
     public static func score(_ query: String, _ path: String) -> Int? {
+        if let ascii = asciiScore(query, path) { return ascii }
+        return characterScore(query, path)
+    }
+
+    /// `score` by characters, for any text.
+    static func characterScore(_ query: String, _ path: String) -> Int? {
         let q = Array(query.lowercased().filter { $0 != " " })
         guard !q.isEmpty else { return 0 }
         let p = Array(path)
@@ -92,6 +98,71 @@ public enum FileFinder {
         }
         guard let s = match(q, lower, p, from: 0) else { return nil }
         return s - path.count / 4
+    }
+
+    /// `score` over bytes, when the query and path are ASCII (as most
+    /// are): the same answer without making arrays of characters of every
+    /// path, which was most of a ranking's time. `.none` when either isn't.
+    private static func asciiScore(_ query: String, _ path: String) -> Int?? {
+        guard let q = asciiQuery(query) else { return .none }
+        return asciiScore(q, path)
+    }
+
+    /// A query as `asciiScore` takes it — its bytes lowercased, spaces
+    /// out — made once for many paths; nil if it isn't ASCII.
+    public static func asciiQuery(_ query: String) -> [UInt8]? {
+        var q: [UInt8] = []
+        q.reserveCapacity(query.utf8.count)
+        for b in query.utf8 {
+            guard b < 0x80 else { return nil }
+            if b != 0x20 { q.append(b >= 0x41 && b <= 0x5A ? b + 32 : b) }
+        }
+        return q
+    }
+
+    /// `score` for a query made by `asciiQuery`: `.none` if the path isn't
+    /// ASCII.
+    public static func asciiScore(_ q: [UInt8], _ path: String) -> Int?? {
+        guard !q.isEmpty else { return .some(0) }
+        let slash = q.contains(0x2F)
+        return path.utf8.withContiguousStorageIfAvailable { p -> Int?? in
+            var nameStart = 0
+            for (i, b) in p.enumerated() {
+                guard b < 0x80 else { return .none }
+                if b == 0x2F { nameStart = i + 1 }
+            }
+            if !slash, let s = byteMatch(q, p, from: nameStart) { return .some(1000 + s - p.count / 4) }
+            guard let s = byteMatch(q, p, from: 0) else { return .some(nil) }
+            return .some(s - p.count / 4)
+        } ?? .none
+    }
+
+    /// `match` over ASCII bytes, lowercasing as it goes.
+    private static func byteMatch(_ q: [UInt8], _ p: UnsafeBufferPointer<UInt8>, from start: Int) -> Int? {
+        @inline(__always) func lower(_ b: UInt8) -> UInt8 { b >= 0x41 && b <= 0x5A ? b + 32 : b }
+        @inline(__always) func isUpper(_ b: UInt8) -> Bool { b >= 0x41 && b <= 0x5A }
+        @inline(__always) func isLower(_ b: UInt8) -> Bool { b >= 0x61 && b <= 0x7A }
+        var score = 0, qi = 0, last = -2
+        var i = start
+        while i < p.count, qi < q.count {
+            if lower(p[i]) == q[qi] {
+                score += 10
+                if i == last + 1 { score += 20 }
+                if i == start { score += 25 }
+                if i > 0 {
+                    let before = p[i - 1]
+                    // "/._- "
+                    if before == 0x2F || before == 0x2E || before == 0x5F || before == 0x2D || before == 0x20 || (isLower(before) && isUpper(p[i])) { score += 12 }
+                } else {
+                    score += 12
+                }
+                if last >= 0 { score -= min(2 * (i - last - 1), 16) }
+                last = i
+                qi += 1
+            }
+            i += 1
+        }
+        return qi == q.count ? score : nil
     }
 
     /// Where a query's letters fall in a path (character offsets), as

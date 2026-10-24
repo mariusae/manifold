@@ -60,3 +60,10 @@ import Testing
     // Agreeing with the score.
     #expect((FileFinder.positions("mxs", "Sources/Mux.swift") != nil) == (FileFinder.score("mxs", "Sources/Mux.swift") != nil))
 }
+
+@Test func asciiScoreMatchesCharacters() {
+    let paths = ["Sources/Manifold/UI/TabContentView.swift", "README.md", "src/r_e_a_d.txt", "a/b-c/d.e f/MainWindow.swift",
+                 "x", "/tmp/mft-big/pkg005/src/module5/file_097_beta.swift", "fooBar/BAZ_qux", "Ünïcode/naïve.txt"]
+    let queries = ["tcv", "read", "R E", "/", "src/mod", "mw", "fb", "bq", "x", "zz", "file1", "naï", "ü", " "]
+    for p in paths { for q in queries { #expect(FileFinder.score(q, p) == FileFinder.characterScore(q, p), "\(q) in \(p)") } }
+}

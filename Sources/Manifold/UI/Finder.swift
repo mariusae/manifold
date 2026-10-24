@@ -97,25 +97,57 @@ enum FinderRanking {
         }
         let letters = Array(q.utf8.filter { $0 != 32 })
         let qWords = q.split(separator: " ").map(String.init)
-        var scored: [(band: Int, match: Int, i: Int)] = []
+        let ascii = FileFinder.asciiQuery(q)
+        // The best `limit` so far, best first: a match goes in where it
+        // falls, or not at all — not every match sorted for the first few.
+        var best: [Scored] = []
+        best.reserveCapacity(limit + 1)
         for (i, c) in candidates.enumerated() {
             if i % 2000 == 0, !current() { return nil }
             // Every letter, in order, somewhere: else no match at all (cheap, first).
             guard Self.hasInOrder(letters, c.name) || Self.hasInOrder(letters, c.around) || c.aliases.contains(where: { Self.hasInOrder(letters, $0) }) else { continue }
-            let m = Self.match(q, qWords, c)
+            let m = Self.match(q, qWords, ascii, c)
             guard m > 0 else { continue }
             let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : m >= 200 ? 1 : 0
-            scored.append((band, m, i))
+            let s = Scored(band: band, distance: c.distance, match: m, recency: c.recency, i: i)
+            if best.count == limit, let last = best.last, !s.beats(last) { continue }
+            var lo = 0, hi = best.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if s.beats(best[mid]) { hi = mid } else { lo = mid + 1 }
+            }
+            best.insert(s, at: lo)
+            if best.count > limit { best.removeLast() }
         }
         guard current() else { return nil }
-        scored.sort { a, b in
-            if a.band != b.band { return a.band > b.band }
-            let ca = candidates[a.i], cb = candidates[b.i]
-            if ca.distance != cb.distance { return ca.distance < cb.distance }
-            if a.match != b.match { return a.match > b.match }
-            return ca.recency > cb.recency
+        return best.map { candidates[$0.i] }
+    }
+
+    /// A match, by what it's ranked on: what the query names best, then
+    /// the nearest, the stronger match, the latest — and among equals,
+    /// the one listed first.
+    private struct Scored {
+        var band: Int, distance: Int, match: Int, recency: Int64, i: Int
+        func beats(_ o: Scored) -> Bool {
+            if band != o.band { return band > o.band }
+            if distance != o.distance { return distance < o.distance }
+            if match != o.match { return match > o.match }
+            if recency != o.recency { return recency > o.recency }
+            return i < o.i
         }
-        return scored.prefix(limit).map { candidates[$0.i] }
+    }
+
+    /// Whether `q` is in `s`, byte for byte (memmem) — Foundation's
+    /// `contains` walked them a character at a time, most of a ranking.
+    private static func contains(_ s: String, _ q: String) -> Bool {
+        var s = s, q = q
+        return s.withUTF8 { hay in
+            q.withUTF8 { needle in
+                guard !needle.isEmpty else { return true }
+                guard let h = hay.baseAddress, let n = needle.baseAddress, hay.count >= needle.count else { return false }
+                return memmem(h, hay.count, n, needle.count) != nil
+            }
+        }
     }
 
     private static func hasInOrder(_ letters: [UInt8], _ s: String) -> Bool {
@@ -125,7 +157,11 @@ enum FinderRanking {
     }
 
     /// As FileFinder.nameMatch, over what's been lowercased once already.
-    private static func match(_ q: String, _ qWords: [String], _ c: FinderCandidate) -> Int {
+    private static func match(_ q: String, _ qWords: [String], _ ascii: [UInt8]?, _ c: FinderCandidate) -> Int {
+        func score(_ text: String) -> Int? {
+            if let ascii, let s = FileFinder.asciiScore(ascii, text) { return s }
+            return FileFinder.score(q, text)
+        }
         // An alias named whole, or begun: as the title would be.
         if c.aliases.contains(q) { return 600 }
         if c.aliases.contains(where: { $0.hasPrefix(q) }) { return 520 }
@@ -142,9 +178,9 @@ enum FinderRanking {
             }
             if all { return 480 }
         }
-        if t.contains(q) { return 400 }
-        if let f = FileFinder.score(q, t) { return 200 + min(f, 150) / 2 }
-        if let f = FileFinder.score(q, c.around) { return 100 + min(f, 150) / 3 }
+        if Self.contains(t, q) { return 400 }
+        if let f = score(t) { return 200 + min(f, 150) / 2 }
+        if let f = score(c.around) { return 100 + min(f, 150) / 3 }
         return 0
     }
 }
@@ -175,10 +211,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Opens a file chosen.
     var openFile: ((String) -> Void)?
     /// What can be found by name, taken when shown, and what each runs.
-    private var corpus: [FinderCandidate] = []
+    private var corpus: [FinderCandidate] = [] { didSet { joined = nil } }
     private var actions: [() -> Void] = []
     /// The files under the folder, as candidates, once listed.
-    private var fileCandidates: [FinderCandidate] = []
+    private var fileCandidates: [FinderCandidate] = [] { didSet { joined = nil } }
+    /// Both, joined once while they're as they are — not copied at every key.
+    private var joined: [FinderCandidate]?
+    private var all: [FinderCandidate] {
+        if let joined { return joined }
+        let j = corpus + fileCandidates
+        joined = j
+        return j
+    }
     private var withFiles = false
     /// Paths that are blocks already, found as blocks rather than files.
     private var knownPaths: Set<String> = []
@@ -384,10 +428,21 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Debugging: how long ranking a query takes, over how much.
     func debugTime(_ query: String) -> String {
-        let all = corpus + fileCandidates
+        let all = self.all
         let start = Date()
         let n = FinderRanking.rank(query, all)?.count ?? 0
         return String(format: "%d candidates (%d files) → %d rows in %.1f ms", all.count, fileCandidates.count, n, Date().timeIntervalSince(start) * 1000)
+    }
+
+    /// The ranking alone over the files under `root`, for each query, as
+    /// typed a letter at a time (for DebugControl).
+    static func debugBench(root: String, queries: [String]) -> String {
+        let all = FileFinder.list(root: root).map { FinderCandidate.file(root.appendingPathComponent($0)) }
+        return queries.map { q -> String in
+            let start = Date()
+            let n = FinderRanking.rank(q, all)?.count ?? 0
+            return String(format: "%@: %d of %d in %.1f ms", q, n, all.count, Date().timeIntervalSince(start) * 1000)
+        }.joined(separator: "\n")
     }
 
     /// Chooses the selected row, or moves the selection (for DebugControl).
@@ -460,7 +515,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
         let gen = generation.next()
-        let all = corpus + fileCandidates
+        let all = self.all
         let generation = self.generation
         ranking.async { [weak self] in
             guard let ranked = FinderRanking.rank(query, all, current: { generation.isCurrent(gen) }) else { return }
@@ -476,7 +531,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
         _ = generation.next()
-        show(items(FinderRanking.rank(query, corpus + fileCandidates) ?? [], query: query), query: query)
+        show(items(FinderRanking.rank(query, all) ?? [], query: query), query: query)
     }
 
     private func items(_ ranked: [FinderCandidate], query: String) -> [FinderItem] {
