@@ -1463,6 +1463,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     func debugSwitcherHover(_ i: Int) -> String { content.debugSwitcherHover(i) }
     var debugSheetTargets: String { content.debugSheetTargets }
+    func debugFollowLink(toPlacementEndingIn suffix: String) -> String {
+        guard let a = arrangement, let f = a.focused, let t = a.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return "no \(suffix)" }
+        gridOpenLink(t.block, from: f, over: false)
+        return debugStack(swap: false)
+    }
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
     func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
 
@@ -1955,7 +1960,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if over, let b = hosts.block(block), b.kind != .arrangement {
             show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "from its links")
         } else if placed, let b = hosts.block(block) {
-            goTo(b.id)
+            goTo(b.id, near: placement)
         } else if let b = hosts.block(block) {
             show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened, context: "from its links")
         }
@@ -4050,12 +4055,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// focused; else the arrangement it is in, the one most recently
     /// settled on first, is selected and its tile focused; else, placed
     /// nowhere, it is brought here.
-    func goTo(_ id: BlockID) {
+    /// `near`: of the block's tiles here, the one in that tile's stack
+    /// first (brought to its top), then its column's — not whichever comes
+    /// first (another of the block's tiles elsewhere, focused for nothing).
+    func goTo(_ id: BlockID, near: PlacementID? = nil) {
         guard let block = hosts.block(id) else { return }
         hideStateView()
         warpPointerToFocus()
         if block.kind == .arrangement { return hosts.select(id) }
-        if let a = arrangement, let t = a.placements(of: id).first, let here = selected {
+        if let a = arrangement, let t = nearest(a.placements(of: id), to: near, in: a), let here = selected {
             // Here already: out of its stack, from behind a maximized
             // tile, and focused.
             return hosts.append(arriving(t.id, in: a), to: .block(here))
@@ -4070,6 +4078,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
+    }
+
+    /// Of a block's tiles, the one nearest `near`: in its stack, then its
+    /// column, then the first.
+    private func nearest(_ tiles: [Placement], to near: PlacementID?, in a: ArrangementState) -> Placement? {
+        guard let near, tiles.count > 1 else { return tiles.first }
+        let top = a.isStashed(near) ? a.tile(behind: near)?.id : near
+        if let t = tiles.first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }) { return t }
+        if let c = a.locate(near)?.column, let t = tiles.first(where: { a.locate($0.id)?.column == c }) { return t }
+        return tiles.first
     }
 
     /// **Bring here** (§3.1): where a tile is made for a block. Nothing

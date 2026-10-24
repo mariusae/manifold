@@ -290,6 +290,9 @@ enum DebugControl {
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
             if a.first == "hold" || a.first == "release" { wc.debugOptionHeld = a.first == "hold" }
+            // "stack golink <placement suffix>": that tile's block followed
+            // from the focused tile's links, as a badge's link clicked.
+            if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1]) }
             // "stack sheets": where each stack's sheets take a click.
             if a.first == "sheets" { return wc.debugSheetTargets }
             // "stack sheetclick [drag]": the first stack's sheets clicked, or dragged.

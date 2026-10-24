@@ -719,6 +719,17 @@ final class GridView: NSView, NSDraggingSource {
             let tiles = tileFrames(column: c, in: f)
             var shownIndex = 0
             var top: NSRect?
+            // Each stack: its sheets' edges above the top's card; its
+            // tiles hang as cards over it when they or its bar's stack
+            // button are clicked. Said to the bars first: a bar with a stack
+            // has its button, which the links' pill is placed before.
+            for stack in stacks(c) {
+                guard let topPill = pills[stack.top.shown.id] else { continue }
+                topPill.behind = stack.behind.count
+                topPill.toolTip = stack.behind.isEmpty ? nil
+                    : "\(stack.behind.count) behind this tile — click the sheets above it, or its stack button, to see \(stack.behind.count == 1 ? "it" : "them")"
+                for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
+            }
             for (i, tile) in columns[c].enumerated() {
                 guard !isStashed(tile.shown.id) else { continue }
                 let r = tiles[i]
@@ -758,17 +769,7 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 shownIndex += 1
             }
-            // Each stack: its sheets' edges above the top's card; its
-            // tiles hang as cards over it when they or its bar's stack
-            // button are clicked.
             _ = top
-            for stack in stacks(c) {
-                guard let topPill = pills[stack.top.shown.id] else { continue }
-                topPill.behind = stack.behind.count
-                topPill.toolTip = stack.behind.isEmpty ? nil
-                    : "\(stack.behind.count) behind this tile — click the sheets above it, or its stack button, to see \(stack.behind.count == 1 ? "it" : "them")"
-                for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
-            }
         }
         lastFrames = frameNow
         if dragging { dragCatcher.frame = bounds }
@@ -1586,6 +1587,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
             sidebarButton.contentTintColor = sidebar == true ? Theme.accent : Theme.secondaryText
             sidebarButton.toolTip = sidebar == true ? "Hide Outline (⌥⌘S)" : "Show Outline (⌥⌘S)"
             needsLayout = true
+            // Its button come or gone (a view's outline arrived): the links'
+            // pill, which the grid places before the buttons, placed again.
+            if (sidebar == nil) != (oldValue == nil) { superview?.needsLayout = true }
         }
     }
     var onToggleSidebar: (() -> Void)?
@@ -1610,6 +1614,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 b.contentTintColor = spec.enabled ? Theme.secondaryText : Theme.secondaryText.withAlphaComponent(0.35)
             }
             needsLayout = true
+            if viewButtons.count != oldValue.count { superview?.needsLayout = true }
         }
     }
     var onViewButton: ((Int) -> Void)?
