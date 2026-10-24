@@ -806,20 +806,27 @@ final class HostClient {
     /// Ports of this host's forwarded to this Mac (§8).
     lazy var forwards = PortForwards(client: self)
 
+    private let decodeQueue = DispatchQueue(label: "manifold.host-decode", qos: .userInitiated)
+
     private func attach(_ connection: Connection) {
         let mux = Mux(connection)
         let conn = mux.control
         conn.callbackQueue = .main
+        // Decoded on a queue of the host's own, in order, and handled here:
+        // the state a connect brings (every shard, outputs and texts and
+        // all) was decoded on the main thread, the window held up meanwhile.
+        let host = self.host, remote = isRemote, decoding = decodeQueue
         conn.onFrame = { [weak self] frame in
-            guard let self else { return }
-            guard let message = frame.decode(ServerMessage.self) else {
-                NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", self.host.raw, frame.kind.rawValue, frame.payload.count)
-                return
+            decoding.async {
+                guard let message = frame.decode(ServerMessage.self) else {
+                    NSLog("host %@: a frame of kind %d (%d bytes) couldn't be decoded", host.raw, frame.kind.rawValue, frame.payload.count)
+                    return
+                }
+                if remote, ProcessInfo.processInfo.environment["MANIFOLD_DEBUG"] != nil {
+                    NSLog("host %@: %@", host.raw, String(describing: message).prefix(80).description)
+                }
+                DispatchQueue.main.async { self?.handle(message) }
             }
-            if self.isRemote, ProcessInfo.processInfo.environment["MANIFOLD_DEBUG"] != nil {
-                NSLog("host %@: %@", self.host.raw, String(describing: message).prefix(80).description)
-            }
-            self.handle(message)
         }
         conn.onClose = { [weak self] in
             guard let self else { return }
