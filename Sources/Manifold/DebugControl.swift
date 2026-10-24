@@ -335,6 +335,17 @@ enum DebugControl {
             let p = t.convert(NSPoint(x: 20, y: 20), to: nil)
             guard let e = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
                   let menu = t.menu(for: e) else { return "no menu" }
+            // Validated as it is when shown: items named for what they'll do
+            // (the window's controller taking what it answers, as the clicked
+            // view's chain does even when the window isn't key).
+            for i in menu.items where i.target == nil { if let action = i.action, let wc, wc.responds(to: action) { i.target = wc } }
+            menu.update()
+            // "termmenu <title>": that item chosen.
+            if !arg.isEmpty {
+                guard let i = menu.items.firstIndex(where: { $0.title == arg }) else { return "no item \(arg)" }
+                menu.performActionForItem(at: i)
+                return "chose \(arg)"
+            }
             func list(_ m: NSMenu, _ depth: Int) -> [String] {
                 m.items.flatMap { i -> [String] in
                     [String(repeating: "  ", count: depth) + (i.isSeparatorItem ? "—" : i.title)] + (i.submenu.map { list($0, depth + 1) } ?? [])

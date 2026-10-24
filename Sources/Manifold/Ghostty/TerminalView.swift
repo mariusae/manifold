@@ -1306,6 +1306,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         menu.addItem(withTitle: "Save Scrollback as Note", action: #selector(MainWindowController.saveScrollbackAsNote(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: "")
+        menu.addItem(PinMenu.item(for: placement))
         // The processes under the shell, the shell first, each a submenu
         // of what to do with it and what runs under it. The host's
         // listing is asked for afresh; the menu, still open when it

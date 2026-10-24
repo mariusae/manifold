@@ -133,6 +133,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.document = self
         textView.delegate = self
         textView.menuHost = block.host
+        textView.menuPlacement = placement
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)

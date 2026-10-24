@@ -2286,6 +2286,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(togglePinInWorkspace(_:)):
+            // Named for what it will do to its tile's block.
+            guard let id = selected, let block = pinTarget(item) else { item.title = "Pin in Workspace"; return false }
+            let on = isPinned(block, in: id)
+            item.title = on ? "Unpin" : "Pin in Workspace"
+            item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
+            return true
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
@@ -4198,11 +4205,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "pinned")
     }
 
-    /// Pin in Workspace: the focused tile's block pinned in the workspace
-    /// shown, or let go of.
+    /// Pin in Workspace: a tile's block (the menu's, from a block's own
+    /// menu; else the focused one's) pinned in the workspace shown, or let go of.
     @objc func togglePinInWorkspace(_ sender: Any?) {
-        guard let id = selected, let f = focusedShown else { return NSSound.beep() }
-        setPinned(f.placement.block, in: id, !isPinned(f.placement.block, in: id))
+        guard let id = selected, let block = pinTarget(sender) else { return NSSound.beep() }
+        setPinned(block, in: id, !isPinned(block, in: id))
+    }
+
+    private func pinTarget(_ sender: Any?) -> BlockID? {
+        if let p = (sender as? NSMenuItem)?.representedObject as? PlacementID, let t = arrangement?.placement(p) { return t.block }
+        return focusedShown?.placement.block
     }
 
     /// **Bring here** (§3.1): where a tile is made for a block. Nothing
@@ -7671,5 +7683,15 @@ final class SearchText {
             }
         }
         return out
+    }
+}
+
+/// A block's own menu's Pin in Workspace (a terminal's, an editor's): for
+/// its tile, named Unpin when it's pinned (`validateMenuItem`).
+enum PinMenu {
+    static func item(for placement: PlacementID) -> NSMenuItem {
+        let item = NSMenuItem(title: "Pin in Workspace", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "")
+        item.representedObject = placement
+        return item
     }
 }

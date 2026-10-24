@@ -1971,6 +1971,10 @@ final class TextView: NSView, NSTextInputClient {
             item.identifier = NSMenuItem.importFromDeviceIdentifier
             menu.addItem(item)
         }
+        if let placement = menuPlacement {
+            menu.addItem(.separator())
+            menu.addItem(PinMenu.item(for: placement))
+        }
         if let host = menuHost { HostMenu.append(for: host, to: menu) }
         return menu
     }
@@ -1999,6 +2003,8 @@ final class TextView: NSView, NSTextInputClient {
 
     /// The host of the block shown, for its own items in the menu.
     var menuHost: HostID?
+    /// The tile it's shown in, for its menu's Pin in Workspace.
+    var menuPlacement: PlacementID?
 
     // MARK: Pasteboard
 
