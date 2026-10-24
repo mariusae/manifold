@@ -64,9 +64,16 @@ final class PredictionGlow: NSView {
         let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height)
         var shape = CGPath(rect: .null, transform: nil)
         for r in runs {
-            let rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(r.from) * cw,
+            var rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(r.from) * cw,
                               y: bounds.height - CGFloat(info.pad_top) - CGFloat(r.y + 1) * ch,
                               width: CGFloat(r.to - r.from) * cw, height: ch)
+            // The padding takes its edge cells' color (padding-color =
+            // extend), the highlight's too: so out to the view's edges where
+            // the selection reaches the grid's, or the glow lights it there.
+            if r.from == 0 { rect = CGRect(x: 0, y: rect.minY, width: rect.maxX, height: rect.height) }
+            if r.to >= Int(info.cols) { rect.size.width = bounds.width - rect.minX }
+            if r.y == 0 { rect.size.height = bounds.height - rect.minY }
+            if r.y == Int(info.rows) - 1 { rect = CGRect(x: rect.minX, y: 0, width: rect.width, height: rect.maxY) }
             shape = shape.isEmpty ? CGPath(rect: rect, transform: nil) : shape.union(CGPath(rect: rect, transform: nil))
         }
         let l = Self.style(CALayer(), cellHeight: ch, dark: dark)
