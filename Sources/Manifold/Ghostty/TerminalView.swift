@@ -236,7 +236,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// up to date, drawing nothing, telling of no scrollbar.
     private func updateOcclusion() {
         guard let surface else { return }
-        let seen = window.map { $0.occlusionState.contains(.visible) } == true && !isHiddenOrHasHiddenAncestor
+        let onScreen = window.map { $0.occlusionState.contains(.visible) || Self.ignoresWindowOcclusion } == true
+        let seen = onScreen && !isHiddenOrHasHiddenAncestor
         guard seen != occlusionSeen else { return }
         occlusionSeen = seen
         ghostty_surface_set_occlusion(surface, seen)
@@ -248,6 +249,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The commands weren't looked for while it was out of sight.
     private var locateStale = false
     private var occlusionSeen: Bool?
+    /// Debugging (a window others cover, whose terminals are pictured):
+    /// MANIFOLD_NO_OCCLUSION has them drawn all the same.
+    private static let ignoresWindowOcclusion = ProcessInfo.processInfo.environment["MANIFOLD_NO_OCCLUSION"] != nil
     private var occlusionObserver: NSObjectProtocol?
 
     /// The scrollbar as ghostty tells it, from its thread — at every frame
@@ -671,7 +675,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Debugging
 
     var debugScrubber: String {
-        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState)\n" + dots.debugDots
+        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor)\n" + dots.debugDots
     }
 
     func debugScrub(_ what: String, _ arg: String) -> String {

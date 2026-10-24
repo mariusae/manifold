@@ -13,8 +13,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let root = RootView()
     private let glass = NSVisualEffectView()
     private let backdrop = BackdropView()
-    /// The arrangement shown; and the one it replaced, while it slides away.
+    /// The grid of the workspace shown. Each workspace used lately keeps its
+    /// own (`grids`), hidden while another shows: going back to it shows it
+    /// again as it was, nothing laid out or drawn afresh.
     private var content = GridView()
+    /// The grid for no workspace (none selected).
+    private lazy var blankGrid: GridView = content
     /// The content area, which the grids are clipped to: a workspace
     /// sliding out (⌃⇥) leaves through its edge, never under the sidebar
     /// (which is translucent, and would show it).
@@ -24,7 +28,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         v.layer?.masksToBounds = true
         return v
     }()
-    private var outgoing = GridView()
+    /// The grids of the workspaces used lately, most recent first, kept in
+    /// the window (hidden): `liveGrids` of them, so the tiles' drawings
+    /// they hold don't grow with the desk; an older workspace's tiles go
+    /// out of the window as they used to, and come back when it's shown.
+    private var grids: [BlockID: GridView] = [:]
+    private var gridOrder: [BlockID] = []
+    static let liveGrids = 4
+    /// The grid sliding away, while it does.
+    private var slidingAway: GridView?
     /// The arrangement `content` shows, and which way the next one to be
     /// shown slides in (1 from the right, -1 from the left), if it does.
     private var shownArrangement: BlockID?
@@ -105,8 +117,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Both grids stay in the window: the one slid away is hidden, not
         // taken out — putting a view back in a window tells every view in
         // it (a web view waits on its process to hear it), at each switch.
-        stage.addSubview(outgoing)
-        outgoing.isHidden = true
         stage.addSubview(content)
         root.addSubview(stage)
         root.addSubview(sidebar)
@@ -131,10 +141,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in _ = self?.finder }
         sidebar.organizationView.collapsedByHand = Set(hosts.state.collapsedRows)
         sidebar.organizationView.onCollapsedChanged = { [weak self] rows in self?.hosts.setCollapsedRows(rows) }
-        for c in [content, outgoing] {
-            c.delegate = self
-            c.onHiding = { [weak self] view in self?.rememberPicture(of: view) }
-        }
+        setUp(content)
+        _ = blankGrid
         sidebar.isHidden = true
 
         if let f = hosts.state.window.frame, f.count == 4 {
@@ -286,6 +294,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             stateBlocks = arrivals + kept
             stateMembers = stateBlocks.map(\.0.id)
         }
+        pruneGrids()
         var onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
         onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
@@ -302,13 +311,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // once it's sliding away (the slide is Core Animation's, so the
             // pictures don't hold it up), as it still shows then; with no
             // slide, before its views go.
-            let leaving = content.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
-            if let dir = pendingSlide, shownArrangement != nil, selected != nil {
-                slide(from: dir)
-                DispatchQueue.main.async { [weak self] in for v in leaving { self?.rememberPicture(of: v) } }
-            } else {
-                for v in leaving { rememberPicture(of: v) }
+            let old = content
+            let leaving = old.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
+            content = grid(for: selected)
+            content.frame = stage.bounds
+            content.isHidden = stateView != nil
+            if old !== content {
+                if let dir = pendingSlide, shownArrangement != nil, selected != nil {
+                    slide(from: dir, leaving: old)
+                } else {
+                    old.isHidden = true
+                }
             }
+            // Pictured for their cards, one a turn — its grid kept, the
+            // workspace left is still drawn (hidden), so nothing is lost by
+            // waiting, and no one turn takes them all.
+            picture(leaving)
             shownArrangement = selected
         }
         pendingSlide = nil
@@ -713,7 +731,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stage.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
         content.frame = stage.bounds
         stateView?.frame = stage.frame
-        if sliding { outgoing.frame = stage.bounds }
+        slidingAway?.frame = stage.bounds
         palette?.frame = b
         history?.frame = b
         if !transfersBadge.isHidden {
@@ -2386,18 +2404,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
     }
 
-    /// The arrangement about to be shown slides in from `dir`'s side over
-    /// the one shown, which slides out the other way, both live. Only their
-    /// layers move, so nothing is laid out again on the way.
-    private func slide(from dir: CGFloat) {
+    /// The arrangement about to be shown (`content`, its grid shown) slides
+    /// in from `dir`'s side over the one shown, whose grid slides out the
+    /// other way, both live. Only their layers move, so nothing is laid out
+    /// again on the way.
+    private func slide(from dir: CGFloat, leaving old: GridView) {
         finishSlide()
         let frame = content.frame
-        swap(&content, &outgoing)
-        content.frame = frame
-        content.isHidden = false
         content.layer?.zPosition = 1
-        outgoing.layer?.zPosition = 0
-        guard let incoming = content.layer, let leaving = outgoing.layer else { return finishSlide() }
+        old.layer?.zPosition = 0
+        guard let incoming = content.layer, let leaving = old.layer else { return old.isHidden = true }
+        slidingAway = old
         sliding = true
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in self?.finishSlide() }
@@ -2417,14 +2434,68 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         CATransaction.commit()
     }
 
-    /// The arrangement slid away lets go of its views and goes.
+    /// The grid slid away is hidden (its tiles kept, for coming back to) —
+    /// unless it's the one shown again since.
     private func finishSlide() {
         guard sliding else { return }
         sliding = false
         content.layer?.removeAnimation(forKey: "manifold.slide")
-        outgoing.layer?.removeAnimation(forKey: "manifold.slide")
-        outgoing.clear()
-        outgoing.isHidden = true
+        if let g = slidingAway {
+            g.layer?.removeAnimation(forKey: "manifold.slide")
+            if g !== content { g.isHidden = true }
+        }
+        slidingAway = nil
+    }
+
+    private func setUp(_ g: GridView) {
+        g.delegate = self
+        g.onHiding = { [weak self] view in self?.rememberPicture(of: view) }
+    }
+
+    /// A workspace's grid: its own, kept, if it has one; else one made (or
+    /// taken from the workspace used longest ago, whose tiles leave the
+    /// window) — `liveGrids` at most.
+    private func grid(for id: BlockID?) -> GridView {
+        guard let id else { return blankGrid }
+        gridOrder.removeAll { $0 == id }
+        gridOrder.insert(id, at: 0)
+        if let g = grids[id] { return g }
+        let g: GridView
+        if grids.count >= Self.liveGrids,
+           let oldest = gridOrder.dropFirst().last(where: { grids[$0] != nil && grids[$0] !== content && grids[$0] !== slidingAway }),
+           let taken = grids.removeValue(forKey: oldest) {
+            gridOrder.removeAll { $0 == oldest }
+            taken.clear()
+            g = taken
+        } else {
+            g = GridView()
+            setUp(g)
+            stage.addSubview(g)
+        }
+        g.frame = stage.bounds
+        grids[id] = g
+        return g
+    }
+
+    /// Workspaces gone from the desk let go of their grids.
+    private func pruneGrids() {
+        let live = Set(allWorkspaces)
+        for (id, g) in grids where !live.contains(id) && g !== content && g !== slidingAway {
+            g.clear()
+            g.removeFromSuperview()
+            grids.removeValue(forKey: id)
+            gridOrder.removeAll { $0 == id }
+        }
+    }
+
+    /// Tiles pictured for their cards, one a turn.
+    private func picture(_ leaving: [PaneContent]) {
+        guard let v = leaving.first else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.rememberPicture(of: v, evenHidden: true)
+            self.picture(Array(leaving.dropFirst()))
+        }
     }
 
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
@@ -7062,15 +7133,15 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let b = hosts.block(id), b.kind != .arrangement else { return nil }
         let size = NSSize(width: 760, height: 520)
         if let v = views.values.first(where: { $0.block == id && ($0.window == nil || $0.isHiddenOrHasHiddenAncestor) && !($0 is PlaceholderView) }) {
-            let inGrid = v.superview === content
+            // The grid it's in (the one shown, or a workspace's kept hidden).
+            let grid = v.superview as? GridView
             let wasHidden = v.isHidden, frame = v.frame
-            if inGrid { content.lend(v.placement) }
+            grid?.lend(v.placement)
             let own = frame.width > 200 && frame.height > 120 ? frame.size : size
-            return HoverCard.LiveLoan(view: v, size: own) { [weak self] view in
-                guard let self else { return }
+            return HoverCard.LiveLoan(view: v, size: own) { view in
                 view.frame = frame
                 view.isHidden = wasHidden
-                if inGrid { self.content.takeBack(v.placement, view: view) }
+                grid?.takeBack(v.placement, view: view)
             }
         }
         // None made yet (a workspace not shown since launch, a block placed nowhere).
@@ -7084,14 +7155,16 @@ extension MainWindowController: OrganizationViewDelegate {
         }
     }
 
-    func rememberPicture(of view: PaneContent) {
+    /// `evenHidden`: in a grid kept hidden (a workspace just left), which
+    /// still draws as it did.
+    func rememberPicture(of view: PaneContent, evenHidden: Bool = false) {
         switch view {
         case let w as WebView:
             w.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
         case let m as MarkdownView:
             m.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
         default:
-            if let image = HoverCard.picture(of: view) { tilePictures[view.block] = image }
+            if let image = HoverCard.picture(of: view, evenHidden: evenHidden) { tilePictures[view.block] = image }
         }
         // Kept for the blocks still about.
         if tilePictures.count > 200 { tilePictures = tilePictures.filter { hosts.block($0.key) != nil } }

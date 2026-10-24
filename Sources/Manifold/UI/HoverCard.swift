@@ -63,8 +63,8 @@ final class HoverCard: NSObject {
 
     /// A picture of a view as it draws now (an editor, a listing; not a
     /// terminal's Metal surface nor a web page, which give their own).
-    static func picture(of view: NSView) -> NSImage? {
-        guard view.superview != nil, !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 20, view.bounds.height > 20 else { return nil }
+    static func picture(of view: NSView, evenHidden: Bool = false) -> NSImage? {
+        guard view.superview != nil, evenHidden || !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 20, view.bounds.height > 20 else { return nil }
         // A terminal draws into an IOSurface its layer shows (Ghostty's
         // IOSurfaceLayer): the picture is that surface, as it is.
         if let surface = ioSurface(in: view.layer), let cg = halfSize(surface) { return NSImage(cgImage: cg, size: view.bounds.size) }
