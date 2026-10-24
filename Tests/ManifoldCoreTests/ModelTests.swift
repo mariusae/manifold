@@ -1651,3 +1651,23 @@ private final class Seen: @unchecked Sendable {
     // Commands gone from the screen (cleared): the ones still there are found.
     #expect(CommandLines.locate((0..<50).map { "cmd\($0)" } + ["ls"], in: [p + "ls", "a", p]) == [50: 0])
 }
+
+@Test func pathsWithLinesInATerminalAreLinks() {
+    let rg = "./python/monarch/_src/actor/bootstrap.py:177:1:def run_worker_loop_forever("
+    let l = TerminalLinks.links(in: rg)
+    #expect(l.map(\.target) == ["./python/monarch/_src/actor/bootstrap.py:177:1"])
+    #expect(l.first?.range == 0..<46)
+    let grep = "DESIGN.md:3:Manifold is a wiki, not a set of windows. Terminals, files, notes,"
+    #expect(TerminalLinks.links(in: grep).map(\.target) == ["DESIGN.md:3"])
+    // Clicked on the text after it: no link there.
+    #expect(TerminalLinks.link(at: 14, in: grep) == nil)
+    #expect(TerminalLinks.link(at: 2, in: grep)?.target == "DESIGN.md:3")
+    // Not paths: a word and a number, prose with a slash; an address is one.
+    #expect(TerminalLinks.links(in: "error:12: expected ';' and/or more").isEmpty)
+    #expect(TerminalLinks.links(in: "see https://example.com/a, then (src/main.swift:9).").map(\.target) == ["https://example.com/a", "src/main.swift:9"])
+    // A bare name: only when it's there.
+    #expect(TerminalLinks.links(in: "Package.swift  Sources").isEmpty)
+    #expect(TerminalLinks.links(in: "Package.swift  Sources", exists: { $0 == "Package.swift" }).map(\.target) == ["Package.swift"])
+    // A path that isn't there isn't a link, line or not.
+    #expect(TerminalLinks.links(in: "gone.txt:4:", exists: { _ in false }).isEmpty)
+}

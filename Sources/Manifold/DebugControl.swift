@@ -1024,6 +1024,10 @@ enum DebugControl {
                 g.drawSnapshot(ctx, in: r)
                 return
             }
+            if let m = v as? LinkMarks {
+                m.drawSnapshot(ctx, in: r)
+                return
+            }
             if let t = v as? TerminalView {
                 if let contents = t.layer?.contents, CFGetTypeID(contents as CFTypeRef) == IOSurfaceGetTypeID() {
                     let ci = CIImage(ioSurface: contents as! IOSurface)

@@ -530,6 +530,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
+            } else {
+                t.localDirectory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
             }
             TerminalView.copyOnSelect = desk.settings.copyOnSelect
             v = t

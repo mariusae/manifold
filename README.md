@@ -492,7 +492,14 @@ around it, and comes back with its history.
   in its column: Markdown in a preview, folders in a listing (a folder's
   bare name too, as `ls` prints it, if there's a folder by that name where
   the terminal is), text to edit; `path:line:column` (as grep and compilers print it) goes to
-  that place. The **`manifold`** command (Manifold ▸ Install Command Line
+  that place — read from the word's start for as long as it goes on as a
+  path and a line and column, so `bootstrap.py:177:1:def run(` and
+  `DESIGN.md:3:Manifold is…` each go to their file's line. A path with a
+  line needs a dot or a slash; without one, the look of a path (`./x`,
+  `~/a`, a name with an extension); a bare name, to be there (on this
+  Mac). **Hold ⌘** over a terminal and what can be clicked shows, its text
+  in the link color an editor shows ⌘'s links in, the one under the
+  pointer underlined. The **`manifold`** command (Manifold ▸ Install Command Line
   Tool…) does the same from a shell: `manifold README.md src/`.
 - **Folders** open as one tree, as Claude Code's file panel shows one:
   flat, in the system font, each folder opening in place (a click on its
