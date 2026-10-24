@@ -685,7 +685,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
-                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), status: StatusGlyph.look(of: b))
+                return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b), status: StatusGlyph.look(of: b))
             }
             e.richMarkdown = viewState(of: p)["markdown"] != "raw"
             e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
@@ -1691,7 +1691,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for l in links where l.from == f.placement.block && related.count < 12 { related.append((l.to, "opened from this")) }
             for (id, how) in related {
                 guard let b = hosts.block(id) else { continue }
-                items.append(PaletteItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
+                items.append(PaletteItem(symbol: Theme.symbolName(for: b), title: b.displayTitle,
                                          subtitle: "Related · \(how)") { [weak self] in self?.recall(id) })
             }
         }
@@ -1699,7 +1699,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let a = hosts.arrangement(id) else { continue }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let place = focused?.place.map { $0.abbreviatingHome } ?? ""
-            items.append(PaletteItem(symbol: a.columns.count > 1 ? "rectangle.split.2x1" : (focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group"),
+            items.append(PaletteItem(symbol: a.columns.count > 1 ? "rectangle.split.2x1" : (focused.map { Theme.symbolName(for: $0) } ?? "rectangle.3.group"),
                                      title: title(of: a), subtitle: a.isNamed ? "Named · \(place)" : place) { [weak self] in
                 self?.hosts.select(id)
             })
@@ -1911,13 +1911,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for c in hosts.all {
                 for e in c.node.graph.edges(from: block, kind: .link(kind)) where e.isLive {
                     guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
-                    cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: true, breakable: kind == .linked))
+                    cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b), outbound: true, breakable: kind == .linked))
                 }
             }
             for c in hosts.all {
                 for e in c.node.graph.edges(to: block, kind: .link(kind)) where e.isLive {
                     guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
-                    cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b.kind, path: b.path), outbound: false, breakable: kind == .linked))
+                    cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b), outbound: false, breakable: kind == .linked))
                 }
             }
         }
@@ -2714,7 +2714,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func node(for block: Block, id: String? = nil, detail: String? = nil) -> OrgNode {
         let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
         let n = OrgNode(id: id ?? block.id.description, block: block.id, title: Self.linkTitle(block),
-                        symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
+                        symbol: Theme.symbolName(for: block), detail: detail ?? "", age: Self.age(seen))
         n.dirty = block.text?.isDirty == true
         n.stale = block.text?.stale == true
         n.image = block.web.flatMap { Favicons.image(forPage: $0.url) }
@@ -3164,7 +3164,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     if let status = StatusGlyph.remark(b) { notes.append(status) }
                     if b == nil { notes.append("not attached") }
                     let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
-                                    symbol: b.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "questionmark.square.dashed",
+                                    symbol: b.map { Theme.symbolName(for: $0) } ?? "questionmark.square.dashed",
                                     detail: notes.joined(separator: " · "))
                     n.dirty = b?.text?.isDirty == true
                     n.stale = b?.text?.stale == true
@@ -3208,7 +3208,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let n = OrgNode(id: aid, block: id, title: title(of: a),
-                            symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "rectangle.3.group",
+                            symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0) } ?? "rectangle.3.group",
                             detail: "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
             n.style = .section
@@ -3278,7 +3278,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let shown = block.displayTitle
                 let title = block.terminal != nil && (shown.hasPrefix("~") || shown.hasPrefix("/")) ? block.kind.defaultTitle : shown
                 if !filter.isEmpty, !matches(filter, [title, f.path]) { return nil }
-                let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block.kind, path: block.path),
+                let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block),
                                    detail: "", age: Self.age(f.latest))
                 node.dirty = block.text?.isDirty == true
                 node.stale = block.text?.stale == true
@@ -3288,7 +3288,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 active[ObjectIdentifier(node)] = isActive
                 return node
             }
-            let node = OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
+            let node = OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0) } ?? "doc",
                                detail: "", age: Self.age(f.latest))
             node.dirty = block?.text?.isDirty == true
             node.stale = block?.text?.stale == true
@@ -3422,7 +3422,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .terminal: b.terminal?.cwd?.abbreviatingHome ?? "Terminal"
             default: b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
             }
-            return GraphNode(id: id, title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), detail: detail,
+            return GraphNode(id: id, title: b.displayTitle, symbol: Theme.symbolName(for: b), detail: detail,
                              distance: distance, isArrangement: b.kind == .arrangement)
         }
         func addEdge(_ e: GraphEdge) {
@@ -3858,7 +3858,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let matches = hits.prefix(6).map { String(st.lines[$0 - 1]) }
             let count = hits.count, block = b.id
             let place = b.path.map { $0.deletingLastPathComponent.abbreviatingHome } ?? (b.place.map { "Note · " + $0.abbreviatingHome } ?? "Note")
-            items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle, detail: place,
+            items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle, detail: place,
                                     note: count == 1 ? "line \(at)" : "\(count) lines",
                                     run: { [weak self] in
                                         guard let self else { return }
@@ -4023,7 +4023,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let agentWords = agent.map { " " + $0.command + " " + $0.name } ?? ""
             secondary += " " + block.id.host.raw
             let id = block.id
-            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block.kind, path: block.path), title: title, detail: detail + remote, note: note,
+            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note,
                                           name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
                                           distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id))
             actions.append { [weak self] in self?.recall(id) }
@@ -4649,7 +4649,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     if let app = r.app { detail.append(app) }
                     if let msg = r.msg, !msg.isEmpty { detail.append(msg) }
                 }
-                items.append(FinderItem(symbol: Theme.symbolName(for: b.kind, path: b.path), title: b.displayTitle,
+                items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle,
                                         detail: detail.filter { !$0.isEmpty }.joined(separator: " · "), note: notes.joined(separator: " · "),
                                         run: { [weak self] in self?.arrive(atTile: id) }))
                 // A text's headings, as Markdown has them, each gone to in
@@ -5721,7 +5721,7 @@ extension MainWindowController: GridDelegate {
             let name = path == "/" ? "/" : path.lastPathComponent
             let isFolder = !first || b.path == nil || b.kind == .directory
             let here = path
-            let item = ClosureMenuItem(name, symbol: isFolder ? "folder" : Theme.symbolName(for: b.kind, path: b.path)) { [weak self] in
+            let item = ClosureMenuItem(name, symbol: isFolder ? "folder" : Theme.symbolName(for: b)) { [weak self] in
                 guard let self else { return }
                 if isFolder, let client = self.hosts.client(on) {
                     self.show(client.directoryBlock(for: here), lens: .directory, .here)
@@ -5956,7 +5956,7 @@ extension MainWindowController: GridDelegate {
         var bunches: [FootBunch] = []
         func card(_ id: BlockID, detail: String, at: Stamp?) -> FootCard? {
             guard let b = hosts.block(id) else { return nil }
-            return FootCard(block: id, title: b.displayTitle, symbol: Theme.symbolName(for: b.kind, path: b.path), detail: detail, at: at)
+            return FootCard(block: id, title: b.displayTitle, symbol: Theme.symbolName(for: b), detail: detail, at: at)
         }
         func bunch(_ role: FootBunch.Role, _ title: String, _ symbol: String, _ edges: [Edge], toward: KeyPath<Edge, BlockID>, fallback: String) {
             var seen: Set<BlockID> = []

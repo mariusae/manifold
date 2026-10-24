@@ -92,6 +92,13 @@ enum Theme {
         kind == .text && path == nil ? noteSymbol : symbolName(for: Lens.default(for: kind, path: path), path: path)
     }
 
+    /// A block's symbol: its kind's, or for a coding agent at work in it
+    /// (an agent block, a terminal running one) the agent's own mark.
+    static func symbolName(for block: Block) -> String {
+        if let a = block.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
+        return symbolName(for: block.kind, path: block.path)
+    }
+
     /// A note's: a text not saved anywhere yet, unlike a file's page.
     static let noteSymbol = "note.text"
 
@@ -124,6 +131,11 @@ enum Theme {
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
         let key = "\(name)/\(size)/\(weight.rawValue)"
         if let image = symbols[key] { return image }
+        // A coding agent's mark, drawn to the size a symbol would be.
+        if name.hasPrefix(AgentIcons.prefix), let image = AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: size) {
+            symbols[key] = image
+            return image
+        }
         for candidate in [name] + (symbolFallbacks[name] ?? []) + ["circle.fill"] {
             if let image = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: size, weight: weight)) {
                 symbols[key] = image

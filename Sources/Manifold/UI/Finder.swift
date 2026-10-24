@@ -661,7 +661,9 @@ final class FileCell: NSTableCellView {
     /// A symbol's image, made once.
     static func image(_ name: String) -> NSImage {
         if let i = images[name] { return i }
-        let i = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+        // A coding agent's mark, at the size the row's symbols are.
+        let i = (name.hasPrefix(AgentIcons.prefix) ? AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: 15) : nil)
+            ?? NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
         images[name] = i
         return i
     }

@@ -21,7 +21,11 @@ struct Shown: Equatable {
     /// each is doing).
     var caption: String?
     var path: String? { block?.path }
-    var symbol: String { block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil) }
+    var symbol: String {
+        // A coding agent at work in it: the agent's mark.
+        if let a = block?.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
+        return block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil)
+    }
     /// Where it is, for subtitles: a folder, or a working directory.
     var place: String? { block?.place }
     var isDirty: Bool { block?.text?.isDirty == true }
