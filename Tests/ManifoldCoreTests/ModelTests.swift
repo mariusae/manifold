@@ -1671,3 +1671,18 @@ private final class Seen: @unchecked Sendable {
     // A path that isn't there isn't a link, line or not.
     #expect(TerminalLinks.links(in: "gone.txt:4:", exists: { _ in false }).isEmpty)
 }
+
+@Test func theAlternateScreenIsFollowedAcrossChunks() {
+    var r = ReplayBuffer()
+    r.append(Data("plain \u{1b}[31mred\u{1b}[0m\u{1b}[?25l".utf8))
+    #expect(!r.altScreen)
+    // Split across two chunks.
+    r.append(Data("before \u{1b}[?10".utf8))
+    r.append(Data("49h a full-screen program".utf8))
+    #expect(r.altScreen)
+    // The last switch in a chunk wins.
+    r.append(Data("\u{1b}[?1049l back \u{1b}[?47h again".utf8))
+    #expect(r.altScreen)
+    r.append(Data("\u{1b}[?1047l".utf8))
+    #expect(!r.altScreen)
+}

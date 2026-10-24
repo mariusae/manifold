@@ -77,28 +77,29 @@ public struct ReplayBuffer: Sendable {
         ("\u{1b}[?47h", true), ("\u{1b}[?47l", false),
     ].map { ($0.0, $0.1) }
 
-    private mutating func scanModes(_ data: Data) {
-        // Include the end of the last chunk, for sequences split across two.
-        let hay = tail + [UInt8](data)
-        var last: (Int, Bool)?
-        for (seq, on) in Self.modes {
-            let needle = Array(seq.utf8)
-            if let r = lastRange(of: needle, in: hay), r > (last?.0 ?? -1) {
-                last = (r, on)
-            }
-        }
-        if let last { altScreen = last.1 }
-        tail = Array(hay.suffix(8))
-    }
+    private static let modeBytes: [([UInt8], Bool)] = modes.map { (Array($0.0.utf8), $0.1) }
 
-    private func lastRange(of needle: [UInt8], in hay: [UInt8]) -> Int? {
-        guard hay.count >= needle.count else { return nil }
-        var i = hay.count - needle.count
-        while i >= 0 {
-            if hay[i] == needle[0] && Array(hay[i..<i + needle.count]) == needle { return i }
-            i -= 1
+    /// The last of the alternate screen's switches in the chunk (with the
+    /// end of the last, for one split across two), if any: one pass back
+    /// from the end, compared where they lie — not each switch looked for
+    /// in turn, an array made at every escape (output full of colors has
+    /// thousands a chunk), on the queue every terminal of the host shares.
+    private mutating func scanModes(_ data: Data) {
+        let hay = tail + [UInt8](data)
+        let last: Bool? = hay.withUnsafeBufferPointer { p in
+            var i = p.count - 4
+            while i >= 0 {
+                if p[i] == 0x1B, p[i + 1] == 0x5B, p[i + 2] == 0x3F {
+                    for (seq, on) in Self.modeBytes where i + seq.count <= p.count {
+                        if memcmp(p.baseAddress! + i, seq, seq.count) == 0 { return on }
+                    }
+                }
+                i -= 1
+            }
+            return nil
         }
-        return nil
+        if let last { altScreen = last }
+        tail = Array(hay.suffix(8))
     }
 }
 

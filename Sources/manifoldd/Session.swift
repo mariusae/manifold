@@ -263,26 +263,32 @@ final class Session {
     /// The shell's own marks in the stream, by where they fall: a command
     /// about to run (output starts after the mark's end), and one ended
     /// (output stops where the mark begins).
+    private static let runMark = Array("\u{1b}]7502;".utf8), doneMark = Array("\u{1b}]133;D".utf8)
+
     private func scanMarks(_ data: Data) {
         let base = replay.end - Int64(markTail.count)
         let hay = markTail + [UInt8](data)
-        let run: [UInt8] = Array("\u{1b}]7502;".utf8), done: [UInt8] = Array("\u{1b}]133;D".utf8)
-        var i = 0
-        while i < hay.count {
-            if hay[i] == 0x1B {
-                if hay.count - i >= run.count, Array(hay[i..<i + run.count]) == run {
+        // Compared where they lie (an array was made at every escape).
+        hay.withUnsafeBufferPointer { p in
+            let n = p.count
+            var i = 0
+            while i < n {
+                // On to the next escape.
+                guard let at = memchr(p.baseAddress! + i, 0x1B, n - i) else { break }
+                i = p.baseAddress!.distance(to: at.assumingMemoryBound(to: UInt8.self))
+                if n - i >= Self.runMark.count, memcmp(p.baseAddress! + i, Self.runMark, Self.runMark.count) == 0 {
                     // Past its terminator: BEL, or ESC \.
-                    var j = i + run.count
-                    while j < hay.count, hay[j] != 0x07, !(hay[j] == 0x1B && j + 1 < hay.count && hay[j + 1] == 0x5C) { j += 1 }
-                    if j < hay.count { pendingStart = base + Int64(j + (hay[j] == 0x07 ? 1 : 2)) }
+                    var j = i + Self.runMark.count
+                    while j < n, p[j] != 0x07, !(p[j] == 0x1B && j + 1 < n && p[j + 1] == 0x5C) { j += 1 }
+                    if j < n { pendingStart = base + Int64(j + (p[j] == 0x07 ? 1 : 2)) }
                     i = j
                     continue
                 }
-                if hay.count - i >= done.count, Array(hay[i..<i + done.count]) == done {
+                if n - i >= Self.doneMark.count, memcmp(p.baseAddress! + i, Self.doneMark, Self.doneMark.count) == 0 {
                     pendingEnd = base + Int64(i)
                 }
+                i += 1
             }
-            i += 1
         }
         markTail = Array(hay.suffix(16))
     }
