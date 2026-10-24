@@ -1616,3 +1616,38 @@ private final class Seen: @unchecked Sendable {
     guard case let .success(paths) = OpenCommand.resolve([dir, dir + "/f.txt", dir + "/new.md"]) else { Issue.record("no paths"); return }
     #expect(paths[0].hasSuffix("/") && !paths[1].hasSuffix("/") && !paths[2].hasSuffix("/"))
 }
+
+@Test func commandsAreFoundOnTheScreenPastOnesThatArent() {
+    let p = "~/src› "
+    // Three commands over several lines (newlines in them, spaces in their
+    // text), the first of them scrolled off, then two plain ones.
+    let multi = ["printf \"one\\ two\\ \"", "for x in a b  echo $x  end", "printf \"three\\ four\\ \""]
+    let lines = [
+        "                    two\\",        // the first's rest: its start scrolled off
+        "                    \"",
+        "onetwo",
+        p + "for x in a b",
+        "                    echo $x",
+        "                    end",
+        "a", "b",
+        p + "printf \"three\\",
+        "                    four\\",
+        "                    \"",
+        "threefour",
+        p + "ls",
+        "Package.swift  Sources",
+        p + "git status  (main)",
+        "nothing to commit",
+        p,
+    ]
+    let found = CommandLines.locate(multi + ["ls", "git status"], in: lines)
+    #expect(found[0] == nil)
+    #expect(found[1] == 3 && found[2] == 8 && found[3] == 12 && found[4] == 14)
+    // A short first line isn't taken for a command's start; nor is output.
+    #expect(!CommandLines.lineShows("ls -la foo", in: "x ls"))
+    #expect(!CommandLines.lineShows("git status", in: "nothing to commit"))
+    // The same command twice: each its own line.
+    #expect(CommandLines.locate(["ls", "ls"], in: [p + "ls", "a", p + "ls", "a", p]) == [0: 0, 1: 2])
+    // Commands gone from the screen (cleared): the ones still there are found.
+    #expect(CommandLines.locate((0..<50).map { "cmd\($0)" } + ["ls"], in: [p + "ls", "a", p]) == [50: 0])
+}

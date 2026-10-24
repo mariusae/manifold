@@ -553,28 +553,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             || (0x20000...0x3FFFD).contains(v) ? 2 : 1
     }
 
-    /// Whether a line is the one a command was typed on: the prompt, then
-    /// the command — with nothing after it, or a gap and a prompt's right
-    /// side; or, the command longer than the line shows (continued on
-    /// lines of its own), the start of it.
-    static func lineShows(_ command: String, in line: Substring) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return false }
-        if let r = t.range(of: command) {
-            let rest = t[r.upperBound...]
-            if rest.isEmpty || rest.hasPrefix("  ") { return true }
-        }
-        if command.count > 16, t.count >= 16 {
-            let tail = t.suffix(min(t.count, command.count - 1))
-            for k in stride(from: tail.count, through: 16, by: -1) where command.hasPrefix(tail.suffix(k)) { return true }
-        }
-        return false
-    }
-
-    /// Finds the commands on the screen, in order: each on the first line
-    /// after the one before that shows it. A line showing a later command
-    /// leaves the ones between unmarked; they are all looked for again
-    /// each time, so a screen cleared or trimmed is simply read anew.
+    /// Finds the commands on the screen (`CommandLines.locate`): the
+    /// newest from the bottom up, so one gone or not to be found leaves the
+    /// rest found. They are all looked for again each time, so a screen
+    /// cleared or trimmed is simply read anew.
     func locate() {
         guard scrollbar.total > 0, !commands.isEmpty else {
             if !located.isEmpty { located = [:]; updateDots() }
@@ -582,14 +564,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         guard let lines = screenLines() else { return }
         var found: [Int: Int] = [:]
-        var i = commands.startIndex
-        for (row, line) in lines where i < commands.endIndex {
-            for j in i..<min(i + 3, commands.endIndex) where Self.lineShows(commands[j].text, in: line) {
-                found[commands[j].id] = row
-                i = j + 1
-                break
-            }
-        }
+        for (k, l) in CommandLines.locate(commands.map(\.text), in: lines.map { String($0.text) }) { found[commands[k].id] = lines[l].row }
         if found != located {
             located = found
             updateDots()
