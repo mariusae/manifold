@@ -91,6 +91,26 @@ final class StatusGlyph: NSView {
         return words.joined(separator: "\n")
     }
 
+    /// What the status says that the glyph doesn't — a question's kind,
+    /// the title, the message — for a row beside the glyph: not "Done",
+    /// "Working", which the glyph is.
+    static func remark(_ block: Block?) -> String? {
+        guard let block, let look = look(of: block) else { return nil }
+        let r = block.statusRecord
+        var words: [String] = []
+        if look == .needsYou {
+            switch r?.kind {
+            case .permission?: words.append("permission")
+            case .question?: words.append("a question")
+            case .auth?: words.append("a sign-in")
+            case nil: break
+            }
+        }
+        if let title = r?.title, !title.isEmpty { words.append(title) }
+        if let msg = r?.msg, !msg.isEmpty { words.append(msg) }
+        return words.isEmpty ? nil : words.joined(separator: " · ")
+    }
+
     /// The status in a line: what the tooltip says, with " · " between.
     static func summary(_ block: Block?) -> String? {
         tooltip(block)?.split(separator: "\n").joined(separator: " · ")

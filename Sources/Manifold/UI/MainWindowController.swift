@@ -2690,8 +2690,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func node(for block: Block, id: String? = nil, detail: String? = nil) -> OrgNode {
         let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
-        let n = OrgNode(id: id ?? block.id.description, block: block.id, title: block.displayTitle,
+        let n = OrgNode(id: id ?? block.id.description, block: block.id, title: Self.linkTitle(block),
                         symbol: Theme.symbolName(for: block.kind, path: block.path), detail: detail ?? "", age: Self.age(seen))
+        n.dirty = block.text?.isDirty == true
+        n.stale = block.text?.stale == true
         n.look = StatusGlyph.look(of: block)
         n.tooltip = StatusGlyph.tooltip(block)
         n.trailing = StatusGlyph.at(of: block).map(Age.short)
@@ -2747,7 +2749,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     var words: [String] = []
                     if let app = r?.app { words.append(app) }
                     if let msg = r?.msg, !msg.isEmpty { words.append(msg) } else if let t = r?.title, !t.isEmpty { words.append(t) }
-                    if words.isEmpty, let s = StatusGlyph.summary(b) { words.append(s) }
+                    if words.isEmpty, let s = StatusGlyph.remark(b) { words.append(s) }
                     let n = node(for: b, id: sid + "/" + b.id.description, detail: words.joined(separator: " · "))
                     n.trailing = Age.short(r?.at ?? b.created)
                     n.emphasis = r?.wantsAttention ?? false
@@ -3127,17 +3129,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for (c, column) in a.columns.enumerated() {
                 for p in column {
                     let b = hosts.block(p.block)
-                    let title = b?.displayTitle ?? "On \(hosts.label(of: p.block.host))"
+                    // An untitled note by its first words, as its links name it.
+                    let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
                     guard matches(filter, [title, b?.path]) else { continue }
-                    // Its status, in words, with the glyph before them; else
-                    // its state — stashed, maximized — as a small symbol.
+                    // What its status says beyond its glyph (not "Done"); else
+                    // its state — stashed, maximized — as a small symbol. Edits
+                    // unsaved: the bar's dot after its name.
                     var notes: [String] = []
-                    if let status = StatusGlyph.summary(b) { notes.append(status) }
+                    if let status = StatusGlyph.remark(b) { notes.append(status) }
                     if b == nil { notes.append("not attached") }
-                    if b?.text?.isDirty == true { notes.append("edited") }
                     let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
                                     symbol: b.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "questionmark.square.dashed",
                                     detail: notes.joined(separator: " · "))
+                    n.dirty = b?.text?.isDirty == true
+                    n.stale = b?.text?.stale == true
                     if a.isStashed(p.id) { n.detailSymbol = "tray.and.arrow.down" } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
                     n.trailing = StatusGlyph.at(of: b).map(Age.short)
@@ -3216,7 +3221,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 active[ObjectIdentifier(node)] = isActive
                 return node
             }
-            let edited = block?.text?.isDirty == true ? "edited" : ""
             if f.isPlace, let block {
                 // At the folder, not a file in it: by its own title (a
                 // terminal whose title is only its folder says "Terminal").
@@ -3224,7 +3228,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let title = block.terminal != nil && (shown.hasPrefix("~") || shown.hasPrefix("/")) ? block.kind.defaultTitle : shown
                 if !filter.isEmpty, !matches(filter, [title, f.path]) { return nil }
                 let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block.kind, path: block.path),
-                                   detail: edited, age: Self.age(f.latest))
+                                   detail: "", age: Self.age(f.latest))
+                node.dirty = block.text?.isDirty == true
+                node.stale = block.text?.stale == true
                 node.look = StatusGlyph.look(of: block)
                 node.trailing = StatusGlyph.at(of: block).map(Age.short)
                 node.dimmed = !isActive
@@ -3232,7 +3238,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return node
             }
             let node = OrgNode(id: id, block: f.block, title: f.name, symbol: block.map { Theme.symbolName(for: $0.kind, path: $0.path) } ?? "doc",
-                               detail: edited, age: Self.age(f.latest))
+                               detail: "", age: Self.age(f.latest))
+            node.dirty = block?.text?.isDirty == true
+            node.stale = block?.text?.stale == true
             node.dimmed = !isActive
             active[ObjectIdentifier(node)] = isActive
             return node

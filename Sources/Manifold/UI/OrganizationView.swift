@@ -57,6 +57,10 @@ final class OrgNode {
     var dimmed = false
     /// What the block is doing (§3.7), shown as a glyph.
     var look: StatusGlyph.Look?
+    /// A text edited and unsaved: a dot after the name, as on its bar —
+    /// amber when the file changed on disk under the edits.
+    var dirty = false
+    var stale = false
     /// A word at the right, before the glyph: how long ago.
     var trailing: String?
     var tooltip: String?
@@ -112,6 +116,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
+            && dirty == o.dirty && stale == o.stale
     }
 
     /// Takes another's values (the same row made again), its children
@@ -120,6 +125,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
+        dirty = o.dirty; stale = o.stale
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -771,6 +777,13 @@ final class OrgRowView: NSTableCellView {
         case .row:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
             name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
+        }
+        // Edited and unsaved: the bar's dot after the name.
+        if node.dirty, let font = name.font, let color = name.textColor {
+            let s = NSMutableAttributedString(string: node.title + " •", attributes: [.font: font, .foregroundColor: color])
+            s.addAttribute(.foregroundColor, value: node.stale ? StatusGlyph.amber : Theme.secondaryText,
+                           range: NSRange(location: (node.title as NSString).length + 1, length: 1))
+            name.attributedStringValue = s
         }
         icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
