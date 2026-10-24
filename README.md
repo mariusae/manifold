@@ -71,15 +71,17 @@ and Mona Sans (bundled).
   one behind it, all leaning back a little alike, and the one chosen
   peeking out between the rest, those in front of it let down part of
   the way. Right-clicked, the card under the pointer is
-  the one chosen (scrolling works too): clicked, it comes back on its
-  own as that tile's lower half, the rest staying behind the tile that
-  showed; ⌥-clicked, it takes the top instead, whole, the tile that
-  showed going behind it with the rest of the stack; ⎋ or a click away
-  from the cards leaves things be (with no stack, the right-click is
-  the tile's menu). With ⌘E, each E moves the choice a card down (⇧⌘E
-  back up), and letting go of ⌘ brings the chosen one forward to the
-  top (Escape leaves things be); without a stack, ⌘E finds the word at
-  hand. ⌥-click the top tile's own pill and it swaps with the next
+  the one chosen (scrolling works too): clicked, it takes the top,
+  whole, the tile that showed going behind it with the rest of the
+  stack, as with ⌘E; ⎋ or a click away from the cards leaves things be
+  (with no stack, the right-click is the tile's menu). With ⌘E, each E
+  moves the choice a card down (⇧⌘E back up), and letting go of ⌘ brings
+  the chosen one forward to the top (Escape leaves things be; a card
+  clicked is chosen at once); without a stack, ⌘E finds the word at
+  hand. Either way, **drag a card** to take that tile out of the stack:
+  the cards fold away, the stack as it was, and the tile goes where it's
+  dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
+  on its own — the top dragged out, the next behind it shows. ⌥-click the top tile's own pill and it swaps with the next
   behind it; keep ⌥ held and click again, as ⌃⇥ walks workspaces, and
   the next behind that comes up, round the stack, the tiles passed
   staying where they were — letting go of ⌥ settles on the one come to

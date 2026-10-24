@@ -24,6 +24,9 @@ final class StackSwitcherView: NSView {
     private let background = SwitcherBackground()
     /// A card clicked, with the click's modifiers.
     var onPick: ((PlacementID, NSEvent.ModifierFlags) -> Void)?
+    /// A card dragged (past a few points): its tile, to be dragged out of
+    /// the stack as a block is dragged.
+    var onDragOut: ((PlacementID, NSEvent) -> Void)?
     /// A click on none of the cards.
     var onCancel: (() -> Void)?
     /// The card under the pointer is the one chosen (opened by a right-click).
@@ -60,6 +63,10 @@ final class StackSwitcherView: NSView {
         addSubview(background)
         for (i, card) in cards.enumerated() {
             card.onClick = { [weak self] mods in self?.pick(i, mods) }
+            card.onDragStart = { [weak self] event in
+                guard let self, !self.isClosing else { return }
+                self.onDragOut?(self.cards[i].id, event)
+            }
             addSubview(card)
         }
     }
@@ -269,6 +276,12 @@ final class StackSwitcherView: NSView {
     }
 
     /// Debugging: the pointer resting on card `i`, and the cards' tops after.
+    func debugPick(_ i: Int) -> String {
+        guard cards.indices.contains(i) else { return "no card \(i)" }
+        pick(i, [])
+        return "picked \(cards[i].id)"
+    }
+
     func debugHover(_ i: Int) -> String {
         choose(i)
         place = CGFloat(selection)
@@ -306,6 +319,9 @@ final class SwitcherCard: NSView {
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     var onClick: ((NSEvent.ModifierFlags) -> Void)?
+    /// Moved a few points with the button down: a drag, not a click.
+    var onDragStart: ((NSEvent) -> Void)?
+    private var downAt: NSPoint?
 
     static let headerHeight: CGFloat = 24
 
@@ -423,6 +439,20 @@ final class SwitcherCard: NSView {
 
     /// A click on a card in a window not yet active takes the card too.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { onClick?(event.modifierFlags) }
+    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downAt, let onDragStart else { return }
+        let p = event.locationInWindow
+        guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+        downAt = nil
+        onDragStart(event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        // Not after a drag (which takes the mouse up itself).
+        guard downAt != nil else { return }
+        downAt = nil
+        onClick?(event.modifierFlags)
+    }
 }

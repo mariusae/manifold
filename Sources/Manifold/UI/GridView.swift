@@ -462,6 +462,7 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: the open switcher's pointer resting on card `i`.
     func debugSwitcherHover(_ i: Int) -> String { switcher?.debugHover(i) ?? "no switcher" }
+    func debugSwitcherPick(_ i: Int) -> String { switcher?.debugPick(i) ?? "no switcher" }
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
         guard let b = badges[placement] else { return "no badge" }
@@ -889,11 +890,13 @@ final class GridView: NSView, NSDraggingSource {
     /// stack behind (a fanned pill's tile has none to bring).
     private var aloneDrag = false
 
-    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView) {
+    /// `alone`: the tile without its stack, whatever's held (one dragged
+    /// out of a stack's fan).
+    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, alone: Bool = false) {
         let item = NSPasteboardItem()
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
         coverDrag = event.modifierFlags.contains(.option)
-        aloneDrag = event.modifierFlags.contains(.command)
+        aloneDrag = alone || event.modifierFlags.contains(.command)
         if event.modifierFlags.contains(.shift) {
             // ⇧-drag: not the tile but what it stands for — its path (a
             // terminal's folder, a page's address) — for wherever text or
@@ -1145,14 +1148,13 @@ final class GridView: NSView, NSDraggingSource {
     private var fanWaiting = false
     private var fanSteps = 0
 
-    /// The switcher was opened by a right-click: it follows the pointer,
-    /// and what's clicked comes out (⌥: takes the top).
-    private var switcherByPointer = false
     private var switcherMonitor: Any?
 
     /// The stack under `top` as cards hanging over its tile, if it has one:
     /// from ⌘E, the choice then stepped along; from a right-click on its
-    /// title, the choice following the pointer, from the top.
+    /// title, the choice following the pointer, from the top. Either way a
+    /// card clicked comes to the top, and one dragged comes out of the stack
+    /// as a block dragged does (the fan closing, the rest as they were).
     @discardableResult
     func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false) -> Bool {
         guard switcher == nil, !fanWaiting else { return true }
@@ -1181,13 +1183,14 @@ final class GridView: NSView, NSDraggingSource {
         s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
         s.layer?.zPosition = 20
         s.followsPointer = followingPointer
-        s.onPick = { [weak self] id, mods in
+        s.onPick = { [weak self] id, _ in self?.settleStackSwitcher(to: id) }
+        s.onDragOut = { [weak self] id, event in
             guard let self else { return }
-            if self.switcherByPointer && !mods.contains(.option) { self.settleStackSwitcher(bringingOut: id) } else { self.settleStackSwitcher(to: id) }
+            self.settleStackSwitcher(cancel: true)
+            self.beginDrag(of: id, event: event, from: self, alone: true)
         }
         s.onCancel = { [weak self] in self?.settleStackSwitcher(cancel: true) }
         switching = Set(order.map(\.shown.id))
-        switcherByPointer = followingPointer
         addSubview(s)
         switcher = s
         needsLayout = true
@@ -1219,15 +1222,13 @@ final class GridView: NSView, NSDraggingSource {
 
     /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
     /// top as it was), which comes forward to fill the tile; the views go
-    /// back to the grid, and the stack is told which is its top now. With
-    /// `bringingOut`, the top stays and that tile comes out of the stack
-    /// on its own, as clicking it in the stack does.
-    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false, bringingOut: PlacementID? = nil) {
+    /// back to the grid, and the stack is told which is its top now.
+    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false) {
         guard let s = switcher, !s.isClosing else { return }
         if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
         switcherMonitor = nil
         let top = s.topID
-        let chosen = cancel || bringingOut != nil ? top : (id ?? s.selectedID)
+        let chosen = cancel ? top : (id ?? s.selectedID)
         s.dismiss(to: chosen) { [weak self, weak s] in
             guard let self, let s else { return }
             s.tearDown(keeping: chosen, in: self)
@@ -1241,10 +1242,8 @@ final class GridView: NSView, NSDraggingSource {
                 t.view.isHidden = id != chosen
             }
             self.switching = []
-            self.switcherByPointer = false
             self.needsLayout = true
-            if let out = bringingOut, out != top { self.delegate?.gridUnstash(out) }
-            else if chosen != top { self.delegate?.gridSwap(chosen) }
+            if chosen != top { self.delegate?.gridSwap(chosen) }
         }
     }
 

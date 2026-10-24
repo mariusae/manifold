@@ -1411,6 +1411,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return String(format: "page %.2f", (line ?? nil) ?? -1)
     }
     func debugSwitcherHover(_ i: Int) -> String { content.debugSwitcherHover(i) }
+    func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
 
     var debugSurface: NSView? { content }
 

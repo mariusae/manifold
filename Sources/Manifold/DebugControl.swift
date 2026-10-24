@@ -580,10 +580,11 @@ enum DebugControl {
             // The focused tile's title right-clicked: the stack's fan, or the menu.
             return wc?.debugRightClick() ?? "no window"
         case "switcher":
-            // "switcher hover <i>": the open switcher's pointer on card i (0 at the back).
+            // "switcher hover <i>": the open switcher's pointer on card i (0 at
+            // the back); "switcher pick <i>": card i clicked.
             let a = arg.split(separator: " ")
-            guard a.first == "hover", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover <i>" }
-            return wc.debugSwitcherHover(i)
+            guard a.first == "hover" || a.first == "pick", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover|pick <i>" }
+            return a.first == "pick" ? wc.debugSwitcherPick(i) : wc.debugSwitcherHover(i)
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.
