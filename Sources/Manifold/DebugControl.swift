@@ -678,6 +678,11 @@ enum DebugControl {
             return wc?.debugDirectory(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
+        case "busy":
+            // "busy start": each turn of the main run loop timed from here
+            // (waking to waiting again); "busy stop": how many, the longest,
+            // and every one over 8 ms, with what woke it if known.
+            return MainThreadBusy.shared.command(arg)
         case "keyequiv":
             // "keyequiv <key>": the key with ⌘ through the main menu, as typed; which item took it.
             guard let window = wc?.window, let key = arg.first.map(String.init),
@@ -1065,5 +1070,50 @@ enum DebugControl {
         } catch {
             return "\(error)"
         }
+    }
+}
+
+/// Debugging: how long the main thread is busy in each turn of its run
+/// loop — the hitches a user feels, whatever the action.
+final class MainThreadBusy {
+    static let shared = MainThreadBusy()
+    private var observer: CFRunLoopObserver?
+    private var began: CFAbsoluteTime = 0
+    private var turns: [(at: CFAbsoluteTime, ms: Double)] = []
+    private var started: CFAbsoluteTime = 0
+
+    func command(_ arg: String) -> String {
+        switch arg {
+        case "start":
+            stop()
+            turns = []
+            started = CFAbsoluteTimeGetCurrent()
+            let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, activity in
+                guard let self else { return }
+                let now = CFAbsoluteTimeGetCurrent()
+                if activity == .afterWaiting { self.began = now } else if self.began > 0 {
+                    self.turns.append((now, (now - self.began) * 1000))
+                    self.began = 0
+                }
+            }
+            CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
+            observer = o
+            return "ok"
+        case "stop":
+            stop()
+            let total = turns.reduce(0) { $0 + $1.ms }
+            let long = turns.filter { $0.ms > 8 }
+            var out = String(format: "%d turns over %.1f s, busy %.0f ms; longest %.1f ms; over 16 ms: %d; over 8 ms: %d",
+                             turns.count, CFAbsoluteTimeGetCurrent() - started, total, turns.map(\.ms).max() ?? 0, turns.filter { $0.ms > 16 }.count, long.count)
+            for t in long.prefix(40) { out += String(format: "\n  +%.2fs %.1f ms", t.at - started, t.ms) }
+            return out
+        default:
+            return "usage: busy start|stop"
+        }
+    }
+
+    private func stop() {
+        if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+        observer = nil
     }
 }

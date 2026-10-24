@@ -101,6 +101,11 @@ final class GridView: NSView, NSDraggingSource {
     private var focused: PlacementID?
     private var full: PlacementID?
     private var pills: [PlacementID: TilePill] = [:]
+    /// Pills of tiles gone from the grid, kept (hidden) for when they come
+    /// back: the two grids take turns at workspace switches, so a grid
+    /// mostly shows again the workspace it showed two switches ago, and a
+    /// pill costs more to make than to show again.
+    private var sparePills: [PlacementID: TilePill] = [:]
     private var columnDividers: [DividerView] = []
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
@@ -214,8 +219,15 @@ final class GridView: NSView, NSDraggingSource {
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
         for v in views where !incoming.contains(v.placement) && v.superview === self { v.removeFromSuperview() }
         for (id, p) in pills where !incoming.contains(id) {
-            p.removeFromSuperview()
+            p.isHidden = true
             pills.removeValue(forKey: id)
+            sparePills[id] = p
+        }
+        if sparePills.count > 64 {
+            for (id, p) in sparePills.prefix(sparePills.count - 64) {
+                p.removeFromSuperview()
+                sparePills.removeValue(forKey: id)
+            }
         }
         for (id, b) in badges where !incoming.contains(id) {
             b.removeFromSuperview()
@@ -237,9 +249,9 @@ final class GridView: NSView, NSDraggingSource {
                     addSubview(tile.view)
                 }
                 let pill = pills[tile.shown.id] ?? {
-                    let p = TilePill()
+                    let p = sparePills.removeValue(forKey: tile.shown.id) ?? TilePill()
                     pills[tile.shown.id] = p
-                    addSubview(p)
+                    if p.superview !== self { addSubview(p) }
                     return p
                 }()
                 let id = tile.shown.id

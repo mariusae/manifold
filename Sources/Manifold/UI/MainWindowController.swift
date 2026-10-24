@@ -102,6 +102,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(glass)
         backdrop.alphaValue = 0.96
         root.addSubview(backdrop)
+        // Both grids stay in the window: the one slid away is hidden, not
+        // taken out — putting a view back in a window tells every view in
+        // it (a web view waits on its process to hear it), at each switch.
+        stage.addSubview(outgoing)
+        outgoing.isHidden = true
         stage.addSubview(content)
         root.addSubview(stage)
         root.addSubview(sidebar)
@@ -293,9 +298,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // A card's lent view goes home before the workspace changes
             // under it (it may be one of the workspace coming in).
             HoverCard.shared.hide()
-            // The workspace left: each tile it showed pictured, for its card.
-            for v in content.views where v.superview != nil && !v.isHiddenOrHasHiddenAncestor { rememberPicture(of: v) }
-            if let dir = pendingSlide, shownArrangement != nil, selected != nil { slide(from: dir) }
+            // The workspace left: each tile it showed pictured, for its card —
+            // once it's sliding away (the slide is Core Animation's, so the
+            // pictures don't hold it up), as it still shows then; with no
+            // slide, before its views go.
+            let leaving = content.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
+            if let dir = pendingSlide, shownArrangement != nil, selected != nil {
+                slide(from: dir)
+                DispatchQueue.main.async { [weak self] in for v in leaving { self?.rememberPicture(of: v) } }
+            } else {
+                for v in leaving { rememberPicture(of: v) }
+            }
             shownArrangement = selected
         }
         pendingSlide = nil
@@ -2377,7 +2390,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let frame = content.frame
         swap(&content, &outgoing)
         content.frame = frame
-        stage.addSubview(content, positioned: .above, relativeTo: outgoing)
+        content.isHidden = false
+        content.layer?.zPosition = 1
+        outgoing.layer?.zPosition = 0
         guard let incoming = content.layer, let leaving = outgoing.layer else { return finishSlide() }
         sliding = true
         CATransaction.begin()
@@ -2405,7 +2420,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.layer?.removeAnimation(forKey: "manifold.slide")
         outgoing.layer?.removeAnimation(forKey: "manifold.slide")
         outgoing.clear()
-        outgoing.removeFromSuperview()
+        outgoing.isHidden = true
     }
 
     @objc func selectTabByNumber(_ sender: NSMenuItem) {

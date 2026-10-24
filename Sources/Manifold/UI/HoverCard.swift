@@ -67,11 +67,13 @@ final class HoverCard: NSObject {
         guard view.superview != nil, !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 20, view.bounds.height > 20 else { return nil }
         // A terminal draws into an IOSurface its layer shows (Ghostty's
         // IOSurfaceLayer): the picture is that surface, as it is.
-        if let surface = ioSurface(in: view.layer) {
-            let ci = CIImage(ioSurface: surface)
-            if let cg = imaging.createCGImage(ci, from: ci.extent) { return NSImage(cgImage: cg, size: view.bounds.size) }
-        }
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        if let surface = ioSurface(in: view.layer), let cg = halfSize(surface) { return NSImage(cgImage: cg, size: view.bounds.size) }
+        // At one pixel a point: a card shows it smaller than the tile, and
+        // drawing a quarter of the pixels is that much quicker.
+        let w = Int(view.bounds.width), h = Int(view.bounds.height)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = view.bounds.size
         view.cacheDisplay(in: view.bounds, to: rep)
         let image = NSImage(size: view.bounds.size)
         image.addRepresentation(rep)
@@ -85,10 +87,15 @@ final class HoverCard: NSObject {
     /// A terminal's screen as its surface last held it, on screen or not
     /// (another workspace's, stacked away).
     static func surfacePicture(of view: NSView) -> NSImage? {
-        guard view.bounds.width > 20, view.bounds.height > 20, let surface = ioSurface(in: view.layer) else { return nil }
-        let ci = CIImage(ioSurface: surface)
-        guard let cg = imaging.createCGImage(ci, from: ci.extent) else { return nil }
+        guard view.bounds.width > 20, view.bounds.height > 20, let surface = ioSurface(in: view.layer), let cg = halfSize(surface) else { return nil }
         return NSImage(cgImage: cg, size: view.bounds.size)
+    }
+
+    /// A surface read back at half its size (a quarter of the pixels): a
+    /// card's picture, smaller than the tile.
+    private static func halfSize(_ surface: IOSurface) -> CGImage? {
+        let ci = CIImage(ioSurface: surface).transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))
+        return imaging.createCGImage(ci, from: ci.extent.integral)
     }
 
     private static func ioSurface(in layer: CALayer?) -> IOSurface? {

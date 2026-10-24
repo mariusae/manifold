@@ -97,8 +97,11 @@ final class StatusGlyph: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width: Self.size, height: Self.size) }
     override var isHidden: Bool { didSet { updateTimer() } }
 
+    /// Turning only where it can be seen: not hidden (itself or by a view
+    /// it's in — a stashed tile's pill, the sidebar put away), in a window
+    /// that's on screen.
     private var animates: Bool {
-        guard !isHidden, window != nil, let look else { return false }
+        guard !isHiddenOrHasHiddenAncestor, let window, window.occlusionState.contains(.visible), let look else { return false }
         if case .working(nil) = look { return true }
         if case .connecting = look { return true }
         return false
@@ -120,10 +123,29 @@ final class StatusGlyph: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
+        occlusion = window.map { w in
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in self?.updateTimer() }
+        }
         updateTimer()
     }
 
-    deinit { timer?.invalidate() }
+    override func viewDidHide() {
+        super.viewDidHide()
+        updateTimer()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        updateTimer()
+    }
+
+    private var occlusion: NSObjectProtocol?
+
+    deinit {
+        timer?.invalidate()
+        if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
+    }
 
     static let amber = NSColor(srgbRed: 0.93, green: 0.68, blue: 0.3, alpha: 1)
 
