@@ -3742,6 +3742,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !finder.isShowing { searchOutline(of: f) }
         return finder.debugQuery(query).joined(separator: "\n")
     }
+    /// ⌘\'s list: opened afresh with no query (shown once a preview
+    /// focused says where it's at, a moment later); else, the list as it's
+    /// filtered by one.
+    func debugWorkspaceOutline(_ query: String) -> String {
+        if query.isEmpty { goToTile(nil); return "opened" }
+        return finder.debugQuery(query).joined(separator: "\n")
+    }
     func debugFinderScope(_ n: Int) { finder.debugScope(n) }
     func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
@@ -4674,8 +4681,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                         detail: detail.filter { !$0.isEmpty }.joined(separator: " · "), note: notes.joined(separator: " · "),
                                         run: { [weak self] in self?.arrive(atTile: id) }))
                 // A text's headings, as Markdown has them, each gone to in
-                // its editor by line, in its preview by index.
-                guard b.kind == .text, let text = b.text?.text.string, Lens.viewRendering(for: b.path) == .markdown else { continue }
+                // its editor by line, in its preview by index; any other
+                // block's outline as its view keeps it (§7.5): a terminal's
+                // commands, an agent's turns, a source file's symbols, a
+                // PDF's contents, a diff's files.
+                guard b.kind == .text, let text = b.text?.text.string, Lens.viewRendering(for: b.path) == .markdown else {
+                    items += outlineItems(of: p, block: b, focused: focused, from: items.count, start: &start)
+                    continue
+                }
                 var index = 0
                 var line = 0
                 var inFence = false
@@ -4700,6 +4713,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         return (items, start)
+    }
+
+    /// A tile's outline as its view has it, for ⌘\: each item under the
+    /// tile, gone to as a click in the tile's own outline goes; the item
+    /// you're at where to begin, in the focused tile. The last 500 at most
+    /// (a terminal's long history of commands).
+    private func outlineItems(of p: Placement, block b: Block, focused: Bool, from base: Int, start: inout Int?) -> [FinderItem] {
+        guard let outline = views[p.id]?.outline, !outline.items.isEmpty else { return [] }
+        let id = p.id
+        let first = max(0, outline.items.count - 500)
+        var out: [FinderItem] = []
+        for i in first..<outline.items.count {
+            let item = outline.items[i]
+            if focused, outline.current == i { start = base + out.count }
+            out.append(FinderItem(symbol: item.code ? "chevron.forward" : "number", title: item.title,
+                                  detail: [b.displayTitle, item.detail].filter { !$0.isEmpty }.joined(separator: " · "),
+                                  note: item.running ? "running" : item.failed ? "failed" : "", level: item.level + 1,
+                                  run: { [weak self] in
+                guard let self else { return }
+                self.arrive(atTile: id)
+                self.views[id]?.outline?.pick(i)
+            }))
+        }
+        return out
     }
 
     /// ⌘↩: the focused text between being edited and viewed — Markdown

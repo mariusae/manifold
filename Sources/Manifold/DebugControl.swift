@@ -317,6 +317,9 @@ enum DebugControl {
         case "dirty":
             // "dirty": each tile's dirty dot; "dirty click": the focused one's clicked.
             return arg == "click" ? wc?.debugDirtyClick() ?? "no window" : wc?.debugDirty ?? "no window"
+        case "wsoutline":
+            // "wsoutline [query]": ⌘\'s list (opened if need be), filtered.
+            return wc?.debugWorkspaceOutline(arg) ?? "no window"
         case "find":
             // "find <query>": the focused editor's find pill, typed in.
             guard let e = wc?.debugFocusedEditor else { return "no editor focused" }

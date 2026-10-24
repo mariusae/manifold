@@ -401,7 +401,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Shows the workspace's outline (⌘\): tiles by column, and what is in
     /// them, as `provider` lists them for a query.
     func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil,
-                     placeholder: String = "Go to a tile, or a heading in one…", over window: NSWindow?) {
+                     placeholder: String = "Go to a tile, or a place in its outline…", over window: NSWindow?) {
         outline = provider
         outlineStart = start
         scopes.isHidden = true

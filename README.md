@@ -331,9 +331,13 @@ around it, and comes back with its history.
   first of them.
   A typed URL opens as a web page.
 - **⌘\ goes through the workspace as an outline**, as Prism's Move to
-  Heading does: its tiles by column, and under a Markdown tile its
-  headings, set in by level; type words to narrow them, ↩ to focus the
-  tile or go to the heading in its editor or preview. A terminal's row
+  Heading does: its tiles by column, and under each its outline, set in
+  by level — a Markdown tile's headings, and whatever else has one
+  (§7.5): a terminal's commands (how each ended beside it), an agent's
+  turns, a source file's symbols from its language server, a PDF's
+  contents, a diff's files; type words to narrow them, ↩ to focus the
+  tile or go to the place in it, as a click in its own outline goes. It
+  opens on where you are, the focused tile's item. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
   finds the terminal running it.
 - **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
