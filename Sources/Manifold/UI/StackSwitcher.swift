@@ -420,6 +420,10 @@ final class SwitcherCard: NSView {
     override func layout() {
         super.layout()
         holder.frame = bounds
+        // The shadow's shape given, not found from what's drawn each frame
+        // (offscreen, for every card, while the fan moves).
+        let r = 8 * chrome
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: r, cornerHeight: r, transform: nil)
         let hh = (Self.headerHeight * chrome).rounded()
         header.frame = NSRect(x: 0, y: bounds.height - hh, width: bounds.width, height: hh)
         header.alphaValue = chrome

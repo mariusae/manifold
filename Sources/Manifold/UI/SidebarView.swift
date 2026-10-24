@@ -141,6 +141,9 @@ final class SidebarView: NSView {
     override func layout() {
         super.layout()
         card.frame = bounds
+        // The shadow's shape given, not found from what's drawn (offscreen,
+        // every frame it slides).
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Flat.panelRadius, cornerHeight: Flat.panelRadius, transform: nil)
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
         moreButton.frame = NSRect(x: bounds.width - 54, y: bounds.height - 30, width: 20, height: 20)
