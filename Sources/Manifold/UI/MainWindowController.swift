@@ -37,6 +37,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     static let liveGrids = 4
     /// The grid sliding away, while it does.
     private var slidingAway: GridView?
+    /// Blocks awaited from their hosts (`whenMade`).
+    private struct MadeWait {
+        let id: BlockID, what: String, made: () -> Bool, then: () -> Void, started: Date
+        var said = false
+    }
+    private var madeWaits: [MadeWait] = []
+    private var madeWaitTimer: Timer?
     /// The arrangement `content` shows, and which way the next one to be
     /// shown slides in (1 from the right, -1 from the left), if it does.
     private var shownArrangement: BlockID?
@@ -397,6 +404,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteSeen(force: false)
         noteEditing()
         checkOpenWaits()
+        if !madeWaits.isEmpty { DispatchQueue.main.async { [weak self] in self?.checkMadeWaits() } }
         noteTrailFocus()
         attend()
         scheduleHoldReconcile()
@@ -500,6 +508,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let v = views[p.id] as? PlaceholderView { v.set(note: note, canAttach: canAttach); return v }
             views[p.id]?.removeFromSuperview()
             let v = PlaceholderView(placement: p.id, block: p.block, label: hosts.label(of: p.block.host))
+            // Its host there, the block on its way (one just made, a round
+            // trip off): the tile as it will be, quiet for a moment, rather
+            // than words that go as they're read.
+            if hosts.client(p.block.host)?.link == .connected {
+                v.waitQuietly(paper: p.lens == .terminal || p.lens == .agent ? TerminalPalette.current(for: v).background : Theme.windowBackground)
+            }
             v.set(note: note, canAttach: canAttach)
             v.known = { [weak self] in self?.hosts.block(p.block) != nil }
             v.onAttach = { [weak self] in
@@ -6885,24 +6899,45 @@ extension MainWindowController: TerminalViewDelegate {
     /// a notebook): done once it's made. A moment in, a word at the foot
     /// of the window says what's awaited, and from where, so the click
     /// isn't taken for nothing; after half a minute it's given up, saying so.
-    private func whenMade(_ id: BlockID, what: String, made: @escaping () -> Bool, started: Date = Date(), said: Bool = false,
-                          then: @escaping () -> Void) {
-        if made() {
-            if said { toast.hide() }
-            return then()
+    /// `then` once `made` holds — looked at with each change that comes
+    /// (the host's reply is one), not every 50 ms; past half a second it's
+    /// said what's awaited, past 30 that it didn't come.
+    private func whenMade(_ id: BlockID, what: String, made: @escaping () -> Bool, then: @escaping () -> Void) {
+        if made() { return then() }
+        madeWaits.append(MadeWait(id: id, what: what, made: made, then: then, started: Date()))
+        checkMadeWaits()
+    }
+
+
+    /// The waits whose blocks have come, done; the rest said, or given up.
+    private func checkMadeWaits() {
+        guard !madeWaits.isEmpty else { madeWaitTimer?.invalidate(); madeWaitTimer = nil; return }
+        var still: [MadeWait] = []
+        for var w in madeWaits {
+            if w.made() {
+                if w.said { toast.hide() }
+                w.then()
+                continue
+            }
+            let waited = Date().timeIntervalSince(w.started)
+            let host = hosts.label(of: w.id.host)
+            if waited > 30 {
+                toast.show("\(host) didn't make \(w.what) in time", action: "OK", for: 8) {}
+                continue
+            }
+            if !w.said, waited > 0.5 {
+                w.said = true
+                toast.show("Getting \(w.what) from \(host)…", action: "", for: 31) {}
+            }
+            still.append(w)
         }
-        let waited = Date().timeIntervalSince(started)
-        let host = hosts.label(of: id.host)
-        if waited > 30 {
-            return toast.show("\(host) didn't make \(what) in time", action: "OK", for: 8) {}
-        }
-        var said = said
-        if !said, waited > 0.5 {
-            said = true
-            toast.show("Getting \(what) from \(host)…", action: "", for: 31) {}
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.whenMade(id, what: what, made: made, started: started, said: said, then: then)
+        madeWaits = still
+        if madeWaits.isEmpty {
+            madeWaitTimer?.invalidate()
+            madeWaitTimer = nil
+        } else if madeWaitTimer == nil {
+            // For what's said, and giving up: the blocks come with changes.
+            madeWaitTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.checkMadeWaits() }
         }
     }
 

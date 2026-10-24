@@ -40,6 +40,20 @@ final class PlaceholderView: NSView, PaneContent {
 
     @objc private func attachClicked() { onAttach?() }
 
+    /// The block on its way (just made, its host a round trip off): the
+    /// tile's own paper, and nothing said unless it takes a while.
+    func waitQuietly(paper: NSColor) {
+        themed { $0.layer?.backgroundColor = paper.cgColor }
+        for v in [title, note, button] as [NSView] { v.alphaValue = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.window != nil else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                for v in [self.title, self.note, self.button] as [NSView] { v.animator().alphaValue = 1 }
+            }
+        }
+    }
+
     /// What's said under the host's name, as its standing changes.
     func set(note text: String, canAttach: Bool) {
         if note.stringValue != text { note.stringValue = text; needsLayout = true }
