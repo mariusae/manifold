@@ -182,7 +182,7 @@ final class AppearancePane: SettingsPane {
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
         row("Fonts", themes, top: true)
-        let (editor, e) = segments(["Proportional", "Fixed Width"], [EditorFont.proportional, .monospaced]) { [weak self] v in
+        let (editor, e) = segments(["Editing Font", "Monospaced"], [EditorFont.proportional, .monospaced]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.editorFont = v }
         }
         showEditor = e
@@ -305,7 +305,9 @@ final class FontThemeList: NSView {
                 NSBezierPath(roundedRect: r.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
             }
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])
-            let fonts = NSAttributedString(string: "\(t.proportionalName) · \(t.monospacedName)", attributes: [
+            // Editing, then reading if it's another face, then monospaced.
+            let names = [t.proportionalName] + (t.readingName != t.proportionalName ? [t.readingName] : []) + [t.monospacedName]
+            let fonts = NSAttributedString(string: names.joined(separator: " · "), attributes: [
                 .font: t.font(.monospaced, size: 11), .foregroundColor: Theme.secondaryText,
             ])
             let ns = name.size(), fs = fonts.size()

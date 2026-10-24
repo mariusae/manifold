@@ -462,14 +462,18 @@ around it, and comes back with its history.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   finder, a folder listing, a link in a preview, or the `manifold`
-  command. Settings ▸ Appearance chooses the editor's text, proportional or fixed
-  width, and the fonts: **Notes** (the default: SF Pro with its
+  command. Besides the interface's system font, a theme has three: a
+  **monospaced** one for terminals and code, an **editing** one for what's
+  edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
+  Text, the monospaced one), and a **reading** one for previews (a
+  Markdown preview); most themes edit and read in one face. The themes: **Notes** (the default: SF Pro with its
   single-story "a", as Apple's Notes sets its text, Menlo for fixed
   width, the system font for the UI), Tiempos (Tiempos Text, Menlo),
   Tiempos/Fira (Tiempos Text, Fira Code), Tiempos/JetBrains (Tiempos
   Text, JetBrains Mono), Tiempos/Anthrosevka (Tiempos Text,
   [Anthrosevka Mono](https://nanx.me/anthrosevka/)), Mona (Mona Sans, Monaspace),
-  Recursive, Go, Lato (Lato, Source Code Pro), or System (SF, SF Mono). All but SF are bundled;
+  Recursive, Go, Lato (Lato to edit, Tiempos Text to read, Source Code
+  Pro), or System (SF, SF Mono). All but SF are bundled;
   Tiempos Text is licensed, so the build copies it from your own fonts
   (`TIEMPOS_DIR`, by default its folder in iCloud Drive's Fonts)
   rather than fetching them.

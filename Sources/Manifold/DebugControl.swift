@@ -934,7 +934,8 @@ enum DebugControl {
             item.representedObject = theme.rawValue
             wc?.setTheme(item)
             // The fonts it resolved to (a missing one falls back to the system's).
-            return "ok: " + [EditorFont.proportional, .monospaced].map { theme.font($0, size: 13).fontName }.joined(separator: ", ")
+            return "ok: editing " + theme.font(.proportional, size: 13).fontName + ", reading " + theme.readingFont(size: 13).fontName
+                + ", monospaced " + theme.font(.monospaced, size: 13).fontName
         case "editorfont":
             guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
             let item = NSMenuItem()

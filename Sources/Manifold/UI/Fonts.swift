@@ -1,9 +1,12 @@
 import AppKit
 import ManifoldCore
 
-/// What each theme sets things in: terminals in its fixed-width font, the
-/// editor in either, and Markdown in its proportional font with code in
-/// the fixed-width one.
+/// What each theme sets things in, besides the interface's system font:
+/// a **monospaced** font for terminals and code; an **editing** font for
+/// what's edited (notes, text in an editor, unless it's set fixed width);
+/// and a **reading** font for previews, set for reading (a Markdown
+/// preview). Most themes edit and read in one face; Lato reads in Tiempos
+/// Text.
 extension FontTheme {
     var title: String {
         switch self {
@@ -20,6 +23,7 @@ extension FontTheme {
         }
     }
 
+    /// The editing font's name.
     var proportionalName: String {
         switch self {
         case .notes: "SF Pro"
@@ -31,6 +35,9 @@ extension FontTheme {
         case .system: "SF"
         }
     }
+
+    /// The reading font's name: the editing font's, but for Lato's.
+    var readingName: String { self == .lato ? "Tiempos Text" : proportionalName }
 
     var monospacedName: String {
         switch self {
@@ -101,6 +108,13 @@ extension FontTheme {
         }
     }
 
+    /// The reading font: previews'.
+    func readingFont(size: CGFloat) -> NSFont {
+        guard self == .lato else { return font(.proportional, size: size) }
+        return NSFont(name: "Tiempos Text", size: size) ?? .systemFont(ofSize: size)
+    }
+
+    /// The editing font (`.proportional`) or the monospaced one.
     func font(_ kind: EditorFont, size: CGFloat) -> NSFont {
         switch kind {
         case .proportional:
@@ -169,7 +183,8 @@ extension FontTheme {
         case .mona: (#""Mona Sans""#, #""Monaspace Xenon""#, features, sansFeatures)
         case .recursive: (#""Recursive Sans""#, #""Recursive Mono""#, features, sansFeatures)
         case .go: (#""Go""#, #""Go Mono""#, features, sansFeatures)
-        case .lato: (#""Lato""#, #""Source Code Pro""#, features, sansFeatures)
+        // Previews read in the reading font.
+        case .lato: (#""Tiempos Text""#, #""Source Code Pro""#, features, sansFeatures)
         case .system: ("-apple-system", "ui-monospace", features, sansFeatures)
         }
     }
