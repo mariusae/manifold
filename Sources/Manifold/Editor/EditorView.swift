@@ -532,7 +532,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
             }
             // As go.dev sets its code: its text and line numbers' colors.
-            textView.textColor = viewing ? Theme.codeText : Theme.text
+            textView.textColor = viewing ? Theme.codeText : Theme.bodyText
             textView.gutterColor = viewing ? Theme.codeLineNumber : TextView.gutterText
             applyFont()
             documentChanged()

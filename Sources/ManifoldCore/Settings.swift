@@ -241,9 +241,11 @@ public struct TypeStyle: Codable, Equatable, Sendable {
     public var measure: Double
     /// For reading: the space between paragraphs, in ems.
     public var paragraphSpacing: Double
+    /// For reading: headings' weight (the family's face nearest it).
+    public var headingWeight: Int
 
     public init(family: String, size: Double, weight: Int = 400, lineHeight: Double, tracking: Double = 0,
-                features: String = "", measure: Double = 0, paragraphSpacing: Double = 1) {
+                features: String = "", measure: Double = 0, paragraphSpacing: Double = 1, headingWeight: Int = 700) {
         self.family = family
         self.size = size
         self.weight = weight
@@ -252,6 +254,7 @@ public struct TypeStyle: Codable, Equatable, Sendable {
         self.features = features
         self.measure = measure
         self.paragraphSpacing = paragraphSpacing
+        self.headingWeight = headingWeight
     }
 
     public init(from decoder: Decoder) throws {
@@ -264,6 +267,7 @@ public struct TypeStyle: Codable, Equatable, Sendable {
         features = (try? c.decodeIfPresent(String.self, forKey: .features)) ?? ""
         measure = (try? c.decodeIfPresent(Double.self, forKey: .measure)) ?? 0
         paragraphSpacing = (try? c.decodeIfPresent(Double.self, forKey: .paragraphSpacing)) ?? 1
+        headingWeight = (try? c.decodeIfPresent(Int.self, forKey: .headingWeight)) ?? 700
     }
 
     /// The features as tags and values: "-liga" is liga 0, "cv05=2" cv05 2,
@@ -299,11 +303,12 @@ public struct Typography: Codable, Equatable, Sendable {
     /// Humanist: Hoefler&Co.'s ScreenSmart faces, set for the screen —
     /// Ideal Sans Book to edit, with lining, tabular figures (its own are
     /// old-style, proportional) and ligatures; Chronicle to read, with
-    /// ligatures; Menlo for code. Lines: 1.45 to edit, 1.55 to read (a
+    /// ligatures, its headings a step below Bold (Semibold, or Medium where
+    /// the family has none); Menlo for code. Lines: 1.45 to edit, 1.55 to read (a
     /// serif's longer lines and smaller eye want more), 1.3 for code.
     public static let humanist = Typography(
         editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga"),
-        reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga"),
+        reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga", headingWeight: 600),
         monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"))
 
     /// Apple: Avenir Next to edit (its tall x-height and long extenders

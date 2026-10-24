@@ -136,7 +136,7 @@ extension FontTheme {
         out += " --mono-scale: \(m.size / 13);"
         // Bold as the editor takes it: a face heavier by a step, not CSS's
         // "bolder" (from Light, only Regular).
-        out += " --read-bold: \(min(900, r.weight + FontFace.boldStep)); --read-heading: \(min(900, max(700, r.weight + FontFace.boldStep)));"
+        out += " --read-bold: \(min(900, r.weight + FontFace.boldStep)); --read-heading: \(r.headingFaceWeight);"
         if r.measure > 0 { out += " --read-measure: \(r.measure)ch;" }
         return out
     }
@@ -327,6 +327,19 @@ extension TypeStyle {
         let family = self.family.isEmpty ? (role == .monospaced ? "SF Mono" : "SF") : self.family
         guard weight != 400, let face = face(role) else { return family }
         return family + " " + face.name
+    }
+
+    /// The weight headings are set in: of the family's faces (reading's),
+    /// the one nearest `headingWeight`, the lighter of two as near — so a
+    /// family without a Semibold sets 600 in Medium, not Bold, as a
+    /// browser's matching would.
+    var headingFaceWeight: Int {
+        let faces = FontFace.faces(of: family, role: .reading)
+        guard !family.isEmpty, !Self.isNewYork(family), !faces.isEmpty else { return headingWeight }
+        return faces.min { a, b in
+            let da = abs(a.weight - headingWeight), db = abs(b.weight - headingWeight)
+            return da != db ? da < db : a.weight < b.weight
+        }!.weight
     }
 
     /// The upright face nearest the weight.

@@ -258,7 +258,10 @@ enum MarkdownPage {
         ::selection { background: #cfe2fb; }
         @media (prefers-color-scheme: dark) {
           html { background: #202224; }
-          body, h1, h2, h3, h4, h5, h6 { color: #f0f1f2; }
+          /* The body a step down from white, against glare over a long
+             read; headings and bold brighter, to do emphasis's work. */
+          body { color: #dbdbdb; }
+          h1, h2, h3, h4, h5, h6, strong, b { color: #f7f7f7; }
           blockquote, .footnotes { color: #9d9d98; }
           a { color: #50b7e0; }
           pre { background: #2d2d2d; color: #f0f1f2; }

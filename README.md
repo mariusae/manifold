@@ -477,6 +477,13 @@ around it, and comes back with its history.
   Chronicle SSm are installed (without them, a saved Humanist is set as
   Apple, and it comes back when they are). Lines are 1.45 to edit, 1.3
   for code, and to read 1.45 (SF), 1.5 (New York), 1.55 (Chronicle).
+  Headings in a preview take the reading role's heading weight, as the
+  family's nearest face (Humanist's a step below Bold: Chronicle has no
+  Semibold, so Medium). In the dark, what's read and edited at length —
+  an editor's text, a preview's body — is 86% white, against glare over
+  a long read, with headings and bold brighter (97%) to do emphasis's
+  work. Code spans are marked by their face alone; only fenced code
+  blocks sit on a tint.
   **Settings ▸ Appearance ▸ Enable advanced typography** adds a
   **Typography** pane and a fourth theme, **Custom**, set there a role
   at a time: any installed family (the monospaced role's list leads with
@@ -485,7 +492,7 @@ around it, and comes back with its history.
   OpenType features by tag (`ss01, zero, -liga, cv05=2`, or checked off
   a menu of those the font has); the reading role also its measure (the
   longest line in a preview, in characters) and the space between
-  paragraphs. Bold and italic come from the family's own faces, by
+  paragraphs (and its headings' face). Bold and italic come from the family's own faces, by
   their weights: bold a face about three hundred heavier (Regular's
   Bold), italic the slanted face of the weight, in editors, previews and
   terminals alike. Each role's size scales everything set in it, and all

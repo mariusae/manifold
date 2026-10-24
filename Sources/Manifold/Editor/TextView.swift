@@ -62,7 +62,7 @@ final class TextView: NSView, NSTextInputClient {
     var lineHeightMultiple: CGFloat = 1.2 { didSet { fontChanged() } }
     /// Letter spacing, in points (custom typography's).
     var tracking: CGFloat = 0 { didSet { if tracking != oldValue { fontChanged() } } }
-    var textColor = Theme.text { didSet { if textColor != oldValue { layouts = [:]; needsDisplay = true } } }
+    var textColor = Theme.bodyText { didSet { if textColor != oldValue { layouts = [:]; needsDisplay = true } } }
     /// What ⌘ shows as links: byte ranges of names there's somewhere to go
     /// to, in the link color go.dev's docs have.
     var linkRanges: [TextRange] = [] { didSet { if linkRanges != oldValue { layouts = [:]; needsDisplay = true } } }
@@ -90,7 +90,7 @@ final class TextView: NSView, NSTextInputClient {
     /// what it means; the caret's line shows as written.
     var markdown = false { didSet { if markdown != oldValue { invalidateAll() } } }
     var codeFont: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular) { didSet { if markdown { invalidateAll() } } }
-    var markdownPalette = MarkdownStyle.Palette(text: Theme.text, dim: Theme.secondaryText, accent: Theme.accent,
+    var markdownPalette = MarkdownStyle.Palette(text: Theme.bodyText, strong: Theme.strongText, dim: Theme.secondaryText, accent: Theme.accent,
                                                 codeTint: Theme.hover, chipTint: Theme.accent.withAlphaComponent(0.16))
     /// The line the caret is on, whose Markdown shows raw.
     private var rawLine: Int?

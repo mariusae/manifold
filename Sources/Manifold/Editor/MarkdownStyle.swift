@@ -33,8 +33,12 @@ enum MarkdownStyle {
 
     struct Palette {
         var text: NSColor
+        /// Headings and bold: brighter than the text.
+        var strong: NSColor
         var dim: NSColor
         var accent: NSColor
+        /// Behind a fenced code block's lines (not a code span's: its face
+        /// says it's code, and a row of tinted spans reads as chips).
         var codeTint: NSColor
         var chipTint: NSColor
     }
@@ -91,7 +95,7 @@ enum MarkdownStyle {
 
         // The line's kind.
         if let m = heading.firstMatch(in: a.string, range: all) {
-            a.addAttribute(.font, value: boldFont, range: NSRange(location: m.range.length, length: all.length - m.range.length))
+            a.addAttributes([.font: boldFont, .foregroundColor: palette.strong], range: NSRange(location: m.range.length, length: all.length - m.range.length))
             mark(m.range)
         } else if let m = rule.firstMatch(in: a.string, range: all) {
             dim(m.range)
@@ -108,7 +112,7 @@ enum MarkdownStyle {
         var codeRanges: [NSRange] = []
         for m in code.matches(in: a.string, range: all) {
             codeRanges.append(m.range)
-            a.addAttributes([.font: codeFont, chip: palette.codeTint], range: m.range(at: 1))
+            a.addAttributes([.font: codeFont], range: m.range(at: 1))
             mark(NSRange(location: m.range.location, length: 1))
             mark(NSRange(location: m.range.location + m.range.length - 1, length: 1))
         }
@@ -148,13 +152,13 @@ enum MarkdownStyle {
         var bothRanges: [NSRange] = []
         for m in both.matches(in: a.string, range: all) where !inCode(m.range) {
             bothRanges.append(m.range)
-            a.addAttribute(.font, value: base.emphasized(bold: true, italic: true), range: m.range(at: 2))
+            a.addAttributes([.font: base.emphasized(bold: true, italic: true), .foregroundColor: palette.strong], range: m.range(at: 2))
             mark(m.range(at: 1))
             mark(NSRange(location: m.range.location + m.range.length - 3, length: 3))
         }
         func inBoth(_ r: NSRange) -> Bool { bothRanges.contains { NSIntersectionRange($0, r).length > 0 } }
         for m in bold.matches(in: a.string, range: all) where !inCode(m.range) && !inBoth(m.range) {
-            a.addAttribute(.font, value: boldFont, range: m.range(at: 2))
+            a.addAttributes([.font: boldFont, .foregroundColor: palette.strong], range: m.range(at: 2))
             mark(m.range(at: 1))
             mark(NSRange(location: m.range.location + m.range.length - m.range(at: 1).length, length: m.range(at: 1).length))
         }

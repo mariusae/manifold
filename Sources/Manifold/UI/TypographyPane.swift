@@ -13,6 +13,7 @@ final class TypographyPane: SettingsPane {
     private var showRole: ((FontRole) -> Void)?
     private let family = NSPopUpButton()
     private let face = NSPopUpButton()
+    private let headings = NSPopUpButton()
     private let size = NSTextField()
     private let sizeStepper = NSStepper()
     private let leading = NSSlider(value: 1.4, minValue: 0.9, maxValue: 2.4, target: nil, action: nil)
@@ -98,6 +99,10 @@ final class TypographyPane: SettingsPane {
 
         row("Measure", line([measure, measureValue]), note: "Reading only: the longest line in a preview, in characters.")
         row("Paragraphs", line([gapSlider, gapValue]), note: "Reading only: the space between paragraphs.")
+        headings.target = self
+        headings.action = #selector(pickHeadings)
+        headings.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        row("Headings", headings, note: "Reading only: the face headings are set in.")
         gap()
         sample.isSelectable = false
         sample.preferredMaxLayoutWidth = 356
@@ -160,6 +165,8 @@ final class TypographyPane: SettingsPane {
         gapSlider.isEnabled = reading
         measure.doubleValue = style.measure
         measureValue.stringValue = style.measure < 20 ? "the page's" : "\(Int(style.measure)) ch"
+        fillHeadings()
+        headings.isEnabled = reading
         gapSlider.doubleValue = style.paragraphSpacing
         gapValue.stringValue = String(format: "%.2f em", style.paragraphSpacing)
         showSample()
@@ -304,6 +311,27 @@ final class TypographyPane: SettingsPane {
         style.family = f
         // The weight kept as near as the new family has it.
         if let nearest = style.face(role) { style.weight = nearest.weight }
+        changed(now: true)
+    }
+
+    /// The faces headings can be set in, the one they are chosen.
+    private func fillHeadings() {
+        headings.removeAllItems()
+        let faces = FontFace.faces(of: style.family, role: .reading)
+        for f in faces {
+            let item = NSMenuItem(title: "\(f.name)  \(f.weight)", action: nil, keyEquivalent: "")
+            item.representedObject = f.weight
+            headings.menu?.addItem(item)
+        }
+        let chosen = style.headingFaceWeight
+        if let i = faces.firstIndex(where: { $0.weight == chosen }) ?? faces.indices.min(by: { abs(faces[$0].weight - chosen) < abs(faces[$1].weight - chosen) }) {
+            headings.selectItem(at: i)
+        }
+    }
+
+    @objc private func pickHeadings() {
+        guard let w = headings.selectedItem?.representedObject as? Int else { return }
+        style.headingWeight = w
         changed(now: true)
     }
 

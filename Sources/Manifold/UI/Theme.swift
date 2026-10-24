@@ -8,6 +8,11 @@ enum Theme {
     static let sidebarInset: CGFloat = 6
     static let rowHeight: CGFloat = 30
     static let text = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.89, alpha: 1))
+    /// What's read and edited at length — an editor's, a preview's body —
+    /// a step down from white in the dark, against glare over a long read.
+    static let bodyText = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.86, alpha: 1))
+    /// Headings and bold in it: brighter, to do the work emphasis does.
+    static let strongText = NSColor.dynamic(NSColor(white: 0.08, alpha: 1), NSColor(white: 0.97, alpha: 1))
     static let secondaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.6, alpha: 1))
     /// Quieter still: a hint, a note at a row's end.
     static let tertiaryText = NSColor.dynamic(NSColor(white: 0.6, alpha: 1), NSColor(white: 0.45, alpha: 1))
