@@ -1470,6 +1470,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
     func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
+    func debugSwitcherPointer() -> String { content.debugSwitcherPointer() }
+    /// ⌘E with ⌘ held, as far as the fan and its watching for ⌘'s release.
+    func debugWalkStack() {
+        guard let a = arrangement, let f = a.focused, content.stepStackSwitcher(f, back: false) else { return }
+        watchStackWalk()
+    }
+    /// ⌘ let go, as the walk's monitor sees it (if it's still watching).
+    func debugReleaseCommand() -> String {
+        guard !stackMonitors.isEmpty else { return "not watching ⌘" }
+        endStackWalk(settling: true)
+        return "settled"
+    }
 
     var debugSurface: NSView? { content }
 
@@ -5249,6 +5261,11 @@ extension MainWindowController: SidebarDelegate {
 
 extension MainWindowController: GridDelegate {
     func gridFocus(_ placement: PlacementID) { focus(placement) }
+
+    func gridSwitcherFollowsPointer() {
+        stackMonitors.forEach(NSEvent.removeMonitor)
+        stackMonitors = []
+    }
 
     func gridRoomForFan(_ top: PlacementID) -> Bool {
         guard let a = arrangement else { return false }

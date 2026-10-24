@@ -29,10 +29,14 @@ final class StackSwitcherView: NSView {
     var onDragOut: ((PlacementID, NSEvent) -> Void)?
     /// A click on none of the cards.
     var onCancel: (() -> Void)?
-    /// The card under the pointer is the one chosen (opened by a right-click).
-    var followsPointer = false {
-        didSet { updateTrackingAreas() }
-    }
+    /// The card under the pointer is the one chosen (opened from its sheets
+    /// or its button; or from ⌘E, once the pointer moves over the cards).
+    var followsPointer = false
+    /// Opened from ⌘E, the pointer moved over the cards: following it now.
+    var onFollowsPointer: (() -> Void)?
+    /// Where the pointer was first seen over the cards (from ⌘E): moving
+    /// from there is wanting it.
+    private var pointerSeenAt: NSPoint?
 
     /// Where each card is drawn from: the chosen place, eased toward
     /// `selection`, and how far the switcher is open (0 is the column as it
@@ -266,17 +270,23 @@ final class StackSwitcherView: NSView {
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        if followsPointer {
-            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
-        }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
 
     /// With the pointer: the frontmost card under it is chosen (its title
     /// bar among the others', or the part of it that shows).
     override func mouseMoved(with event: NSEvent) {
-        guard followsPointer else { return }
         let p = convert(event.locationInWindow, from: nil)
+        if !followsPointer {
+            // From ⌘E: the pointer moved over the cards — peeking and
+            // choosing with it from now on, as from the sheets.
+            guard !isClosing else { return }
+            guard let seen = pointerSeenAt else { pointerSeenAt = p; return }
+            guard hypot(p.x - seen.x, p.y - seen.y) > 4 else { return }
+            followsPointer = true
+            onFollowsPointer?()
+        }
         if let i = cards.lastIndex(where: { !$0.isHidden && $0.frame.contains(p) }) { choose(i) }
     }
 
@@ -285,6 +295,13 @@ final class StackSwitcherView: NSView {
         guard cards.indices.contains(i) else { return "no card \(i)" }
         pick(i, [])
         return "picked \(cards[i].id)"
+    }
+
+    /// Debugging: the pointer moved over the cards, as from ⌘E.
+    func debugPointerMoves() {
+        guard !followsPointer else { return }
+        followsPointer = true
+        onFollowsPointer?()
     }
 
     func debugHover(_ i: Int) -> String {

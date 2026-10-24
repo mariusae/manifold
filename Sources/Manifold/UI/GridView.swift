@@ -6,6 +6,9 @@ protocol GridDelegate: AnyObject {
     /// A stack about to fan out: its tile grown to hold the fan, if it's
     /// short of it. True when it was (the fan waits for the tile to settle).
     func gridRoomForFan(_ top: PlacementID) -> Bool
+    /// A fan opened from ⌘E taken over by the pointer: letting go of ⌘ no
+    /// longer settles it (a click does).
+    func gridSwitcherFollowsPointer()
     /// A tile dropped at a place in the grid: into column `column` at
     /// index `at`, or a new column at `column`.
     func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
@@ -541,6 +544,12 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: the open switcher's pointer resting on card `i`.
     func debugSwitcherHover(_ i: Int) -> String { switcher?.debugHover(i) ?? "no switcher" }
+    func debugSwitcherPointer() -> String {
+        guard let s = switcher else { return "no switcher" }
+        s.debugPointerMoves()
+        return "following the pointer: \(s.followsPointer), watching clicks: \(switcherMonitor != nil)"
+    }
+
     func debugSwitcherPick(_ i: Int) -> String { switcher?.debugPick(i) ?? "no switcher" }
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
@@ -1231,25 +1240,34 @@ final class GridView: NSView, NSDraggingSource {
             self.beginDrag(of: id, event: event, from: self, alone: true)
         }
         s.onCancel = { [weak self] in self?.settleStackSwitcher(cancel: true) }
+        // From ⌘E, the pointer over the cards: as from the sheets after.
+        s.onFollowsPointer = { [weak self] in
+            guard let self else { return }
+            self.watchSwitcherClicks()
+            self.delegate?.gridSwitcherFollowsPointer()
+        }
         switching = Set(order.map(\.shown.id))
         addSubview(s)
         switcher = s
         needsLayout = true
         s.present()
-        if followingPointer {
-            // Escape, or a click away from the cards, lets the stack be.
-            switcherMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-                guard let self, let s = self.switcher, event.window === self.window else { return event }
-                if event.type == .keyDown {
-                    guard event.keyCode == 53 else { return event }
-                    self.settleStackSwitcher(cancel: true)
-                    return nil
-                }
-                if !s.frame.contains(self.convert(event.locationInWindow, from: nil)) { self.settleStackSwitcher(cancel: true) }
-                return event
-            }
-        }
+        if followingPointer { watchSwitcherClicks() }
         return true
+    }
+
+    /// Escape, or a click away from the cards, lets the stack be.
+    private func watchSwitcherClicks() {
+        guard switcherMonitor == nil else { return }
+        switcherMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, let s = self.switcher, event.window === self.window else { return event }
+            if event.type == .keyDown {
+                guard event.keyCode == 53 else { return event }
+                self.settleStackSwitcher(cancel: true)
+                return nil
+            }
+            if !s.frame.contains(self.convert(event.locationInWindow, from: nil)) { self.settleStackSwitcher(cancel: true) }
+            return event
+        }
     }
 
     /// ⌘E: the stack under `top` as cards over its tile, opened if it

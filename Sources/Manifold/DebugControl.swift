@@ -605,6 +605,12 @@ enum DebugControl {
             // "switcher hover <i>": the open switcher's pointer on card i (0 at
             // the back); "switcher pick <i>": card i clicked.
             let a = arg.split(separator: " ")
+            // "switcher pointer": the pointer moved over the cards (from ⌘E).
+            if a.first == "pointer" { return wc?.debugSwitcherPointer() ?? "no window" }
+            // "switcher walk": ⌘E as typed with ⌘ held (its letting go watched).
+            if a.first == "walk" { wc?.debugWalkStack(); return "ok" }
+            // "switcher release": ⌘ let go.
+            if a.first == "release" { return wc?.debugReleaseCommand() ?? "no window" }
             guard a.first == "hover" || a.first == "pick", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover|pick <i>" }
             return a.first == "pick" ? wc.debugSwitcherPick(i) : wc.debugSwitcherHover(i)
         case "badge":
