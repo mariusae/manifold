@@ -19,6 +19,7 @@ final class BackdropView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layerContentsPlacement = .scaleAxesIndependently
         cast = Daylight.cast(at: Date(), from: Daylight.place())
     }
 
@@ -67,15 +68,29 @@ final class BackdropView: NSView {
                        blue: f(c.blueComponent, cast.blue), alpha: c.alphaComponent).cgColor
     }
 
+    /// Drawn again when its size or the light changes — not at every
+    /// frame set (the window lays out often, the size the same) or
+    /// appearance passed down: each drawing is a full-window gradient on
+    /// the CPU. In a live resize, the last drawing stretched till it ends.
     override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
         super.setFrameSize(newSize)
+        if changed, !inLiveResize { needsDisplay = true }
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
         needsDisplay = true
     }
 
+    private var drawnDark: Bool?
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
+        if isDark != drawnDark { needsDisplay = true }
     }
+
+    private var isDark: Bool { effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -88,9 +103,14 @@ final class BackdropView: NSView {
         }
     }
 
+    /// Times drawn (debugging).
+    static var draws = 0
+
     override func draw(_ dirtyRect: NSRect) {
+        Self.draws += 1
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = isDark
+        drawnDark = dark
         let day = Int(Date().timeIntervalSince1970 / 86400)
         var r = Seeded(state: UInt64(day) &* 2654435761 &+ 97)
         // A wash from the upper left to the lower right — lavender to rose

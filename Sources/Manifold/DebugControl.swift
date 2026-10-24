@@ -679,9 +679,9 @@ enum DebugControl {
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
         case "layouts":
-            // Grid layouts since asked last.
-            defer { GridView.layouts = 0 }
-            return "\(GridView.layouts)"
+            // Grid layouts, backdrop drawings, since asked last.
+            defer { GridView.layouts = 0; BackdropView.draws = 0 }
+            return "\(GridView.layouts) backdrop \(BackdropView.draws)"
         case "busy":
             // "busy start": each turn of the main run loop timed from here
             // (waking to waiting again); "busy stop": how many, the longest,
