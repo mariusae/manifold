@@ -656,16 +656,25 @@ final class Server {
             // Whatever asked, a file is never written over by a text that
             // never came from it.
             if b.needsRead, FileManager.default.fileExists(atPath: path) { return done("The file hasn't been read in yet; not written over.") }
-            do {
-                let fingerprint = try TextFile.write(text, to: path, encoding: t.encoding, lineEnding: t.lineEnding)
-                expectedFingerprints[block] = fingerprint
-                conn.send(.message(ServerMessage.propose(shard: .block(block), .clean(version: version, fingerprint: fingerprint))))
-                watch(b, force: true)
-                languageServers.textChanged(block, saved: true)
-                gitChanged(under: path)
-                done()
-            } catch {
-                done(error.localizedDescription)
+            // Encoded here, the fingerprint noted (so the watcher doesn't
+            // take the write for another's); written on the files' queue —
+            // this one answers every client, and waited on the disk.
+            let data: Data
+            do { data = try TextFile.encoded(text, encoding: t.encoding, lineEnding: t.lineEnding) } catch { return done(error.localizedDescription) }
+            let fingerprint = Fingerprint.of(data)
+            expectedFingerprints[block] = fingerprint
+            Self.files.async { [weak self] in
+                let failure: String?
+                do { try TextFile.write(data, to: path); failure = nil } catch { failure = error.localizedDescription }
+                self?.queue.async {
+                    guard let self else { return }
+                    if let failure { return done(failure) }
+                    conn.send(.message(ServerMessage.propose(shard: .block(block), .clean(version: version, fingerprint: fingerprint))))
+                    if let b = self.node.block(block) { self.watch(b, force: true) }
+                    self.languageServers.textChanged(block, saved: true)
+                    self.gitChanged(under: path)
+                    done()
+                }
             }
         case let .directory(block, path):
             let standard = URL(fileURLWithPath: path).standardizedFileURL.path
@@ -1130,16 +1139,25 @@ final class Server {
         watchers[id] = FileWatcher(path: path, queue: queue) { [weak self] in self?.fileChanged(id) }
     }
 
+    /// A watched file changed: read on the files' queue, weighed here.
     private func fileChanged(_ id: BlockID) {
-        guard let b = node.block(id), let path = b.path, let t = b.text else { return }
-        guard let fingerprint = TextFile.fingerprint(path) else { return }
-        if fingerprint == t.diskFingerprint || fingerprint == expectedFingerprints[id] { return }
-        guard let contents = TextFile.read(path) else { return }
-        let proposal: HostProposal = t.isDirty
-            ? .stale
-            : .content(contents.text, encoding: contents.encoding, lineEnding: contents.lineEnding, fingerprint: contents.fingerprint)
-        leader(of: .block(id))?.send(.message(ServerMessage.propose(shard: .block(id), proposal)))
+        guard let b = node.block(id), let path = b.path, b.text != nil else { return }
+        Self.files.async { [weak self] in
+            let contents = TextFile.read(path)
+            self?.queue.async {
+                guard let self, let t = self.node.block(id)?.text, let contents else { return }
+                if contents.fingerprint == t.diskFingerprint || contents.fingerprint == self.expectedFingerprints[id] { return }
+                let proposal: HostProposal = t.isDirty
+                    ? .stale
+                    : .content(contents.text, encoding: contents.encoding, lineEnding: contents.lineEnding, fingerprint: contents.fingerprint)
+                self.leader(of: .block(id))?.send(.message(ServerMessage.propose(shard: .block(id), proposal)))
+            }
+        }
     }
+
+    /// Where files are read and written: not the queue every client's
+    /// answers and pings wait on. Serial, so writes to a file keep their order.
+    static let files = DispatchQueue(label: "manifoldd.files", qos: .userInitiated)
 
     /// Who writes what the host proposes for a shard it doesn't lead: the
     /// app attachment holding its pen, else any app attachment — never a
@@ -1160,8 +1178,23 @@ final class Server {
     /// read is tried once more (a file being written).
     private func readFile(_ block: BlockID, for conn: any Channel, attempt: Int = 0, done: @escaping (String?) -> Void) {
         guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
+        // Read on the files' queue (a big file, a slow disk, held up every
+        // client's answers here), weighed back here.
+        Self.files.async { [weak self] in
+            let contents = TextFile.read(path)
+            let exists = contents != nil || FileManager.default.fileExists(atPath: path)
+            let folder = FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent)
+            self?.queue.async {
+                self?.readFile(block, for: conn, attempt: attempt, read: contents, exists: exists, folder: folder, done: done)
+            }
+        }
+    }
+
+    private func readFile(_ block: BlockID, for conn: any Channel, attempt: Int, read contents: TextFile.Contents?, exists: Bool, folder: Bool,
+                          done: @escaping (String?) -> Void) {
+        guard let b = node.block(block), b.kind == .text, let path = b.path else { return done("not a file") }
         let send = { (p: HostProposal) in conn.send(.message(ServerMessage.propose(shard: .block(block), p))) }
-        if let contents = TextFile.read(path) {
+        if let contents {
             if let t = b.text, !t.isDirty, t.version > 0, t.diskFingerprint == contents.fingerprint, !t.unreadable {
                 // Already so.
             } else {
@@ -1169,14 +1202,14 @@ final class Server {
             }
             watch(b, force: true)
             done(nil)
-        } else if FileManager.default.fileExists(atPath: path) {
+        } else if exists {
             if attempt < 1 {
                 queue.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
                 return
             }
             send(.unreadable)
             done("can't be read as text")
-        } else if attempt < 3, !FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent) {
+        } else if attempt < 3, !folder {
             queue.asyncAfter(deadline: .now() + 0.2 * Double(attempt + 1)) { [weak self] in self?.readFile(block, for: conn, attempt: attempt + 1, done: done) }
         } else {
             // A new file: empty, clean, not yet on disk; watched, so it's

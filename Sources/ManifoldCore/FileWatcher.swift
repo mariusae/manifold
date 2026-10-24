@@ -132,19 +132,29 @@ public enum TextFile {
 
     /// Writes, keeping the file's permissions; returns the fingerprint.
     public static func write(_ text: String, to path: String, encoding: String, lineEnding: String) throws -> String {
+        let data = try encoded(text, encoding: encoding, lineEnding: lineEnding)
+        try write(data, to: path)
+        return Fingerprint.of(data)
+    }
+
+    /// The bytes a text is written as.
+    public static func encoded(_ text: String, encoding: String, lineEnding: String) throws -> Data {
         var out = text
         if lineEnding != "\n" { out = out.replacingOccurrences(of: "\n", with: lineEnding) }
         let enc: String.Encoding = encoding == "iso-8859-1" ? .isoLatin1 : .utf8
         guard let data = out.data(using: enc) ?? out.data(using: .utf8) else {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
-        let url = URL(fileURLWithPath: path)
+        return data
+    }
+
+    /// Bytes written over a file, atomically, keeping its permissions.
+    public static func write(_ data: Data, to path: String) throws {
         let permissions = (try? FileManager.default.attributesOfItem(atPath: path))?[.posixPermissions]
-        try data.write(to: url, options: .atomic)
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
         if let permissions {
             try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
         }
-        return Fingerprint.of(data)
     }
 
     /// A folder's entries, as a directory block lists them.
