@@ -211,26 +211,61 @@ final class DirectoryModel {
         }
     }
 
-    /// Whether a path (relative) has a hidden part, and so goes unshown.
-    private func hiddenPart(_ rel: String) -> Bool { !showHidden && rel.split(separator: "/").contains { $0.hasPrefix(".") } }
-
+    /// The tree's files ranked against the filter — on another thread, as
+    /// a tree of tens of thousands takes a while to go through (about
+    /// 80 ms at 20,000 files, at every key): the matches shown are the
+    /// last ones until the new are in, those of a filter typed since not
+    /// taken. Narrowed from the last ones when the filter only grew and
+    /// they were all there were.
     private func recompute() {
-        matches = []
-        matchedAt = [:]
-        guard filtering, let tree else { return }
-        var scored: [(String, Int)] = []
-        for e in tree where !e.isDirectory && !hiddenPart(e.name) {
-            if let s = FileFinder.score(filter, e.name) { scored.append((e.name, s)) }
+        rankGeneration &+= 1
+        guard filtering, let tree else {
+            matches = []
+            matchedAt = [:]
+            ranked = nil
+            return
         }
-        scored.sort { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.count < $1.0.count }
-        matches = scored.prefix(Self.matchLimit).map(\.0)
-        for m in matches { matchedAt[m] = FileFinder.positions(filter, m) }
+        let generation = rankGeneration, filter = self.filter, showHidden = self.showHidden
+        let from: [String]
+        if let r = ranked, r.complete, r.showHidden == showHidden, filter.lowercased().hasPrefix(r.filter.lowercased()), r.tree == treeAt {
+            from = r.all
+        } else {
+            from = tree.filter { !$0.isDirectory }.map(\.name)
+        }
+        let treeAt = self.treeAt
+        DispatchQueue.global(qos: .userInteractive).async {
+            var scored: [(String, Int)] = []
+            for name in from where showHidden || !name.split(separator: "/").contains(where: { $0.hasPrefix(".") }) {
+                if let s = FileFinder.score(filter, name) { scored.append((name, s)) }
+            }
+            scored.sort { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.count < $1.0.count }
+            let all = scored.map(\.0)
+            let shown = Array(all.prefix(Self.matchLimit))
+            var at: [String: [Int]] = [:]
+            for m in shown { at[m] = FileFinder.positions(filter, m) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.rankGeneration == generation else { return }
+                self.matches = shown
+                self.matchedAt = at
+                self.ranked = (filter, showHidden, all, true, treeAt)
+                self.filterChanged()
+            }
+        }
     }
+    private var rankGeneration = 0
+    /// The last ranking: its filter, every file it matched (for a longer
+    /// filter to narrow from), and the tree it went through.
+    private var ranked: (filter: String, showHidden: Bool, all: [String], complete: Bool, tree: Date?)?
 
     /// The files that matched, as nodes, best first.
     func matchedFiles() -> [BrowserNode] {
         guard let tree else { return [] }
-        let byName = Dictionary(tree.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        if treeByName?.at != treeAt {
+            treeByName = (treeAt, Dictionary(tree.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a }))
+        }
+        let byName = treeByName?.entries ?? [:]
         return matches.compactMap { rel in byName[rel].map { node(absolute(rel), $0) } }
     }
+    /// The tree's entries by name, made once per listing of it.
+    private var treeByName: (at: Date?, entries: [String: DirectoryEntry])?
 }

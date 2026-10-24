@@ -1091,6 +1091,7 @@ final class MainThreadBusy {
         case "start":
             stop()
             turns = []
+            began = 0
             started = CFAbsoluteTimeGetCurrent()
             let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, activity in
                 guard let self else { return }
