@@ -42,8 +42,8 @@ import Testing
     #expect(error(["open", "--wait=yes"]) == Mani.UsageError(message: "--wait takes no value", verb: "open"))
     #expect(error(["diff", "lunch"])?.verb == "diff")
     #expect(error(["agent"]) == Mani.UsageError(message: "agent needs <event> [json]", verb: "agent"))
-    #expect(error(["skill"]) == Mani.UsageError(message: "skill needs a command: install, uninstall", verb: "skill"))
-    #expect(error(["skill", "add"])?.message == "skill has no command add: install, uninstall")
+    #expect(error(["skill"]) == Mani.UsageError(message: "skill needs a command: install, show, uninstall", verb: "skill"))
+    #expect(error(["skill", "add"])?.message == "skill has no command add: install, show, uninstall")
     #expect(error(["help", "nope"])?.verb == "help")
     // A path given as it was before `open`: said how.
     #expect(error(["/tmp"])?.message == "no command /tmp (to open it: mani open /tmp)")
@@ -101,4 +101,36 @@ import Testing
     #expect(diff.contains("-line 5\n+five\n line 6\n line 7\n-line 8\n+eight"))
     #expect(diff.contains("@@ -16,5 +16,5 @@"))
     #expect(UnifiedDiff.make(old: "a", new: "a", path: "x") == "")
+}
+
+@Test func theGuideGoesInAgentsMdAndComesOutLeavingTheRest() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mani-agents-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("AGENTS.md")
+    let mine = "# Mine\n\nUse tabs.\n"
+    try Data(mine.utf8).write(to: url)
+    try AgentSkill.installAgentsNote(at: url)
+    let once = try String(contentsOf: url, encoding: .utf8)
+    #expect(once.hasPrefix(mine + "\n" + AgentSkill.agentsBegin))
+    #expect(once.contains("mani skill show"))
+    // Again: in place of the old, not beside it.
+    try AgentSkill.installAgentsNote(at: url)
+    #expect(try String(contentsOf: url, encoding: .utf8) == once)
+    try AgentSkill.uninstallAgentsNote(at: url)
+    #expect(try String(contentsOf: url, encoding: .utf8) == mine)
+    // A file that held only ours goes with it.
+    let only = dir.appendingPathComponent("only/AGENTS.md")
+    try AgentSkill.installAgentsNote(at: only)
+    try AgentSkill.uninstallAgentsNote(at: only)
+    #expect(!FileManager.default.fileExists(atPath: only.path))
+    // The skill: written, rewritten when the guide changes, taken out.
+    let skill = dir.appendingPathComponent("skills/manifold/SKILL.md")
+    try AgentSkill.installSkillFile(at: skill)
+    #expect(try String(contentsOf: skill, encoding: .utf8).contains("mani read @selection"))
+    try Data("---\nname: manifold\n---\nold\n".utf8).write(to: skill)
+    try AgentSkill.refreshSkillFile(at: skill)
+    #expect(try String(contentsOf: skill, encoding: .utf8) == AgentSkill.skillFile)
+    try AgentSkill.uninstallSkillFile(at: skill)
+    #expect(!FileManager.default.fileExists(atPath: skill.deletingLastPathComponent().path))
 }

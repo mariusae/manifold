@@ -242,8 +242,13 @@ public enum Mani {
                  \(AgentSkill.known.joined(separator: ", "))), so a Manifold terminal running one shows
                  its status, and each of its turns on the scrubber and in the
                  outline. The hooks run `mani agent`, and do nothing outside
-                 Manifold's terminals. Installing again replaces them.
+                 Manifold's terminals. And the guide (`mani skill show`), so they
+                 know mani: Claude Code's as a skill, Codex's from AGENTS.md.
+                 Installing again replaces them.
                  """),
+        Verb(words: ["skill", "show"], args: "", minArgs: 0, maxArgs: 0, flags: [],
+             summary: "Print the guide for agents: seeing and driving Manifold",
+             details: "The guide `skill install` gives Claude Code (as a skill) and Codex (pointed to from AGENTS.md): names, what users say and what to run, the commands."),
         Verb(words: ["skill", "uninstall"], args: "[agent ...]", minArgs: 0, maxArgs: nil, flags: [],
              summary: "Take Manifold's hooks out of coding agents",
              details: "Takes out what `mani skill install` put in: of the agents found here, or those named."),
@@ -262,6 +267,64 @@ public enum Mani {
              summary: "Say what mani does, or what a command does",
              details: "With a command, its usage, flags and what it does."),
     ]
+
+    /// The guide for agents (`mani skill show`, and the skill `skill
+    /// install` writes): how to see and drive what's on the user's screen,
+    /// the commands from the table, and what users say mapped to them.
+    public static var guide: String {
+        let commands = verbs.filter { $0.inApp || ["diff"].contains($0.name) }.map { "- `\($0.usage)` — \($0.summary)" }
+        return """
+            # Manifold: the mani command
+
+            You're in a Manifold terminal when MANIFOLD_BLOCK is set. Manifold lays out blocks —
+            terminals, editors, notes, previews, pages, PDFs, diffs, panels — as tiles in
+            columns, and `mani` reads and drives them: what the user sees, has selected, and ran.
+            When they say "this", "that", "here", "on my right", "what I highlighted", look with
+            mani before asking.
+
+            ## Seeing
+            - `mani context` — the layout, the last selection (and where), the terminals' last
+              commands and how they ended, unsaved files. Start here when unsure.
+            - `mani ls --json` — every tile: its block id, kind, title, path, frame (x, y, width,
+              height as shares of the window, from the top left), the tiles on each edge
+              (adjacent), the names it answers to (@left, @2, …), what's stacked under it.
+            - `mani read <name>` — what a block holds, as text; `mani info <name>` — about it (JSON).
+
+            ## Naming
+            \(namesHelp.split(separator: "\n").map { "    " + $0 }.joined(separator: "\n"))
+
+            ## What the user says, and what to run
+            - "the code I highlighted", "this selection": `mani read @selection`;
+              where it is (file, lines): `mani info @selection`.
+            - "the diff on my right": `mani read @right:diff` (or `@right` if it's the only one).
+            - "this PDF describes an algorithm": `mani read @:pdf` (`--pages 3-5` for some).
+            - "the page I have open": `mani read @:web`.
+            - "what failed in the other terminal": `mani read @right:terminal --command -1`.
+            - "render the result in a new markdown block": `… | mani new note --preview --title Result`.
+            - "open it", "show me": `mani open path/to/file --line 42` (beside you).
+            - "run the tests over there": `mani run @right:terminal --wait "make test"` — prints the
+              output and exits with the command's status.
+            - "let me choose", "ask me": a panel —
+              `mani ui new <<< '{"title":"Pick","items":[{"type":"list","id":"pick","items":["a","b"],"select":"single"},{"type":"button","id":"ok","label":"OK","style":"primary"}]}'`,
+              then `mani ui wait @last --id ok` and `mani ui get @last pick`.
+            - "show progress": a panel with a progress widget, and `mani ui set @last progress=0.5 status="Building"`.
+
+            ## Commands
+            \(commands.joined(separator: "\n"))
+
+            `mani <command> --help` says more; `mani ui new --help` lists the widgets.
+
+            ## Conventions
+            - What you make goes below this terminal unless told: --right, --left, --above,
+              --column (a new one), --over (stacked), by --at another tile. `@last` is what mani
+              last made.
+            - `new`, `open` and `show` move the user's focus; prefer `read`, `info`, `ls` to look.
+            - Output is for reading; errors go to stderr with status 1 (couldn't), 2 (asked wrong).
+              A name that could be several tiles fails and lists them: pick one by its id.
+            - `mani read` gives a file's text as Manifold has it, unsaved edits included; read
+              the file itself if you want what's on disk.
+            """
+    }
 
     /// How blocks are named, for the overview (and agents).
     public static let namesHelp = """
@@ -496,6 +559,9 @@ public enum Mani {
             let status = platform.request(true) { OpenCommand.runPatch(fd: $0, patch: patch, root: root, title: title, beside: here) }
             if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
             exit(status)
+        case "skill show":
+            print(guide)
+            exit(0)
         case "skill install", "skill uninstall":
             let names = invocation.args.map { $0.lowercased() }
             if let unknown = names.first(where: { !AgentSkill.known.contains($0) }) {

@@ -1212,8 +1212,17 @@ is migrated into logs on first run.
     status), a block's status, a tile shown or taken off, a file saved,
     another workspace, something done in a panel — until it's
     interrupted (`--only` some).
-  - `mani diff`, `mani skill install`/`uninstall`, `mani agent` (what
-    agents' hooks run) and `mani help` are done by `mani` itself; the
+  - **For agents.** `mani skill show` prints a guide to all this for
+    coding agents: how to look before asking when the user says "this",
+    "on my right" or "what I highlighted", what users say and what to
+    run, the commands. `mani skill install` gives it to them along with
+    the hooks: Claude Code as a skill (`~/.claude/skills/manifold`,
+    loaded when it's in a Manifold terminal and the user means what's on
+    screen), Codex as a few lines in `~/.codex/AGENTS.md` that point to
+    it (the rest of the file kept). A newer Manifold's guide replaces
+    the old as it starts.
+  - `mani diff`, `mani skill`, `mani agent` (what agents' hooks run) and
+    `mani help` are done by `mani` itself; the
     rest are passed to the app through the host, so they work alike from
     a remote host's terminals.
   It's strict: an unknown command or flag, a flag missing its value, too

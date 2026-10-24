@@ -91,6 +91,8 @@ public enum AgentSkill {
         let claude = home.appendingPathComponent(".claude/settings.json")
         let codexHome = env["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".codex")
         let codex = codexHome.appendingPathComponent("hooks.json")
+        let codexAgents = codexHome.appendingPathComponent("AGENTS.md")
+        let claudeSkill = claude.deletingLastPathComponent().appendingPathComponent("skills/manifold/SKILL.md")
         let museDir = env["MUSE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
             ?? (env["XDG_CONFIG_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".config")).appendingPathComponent("muse")
         let muse = museDir.appendingPathComponent("settings.json")
@@ -102,13 +104,13 @@ public enum AgentSkill {
         return [
             // MetaCode reads Claude Code's hooks too; `mani agent` tells them apart.
             Target(name: "claude", file: claude, present: here("claude", claude.deletingLastPathComponent()),
-                   install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents) },
-                   uninstall: { try uninstallClaudeStyle(at: claude) },
-                   refresh: { try refreshClaudeStyle(at: claude) }),
+                   install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents); try installSkillFile(at: claudeSkill) },
+                   uninstall: { try uninstallClaudeStyle(at: claude); try uninstallSkillFile(at: claudeSkill) },
+                   refresh: { try refreshClaudeStyle(at: claude); try refreshSkillFile(at: claudeSkill) }),
             Target(name: "codex", file: codex, present: here("codex", codexHome),
-                   install: { try installClaudeStyle(at: codex, agent: "codex", events: codexEvents) },
-                   uninstall: { try uninstallClaudeStyle(at: codex) },
-                   refresh: { try refreshClaudeStyle(at: codex) },
+                   install: { try installClaudeStyle(at: codex, agent: "codex", events: codexEvents); try installAgentsNote(at: codexAgents) },
+                   uninstall: { try uninstallClaudeStyle(at: codex); try uninstallAgentsNote(at: codexAgents) },
+                   refresh: { try refreshClaudeStyle(at: codex); try refreshAgentsNote(at: codexAgents) },
                    note: "Codex asks to review new hooks once: choose Review hooks (or /hooks) and trust Manifold's."),
             Target(name: "muse", file: muse, present: here("muse", museDir),
                    install: { try installClaudeStyle(at: muse, agent: "muse", events: museEvents) },
@@ -344,6 +346,91 @@ public enum AgentSkill {
             return
         }
         try Data(piExtension(tool: moved).utf8).write(to: url, options: .atomic)
+    }
+
+    // MARK: The guide, where agents read it
+
+    /// Claude Code's skill: the guide, with what it's for, which Claude
+    /// Code reads to know when to load it.
+    static var skillFile: String {
+        """
+        ---
+        name: manifold
+        description: Use when running in a Manifold terminal (MANIFOLD_BLOCK is set) and the user refers to what's on their screen — "the code I highlighted", "the diff on my right", "this PDF", "the page I have open", "the tests in the other terminal" — or asks to show, render or open something beside you, run something in another terminal, or make a small UI (a form, a choice, progress). The mani command reads and drives Manifold.
+        ---
+
+        \(Mani.guide)
+        """
+    }
+
+    static let agentsBegin = "<!-- manifold: put here by `mani skill install`; `mani skill uninstall` takes it out -->"
+    static let agentsEnd = "<!-- /manifold -->"
+
+    /// What goes in Codex's AGENTS.md (which it reads every time): a few
+    /// lines that say where the guide is.
+    static var agentsNote: String {
+        """
+        \(agentsBegin)
+        ## Manifold
+
+        In a Manifold terminal (MANIFOLD_BLOCK is set), the `mani` command reads and drives
+        what's on the user's screen: `mani read @selection` is the text they highlighted,
+        `mani read @right:diff` the diff to the right of this terminal, `mani context` all of
+        it at once; `… | mani new note --preview` shows a result beside you; `mani run <terminal>
+        --wait <command>` runs a command in another terminal; `mani ui new` makes a small UI.
+        Run `mani skill show` for the whole guide before using it.
+        \(agentsEnd)
+        """
+    }
+
+    static func installSkillFile(at url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(skillFile.utf8).write(to: url, options: .atomic)
+    }
+
+    static func uninstallSkillFile(at url: URL) throws {
+        guard let text = try? String(contentsOf: url, encoding: .utf8), text.hasPrefix("---\nname: manifold\n") else { return }
+        try FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    /// The skill rewritten when the guide has changed (a new Manifold).
+    static func refreshSkillFile(at url: URL) throws {
+        guard let text = try? String(contentsOf: url, encoding: .utf8), text.hasPrefix("---\nname: manifold\n"), text != skillFile else { return }
+        try installSkillFile(at: url)
+    }
+
+    /// AGENTS.md with Manifold's lines in it (in place of any before), the
+    /// rest as it was.
+    static func installAgentsNote(at url: URL) throws {
+        let old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        var rest = withoutAgentsNote(old)
+        if !rest.isEmpty, !rest.hasSuffix("\n\n") { rest += rest.hasSuffix("\n") ? "\n" : "\n\n" }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        backUp(url)
+        try Data((rest + agentsNote + "\n").utf8).write(to: url, options: .atomic)
+    }
+
+    static func uninstallAgentsNote(at url: URL) throws {
+        guard let old = try? String(contentsOf: url, encoding: .utf8), old.contains(agentsBegin) else { return }
+        let rest = withoutAgentsNote(old)
+        if rest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            try FileManager.default.removeItem(at: url)
+        } else {
+            try Data(rest.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    static func refreshAgentsNote(at url: URL) throws {
+        guard let old = try? String(contentsOf: url, encoding: .utf8), old.contains(agentsBegin), !old.contains(agentsNote) else { return }
+        try installAgentsNote(at: url)
+    }
+
+    /// A file's text with Manifold's lines taken out.
+    static func withoutAgentsNote(_ text: String) -> String {
+        guard let start = text.range(of: agentsBegin), let end = text.range(of: agentsEnd, range: start.upperBound..<text.endIndex) else { return text }
+        let out = (String(text[..<start.lowerBound]) + String(text[end.upperBound...])).trimmingCharacters(in: .newlines)
+        return out.isEmpty ? "" : out + "\n"
     }
 
     struct SkillError: Error, CustomStringConvertible {
