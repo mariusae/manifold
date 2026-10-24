@@ -12,7 +12,23 @@ public enum CommandLines {
     /// newline in it) its first line, 8 characters and more, where its
     /// text goes on after a space.
     public static func lineShows(_ command: String, in t: String) -> Bool {
+        lineShows(command, head: Array(command.prefix(8).utf8), in: t)
+    }
+
+    /// As `lineShows`, given the command's first 8 characters' bytes: a
+    /// line that shows the command in any of those ways has them in it, so
+    /// one without them (most) is passed over with memmem, not looked
+    /// through a character at a time.
+    static func lineShows(_ command: String, head: [UInt8], in t: String) -> Bool {
         guard !t.isEmpty, !command.isEmpty else { return false }
+        var t = t
+        let has = t.withUTF8 { hay in
+            head.withUnsafeBufferPointer { needle in
+                guard let h = hay.baseAddress, let n = needle.baseAddress, hay.count >= needle.count else { return false }
+                return memmem(h, hay.count, n, needle.count) != nil
+            }
+        }
+        guard has else { return false }
         if let r = t.range(of: command) {
             let rest = t[r.upperBound...]
             if rest.isEmpty || rest.hasPrefix("  ") { return true }
@@ -43,12 +59,13 @@ public enum CommandLines {
     /// to be gone, and the search stops after `budget` lines looked at.
     public static func locate(_ commands: [String], in lines: [String], giveUp: Int = 8, budget: Int = 400_000) -> [Int: Int] {
         let trimmed = lines.map { $0.trimmingCharacters(in: .whitespaces) }
+        let heads = commands.map { Array($0.prefix(8).utf8) }
         var found: [Int: Int] = [:]
         var bound = trimmed.count
         var misses = 0, looked = 0
         for k in commands.indices.reversed() {
             var l = bound - 1
-            while l >= 0, looked < budget, !lineShows(commands[k], in: trimmed[l]) {
+            while l >= 0, looked < budget, !lineShows(commands[k], head: heads[k], in: trimmed[l]) {
                 l -= 1
                 looked += 1
             }

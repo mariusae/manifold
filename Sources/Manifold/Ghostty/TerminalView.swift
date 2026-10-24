@@ -587,7 +587,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// from its width.
     var transcriptLines: String? { screenLines()?.map { String($0.text) }.joined(separator: "\n") }
 
-    private func screenLines() -> [(row: Int, text: Substring)]? {
+    private func screenLines() -> [(row: Int, text: String)]? {
         guard let surface else { return nil }
         let cols = max(Int(ghostty_surface_size(surface).columns), 1)
         var sel = ghostty_selection_s()
@@ -598,13 +598,29 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard ghostty_surface_read_text(surface, sel, &out) else { return nil }
         defer { ghostty_surface_free_text(surface, &out) }
         guard let p = out.text else { return [] }
-        let all = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
-        var lines: [(row: Int, text: Substring)] = []
-        var row = 0
-        for line in all.split(separator: "\n", omittingEmptySubsequences: false) {
-            lines.append((row, line))
-            row += max(1, (Self.cells(line) + cols - 1) / cols)
+        // Split over the bytes, a line's cells its length when it's ASCII
+        // (as most are): a scrollback's worth, after every command, took
+        // the main thread ~0.1 s by characters.
+        let bytes = UnsafeBufferPointer(start: UnsafeRawPointer(p).assumingMemoryBound(to: UInt8.self), count: Int(out.text_len))
+        var lines: [(row: Int, text: String)] = []
+        var row = 0, start = 0, ascii = true
+        func line(to end: Int) {
+            let text = String(decoding: UnsafeBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self)
+            lines.append((row, text))
+            let cells = ascii ? end - start : Self.cells(Substring(text))
+            row += max(1, (cells + cols - 1) / cols)
         }
+        for i in 0..<bytes.count {
+            let b = bytes[i]
+            if b == 0x0A {
+                line(to: i)
+                start = i + 1
+                ascii = true
+            } else if b >= 0x80 {
+                ascii = false
+            }
+        }
+        line(to: bytes.count)
         return lines
     }
 
@@ -637,7 +653,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             return
         }
         guard let lines = screenLines() else { return }
-        let texts = lines.map { String($0.text) }, rows = lines.map(\.row), commands = self.commands
+        let texts = lines.map(\.text), rows = lines.map(\.row), commands = self.commands
         let generation = locateGeneration
         let take = { [weak self] (found: [Int: Int]) in
             guard let self, self.locateGeneration == generation else { return }
