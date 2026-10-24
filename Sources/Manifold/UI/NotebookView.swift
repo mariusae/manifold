@@ -656,7 +656,10 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
 
     private func editorHeight(_ width: CGFloat) -> CGFloat {
         guard let lm = editor.layoutManager, let tc = editor.textContainer else { return 30 }
-        tc.containerSize = NSSize(width: max(10, width - 2 * editor.textContainerInset.width), height: .greatestFiniteMagnitude)
+        // Sized only when the width changed: each cell is measured at every
+        // key typed in any, and a size set lays its text out again.
+        let size = NSSize(width: max(10, width - 2 * editor.textContainerInset.width), height: .greatestFiniteMagnitude)
+        if tc.containerSize != size { tc.containerSize = size }
         lm.ensureLayout(for: tc)
         let used = lm.usedRect(for: tc).height
         let line = font.ascender - font.descender + font.leading
@@ -665,7 +668,8 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
 
     private func outputHeight(_ width: CGFloat) -> CGFloat {
         guard hasOutput, let lm = output.layoutManager, let tc = output.textContainer else { return 0 }
-        tc.containerSize = NSSize(width: max(10, width - 2 * output.textContainerInset.width), height: .greatestFiniteMagnitude)
+        let size = NSSize(width: max(10, width - 2 * output.textContainerInset.width), height: .greatestFiniteMagnitude)
+        if tc.containerSize != size { tc.containerSize = size }
         lm.ensureLayout(for: tc)
         return min(Self.maxOutputHeight, ceil(lm.usedRect(for: tc).height) + 2 * output.textContainerInset.height)
     }
