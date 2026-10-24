@@ -933,6 +933,11 @@ around it, and comes back with its history.
   agent command (`claude` unless the settings say otherwise) in a login
   shell where the focused block is; their transcripts are kept like a
   terminal's, and they come back after a restart the same way. An agent
+  at work in a block — an agent block, or a terminal running one — shows
+  its maker's mark wherever the block's symbol shows (Claude Code, Codex,
+  Gemini CLI, Cursor, Goose, opencode, Amp, Pi; Meta AI's for Muse), from
+  [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and pi.dev, in
+  Resources/AgentIcons; the marks are their makers' trademarks. An agent
   started in a git repository has the working tree noted as it starts
   — all of it, untracked files too, without touching the index — and
   **Changes Since It Started** in its tile's menu shows everything it
