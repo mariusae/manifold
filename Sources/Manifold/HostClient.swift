@@ -249,7 +249,21 @@ final class HostClient {
 
     // MARK: Reading
 
-    var desk: DeskState { node.desk(host) }
+    /// The host's desk — its workspaces in the order last proposed here,
+    /// until the host's order changes (it has the proposal then, or
+    /// another's after it): the host keeps the order, a round trip off, and
+    /// the sidebar waited on it; and an order made from the host's before
+    /// it had the last one lost that one (a new workspace "after this one"
+    /// landed at the end, a tile dropped between workspaces nowhere).
+    var desk: DeskState {
+        var d = node.desk(host)
+        if let p = proposedOrder {
+            // Not heard of in 10 s (sent while the link was down): the host's.
+            if d.order != p.over || Date().timeIntervalSince(p.at) > 10 { proposedOrder = nil } else { d.order = p.order }
+        }
+        return d
+    }
+    private var proposedOrder: (order: [BlockID], over: [BlockID], at: Date)?
     var registry: Registry { node.registry(host) }
     var links: Links { node.links(host) }
     func block(_ id: BlockID) -> Block? { node.block(id) }
@@ -351,7 +365,9 @@ final class HostClient {
 
     func setWorkspaceOrder(_ order: [BlockID]) {
         guard order != desk.order else { return }
+        proposedOrder = (order, node.desk(host).order, Date())
         propose(.workspaces(order: order))
+        scheduleChange()
     }
 
     /// A workspace of this host that this desk doesn't list yet: listed.
