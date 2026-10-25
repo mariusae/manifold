@@ -273,13 +273,23 @@ final class SidebarView: NSView {
 
     @objc private func filterTyped() { delegate?.sidebarFilterChanged(filter.stringValue) }
 
+    /// The card's ground, as pinned or not, in the appearance shown —
+    /// themed once (each `themed` call adds a hook kept for good), then
+    /// set again as the pin changes.
+    private var chromeThemed = false
+    private func applyCard(_ v: NSView) {
+        v.layer?.backgroundColor = pinned ? NSColor.clear.cgColor : Theme.panel.withAlphaComponent(0.94).cgColor
+        v.layer?.borderWidth = pinned ? 0 : 0.5
+        v.layer?.borderColor = Theme.cardBorder.cgColor
+    }
+
     private func updateChrome() {
         layer?.shadowOpacity = pinned ? 0 : Float(Flat.shadowOpacity)
-        card.themed { [weak self] v in
-            guard let self else { return }
-            v.layer?.backgroundColor = self.pinned ? NSColor.clear.cgColor : Theme.panel.withAlphaComponent(0.94).cgColor
-            v.layer?.borderWidth = self.pinned ? 0 : 0.5
-            v.layer?.borderColor = Theme.cardBorder.cgColor
+        if chromeThemed {
+            card.effectiveAppearance.performAsCurrentDrawingAppearance { applyCard(card) }
+        } else {
+            chromeThemed = true
+            card.themed { [weak self] v in self?.applyCard(v) }
         }
         pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
         pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"

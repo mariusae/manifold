@@ -19,6 +19,11 @@ extension EditorView {
         }
     }
 
+    /// The status's ground: its tint, half into the panel's.
+    func paintStatus() {
+        statusBox.layer?.backgroundColor = (statusTint.blended(withFraction: 0.5, of: Theme.panel) ?? Theme.panel).cgColor
+    }
+
     func layoutStatus() {
         let message = loadingMessage ?? busyMessage ?? statusMessage
         guard let message else {
@@ -31,8 +36,13 @@ extension EditorView {
         status.stringValue = message
         let severity = loadingMessage != nil || busyMessage != nil ? 0 : (textView.diagnostics.first { $0.range.start <= caret && caret <= max($0.range.end, $0.range.start) }?.severity ?? 3)
         let tint: NSColor = severity == 0 ? Theme.panel : TextView.diagnosticColor(severity).withAlphaComponent(0.12)
-        statusBox.themed { v in
-            v.layer?.backgroundColor = (tint.blended(withFraction: 0.5, of: Theme.panel) ?? Theme.panel).cgColor
+        // Themed once (each `themed` adds a hook for good), the tint kept.
+        statusTint = tint
+        if statusThemed {
+            statusBox.effectiveAppearance.performAsCurrentDrawingAppearance { self.paintStatus() }
+        } else {
+            statusThemed = true
+            statusBox.themed { [weak self] _ in self?.paintStatus() }
         }
         if statusBox.isHidden {
             statusBox.isHidden = false

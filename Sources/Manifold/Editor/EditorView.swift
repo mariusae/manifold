@@ -61,6 +61,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     var hover: NSPopover?
     let status = NSTextField(labelWithString: "")
     let statusBox = NSView()
+    /// The status's tint (a diagnostic's colour, or none), and whether its
+    /// ground is themed yet.
+    var statusTint: NSColor = Theme.panel
+    var statusThemed = false
     var statusMessage: String? { didSet { if statusMessage != oldValue { layoutStatus() } } }
     /// Something the server is doing for us, shown while it lasts.
     var busyMessage: String? { didSet { if busyMessage != oldValue { layoutStatus() } } }
