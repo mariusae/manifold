@@ -399,6 +399,10 @@ final class GridView: NSView, NSDraggingSource {
                     }()
                     badge.cards = tile.links
                     pill.linkWanted = badge.capsuleWantedWidth
+                    pill.onLinkRoom = { [weak badge] room in
+                        badge?.capsuleLimit = room
+                        badge?.isHidden = room == 0
+                    }
                     badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
@@ -1803,7 +1807,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// What the links' pill wants of the bar, its sheets included; what
     /// it's given is `linkGiven`, after the shrinkage below.
     var linkWanted: CGFloat = 0 { didSet { if linkWanted != oldValue { needsLayout = true } } }
-    private(set) var linkGiven: CGFloat = 0
+    private(set) var linkGiven: CGFloat = 0 { didSet { if linkGiven != oldValue { onLinkRoom?(linkGiven) } } }
+    /// The links' room changed as the bar laid out (it was resized): for
+    /// the capsule, which the grid placed, to take it at once.
+    var onLinkRoom: ((CGFloat) -> Void)?
     /// The links' pill shrunk: the arrow and the symbol; the arrow alone.
     static let linkCompact: CGFloat = 50
     static let linkMinimal: CGFloat = 30
