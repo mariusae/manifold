@@ -6,7 +6,6 @@ enum Theme {
     static let sidebarWidth: CGFloat = 232
     static let sidebarWidthRange: ClosedRange<CGFloat> = 180...480
     static let sidebarInset: CGFloat = 6
-    static let rowHeight: CGFloat = 30
     static let text = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.89, alpha: 1))
     /// What's read and edited at length — an editor's, a preview's body —
     /// a step down from white in the dark, against glare over a long read.

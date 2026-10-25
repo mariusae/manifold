@@ -18,7 +18,7 @@ and Mona Sans (bundled).
 
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
-  organized four ways (Workspaces · Files · Links · Time, below), with a
+  organized three ways (Workspaces · Files · Inbox, below), with a
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
@@ -27,8 +27,8 @@ and Mona Sans (bundled).
   the words found in the contents of every block — a text's lines, a
   terminal's commands, a block's name, place or address — each block
   with what matched beneath it, clicked to go there: the line in its
-  editor or page, the command in its terminal), a switch between by-workspace
-  and by-file, the inbox, and, at the right, counts of what needs you,
+  editor or page, the command in its terminal), Workspaces and Files,
+  the Inbox, and, at the right, counts of what needs you,
   is working and is done and not yet read, which open the Inbox. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each
   day, with what's behind the window blurred beneath it, and lit by the
@@ -57,7 +57,7 @@ and Mona Sans (bundled).
   between workspaces for one of its own, and drag workspaces to
   reorder them (among their host's, under its row) and hosts' rows to
   reorder the hosts (an order of this Mac's own, in Workspaces and Files).
-- An **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
+- A **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
   A workspace is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
@@ -356,7 +356,8 @@ around it, and comes back with its history.
   ago, an agent's last words), ranked with the names the query is only
   scattered in (a found line's row, in In Blocks, stays as found). A
   workspace is found by its own name only — what it holds is found as
-  itself. Choosing a block shows it here, in the focused column;
+  itself. Choosing a block goes to it where it's placed, or brings it into
+  the focused column if it's nowhere (⌘ beside, ⌥ over);
   choosing a workspace puts it in spaces. ⇥ goes round the finder's scopes: **In Files** has the host
   look for the words in the files under the project (as Find in Files
   does; the last row makes it a search block); **In Blocks** looks in
@@ -853,7 +854,7 @@ around it, and comes back with its history.
   where they're commonly installed — Homebrew's and Linuxbrew's folders,
   `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize
-  By, ⌥⌘1–3): **Workspaces** — spaces, each workspace named by what it
+  By, ⌥⌘1–3; Search, ⌥⌘4, is over them all): **Workspaces** — spaces, each workspace named by what it
   holds unless you name it (its blocks' folder, with the branch when a
   git block is there); **Files** — every
   block with a path under its folders — and every block that is *at* a
@@ -956,7 +957,7 @@ around it, and comes back with its history.
   square to twice as wide as tall), scrolling only when there are so many
   they'd be small. Nothing is placed: click a pill to go to the block, ⌘-click
   to bring it to the workspace you were in, ⎋ (or ×) to go back.
-  **Clear Status**, in a row's menu in Status or the tile's pill menu,
+  **Clear Status**, in a row's menu in the Inbox or the tile's pill menu,
   forgets what a block reported until it reports again; a group's row
   offers Clear All. From a shell:
 

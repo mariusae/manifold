@@ -1,9 +1,10 @@
 import AppKit
 import ManifoldCore
 
-/// How the sidebar organizes the graph (DESIGN.md §3.6): the desk's
-/// arrangements and their columns; files under folders under roots,
-/// across hosts; what's linked to the focused block; blocks by day.
+/// How the sidebar organizes the graph (DESIGN.md §3.6): the workspaces
+/// and their tiles; files under folders under roots, across hosts; what
+/// wants attention (the Inbox); and the lists over them (Kept, Recently
+/// Closed, Search).
 enum Organization: String, CaseIterable {
     case desk, files, inbox
     /// The two lists at the sidebar's foot (§4): what's kept off the

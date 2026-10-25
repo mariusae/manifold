@@ -436,7 +436,7 @@ final class HistoryPane: SettingsPane {
     required init?(coder: NSCoder) { fatalError() }
 
     override func build() {
-        let (text, t) = segments(["Forever", "30 Days", "90 Days", "A Year"], [0, 30, 90, 365]) { [weak self] v in
+        let (text, t) = segments(["30 Days", "90 Days", "A Year", "Forever"], [30, 90, 365, 0]) { [weak self] v in
             self?.source.change { (s: inout Settings) in s.textHistoryDays = v }
         }
         showText = t
@@ -446,7 +446,7 @@ final class HistoryPane: SettingsPane {
         }
         showTranscripts = r
         row("Transcripts", transcripts, note: "What terminals showed.")
-        let (undo, u) = segments(["Everything", "100 Steps", "1,000 Steps"], [0, 100, 1000]) { [weak self] v in
+        let (undo, u) = segments(["100 Steps", "1,000 Steps", "Everything"], [100, 1000, 0]) { [weak self] v in
             self?.source.change { (s: inout Settings) in s.undoDepth = v }
         }
         showUndo = u

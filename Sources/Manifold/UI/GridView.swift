@@ -1830,7 +1830,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// grid draws their edges above the bar; the bar says how many.
     var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsLayout = true } } }
     private let subtitle = NSTextField(labelWithString: "")
-    private let count = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
     /// With tiles behind it: the stack fanned out.
     private let fanButton = IconButton(symbol: "square.stack", size: 10, weight: .medium, target: nil, action: nil)
@@ -1919,13 +1918,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         subtitle.font = .systemFont(ofSize: 11.5)
         subtitle.textColor = Theme.secondaryText
         subtitle.lineBreakMode = .byTruncatingMiddle
-        count.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
-        count.textColor = Theme.secondaryText
-        count.alignment = .center
-        count.wantsLayer = true
-        count.layer?.cornerRadius = 7
-        count.themed { $0.layer?.backgroundColor = Theme.hover.cgColor }
-        count.isHidden = true
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⌘W)"
@@ -1958,7 +1950,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [icon, name, subtitle, glyph, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -2380,7 +2372,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             hostPill.frame = NSRect(x: sx - 2, y: ((h - HostPill.height) / 2).rounded(), width: hostWidth, height: HostPill.height)
             sx += hostWidth + 6
         }
-        count.isHidden = true
         let sh = ceil(subtitle.intrinsicContentSize.height)
         subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
         if isEditing {
