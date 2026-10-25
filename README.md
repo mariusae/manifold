@@ -217,7 +217,8 @@ and Mona Sans (bundled).
   beside the focused block; Browse This Folder (⌃⌘O) its own (a
   terminal's working directory, a file's folder, the folder a search looks under).
   The **block navigation stack**: **Navigate Back** and **Navigate
-  Forward** (⌃- and ⌃⇧-, as in VS Code; or the mouse's back and forward
+  Forward** (⌃- and ⌃⇧-, as in VS Code — except in a terminal, where
+  ⌃- is the shell's or Emacs's undo; or the mouse's back and forward
   buttons) go along every place you've been — the tiles focused and,
   within a block, where a jump took you from: a definition gone to, a
   found line, a heading, a command, an outline's entry, a PDF's page —

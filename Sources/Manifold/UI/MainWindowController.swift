@@ -3797,6 +3797,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return nil
             }
             guard mods == .control || mods == [.control, .shift] else { return event }
+            // ⌃- in a terminal is the terminal's (undo, to a shell or Emacs).
+            if event.keyCode == 27, self.window?.firstResponder is TerminalView { return event }
             if event.keyCode == 48 {
                 if mods.contains(.shift) { self.walkStackBack(nil) } else { self.walkStack(nil) }
             } else if mods.contains(.shift) {

@@ -1443,7 +1443,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, window?.firstResponder === self else { return false }
         // Control-return and control-slash would otherwise be eaten by AppKit
-        // (the latter with a beep); they belong to the terminal.
+        // (the latter with a beep); they belong to the terminal — and
+        // control-minus (with shift or not), undo to readline, zsh and
+        // Emacs, before the menu's Navigate Back takes it.
         let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
         // Command-return is Edit or View for a text; here it's the terminal's, as it was.
         if flags == [.command], event.charactersIgnoringModifiers == "\r" {
@@ -1452,7 +1454,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         guard flags.contains(.control), !flags.contains(.command) else { return false }
         switch event.charactersIgnoringModifiers {
-        case "\r", "/":
+        case "\r", "/", "-", "_":
             keyDown(with: event)
             return true
         default:
