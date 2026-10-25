@@ -181,11 +181,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 let a = NSTextAttachment()
                 a.image = Theme.symbol("lock.fill", size: 10, weight: .semibold)
                 text.append(NSAttributedString(attachment: a))
-                text.append(NSAttributedString(string: " Secure Input", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]))
+                text.append(NSAttributedString(string: " Secure Input", attributes: [.font: UIType.caption]))
                 l.attributedStringValue = text
                 l.textColor = Theme.text
                 l.wantsLayer = true
-                l.layer?.cornerRadius = 9
+                l.layer?.cornerRadius = Radius.capsule(18)
                 l.layer?.backgroundColor = Theme.panel.cgColor
                 l.toolTip = "A password is being read: other apps can't see what you type"
                 addSubview(l)

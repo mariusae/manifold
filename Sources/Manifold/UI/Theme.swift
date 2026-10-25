@@ -230,11 +230,11 @@ final class ClippingScrollView: NSScrollView {
     }
 }
 
-/// A list's row, flat: chosen, a soft grey rounded band (a little stronger
-/// with the keyboard); under the pointer, a fainter one. A step in
-/// lightness, not a hue, so it reads the same to every eye, and the row's
-/// text and highlights keep their colors (`interiorBackgroundStyle` stays
-/// normal). Every table and outline makes its rows from this.
+/// A list's row, flat: chosen, a thin band of the tint (`Tints.band`, a
+/// little stronger with the keyboard); under the pointer, a faint grey one
+/// — both `Flat.rowBand`. The row's text and highlights keep their colors
+/// (`interiorBackgroundStyle` stays normal). Every table and outline makes
+/// its rows from this.
 final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
@@ -303,7 +303,7 @@ final class SelectionRowView: NSTableRowView {
         hovered = bounds.contains(p) && isUnderPointer
     }
 
-    private var band: NSRect { bounds.insetBy(dx: 6, dy: 1) }
+
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
@@ -334,7 +334,7 @@ final class SelectionRowView: NSTableRowView {
         }
         if hovered || echo, !isSelected, !isGroupRowStyle {
             Flat.hovered.setFill()
-            NSBezierPath(roundedRect: band, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+            Flat.rowBand(bounds).fill()
         }
         guard marked else { return }
         Theme.accent.withAlphaComponent(0.85).setFill()
@@ -344,6 +344,6 @@ final class SelectionRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
         Flat.chosen(emphasized: isEmphasized).setFill()
-        NSBezierPath(roundedRect: band, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+        Flat.rowBand(bounds).fill()
     }
 }

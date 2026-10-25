@@ -157,7 +157,7 @@ final class TransferRowView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if hovering {
             Theme.hover.setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 6, yRadius: 6).fill()
+            Flat.rowBand(bounds).fill()
         }
         // The bar: under the words, filling as it goes; moving while how
         // much is to come isn't known yet.

@@ -716,23 +716,10 @@ private final class LiveTip: NSObject, NSViewToolTipOwner {
 
 /// A count in a capsule, its digits centred both ways.
 final class CountPill: NSView {
-    static let height: CGFloat = 16
+    static let height = Pill.height
     var stringValue = "" { didSet { if stringValue != oldValue { needsDisplay = true } } }
-    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
-
-    var wantedWidth: CGFloat { max(20, ceil((stringValue as NSString).size(withAttributes: [.font: Self.font]).width) + 12) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        Theme.hover.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
-        let s = NSAttributedString(string: stringValue, attributes: [.font: Self.font, .foregroundColor: Theme.secondaryText])
-        let size = s.size()
-        // By the digits' own height (cap height), not the line's, so they
-        // sit in the middle: the baseline that far under the centre. A
-        // string is drawn from its line's bottom, a descender below that.
-        let baseline = (bounds.height - Self.font.capHeight) / 2
-        s.draw(at: NSPoint(x: ((bounds.width - size.width) / 2).rounded(), y: baseline + Self.font.descender))
-    }
+    var wantedWidth: CGFloat { Pill.size(stringValue).width }
+    override func draw(_ dirtyRect: NSRect) { Pill.draw(stringValue, in: bounds) }
 }
 
 /// A row: symbol, name, a count in a pill, a detail in grey; faded by age.

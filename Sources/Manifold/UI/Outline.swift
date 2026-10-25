@@ -622,7 +622,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
     override func draw(_ dirtyRect: NSRect) {
         if hovering, !row.header {
             Theme.hover.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+            Flat.rowBand(bounds).fill()
         }
         guard row.symbol == nil, !row.header else { return }
         // The dash: the item you're at, longer and darker; a running one

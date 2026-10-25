@@ -3,8 +3,8 @@ import AppKit
 /// The flat style, one set of parts every view makes its controls of, so
 /// they're the same everywhere: no bezels, no gradients; a hairline on a
 /// faint fill where a control needs an edge, the accent only for what has
-/// the keyboard, is on, or is the thing to do; a grey band for what's
-/// chosen, a fainter one under the pointer; the system font throughout.
+/// the keyboard, is on, is chosen (a thin band of it), or is the thing to
+/// do; a faint grey band under the pointer; the system font throughout.
 enum Flat {
     /// Fields and buttons.
     static let radius: CGFloat = 6
@@ -21,7 +21,9 @@ enum Flat {
     /// A band: chosen (stronger with the keyboard), under the pointer, pressed.
     static func chosen(emphasized: Bool = true) -> NSColor { emphasized ? Theme.selection : Theme.selectionInactive }
     static var hovered: NSColor { Theme.hover }
-    static var pressed: NSColor { Theme.selection }
+    /// Pressed: the hover's grey, deeper — not the tint, which is for
+    /// what's chosen (a grey button pressed doesn't flash blue).
+    static let pressed = NSColor.dynamic(NSColor(white: 0, alpha: 0.11), NSColor(white: 1, alpha: 0.14))
 
     /// A panel floating over the window: rounded, a hairline round it, and
     /// one soft shadow — the same for every one.
@@ -36,6 +38,13 @@ enum Flat {
             $0.layer?.backgroundColor = background.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
         }
+    }
+
+    /// A list row's band — hovered, or chosen — as every list draws it: in
+    /// from the row's sides and a hair from its top and bottom, rounded as
+    /// a control is.
+    static func rowBand(_ r: NSRect) -> NSBezierPath {
+        NSBezierPath(roundedRect: r.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control)
     }
 
     /// The floating panels' shadow, on a layer of its own.

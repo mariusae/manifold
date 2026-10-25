@@ -12,23 +12,10 @@ struct SummaryCardContent {
     var age: String? = nil
 }
 
-/// How long ago, in a capsule: a grey ground, the words heavier.
+/// How long ago, in a pill (`Pill`).
 enum AgeBadge {
-    static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    private static let ground = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.1))
-
-    static func size(_ text: String) -> NSSize {
-        let w = ceil((text as NSString).size(withAttributes: [.font: font]).width)
-        return NSSize(width: w + 14, height: 18)
-    }
-
-    static func draw(_ text: String, in r: NSRect) {
-        ground.setFill()
-        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
-        let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: Theme.secondaryText])
-        let s = a.size()
-        a.draw(at: NSPoint(x: r.midX - s.width / 2, y: r.midY - s.height / 2))
-    }
+    static func size(_ text: String) -> NSSize { Pill.size(text) }
+    static func draw(_ text: String, in r: NSRect) { Pill.draw(text, in: r) }
 }
 
 /// An `AgeBadge` as a view, for a row laid out by views.

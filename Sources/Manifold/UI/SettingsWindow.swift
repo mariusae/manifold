@@ -359,7 +359,7 @@ final class FontThemeList: NSView {
             let r = rect(i)
             if t == chosen || hovered == i {
                 (t == chosen ? Theme.selection : Theme.hover).setFill()
-                NSBezierPath(roundedRect: r.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
+                Flat.rowBand(r.insetBy(dx: -6, dy: 0)).fill()
             }
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])
             // Editing, then reading if it's another face, then monospaced.

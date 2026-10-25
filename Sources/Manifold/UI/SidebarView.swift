@@ -386,7 +386,7 @@ final class FootRowView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard hovering else { return }
         Theme.hover.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        Flat.rowBand(bounds).fill()
     }
 
     override func updateTrackingAreas() {

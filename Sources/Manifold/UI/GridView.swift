@@ -1727,7 +1727,7 @@ final class HostPill: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 9
+        layer?.cornerRadius = Radius.capsule(Self.height)
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         themed {
@@ -1736,7 +1736,7 @@ final class HostPill: NSView {
         }
         icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
         icon.contentTintColor = Theme.accent
-        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        label.font = UIType.caption
         label.textColor = Theme.accent
         label.lineBreakMode = .byTruncatingTail
         addSubview(icon)

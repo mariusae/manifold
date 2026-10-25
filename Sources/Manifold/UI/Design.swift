@@ -88,3 +88,26 @@ enum EdgeColor {
     static let subtle = Theme.cardBorder
     static let strong = Theme.sheetEdge(hovered: false)
 }
+
+/// A pill: a count, an age — a few figures on a grey capsule, one look
+/// wherever it's drawn (a sidebar row's count, a card's age).
+enum Pill {
+    static let height: CGFloat = 16
+    static let font = UIType.count
+    static let ground = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.1))
+
+    static func size(_ text: String) -> NSSize {
+        NSSize(width: max(20, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 12), height: height)
+    }
+
+    static func draw(_ text: String, in r: NSRect) {
+        ground.setFill()
+        NSBezierPath(roundedRect: r, xRadius: Radius.capsule(r.height), yRadius: Radius.capsule(r.height)).fill()
+        let s = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: Theme.secondaryText])
+        let w = s.size().width
+        // By the figures' own height (cap height), not the line's, so they
+        // sit in the middle: the baseline that far under the centre.
+        let baseline = r.minY + (r.height - font.capHeight) / 2
+        s.draw(at: NSPoint(x: (r.midX - w / 2).rounded(), y: baseline + font.descender))
+    }
+}
