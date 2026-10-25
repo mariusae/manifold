@@ -539,8 +539,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             return
         }
         hint.stringValue = switch scope {
-        case .names: "Blocks and spaces    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⎋ Close"
-        case .blocks: "The blocks' texts, this space's first    ⇥ Scope    ↩ Go    ⎋ Close"
+        case .names: "Blocks and spaces    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"
+        case .blocks: "Their texts, this space's first    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"
         }
     }
 
@@ -920,11 +920,12 @@ final class ExcerptCell: NSTableCellView {
 /// take the keyboard and gives it back when it loses it.
 final class PickerPanel: NSPanel {
     var onResign: (() -> Void)?
-    /// ⌘↩: the row chosen beside — before the menu's Edit or View takes it.
+    /// ⌘↩ (⇧⌘↩, ⌥⌘↩): the row chosen beside (in the system's app, over) —
+    /// before the menu's Edit or View, or Maximize, takes it.
     var onCommandReturn: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 36, event.modifierFlags.intersection([.command, .shift, .control]) == .command, let onCommandReturn {
+        if event.keyCode == 36, event.modifierFlags.intersection([.command, .control]) == .command, let onCommandReturn {
             onCommandReturn()
             return true
         }

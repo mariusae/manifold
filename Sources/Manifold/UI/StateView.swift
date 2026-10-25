@@ -19,8 +19,9 @@ final class StateView: NSView {
         var summary: SummaryCardContent?
     }
 
-    var onGoTo: ((BlockID) -> Void)?
-    var onBring: ((BlockID) -> Void)?
+    /// A card or a bar clicked, with the click's modifiers: opened by the
+    /// one rule (gone to, ⌘ beside, ⌥ over, ⇧⌘ the system's app).
+    var onOpen: ((BlockID, NSEvent.ModifierFlags) -> Void)?
     var onLeave: (() -> Void)?
     var onModeChanged: ((Mode) -> Void)?
     /// Overview's filter chosen: 0 this space, 1 the agents.
@@ -103,12 +104,10 @@ final class StateView: NSView {
         for item in items {
             let block = item.shown.placement.block
             if mode == .summaries, let content = item.summary {
-                // A summary card: clicked, gone to; ⌘-clicked, brought here.
+                // A summary card: clicked, opened as any link is.
                 let card = cards[block] ?? {
                     let c = SummaryCard(content)
-                    c.onClick = { [weak self] in
-                        if NSApp.currentEvent?.modifierFlags.contains(.command) == true { self?.onBring?(block) } else { self?.onGoTo?(block) }
-                    }
+                    c.onClick = { [weak self] in self?.onOpen?(block, NSApp.currentEvent?.modifierFlags ?? []) }
                     cards[block] = c
                     document.addSubview(c)
                     return c
@@ -129,9 +128,7 @@ final class StateView: NSView {
                 return p
             }()
             pill.show(item.shown, focused: false)
-            pill.onClick = { [weak self] _, mods in
-                if mods.contains(.command) { self?.onBring?(block) } else { self?.onGoTo?(block) }
-            }
+            pill.onClick = { [weak self] _, mods in self?.onOpen?(block, mods) }
             pill.onDragStart = nil
         }
         needsLayout = true

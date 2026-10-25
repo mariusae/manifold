@@ -1356,6 +1356,8 @@ and the README are current.
 - **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-
   stays readline's and Emacs's undo; the mouse's back and forward buttons
   work there. **⌘[ ⌘]** are a tile's own history.
+- **⌃Space is Complete,** though it's the system's input-source switch
+  for anyone with two keyboards — the editors' key; ⌥⎋ completes too.
 - **⌃⌘R Rename Symbol, ⌃⇧⌘R Find References, ⇧⌘K Delete Line,**
   near Xcode's and VS Code's; **⌥⇧⌘D Compare with Last Commit**, as
   ⌥⌘D hides the Dock.
@@ -1370,6 +1372,10 @@ and the README are current.
   ⌘O row: plain goes to it, ⌘ opens it beside, ⌥⌘ over, ⇧⌘ in the
   system's app or browser. In a terminal ⌘ is what makes a click a link
   click, so ⌥⌘ is over there.
+- **Three views go on in place,** as a browser does: a page's link, a
+  preview's link to another Markdown file, a listing's folder, each on
+  a plain click — the tile keeps a trail, ⌘[ ⌘] along it. ⌘ still
+  opens beside.
 - **The bar:** a click grows the tile a step (acme's colgrow — clicks
   build up; no double-click), ⌘-click maximizes, ⌃-click or the icon
   opens the tile's menu, ⇧-click the path menu.

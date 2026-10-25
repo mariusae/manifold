@@ -10,6 +10,18 @@ protocol MarkdownViewDelegate: AnyObject {
     func markdownViewDidReveal(_ view: MarkdownView)
     /// An image dropped on the page, for the text to show.
     func markdownView(_ view: MarkdownView, image data: Data, kind: String)
+    /// ⌘[ (-1) or ⌘] (1): the page this tile showed before or after, as
+    /// a link followed in place left it; false at either end.
+    func markdownView(_ view: MarkdownView, history direction: Int) -> Bool
+}
+
+/// The page's web view, which leaves ⌘[ ⌘] to the preview: its own back
+/// list is only ever the one page.
+private final class PreviewWebView: WKWebView {
+    override func responds(to selector: Selector!) -> Bool {
+        if selector == #selector(goBack(_:)) || selector == #selector(goForward(_:)) { return false }
+        return super.responds(to: selector)
+    }
 }
 
 /// The preview lens on a text block: its Markdown rendered by cmark-gfm into
@@ -117,7 +129,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
         let selectionOwner = WeakView()
         PageSelection.watch(config) { selectionOwner.view }
         // No scrollbar of the page's own: the scrubber is its scroll bar (§3.8).
-        web = WKWebView(frame: .zero, configuration: config)
+        web = PreviewWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
         selectionOwner.view = self
         handler.onState = { [weak self] values in
@@ -293,6 +305,10 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     private var findQuery = (text: "", caseSensitive: false)
 
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
+
+    /// ⌘[ ⌘]: back and forth along the pages this tile went to in place.
+    @objc func goBack(_ sender: Any?) { if delegate?.markdownView(self, history: -1) != true { NSSound.beep() } }
+    @objc func goForward(_ sender: Any?) { if delegate?.markdownView(self, history: 1) != true { NSSound.beep() } }
 
     /// Moved between lenses: the page is drawn again, as WebKit lets a view
     /// taken out of its window go blank.

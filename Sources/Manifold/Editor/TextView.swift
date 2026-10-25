@@ -1167,7 +1167,8 @@ final class TextView: NSView, NSTextInputClient {
         case ([.control, .shift], "k"): deleteLines(); return true
         case ([.command], "/"): toggleComment(); return true
         case ([.control], "j"): joinLines(); return true
-        case ([.control], " "): delegate?.textViewRequestsCompletion(self); return true
+        // ⌃Space, or ⌥⎋ where ⌃Space switches the input source.
+        case ([.control], " "), ([.option], "\u{1B}"): delegate?.textViewRequestsCompletion(self); return true
         case ([.command, .control], String(UnicodeScalar(NSUpArrowFunctionKey)!)): moveLines(up: true); return true
         case ([.command, .control], String(UnicodeScalar(NSDownArrowFunctionKey)!)): moveLines(up: false); return true
         case ([.control, .shift], String(UnicodeScalar(NSUpArrowFunctionKey)!)): addCaret(up: true); return true
@@ -1827,9 +1828,10 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
-        if event.clickCount == 1, flags.isDisjoint(with: [.command, .shift]), let target = linkTarget(at: p) {
-            // A link, clicked: followed — the caret stays, so the pill does.
-            // ⌥: what it opens goes over this tile.
+        if event.clickCount == 1, !flags.contains(.shift) || flags.contains(.command), let target = linkTarget(at: p) {
+            // A link, clicked: followed by the one rule (⌘ beside, ⌥ over,
+            // ⇧⌘ the system's app) — the caret stays, so the pill does.
+            // ⌘-click is a link's before it's go-to-definition.
             dragAnchor = nil
             delegate?.textView(self, follow: target, over: flags.contains(.option))
             return

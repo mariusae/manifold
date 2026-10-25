@@ -201,15 +201,15 @@ parts from the Mac's conventions on purpose.
   already is: the space it is in (this one if it is here, else
   the one most recently gone to) is selected and the tile focused.
   **Bring here** makes a tile of it in this space; if it is here
-  already, that tile is focused. A row clicked in the sidebar, or
-  chosen in Open Quickly (⌘O), goes to the block if it is placed anywhere,
-  else brings it here; ⌘-click, Bring Here in the menu, and a drag onto
-  the grid always bring (a drop between two tiles lands there). Opening
-  something from inside a block — ⌘-click a path in a terminal, follow
-  a link, a search hit, a change in a git block, a definition — brings
-  it below the opener, taking its lower half, and links the two; a
-  preview going page to page and a listing going into a folder change
-  in place. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
+  already, that tile is focused. Anything clicked that names a block —
+  a row in the sidebar or Open Quickly (⌘O), a link, a path, a search
+  hit, a change in a git block — goes to it if a tile shows it, in any
+  space; else it's brought below the tile clicked in, taking its lower
+  half, and the two are linked. ⌘-click always brings it there, beside
+  (one rule for every click: below); a definition (⌘-click a symbol)
+  opens there too, and a drag onto the grid brings it where it lands (a
+  drop between two tiles lands there). A preview going page to page and
+  a listing going into a folder change in place, ⌘[ coming back. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
   are brought here, into the active column; ⌥⇧⌘N opens a terminal in a
   new column, ⌥⌘T a new space with one. A note is at home in the
   folder of the block it was made from: it is found there, and saved
@@ -448,10 +448,10 @@ around it, and comes back with its history.
   otherwise. ⌥⇧⌘P puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a
   file shown already, in either mode, goes to its tile. A link followed
-  in a Markdown view opens another
-  Markdown file in the same tile (Go Back returns to the one it came
-  from), a web address as a web block below it, any other file as what
-  it is, below; `#anchors` scroll.
+  in a Markdown view opens another Markdown file in the same tile, as a
+  browser goes page to page (⌘[ and ⌘] go back and forth along them);
+  ⌘-click it to open it beside instead. A web address, or any other
+  file, goes as every link does; `#anchors` scroll.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   Open Quickly, a folder listing, a link in a preview, or the `mani`
@@ -496,7 +496,8 @@ around it, and comes back with its history.
 - **Language servers** run on the file's host, one per language and
   project root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
-  when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
+  when the caret is on it. Edit ▸ Code: Complete (⌃Space, or ⌥⎋ where
+  ⌃Space switches the keyboard), Go to
   Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
   color, glowing softly in it, the one under the pointer on a soft band — a step in lightness,
@@ -547,7 +548,7 @@ around it, and comes back with its history.
   some words, then ⏎, searches inside the files instead, in a search
   beside. The arrow, or ⌘↑, goes up to the enclosing folder; ⌘↓ goes into
   the folder chosen, in the same tile. A double-click (or ⏎) opens a file
-  beside. Drag an entry out
+  as a link does — gone to, else beside. Drag an entry out
   and it's its path — a terminal types it, an editor inserts it, the
   grid opens it where it lands (on its host, another's too), another
   app takes the file (one of this Mac's); ⇧-drag it
@@ -602,11 +603,15 @@ around it, and comes back with its history.
   terminal's Save Scrollback as Note keeps its whole transcript.
 - **Links** go by the click, every kind alike — a web address, a path,
   a block's link in a note or a bar — in a terminal, an editor, a preview or
-  a page: **⌘-click** opens it in Manifold beside (a page in its web
-  lens), ⌘⌥ over; **⇧⌘-click** gives it to the system — an address to
-  your browser, a file of this Mac to the app that opens it. A plain
-  click in a page follows the link in the page, as a browser does; in a
-  preview it opens beside. File links in a Markdown
+  a page: a plain click goes to what it names where a tile shows it
+  (else opens it below); **⌘-click** opens it in Manifold beside (a
+  page in its web lens), ⌥-click (⌘⌥) over; **⇧⌘-click** gives it to
+  the system — an address to your browser, a file of this Mac to the
+  app that opens it. A plain click in a page follows the link in the
+  page, as a browser does, and one to a Markdown file in a preview
+  previews it in the same tile; in a terminal ⌘ is what makes a click a
+  link's. In an editor ⌘-click follows a link, and on anything else
+  goes to its definition. File links in a Markdown
   preview go where the file leads: another Markdown file is previewed
   in the same tile, a folder is listed, an image or PDF shown, anything
   else edited.
@@ -819,15 +824,19 @@ around it, and comes back with its history.
   spaces, is brought into them once: a kept block nothing else
   reaches is pinned in a space named Kept.)
 - **One rule for the modifiers**, wherever a click opens a block — a
-  sidebar row, a link, a tile's links badge, a listing's entry, a
-  row of Open Quickly chosen with ⏎: plain **goes to** it
-  where it is (or opens it here); **⌥ puts it over** the tile you
+  sidebar row, a link, a path, a search or git hit, a tile's links, a
+  listing's entry, a card in Overview, a row of Open Quickly chosen
+  with ⏎ (⌘⏎, ⌥⏎ and ⇧⌘⏎ alike): plain **goes to** it where a tile
+  shows it, in any space (or opens it beside, if none does); **⌥ puts it over** the tile you
   clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
   beside** that tile; **⇧⌘ gives it to the system** (the browser, the
   file's app). ⇧ alone is about the path: ⇧-click a bar for where the
   block is, folder by folder; ⇧-drag a bar to link. In a terminal, ⌘ is
   what makes a click a click on a link at all, so there ⌘⌥ is over and
-  ⌘ alone beside.
+  ⌘ alone beside. Three views go on in place on a plain click, as a
+  browser does — a page's link, a preview's link to another Markdown
+  file, a listing's folder — ⌘[ coming back. The map is a graph: a
+  click re-centres it, a double-click goes.
 - **Links are two kinds**: by hand (⇧-drag a bar onto a tile, a note
   made beside a block), which keep what they point at; and by the way
   (a file ⌘-clicked in a terminal, a hit followed, a diff of a file, a
@@ -881,8 +890,9 @@ around it, and comes back with its history.
   room (from about square to twice as wide as tall); or **summaries**, a
   summary card each, in columns — what it shows by itself past ten
   blocks, live views of so many being small (the buttons at its top
-  right choose). Nothing is placed: click a card or a bar to go to the block, ⌘-click
-  to bring it to the space you were in, ⎋ (or ×) to go back.
+  right choose). Nothing is placed: click a card or a bar to go to the
+  block, ⌘-click to open it beside the tile you were on, ⌥-click over
+  it, ⎋ (or ×) to go back.
   **Clear Status**, in a row's menu in the Inbox or the tile's bar menu,
   forgets what a block reported until it reports again; a group's row
   offers Clear All. From a shell:

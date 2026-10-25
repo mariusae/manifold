@@ -234,8 +234,9 @@ enum DebugControl {
             return "fields: \(fields.map(\.stringValue)) buttons: \(buttons.map(\.title)) says: \(words)"
         case "open":
             // As if the target were command-clicked in the focused terminal.
+            // "open plain <target>": as if plainly clicked (gone to).
             guard let wc, let t = wc.debugFocusedTerminal else { return "no terminal focused" }
-            wc.open(arg, from: t.placement)
+            if arg.hasPrefix("plain ") { wc.open(String(arg.dropFirst(6)), from: t.placement, as: .goTo) } else { wc.open(arg, from: t.placement, as: .beside) }
             return "ok"
         case "graph":
             // "graph": the focused block's neighborhood, raw.

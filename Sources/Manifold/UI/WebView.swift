@@ -310,15 +310,17 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     }
 
     /// A link in the page, as every link goes: a plain click follows it
-    /// here; ⌘ a page beside (⌥⌘ over); ⇧⌘ the system's browser.
+    /// here, in the page, as a browser does; ⌘ a page beside, ⌥ (⌥⌘) over;
+    /// ⇧⌘ the system's browser.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard action.navigationType == .linkActivated, let url = action.request.url, action.modifierFlags.contains(.command) else {
+        guard action.navigationType == .linkActivated, let url = action.request.url,
+              !action.modifierFlags.isDisjoint(with: [.command, .option]) else {
             decisionHandler(.allow)
             return
         }
         decisionHandler(.cancel)
-        if action.modifierFlags.contains(.shift) { NSWorkspace.shared.open(url) } else { delegate?.webView(self, open: url, over: action.modifierFlags.contains(.option)) }
+        if action.modifierFlags.isSuperset(of: [.command, .shift]) { NSWorkspace.shared.open(url) } else { delegate?.webView(self, open: url, over: action.modifierFlags.contains(.option)) }
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

@@ -805,9 +805,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var closedStack: [Closed] = []
     private let toast = ToastView()
-    /// Each folder tile's own history: the folders it showed before, and
+    /// Each tile's own trail, as a browser window's: the blocks it showed
+    /// before in its place (a listing's folders, a preview's pages), and
     /// those gone back from.
-    private var folderHistory: [PlacementID: (back: [BlockID], forward: [BlockID])] = [:]
+    private var trails: [PlacementID: (back: [BlockID], forward: [BlockID])] = [:]
     /// Other hosts' images shown in notes, as data the page can load.
     private var remoteImages: [BlockID: String] = [:]
     private var fetchingImages: Set<BlockID> = []
@@ -1657,13 +1658,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             _ = column
             if let dir = f.block?.place {
                 items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
-                    self?.openDirectory(dir, from: f.id)
+                    self?.openDirectory(dir, from: f.id, as: .beside)
                 })
             }
         }
         if let f = focusedShown, f.lens == .terminal, let cwd = f.block?.terminal?.cwd {
             items.append(PaletteItem(symbol: "folder", title: "Show This Folder", subtitle: cwd.abbreviatingHome) { [weak self] in
-                self?.openDirectory(cwd, from: f.id)
+                self?.openDirectory(cwd, from: f.id, as: .beside)
             })
         }
         // What's linked to the focused block, both ways (§6.2).
@@ -1967,18 +1968,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A tile's link clicked, as every link goes: to it (or, if it's
     /// nowhere, beside); ⌘ beside; ⌥ over; ⇧⌘ to the system's app.
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, modifiers: NSEvent.ModifierFlags) {
-        if modifiers.isSuperset(of: [.command, .shift]) { return openInSystem(block) }
-        let over = modifiers.contains(.option)
-        let placed = allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
-        if modifiers.contains(.command), !over, let b = hosts.block(block), b.kind != .arrangement {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened, context: "from its links")
-        } else if over, let b = hosts.block(block), b.kind != .arrangement {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "from its links")
-        } else if placed, let b = hosts.block(block) {
-            goTo(b.id, near: placement)
-        } else if let b = hosts.block(block) {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened, context: "from its links")
-        }
+        follow(block, from: placement, Disposition(modifiers), context: "from its links")
     }
 
     /// × on a badge's link: the edge ends, in both readings at once.
@@ -2050,10 +2040,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(client.directoryBlock(for: cwd), lens: .directory, .here)
     }
 
-    /// ⌘W: the focused block leaves its column, which shows what it showed
-    /// before (its block stays, to be found again); an unnamed arrangement
-    /// left empty leaves the desk.
+    /// ⌘W: the focused tile taken off, its column showing what it showed
+    /// before (its block kept while a space reaches it). With another
+    /// window in front — Settings, a panel — that window closes instead:
+    /// the action comes here by way of the main window.
     @objc func closePaneOrTab(_ sender: Any?) {
+        if let key = NSApp.keyWindow, key !== window, key.styleMask.contains(.closable) { return key.performClose(sender) }
         if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
         let before = hosts.reachable()
@@ -2333,6 +2325,55 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return focusedShown?.block?.isNote == true
         case #selector(togglePinnedSidebar(_:)):
             item.title = pinned ? "Let Sidebar Slide Out" : "Keep Sidebar Shown"
+        // The Tile menu named, as the tile's own menu is, for what the item
+        // will do — and offered only where it can.
+        case #selector(toggleMaximize(_:)):
+            guard let a = arrangement, let f = a.focused else { item.title = "Maximize"; return false }
+            item.title = a.full == f ? "Restore" : "Maximize"
+        case #selector(shrinkToSummary(_:)):
+            guard let a = arrangement, a.full == nil, let f = a.focused, contentHeight(of: f, in: a) != nil else {
+                item.title = "Shrink to Summary"
+                return false
+            }
+            item.title = isSummarized(f) ? "Show Content" : "Shrink to Summary"
+        case #selector(growTile(_:)), #selector(fillColumn(_:)):
+            return arrangement?.focused != nil
+        case #selector(stashTile(_:)):
+            // As the tile's menu: not for a tile alone in its column.
+            guard let a = arrangement, let f = a.focused, let c = a.columnIndex(of: f), !a.isStashed(f) else { return false }
+            return a.shownTiles(inColumn: c).count > 1
+        case #selector(walkStack(_:)), #selector(walkStackBack(_:)):
+            guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return false }
+            return content.isSwitching || a.columns[c].contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
+        case #selector(reopenClosed(_:)):
+            return !closedStack.isEmpty
+        case #selector(navigateBack(_:)):
+            return !navStack.isEmpty
+        case #selector(navigateForward(_:)):
+            return navCursor < navStack.count - 1
+        case #selector(selectTabByNumber(_:)):
+            return item.tag == 9 ? !allWorkspaces.isEmpty : item.tag <= allWorkspaces.count
+        case #selector(compareWithHead(_:)):
+            guard let f = focusedShown else { return false }
+            return f.path != nil && (f.lens == .editor || f.lens == .preview)
+        case #selector(showFileHistory(_:)):
+            item.state = history != nil ? .on : .off
+            return history != nil || focusedShown?.kind == .text
+        case #selector(browseFocusedFolder(_:)):
+            return focusedCwd != nil
+        // Views that come and go: checked while they're up.
+        case #selector(showWorkspaceOverview(_:)):
+            item.state = stateWorkspace != nil && !stateAgents ? .on : .off
+        case #selector(showAgents(_:)):
+            item.state = stateAgents ? .on : .off
+        case #selector(showNeighborhood(_:)):
+            item.state = neighborhoodView != nil ? .on : .off
+        case #selector(organizeByDesk(_:)):
+            item.state = organization == .desk ? .on : .off
+        case #selector(organizeByFiles(_:)):
+            item.state = organization == .files ? .on : .off
+        case #selector(organizeByInbox(_:)):
+            item.state = organization == .inbox ? .on : .off
         default:
             break
         }
@@ -2941,11 +2982,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func presentStateView() {
         if stateView == nil {
             let v = StateView()
-            v.onGoTo = { [weak self] b in self?.goTo(b) }
-            v.onBring = { [weak self] b in
-                guard let self, let block = self.hosts.block(b) else { return }
-                self.hideStateView()
-                self.show(b, lens: Lens.default(for: block.kind, path: block.path), .here)
+            v.onOpen = { [weak self] b, mods in
+                guard let self else { return }
+                self.follow(b, from: self.arrangement?.focused, Disposition(mods), context: "from Overview")
             }
             v.onLeave = { [weak self] in self?.hideStateView() }
             v.onModeChanged = { [weak self] m in
@@ -3399,7 +3438,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         v.onClose = { [weak self] in self?.hideNeighborhood() }
         v.onGo = { [weak self] id in
             self?.hideNeighborhood()
-            self?.recall(id)
+            self?.goTo(id)
         }
         root.addSubview(v, positioned: .above, relativeTo: nil)
         neighborhoodView = v
@@ -3836,13 +3875,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                     note: count == 1 ? "line \(at)" : "\(count) lines",
                                     run: { [weak self] in
                                         guard let self else { return }
-                                        if let id = placement, self.arrangement?.placement(id) != nil, let e = self.views[id] as? EditorView {
+                                        let d = Self.disposition ?? .goTo
+                                        if d == .goTo, let id = placement, self.arrangement?.placement(id) != nil, let e = self.views[id] as? EditorView {
                                             self.arrive(atTile: id)
                                             e.select(line: at)
                                             return
                                         }
-                                        self.pendingJump = (b.path ?? "", at, nil)
-                                        self.show(block, lens: Lens.default(for: .text, path: b.path), .here)
+                                        if d != .system { self.pendingJump = (b.path ?? "", at, nil) }
+                                        self.follow(block, lens: Lens.default(for: .text, path: b.path), from: self.arrangement?.focused, d, context: "found in ⌘O")
                                         self.warpPointerToFocus()
                                     },
                                     excerpt: Self.excerpt(matches), marked: query,
@@ -3859,7 +3899,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let agentID = block.id, turnID = turn.id
                 items.append(FinderItem(symbol: "text.bubble", title: String(first.prefix(120)), detail: "Turn of \(block.displayTitle) · \(Age.short(turn.began))",
                                         note: (turn.files?.count).map { "\($0) file\($0 == 1 ? "" : "s")" } ?? "",
-                                        run: { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) },
+                                        run: { [weak self] in
+                                            guard let self else { return }
+                                            let f = self.arrangement?.focused
+                                            let place: Where = switch Self.disposition ?? .goTo {
+                                            case .over: f.map { .over($0) } ?? .here
+                                            case .beside: f.map { .besideOpener($0) } ?? .here
+                                            default: .here
+                                            }
+                                            self.showTurn(turnID, of: agentID, place: place)
+                                        },
                                         excerpt: Self.excerpt(lines), marked: query))
                 if items.count >= 150 { return items }
             }
@@ -4023,12 +4072,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Chosen in the finder: gone to; with ⌘ held on ⏎, beside the focused
     /// tile; with ⌥, over it (the rule, §3.1).
     func recall(_ id: BlockID) {
-        let mods = NSApp.currentEvent?.modifierFlags ?? []
-        guard let b = hosts.block(id), b.kind != .arrangement, let f = arrangement?.focused else { return goTo(id) }
-        let lens = Lens.default(for: b.kind, path: b.path)
-        if mods.contains(.option) { show(id, lens: lens, .over(f), context: "chosen in ⌘O") }
-        else if mods.contains(.command) { show(id, lens: lens, .besideOpener(f), context: "chosen in ⌘O") }
-        else { goTo(id) }
+        let d = Self.disposition ?? .goTo
+        // Nothing focused to open beside or over: gone to, or brought here.
+        guard arrangement?.focused != nil || d == .system else { return goTo(id) }
+        follow(id, from: arrangement?.focused, d, context: "chosen in ⌘O")
     }
 
     /// After a go-to (⌘O, ⌘P, a found line): the pointer moves to what was
@@ -4204,6 +4251,65 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return (over ?? Self.clickModifiers?.contains(.option) ?? false) ? .over(placement) : .besideOpener(placement)
     }
 
+    /// The one rule for opening anything (DESIGN §12) — a link, a capsule,
+    /// a row, a hit: plain goes to it, ⌘ opens it beside, ⌥ (⌥⌘) over,
+    /// ⇧⌘ in the system's app.
+    enum Disposition {
+        case goTo, beside, over, system
+
+        init(_ flags: NSEvent.ModifierFlags) {
+            if flags.isSuperset(of: [.command, .shift]) { self = .system }
+            else if flags.contains(.option) { self = .over }
+            else if flags.contains(.command) { self = .beside }
+            else { self = .goTo }
+        }
+    }
+
+    /// What the event in hand says: a click's modifiers, or ↩'s (⌘↩
+    /// beside, ⌥↩ over); nil for anything else — a menu's key.
+    static var disposition: Disposition? {
+        if let flags = clickModifiers { return Disposition(flags) }
+        guard let e = NSApp.currentEvent, e.type == .keyDown, e.keyCode == 36 || e.keyCode == 76 else { return nil }
+        return Disposition(e.modifierFlags)
+    }
+
+    /// Whether a tile shows the block, in any space.
+    func isPlaced(_ block: BlockID) -> Bool {
+        allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
+    }
+
+    /// A web block a tile shows at the address, in any space.
+    func placedPage(_ url: URL) -> BlockID? {
+        for arr in allWorkspaces {
+            guard let a = hosts.arrangement(arr) else { continue }
+            for t in a.placements where t.block.host == host.host {
+                if hosts.block(t.block)?.web?.url == url.absoluteString { return t.block }
+            }
+        }
+        return nil
+    }
+
+    /// A block opened from a tile (or from nowhere) as `d` says: gone to
+    /// where a tile shows it, in any space — else beside the tile; beside;
+    /// over; to the system's app. A space is gone to whatever's held.
+    func follow(_ block: BlockID, lens: Lens? = nil, from placement: PlacementID?, _ d: Disposition,
+                kind: LinkKind = .opened, context: String? = nil) {
+        guard let b = hosts.block(block) else { return }
+        if b.kind == .arrangement { return d == .system ? NSSound.beep() : goTo(block) }
+        let lens = lens ?? Lens.default(for: b.kind, path: b.path)
+        switch d {
+        case .system:
+            openInSystem(block)
+        case .over:
+            show(block, lens: lens, placement.map { .over($0) } ?? .here, kind: kind, context: context)
+        case .goTo where isPlaced(block):
+            if let placement { linkFollowed(from: placement, to: block, kind: kind, context: context) }
+            goTo(block, near: placement)
+        case .goTo, .beside:
+            show(block, lens: lens, placement.map { .besideOpener($0) } ?? .here, kind: kind, context: context)
+        }
+    }
+
     /// A terminal scrolled to one of its commands, once its tile is up and
     /// it has found the command's row (a moment, for a tile just made).
     /// A place in a block, once its tile is up: a line (in a preview, the
@@ -4241,10 +4347,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A block's link followed from a tile (a terminal's, an output's, a
     /// page's): the tile's block linked to it, unless they're linked already
     /// (a note's mention of it).
-    private func linkFollowed(from placement: PlacementID?, to block: BlockID) {
+    private func linkFollowed(from placement: PlacementID?, to block: BlockID, kind: LinkKind = .opened, context: String? = nil) {
         guard let from = placement.flatMap({ shown($0)?.placement.block }), from != block else { return }
         let linked = hosts.all.contains { $0.node.graph.edges(from: from).contains { $0.to == block && $0.isLive && $0.kind != .placed } }
-        if !linked { hosts.link(from: from, to: block, kind: .opened, context: "followed") }
+        if !linked { hosts.link(from: from, to: block, kind: kind, context: context ?? "followed") }
     }
 
     /// A tile over another (⌥-drag, ⌥-click): moved to just after it, the
@@ -4348,6 +4454,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var heights: [PlacementID: Double] = [:]
         for t in a.columns[c] { heights[t.id == placement ? p.id : t.id] = a.height(of: t.id) }
         appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)])
+    }
+
+    /// A tile gone on to another block in its place — a listing into a
+    /// folder, a preview to another page — what it showed kept on its
+    /// trail, to come back to (⌘[).
+    private func goOn(_ placement: PlacementID, from block: BlockID, to next: BlockID, lens: Lens) {
+        let p = Placement(block: next, lens: lens)
+        var h = trails.removeValue(forKey: placement) ?? (back: [], forward: [])
+        h.back.append(block)
+        h.forward = []
+        trails[p.id] = h
+        replace(placement, with: next, lens: lens, as: p.id)
+    }
+
+    /// ⌘[ (-1) or ⌘] (1) in a tile that goes on in its place: along its
+    /// trail; false at either end.
+    func walkTrail(_ placement: PlacementID, of block: BlockID, lens: Lens, _ direction: Int) -> Bool {
+        guard var h = trails[placement] else { return false }
+        let to: BlockID
+        if direction < 0 {
+            guard let b = h.back.popLast() else { return false }
+            h.forward.append(block)
+            to = b
+        } else {
+            guard let f = h.forward.popLast() else { return false }
+            h.back.append(block)
+            to = f
+        }
+        guard hosts.block(to) != nil else { return false }
+        let next = Placement(block: to, lens: lens)
+        trails.removeValue(forKey: placement)
+        trails[next.id] = h
+        replace(placement, with: to, lens: lens, as: next.id)
+        return true
     }
 
     /// Opens a file to edit: from a terminal, beside it; else here.
@@ -4461,17 +4601,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Opens a file at a place (line and column from 1) beside the
     /// placement that opened it, on the host the placement's block is on.
-    func open(path: String, line: Int, column: Int?, on: HostID, from: PlacementID?, kind: LinkKind = .opened, context: String? = nil) {
-        pendingJump = (path, line, column)
+    /// Opens a file at a place (line and column from 1), as the click or
+    /// ↩ says (`as`, else read off the event; plain goes to it), from the
+    /// placement that opened it, on the host the placement's block is on.
+    func open(path: String, line: Int, column: Int?, on: HostID, from: PlacementID?, as d: Disposition? = nil,
+              kind: LinkKind = .opened, context: String? = nil) {
+        let d = d ?? Self.disposition ?? .goTo
+        if d != .system { pendingJump = (path, line, column) }
         let block = hosts.textBlock(for: path, on: on)
-        show(block, lens: Lens.default(for: .text, path: path), opener(from), kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
+        follow(block, lens: Lens.default(for: .text, path: path), from: from, d, kind: kind, context: context ?? "\(path.lastPathComponent):\(line)")
         warpPointerToFocus()
     }
 
-    func openDirectory(_ path: String, from: PlacementID?, context: String? = nil) {
+    func openDirectory(_ path: String, from: PlacementID?, as d: Disposition? = nil, context: String? = nil) {
         let on = from.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
-        show(block, lens: .directory, opener(from), context: context)
+        follow(block, lens: .directory, from: from, d ?? Self.disposition ?? .goTo, context: context)
     }
 
     /// Whether a terminal tile is an agent's: its turns are its outline
@@ -4793,19 +4938,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Schemes an address has without "//" after them.
     static let schemesWithoutSlashes: Set<String> = ["mailto", "tel", "sms", "facetime", "maps", "news", "data", "about"]
 
-    func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil) {
-        let place = opener(placement, over: over)
+    func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil, as given: Disposition? = nil) {
+        // As the click (or ↩) says, by the one rule; plain goes to it.
+        var d = given ?? (over == true ? .over : Self.disposition ?? .goTo)
+        if over == false, d == .over { d = .beside }
+        let place: Where = placement.map { d == .over ? .over($0) : .besideOpener($0) } ?? .here
         // A link to a block (manifold:host/ulid, as a note's pill is): go to
         // it — and to a place in it, if the link names one (#command=7).
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
-            // ⇧⌘: to the system's app; ⌘: beside, as any link; else there.
-            let mods = Self.clickModifiers ?? []
-            if mods.isSuperset(of: [.command, .shift]) { return openInSystem(b) }
-            if mods.contains(.command), over != true, let blk = hosts.block(b), blk.kind != .arrangement, let placement {
-                show(b, lens: Lens.default(for: blk.kind, path: blk.path), .besideOpener(placement), kind: .opened, context: "followed")
-            } else {
-                arrive(b, from: placement, over: over)
-            }
+            follow(b, from: placement, d, context: "followed")
+            if d == .system { return }
             linkFollowed(from: placement, to: b)
             if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
             // A place in it: a line (a heading's), a PDF's page.
@@ -4818,7 +4960,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // would take for a scheme.
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file",
            target.contains("://") || Self.schemesWithoutSlashes.contains(scheme.lowercased()) {
-            let inWeb = here ?? Self.clickModifiers.map(Self.opensHere) ?? true
+            let inWeb = here ?? (d != .system)
+            // Plain: to a page already showing the address, in any space.
+            if inWeb, d == .goTo, let page = placedPage(url) {
+                linkFollowed(from: placement, to: page)
+                return goTo(page, near: placement)
+            }
             // A server on another host's own localhost (one a remote
             // terminal names): its port forwarded here, then the address
             // opened at the port here.
@@ -4840,7 +4987,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let on = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
         if on != host.host {
             // Another host's file: it says what it is.
-            openRemote(target, on: on, base: base, from: placement, place: place)
+            openRemote(target, on: on, base: base, from: placement, as: d)
             return
         }
         func resolve(_ text: String) -> String {
@@ -4863,17 +5010,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             pendingJump = (base, line, location.column)
-            show(hosts.textBlock(for: base, on: on), lens: Lens.default(for: .text, path: base), place, context: target)
+            follow(hosts.textBlock(for: base, on: on), lens: Lens.default(for: .text, path: base), from: placement, d, context: target)
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         // ⇧⌘: a file or folder of this Mac to the system's app (Finder's).
-        if on == host.host, let mods = Self.clickModifiers, mods.isSuperset(of: [.command, .shift]) {
+        if on == host.host, d == .system {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return
         }
         if let (block, lens) = pathBlock(path, isDirectory: isDir.boolValue, on: on) {
-            show(block, lens: lens, place, context: target)
+            follow(block, lens: lens, from: placement, d, context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -4949,7 +5096,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the host lists it as one (asked: it can't be looked at from here);
     /// a picture or a PDF by its name; else text, Markdown by its name;
     /// `path:line:column` as from this host.
-    private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?, place: Where) {
+    private func openRemote(_ target: String, on: HostID, base: String?, from: PlacementID?, as d: Disposition) {
         var text = target
         var line: Int?, column: Int?
         if let loc = FileLocation.split(target), loc.line != nil {
@@ -4960,9 +5107,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
-            show(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, place, context: target)
+            follow(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, from: from, d, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
-            show(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, place, context: target)
+            follow(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, from: from, d, context: target)
         } else if line == nil, let client = hosts.client(on) {
             // No slash: a folder if the host can list it (/home/marius), else
             // a file — as when it can't be asked.
@@ -4971,14 +5118,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             client.listFolder(asked) { [weak self] entries in
                 guard let self else { return }
                 if entries != nil {
-                    self.show(self.hosts.directoryBlock(for: path, on: on), lens: .directory, place, context: target)
+                    self.follow(self.hosts.directoryBlock(for: path, on: on), lens: .directory, from: from, d, context: target)
                 } else {
-                    self.show(self.hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
+                    self.follow(self.hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), from: from, d, context: target)
                 }
             }
         } else {
             if let line { pendingJump = (path, line, column) }
-            show(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), place, context: target)
+            follow(hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), from: from, d, context: target)
         }
     }
 
@@ -6389,13 +6536,19 @@ extension MainWindowController: MarkdownViewDelegate {
                 hosts.link(from: p.block, to: block, kind: .opened, context: "followed in the preview")
                 // Page to page in the same tile, as a browser goes — or,
                 // with ⌥, the page over this one.
-                if over { showOver(block, lens: .preview, over: view.placement) } else { replace(view.placement, with: block, lens: .preview) }
+                if over { showOver(block, lens: .preview, over: view.placement) } else { goOn(view.placement, from: p.block, to: block, lens: .preview) }
             } else {
-                open(path, from: view.placement, over: over)
+                open(path, from: view.placement, as: Disposition(modifiers))
             }
         } else {
-            open(url.absoluteString, from: view.placement, here: Self.opensHere(modifiers), over: modifiers.contains(.option))
+            open(url.absoluteString, from: view.placement, as: Disposition(modifiers))
         }
+    }
+}
+
+extension MainWindowController {
+    func markdownView(_ view: MarkdownView, history direction: Int) -> Bool {
+        walkTrail(view.placement, of: view.block, lens: .preview, direction)
     }
 }
 
@@ -6407,7 +6560,7 @@ extension MainWindowController: WebViewDelegate {
     func webViewBarChanged(_ view: WebView) { content.barChanged(view.placement) }
 
     func webView(_ view: WebView, open url: URL, over: Bool) {
-        open(url.absoluteString, from: view.placement, here: true, over: over)
+        open(url.absoluteString, from: view.placement, here: true, as: over ? .over : .beside)
     }
 
     /// An attached host as the address bar names it: its label, without
@@ -6571,45 +6724,26 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool) {
         let block = hosts.directoryBlock(for: path, on: view.block.host)
-        let mods = Self.clickModifiers ?? []
-        if isDirectory, mods.contains(.option) {
+        let d = Self.disposition ?? .goTo
+        if isDirectory, d == .system, view.block.host == host.host {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        } else if isDirectory, d == .over {
             // ⌥: the folder's listing over this one.
             showOver(block, lens: .directory, over: view.placement, context: "subfolder")
-        } else if isDirectory, mods.contains(.command) {
+        } else if isDirectory, d != .goTo {
             // ⌘: the folder's listing beside this one, which stays.
             show(block, lens: .directory, .besideOpener(view.placement), context: "subfolder")
         } else if isDirectory {
             // A folder takes the listing's place, in the same tile; the one
             // it was is the tile's to go back to (⌘[).
-            let next = Placement(block: block, lens: .directory)
-            var h = folderHistory.removeValue(forKey: view.placement) ?? (back: [], forward: [])
-            h.back.append(view.block)
-            h.forward = []
-            folderHistory[next.id] = h
-            replace(view.placement, with: block, lens: .directory, as: next.id)
+            goOn(view.placement, from: view.block, to: block, lens: .directory)
         } else {
             open(path, from: view.placement)
         }
     }
 
     func directoryView(_ view: DirectoryView, history direction: Int) -> Bool {
-        guard var h = folderHistory[view.placement] else { return false }
-        let to: BlockID
-        if direction < 0 {
-            guard let b = h.back.popLast() else { return false }
-            h.forward.append(view.block)
-            to = b
-        } else {
-            guard let f = h.forward.popLast() else { return false }
-            h.back.append(view.block)
-            to = f
-        }
-        guard hosts.block(to) != nil else { return false }
-        let next = Placement(block: to, lens: .directory)
-        folderHistory.removeValue(forKey: view.placement)
-        folderHistory[next.id] = h
-        replace(view.placement, with: to, lens: .directory, as: next.id)
-        return true
+        walkTrail(view.placement, of: view.block, lens: .directory, direction)
     }
 
     func directoryViewRefresh(_ view: DirectoryView) {
@@ -6906,7 +7040,7 @@ extension MainWindowController: NotebookViewDelegate {
     /// As a terminal's ⌘-click: a path from where the shell is, an address
     /// in the browser, `file:line:column` at that place.
     func notebook(_ view: NotebookView, open target: String) {
-        open(target, from: view.placement)
+        open(target, from: view.placement, as: Self.commandClick(over: false))
     }
 
     func notebook(_ view: NotebookView, linkedFrom block: BlockID) { link(block, to: view.block) }
@@ -7090,7 +7224,14 @@ extension MainWindowController: SearchViewDelegate {
 
 extension MainWindowController: TerminalViewDelegate {
     func terminal(_ view: TerminalView, open target: String, over: Bool) {
-        open(target, from: view.placement, over: over)
+        open(target, from: view.placement, as: Self.commandClick(over: over))
+    }
+
+    /// A terminal's link click, ⌘ being what makes it one: beside, ⌥⌘
+    /// over, ⇧⌘ the system's app — read off the click if it's in hand.
+    static func commandClick(over: Bool) -> Disposition {
+        if let d = disposition, d != .goTo { return d }
+        return over ? .over : .beside
     }
 
     /// A ⌘-clicked word that isn't a link to ghostty (`ls` prints a folder
@@ -7101,14 +7242,14 @@ extension MainWindowController: TerminalViewDelegate {
         let word = name.trimmingCharacters(in: CharacterSet(charactersIn: "'\"`,;"))
         guard !word.isEmpty else { return }
         guard view.block.host == host.host else {
-            if word.hasSuffix("/") { open(word, from: view.placement, over: over) }
+            if word.hasSuffix("/") { open(word, from: view.placement, as: Self.commandClick(over: over)) }
             return
         }
         var path = (word as NSString).expandingTildeInPath
         if !path.hasPrefix("/"), let base = hosts.block(view.block)?.terminal?.cwd { path = (base as NSString).appendingPathComponent(path) }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return }
-        open(word, from: view.placement, over: over)
+        open(word, from: view.placement, as: Self.commandClick(over: over))
     }
 
     /// A command from a terminal's scrubber (§3.8): a note of it and its
@@ -7400,8 +7541,8 @@ extension MainWindowController: OrganizationViewDelegate {
     /// brought here (§3.1).
     func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags) {
         HoverCard.shared.hide()
-        let over = modifiers.contains(.option), beside = modifiers.contains(.command)
-        if let arr = node.arrangement, !over, !beside {
+        let d = Disposition(modifiers)
+        if let arr = node.arrangement, d == .goTo {
             hideStateView()
             if arr != selected { hosts.select(arr) }
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
@@ -7414,13 +7555,9 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let block = node.block, let b = hosts.block(block) else { return }
         if b.kind == .arrangement { return hosts.select(block) }
-        // The rule (§3.1): plain goes to it where it is (here, if nowhere);
-        // ⌥ puts it over the focused tile; ⌘ beside it.
-        let lens = Lens.default(for: b.kind, path: b.path)
-        if over, let f = arrangement?.focused { show(block, lens: lens, .over(f), context: "from the sidebar") }
-        else if beside, let f = arrangement?.focused { show(block, lens: lens, .besideOpener(f), context: "from the sidebar") }
-        else if beside { show(block, lens: lens, .here) }
-        else { arrive(block, from: arrangement?.focused, over: false) }
+        // The one rule: plain goes to it where it is (here, if nowhere);
+        // ⌘ beside the focused tile; ⌥ over it; ⇧⌘ the system's app.
+        follow(block, from: arrangement?.focused, d, context: "from the sidebar")
     }
 
     /// Double-clicking an arrangement names it.
