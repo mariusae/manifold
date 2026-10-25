@@ -542,11 +542,15 @@ final class GridView: NSView, NSDraggingSource {
     /// `off`, left.
     func debugPeek(_ on: Bool) -> String {
         guard on else { hidePeek(); return "left" }
+        if let p = peek { return "already up over \(p.top)" }
         let focusedTarget = sheetTargets.first { $0.top == focused }
         guard let t = focusedTarget ?? sheetTargets.first, let top = t.top else { return "no sheets" }
         showPeek(top)
         return peek.map { "peek over \($0.top): \(NSStringFromRect($0.frame))" } ?? "no peek"
     }
+
+    /// Debugging: tab `i` of the tabs up clicked.
+    func debugPeekPick(_ i: Int) -> String { peek?.debugPick(i) ?? "no tabs up" }
 
     /// Debugging: where each stack's sheets take a click.
     var debugSheetTargets: String {
@@ -1424,7 +1428,8 @@ final class GridView: NSView, NSDraggingSource {
             }
             t.onHover = { [weak self, weak t] inside in
                 guard let self else { return }
-                if inside, let top = t?.top { self.showPeek(top) } else { self.hidePeek() }
+                self.hoveringSheets = inside ? t?.top : nil
+                if inside, let top = t?.top { self.showPeek(top) } else { self.leavePeekSoon() }
             }
             // Dragged, it's the line between the tiles that moves.
             t.divider = { [weak self, weak t] in
@@ -1557,11 +1562,39 @@ final class GridView: NSView, NSDraggingSource {
               !stack.behind.isEmpty else { return hidePeek() }
         if peek?.top == top { return }
         hidePeek()
-        let p = StackPeek(top: top, tiles: stack.behind.map { ($0.shown.title, $0.shown.block.map { Theme.symbolName(for: $0) } ?? Theme.symbolName(for: $0.shown.placement.lens, path: $0.shown.path)) })
+        let p = StackPeek(top: top, tiles: stack.behind.map { ($0.shown.id, $0.shown.title, $0.shown.block.map { Theme.symbolName(for: $0) } ?? Theme.symbolName(for: $0.shown.placement.lens, path: $0.shown.path)) })
         p.frame = p.frame(over: pill.frame, within: bounds)
+        // A tab clicked: its tile to the top, as a fanned card picked.
+        p.onPick = { [weak self] id in
+            self?.hidePeek()
+            self?.delegate?.gridSwap(id)
+        }
+        // Dragged: the tile out of the stack, as a fanned card dragged.
+        p.onDragOut = { [weak self] id, event in
+            guard let self else { return }
+            self.hidePeek()
+            self.beginDrag(of: id, event: event, from: self, alone: true)
+        }
+        p.onMore = { [weak self] in
+            self?.hidePeek()
+            self?.fanOut(top)
+        }
+        p.onHover = { [weak self] inside in if !inside { self?.leavePeekSoon() } }
         addSubview(p, positioned: .above, relativeTo: nil)
         peek = p
         p.rise()
+    }
+
+    /// The sheets hovered now, if any (the tabs stay while either is).
+    private var hoveringSheets: PlacementID?
+
+    /// The pointer gone from the sheets or the tabs: the tabs go too, a
+    /// moment later, unless it's come onto the other.
+    private func leavePeekSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self, let p = self.peek, !p.hovered, self.hoveringSheets != p.top else { return }
+            self.hidePeek()
+        }
     }
 
     private func hidePeek() {
@@ -2504,23 +2537,31 @@ enum BlockDragImage {
 /// A stack's tiles as tabs risen above its sheets while the pointer is over
 /// them (§3.1): one per tile behind, nearest lowest and widest, each its
 /// symbol and title, the rest counted past four. Drawn over whatever is
-/// above, taking no room and no clicks.
+/// above, taking no room. A tab clicked brings its tile to the top; dragged,
+/// it takes the tile out of the stack, to be dropped where you like; the
+/// count clicked fans the stack.
 final class StackPeek: NSView {
     let top: PlacementID
-    private let tiles: [(title: String, symbol: String)]
+    private let tiles: [(id: PlacementID, title: String, symbol: String)]
     private static let tabHeight: CGFloat = 20, shown = 4
+    var onPick: ((PlacementID) -> Void)?
+    var onDragOut: ((PlacementID, NSEvent) -> Void)?
+    var onMore: (() -> Void)?
+    /// The pointer come onto the tabs (true) or gone from them (false).
+    var onHover: ((Bool) -> Void)?
+    private(set) var hovered = false
+    private var hoveredTab: Int? { didSet { if hoveredTab != oldValue { needsDisplay = true } } }
+    private var downAt: (tab: Int, point: NSPoint)?
 
-    init(top: PlacementID, tiles: [(String, String)]) {
+    init(top: PlacementID, tiles: [(PlacementID, String, String)]) {
         self.top = top
-        self.tiles = tiles.map { (title: $0.0, symbol: $0.1) }
+        self.tiles = tiles.map { (id: $0.0, title: $0.1, symbol: $0.2) }
         super.init(frame: .zero)
         wantsLayer = true
         alphaValue = 0
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     private var rows: Int { min(tiles.count, Self.shown) + (tiles.count > Self.shown ? 1 : 0) }
 
@@ -2532,6 +2573,23 @@ final class StackPeek: NSView {
         let h = CGFloat(rows) * (Self.tabHeight - 2) + 4
         below = bar.maxY + 1 + h > bounds.maxY
         return NSRect(x: bar.minX, y: below ? bar.minY - 1 - h : bar.maxY + 1, width: bar.width, height: h)
+    }
+
+    /// Each row's tab: nearest at the bar, the rest away from it, each
+    /// stepped in.
+    private func tabRect(_ i: Int) -> NSRect {
+        let inset = 6 + CGFloat(i) * 9
+        let offset = 2 + CGFloat(i) * (Self.tabHeight - 2)
+        let y = below ? bounds.height - Self.tabHeight - offset : offset
+        return NSRect(x: inset, y: y, width: bounds.width - 2 * inset, height: Self.tabHeight)
+    }
+
+    /// The tab at a point: the nearest one wins where they overlap.
+    private func tab(at p: NSPoint) -> Int? { (0..<rows).first { tabRect($0).contains(p) } }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let superview else { return nil }
+        return tab(at: convert(point, from: superview)) != nil ? self : nil
     }
 
     func rise() {
@@ -2552,16 +2610,57 @@ final class StackPeek: NSView {
         }, completionHandler: { [weak self] in self?.removeFromSuperview() })
     }
 
+    // MARK: Pointer
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        hoveredTab = tab(at: convert(event.locationInWindow, from: nil))
+        onHover?(true)
+    }
+
+    override func mouseMoved(with event: NSEvent) { hoveredTab = tab(at: convert(event.locationInWindow, from: nil)) }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        hoveredTab = nil
+        onHover?(false)
+    }
+
+    override func resetCursorRects() {
+        for i in 0..<rows { addCursorRect(tabRect(i), cursor: .pointingHand) }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        downAt = tab(at: p).map { ($0, p) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let down = downAt, down.tab < min(tiles.count, Self.shown) else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        guard hypot(p.x - down.point.x, p.y - down.point.y) > 3 else { return }
+        downAt = nil
+        onDragOut?(tiles[down.tab].id, event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let down = downAt else { return }
+        downAt = nil
+        if down.tab < min(tiles.count, Self.shown) { onPick?(tiles[down.tab].id) } else { onMore?() }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        var labels = tiles.prefix(Self.shown).map { $0 }
+        var labels = tiles.prefix(Self.shown).map { (title: $0.title, symbol: $0.symbol) }
         if tiles.count > Self.shown { labels.append((title: "\(tiles.count - Self.shown) more", symbol: "ellipsis")) }
         // Farthest first, so the nearer tabs overlap the ones behind them.
         for (i, t) in labels.enumerated().reversed() {
-            let inset = 6 + CGFloat(i) * 9
-            // Nearest at the bar, the rest away from it.
-            let offset = 2 + CGFloat(i) * (Self.tabHeight - 2)
-            let y = below ? bounds.height - Self.tabHeight - offset : offset
-            let r = NSRect(x: inset, y: y, width: bounds.width - 2 * inset, height: Self.tabHeight)
+            let r = tabRect(i)
             let path = NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7)
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow()
@@ -2572,7 +2671,14 @@ final class StackPeek: NSView {
             Theme.sheet(level: i + 1).setFill()
             path.fill()
             NSGraphicsContext.restoreGraphicsState()
-            Theme.text.withAlphaComponent(0.3).setStroke()
+            // The one under the pointer, lit as a hovered row is (twice: on
+            // a sheet's grey, once doesn't show).
+            if hoveredTab == i {
+                Theme.hover.setFill()
+                path.fill()
+                path.fill()
+            }
+            Theme.text.withAlphaComponent(hoveredTab == i ? 0.5 : 0.3).setStroke()
             path.lineWidth = 0.5
             path.stroke()
             var x = r.minX + 10
@@ -2590,5 +2696,12 @@ final class StackPeek: NSView {
             let size = label.size()
             label.draw(with: NSRect(x: x, y: r.midY - size.height / 2, width: max(0, room), height: size.height), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
         }
+    }
+
+    /// Debugging: tab `i` clicked, as the pointer would.
+    func debugPick(_ i: Int) -> String {
+        guard i < min(tiles.count, Self.shown) else { onMore?(); return "more" }
+        onPick?(tiles[i].id)
+        return "picked \(tiles[i].title)"
     }
 }

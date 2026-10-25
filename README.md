@@ -69,7 +69,9 @@ and Mona Sans (bundled).
   just made (or grown) has its sheets drop into place; the pointer over
   them raises them into tabs, one for each tile behind, its symbol and
   title, over whatever is above (or, at the top of a column, below the
-  bar). **Click those sheets**, or
+  bar), staying while the pointer is on them: click one to bring its tile
+  to the top, or drag it out to put the tile anywhere, as a fanned card
+  is dragged (past four, the count fans the stack). **Click those sheets**, or
   the stack button on the tile's bar (beside maximize), or press ⌃⇥, and
   the stack's tiles hang over it as cards,
   live, the tile's own bar put away, on the window's own background

@@ -1465,6 +1465,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugPills: String { content.debugPills }
     var debugTiles: String { content.debugTiles }
     func debugPeek(_ on: Bool) -> String { content.debugPeek(on) }
+    func debugPeekPick(_ i: Int) -> String { content.debugPeekPick(i) }
     var debugDirty: String { content.debugDirty }
     func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
     func debugDirtyClick() -> String {

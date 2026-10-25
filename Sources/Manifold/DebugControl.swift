@@ -312,7 +312,9 @@ enum DebugControl {
         case "pills":
             return wc?.debugPills ?? "no window"
         case "peek":
-            // "peek [off]": the first stack's sheets hovered (or left).
+            // "peek [off]": the focused (else first) stack's sheets hovered (or
+            // left); "peek pick <i>": tab i of those up clicked.
+            if arg.hasPrefix("pick "), let i = Int(arg.dropFirst(5)) { return wc?.debugPeekPick(i) ?? "no window" }
             return wc?.debugPeek(arg != "off") ?? "no window"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
