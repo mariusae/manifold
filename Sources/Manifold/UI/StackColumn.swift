@@ -196,11 +196,7 @@ final class SummaryCard: NSView {
 
     private func drawProgress(_ s: BlockSummary, in card: NSRect, pad: CGFloat) {
         if let p = s.progress {
-            let track = NSRect(x: card.minX + pad, y: card.maxY - 5, width: card.width - 2 * pad, height: 2)
-            Theme.text.withAlphaComponent(0.1).setFill()
-            NSBezierPath(roundedRect: track, xRadius: Radius.hair, yRadius: Radius.hair).fill()
-            Theme.accent.setFill()
-            NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: track.width * CGFloat(max(0, min(1, p))), height: 2), xRadius: Radius.hair, yRadius: Radius.hair).fill()
+            Flat.progress(in: NSRect(x: card.minX + pad, y: card.maxY - 5, width: card.width - 2 * pad, height: 2), fraction: p)
         }
     }
 }
@@ -236,7 +232,7 @@ final class StackColumnView: NSView {
         wantsLayer = true
         layer?.cornerRadius = Radius.surface
         layer?.masksToBounds = true
-        themed { $0.layer?.backgroundColor = Theme.windowBackground.blended(withFraction: 0.04, of: .textColor)?.cgColor }
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.blended(withFraction: 0.04, of: Theme.text)?.cgColor }
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true

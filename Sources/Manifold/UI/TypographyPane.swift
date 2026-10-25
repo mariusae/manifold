@@ -116,7 +116,7 @@ final class TypographyPane: SettingsPane {
         let card = NSView()
         card.wantsLayer = true
         card.layer?.cornerRadius = Radius.surface
-        card.themed { $0.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor }
+        card.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         card.addSubview(sample)
         NSLayoutConstraint.activate([
             card.widthAnchor.constraint(equalToConstant: 380),

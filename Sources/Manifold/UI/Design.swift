@@ -107,6 +107,16 @@ enum EdgeColor {
     static var accentSoft: NSColor { Theme.accent.withAlphaComponent(0.45) }
 }
 
+/// A block's link as a capsule — a tile's links on its bar, a note's
+/// link to a block in its text: one look.
+enum LinkCapsule {
+    static let font = UIType.caption
+    static let symbolSize: CGFloat = 10
+    static var fill: NSColor { Theme.panel }
+    static var edge: NSColor { EdgeColor.hairline }
+    static let edgeWidth: CGFloat = 0.5
+}
+
 /// A pill: a count, an age — a few figures on a grey capsule, one look
 /// wherever it's drawn (a sidebar row's count, a card's age).
 enum Pill {

@@ -22,18 +22,41 @@ enum Flat {
     static let pressed = NSColor.dynamic(NSColor(white: 0, alpha: 0.11), NSColor(white: 1, alpha: 0.14))
 
     /// A panel floating over the window: rounded, a hairline round it, and
-    /// one soft shadow — the same for every one.
-    static func float(_ v: NSView, background: NSColor = Theme.panel) {
+    /// one soft shadow — the same for every one (but one in a window of its
+    /// own, whose window casts the shadow).
+    static func float(_ v: NSView, background: NSColor = Theme.panel, shadow: Bool = true) {
         v.wantsLayer = true
         guard let l = v.layer else { return }
         l.cornerRadius = Radius.surface
         l.cornerCurve = .continuous
         l.borderWidth = 0.5
-        Elevation.float.apply(to: l)
+        if shadow { Elevation.float.apply(to: l) }
         v.themed {
             $0.layer?.backgroundColor = background.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
         }
+    }
+
+    /// The mark at a row's left edge saying it's the one — a marked row,
+    /// a notebook's focused cell: the tint, a little light, this wide,
+    /// rounded as a hairline.
+    static var mark: NSColor { Theme.accent.withAlphaComponent(0.85) }
+    static let markWidth: CGFloat = 3
+
+    /// A thin progress bar in `track`: a faint groove, the tint filled as
+    /// far as `fraction` — or, not knowing how far, a quarter of it moving
+    /// along (`phase`, 0…1) — a summary card's, a transfer's.
+    static func progress(in track: NSRect, fraction: Double?, phase: Double = 0) {
+        Theme.divider.setFill()
+        NSBezierPath(roundedRect: track, xRadius: Radius.hair, yRadius: Radius.hair).fill()
+        Theme.accent.setFill()
+        var bar = track
+        if let f = fraction {
+            bar.size.width = max(track.height, track.width * CGFloat(max(0, min(1, f))))
+        } else {
+            bar = NSRect(x: track.minX + track.width * 0.75 * CGFloat(phase), y: track.minY, width: track.width * 0.25, height: track.height)
+        }
+        NSBezierPath(roundedRect: bar, xRadius: Radius.hair, yRadius: Radius.hair).fill()
     }
 
     /// A list row's band — hovered, or chosen — as every list draws it: in

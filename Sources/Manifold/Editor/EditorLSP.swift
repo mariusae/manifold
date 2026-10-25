@@ -318,16 +318,9 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         window.level = .popUpMenu
         window.isReleasedWhenClosed = false
         let box = NSView(frame: window.contentView!.bounds)
-        box.wantsLayer = true
-        box.layer?.cornerRadius = Radius.surface
-        box.layer?.cornerCurve = .continuous
-        box.layer?.borderWidth = 0.5
+        Flat.float(box, shadow: false)
         box.layer?.masksToBounds = true
         box.autoresizingMask = [.width, .height]
-        box.themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
         let scroll = ClippingScrollView(frame: box.bounds)
         scroll.autoresizingMask = [.width, .height]
         scroll.hasVerticalScroller = true

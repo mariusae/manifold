@@ -635,13 +635,13 @@ final class TextView: NSView, NSTextInputClient {
             let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
             let r = NSRect(x: textLeft + start, y: rowTop + 1.5, width: width, height: lineHeight - 3)
             let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-            Theme.panel.setFill()
+            LinkCapsule.fill.setFill()
             capsule.fill()
-            Theme.cardBorder.setStroke()
-            capsule.lineWidth = 1
+            LinkCapsule.edge.setStroke()
+            capsule.lineWidth = LinkCapsule.edgeWidth
             capsule.stroke()
             var x = r.minX + 8
-            if let image = Self.tinted(look.symbol, size: 10, color: Theme.secondaryText) {
+            if let image = Self.tinted(look.symbol, size: LinkCapsule.symbolSize, color: Theme.secondaryText) {
                 image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
             x += 18

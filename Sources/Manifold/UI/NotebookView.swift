@@ -573,7 +573,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             box.layer?.backgroundColor = Theme.codePage.cgColor
             box.layer?.borderColor = (focused ? EdgeColor.accentSoft : Theme.divider).cgColor
-            bar.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.85).cgColor
+            bar.layer?.backgroundColor = Flat.mark.cgColor
         }
         box.layer?.borderWidth = focused || hovered ? 1 : 0
         bar.isHidden = !focused
@@ -702,7 +702,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         let eh = editorHeight(inner)
         box.frame = NSRect(x: x, y: 0, width: inner, height: eh)
         editor.frame = box.bounds
-        bar.frame = NSRect(x: 8, y: 4, width: 3, height: max(0, eh - 8))
+        bar.frame = NSRect(x: 8, y: 4, width: Flat.markWidth, height: max(0, eh - 8))
         let firstLine = 8 + (font.ascender - font.descender + font.leading) / 2
         count.frame = NSRect(x: 12, y: firstLine - 8, width: x - 22, height: 15)
         queuedIcon.frame = NSRect(x: x - 26, y: firstLine - 8, width: 16, height: 16)

@@ -163,18 +163,8 @@ final class TransferRowView: NSView {
         // much is to come isn't known yet.
         guard item.isRunning else { return }
         let track = NSRect(x: 32, y: bounds.height - 4, width: bounds.width - 32 - 12, height: 2)
-        Theme.divider.setFill()
-        NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
-        Theme.accent.setFill()
-        if let f = item.fraction {
-            var bar = track
-            bar.size.width = max(2, track.width * f)
-            NSBezierPath(roundedRect: bar, xRadius: 1, yRadius: 1).fill()
-        } else {
-            let t = Date().timeIntervalSince(item.started).truncatingRemainder(dividingBy: 1.4) / 1.4
-            let bar = NSRect(x: track.minX + (track.width * 0.75) * t, y: track.minY, width: track.width * 0.25, height: 2)
-            NSBezierPath(roundedRect: bar, xRadius: 1, yRadius: 1).fill()
-        }
+        let phase = Date().timeIntervalSince(item.started).truncatingRemainder(dividingBy: 1.4) / 1.4
+        Flat.progress(in: track, fraction: item.fraction, phase: phase)
     }
 
     @objc private func closeClicked() { Transfers.shared.cancelOrDismiss(item) }
@@ -206,14 +196,7 @@ final class TransfersBadge: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = Radius.surface
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 0.5
-        themed {
-            $0.layer?.backgroundColor = Theme.panel.cgColor
-            $0.layer?.borderColor = Theme.panelBorder.cgColor
-        }
+        Flat.float(self, shadow: false)
         label.font = UIType.caption
         label.textColor = Theme.text
         addSubview(label)

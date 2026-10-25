@@ -336,7 +336,7 @@ final class LinkBadge: NSView {
                 effectiveAppearance.performAsCurrentDrawingAppearance {
                     layer?.borderColor = (hovered ? EdgeColor.accentStrong : EdgeColor.hairline).cgColor
                 }
-                layer?.borderWidth = hovered ? 1.5 : 0.5
+                layer?.borderWidth = hovered ? 1.5 : LinkCapsule.edgeWidth
                 updateClose()
             }
         }
@@ -348,16 +348,16 @@ final class LinkBadge: NSView {
             wantsLayer = true
             layer?.cornerRadius = LinkBadge.capsuleHeight / 2
             layer?.cornerCurve = .continuous
-            layer?.borderWidth = 0.5
+            layer?.borderWidth = LinkCapsule.edgeWidth
             themed {
-                $0.layer?.backgroundColor = Theme.panel.cgColor
-                $0.layer?.borderColor = Theme.panelBorder.cgColor
+                $0.layer?.backgroundColor = LinkCapsule.fill.cgColor
+                $0.layer?.borderColor = LinkCapsule.edge.cgColor
             }
             arrow.contentTintColor = Theme.secondaryText
             arrow.isHidden = true
             icon.image = Theme.symbol(symbol, size: 10)
             icon.contentTintColor = Theme.secondaryText
-            label.font = UIType.caption
+            label.font = LinkCapsule.font
             label.textColor = Theme.text
             label.lineBreakMode = .byTruncatingTail
             label.maximumNumberOfLines = 1

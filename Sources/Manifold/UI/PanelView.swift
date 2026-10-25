@@ -149,7 +149,7 @@ final class PanelView: NSView, PaneContent {
                         if intent.contains(.stronglyEmphasized) { ns.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize), range: r) }
                         if intent.contains(.code) { ns.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .regular), range: r) }
                     }
-                    ns.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: ns.length))
+                    ns.addAttribute(.foregroundColor, value: Theme.text, range: NSRange(location: 0, length: ns.length))
                     l.attributedStringValue = ns
                 } else {
                     l.stringValue = s

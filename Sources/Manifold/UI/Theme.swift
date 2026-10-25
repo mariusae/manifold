@@ -337,8 +337,8 @@ final class SelectionRowView: NSTableRowView {
             Flat.rowBand(bounds).fill()
         }
         guard marked else { return }
-        Theme.accent.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: 3, height: bounds.height - 10), xRadius: Radius.hair, yRadius: Radius.hair).fill()
+        Flat.mark.setFill()
+        NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: Flat.markWidth, height: bounds.height - 10), xRadius: Radius.hair, yRadius: Radius.hair).fill()
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
