@@ -469,33 +469,24 @@ final class Server {
         append(.unregister(block), to: .registry(host))
     }
 
-    /// Unnamed workspaces drift (§3.3): one unseen for the days the
-    /// settings give leaves the desk, a root no longer, and is collected
-    /// with whatever only it held once the grace has passed.
-    private func drift() {
-        let days = node.desk(host).settings.workspaceDriftDays
-        guard days > 0 else { return }
-        let cutoff = Int64(Date().addingTimeInterval(-Double(days) * 86400).timeIntervalSince1970 * 1000)
-        let desk = node.desk(host)
-        let registry = node.registry(host)
-        let kept = desk.order.filter { id in
-            guard id.host == host, let b = node.block(id), let a = b.arrangement, !a.isNamed, (b.title ?? "").isEmpty, !node.hasPins(id) else { return true }
-            let seen = registry.blocks[id]?.lastSeen.wall ?? b.created.wall
-            return seen >= cutoff
-        }
-        if kept != desk.order {
-            for id in desk.order where !kept.contains(id) { log("workspace \(id) unseen for \(days) days: off the desk") }
-            append(.order(kept), to: .desk(host))
-        }
+    /// The workspaces are the only roots (§4), kept until removed by
+    /// hand. What kept things before — a workspace's name or pins outside
+    /// the workspaces, a block's own Keep — is brought into them, once, so
+    /// nothing is lost: such a workspace back among them; a kept block
+    /// nothing else reaches pinned in a "Kept" workspace; its Keep let go.
+    private func settleRoots() {
+        let events = node.settlingRoots(on: host, at: clock.now(), newID: { BlockID(host: host) })
+        guard !events.isEmpty else { return }
+        for (event, shard) in events { append(event, to: shard) }
+        log("roots settled: \(events.count) change(s) bring what was kept outside the workspaces into them")
     }
 
-    /// The collector (§4): what no root reaches over strong edges —
-    /// workspaces on the desk and named ones, kept
-    /// blocks, other hosts' holds — is noted, and collected once it has
+    /// The collector (§4): what no root reaches over strong edges — the
+    /// workspaces, other hosts' holds — is noted, and collected once it has
     /// been so for the grace the settings give. Reached again meanwhile,
     /// it is simply kept.
     private func collect() {
-        drift()
+        settleRoots()
         let minutes = node.desk(host).settings.collectAfterMinutes
         guard minutes > 0 else { return }
         let reachable = node.reachable(on: host)

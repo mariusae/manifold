@@ -1514,10 +1514,13 @@ private final class Seen: @unchecked Sendable {
     put(.pinned(true), to: .block(pinned), at: 9)
     put(.hold(Hold(id: "x", block: held, holder: other, at: stamp(10))), to: .registry(host), at: 10)
 
-    #expect(node.roots(on: host) == [desk, named, pinned, held])
+    // The workspaces are the roots, and holds: a name, or a block's old
+    // Keep, keeps nothing outside them (the server brings those in).
+    #expect(node.roots(on: host) == [desk, held])
     let r = node.reachable(on: host)
-    #expect(r.contains(t) && r.contains(f) && r.contains(n) && r.contains(pinned) && r.contains(held))
+    #expect(r.contains(t) && r.contains(f) && r.contains(held))
     #expect(!r.contains(g))      // only opened: weak
+    #expect(!r.contains(named) && !r.contains(n) && !r.contains(pinned))
     #expect(!r.contains(off) && !r.contains(loose))
 
     // The link by hand taken away, f goes; the hold released, held goes.
@@ -1758,25 +1761,26 @@ private final class Seen: @unchecked Sendable {
     #expect(b.place == "/tmp/project")
 }
 
-@Test func aWorkspaceWithPinsIsKeptAndKeepsThem() {
+@Test func aBlockPinnedInAWorkspaceIsKeptByIt() {
     let node = Node()
     let host = HostID("h")
     func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
     func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
-    // An unnamed workspace off the desk, its tile closed, its block pinned in it.
+    // A workspace, its tile closed, its block pinned in it.
     let ws = BlockID(host: host), note = BlockID(host: host)
     put(.create(kind: .text, title: nil, path: nil), to: .block(note), at: 1)
     put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 2)
-    #expect(!node.roots(on: host).contains(ws))
+    put(.order([ws]), to: .desk(host), at: 2)
+    #expect(node.roots(on: host).contains(ws))
+    #expect(!node.reachable(on: host).contains(note))
     put(.link(Link(from: ws, to: note, kind: .pinned, at: stamp(3), context: "pinned")), to: .links(host), at: 3)
     #expect(node.hasPins(ws))
-    #expect(node.roots(on: host).contains(ws))
     #expect(node.reachable(on: host).contains(note))
-    // Unpinned: neither is kept any longer.
+    // Unpinned: the note is kept no longer; the workspace stays, as every one does.
     let pin = node.links(host).links.first { $0.kind == .pinned }!
     put(.unlink(pin.id), to: .links(host), at: 4)
     #expect(!node.hasPins(ws))
-    #expect(!node.reachable(on: host).contains(note) && !node.roots(on: host).contains(ws))
+    #expect(!node.reachable(on: host).contains(note) && node.roots(on: host).contains(ws))
 }
 
 @Test func themesThereOnceWereReadAsThoseThereAre() throws {
@@ -1791,4 +1795,37 @@ private final class Seen: @unchecked Sendable {
     for old in ["lato", "tiempos", "tiemposAnthrosevka", "mona", "recursive", "go"] { #expect(try theme(old) == .humanist) }
     // A first launch: Apple.
     #expect(Appearance().theme == .apple)
+}
+
+@Test func whatWasKeptOutsideTheWorkspacesIsBroughtIntoThem() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    // A workspace among them; a named one outside them, holding a note;
+    // a block kept by its own Keep alone; one kept and shown too.
+    let ws = BlockID(host: host), named = BlockID(host: host)
+    let inNamed = BlockID(host: host), keptAlone = BlockID(host: host), keptShown = BlockID(host: host)
+    for id in [inNamed, keptAlone, keptShown] { put(.create(kind: .text, title: nil, path: nil), to: .block(id), at: 1) }
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 2)
+    put(.create(kind: .arrangement, title: "Project", path: nil), to: .block(named), at: 2)
+    put(.order([ws]), to: .desk(host), at: 3)
+    put(.place(Placement(block: inNamed, lens: .editor), column: 0, at: 0), to: .block(named), at: 4)
+    put(.place(Placement(block: keptShown, lens: .editor), column: 0, at: 0), to: .block(ws), at: 4)
+    put(.pinned(true), to: .block(keptAlone), at: 5)
+    put(.pinned(true), to: .block(keptShown), at: 5)
+
+    var made: [BlockID] = []
+    let events = node.settlingRoots(on: host, at: stamp(6)) { let id = BlockID(host: host); made.append(id); return id }
+    for (i, e) in events.enumerated() { _ = node.append(e.event, to: e.shard, at: stamp(7 + Int64(i))) }
+    let order = node.desk(host).order
+    #expect(order.contains(named) && made.count == 1 && order.contains(made[0]))
+    #expect(node.block(made[0])?.title == "Kept")
+    let r = node.reachable(on: host)
+    #expect(r.contains(inNamed) && r.contains(keptAlone) && r.contains(keptShown))
+    #expect(!node.blocks.contains { $0.isPinned })
+    // Pinned in Kept: only the block nothing else kept.
+    #expect(node.graph.edges(from: made[0], kind: .link(.pinned)).map(\.to) == [keptAlone])
+    // Settled: nothing more to do.
+    #expect(node.settlingRoots(on: host, at: stamp(20)) { BlockID(host: host) }.isEmpty)
 }

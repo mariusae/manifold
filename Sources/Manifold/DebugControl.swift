@@ -836,9 +836,6 @@ enum DebugControl {
             return "ok"
         case "toast":
             return wc?.debugToast ?? "none"
-        case "pin":
-            wc?.togglePin(nil)
-            return "ok"
         case "attend":
             // As focusing the block with the window key does: dismisses
             // its done or failed status.

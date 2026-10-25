@@ -50,10 +50,9 @@ final class SidebarView: NSView {
     private let byButton: IconButton
     private let inboxButton: IconButton
     private let counts = StatusCountsView()
-    /// Two quiet rows above the bar (§4): what's kept off the desk, and
-    /// what's closed and not yet collected; each opens its list in place
-    /// of the tree, and again puts the tree back.
-    private let keptRow = FootRowView(title: "Kept", symbol: "pin")
+    /// A quiet row above the bar (§4): what's closed and not yet
+    /// collected; it opens its list in place of the tree, and again puts
+    /// the tree back.
     private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
@@ -63,13 +62,13 @@ final class SidebarView: NSView {
     static let headerHeight: CGFloat = 40
     static let filterHeight: CGFloat = 34
     static let barHeight: CGFloat = 34
-    /// A list pushed over the tree (Kept, Recently Closed): the header
+    /// A list pushed over the tree (Recently Closed, Search): the header
     /// grows to a back button, the list's name and what it holds.
     static let pushedHeight: CGFloat = 36
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
-    private var pushed: Bool { organization == .kept || organization == .closed || organization == .search }
+    private var pushed: Bool { organization == .closed || organization == .search }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -119,8 +118,7 @@ final class SidebarView: NSView {
         inboxButton.action = #selector(inboxClicked)
         inboxButton.toolTip = "Inbox (⌥⌘6)"
         counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
-        for v in [searchButton, byButton, inboxButton, counts, keptRow, closedRow, transfers] { card.addSubview(v) }
-        keptRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .kept ? .desk : .kept) }
+        for v in [searchButton, byButton, inboxButton, counts, closedRow, transfers] { card.addSubview(v) }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         filterBox.isHidden = true
         filter.placeholderString = "Filter"
@@ -177,12 +175,12 @@ final class SidebarView: NSView {
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
         bottom += th > 0 ? th + 6 : 0
-        for row in [closedRow, keptRow] where !row.isHidden && !pushed {
-            row.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
-            bottom += Self.footRowHeight
+        if !closedRow.isHidden, !pushed {
+            closedRow.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
+            bottom += Self.footRowHeight + 6
+        } else {
+            closedRow.frame = .zero
         }
-        if !pushed, !keptRow.isHidden || !closedRow.isHidden { bottom += 6 }
-        for row in [closedRow, keptRow] where pushed { row.frame = .zero }
         organizationView.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: max(0, top - bottom))
         resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
     }
@@ -197,11 +195,10 @@ final class SidebarView: NSView {
         byButton.toolTip = org == .files ? "By Workspace (⌥⌘1)" : "By File (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
-        keptRow.current = org == .kept
         closedRow.current = org == .closed
         pushedTitle.stringValue = org.title
         searchButton.contentTintColor = org == .search ? Theme.text : Theme.secondaryText
-        // Search is its own place (pushed, as Kept is): the field under its
+        // Search is its own place (pushed, as Recently Closed is): the field under its
         // name, taking the keyboard; left, the field goes, emptied.
         let searching = org == .search
         if searching != filterShown {
@@ -222,18 +219,12 @@ final class SidebarView: NSView {
 
     @objc private func backClicked() { chooseOrganization(.desk) }
 
-    /// How many are kept off the desk, and closed awaiting collection:
-    /// the foot rows, each hidden at zero.
-    func setFoot(kept: Int, closed: Int) {
-        keptRow.count = kept
-        closedRow.count = closed
-        keptRow.isHidden = kept == 0 && organization != .kept
-        closedRow.isHidden = closed == 0 && organization != .closed
-        guard organization == .kept || organization == .closed else { return needsLayout = true }
-        let n = organization == .kept ? kept : closed
-        pushedSubtitle.stringValue = organization == .kept
-            ? (n == 1 ? "1 kept out of spaces" : "\(n) kept out of spaces")
-            : (n == 1 ? "1 closed, awaiting collection" : "\(n) closed, awaiting collection")
+    /// How many are closed awaiting collection: the foot row, hidden at zero.
+    func setFoot(closed n: Int) {
+        closedRow.count = n
+        closedRow.isHidden = n == 0 && organization != .closed
+        guard organization == .closed else { return needsLayout = true }
+        pushedSubtitle.stringValue = n == 1 ? "1 closed, awaiting collection" : "\(n) closed, awaiting collection"
         needsLayout = true
     }
 

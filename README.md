@@ -4,10 +4,11 @@ A Mac app that works like a wiki rather than a set of windows. Terminals
 (drawn by [libghostty](https://github.com/ghostty-org/ghostty)), files,
 notes, folders and web pages are **blocks**, and everything is linked: a
 workspace links the blocks it shows, a note the blocks it mentions, and
-what you do leaves links behind (this terminal opened that file). A block
-stays alive as long as it is reachable in that graph — from a workspace,
-a name, a Keep, a link by hand — and what nothing reaches any more is
-collected, after a while to bring it back. A workspace is itself a block
+what you do leaves links behind (this terminal opened that file). The
+workspaces are the roots: each stays until you remove it, and keeps
+what it shows, what's pinned in it, and what those link to by hand. What
+no workspace reaches any more is collected, after a while to bring it
+back. A workspace is itself a block
 you can name and come back to, and anything reachable can be found and
 followed, with its history. Light or dark, in SF Pro and Menlo
 as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
@@ -23,7 +24,7 @@ and Mona Sans (bundled).
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
   top to move the window. Along the bottom of the sidebar run **Search**
-  (⌥⌘4: pushed over the tree as Kept is, a field under its name, and
+  (⌥⌘4: pushed over the tree as Recently Closed is, a field under its name, and
   the words found in the contents of every block — a text's lines, a
   terminal's commands, a block's name, place or address — each block
   with what matched beneath it, clicked to go there: the line in its
@@ -42,10 +43,10 @@ and Mona Sans (bundled).
   its left edge, and a workspace's chevron closes it until you open it
   again (remembered). Only tiles have icons; a workspace's label is its
   name and a count of its tiles, a block's row has a second line for
-  what it says. Above the bar at the foot sit two quiet rows, **Kept**
-  and **Recently Closed**, each with a count; clicking one pushes that
-  list over the tree, the header showing a back button, the list's
-  name and what it holds, as Safari's Bookmarks does; neither is in
+  what it says. Above the bar at the foot sits a quiet row, **Recently
+  Closed**, with a count; clicking it pushes that list over the tree,
+  the header showing a back button, the list's name and what it holds,
+  as Safari's Bookmarks does; it isn't in
   the tree itself. Under **Workspaces**, the sidebar is
   the table of contents of the screen: a workspace's tiles in order,
   a stack's tiles together under its top — nearest first, as it fans,
@@ -292,12 +293,6 @@ and Mona Sans (bundled).
   box in a task list — a quote with its mark, and on an empty item ends
   it. The pill's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
-- **Keep** (Keep in a bar's or a row's menu, or File ▸ Keep or Let Go)
-  makes a block a root of its own: kept whatever refers to it, until
-  let go. **Keep and Close** (⇧⌘W) keeps it and takes its tiles off
-  every workspace; it then sits in **Kept**, the list at the foot of the
-  sidebar, with the named workspaces taken out of spaces, to be recalled with
-  a click. Dropping a block's bar on the Kept row keeps it too.
 - **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
   foot) lists the blocks whose status wants attention — done or failed
   and not yet read, or needing you — by host and workspace, each with
@@ -307,15 +302,15 @@ and Mona Sans (bundled).
   after the focused one (or the first), in whatever workspace holds it,
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
-- **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace out of
-  spaces (where workspaces are kept), and an unnamed workspace unseen
-  for three days drifts out by itself. A block is kept while something reaches it — a workspace in
-  spaces or a named one, a Keep, or a link by hand from a kept block
-  — and once nothing does it waits half an hour in
+- **⌘W** closes the focused tile. **Workspaces stay** until you remove
+  one (**⌥⇧⌘W**, File ▸ Remove Workspace, or its row's menu): named or
+  not, emptied or not, nothing removes one for you. A block is kept while
+  a workspace reaches it — shows it, pins it, or reaches it through a
+  link by hand — and once none does it waits half an hour in
   **Recently Closed**, the list at the foot of the sidebar (and in
-  ⌘O, marked *recent*), then is collected: gone, with its history. An
-  unnamed workspace taken out of spaces goes the same way; a named one
-  sits in **Kept**. **⇧⌘T** reopens the last thing closed where it
+  ⌘O, marked *recent*), then is collected: gone, with its history. A
+  workspace removed goes the same way, and what only it kept with it.
+  **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
   foot of the window names each, with Restore.
@@ -376,11 +371,9 @@ around it, and comes back with its history.
   opens on where you are, the focused tile's item. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
   finds the terminal running it.
-- **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
-  while leave nothing: nothing in a workspace is tidied away; an
-  unnamed one emptied by hand leaves spaces. Name one (⇧⌘R, or double-click it in the sidebar)
-  and it's kept as it is until you change it. Named workspaces wear a
-  bookmark in the sidebar.
+- **Naming** a workspace (⇧⌘R, or double-click it in the sidebar)
+  calls it that in place of what it holds; it keeps nothing more than
+  any workspace does. Named workspaces wear a bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
   shell for eight hours (Settings ▸ Terminals) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
@@ -893,10 +886,11 @@ around it, and comes back with its history.
   at the top of its workspace in the sidebar, above a hairline, in the
   order pinned — and stays there with its tile closed, dimmed, to click
   for the tile back in that workspace. A pin is an edge from the
-  workspace to the block, a strong one: the workspace keeps the block,
-  and a workspace with anything pinned is kept itself — a root, as a
-  named one is; it doesn't drift out of spaces, nor go when its last
-  tile closes. Unpin from the same menus.
+  workspace to the block, a strong one: the workspace keeps the block —
+  a pin is how a block stays without a tile. Unpin from the same menus.
+  (What Manifold kept before, by a Keep, a name or a pin outside the
+  workspaces, is brought into them once: a kept block nothing else
+  reaches is pinned in a workspace named Kept.)
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
   finder row chosen with ⏎: plain **goes to** it

@@ -151,7 +151,7 @@ public enum Mani {
                  """, inApp: true),
         Verb(words: ["close"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Take a tile off its workspace (as ⌘W)",
-             details: "The tile goes, as ⌘W takes it; the block is kept, and comes back from the sidebar or ⌘O.", inApp: true),
+             details: "The tile goes, as ⌘W takes it. A block nothing else keeps (no other tile, pin or link by hand) is collected after half an hour; until then ⌘O or Recently Closed brings it back.", inApp: true),
         Verb(words: ["run"], args: "<terminal> <command ...>", minArgs: 2, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to end: print its output, exit with its status"),
                      Flag(name: "timeout", value: "seconds", help: "with --wait, give up after this long (status 124)")],

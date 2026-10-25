@@ -269,9 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
-        item(file, "Keep and Close", #selector(MainWindowController.keepAndClose(_:)), "w", [.command, .shift])
-        item(file, "Keep or Let Go", #selector(MainWindowController.togglePin(_:)), "")
-        item(file, "Take Workspace Out of Spaces", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
+        item(file, "Remove Workspace", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")

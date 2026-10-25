@@ -902,13 +902,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.show(text, action: action, for: 12, act)
     }
 
-    /// Pin or Unpin: the focused block made a root of its own (§4), kept
-    /// whatever refers to it.
-    @objc func togglePin(_ sender: Any?) {
-        guard let b = focusedShown?.block else { return NSSound.beep() }
-        hosts.pin(b.id, !b.isPinned)
-    }
-
     // MARK: Status (§3.7)
 
     /// The last done or failed record attended to: which block, and the
@@ -1036,41 +1029,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A terminal's shell ended (not for dormancy): its placements go, as a
     /// closed window's would; the block stays, with its transcript.
 
-    /// ⇧⌘W: the focused block kept and closed (§4) — a root of its own,
-    /// off every workspace, under Kept in the sidebar until recalled.
-    @objc func keepAndClose(_ sender: Any?) {
-        guard let b = focusedShown?.block else { return NSSound.beep() }
-        hosts.pin(b.id, true)
-        withdraw(b.id)
-    }
-
-    /// The menu's verbs for a block's keeping: kept, or let go; kept and
-    /// closed.
-    private func keepingItems(for b: Block) -> [NSMenuItem] {
-        var items = [ClosureMenuItem(b.isPinned ? "Let Go" : "Keep", symbol: b.isPinned ? "pin.slash" : "pin") { [weak self] in
-            self?.hosts.pin(b.id, !b.isPinned)
-        }]
-        if !b.isPinned {
-            items.append(ClosureMenuItem("Keep and Close", symbol: "pin", key: "W") { [weak self] in
-                self?.hosts.pin(b.id, true)
-                self?.withdraw(b.id)
-            })
-        }
-        return items
-    }
-
     private func terminalEnded(_ block: BlockID) { withdraw(block) }
 
-    /// A block's tiles taken off every workspace (its shell ended, or it
-    /// was kept and closed); an unnamed workspace left empty goes too.
+    /// A block's tiles taken off every workspace (its shell ended); the
+    /// workspaces stay, emptied or not, until they're removed (§4).
     private func withdraw(_ block: BlockID) {
         for id in allWorkspaces {
             guard let a = hosts.arrangement(id) else { continue }
             for p in a.placements(of: block) { hosts.append(.remove(p.id), to: .block(id)) }
-        }
-        if let a = arrangement, a.isEmpty, let id = selected, !a.isNamed {
-            hosts.client(of: id)?.removeWorkspace(id)
-            hosts.select(allWorkspaces.first { $0 != id })
         }
     }
 
@@ -2062,7 +2028,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
-        if isLeftEmpty(id), !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
 
@@ -2119,13 +2084,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
         }
-        if isLeftEmpty(id), !a.isNamed {
-            removeFromDesk(id)
-        }
         afterClosing(reachedBefore: before)
     }
 
-    /// ⇧⌘W: the arrangement leaves the desk.
+    /// ⌥⇧⌘W: the workspace removed — the only way one goes (§4); what only
+    /// it kept is collected after the grace, reopened meanwhile by ⇧⌘T.
     @objc func closeTab(_ sender: Any?) {
         guard let id = selected else { return }
         let before = hosts.reachable()
@@ -2801,8 +2764,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let unread = (g[.done] ?? []).filter { $0.1?.read != true }.count + (g[.failed] ?? []).filter { $0.1?.read != true }.count
             self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
             let reachable = self.hosts.reachable()
-            self.sidebar.setFoot(kept: self.hosts.all.reduce(0) { $0 + self.keptItems(on: $1).count },
-                                 closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
+            self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
@@ -3046,7 +3008,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .desk: return deskTree(filter)
         case .files: return filesTree(filter)
         case .inbox: return inboxTree(filter)
-        case .kept: return keptTree(filter)
         case .closed: return closedTree(filter)
         case .search: return searchTree(filter)
         }
@@ -3181,17 +3142,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         warpPointerToFocus()
     }
 
-    /// What's kept off the desk on a host (§4): named workspaces, and
-    /// kept blocks on no workspace of the desk — the last seen first.
-    private func keptItems(on c: HostClient) -> [Block] {
-        let onDesk = Set(c.desk.order)
-        let onDeskBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
-        let far = Stamp(wall: 0, logical: 0, host: c.host)
-        return c.node.blocks.filter { b in
-            b.id.host == c.host && (b.kind == .arrangement ? !onDesk.contains(b.id) && b.arrangement?.isNamed == true : b.isPinned && !onDeskBlocks.contains(b.id))
-        }.sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
-    }
-
     /// What's closed and not yet collected on a host (§4): what exists
     /// and nothing reaches — the last seen first.
     private func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
@@ -3219,21 +3169,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return n
         }
         return (roots, open)
-    }
-
-    /// Kept (§4), the list: named workspaces off the desk and kept blocks
-    /// off it, each with a pin, each brought back by a click.
-    private func keptTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        hostedRows({ c in
-            keptItems(on: c).filter { matches(filter, [$0.kind == .arrangement ? title(of: $0.arrangement!) : $0.displayTitle, $0.path]) }.map { b -> OrgNode in
-                let n = b.kind == .arrangement
-                    ? OrgNode(id: "kept/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: "rectangle.3.group", count: b.arrangement!.placements.count)
-                    : node(for: b, id: "kept/\(b.id)", detail: b.place?.abbreviatingHome ?? "")
-                n.detailSymbol = "pin"
-                n.trailing = c.node.graph.seen(b.id).map(Age.short)
-                return n
-            }
-        }, prefix: "kept")
     }
 
     /// Recently Closed (§4), the list: what exists and nothing reaches,
@@ -4150,8 +4085,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if !reachable.contains(block.id) {
                 note = "recent"
                 distance = 100
-            } else if block.isPinned, note.isEmpty {
-                note = "kept"
             } else if block.kind == .arrangement {
                 if allWorkspaces.contains(block.id) { distance = min(distance, 2) }
             } else if here.contains(block.id) {
@@ -4322,11 +4255,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func isPinned(_ block: BlockID, in workspace: BlockID) -> Bool { pins(of: workspace).contains { $0.to == block } }
-
-    /// A workspace with no tiles and nothing pinned: an unnamed one goes.
-    func isLeftEmpty(_ workspace: BlockID) -> Bool {
-        hosts.arrangement(workspace)?.isEmpty == true && pins(of: workspace).isEmpty
-    }
 
     /// Pinned in a workspace, or let go of there.
     func setPinned(_ block: BlockID, in workspace: BlockID, _ on: Bool) {
@@ -5467,12 +5395,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
-    /// Names an arrangement, which keeps it (§3.3).
+    /// Names an arrangement (§3.3): what it's called, in place of what it holds.
     private func rename(_ id: BlockID) {
         guard let window, let a = hosts.arrangement(id) else { return }
         let alert = NSAlert()
         alert.messageText = "Name This Workspace"
-        alert.informativeText = "A named workspace is kept in spaces until you take it out; an unnamed one leaves when it empties."
+        alert.informativeText = "Called this in place of what it holds (its blocks' folder). Empty, it's named for that again."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.stringValue = a.title ?? ""
         field.placeholderString = title(of: a)
@@ -5936,7 +5864,6 @@ extension MainWindowController: GridDelegate {
         var events: [Event] = a.full == placement ? [.full(nil)] : []
         events += stack.map { .remove($0.id) }
         appendToSelected(events)
-        if isLeftEmpty(id), !a.isNamed { removeFromDesk(id) }
         afterClosing(reachedBefore: before)
     }
 
@@ -6171,10 +6098,6 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem("Changes Since It Started", symbol: "plusminus") { [weak self] in
                 self?.showAgentChanges(block, snap, beside: placement)
             })
-        }
-        if let b = hosts.block(block) {
-            menu.addItem(.separator())
-            for item in keepingItems(for: b) { menu.addItem(item) }
         }
         let agents = NSMenu()
         for item in agentMenuItems() { agents.addItem(item) }
@@ -7808,7 +7731,7 @@ extension MainWindowController: OrganizationViewDelegate {
         if let arr = node.arrangement, node.column == nil {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Take Out of Spaces", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
+            menu.addItem(ClosureMenuItem("Remove Workspace", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             menu.addItem(.separator())
             menu.addItem(hostSubmenu(arr.host))
             return menu
@@ -7840,10 +7763,6 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, modifiers: []) })
             menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.2x1") { [weak self] in self?.organizationOpen(node, modifiers: [.command]) })
             menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.organizationOpen(node, modifiers: [.option]) })
-            if let b = hosts.block(id), b.kind != .arrangement {
-                menu.addItem(.separator())
-                for item in keepingItems(for: b) { menu.addItem(item) }
-            }
             menu.addItem(.separator())
         }
         menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
@@ -7919,11 +7838,6 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
         let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
-        if let node, node.id.hasPrefix("kept:") {
-            // Onto Kept: kept (§4), and left where it is.
-            hosts.pin(block, true)
-            return true
-        }
         if let node, let arr = node.arrangement {
             // Onto a column: shown there; onto an arrangement: in its
             // focused column. Moved from where it was, or with ⌥ copied —
