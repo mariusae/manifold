@@ -241,7 +241,7 @@ public enum AgentSkill {
 
     static let piExtensionTemplate = """
         // Manifold's hooks for pi: a Manifold terminal shows pi's status and
-        // each of its turns on its scrubber and outline. Put here by
+        // each of its turns in its outline. Put here by
         // `mani skill install`; `mani skill uninstall` takes it out.
         import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 

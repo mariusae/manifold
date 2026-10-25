@@ -697,9 +697,6 @@ enum DebugControl {
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
             if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }
             return "usage: org rows | org click <row> [cmd|double] | org expand <row> | org hover <row> | org menu <row> [title]"
-        case "run":
-            // "run <title prefix>": a palette item, by its title.
-            return wc?.debugRunPaletteItem(arg) ?? "no window"
         case "sv":
             // "sv list|overview|leave": the state view's mode, or leaving it.
             guard let wc else { return "no window" }

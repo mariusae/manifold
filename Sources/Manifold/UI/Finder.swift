@@ -315,7 +315,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = UIType.display
-        field.placeholderString = "Find anything…"
+        field.placeholderString = "Open quickly…"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
         field.cell?.lineBreakMode = .byTruncatingTail

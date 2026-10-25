@@ -85,7 +85,7 @@ final class SidebarView: NSView {
         card.addSubview(header)
         pinButton.target = self
         pinButton.action = #selector(togglePinned)
-        pinButton.toolTip = "Show Sidebar (⌃⌘S)"
+        pinButton.toolTip = "Keep Sidebar Shown (⌃⌘S)"
         card.addSubview(pinButton)
         newButton.target = self
         newButton.action = #selector(newClicked)
@@ -108,7 +108,7 @@ final class SidebarView: NSView {
         byButton.action = #selector(toggleBy)
         inboxButton.target = self
         inboxButton.action = #selector(inboxClicked)
-        inboxButton.toolTip = "Inbox (⌥⌘6)"
+        inboxButton.toolTip = "Inbox (⌥⌘3)"
         counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
         for v in [byButton, inboxButton, counts, closedRow, transfers] { card.addSubview(v) }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
@@ -176,7 +176,7 @@ final class SidebarView: NSView {
         // other a click away); the inbox its own.
         let by: Organization = org == .files ? .files : .desk
         byButton.image = Theme.symbol(by.symbol, size: 13, weight: .medium)
-        byButton.toolTip = org == .files ? "By Space (⌥⌘1)" : "By File (⌥⌘2)"
+        byButton.toolTip = org == .files ? "Spaces (⌥⌘1)" : "Files (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
         closedRow.current = org == .closed
@@ -231,7 +231,7 @@ final class SidebarView: NSView {
             card.themed { [weak self] v in self?.applyCard(v) }
         }
         pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
-        pinButton.toolTip = pinned ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
+        pinButton.toolTip = pinned ? "Let Sidebar Slide Out (⌃⌘S)" : "Keep Sidebar Shown (⌃⌘S)"
     }
 
     @objc private func togglePinned() { delegate?.sidebarTogglePinned() }
@@ -423,7 +423,7 @@ final class StatusCountsView: NSView {
             l.textColor = Theme.secondaryText
             addSubview(l)
         }
-        toolTip = "Status (⌥⌘5)"
+        toolTip = "Inbox (⌥⌘3)"
     }
 
     required init?(coder: NSCoder) { fatalError() }

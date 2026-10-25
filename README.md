@@ -146,12 +146,12 @@ parts from the Mac's conventions on purpose.
   It carries the block too, linking it to where it lands (below);
   ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
   note) is linked to it, nothing typed or put in.
-  Stash Tile (⌘M, or Stash in a bar's menu) puts the
+  Stash (⌘M, or Stash in a bar's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
   height stashes it, in the direction it was pushed (pushed up, behind
   the tile above it; pushed down, behind the tile below it), and goes
-  on against the next, until all above or below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
+  on against the next, until all above or below are put away. Maximize (⇧⌘↩, or the ⤢ at the right of a
   bar) puts a tile over the whole space until it is restored, or
   until you go to another tile. A bar's title is as wide as it needs
   and never more than half its tile, so what's under the band stays
@@ -256,8 +256,7 @@ parts from the Mac's conventions on purpose.
   name, to click and go to, and (under the pointer) an × that breaks
   the link, both ways at once. With more than one link, the first
   has sheets peeking out to its right, as a stack of cards, and the pointer
-  resting on it fans the rest out below, each a link the same. Links lists them under *links*
-  and *linked from*. A note made with a block focused (⇧⌘N) is linked
+  resting on it fans the rest out below, each a link the same. A note made with a block focused (⇧⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
   block also lands in the text, `[title](manifold:…)`, shown as a
@@ -303,7 +302,9 @@ parts from the Mac's conventions on purpose.
   that needs you stays until it's answered; with nothing in it, a beep.
 - **⌘W** closes the focused tile. **Spaces stay** until you remove
   one (**⌥⇧⌘W**, Space ▸ Remove Space, or its row's menu): named or
-  not, emptied or not, nothing removes one for you. A block is kept while
+  not, emptied or not, nothing removes one for you. With none at all,
+  the window says what a space is and offers New Terminal, Open
+  Folder… and Open Quickly. A block is kept while
   a space reaches it — shows it, pins it, or reaches it through a
   link by hand — and once none does it waits half an hour in
   **Recently Closed**, the list at the foot of the sidebar (and in
@@ -345,7 +346,7 @@ around it, and comes back with its history.
   linked to the focused block, then step by step outward — and the most
   recently seen; with nothing typed, that is the whole order.
   Each row says at the right where the block
-  is — here, linked, near, kept, or *recent* for one closed
+  is — here, linked, near, or *recent* for one closed
   and not yet collected, which choosing brings back — and, in a pill,
   how long since it was last seen (nothing, for just now). A block's row
   is its summary card — its title and where it is, two or three lines of
@@ -542,7 +543,7 @@ around it, and comes back with its history.
   ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
   shows them, dimmed. The **filter** at the top (⌘F) looks through the
   whole tree beneath as it's typed, less what's ignored, and lists the
-  files that match — their letters in order, as the picker matches —
+  files that match — their letters in order, as Open Quickly matches —
   best first, the letters matched in bold and the folder each is in
   beside it; ⏎ opens the best, ↓ goes to the list, ⎋ clears it. "?" and
   some words, then ⏎, searches inside the files instead, in a search
@@ -659,7 +660,7 @@ around it, and comes back with its history.
   file ⇧-dragged from a listing does; dragged plainly, an item carries
   what it does from the sidebar (a command's text, a diff's file). A **shell's commands** have a dot each too, beside the
   prompt (red for one that failed, the accent for one still running):
-  rest the pointer on a dot for **Copy Command and Output** and **Show as
+  rest the pointer on a dot for **Copy Command and Output** and **Open as
   Block**.
 - **A tile's own sidebar**: the same outline — a terminal's commands (an
   agent's turns), each with how it ended and when, clicked, the terminal
@@ -766,7 +767,7 @@ around it, and comes back with its history.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
-- **Interactive Smartlog** (File ▸ Interactive Smartlog, ⌥⌘I): Sapling's
+- **Interactive Smartlog** (File ▸ Source Control, ⌥⌘I): Sapling's
   own smartlog for the repository the focused block is in — its commits
   and stacks, to commit, amend, rebase and split by hand — as a block of
   its own, beside, like any other: the host runs `sl web` (or finds the one
@@ -844,10 +845,10 @@ around it, and comes back with its history.
   link followed from a terminal, an output or a page), which are history
   and keep nothing; each says what made it ("followed", "subfolder",
   "chosen in ⌘O", "⇧-dragged in"), and the same link said twice in a
-  moment is made once. The tile's links badge shows the ones by hand,
+  moment is made once. The tile's links show the ones by hand,
   and a note's images (the note, on an image's), which go when the note
   stops showing them rather than by ×; **the Neighborhood Map**
-  (Tile ▸ Show the Neighborhood Map, ⌥⌘M, or the badge's or a row's
+  (Tile ▸ Show the Neighborhood Map, ⌥⌘M, or a link's or a row's
   menu) draws a block's surroundings in graph form, two steps out —
   what it's joined to on a ring around it, what those are joined to
   beyond, with what made each link shown when a block is pointed at,
@@ -1029,8 +1030,8 @@ is filled in it. A choice of a few (Open Quickly's scopes, the state view's
 modes) is a row of words or symbols, the chosen one on a band of the
 accent. Every list's chosen row is a thin band of the accent, a faint
 grey one under the pointer.
-Panels floating over the window (the palette, cards, toasts, history, the
-sidebar unpinned) are rounded alike with one soft shadow; Open Quickly
+Panels floating over the window (hover cards, toasts, history, the
+sidebar sliding out) are rounded alike with one soft shadow; Open Quickly
 is plain, not glass. The sizes, radii, shadows and motion are a few
 named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
@@ -1060,7 +1061,7 @@ its own append-only log, kept in `~/Library/Application Support/Manifold/
 logs` with snapshots beside, plus a registry of the host's blocks (kind,
 title, last seen, held or dormant), their links, and its spaces (which there are, in order). The app
 mirrors the host's shards and **leads** the ones it edits — spaces,
-text, the spaces — appending entries locally first, so nothing waits on a
+text, web pages — appending entries locally first, so nothing waits on a
 round trip; the host leads terminals and folders and does the file system
 work (reading, writing, watching) on proposal. Both apply the same entries
 with the same code, so they agree. State from before blocks (`state.json`)
@@ -1186,7 +1187,7 @@ is migrated into logs on first run.
     `@right:diff`, `@:pdf` (the one PDF shown). A name that could be
     more than one is an error that lists them, ids and all.
   - **Looking.** `mani ls` lists the space's tiles (`--all`, every
-    space); `--json` gives the whole layout — columns of tiles, each
+    space, and the blocks pinned in each); `--json` gives the whole layout — columns of tiles, each
     with its block, kind, title, path, frame (x, y, width, height as
     shares of the window), the tiles sharing each of its edges, the
     names it answers to, the tiles stacked under it, and its summary
@@ -1293,8 +1294,8 @@ is migrated into logs on first run.
   `MANIFOLD_NO_OCCLUSION` has its terminals and status glyphs drawn and
   turning when its window is behind others. Its `busy start` / `busy stop`
   time every turn of the main thread in between — the hitches a person
-  would feel — and `picker bench`, `layouts` and `spinners` look at the
-  finder's ranking, the grid's layouts and the backdrop's drawings, and
+  would feel — and `picker bench`, `layouts` and `spinners` look at
+  Open Quickly's ranking, the grid's layouts and the backdrop's drawings, and
   the turning glyphs.
 - **Secure Keyboard Entry** keeps what you type from other apps (as
   Terminal's does): on by hand in the Manifold menu, and on by itself

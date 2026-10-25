@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// The window: the selected arrangement filling it, the sidebar (the desk)
 /// floating over its left edge when the mouse goes there (or docked, when
-/// pinned), the palette, and the finder.
+/// pinned), and Open Quickly.
 final class MainWindowController: NSWindowController, NSWindowDelegate {
     let hosts: Hosts
     /// This machine's host: the desk and settings are its.
@@ -58,7 +58,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌃⇥'s switcher, while control is held: what ends it.
     private var stackMonitors: [Any] = []
     private let sidebar = SidebarView()
-    private var palette: CommandPaletteView?
+    /// What the window shows with no space at all.
+    private var emptyState: EmptyStateView?
     /// Each placement's view, for every arrangement on the desk.
     var views: [PlacementID: PaneContent] = [:]
     /// `mani`'s commands, done here.
@@ -366,7 +367,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // the view it was in went, as a closed editor's does).
             let responder = window.firstResponder as? NSView
             // Nor while a pill is a field (a note being named, an address typed).
-            if palette == nil, stateView == nil, history == nil, neighborhoodView == nil, !content.isEditingPill,
+            if emptyState == nil, stateView == nil, history == nil, neighborhoodView == nil, !content.isEditingPill,
                let focused = a.focused, let view = views[focused], view.superview != nil,
                !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
@@ -442,10 +443,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         if allWorkspaces.isEmpty && host.hasState {
-            showPalette(dismissable: false)
-        } else if let palette, !palette.dismissable {
-            palette.dismissable = true
-            hidePalette()
+            if emptyState == nil {
+                let v = EmptyStateView(target: self)
+                v.frame = stage.frame
+                root.addSubview(v, positioned: .above, relativeTo: stage)
+                emptyState = v
+            }
+        } else if let v = emptyState {
+            v.removeFromSuperview()
+            emptyState = nil
         }
     }
 
@@ -735,7 +741,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// others' views (a web view, say) don't, so clicks are watched here.
     private func watchClicks() {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, event.window === self.window, self.palette == nil else { return event }
+            guard let self, event.window === self.window, self.emptyState == nil else { return event }
             // Not clicks on the sidebar, floating over the placements.
             if self.sidebarShown && self.sidebar.frame.contains(self.root.convert(event.locationInWindow, from: nil)) {
                 return event
@@ -772,7 +778,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.frame = stage.bounds
         stateView?.frame = stage.frame
         slidingAway?.frame = stage.bounds
-        palette?.frame = b
+        emptyState?.frame = stage.frame
         history?.frame = b
         if !transfersBadge.isHidden {
             let s = transfersBadge.wantedSize
@@ -1036,7 +1042,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private static let sidebarHideDelay: TimeInterval = 0.1
 
     private func mouseMoved(to p: NSPoint) {
-        guard !pinned, palette == nil || palette?.dismissable == true else { return }
+        guard !pinned else { return }
         if p.x <= 6 && p.y >= 0 && p.y <= root.bounds.height {
             hideWork?.cancel()
             showSidebar(animated: true)
@@ -1056,7 +1062,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if organizationStale { refreshOrganization(now: true) }
         sidebar.isHidden = false
         root.addSubview(sidebar, positioned: .above, relativeTo: stage)
-        if let palette { root.addSubview(palette, positioned: .above, relativeTo: sidebar) }
         let target = NSRect(x: Theme.sidebarInset, y: Theme.sidebarInset, width: sidebarWidth,
                             height: root.bounds.height - 2 * Theme.sidebarInset)
         if animated {
@@ -1159,7 +1164,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugFocusedPlacement: Shown? { focusedShown }
     var debugOrganization: OrganizationView { sidebar.organizationView }
-    /// Runs the first palette item whose title starts with `prefix`.
     /// Debugging: the focused tile's pill menu, or the item so titled chosen.
     func debugPillMenu(_ title: String) -> String {
         guard let f = focusedShown, let menu = gridPillMenu(for: f.id) else { return "no menu" }
@@ -1288,11 +1292,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "ok"
     }
 
-    func debugRunPaletteItem(_ prefix: String) -> String {
-        guard let item = paletteItems().first(where: { $0.title.hasPrefix(prefix) }) else { return "no item" }
-        item.run()
-        return "ran \(item.title)"
-    }
     /// A pointer move, handed to the surface as its tracking area would.
     /// A synthesized move: to the grid (its stacks), and to whatever view
     /// is under the point that takes moves of its own (a scrubber, a
@@ -1524,171 +1523,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         out += "desk: " + allWorkspaces.map { hosts.arrangement($0).map { title(of: $0) } ?? "?" }.joined(separator: ", ")
         return out
-    }
-
-    // MARK: Palette
-
-    private func showPalette(dismissable: Bool = true) {
-        if let palette {
-            palette.dismissable = palette.dismissable && dismissable
-            return
-        }
-        let p = CommandPaletteView(frame: root.bounds)
-        p.dismissable = dismissable
-        p.onDismiss = { [weak self] in self?.hidePalette() }
-        root.addSubview(p, positioned: .above, relativeTo: nil)
-        palette = p
-        p.present(items: paletteItems(), in: window)
-    }
-
-    private func hidePalette() {
-        guard let palette, palette.dismissable else { return }
-        palette.removeFromSuperview()
-        self.palette = nil
-        render()
-    }
-
-    private func paletteItems() -> [PaletteItem] {
-        var items: [PaletteItem] = []
-        if arrangement != nil {
-            items.append(PaletteItem(symbol: "rectangle.split.2x1", title: "New Terminal Beside", subtitle: "⌘N") { [weak self] in
-                self?.newTerminalBeside(nil)
-            })
-        }
-        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Space", subtitle: "⌥⌘T") { [weak self] in
-            self?.newTerminal(nil)
-        })
-        items.append(PaletteItem(symbol: "text.badge.plus", title: "New Note from Selection", subtitle: "") { [weak self] in self?.newNoteFromSelection(nil) })
-        items.append(PaletteItem(symbol: "doc.on.clipboard", title: "New Note from Clipboard", subtitle: "") { [weak self] in self?.newNoteFromClipboard(nil) })
-        items.append(PaletteItem(symbol: "note.text", title: "New Note", subtitle: "⇧⌘N") { [weak self] in
-            self?.newNote(nil)
-        })
-        items.append(PaletteItem(symbol: "text.and.command.macwindow", title: "New Shell Notebook", subtitle: "⌃⇧⌘N") { [weak self] in
-            self?.newShellNotebook(nil)
-        })
-        if let f = focusedShown, f.block?.isNote == true {
-            items.append(PaletteItem(symbol: "pencil", title: "Name This Note…", subtitle: "Action") { [weak self] in
-                self?.nameNote(f.id)
-            })
-        }
-        if arrangement != nil {
-            items.append(PaletteItem(symbol: "pencil", title: "Name This Space…", subtitle: "⇧⌘R") { [weak self] in
-                self?.renameTab(nil)
-            })
-        }
-        items.append(PaletteItem(symbol: "magnifyingglass", title: "Open Quickly…", subtitle: "⌘O") { [weak self] in
-            self?.openDocument(nil)
-        })
-        items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: host.host))…", subtitle: "shell, language servers") { [weak self] in
-            guard let self else { return }
-            self.editPreferences(self.host.host)
-        })
-        for client in hosts.all where client.isRemote {
-            let h = client.host
-            let state = client.isConnected ? "connected" : "offline"
-            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Space", subtitle: state) { [weak self] in
-                // The workspace lives on that host, as its terminal does.
-                self?.newWorkspace(on: h, cwd: nil)
-            })
-            if client.link == .connected {
-                items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: h))…", subtitle: "shell, language servers") { [weak self] in
-                    self?.editPreferences(h)
-                })
-            }
-            if client.isRemote {
-                items.append(PaletteItem(symbol: "arrow.triangle.2.circlepath", title: "Reset Server on \(hosts.label(of: h))…", subtitle: "reinstall, restart") { [weak self] in
-                    self?.resetServer(h)
-                })
-            }
-            items.append(PaletteItem(symbol: "server.rack", title: "Detach from \(hosts.label(of: h))…", subtitle: state) { [weak self] in
-                self?.detach(h)
-            })
-        }
-        for (dest, error) in hosts.errors {
-            items.append(PaletteItem(symbol: "exclamationmark.triangle", title: "\(dest): \(error)", subtitle: "Attach failed") { [weak self] in
-                self?.attachToHost(nil)
-            })
-        }
-        items.append(PaletteItem(symbol: "server.rack", title: "Attach to Host…", subtitle: "ssh user@host, or provider:name") { [weak self] in
-            self?.attachToHost(nil)
-        })
-        items.append(PaletteItem(symbol: "magnifyingglass", title: "Find in Files…", subtitle: "⇧⌘F") { [weak self] in
-            self?.findInFiles(nil)
-        })
-        if let f = focusedShown, f.kind == .text {
-            items.append(PaletteItem(symbol: "clock.arrow.circlepath", title: "History of This File…", subtitle: "⌥⌘Y") { [weak self] in
-                self?.showFileHistory(nil)
-            })
-        }
-        items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Show the Neighborhood Map", subtitle: "⌥⌘M") { [weak self] in
-            self?.showNeighborhood(nil)
-        })
-        items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
-            self?.newAgent(nil)
-        })
-        for a in AgentCatalog.agents(among: hosts.client(focusedHost)?.desk.agents ?? []) {
-            items.append(PaletteItem(symbol: "sparkles", title: "Launch \(a.name) Here", subtitle: a.command) { [weak self] in
-                self?.launchAgent(a.command)
-            })
-        }
-        items.append(PaletteItem(symbol: "cpu", title: "Processes on \(hosts.label(of: focusedHost))", subtitle: "Action") { [weak self] in
-            self?.showProcesses(nil)
-        })
-        items.append(PaletteItem(symbol: "arrow.triangle.branch", title: "Source Control for This Project", subtitle: "⌥⌘G") { [weak self] in
-            self?.showGit(nil)
-        })
-        if let f = focusedShown, f.lens == .editor || f.lens == .preview, f.path != nil {
-            items.append(PaletteItem(symbol: "arrow.left.arrow.right", title: "Compare with Last Commit", subtitle: "⌥⇧⌘D") { [weak self] in
-                self?.compareWithHead(nil)
-            })
-        }
-        items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
-            guard let self else { return }
-            self.newWebPage(nil)
-        })
-        // The text shown, the other way: edit what's viewed, view what's edited.
-        if let f = focusedShown, f.lens.isText, f.block?.kind == .text, let a = arrangement, let column = a.columnIndex(of: f.id) {
-            let viewing = f.lens == .preview
-            items.append(PaletteItem(symbol: viewing ? "pencil.line" : "eye", title: viewing ? "Edit This" : "View This", subtitle: "⌘↩") { [weak self] in
-                self?.toggleEditPreview(nil)
-            })
-            items.append(PaletteItem(symbol: viewing ? "pencil.line" : "eye", title: viewing ? "Edit This Beside" : "View This Beside", subtitle: "⌥⇧⌘P") { [weak self] in
-                self?.editPreviewBeside(nil)
-            })
-            _ = column
-            if let dir = f.block?.place {
-                items.append(PaletteItem(symbol: "folder", title: "Show Enclosing Folder", subtitle: dir.abbreviatingHome) { [weak self] in
-                    self?.openDirectory(dir, from: f.id, as: .beside)
-                })
-            }
-        }
-        if let f = focusedShown, f.lens == .terminal, let cwd = f.block?.terminal?.cwd {
-            items.append(PaletteItem(symbol: "folder", title: "Show This Folder", subtitle: cwd.abbreviatingHome) { [weak self] in
-                self?.openDirectory(cwd, from: f.id, as: .beside)
-            })
-        }
-        // What's linked to the focused block, both ways (§6.2).
-        if let f = focusedShown {
-            let links = hosts.links
-            var related: [(BlockID, String)] = []
-            for l in links where l.to == f.placement.block && related.count < 6 { related.append((l.from, "opened this")) }
-            for l in links where l.from == f.placement.block && related.count < 12 { related.append((l.to, "opened from this")) }
-            for (id, how) in related {
-                guard let b = hosts.block(id) else { continue }
-                items.append(PaletteItem(symbol: Theme.symbolName(for: b), title: b.displayTitle,
-                                         subtitle: "Related · \(how)") { [weak self] in self?.recall(id) })
-            }
-        }
-        for id in allWorkspaces {
-            guard let a = hosts.arrangement(id) else { continue }
-            let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
-            let place = focused?.place.map { $0.abbreviatingHome } ?? ""
-            items.append(PaletteItem(symbol: a.columns.count > 1 ? "rectangle.split.2x1" : (focused.map { Theme.symbolName(for: $0) } ?? "rectangle.3.group"),
-                                     title: title(of: a), subtitle: a.isNamed ? "Named · \(place)" : place) { [weak self] in
-                self?.hosts.select(id)
-            })
-        }
-        return items
     }
 
     // MARK: Commands
@@ -2046,7 +1880,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the action comes here by way of the main window.
     @objc func closePaneOrTab(_ sender: Any?) {
         if let key = NSApp.keyWindow, key !== window, key.styleMask.contains(.closable) { return key.performClose(sender) }
-        if palette != nil, palette?.dismissable == true { return hidePalette() }
         guard let a = arrangement, let id = selected else { return }
         let before = hosts.reachable()
         if let f = a.focused {
@@ -6241,43 +6074,6 @@ extension MainWindowController: GridDelegate {
     func openLink(_ address: String) {
         guard BlockID.link(address) != nil else { return NSSound.beep() }
         open(address, from: arrangement?.focused)
-    }
-
-    /// A block's neighborhood (§3.5), each edge kind and direction that
-    /// has anything as a bunch of cards: what Links shows.
-    func footBunches(of block: BlockID) -> [FootBunch] {
-        let n = hosts.neighborhood(of: block)
-        var bunches: [FootBunch] = []
-        func card(_ id: BlockID, detail: String, at: Stamp?) -> FootCard? {
-            guard let b = hosts.block(id) else { return nil }
-            return FootCard(block: id, title: b.displayTitle, symbol: Theme.symbolName(for: b), detail: detail, at: at)
-        }
-        func bunch(_ role: FootBunch.Role, _ title: String, _ symbol: String, _ edges: [Edge], toward: KeyPath<Edge, BlockID>, fallback: String) {
-            var seen: Set<BlockID> = []
-            let cards = edges.compactMap { e -> FootCard? in
-                let other = e[keyPath: toward]
-                guard seen.insert(other).inserted else { return nil }
-                return card(other, detail: e.context ?? fallback, at: e.at)
-            }
-            if !cards.isEmpty { bunches.append(FootBunch(role: role, title: title, symbol: symbol, cards: cards)) }
-        }
-        bunch(.openedFrom, "opened from", "arrow.turn.up.left", n.inbound[.link(.opened)] ?? [], toward: \.from, fallback: "opened here")
-        bunch(.openedHere, "opened here", "arrow.turn.down.right", n.outbound[.link(.opened)] ?? [], toward: \.to, fallback: "opened from here")
-        bunch(.linked, "links", "arrow.right", n.outbound[.link(.linked)] ?? [], toward: \.to, fallback: "linked by hand")
-        bunch(.linked, "linked from", "arrow.left", n.inbound[.link(.linked)] ?? [], toward: \.from, fallback: "linked by hand")
-        // Other arrangements holding the block: not the one it's shown in.
-        let elsewhere = (n.inbound[.placed] ?? []).filter { $0.from != selected }
-        bunch(.placedIn, "also in", "rectangle.3.group", elsewhere, toward: \.from, fallback: "placed there")
-        if hosts.block(block)?.kind == .arrangement {
-            bunch(.placedIn, "holds", "square.stack", n.outbound[.placed] ?? [], toward: \.to, fallback: "placed here")
-        }
-        func trail(_ role: FootBunch.Role, _ title: String, _ symbol: String, _ neighbors: [TrailNeighbor]) {
-            let cards = neighbors.compactMap { t in card(t.block, detail: t.count == 1 ? "once" : "\(t.count) times", at: t.last) }
-            if !cards.isEmpty { bunches.append(FootBunch(role: role, title: title, symbol: symbol, cards: Array(cards.prefix(8)))) }
-        }
-        trail(.before, "before", "arrow.left", n.before.filter { $0.block != block })
-        trail(.after, "after", "arrow.right", n.after.filter { $0.block != block })
-        return bunches
     }
 
     /// Moves a placement into a new column at `index`.

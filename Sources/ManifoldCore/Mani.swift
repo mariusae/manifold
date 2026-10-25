@@ -169,9 +169,9 @@ public enum Mani {
         Verb(words: ["link"], args: "<from> <to>", minArgs: 2, maxArgs: 2,
              flags: [Flag(name: "note", value: "text", help: "what the link is for")],
              summary: "Link one block to another",
-             details: "A link by hand, as a drop on a block makes: on both blocks' badges, followed from either.", inApp: true),
+             details: "A link by hand, as a ⇧-drag onto a tile makes: among both tiles' links, followed from either.", inApp: true),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
-             summary: "Give a block a title", details: "Its title, as the tile's menu's Rename sets it.", inApp: true),
+             summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", inApp: true),
         Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "only", value: "events", help: "these events, by kind, comma-separated")],
              summary: "Print what happens, a JSON line each",
@@ -243,8 +243,7 @@ public enum Mani {
              details: """
                  Hooks in the coding agents found here, or those named (of
                  \(AgentSkill.known.joined(separator: ", "))), so a Manifold terminal running one shows
-                 its status, and each of its turns on the scrubber and in the
-                 outline. The hooks run `mani agent`, and do nothing outside
+                 its status, and each of its turns in the tile's outline. The hooks run `mani agent`, and do nothing outside
                  Manifold's terminals. And the guide (`mani skill show`), so they
                  know mani: Claude Code's as a skill, Codex's from AGENTS.md.
                  Installing again replaces them.
