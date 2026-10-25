@@ -2037,13 +2037,18 @@ final class TextView: NSView, NSTextInputClient {
         insert("", typing: false)
     }
 
-    @objc func paste(_ sender: Any?) {
-        // An image (a screenshot copied, a picture from Preview): kept, and shown.
-        if isEditable, let onImage, NSPasteboard.general.string(forType: .string) == nil || NSPasteboard.general.types?.contains(.fileURL) == true {
-            let images = Self.images(on: NSPasteboard.general)
+    @objc func paste(_ sender: Any?) { paste(from: NSPasteboard.general) }
+
+    /// What a paste does with a pasteboard: an image kept as an image block
+    /// and shown (in Markdown), else its text in.
+    func paste(from pb: NSPasteboard) {
+        // An image (a screenshot copied, a picture from Preview, a browser's
+        // or a chat's Copy Image): kept, and shown.
+        if isEditable, let onImage, Self.prefersImage(pb) {
+            let images = Self.images(on: pb)
             if !images.isEmpty { images.forEach(onImage); return }
         }
-        guard isEditable, let s = NSPasteboard.general.string(forType: .string) else { return }
+        guard isEditable, let s = pb.string(forType: .string) else { return }
         // In Markdown, an address pasted over words links them: [words](address).
         if acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
             let address = s.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2072,6 +2077,21 @@ final class TextView: NSView, NSTextInputClient {
     @objc override func selectAll(_ sender: Any?) { setSelections([Selection(0, text.count)], scroll: false) }
 
     @objc func pasteAsPlainText(_ sender: Any?) { paste(sender) }
+
+    /// Whether a paste is of the image a pasteboard holds rather than its
+    /// text: there's no text, or files; or the text only says where the
+    /// image is from (its address, its file's name — as a browser's Copy
+    /// Image gives) or is listed after it (the source would rather the
+    /// image were taken).
+    static func prefersImage(_ pb: NSPasteboard) -> Bool {
+        let types = pb.types ?? []
+        let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")]
+        guard let image = types.firstIndex(where: imageTypes.contains) else { return types.contains(.fileURL) }
+        guard let s = pb.string(forType: .string), let text = types.firstIndex(of: .string) else { return true }
+        if types.contains(.fileURL) || isAddress(s) || image < text { return true }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !t.contains(where: \.isWhitespace) && BlockKind.forFile(t) == .image
+    }
 
     /// One address and nothing else: a web link, a file, or a block.
     static func isAddress(_ s: String) -> Bool {

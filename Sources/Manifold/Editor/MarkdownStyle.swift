@@ -48,7 +48,9 @@ enum MarkdownStyle {
     private static let italic = try! NSRegularExpression(pattern: #"(?<![\*\w])(\*|_)(?=\S)([^\*_]+?)(?<=\S)\1(?![\*\w])"#)
     private static let strike = try! NSRegularExpression(pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#)
     private static let code = try! NSRegularExpression(pattern: #"`([^`]+)`"#)
-    private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]+)(\]\()([^)\s]+)(\))"#)
+    /// A link: `[words](address)` — or, to a block, no words (an image's
+    /// `![](manifold:…)`), its pill naming it.
+    private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]*)(\]\()([^)\s]+)(\))"#)
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,6}) "#)
     private static let listItem = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|\d+[.)])(\s)"#)
     private static let quote = try! NSRegularExpression(pattern: #"^(>\s?)+"#)
@@ -122,6 +124,8 @@ enum MarkdownStyle {
         // its pill (on the caret's line, a chip of the words as written).
         for m in link.matches(in: a.string, range: all) where !inCode(m.range) {
             let words = m.range(at: 2), address = s.substring(with: m.range(at: 4))
+            // No words, and no block to name it: left as written.
+            if words.length == 0, !address.hasPrefix("manifold:") { continue }
             a.addAttribute(target, value: address, range: m.range)
             let rest = NSRange(location: m.range(at: 3).location, length: m.range(at: 3).length + m.range(at: 4).length + m.range(at: 5).length)
             if address.hasPrefix("manifold:"), let (id, place) = BlockID.link(address) {

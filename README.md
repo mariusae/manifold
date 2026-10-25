@@ -265,7 +265,9 @@ and Mona Sans (bundled).
   clicked to go to the block; the note then *mentions* it too. So a
   web of annotations grows: notes about blocks, blocks in notes,
   blocks linked to blocks.
-- **Images in notes**: paste one (a screenshot, a picture copied), drop
+- **Images in notes**: paste one (a screenshot, a picture copied — from
+  a browser or a chat too, whose Copy Image puts its address beside it:
+  the image is taken over text that only says where it's from), drop
   image files, or right-click ▸ Insert from iPhone or iPad (a photo, a
   scan, a sketch) in a note or a Markdown file, and it's kept as an
   image block on the text's host — beside a Markdown file, named so any

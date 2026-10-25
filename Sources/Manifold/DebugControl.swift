@@ -323,6 +323,22 @@ enum DebugControl {
             if arg == "up" { return wc?.debugPeekUp ?? "no window" }
             let button = arg.hasPrefix("button")
             return wc?.debugPeek(!arg.hasSuffix("off"), button: button) ?? "no window"
+        case "pasteimage":
+            // "pasteimage <image path> [text]": a paste into the focused
+            // editor of a pasteboard of our own (not the general one) holding
+            // the text first, if any — as a browser's Copy Image gives its
+            // address — then the image.
+            let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard let path = w.first, let image = NSImage(contentsOfFile: path), let tiff = image.tiffRepresentation else { return "usage: pasteimage <image path> [text]" }
+            guard let tv = wc?.window?.firstResponder as? TextView else { return "no editor focused" }
+            let pb = NSPasteboard(name: NSPasteboard.Name("manifold-debug-paste"))
+            pb.clearContents()
+            if w.count > 1 { pb.declareTypes([.string, .tiff], owner: nil); pb.setString(w[1], forType: .string) } else { pb.declareTypes([.tiff], owner: nil) }
+            pb.setData(tiff, forType: .tiff)
+            let preferred = TextView.prefersImage(pb)
+            tv.paste(from: pb)
+            pb.releaseGlobally()
+            return "pasted (image preferred: \(preferred))"
         case "quickwalk":
             // "quickwalk <steps> <hold seconds>": ⌃⇥ pressed (steps of it),
             // control let go after that long — under the wait, nothing shows.
