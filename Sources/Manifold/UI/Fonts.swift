@@ -262,6 +262,14 @@ struct FontFace: Equatable {
     /// the slanted face of the weight (or the bold one's). Nil if the
     /// family has none.
     static func emphasis(in family: String, from weight: Int, bold: Bool, italic: Bool) -> FontFace? {
+        // A role set in the family may name its bold face.
+        if bold {
+            let t = FontTheme.current.styles
+            if let named = [t.editing, t.reading, t.monospaced].first(where: { $0.family == family && !$0.boldFace.isEmpty })?.boldFace,
+               let face = all(of: family).first(where: { $0.italic == italic && ($0.name == named || $0.name == named + " Italic") }) {
+                return face
+            }
+        }
         let target = bold ? min(900, weight + boldStep) : weight
         let pool = all(of: family).filter { $0.italic == italic && (!bold || $0.weight > weight) }
         return pool.min { a, b in

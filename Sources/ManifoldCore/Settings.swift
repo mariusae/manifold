@@ -243,9 +243,13 @@ public struct TypeStyle: Codable, Equatable, Sendable {
     public var paragraphSpacing: Double
     /// For reading: headings' weight (the family's face nearest it).
     public var headingWeight: Int
+    /// The face bold is set in, by its name in the family ("Semibold"),
+    /// where the usual — the face some 300 heavier — is too heavy, or the
+    /// family's weights don't say (Ideal's run 275 to 400); "" for that.
+    public var boldFace: String
 
     public init(family: String, size: Double, weight: Int = 400, lineHeight: Double, tracking: Double = 0,
-                features: String = "", measure: Double = 0, paragraphSpacing: Double = 1, headingWeight: Int = 700) {
+                features: String = "", measure: Double = 0, paragraphSpacing: Double = 1, headingWeight: Int = 700, boldFace: String = "") {
         self.family = family
         self.size = size
         self.weight = weight
@@ -255,6 +259,7 @@ public struct TypeStyle: Codable, Equatable, Sendable {
         self.measure = measure
         self.paragraphSpacing = paragraphSpacing
         self.headingWeight = headingWeight
+        self.boldFace = boldFace
     }
 
     public init(from decoder: Decoder) throws {
@@ -268,6 +273,7 @@ public struct TypeStyle: Codable, Equatable, Sendable {
         measure = (try? c.decodeIfPresent(Double.self, forKey: .measure)) ?? 0
         paragraphSpacing = (try? c.decodeIfPresent(Double.self, forKey: .paragraphSpacing)) ?? 1
         headingWeight = (try? c.decodeIfPresent(Int.self, forKey: .headingWeight)) ?? 700
+        boldFace = (try? c.decodeIfPresent(String.self, forKey: .boldFace)) ?? ""
     }
 
     /// The features as tags and values: "-liga" is liga 0, "cv05=2" cv05 2,
@@ -307,7 +313,7 @@ public struct Typography: Codable, Equatable, Sendable {
     /// the family has none); Menlo for code. Lines: 1.45 to edit, 1.55 to read (a
     /// serif's longer lines and smaller eye want more), 1.3 for code.
     public static let humanist = Typography(
-        editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga"),
+        editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga", boldFace: "Semibold"),
         reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga", headingWeight: 600),
         monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"))
 

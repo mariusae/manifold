@@ -526,7 +526,9 @@ around it, and comes back with its history.
   longest line in a preview, in characters) and the space between
   paragraphs (and its headings' face). Bold and italic come from the family's own faces, by
   their weights: bold a face about three hundred heavier (Regular's
-  Bold), italic the slanted face of the weight, in editors, previews and
+  Bold) — or the face a role names (its **Bold** menu: Humanist's
+  editing role names Semibold, Ideal's Bold being heavy beside Book, and
+  its weights too close together to say so) — italic the slanted face of the weight, in editors, previews and
   terminals alike. Each role's size scales everything set in it, and all
   of it reaches everywhere the role is used: editors and notes (the
   editor's lines and letters too; a file viewed has lines of 1.4 at

@@ -980,7 +980,8 @@ enum DebugControl {
             item.representedObject = theme.rawValue
             wc?.setTheme(item)
             // The fonts it resolved to (a missing one falls back to the system's).
-            return "ok: editing " + theme.font(.proportional, size: 13).fontName + ", reading " + theme.readingFont(size: 13).fontName
+            return "ok: editing " + theme.font(.proportional, size: 13).fontName + " (bold " + theme.font(.proportional, size: 13).emphasized(bold: true).fontName
+                + "), reading " + theme.readingFont(size: 13).fontName
                 + ", monospaced " + theme.font(.monospaced, size: 13).fontName
         case "editorfont":
             guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }

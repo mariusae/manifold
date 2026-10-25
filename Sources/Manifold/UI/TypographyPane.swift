@@ -14,6 +14,7 @@ final class TypographyPane: SettingsPane {
     private let family = NSPopUpButton()
     private let face = NSPopUpButton()
     private let headings = NSPopUpButton()
+    private let bold = NSPopUpButton()
     private let size = NSTextField()
     private let sizeStepper = NSStepper()
     private let leading = NSSlider(value: 1.4, minValue: 0.9, maxValue: 2.4, target: nil, action: nil)
@@ -103,6 +104,10 @@ final class TypographyPane: SettingsPane {
         headings.action = #selector(pickHeadings)
         headings.widthAnchor.constraint(equalToConstant: 160).isActive = true
         row("Headings", headings, note: "Reading only: the face headings are set in.")
+        bold.target = self
+        bold.action = #selector(pickBold)
+        bold.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        row("Bold", bold, note: "The face bold is set in: by default, the one some 300 heavier.")
         gap()
         sample.isSelectable = false
         sample.preferredMaxLayoutWidth = 356
@@ -167,6 +172,7 @@ final class TypographyPane: SettingsPane {
         measureValue.stringValue = style.measure < 20 ? "the page's" : "\(Int(style.measure)) ch"
         fillHeadings()
         headings.isEnabled = reading
+        fillBold()
         gapSlider.doubleValue = style.paragraphSpacing
         gapValue.stringValue = String(format: "%.2f em", style.paragraphSpacing)
         showSample()
@@ -327,6 +333,25 @@ final class TypographyPane: SettingsPane {
         if let i = faces.firstIndex(where: { $0.weight == chosen }) ?? faces.indices.min(by: { abs(faces[$0].weight - chosen) < abs(faces[$1].weight - chosen) }) {
             headings.selectItem(at: i)
         }
+    }
+
+    /// The faces bold can be set in: by default, or one heavier than the text's.
+    private func fillBold() {
+        bold.removeAllItems()
+        bold.addItem(withTitle: "Automatic")
+        bold.lastItem?.representedObject = ""
+        let faces = FontFace.faces(of: style.family, role: role).filter { $0.weight > style.weight && !$0.postScript.isEmpty }
+        for f in faces {
+            bold.addItem(withTitle: f.name)
+            bold.lastItem?.representedObject = f.name
+        }
+        bold.selectItem(at: max(0, bold.itemArray.firstIndex { ($0.representedObject as? String) == style.boldFace } ?? 0))
+        bold.isEnabled = !faces.isEmpty
+    }
+
+    @objc private func pickBold() {
+        style.boldFace = bold.selectedItem?.representedObject as? String ?? ""
+        changed(now: true)
     }
 
     @objc private func pickHeadings() {
