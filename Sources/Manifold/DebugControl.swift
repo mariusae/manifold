@@ -311,6 +311,9 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "peek":
+            // "peek [off]": the first stack's sheets hovered (or left).
+            return wc?.debugPeek(arg != "off") ?? "no window"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"

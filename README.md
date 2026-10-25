@@ -62,7 +62,14 @@ and Mona Sans (bundled).
   Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
-  out above its card, as a stack of paper. **Click those sheets**, or
+  out above its card, as a stack of paper — each a card of its own, with
+  an edge and a shadow, stepped in further the deeper it is, within the
+  gap between tiles, so a stacked tile takes no more room than a tile
+  alone — and its bar's stack button wears how many are behind. A stack
+  just made (or grown) has its sheets drop into place; the pointer over
+  them raises them into tabs, one for each tile behind, its symbol and
+  title, over whatever is above (or, at the top of a column, below the
+  bar). **Click those sheets**, or
   the stack button on the tile's bar (beside maximize), or press ⌃⇥, and
   the stack's tiles hang over it as cards,
   live, the tile's own bar put away, on the window's own background

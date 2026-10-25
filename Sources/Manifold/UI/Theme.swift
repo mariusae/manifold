@@ -65,10 +65,11 @@ enum Theme {
             : .dynamic(NSColor(white: 0, alpha: 0.2), NSColor(white: 1, alpha: 0.16))
     }
     /// A sheet beneath a stack's top, `level` deep: darker further down in
-    /// light, lighter nearer the top in dark (as things nearer are lit).
+    /// light, lighter nearer the top in dark (as things nearer are lit) —
+    /// apart from the backdrop and each other enough to be seen as cards.
     static func sheet(level: Int) -> NSColor {
-        .dynamic(NSColor(white: 0.935 - CGFloat(level) * 0.015, alpha: 1),
-                 NSColor(white: 0.19 - CGFloat(level) * 0.025, alpha: 1))
+        .dynamic(NSColor(white: 0.93 - CGFloat(level) * 0.045, alpha: 1),
+                 NSColor(white: 0.36 - CGFloat(level) * 0.05, alpha: 1))
     }
 
     static func symbolName(for lens: Lens) -> String {

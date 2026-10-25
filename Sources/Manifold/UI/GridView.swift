@@ -538,6 +538,16 @@ final class GridView: NSView, NSDraggingSource {
         return "switcher \(switcher.map { NSStringFromRect($0.frame) } ?? "none"); heights \(before == heights ? "same" : "changed")"
     }
 
+    /// Debugging: the first stack's sheets hovered — their tabs risen — or,
+    /// `off`, left.
+    func debugPeek(_ on: Bool) -> String {
+        guard on else { hidePeek(); return "left" }
+        let focusedTarget = sheetTargets.first { $0.top == focused }
+        guard let t = focusedTarget ?? sheetTargets.first, let top = t.top else { return "no sheets" }
+        showPeek(top)
+        return peek.map { "peek over \($0.top): \(NSStringFromRect($0.frame))" } ?? "no peek"
+    }
+
     /// Debugging: where each stack's sheets take a click.
     var debugSheetTargets: String {
         let tiles = columns.flatMap { $0 }
@@ -1409,7 +1419,12 @@ final class GridView: NSView, NSDraggingSource {
             let t = SheetsTarget()
             t.onClick = { [weak self, weak t] in
                 guard let self, let top = t?.top else { return }
+                self.hidePeek()
                 self.fanOut(top)
+            }
+            t.onHover = { [weak self, weak t] inside in
+                guard let self else { return }
+                if inside, let top = t?.top { self.showPeek(top) } else { self.hidePeek() }
             }
             // Dragged, it's the line between the tiles that moves.
             t.divider = { [weak self, weak t] in
@@ -1454,21 +1469,37 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
+    /// Each stack's depth as the sheets were last laid out: a stack that
+    /// formed or grew since has its sheets drop into place.
+    private var sheetDepths: [PlacementID: Int]?
+    /// The tabs the sheets rise into while the pointer is over them.
+    private var peek: StackPeek?
+
+    /// Sheets stepped in and risen per level: within the gap between tiles
+    /// (three deep at most), so a stack takes no room a tile alone doesn't.
+    private static let sheetStep: (inset: CGFloat, rise: CGFloat) = (9, 3)
+
     private func layoutSheets() {
-        var wanted: [(NSRect, Int)] = []
+        var wanted: [(NSRect, Int, PlacementID)] = []
         var targets: [(PlacementID, NSRect)] = []
+        var depths: [PlacementID: Int] = [:]
         for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id {
             let bar = pill.frame
+            depths[id] = pill.behind
             for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
-                let inset = CGFloat(level) * 6
-                let rise = CGFloat(level) * 3
-                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Self.corner, width: bar.width - 2 * inset, height: Self.corner + rise), level))
+                let inset = CGFloat(level) * Self.sheetStep.inset
+                let rise = CGFloat(level) * Self.sheetStep.rise
+                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Self.corner, width: bar.width - 2 * inset, height: Self.corner + rise), level, id))
             }
             // What shows of the sheets above the bar takes a click — a
             // little taller than they are, to be hit.
-            let rise = CGFloat(min(pill.behind, 3)) * 3
+            let rise = CGFloat(min(pill.behind, 3)) * Self.sheetStep.rise
             targets.append((id, NSRect(x: bar.minX + 6, y: bar.maxY, width: bar.width - 12, height: max(8, rise + 3))))
         }
+        // Stacks formed or grown since the last layout (not at the first).
+        let grown: Set<PlacementID> = sheetDepths.map { old in Set(depths.filter { $0.value > (old[$0.key] ?? 0) }.keys) } ?? []
+        sheetDepths = depths
+        if let p = peek, depths[p.top] == nil || fanned == p.top { hidePeek() }
         layoutSheetTargets(targets)
         while sheetLayers.count > wanted.count { sheetLayers.removeLast().removeFromSuperlayer() }
         while sheetLayers.count < wanted.count {
@@ -1480,16 +1511,62 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            for (l, (rect, level)) in zip(sheetLayers, wanted) {
+            for (l, (rect, level, _)) in zip(sheetLayers, wanted) {
                 // Under the cards, and the nearer sheet (the wider) over the
                 // farther, whichever layer each got.
                 l.zPosition = -CGFloat(level)
-                l.path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+                let path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+                l.path = path
                 l.fillColor = Theme.sheet(level: level).cgColor
-                l.strokeColor = Theme.text.withAlphaComponent(0.18).cgColor
+                // Each a card of its own: an edge, and a shadow on the one
+                // beneath.
+                l.strokeColor = Theme.text.withAlphaComponent(0.4).cgColor
+                l.shadowPath = path
+                l.shadowColor = NSColor.black.cgColor
+                l.shadowOpacity = 0.18
+                l.shadowRadius = 1.5
+                l.shadowOffset = CGSize(width: 0, height: 0.5)
             }
         }
         CATransaction.commit()
+        // A stack just formed (or grown): its sheets drop into place, the
+        // deepest last, so it's seen being made.
+        for (l, (_, level, id)) in zip(sheetLayers, wanted) where grown.contains(id) {
+            let drop = CABasicAnimation(keyPath: "transform.translation.y")
+            drop.fromValue = 10
+            drop.toValue = 0
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            let group = CAAnimationGroup()
+            group.animations = [drop, fade]
+            group.duration = 0.28
+            group.beginTime = CACurrentMediaTime() + Double(level - 1) * 0.05
+            group.fillMode = .backwards
+            group.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.15)
+            l.add(group, forKey: "drop")
+        }
+    }
+
+    /// The pointer over a stack's sheets: they rise into tabs, one for each
+    /// tile behind (its symbol and title), nearest first — over what's
+    /// above, laid out as nothing; gone as it leaves. A click still fans.
+    private func showPeek(_ top: PlacementID) {
+        guard fanned != top, let pill = pills[top], !pill.isHidden,
+              let stack = columns.indices.lazy.compactMap({ c in self.stacks(c).first { $0.top.shown.id == top } }).first,
+              !stack.behind.isEmpty else { return hidePeek() }
+        if peek?.top == top { return }
+        hidePeek()
+        let p = StackPeek(top: top, tiles: stack.behind.map { ($0.shown.title, $0.shown.block.map { Theme.symbolName(for: $0) } ?? Theme.symbolName(for: $0.shown.placement.lens, path: $0.shown.path)) })
+        p.frame = p.frame(over: pill.frame, within: bounds)
+        addSubview(p, positioned: .above, relativeTo: nil)
+        peek = p
+        p.rise()
+    }
+
+    private func hidePeek() {
+        peek?.fall()
+        peek = nil
     }
 }
 
@@ -1619,6 +1696,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
     /// With tiles behind it: the stack fanned out.
     private let fanButton = IconButton(symbol: "square.stack", size: 10, weight: .medium, target: nil, action: nil)
+    /// How many are behind, on the stack button's corner, as a badge on an icon.
+    private let fanCount = NSTextField(labelWithString: "")
     var onFan: (() -> Void)?
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
@@ -1719,6 +1798,17 @@ final class TilePill: NSView, NSTextFieldDelegate {
         fanButton.target = self
         fanButton.action = #selector(fanClicked)
         fanButton.isHidden = true
+        fanCount.font = .monospacedDigitSystemFont(ofSize: 8, weight: .bold)
+        fanCount.alignment = .center
+        fanCount.wantsLayer = true
+        fanCount.layer?.cornerRadius = 5
+        fanCount.isHidden = true
+        themed {
+            $0.fanCount.textColor = Theme.text
+            $0.fanCount.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
+            $0.fanCount.layer?.borderColor = Theme.text.withAlphaComponent(0.3).cgColor
+        }
+        fanCount.layer?.borderWidth = 0.5
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
@@ -1727,7 +1817,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, count, glyph, fanButton, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [icon, name, subtitle, count, glyph, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -2085,8 +2175,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
             right -= 22
         }
         fanButton.isHidden = !showFan
+        fanCount.isHidden = !showFan
         if showFan {
             fanButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            // The count on its lower right, over the icon's corner.
+            fanCount.stringValue = behind > 9 ? "9+" : "\(behind)"
+            let w: CGFloat = behind > 9 ? 14 : 10
+            fanCount.frame = NSRect(x: fanButton.frame.maxX - w + 3, y: fanButton.frame.minY - 3, width: w, height: 10)
             fanButton.toolTip = "Show the \(behind == 1 ? "tile" : "\(behind) tiles") behind this one (⌃⇥)"
             right -= 22
         }
@@ -2207,6 +2302,17 @@ final class TilePill: NSView, NSTextFieldDelegate {
 final class SheetsTarget: NSView {
     var top: PlacementID?
     var onClick: (() -> Void)?
+    /// The pointer come over the sheets (true) or gone (false).
+    var onHover: ((Bool) -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
     var divider: (() -> RowDividerView?)?
     private var downAt: NSPoint?
     private var moved = false
@@ -2391,6 +2497,98 @@ enum BlockDragImage {
             text.draw(with: NSRect(x: 36, y: (rect.height - 17) / 2 + 3, width: rect.width - 46, height: 17),
                       options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
             return true
+        }
+    }
+}
+
+/// A stack's tiles as tabs risen above its sheets while the pointer is over
+/// them (§3.1): one per tile behind, nearest lowest and widest, each its
+/// symbol and title, the rest counted past four. Drawn over whatever is
+/// above, taking no room and no clicks.
+final class StackPeek: NSView {
+    let top: PlacementID
+    private let tiles: [(title: String, symbol: String)]
+    private static let tabHeight: CGFloat = 20, shown = 4
+
+    init(top: PlacementID, tiles: [(String, String)]) {
+        self.top = top
+        self.tiles = tiles.map { (title: $0.0, symbol: $0.1) }
+        super.init(frame: .zero)
+        wantsLayer = true
+        alphaValue = 0
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    private var rows: Int { min(tiles.count, Self.shown) + (tiles.count > Self.shown ? 1 : 0) }
+
+    /// Where it goes: just above a bar, as wide as it — or, with no room
+    /// above (a tile at the top of its column), hanging just below it, over
+    /// the tile's top.
+    private(set) var below = false
+    func frame(over bar: NSRect, within bounds: NSRect) -> NSRect {
+        let h = CGFloat(rows) * (Self.tabHeight - 2) + 4
+        below = bar.maxY + 1 + h > bounds.maxY
+        return NSRect(x: bar.minX, y: below ? bar.minY - 1 - h : bar.maxY + 1, width: bar.width, height: h)
+    }
+
+    func rise() {
+        let end = frame
+        setFrameOrigin(NSPoint(x: end.minX, y: end.minY + (below ? 6 : -6)))
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.14
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+            animator().setFrameOrigin(end.origin)
+        }
+    }
+
+    func fall() {
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.1
+            animator().alphaValue = 0
+        }, completionHandler: { [weak self] in self?.removeFromSuperview() })
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        var labels = tiles.prefix(Self.shown).map { $0 }
+        if tiles.count > Self.shown { labels.append((title: "\(tiles.count - Self.shown) more", symbol: "ellipsis")) }
+        // Farthest first, so the nearer tabs overlap the ones behind them.
+        for (i, t) in labels.enumerated().reversed() {
+            let inset = 6 + CGFloat(i) * 9
+            // Nearest at the bar, the rest away from it.
+            let offset = 2 + CGFloat(i) * (Self.tabHeight - 2)
+            let y = below ? bounds.height - Self.tabHeight - offset : offset
+            let r = NSRect(x: inset, y: y, width: bounds.width - 2 * inset, height: Self.tabHeight)
+            let path = NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7)
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
+            shadow.shadowBlurRadius = 3
+            shadow.shadowOffset = NSSize(width: 0, height: -1)
+            shadow.set()
+            Theme.sheet(level: i + 1).setFill()
+            path.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            Theme.text.withAlphaComponent(0.3).setStroke()
+            path.lineWidth = 0.5
+            path.stroke()
+            var x = r.minX + 10
+            // The symbol in the secondary text's color, as the bar's own is.
+            let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.secondaryText]))
+            // An agent's mark is an image of its own, drawn as it is.
+            if let image = NSImage(systemSymbolName: t.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(t.symbol, size: 10) {
+                let size = image.size
+                image.draw(in: NSRect(x: x, y: r.midY - size.height / 2, width: size.width, height: size.height))
+                x += size.width + 6
+            }
+            let label = NSAttributedString(string: t.title, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: Theme.text])
+            let room = r.maxX - 10 - x
+            let size = label.size()
+            label.draw(with: NSRect(x: x, y: r.midY - size.height / 2, width: max(0, room), height: size.height), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
         }
     }
 }
