@@ -383,6 +383,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private var given: NSRect?
     var hasSidebar: Bool { true }
     var sidebarShown: Bool { sidebarOn }
+    var sidebarView: TileSidebar? { sidebar }
     /// Kept with the tile: shown or not.
     var onToggleSidebar: ((Bool) -> Void)?
 

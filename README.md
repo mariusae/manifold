@@ -742,10 +742,13 @@ around it, and comes back with its history.
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
   at its top). Shown or not, it's kept with the tile.
 - **Search Outline** (⇧⌘O, or in a tile's bar menu): the focused tile's
-  outline — its commands, headings, symbols, contents or files — in the
-  finder, nested as it is, where you are selected; type to narrow it
-  (every word somewhere in an entry), ↑↓ and ⏎ to go there, as clicking
-  it in the sidebar does. A command's **output** (Show Output in its ⋯,
+  own sidebar — its commands, headings, symbols, contents or files —
+  shown if it wasn't, the pointer going to the **filter field** at its
+  top; type to narrow it (every word somewhere in an entry, the matches
+  listed flat), ↑↓ and ⏎ to go there, as clicking one does; Escape
+  clears what's typed, then leaves. Either way the tile has the keyboard
+  back, and a sidebar opened for the search is put away again. (A tile
+  with an outline but no sidebar searches it in the finder.) A command's **output** (Show Output in its ⋯,
   or Show as Block on its dot) opens as a block of
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in

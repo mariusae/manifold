@@ -81,6 +81,9 @@ protocol PaneContent: NSView {
     var hasSidebar: Bool { get }
     var sidebarShown: Bool { get }
     func toggleSidebar()
+    /// The sidebar, where it isn't among the view's own subviews (a
+    /// terminal's sits beside it); else found among them.
+    var sidebarView: TileSidebar? { get }
     /// Its outline, if it has one (§7.5): the tile shows it as ticks at its
     /// upper right, the whole of it over them while the pointer is there.
     var outline: Outline? { get }
@@ -171,6 +174,7 @@ extension PaneContent {
     var hasSidebar: Bool { false }
     var sidebarShown: Bool { false }
     func toggleSidebar() {}
+    var sidebarView: TileSidebar? { nil }
     var outline: Outline? { nil }
     var outlineInset: CGFloat { 0 }
     var navLocation: NavLocation? { nil }

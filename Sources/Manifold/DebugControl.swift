@@ -339,6 +339,10 @@ enum DebugControl {
             tv.paste(from: pb)
             pb.releaseGlobally()
             return "pasted (image preferred: \(preferred))"
+        case "outlinesearch":
+            // "outlinesearch open": ⇧⌘O on the focused tile; "outlinesearch
+            // <words>|down|up|return|escape": typed or keyed in its field.
+            return wc?.debugOutlineSearch(arg) ?? "no window"
         case "quickwalk":
             // "quickwalk <steps> <hold seconds>": ⌃⇥ pressed (steps of it),
             // control let go after that long — under the wait, nothing shows.

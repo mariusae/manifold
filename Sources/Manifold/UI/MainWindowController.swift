@@ -4703,7 +4703,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         searchOutline(of: f)
     }
 
+    /// ⇧⌘O: the tile's own outline, its sidebar (shown if it wasn't, put
+    /// away again after), filtered by what's typed in the field at its
+    /// top, the pointer there — ↩ goes to the entry chosen, Escape leaves.
+    /// A tile with an outline but no sidebar: the finder, over its items.
     func searchOutline(of placement: PlacementID) {
+        if let view = views[placement], view.hasSidebar {
+            let wasShown = view.sidebarShown
+            if !wasShown {
+                view.toggleSidebar()
+                content.sidebarChanged(placement)
+            }
+            view.layoutSubtreeIfNeeded()
+            if let sidebar = view.sidebarView ?? Self.tileSidebar(in: view) {
+                // After the focus settles (a tile focused takes the keyboard).
+                DispatchQueue.main.async { [weak self, weak view, weak sidebar] in
+                    guard let self, let sidebar else { return }
+                    sidebar.beginSearch { [weak self, weak view] in
+                        guard let self, let view else { return }
+                        if !wasShown, view.sidebarShown {
+                            view.toggleSidebar()
+                            self.content.sidebarChanged(placement)
+                        }
+                        self.focus(placement)
+                    }
+                    if let window = self.window {
+                        let r = window.convertToScreen(sidebar.searchFrame)
+                        Pointer.warp(to: NSPoint(x: r.minX + 24, y: r.midY))
+                    }
+                }
+                return
+            }
+        }
         guard let view = views[placement], let outline = view.outline, !outline.items.isEmpty else { return NSSound.beep() }
         let symbol: (Outline.Item) -> String = { item in
             view is TerminalView ? "chevron.right" : item.code ? "curlybraces" : "number"
@@ -4717,6 +4748,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                   level: words.isEmpty ? item.level : 0, run: { outline.pick(i) })
             }
         }, startingAt: outline.current, placeholder: "Search the outline…", over: window)
+    }
+
+    /// A tile's own sidebar, wherever its view keeps it.
+    static func tileSidebar(in view: NSView) -> TileSidebar? {
+        (view as? TileSidebar) ?? view.subviews.lazy.compactMap { tileSidebar(in: $0) }.first
+    }
+
+    /// Debugging: ⇧⌘O's field in the focused tile's sidebar, typed into or keyed.
+    func debugOutlineSearch(_ what: String) -> String {
+        guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
+        if what == "open" { searchOutline(of: f); return "opened" }
+        return (v.sidebarView ?? Self.tileSidebar(in: v))?.debugSearch(what) ?? "no sidebar"
     }
 
     @objc func goToTile(_ sender: Any?) {
