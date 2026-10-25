@@ -166,7 +166,6 @@ enum DebugControl {
             }
             return "ok"
         case "sidebar":
-            if arg.hasPrefix("search ") { return wc?.debugSidebarView.debugTypeFilter(String(arg.dropFirst(7))) ?? "no window" }
             // "sidebar pin": pinned, or not, as its pin button does.
             if arg == "pin" { wc?.sidebarTogglePinned(); return "ok" }
             if arg.hasPrefix("width "), let w = Double(arg.dropFirst(6)) {

@@ -42,11 +42,8 @@ final class SidebarView: NSView {
     /// The tree; the filter over it, shown by the bar's search; the bar
     /// at the bottom: search, by workspace or by file, the inbox, and the
     /// counts of what's doing something, which go to Status.
-    private let filterBox = FlatFieldBox(fontSize: 12)
-    private var filter: FlatField { filterBox.field }
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
-    private let searchButton: IconButton
     private let byButton: IconButton
     private let inboxButton: IconButton
     private let counts = StatusCountsView()
@@ -57,7 +54,6 @@ final class SidebarView: NSView {
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
     static let footRowHeight: CGFloat = 22
-    private var filterShown = false
 
     static let headerHeight: CGFloat = 40
     static let filterHeight: CGFloat = 34
@@ -68,13 +64,12 @@ final class SidebarView: NSView {
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
-    private var pushed: Bool { organization == .closed || organization == .search }
+    private var pushed: Bool { organization == .closed }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
         newButton = IconButton(symbol: "plus", size: 13, weight: .medium, target: nil, action: nil)
         moreButton = IconButton(symbol: "ellipsis", size: 13, weight: .medium, target: nil, action: nil)
-        searchButton = IconButton(symbol: "magnifyingglass", size: 13, weight: .medium, target: nil, action: nil)
         byButton = IconButton(symbol: Organization.desk.symbol, size: 13, weight: .medium, target: nil, action: nil)
         inboxButton = IconButton(symbol: Organization.inbox.symbol, size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
@@ -109,21 +104,14 @@ final class SidebarView: NSView {
         pushedSubtitle.textColor = Theme.secondaryText
         for v in [backButton, pushedTitle, pushedSubtitle] { v.isHidden = true; card.addSubview(v) }
 
-        searchButton.target = self
-        searchButton.action = #selector(toggleFilter)
-        searchButton.toolTip = "Search every block (⌥⌘4)"
         byButton.target = self
         byButton.action = #selector(toggleBy)
         inboxButton.target = self
         inboxButton.action = #selector(inboxClicked)
         inboxButton.toolTip = "Inbox (⌥⌘6)"
         counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
-        for v in [searchButton, byButton, inboxButton, counts, closedRow, transfers] { card.addSubview(v) }
+        for v in [byButton, inboxButton, counts, closedRow, transfers] { card.addSubview(v) }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
-        filterBox.isHidden = true
-        filter.placeholderString = "Filter"
-        filterBox.onChange = { [weak self] in self?.filterTyped() }
-        card.addSubview(filterBox)
         card.addSubview(organizationView)
 
         resizeHandle.onDrag = { [weak self] x in
@@ -157,14 +145,10 @@ final class SidebarView: NSView {
             pushedSubtitle.frame = NSRect(x: 44, y: top - Self.pushedHeight + 2, width: bounds.width - 56, height: 14)
             top -= Self.pushedHeight + 6
         }
-        if filterShown {
-            filterBox.frame = NSRect(x: 10, y: top - Self.filterHeight + 1, width: bounds.width - 20, height: Flat.fieldHeight)
-            top -= Self.filterHeight
-        }
         // The bar along the bottom: its buttons at the left, the counts at the right.
         let by: CGFloat = (Self.barHeight - 20) / 2
         var x: CGFloat = 12
-        for b in [searchButton, byButton, inboxButton] {
+        for b in [byButton, inboxButton] {
             b.frame = NSRect(x: x, y: by, width: 20, height: 20)
             x += 28
         }
@@ -197,24 +181,7 @@ final class SidebarView: NSView {
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
         closedRow.current = org == .closed
         pushedTitle.stringValue = org.title
-        searchButton.contentTintColor = org == .search ? Theme.text : Theme.secondaryText
-        // Search is its own place (pushed, as Recently Closed is): the field under its
-        // name, taking the keyboard; left, the field goes, emptied.
-        let searching = org == .search
-        if searching != filterShown {
-            filterShown = searching
-            filterBox.isHidden = !searching
-            if !searching { filterBox.stringValue = "" }
-        }
-        filter.placeholderString = "Search every block"
-        if searching { DispatchQueue.main.async { [weak self] in guard let self else { return }; self.window?.makeFirstResponder(self.filter) } }
         needsLayout = true
-    }
-
-    /// What a pushed list says under its name (Search: how much was found).
-    func setPushedSubtitle(_ text: String) {
-        guard organization == .search else { return }
-        pushedSubtitle.stringValue = text
     }
 
     @objc private func backClicked() { chooseOrganization(.desk) }
@@ -234,14 +201,6 @@ final class SidebarView: NSView {
         needsLayout = true
     }
 
-    var filterText: String { filterBox.isHidden ? "" : filter.stringValue }
-
-    /// Debugging: as if typed into the field; and whether it has the keyboard.
-    func debugTypeFilter(_ text: String) -> String {
-        filterBox.stringValue = text
-        filterTyped()
-        return window?.firstResponder === filter.currentEditor() ? "typed (field has the keyboard)" : "typed"
-    }
 
     private func chooseOrganization(_ org: Organization) {
         setOrganization(org)
@@ -251,18 +210,7 @@ final class SidebarView: NSView {
     @objc private func toggleBy() { chooseOrganization(organization == .desk ? .files : .desk) }
     @objc private func inboxClicked() { chooseOrganization(organization == .inbox ? .desk : .inbox) }
 
-    /// The filter field shown (and taking the keyboard), or put away.
-    /// The search button: Search, pushed over the tree; again, back.
-    @objc func toggleFilter() {
-        if organization == .search {
-            chooseOrganization(.desk)
-            delegate?.sidebarFilterChanged("")
-        } else {
-            chooseOrganization(.search)
-        }
-    }
 
-    @objc private func filterTyped() { delegate?.sidebarFilterChanged(filter.stringValue) }
 
     /// The card's ground, as pinned or not, in the appearance shown —
     /// themed once (each `themed` call adds a hook kept for good), then

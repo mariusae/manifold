@@ -3,15 +3,12 @@ import ManifoldCore
 
 /// How the sidebar organizes the graph (DESIGN.md §3.6): the workspaces
 /// and their tiles; files under folders under roots, across hosts; what
-/// wants attention (the Inbox); and the lists over them (Kept, Recently
-/// Closed, Search).
+/// wants attention (the Inbox); and the list over them (Recently Closed).
 enum Organization: String, CaseIterable {
     case desk, files, inbox
     /// The list at the sidebar's foot (§4): what's closed and not yet
     /// collected.
     case closed
-    /// What the words typed are in: the contents of every block.
-    case search
 
     var title: String {
         switch self {
@@ -19,7 +16,6 @@ enum Organization: String, CaseIterable {
         case .files: "Files"
         case .inbox: "Inbox"
         case .closed: "Recently Closed"
-        case .search: "Search"
         }
     }
 
@@ -29,7 +25,6 @@ enum Organization: String, CaseIterable {
         case .files: "folder"
         case .inbox: "tray"
         case .closed: "clock.arrow.circlepath"
-        case .search: "magnifyingglass"
         }
     }
 }
