@@ -67,10 +67,10 @@ public enum Mani {
 
     public static let verbs: [Verb] = [
         Verb(words: ["ls"], args: "", minArgs: 0, maxArgs: 0,
-             flags: [Flag(name: "all", help: "every workspace, and pinned blocks"), json],
-             summary: "List the workspace's tiles: what each shows, where",
+             flags: [Flag(name: "all", help: "every space, and pinned blocks"), json],
+             summary: "List the space's tiles: what each shows, where",
              details: """
-                 The shown workspace's tiles, a row each: number, block id, kind,
+                 The shown space's tiles, a row each: number, block id, kind,
                  title, and the names it answers to from here, and under it the
                  tile in a line (its summary: a terminal's last command and how it
                  ended, a note's first lines). With --json, the
@@ -101,9 +101,9 @@ public enum Mani {
                  notebook's cells and output. @selection prints what's selected.
                  """, inApp: true),
         Verb(words: ["context"], args: "", minArgs: 0, maxArgs: 0, flags: [json],
-             summary: "Say where you are: workspace, focus, selection, commands",
+             summary: "Say where you are: space, focus, selection, commands",
              details: """
-                 At a glance: the workspace and its tiles, the one mani runs in
+                 At a glance: the space and its tiles, the one mani runs in
                  and the focused one, the last selection (and where), the last
                  commands of the terminals shown with their status, and unsaved
                  files.
@@ -116,7 +116,7 @@ public enum Mani {
                  Markdown opens in a live preview, a folder in a listing, a web
                  address as a page, anything else in an editor. Run in one of
                  Manifold's terminals, they go beside it; anywhere else, in the
-                 shown workspace, with Manifold brought forward (and started if
+                 shown space, with Manifold brought forward (and started if
                  need be). With no paths, brings Manifold forward.
                  """, inApp: true),
         Verb(words: ["new"], args: "<kind> [what]", minArgs: 1, maxArgs: 2,
@@ -146,11 +146,11 @@ public enum Mani {
              flags: [Flag(name: "line", value: "n", help: "at this line")] + placing,
              summary: "Bring a block to view and focus it",
              details: """
-                 A tile on screen is focused (its workspace shown); a block that
+                 A tile on screen is focused (its space shown); a block that
                  isn't is placed, by the tile it's told, else beside this one.
                  """, inApp: true),
         Verb(words: ["close"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
-             summary: "Take a tile off its workspace (as ⌘W)",
+             summary: "Take a tile off its space (as ⌘W)",
              details: "The tile goes, as ⌘W takes it. A block nothing else keeps (no other tile, pin or link by hand) is collected after half an hour; until then ⌘O or Recently Closed brings it back.", inApp: true),
         Verb(words: ["run"], args: "<terminal> <command ...>", minArgs: 2, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to end: print its output, exit with its status"),
@@ -162,8 +162,8 @@ public enum Mani {
                  integration says when) and prints what it printed.
                  """, inApp: true),
         Verb(words: ["pin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
-             summary: "Pin a block in its workspace",
-             details: "Pinned, it heads its workspace in the sidebar and stays there when its tile is closed.", inApp: true),
+             summary: "Pin a block in its space",
+             details: "Pinned, it heads its space in the sidebar and stays there when its tile is closed.", inApp: true),
         Verb(words: ["unpin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Unpin a block", details: "Takes the pin `mani pin` (or the menus) put on it.", inApp: true),
         Verb(words: ["link"], args: "<from> <to>", minArgs: 2, maxArgs: 2,
@@ -180,7 +180,7 @@ public enum Mani {
                  happens: focus (a tile focused), selection (text selected,
                  where), command (a terminal's command started or ended, with its
                  status), status (a block's status), open and close (a tile shown,
-                 taken off), save (a file saved), workspace (another shown), panel
+                 taken off), save (a file saved), space (another shown), panel
                  (something done in a panel, as `ui wait` prints it).
                  """, inApp: true),
         Verb(words: ["ui", "new"], args: "< widgets", minArgs: 0, maxArgs: 0,
@@ -335,7 +335,7 @@ public enum Mani {
         Blocks are named by id (as ls prints it), path, title, or position:
           @here        the terminal mani runs in       @focused   the focused tile
           @selection   the last text selected outside @here (read it; info says where)
-          @last        the block mani last made         @workspace the workspace shown
+          @last        the block mani last made         @space     the space shown
           @left @right @above @below   the nearest tile that way from @here
           @leftmost @rightmost @top @bottom   the outermost tile that way
           @under       the tile stacked under @here     @1 … @9   tiles in order

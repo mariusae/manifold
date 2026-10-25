@@ -478,7 +478,7 @@ final class Server {
         let events = node.settlingRoots(on: host, at: clock.now(), newID: { BlockID(host: host) })
         guard !events.isEmpty else { return }
         for (event, shard) in events { append(event, to: shard) }
-        log("roots settled: \(events.count) change(s) bring what was kept outside the workspaces into them")
+        log("roots settled: \(events.count) change(s) bring what was kept outside the spaces into them")
     }
 
     /// The collector (§4): what no root reaches over strong edges — the

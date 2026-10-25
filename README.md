@@ -3,12 +3,12 @@
 A Mac app that works like a wiki rather than a set of windows. Terminals
 (drawn by [libghostty](https://github.com/ghostty-org/ghostty)), files,
 notes, folders and web pages are **blocks**, and everything is linked: a
-workspace links the blocks it shows, a note the blocks it mentions, and
+space links the blocks it shows, a note the blocks it mentions, and
 what you do leaves links behind (this terminal opened that file). The
-workspaces are the roots: each stays until you remove it, and keeps
+spaces are the roots: each stays until you remove it, and keeps
 what it shows, what's pinned in it, and what those link to by hand. What
-no workspace reaches any more is collected, after a while to bring it
-back. A workspace is itself a block
+no space reaches any more is collected, after a while to bring it
+back. A space is itself a block
 you can name and come back to, and anything reachable can be found and
 followed, with its history. Light or dark, in SF Pro and Menlo
 as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
@@ -19,7 +19,7 @@ and Mona Sans (bundled).
 
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
-  organized three ways (Workspaces · Files · Inbox, below), with a
+  organized three ways (Spaces · Files · Inbox, below), with a
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
@@ -28,7 +28,7 @@ and Mona Sans (bundled).
   the words found in the contents of every block — a text's lines, a
   terminal's commands, a block's name, place or address — each block
   with what matched beneath it, clicked to go there: the line in its
-  editor or page, the command in its terminal), Workspaces and Files,
+  editor or page, the command in its terminal), Spaces and Files,
   the Inbox, and, at the right, counts of what needs you,
   is working and is done and not yet read, which open the Inbox. The window sits on a wash of soft colour — a few
   pools of pastel light, deep tints in the dark — placed afresh each
@@ -38,32 +38,32 @@ and Mona Sans (bundled).
   sun is low, morning and evening, a touch cooler when it's high, and a
   dim cool blue at night, looked at again every five minutes and eased
   into over a few seconds. The tree is one shape, always: a host's
-  heading, then each of its workspaces, then every tile in it, in
-  order. Nothing folds by itself; the current workspace wears a bar at
-  its left edge, and a workspace's chevron closes it until you open it
-  again (remembered). Only tiles have icons; a workspace's label is its
+  heading, then each of its spaces, then every tile in it, in
+  order. Nothing folds by itself; the current space wears a bar at
+  its left edge, and a space's chevron closes it until you open it
+  again (remembered). Only tiles have icons; a space's label is its
   name and a count of its tiles, a block's row has a second line for
   what it says. Above the bar at the foot sits a quiet row, **Recently
   Closed**, with a count; clicking it pushes that list over the tree,
   the header showing a back button, the list's name and what it holds,
   as Safari's Bookmarks does; it isn't in
-  the tree itself. Under **Workspaces**, the sidebar is
-  the table of contents of the screen: a workspace's tiles in order,
+  the tree itself. Under **Spaces**, the sidebar is
+  the table of contents of the screen: a space's tiles in order,
   a stack's tiles together under its top — nearest first, as it fans,
   those behind set in and a step dimmer, the stack's rows on one faint
   rounded ground. Click a tile to focus it (one behind comes to the top
-  of its stack), a workspace to go to it, double-click
+  of its stack), a space to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
-  to bring it in beside, onto a workspace for its active column, or
-  between workspaces for one of its own, and drag workspaces to
+  to bring it in beside, onto a space for its active column, or
+  between spaces for one of its own, and drag spaces to
   reorder them (among their host's, under its row) and hosts' rows to
-  reorder the hosts (an order of this Mac's own, in Workspaces and Files).
-- A **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
+  reorder the hosts (an order of this Mac's own, in Spaces and Files).
+- A **space** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
-  A workspace is what you made it: a block brought in stays until
+  A space is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
   below the biggest tile of the active column, taking its lower half;
-  Workspace ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
+  Space ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
   out above its card, as a stack of paper — each a card of its own, with
@@ -113,16 +113,16 @@ and Mona Sans (bundled).
   under its picture; in ⌘O a block's row is its card, and what it says
   is found;
   `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
-  behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
+  behind it; keep ⌥ held and click again, as ⌘\` walks spaces, and
   the next behind that comes up, round the stack, the tiles passed
   staying where they were — letting go of ⌥ settles on the one come to
   (⌥-clicking a pill peeking out above the stack goes straight to it). A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it.
   Unstack in the pill's menu lays the whole stack out in the column;
-  Close Stack takes the tile and its stack off the workspace (from a
+  Close Stack takes the tile and its stack off the space (from a
   maximized tile, Close Column takes the column).
-  Opening a block that isn't in the workspace always makes it a tile of
+  Opening a block that isn't in the space always makes it a tile of
   its own (below the biggest tile, after that tile's stack, never into
   it); going to one that is — a link, the sidebar, the finder, ⌘J,
   ⌘P, Back, a found line, opening it again — goes there: a tile on its
@@ -154,7 +154,7 @@ and Mona Sans (bundled).
   height stashes it, in the direction it was pushed (pushed up, behind
   the tile above it; pushed down, behind the tile below it), and goes
   on against the next, until all above or below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
-  pill) puts a tile over the whole workspace until it is restored, or
+  pill) puts a tile over the whole space until it is restored, or
   until you go to another tile. A pill is as wide as its title needs
   and never more than half its tile, so what's under the band stays
   reachable at the sides; the focused tile's is plain, the others'
@@ -170,9 +170,9 @@ and Mona Sans (bundled).
   go back and forward, ⌘R reloads. The pill's menu (its icon) carries
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
-  The focused tile has a ring around it. **⌘Z undoes** the workspace's
+  The focused tile has a ring around it. **⌘Z undoes** the space's
   last change at your hand (a tile placed, taken off, moved, stashed,
-  resized, maximized), ⇧⌘Z redoes, a hundred deep per workspace, when
+  resized, maximized), ⇧⌘Z redoes, a hundred deep per space, when
   nothing else takes the key (an editor undoes its own text). Undo
   doesn't rewind the log, which only grows: it appends the earlier state
   as one entry, so the history keeps what was undone. In the sidebar,
@@ -180,7 +180,7 @@ and Mona Sans (bundled).
   bar; a terminal's comes from Ghostty's own account of the screen and
   its history. Going somewhere (⌘O, ⌘P, a found line) brings the pointer
   along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
-  workspace at once, Mission Control fashion; ⎋ comes back. Drag the
+  space at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile is a **card** with a bar across its top:
   its symbol and name, where it is in grey, its links, the program its
@@ -199,9 +199,9 @@ and Mona Sans (bundled).
   that folder here, as ⌘-clicking a document's title does in the
   Finder. ⌥⌘[ and ⌥⌘] move the focus between tiles.
 - Two verbs put a block in front of you. **Go to** finds it where it
-  already is: the workspace it is in (this one if it is here, else
+  already is: the space it is in (this one if it is here, else
   the one most recently gone to) is selected and the tile focused.
-  **Bring here** makes a tile of it in this workspace; if it is here
+  **Bring here** makes a tile of it in this space; if it is here
   already, that tile is focused. A row clicked in the sidebar, or
   chosen in the finder (⌘O), goes to the block if it is placed anywhere,
   else brings it here; ⌘-click, Bring Here in the menu, and a drag onto
@@ -212,7 +212,7 @@ and Mona Sans (bundled).
   preview going page to page and a listing going into a folder change
   in place. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
   are brought here, into the active column; ⌥⇧⌘N opens a terminal in a
-  new column, ⌥⌘T a new workspace with one. A note is at home in the
+  new column, ⌥⌘T a new space with one. A note is at home in the
   folder of the block it was made from: it is found there, and saved
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
   beside the focused block; Browse This Folder (⌃⌘O) its own (a
@@ -223,32 +223,32 @@ and Mona Sans (bundled).
   buttons) go along every place you've been — the tiles focused and,
   within a block, where a jump took you from: a definition gone to, a
   found line, a heading, a command, an outline's entry, a PDF's page —
-  back to the tile in its workspace (brought out if it was stashed) and
+  back to the tile in its space (brought out if it was stashed) and
   the line, command, scroll or page it was at, the pointer with it.
   Going somewhere new from back there drops what was forward, as in VS
   Code. ⌘[ and ⌘] are for what has a history of its own: a web page's,
   and a folder tile's (the folders it showed, as a Finder window's Back
   goes); the mouse's buttons go there first in such a tile. A web page
   zooms with ⌘+ and ⌘− in Safari's steps (50% to 300%), ⌘0 back.
-- **⌘\`** walks the workspaces most recently gone to first, each
+- **⌘\`** walks the spaces most recently gone to first, each
   sliding in from the right (⇧⌘\` from the left), for as long as ⌘ is
-  held; letting go settles on the one come to (with one workspace, it
+  held; letting go settles on the one come to (with one space, it
   goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
-  workspaces too, as does the Dock icon's menu: every workspace, under
+  spaces too, as does the Dock icon's menu: every space, under
   its host when there are several, the one shown checked. A file or
-  folder dropped on the Dock icon opens in the workspace shown, as a
+  folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
 - Drag a tile by its pill: between two tiles to put it there, near a
-  column's side for a new column there, onto a workspace in the
-  sidebar for its active column, or between workspaces for one of
-  its own. To another workspace it moves, as a file does; ⌥-dragged it
+  column's side for a new column there, onto a space in the
+  sidebar for its active column, or between spaces for one of
+  its own. To another space it moves, as a file does; ⌥-dragged it
   is copied — shown there as well, the same block in both. Held over a
-  workspace's row, the workspace springs open under the drag, to drop
+  space's row, the space springs open under the drag, to drop
   it exactly where it should go there; one left empty and unnamed by a
   move goes. A stack's top takes the stack along; ⌘-drag it to take it
   alone, the next behind coming out in its place — a fanned-out pill
   drags its tile out alone the same way. ⌘W on a stack's top takes it
-  off and the next comes out. Workspaces drag from the sidebar onto the grid the same
+  off and the next comes out. Spaces drag from the sidebar onto the grid the same
   way, their columns coming over.
 - **Links by hand**: ⇧-drag any block's pill onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
@@ -295,21 +295,21 @@ and Mona Sans (bundled).
   files get the same.
 - **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
   foot) lists the blocks whose status wants attention — done or failed
-  and not yet read, or needing you — by host and workspace, each with
+  and not yet read, or needing you — by host and space, each with
   what it said and how long ago. Reading a block (focusing it) takes it
   out; there is nothing to clear by hand. **⌘J** (Window ▸ Next in
   Inbox) goes through it in that order, from anywhere: to the next block
-  after the focused one (or the first), in whatever workspace holds it,
+  after the focused one (or the first), in whatever space holds it,
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
-- **⌘W** closes the focused tile. **Workspaces stay** until you remove
-  one (**⌥⇧⌘W**, File ▸ Remove Workspace, or its row's menu): named or
+- **⌘W** closes the focused tile. **Spaces stay** until you remove
+  one (**⌥⇧⌘W**, File ▸ Remove Space, or its row's menu): named or
   not, emptied or not, nothing removes one for you. A block is kept while
-  a workspace reaches it — shows it, pins it, or reaches it through a
+  a space reaches it — shows it, pins it, or reaches it through a
   link by hand — and once none does it waits half an hour in
   **Recently Closed**, the list at the foot of the sidebar (and in
   ⌘O, marked *recent*), then is collected: gone, with its history. A
-  workspace removed goes the same way, and what only it kept with it.
+  space removed goes the same way, and what only it kept with it.
   **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
@@ -321,7 +321,7 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
-- **⌘O** finds every block and workspace, and the files in the focused
+- **⌘O** finds every block and space, and the files in the focused
   block's folder (a terminal's working directory, a file's folder),
   listed in the background and kept a while, so asking again is
   instant. It ranks off the main thread as you type, each keystroke
@@ -335,7 +335,7 @@ around it, and comes back with its history.
   first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in
   what's around a block (its folder, its program). Among equals, the
-  nearest to where you are over the graph — this workspace, then what's
+  nearest to where you are over the graph — this space, then what's
   linked to the focused block, then step by step outward — and the most
   recently seen; with nothing typed, that is the whole order. Files not
   yet blocks come below the blocks (the system's scratch folders last).
@@ -349,19 +349,19 @@ around it, and comes back with its history.
   well as the name, every word of the query in it (a command run a while
   ago, an agent's last words), ranked with the names the query is only
   scattered in (a found line's row, in In Blocks, stays as found). A
-  workspace is found by its own name only — what it holds is found as
+  space is found by its own name only — what it holds is found as
   itself. Choosing a block goes to it where it's placed, or brings it into
   the focused column if it's nowhere (⌘ beside, ⌥ over);
-  choosing a workspace puts it in spaces. ⇥ goes round the finder's scopes: **In Files** has the host
+  choosing a space shows it. ⇥ goes round the finder's scopes: **In Files** has the host
   look for the words in the files under the project (as Find in Files
   does; the last row makes it a search block); **In Blocks** looks in
-  the texts of the blocks — the workspace's first, then every note and
+  the texts of the blocks — the space's first, then every note and
   file kept as a block. Either lists what it finds as a site's search
   does: a row a file or block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them.
   A typed URL opens as a web page.
-- **⌘P goes through the workspace as an outline**, as Prism's Move to
+- **⌘P goes through the space as an outline**, as Prism's Move to
   Heading does: its tiles by column, and under each its outline, set in
   by level — a Markdown tile's headings, and whatever else has one
   (§7.5): a terminal's commands (how each ended beside it), an agent's
@@ -371,9 +371,9 @@ around it, and comes back with its history.
   opens on where you are, the focused tile's item. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
   finds the terminal running it.
-- **Naming** a workspace (⇧⌘R, or double-click it in the sidebar)
+- **Naming** a space (⇧⌘R, or double-click it in the sidebar)
   calls it that in place of what it holds; it keeps nothing more than
-  any workspace does. Named workspaces wear a bookmark in the sidebar.
+  any space does. Named spaces wear a bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
   shell for eight hours (Settings ▸ Terminals) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
@@ -541,7 +541,7 @@ around it, and comes back with its history.
   theme's, all of it or the role's. Fonts installed while Manifold runs
   are taken up at once.
 - **Language servers** run on the file's host, one per language and
-  workspace root, started when a file of theirs is placed: what they say
+  project root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
   when the caret is on it. Edit ▸ Code: Complete (⌃Space), Go to
   Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
@@ -554,8 +554,8 @@ around it, and comes back with its history.
   on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
   Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
-  clangd and zls by default), the files that mark a workspace root, on or
-  off; it's a setting in spaces, so every host runs the same — unless
+  clangd and zls by default), the files that mark a project root, on or
+  off; it's a setting for every host at once, so every host runs the same — unless
   the host says otherwise. Above the table, **All Hosts** or one host
   (This Mac too; or Preferences for *host*… ▸ Language Servers… in its
   menu): set for one host, the same table shows what that host runs, and a
@@ -563,7 +563,7 @@ around it, and comes back with its history.
   as apex's settings are — `~/.apex/fblsp-server rust` for Rust there, say;
   set back to all hosts' value, they're let go of. Below it, a root marker
   for every language on that host: `.hg` makes the folder holding it every
-  language's workspace root (a monorepo one workspace). A host's own
+  language's project root (a monorepo one root). A host's own
   settings are its preferences, shared by every Mac attached to it. A
   change restarts the servers it touches, their open files with them.
 - **⌘-click** a file's name in a terminal to open it below the terminal,
@@ -848,14 +848,14 @@ around it, and comes back with its history.
   where they're commonly installed — Homebrew's and Linuxbrew's folders,
   `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize
-  By, ⌥⌘1–3; Search, ⌥⌘4, is over them all): **Workspaces** — spaces, each workspace named by what it
+  By, ⌥⌘1–3; Search, ⌥⌘4, is over them all): **Spaces** — every space, each named by what it
   holds unless you name it (its blocks' folder, with the branch when a
   git block is there); **Files** — every
   block with a path under its folders — and every block that is *at* a
   folder, under it by its title: a terminal in its working directory
   (moving as it moves), a note at home there, a patch against it —
   across hosts, as a sparse tree; in every folder, what is on a
-  workspace now is listed first, what's kept otherwise after it, dimmed;
+  space now is listed first, what's kept otherwise after it, dimmed;
   what's closed and not yet collected is only in Recently Closed
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Inbox** — what wants
@@ -864,7 +864,7 @@ around it, and comes back with its history.
   the block (or bring it here, if it is nowhere), ⌘-click to show it
   beside the focused tile, ⌥-click to show it over the focused tile;
   rest the pointer for a card — after a moment, the block itself, live,
-  when it's out of sight (another workspace, stacked, collapsed, or
+  when it's out of sight (another space, stacked, collapsed, or
   nowhere): its own view lent to the card and drawn smaller, a terminal
   still running in it, an editor, a page, a notebook as they are, put
   back when the card goes (one with no view yet gets one made for the
@@ -881,16 +881,16 @@ around it, and comes back with its history.
   kind, its message — not "Done"); an untitled note goes by its first
   words, as its links name it; a text with unsaved edits has its bar's
   dot after the name; a page has its site's icon.
-- **Pin in Workspace** (a tile's bar menu, a terminal's or an editor's
+- **Pin in Space** (a tile's bar menu, a terminal's or an editor's
   right-click menu, or a sidebar row's): the block stays
-  at the top of its workspace in the sidebar, above a hairline, in the
+  at the top of its space in the sidebar, above a hairline, in the
   order pinned — and stays there with its tile closed, dimmed, to click
-  for the tile back in that workspace. A pin is an edge from the
-  workspace to the block, a strong one: the workspace keeps the block —
+  for the tile back in that space. A pin is an edge from the
+  space to the block, a strong one: the space keeps the block —
   a pin is how a block stays without a tile. Unpin from the same menus.
   (What Manifold kept before, by a Keep, a name or a pin outside the
-  workspaces, is brought into them once: a kept block nothing else
-  reaches is pinned in a workspace named Kept.)
+  spaces, is brought into them once: a kept block nothing else
+  reaches is pinned in a space named Kept.)
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
   finder row chosen with ⏎: plain **goes to** it
@@ -918,8 +918,8 @@ around it, and comes back with its history.
   and what you went to before and after it, from the trail. Click a
   block to look around *it* instead (Back returns), double-click or ⏎ to
   go there, arrow keys move, Space re-centers, ⎋ closes. The trail —
-  every tile focused and every workspace gone to, which the host keeps
-  — orders ⌘\`'s round of the workspaces and the map's before and after.
+  every tile focused and every space gone to, which the host keeps
+  — orders ⌘\`'s round of the spaces and the map's before and after.
 - **Every block has a status** (DESIGN.md §3.7), in the schema of
   [OSC 7501](https://mitchellh.com/writing/program-status-osc7501):
   idle, working (with progress, or without), done, blocked (waiting for
@@ -945,14 +945,14 @@ around it, and comes back with its history.
   command that ran ten seconds or more ending (how long, and its exit
   status if it failed); clicked, one goes to the block, and the command. The **Inbox** (⌥⌘3, or the counts at the foot of
   the sidebar) lists what wants attention, the unread first and how
-  long ago at the right. Overview (⌘') shows a workspace's blocks
+  long ago at the right. Overview (⌘') shows a space's blocks
   themselves, live, as a **state view**: a list, stacked down one
   scrolling column as Prism's notes are, each under its pill; or an
   overview, all of them in one grid at once, as Mission Control lays out
   windows: as big as they can be with every one in the room (from about
   square to twice as wide as tall), scrolling only when there are so many
   they'd be small. Nothing is placed: click a pill to go to the block, ⌘-click
-  to bring it to the workspace you were in, ⎋ (or ×) to go back.
+  to bring it to the space you were in, ⎋ (or ×) to go back.
   **Clear Status**, in a row's menu in the Inbox or the tile's pill menu,
   forgets what a block reported until it reports again; a group's row
   offers Clear All. From a shell:
@@ -969,7 +969,7 @@ around it, and comes back with its history.
   process list's filter and sort — so a restart, a move between lenses or
   a reload shows exactly what you left. The block keeps what it was last
   left at through each lens too, so a tile made for it again (recalled
-  after it was closed, brought to another workspace) starts there.
+  after it was closed, brought to another space) starts there.
 - **History of This File…** (⌥⌘Y) scrubs the focused file through every change it's had
   in Manifold: Restore This Text puts a version back (one undoable edit);
   Compare with Now opens a diff block of then against now. Open This
@@ -1122,9 +1122,9 @@ Everything lives in `manifoldd`, a server (one per host) the app starts
 when it isn't running and that outlives it. Every block is a shard with
 its own append-only log, kept in `~/Library/Application Support/Manifold/
 logs` with snapshots beside, plus a registry of the host's blocks (kind,
-title, last seen, held or dormant), their links, and spaces. The app
-mirrors the host's shards and **leads** the ones it edits — workspaces,
-text, spaces — appending entries locally first, so nothing waits on a
+title, last seen, held or dormant), their links, and its spaces (which there are, in order). The app
+mirrors the host's shards and **leads** the ones it edits — spaces,
+text, the spaces — appending entries locally first, so nothing waits on a
 round trip; the host leads terminals and folders and does the file system
 work (reading, writing, watching) on proposal. Both apply the same entries
 with the same code, so they agree. State from before blocks (`state.json`)
@@ -1157,10 +1157,10 @@ is migrated into logs on first run.
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
-  A workspace lives on a host too, in that host's spaces, which every Mac
-  attached to the host sees: New Terminal in a New Workspace (⌥⌘T)
-  makes it on the focused block's host, a host's row in the Workspaces
-  sidebar has New Workspace on *host* in its menu. What a Mac shows and settles on is its own.
+  A space lives on a host too, among that host's spaces, which every Mac
+  attached to the host sees: New Terminal in a New Space (⌥⌘T)
+  makes it on the focused block's host, a host's row in the Spaces
+  sidebar has New Space on *host* in its menu. What a Mac shows and settles on is its own.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
@@ -1194,25 +1194,25 @@ is migrated into logs on first run.
   *host*…** (the same menu) installs the server there
   again whatever is there, stops the one running and starts the new one:
   its shells end and its terminals start fresh ones, its blocks and
-  workspaces stay. **Reset Graph on *host*…** forgets every link between
+  spaces stay. **Reset Graph on *host*…** forgets every link between
   the host's blocks — opened from, found by, mentions, compared, made by
   hand — and its trail, leaving the graph empty (what's on each
-  workspace stays; mentions come back as texts change). Both are in
+  space stays; mentions come back as texts change). Both are in
   every menu of something on a host, under the host's name: a tile's,
-  a terminal's or an editor's right-click, a workspace's or a block's
+  a terminal's or an editor's right-click, a space's or a block's
   row in the sidebar; the host's own row has them as they are. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an
   editor there takes no edits, and nothing new reaches it until it's
-  back. Click a host's row in Files (or Workspaces) and its home folder opens
+  back. Click a host's row in Files (or Spaces) and its home folder opens
   as a listing on that host; a folder row with no listing yet opens one
   when clicked (the disclosure, or a double-click, unfolds it); a host
   with nothing of it yet shows just its `~`. A tile whose block is on a
   host you aren't attached to at all is a placeholder that says so,
   with Attach. Two Manifolds may attach to one host and share
   it: each block a client can edit (a note, a file, a web page, a
-  workspace) has one owner at a time, whichever focused it last; the
+  space) has one owner at a time, whichever focused it last; the
   other mirrors until it focuses the block again. Linux servers (x86_64
   and aarch64, static) come from `scripts/build-linux.sh`, which
   `scripts/build-app.sh` runs: they are built with a swift.org toolchain
@@ -1242,14 +1242,14 @@ is migrated into logs on first run.
     `@here` — an editor's, a terminal's, a PDF's, a page's — so "the code
     I highlighted" is `mani read @selection`, and `mani info @selection`
     says where: block, path, lines, page), `@last` (what `mani` last
-    made), `@workspace`; `@left`, `@right`, `@above`, `@below` (the
+    made), `@space`; `@left`, `@right`, `@above`, `@below` (the
     nearest tile that way from `@here`), `@leftmost`, `@rightmost`,
     `@top`, `@bottom`, `@under` (stacked under `@here`), `@1`…`@9`
     (columns left to right, each top down). A kind narrows any of them:
     `@right:diff`, `@:pdf` (the one PDF shown). A name that could be
     more than one is an error that lists them, ids and all.
-  - **Looking.** `mani ls` lists the workspace's tiles (`--all`, every
-    workspace); `--json` gives the whole layout — columns of tiles, each
+  - **Looking.** `mani ls` lists the space's tiles (`--all`, every
+    space); `--json` gives the whole layout — columns of tiles, each
     with its block, kind, title, path, frame (x, y, width, height as
     shares of the window), the tiles sharing each of its edges, the
     names it answers to, the tiles stacked under it, and its summary
@@ -1294,7 +1294,7 @@ is migrated into logs on first run.
   - **Watching.** `mani watch` prints a JSON line for each thing that
     happens — focus, selection, a command started or ended (with its
     status), a block's status, a tile shown or taken off, a file saved,
-    another workspace, something done in a panel — until it's
+    another space, something done in a panel — until it's
     interrupted (`--only` some).
   - **For agents.** `mani skill show` prints a guide to all this for
     coding agents: how to look before asking when the user says "this",
@@ -1377,7 +1377,7 @@ is migrated into logs on first run.
   terminal (Swift's "Fatal error" says what went wrong). The next launch
   says a report was kept. If Manifold dies within half a minute of
   starting twice in a row, it asks to **start safely**: a new, empty
-  workspace shown instead of the last one, and other hosts left until
+  space shown instead of the last one, and other hosts left until
   you attach them — everything else as it was.
 
 ## Building

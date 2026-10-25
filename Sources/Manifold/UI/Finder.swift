@@ -504,16 +504,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     private func updateHint() {
         if outline != nil {
-            hint.stringValue = "The workspace, by column and tile, headings within    ↩ Go    ⎋ Close"
+            hint.stringValue = "The space, by column and tile, headings within    ↩ Go    ⎋ Close"
             return
         }
         let folder = root.abbreviatingHome
         hint.stringValue = switch scope {
-        case .names: !withFiles ? "Blocks and workspaces, and what to make    ↩ Go    ⎋ Close"
-            : fileCandidates.isEmpty ? "Blocks, workspaces, and files in \(folder) (looking…)    ↩ Open    ⎋ Close"
-            : "Blocks, workspaces, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
+        case .names: !withFiles ? "Blocks and spaces, and what to make    ↩ Go    ⎋ Close"
+            : fileCandidates.isEmpty ? "Blocks, spaces, and files in \(folder) (looking…)    ↩ Open    ⎋ Close"
+            : "Blocks, spaces, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
         case .contents: "Lines in the files under the project    ⇥ Scope    ↩ Open    ⎋ Close"
-        case .blocks: "The blocks' texts, this workspace's first    ⇥ Scope    ↩ Go    ⎋ Close"
+        case .blocks: "The blocks' texts, this space's first    ⇥ Scope    ↩ Go    ⎋ Close"
         }
     }
 

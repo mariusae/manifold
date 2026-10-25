@@ -169,7 +169,7 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
         if one, !rootBox.hasKeyboard { rootBox.stringValue = hostSettings["root"] ?? "" }
         note.stringValue = one
             ? "What this host runs: a command or root markers set here are its own (in the accent color); the rest are as for all hosts. Every Mac attached to it shares these."
-            : "Files are matched by extension. Commands run through the shell, in the workspace root: the nearest folder up from the file with a root marker, else the repository, else the file's own folder. Each host runs its own; a server stops and restarts with its next file when its command changes."
+            : "Files are matched by extension. Commands run through the shell, in the project root: the nearest folder up from the file with a root marker, else the repository, else the file's own folder. Each host runs its own; a server stops and restarts with its next file when its command changes."
         let running = states?() ?? [:]
         if running.isEmpty {
             status.stringValue = "No language server is running."

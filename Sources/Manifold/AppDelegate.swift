@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSWorkspace.shared.activateFileViewerSelecting([report])
                 }
             } else if safeMode {
-                wc.notice("Started safely: other hosts aren't attached, and a new workspace is shown", action: "OK") {}
+                wc.notice("Started safely: other hosts aren't attached, and a new space is shown", action: "OK") {}
             }
             if !openWhenReady.isEmpty || !linksWhenReady.isEmpty {
                 let paths = openWhenReady, links = linksWhenReady
@@ -124,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func askSafeMode() -> Bool {
         let alert = NSAlert()
         alert.messageText = "Manifold quit unexpectedly as it started"
-        alert.informativeText = "It happened \(CrashGuard.unfinished) times in a row. Started safely, Manifold shows a new, empty workspace instead of the last one, and doesn't attach other hosts until you ask; everything is kept. Reports are in ~/Library/Logs/Manifold."
+        alert.informativeText = "It happened \(CrashGuard.unfinished) times in a row. Started safely, Manifold shows a new, empty space instead of the last one, and doesn't attach other hosts until you ask; everything is kept. Reports are in ~/Library/Logs/Manifold."
         alert.addButton(withTitle: "Start Safely")
         alert.addButton(withTitle: "Start as Usual")
         return alert.runModal() == .alertFirstButtonReturn
@@ -236,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let file = submenu(main, "File")
         item(file, "New Terminal", #selector(MainWindowController.newTerminalBeside(_:)), "n")
         item(file, "New Terminal in a New Column", #selector(MainWindowController.newTerminalInNewColumn(_:)), "n", [.command, .option, .shift])
-        item(file, "New Terminal in a New Workspace", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
+        item(file, "New Terminal in a New Space", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
         item(file, "New Note from Selection", #selector(MainWindowController.newNoteFromSelection(_:)), "")
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")
@@ -269,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
-        item(file, "Remove Workspace", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
+        item(file, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")
@@ -321,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
-        let arrangement = submenu(main, "Workspace")
+        let arrangement = submenu(main, "Space")
         item(arrangement, "Name…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         arrangement.addItem(.separator())
         item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
@@ -338,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
         view.addItem(.separator())
         let organize = NSMenu(title: "Organize By")
-        for (title, sel, key) in [("Workspaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
+        for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
                                   ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3"),
                                   ("Search", #selector(MainWindowController.searchBlocks(_:)), "4")] {
             item(organize, title, sel, key, [.command, .option])
@@ -364,17 +364,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m", [.command, .option])
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())
-        item(window, "Show Next Workspace", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
-        item(window, "Show Previous Workspace", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
+        item(window, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
+        item(window, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
         // ⌘`, as macOS cycles an app's windows: here, its workspaces (and,
         // with one, the windows).
-        item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
-        item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
+        item(window, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
+        item(window, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
         // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's sheets.
         item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
         item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
-            item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
+            item(window, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         window.addItem(.separator())
         // The block navigation stack (§3.5): ⌃- and ⌃⇧-, as VS Code's.

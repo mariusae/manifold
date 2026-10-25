@@ -55,7 +55,7 @@ final class StateView: NSView {
         modes.onChange = { [weak self] _ in self?.modeChosen() }
         leave.target = self
         leave.action = #selector(leaveClicked)
-        leave.toolTip = "Back to the Workspace (⎋)"
+        leave.toolTip = "Back to the Space (⎋)"
         for v in [title, count, modes, leave] { header.addSubview(v) }
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true

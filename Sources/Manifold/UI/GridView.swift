@@ -1720,7 +1720,7 @@ final class HostPill: NSView {
         didSet {
             guard host != oldValue else { return }
             label.stringValue = host ?? ""
-            toolTip = host.map { "On \($0), not this workspace's host" }
+            toolTip = host.map { "On \($0), not this space's host" }
             needsLayout = true
         }
     }

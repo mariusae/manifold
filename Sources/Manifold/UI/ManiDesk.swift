@@ -94,7 +94,7 @@ final class ManiDesk {
         case "run": return try runCommand(r, scope, asker)
         case "pin", "unpin":
             let t = try await target(r.args[0], scope)
-            guard let ws = t.workspace ?? scope.workspace else { throw Failure(message: "\(r.args[0]) isn't in a workspace to be pinned in") }
+            guard let ws = t.workspace ?? scope.workspace else { throw Failure(message: "\(r.args[0]) isn't in a space to be pinned in") }
             wc.setPinned(t.block, in: ws, r.verb == "pin")
             return ""
         case "link":
@@ -167,6 +167,7 @@ final class ManiDesk {
         case .text: out = [b.isNote ? "note" : "file"]
         case .directory: out = ["folder"]
         case .terminal: out = ["terminal"]
+        case .arrangement: out = ["space"]
         default: out = [b.kind.rawValue]
         }
         if b.agent != nil { out.append("agent") }
@@ -194,8 +195,8 @@ final class ManiDesk {
             case "focused":
                 guard let ws = scope.workspace, let p = hosts.arrangement(ws)?.focusedPlacement else { throw Failure(message: "nothing is focused") }
                 return Target(block: p.block, tile: p.id, workspace: ws)
-            case "workspace":
-                guard let ws = scope.workspace else { throw Failure(message: "no workspace is shown") }
+            case "space", "workspace":
+                guard let ws = scope.workspace else { throw Failure(message: "no space is shown") }
                 return Target(block: ws, workspace: ws)
             case "last":
                 guard let last else { throw Failure(message: "mani hasn't made anything yet") }
@@ -203,7 +204,7 @@ final class ManiDesk {
             case "selection":
                 throw Failure(message: "@selection is for read and info")
             default:
-                guard let a = scope.arrangement, let ws = scope.workspace else { throw Failure(message: "no workspace is shown") }
+                guard let a = scope.arrangement, let ws = scope.workspace else { throw Failure(message: "no space is shown") }
                 let layout = ManiLayout(a)
                 if let kind, !Self.kindWords.contains(kind) {
                     throw Failure(message: "no kind \(kind); kinds: \(Self.kindWords.sorted().joined(separator: ", "))", status: 2)
@@ -355,12 +356,12 @@ final class ManiDesk {
     }
 
     private func ls(_ r: ManiRequest, _ scope: Scope) throws -> String {
-        guard let ws = scope.workspace, let a = scope.arrangement else { throw Failure(message: "no workspace is shown") }
+        guard let ws = scope.workspace, let a = scope.arrangement else { throw Failure(message: "no space is shown") }
         if r.flags["json"] != nil {
             var out = layoutJSON(ws, scope: scope)
             if let t = scope.hereTile { out["here"] = t }
             if r.flags["all"] != nil {
-                out = ["workspace": out, "workspaces": wc.allWorkspaces.map { layoutJSON($0, scope: scope) }, "shown": wc.selected?.description ?? ""]
+                out = ["space": out, "spaces": wc.allWorkspaces.map { layoutJSON($0, scope: scope) }, "shown": wc.selected?.description ?? ""]
             }
             return json(out)
         }
@@ -405,7 +406,7 @@ final class ManiDesk {
         var out: [String: Any]
         if let tileID = t.tile, let ws = t.workspace, let a = hosts.arrangement(ws), let p = a.placement(tileID) {
             out = tile(p, layout: ManiLayout(a), scope: scope)
-            out["workspace"] = ws.description
+            out["space"] = ws.description
         } else {
             out = ["block": b.id.description, "kind": kindName(b, lens: Lens.default(for: b.kind, path: b.path)), "title": b.displayTitle]
             if let path = b.path { out["path"] = path }
@@ -583,7 +584,7 @@ final class ManiDesk {
 
     private func context(_ r: ManiRequest, _ scope: Scope) async throws -> String {
         var out: [String: Any] = [:]
-        if let ws = scope.workspace { out["workspace"] = layoutJSON(ws, scope: scope) }
+        if let ws = scope.workspace { out["space"] = layoutJSON(ws, scope: scope) }
         if let t = scope.hereTile { out["here"] = t }
         if let sel = try? await selection(excluding: scope.here), let b = hosts.block(sel.block) {
             var o: [String: Any] = ["block": b.id.description, "kind": kindName(b, lens: .editor), "title": b.displayTitle,
@@ -606,7 +607,7 @@ final class ManiDesk {
         // As words.
         var lines: [String] = []
         if let ws = scope.workspace, let a = scope.arrangement {
-            lines.append("workspace: \(wc.title(of: a)) (\(ws))")
+            lines.append("space: \(wc.title(of: a)) (\(ws))")
             lines.append(try ls(ManiRequest(verb: "ls", flags: [:], args: [], cwd: r.cwd, here: r.here), scope).split(separator: "\n").dropFirst().joined(separator: "\n"))
         }
         if let sel = out["selection"] as? [String: Any] {
@@ -864,7 +865,7 @@ final class ManiDesk {
 
         func events(since old: Seen) -> [(String, [String: Any])] {
             var out: [(String, [String: Any])] = []
-            if workspace != old.workspace { out.append(("workspace", ["workspace": workspace?.description ?? ""])) }
+            if workspace != old.workspace { out.append(("space", ["space": workspace?.description ?? ""])) }
             if focused != old.focused, let f = focused { out.append(("focus", ["tile": f, "block": tiles[f]?.description ?? ""])) }
             if workspace == old.workspace {
                 for (t, b) in tiles where old.tiles[t] == nil { out.append(("open", ["tile": t, "block": b.description])) }

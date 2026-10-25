@@ -15,7 +15,7 @@ enum Organization: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .desk: "Workspaces"
+        case .desk: "Spaces"
         case .files: "Files"
         case .inbox: "Inbox"
         case .closed: "Recently Closed"

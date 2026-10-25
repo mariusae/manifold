@@ -94,14 +94,14 @@ final class SidebarView: NSView {
         card.addSubview(pinButton)
         newButton.target = self
         newButton.action = #selector(newClicked)
-        newButton.toolTip = "New Workspace (⌥⌘T)"
+        newButton.toolTip = "New Space (⌥⌘T)"
         card.addSubview(newButton)
         moreButton.target = self
         moreButton.action = #selector(moreClicked)
         card.addSubview(moreButton)
         backButton.target = self
         backButton.action = #selector(backClicked)
-        backButton.toolTip = "Back to Workspaces"
+        backButton.toolTip = "Back to Spaces"
         pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
@@ -192,7 +192,7 @@ final class SidebarView: NSView {
         // other a click away); the inbox its own.
         let by: Organization = org == .files ? .files : .desk
         byButton.image = Theme.symbol(by.symbol, size: 13, weight: .medium)
-        byButton.toolTip = org == .files ? "By Workspace (⌥⌘1)" : "By File (⌥⌘2)"
+        byButton.toolTip = org == .files ? "By Space (⌥⌘1)" : "By File (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
         inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
         closedRow.current = org == .closed

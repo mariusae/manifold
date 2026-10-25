@@ -1567,7 +1567,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.newTerminalBeside(nil)
             })
         }
-        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Workspace", subtitle: "⌥⌘T") { [weak self] in
+        items.append(PaletteItem(symbol: "apple.terminal", title: "New Terminal in a New Space", subtitle: "⌥⌘T") { [weak self] in
             self?.newTerminal(nil)
         })
         items.append(PaletteItem(symbol: "text.badge.plus", title: "New Note from Selection", subtitle: "") { [weak self] in self?.newNoteFromSelection(nil) })
@@ -1584,7 +1584,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             })
         }
         if arrangement != nil {
-            items.append(PaletteItem(symbol: "pencil", title: "Name This Workspace…", subtitle: "⇧⌘R") { [weak self] in
+            items.append(PaletteItem(symbol: "pencil", title: "Name This Space…", subtitle: "⇧⌘R") { [weak self] in
                 self?.renameTab(nil)
             })
         }
@@ -1598,7 +1598,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for client in hosts.all where client.isRemote {
             let h = client.host
             let state = client.isConnected ? "connected" : "offline"
-            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Workspace", subtitle: state) { [weak self] in
+            items.append(PaletteItem(symbol: "server.rack", title: "New Terminal on \(hosts.label(of: h)) in a New Space", subtitle: state) { [weak self] in
                 // The workspace lives on that host, as its terminal does.
                 self?.newWorkspace(on: h, cwd: nil)
             })
@@ -2205,7 +2205,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func resetGraph(_ host: HostID) {
         let alert = NSAlert()
         alert.messageText = "Reset the graph on \(hosts.label(of: host))?"
-        alert.informativeText = "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each workspace stays. This can't be undone."
+        alert.informativeText = "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each space stays. This can't be undone."
         alert.addButton(withTitle: "Reset")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -2219,7 +2219,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func resetServer(_ host: HostID) {
         let alert = NSAlert()
         alert.messageText = "Reset the server on \(hosts.label(of: host))?"
-        alert.informativeText = "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and workspaces stay."
+        alert.informativeText = "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and spaces stay."
         alert.addButton(withTitle: "Reset")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -2299,9 +2299,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         switch item.action {
         case #selector(togglePinInWorkspace(_:)):
             // Named for what it will do to its tile's block.
-            guard let id = selected, let block = pinTarget(item) else { item.title = "Pin in Workspace"; return false }
+            guard let id = selected, let block = pinTarget(item) else { item.title = "Pin in Space"; return false }
             let on = isPinned(block, in: id)
-            item.title = on ? "Unpin" : "Pin in Workspace"
+            item.title = on ? "Unpin" : "Pin in Space"
             item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
             return true
         case #selector(setTerminalDormancy(_:)):
@@ -3487,7 +3487,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         func node(_ id: BlockID, distance: Int) -> GraphNode? {
             guard let b = hosts.block(id) else { return nil }
             let detail: String = switch b.kind {
-            case .arrangement: "Workspace"
+            case .arrangement: "Space"
             case .terminal: b.terminal?.cwd?.abbreviatingHome ?? "Terminal"
             default: b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
             }
@@ -4027,8 +4027,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
                 title = self.title(of: a)
                 secondary = ""
-                detail = a.isNamed ? "Workspace · \(a.placements.count) blocks" : "Workspace, unnamed · \(a.placements.count) blocks"
-                note = allWorkspaces.contains(block.id) ? "in spaces" : ""
+                detail = a.isNamed ? "Space · \(a.placements.count) blocks" : "Space, unnamed · \(a.placements.count) blocks"
             case .text:
                 secondary = block.path ?? ""
                 detail = block.path.map { ($0 as NSString).deletingLastPathComponent.abbreviatingHome } ?? "Note"
@@ -5399,7 +5398,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func rename(_ id: BlockID) {
         guard let window, let a = hosts.arrangement(id) else { return }
         let alert = NSAlert()
-        alert.messageText = "Name This Workspace"
+        alert.messageText = "Name This Space"
         alert.informativeText = "Called this in place of what it holds (its blocks' folder). Empty, it's named for that again."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.stringValue = a.title ?? ""
@@ -6056,7 +6055,7 @@ extension MainWindowController: GridDelegate {
         }
         if let ws = selected {
             let on = isPinned(block, in: ws)
-            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Workspace", symbol: on ? "pin.slash" : "pin") { [weak self] in
+            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin") { [weak self] in
                 self?.setPinned(block, in: ws, !on)
             })
         }
@@ -7711,7 +7710,7 @@ extension MainWindowController: OrganizationViewDelegate {
                 guard let self, let home = c.home else { return }
                 self.openDirectory(home, on: c.host)
             })
-            let there = ClosureMenuItem("New Workspace on \(hosts.label(of: c.host))", symbol: "plus.rectangle.on.rectangle") { [weak self] in
+            let there = ClosureMenuItem("New Space on \(hosts.label(of: c.host))", symbol: "plus.rectangle.on.rectangle") { [weak self] in
                 self?.newWorkspace(on: c.host, cwd: nil)
             }
             there.isEnabled = c.link == .connected
@@ -7731,7 +7730,7 @@ extension MainWindowController: OrganizationViewDelegate {
         if let arr = node.arrangement, node.column == nil {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Remove Workspace", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
+            menu.addItem(ClosureMenuItem("Remove Space", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             menu.addItem(.separator())
             menu.addItem(hostSubmenu(arr.host))
             return menu
@@ -7747,7 +7746,7 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, node.style == .row {
             let on = isPinned(id, in: arr)
-            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Workspace", symbol: on ? "pin.slash" : "pin") { [weak self] in
+            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin") { [weak self] in
                 self?.setPinned(id, in: arr, !on)
             })
             menu.addItem(.separator())
@@ -7983,7 +7982,7 @@ final class SearchText {
 /// its tile, named Unpin when it's pinned (`validateMenuItem`).
 enum PinMenu {
     static func item(for placement: PlacementID) -> NSMenuItem {
-        let item = NSMenuItem(title: "Pin in Workspace", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "Pin in Space", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "")
         item.representedObject = placement
         return item
     }
