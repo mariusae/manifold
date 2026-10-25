@@ -96,9 +96,9 @@ final class SummaryCard: NSView {
         switch tone {
         case .plain: Theme.secondaryText
         case .running: Theme.accent
-        case .done: .systemGreen
-        case .failed: .systemRed
-        case .attention: .systemOrange
+        case .done: Status.done
+        case .failed: Status.failed
+        case .attention: Status.attention
         }
     }
 

@@ -247,7 +247,7 @@ final class StatusGlyph: NSView {
         if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
     }
 
-    static let amber = NSColor(srgbRed: 0.93, green: 0.68, blue: 0.3, alpha: 1)
+    static let amber = Status.attention
 
     override func draw(_ dirtyRect: NSRect) {
         guard let look else { return }

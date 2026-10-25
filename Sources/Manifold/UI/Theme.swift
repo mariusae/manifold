@@ -12,9 +12,11 @@ enum Theme {
     static let bodyText = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.86, alpha: 1))
     /// Headings and bold in it: brighter, to do the work emphasis does.
     static let strongText = NSColor.dynamic(NSColor(white: 0.08, alpha: 1), NSColor(white: 0.97, alpha: 1))
-    static let secondaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.6, alpha: 1))
+    /// Each at least 4.5:1 on a panel or a card, in either appearance
+    /// (WCAG AA for text this size): quieter, but read.
+    static let secondaryText = NSColor.dynamic(NSColor(white: 0.40, alpha: 1), NSColor(white: 0.68, alpha: 1))
     /// Quieter still: a hint, a note at a row's end.
-    static let tertiaryText = NSColor.dynamic(NSColor(white: 0.6, alpha: 1), NSColor(white: 0.45, alpha: 1))
+    static let tertiaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.62, alpha: 1))
     static let hover = NSColor.dynamic(NSColor(white: 0, alpha: 0.055), NSColor(white: 1, alpha: 0.07))
     static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
     /// A selected row in a list: the tint, thin, so the row's own colors stay.
@@ -25,7 +27,7 @@ enum Theme {
     /// The app's tint (`Tints`).
     static let accent = Tints.accent
     /// A block that failed (§3.7).
-    static let statusError = NSColor(srgbRed: 0.88, green: 0.3, blue: 0.28, alpha: 1)
+    static let statusError = Status.failed
     static let dropHighlight = Tints.dropHighlight
     /// Floating panels: the palette, a stack's list.
     /// A text in view mode, as go.dev's docs (the Go spec) set code: on
