@@ -252,7 +252,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         case let .section(title):
             f.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
         case let .note(text):
-            f.attributedStringValue = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.systemRed]).truncatingTail()
+            f.attributedStringValue = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: Status.failed]).truncatingTail()
         case let .change(s):
             let letters = (s.index == " " ? "·" : s.index) + (s.workTree == " " ? "·" : s.workTree)
             let color: NSColor = s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor)

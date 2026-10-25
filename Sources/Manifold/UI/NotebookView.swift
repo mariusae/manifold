@@ -905,7 +905,7 @@ final class OutputTextView: NSTextView {
         guard r != hoverRange else { return NSCursor.pointingHand.set() }
         clearHover()
         hoverRange = r
-        layoutManager?.addTemporaryAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: Theme.accent], forCharacterRange: r)
+        layoutManager?.addTemporaryAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: Tints.accentText], forCharacterRange: r)
         NSCursor.pointingHand.set()
     }
 

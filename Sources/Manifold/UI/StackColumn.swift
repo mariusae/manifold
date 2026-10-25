@@ -82,7 +82,7 @@ final class SummaryCard: NSView {
     private func toneColor(_ tone: BlockSummary.Tone) -> NSColor {
         switch tone {
         case .plain: Theme.secondaryText
-        case .running: Theme.accent
+        case .running: Status.runningText
         case .done: Status.done
         case .failed: Status.failed
         case .attention: Status.attention

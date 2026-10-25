@@ -1737,7 +1737,7 @@ final class HostPill: NSView {
         icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
         icon.contentTintColor = Theme.accent
         label.font = UIType.caption
-        label.textColor = Theme.accent
+        label.textColor = Tints.accentText
         label.lineBreakMode = .byTruncatingTail
         addSubview(icon)
         addSubview(label)

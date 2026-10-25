@@ -23,12 +23,13 @@ final class PlaceholderView: NSView, PaneContent {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.sheet(level: 0).cgColor }
         title.stringValue = "On \(label)"
-        title.font = .systemFont(ofSize: 14, weight: .semibold)
+        title.font = UIType.heading
         title.textColor = Theme.text
         title.alignment = .center
         note.stringValue = "Not attached to that host."
-        note.font = .systemFont(ofSize: 12)
-        note.textColor = Theme.secondaryText
+        note.font = UIType.body
+        // On the sheet's grey, the secondary grey wouldn't read in the dark.
+        note.textColor = Theme.text
         note.alignment = .center
         button.target = self
         button.action = #selector(attachClicked)

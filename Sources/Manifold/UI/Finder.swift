@@ -885,7 +885,7 @@ final class ExcerptCell: NSTableCellView {
         while true {
             let r = ns.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: range)
             guard r.location != NSNotFound else { break }
-            s.addAttributes([.font: bold, .foregroundColor: Theme.accent], range: r)
+            s.addAttributes([.font: bold, .foregroundColor: Tints.accentText], range: r)
             range = NSRange(location: r.upperBound, length: ns.length - r.upperBound)
         }
         return s

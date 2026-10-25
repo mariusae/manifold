@@ -1299,7 +1299,10 @@ the light: 0.10, 10, four below), float (a panel: Flat.shadow);
 and in to go, one curve to travel and one that overshoots to settle;
 **EdgeColor** — hairline, subtle, strong; **Status** — running (the
 accent), done, attention, failed, offline, each its own in light and
-dark and darker in the light to read as text; a **Pill** for counts and
+dark and darker in the light to read as text; the tint as text
+(`Tints.accentText`, darkened or lightened until it reads on a panel)
+and behind white (`Tints.accentFill`, darkened until white on it reads);
+a **Pill** for counts and
 ages; one row band (Flat.rowBand) for every list. Text is at least 4.5:1
 on a panel or a card in either appearance.
 

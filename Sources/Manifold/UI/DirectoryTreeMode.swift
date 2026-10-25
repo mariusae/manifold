@@ -394,7 +394,8 @@ final class TreeCell: NSTableCellView {
             icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
         }
         let text = NSMutableAttributedString(string: n.name, attributes: [
-            .font: NSFont.systemFont(ofSize: 13), .foregroundColor: Theme.text.withAlphaComponent(fade),
+            // Muted (ignored, hidden): the tertiary grey, which still reads.
+            .font: UIType.row, .foregroundColor: n.isMuted ? Theme.tertiaryText : Theme.text,
         ])
         let length = (n.name as NSString).length
         for i in bold {

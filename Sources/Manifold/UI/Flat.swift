@@ -235,7 +235,7 @@ final class FlatButton: NSButton {
 
     private var on: Bool { toggles && state == .on }
     private var ink: NSColor {
-        style == .primary ? .white : on ? Theme.accent : Theme.text
+        style == .primary ? .white : on ? Tints.accentText : Theme.text
     }
     private var symbol: NSImage? { symbolName.flatMap { Theme.symbol($0, size: (font?.pointSize ?? 12) - 1, weight: .medium) } }
     private var label: NSAttributedString {
@@ -269,7 +269,7 @@ final class FlatButton: NSButton {
         let pressed = isHighlighted && isEnabled, over = hovering && isEnabled
         switch style {
         case .primary:
-            Theme.accent.blended(withFraction: pressed ? 0.2 : over ? 0.1 : 0, of: .black)?.setFill()
+            Tints.accentFill.blended(withFraction: pressed ? 0.2 : over ? 0.1 : 0, of: .black)?.setFill()
             path.fill()
         case .normal:
             (on ? Theme.accent.withAlphaComponent(pressed ? 0.22 : 0.14)
@@ -470,7 +470,7 @@ final class FlatCheckboxCell: NSButtonCell {
         }
         let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
         let on = state == .on
-        (on ? Theme.accent : Flat.fill).setFill()
+        (on ? Tints.accentFill : Flat.fill).setFill()
         path.fill()
         if !on {
             path.lineWidth = 1

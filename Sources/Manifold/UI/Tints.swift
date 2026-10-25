@@ -85,6 +85,54 @@ enum Tints {
     static let band = live { $0.band(active: true) }
     static let bandInactive = live { $0.band(active: false) }
     static let dropHighlight = live { $0.accent.withAlphaComponent(0.18) }
+    /// The tint as text — a note that's running, a match, a toggled
+    /// button's title: darkened in the light, lightened in the dark, as
+    /// far as it takes to read on a panel (4.5:1, and a little over for a
+    /// band behind it).
+    static let accentText = NSColor(name: nil) { appearance in
+        var out = current.accent
+        appearance.performAsCurrentDrawingAppearance {
+            let tint = current.accent.usingColorSpace(.sRGB) ?? current.accent
+            let ground = Theme.panel.usingColorSpace(.sRGB) ?? .white
+            out = reaching(4.8, from: tint, on: ground, toward: appearance.isDark ? .white : .black)
+        }
+        return out
+    }
+    /// The tint behind white — a primary button, a checked box: darkened
+    /// as far as it takes for white on it to read (4.5:1).
+    static let accentFill = NSColor(name: nil) { appearance in
+        var out = current.accent
+        appearance.performAsCurrentDrawingAppearance {
+            let tint = current.accent.usingColorSpace(.sRGB) ?? current.accent
+            out = reaching(4.5, from: tint, on: .white, toward: .black)
+        }
+        return out
+    }
+
+    /// `color` blended toward `toward` in small steps until it stands off
+    /// `ground` by `ratio`.
+    private static func reaching(_ ratio: CGFloat, from color: NSColor, on ground: NSColor, toward: NSColor) -> NSColor {
+        var c = color
+        var f: CGFloat = 0
+        while contrast(c, ground) < ratio, f < 1 {
+            f += 0.04
+            c = (color.blended(withFraction: f, of: toward) ?? c).usingColorSpace(.sRGB) ?? c
+        }
+        return c
+    }
+
+    /// WCAG's contrast between two colors: 1 to 21.
+    static func contrast(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        let (x, y) = (luminance(a), luminance(b))
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
+
+    /// WCAG's relative luminance of a color, in sRGB.
+    static func luminance(_ color: NSColor) -> CGFloat {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        func linear(_ v: CGFloat) -> CGFloat { v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear(c.redComponent) + 0.7152 * linear(c.greenComponent) + 0.0722 * linear(c.blueComponent)
+    }
 
     private static func live(_ pick: @escaping (Tint) -> NSColor) -> NSColor {
         NSColor(name: nil) { appearance in
