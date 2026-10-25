@@ -928,7 +928,10 @@ enum DebugControl {
         case "press":
             // "press return|tab|escape|up|down|<char>": a key event through
             // the window, as typed (so popups see it).
-            guard let window = wc?.window else { return "no window" }
+            // "panel <key>": to ⌘O's panel, open, instead of the window.
+            let toPanel = arg.hasPrefix("panel ")
+            let arg = toPanel ? String(arg.dropFirst(6)) : arg
+            guard let window = toPanel ? NSApp.windows.first(where: { $0 is PickerPanel && $0.isVisible }) : wc?.window else { return "no window" }
             // "cmd+g", "cmd+shift+g": with modifiers, through the app, as
             // the menus and the views' key equivalents see a press. "app
             // ctrl+tab": through the app's own dispatch (its key monitors
