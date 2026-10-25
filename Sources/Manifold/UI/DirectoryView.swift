@@ -587,6 +587,15 @@ extension NSImage {
         out.isTemplate = false
         return out
     }
+
+    /// Where it draws at its own size, centred in `r` (shrunk to fit, never
+    /// stretched).
+    func centered(in r: NSRect) -> NSRect {
+        guard size.width > 0, size.height > 0 else { return r }
+        let k = min(1, r.width / size.width, r.height / size.height)
+        let w = size.width * k, h = size.height * k
+        return NSRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h)
+    }
 }
 
 /// A promise of another host's file or folder, carrying the entry's own

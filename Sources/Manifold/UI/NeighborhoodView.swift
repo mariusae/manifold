@@ -335,12 +335,10 @@ final class GraphCanvas: NSView {
             path.lineWidth = isCenter ? 1.5 : 0.5
             path.stroke()
             if let icon = Theme.symbol(n.symbol, size: isCenter ? 13 : 11) {
-                let tinted = icon.copy() as! NSImage
-                tinted.isTemplate = true
-                NSGraphicsContext.saveGraphicsState()
-                Theme.secondaryText.set()
-                tinted.draw(in: NSRect(x: r.minX + 10, y: r.midY - 7, width: 14, height: 14), from: .zero, operation: .sourceOver, fraction: 0.9, respectFlipped: true, hints: nil)
-                NSGraphicsContext.restoreGraphicsState()
+                // In its grey (a template drawn as is comes out black), at
+                // its own size in the 14-point square.
+                icon.tinted(Theme.secondaryText).draw(in: icon.centered(in: NSRect(x: r.minX + 10, y: r.midY - 7, width: 14, height: 14)),
+                                                      from: .zero, operation: .sourceOver, fraction: 0.9, respectFlipped: true, hints: nil)
             }
             let truncating = NSMutableParagraphStyle()
             truncating.lineBreakMode = .byTruncatingTail

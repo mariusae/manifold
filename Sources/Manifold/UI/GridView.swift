@@ -2651,11 +2651,7 @@ enum BlockDragImage {
             path.lineWidth = 1
             path.stroke()
             if let icon = Theme.symbol(pane?.symbol ?? "apple.terminal", size: 13) {
-                let tinted = icon.copy() as! NSImage
-                tinted.isTemplate = true
-                NSGraphicsContext.current?.saveGraphicsState()
-                tinted.draw(in: NSRect(x: 12, y: (rect.height - 16) / 2, width: 16, height: 16))
-                NSGraphicsContext.current?.restoreGraphicsState()
+                icon.tinted(Theme.secondaryText).draw(in: icon.centered(in: NSRect(x: 12, y: (rect.height - 16) / 2, width: 16, height: 16)))
             }
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
             let text = NSAttributedString(string: title, attributes: attrs)
