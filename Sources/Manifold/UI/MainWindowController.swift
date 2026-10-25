@@ -405,16 +405,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             window.title = "Manifold"
         }
         if let stateView, stateGroup != nil || stateWorkspace != nil || stateAgents {
+            // As chosen; else, past ten blocks, their summaries (live views
+            // of so many would be small, and dear).
+            let mode = stateModeChosen ?? (stateBlocks.count > 10 ? .summaries : stateMode)
             let items = stateBlocks.map { block, _, _ -> StateView.Item in
                 let lens = stateLenses[block.id] ?? Lens.default(for: block.kind, path: block.path)
                 let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: lens)
                 var shown = Shown(placement: p, block: block)
                 if stateAgents { shown.caption = agentCaption(block) }
-                return StateView.Item(shown: shown, view: view(for: shown))
+                if mode == .summaries { return StateView.Item(shown: shown, view: nil, summary: cardContent(for: block.id)) }
+                return StateView.Item(shown: shown, view: view(for: shown), summary: nil)
             }
-            let title = stateAgents ? "Agents" : stateGroup?.title ?? "Overview"
-            stateView.show(items, title: title, mode: stateMode)
-            window.title = title
+            let title = stateGroup?.title ?? "Overview"
+            stateView.show(items, title: title, mode: mode, filter: stateGroup == nil ? (stateAgents ? 1 : 0) : nil)
+            window.title = stateAgents ? "Agents" : title
         }
         noteSeen(force: false)
         noteEditing()
@@ -2901,18 +2905,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         presentStateView()
     }
 
-    /// The agents' view, up.
+    /// The agents' view, up: Overview, filtered to the agents.
     private var stateAgents = false
+    /// The view's mode as chosen while it's up (else it goes by how many).
+    private var stateModeChosen: StateView.Mode?
 
-    /// Window ▸ Agents (⌃⌘A): every agent on every host at once, live, as
-    /// a list or an overview — those that need you first — each bar saying
-    /// what it's on, for how long, and what it has changed; clicked, gone
-    /// to. Again, or ⎋, back.
+    /// Window ▸ Agents (⌃⌘A): Overview, filtered to every agent on every
+    /// host — those that need you first — each saying what it's on, for
+    /// how long, and what it has changed; clicked, gone to. Again, or ⎋,
+    /// back.
     @objc func showAgents(_ sender: Any?) {
         if stateAgents { return hideStateView() }
         stateGroup = nil
         stateWorkspace = nil
         stateAgents = true
+        stateMode = .overview
         presentStateView()
     }
 
@@ -2957,7 +2964,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self.show(b, lens: Lens.default(for: block.kind, path: block.path), .here)
             }
             v.onLeave = { [weak self] in self?.hideStateView() }
-            v.onModeChanged = { [weak self] m in self?.stateMode = m }
+            v.onModeChanged = { [weak self] m in
+                self?.stateModeChosen = m
+                if m != .summaries { self?.stateMode = m }
+                self?.render()
+            }
+            // Overview's filter: this space's blocks, or every agent's.
+            v.onFilterChanged = { [weak self] i in
+                guard let self else { return }
+                self.stateAgents = i == 1
+                self.stateWorkspace = i == 1 ? nil : self.selected
+                self.stateMembers = []
+                self.render()
+            }
             root.addSubview(v, positioned: .above, relativeTo: stage)
             stateView = v
         }
@@ -2976,6 +2995,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stateGroup = nil
         stateWorkspace = nil
         stateAgents = false
+        stateModeChosen = nil
         content.isHidden = false
         render()
     }
@@ -2986,7 +3006,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var diffReloaded: [BlockID: Date] = [:]
 
     func debugStateView(mode: StateView.Mode) {
-        stateMode = mode
+        stateModeChosen = mode
         render()
     }
 

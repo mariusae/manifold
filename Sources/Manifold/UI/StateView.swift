@@ -4,26 +4,34 @@ import ManifoldCore
 /// A state view (DESIGN.md §3.6): a status group's blocks themselves, live,
 /// in the surface — as a **list**, stacked down one scrolling column as
 /// Prism's column of notes is, each under its pill; or an **overview**,
-/// all of them in one grid at once, as Mission Control lays out windows.
-/// Nothing is placed; a block clicked is gone to, ⌘-clicked brought to
-/// the arrangement last shown.
+/// all of them in one grid at once, as Mission Control lays out windows;
+/// or as **summaries**, a summary card each (what more than ten shows by
+/// itself, live views of so many being small and dear). Nothing is placed;
+/// a block clicked is gone to, ⌘-clicked brought to the arrangement last
+/// shown. Overview's filter: this space's blocks, or every agent.
 final class StateView: NSView {
-    enum Mode: Int { case list, overview }
+    enum Mode: Int { case list, overview, summaries }
 
     struct Item {
         var shown: Shown
-        var view: PaneContent
+        /// Live, in the list and the overview; none as summaries.
+        var view: PaneContent?
+        var summary: SummaryCardContent?
     }
 
     var onGoTo: ((BlockID) -> Void)?
     var onBring: ((BlockID) -> Void)?
     var onLeave: (() -> Void)?
     var onModeChanged: ((Mode) -> Void)?
+    /// Overview's filter chosen: 0 this space, 1 the agents.
+    var onFilterChanged: ((Int) -> Void)?
 
     private let header = NSView()
     private let title = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
-    private let modes = FlatSegments(symbols: ["list.bullet", "square.grid.2x2"])
+    private let modes = FlatSegments(symbols: ["list.bullet", "square.grid.2x2", "rectangle.grid.1x2"])
+    private let filter = FlatSegments(titles: ["This Space", "Agents"], font: .systemFont(ofSize: 12))
+    private var cards: [BlockID: SummaryCard] = [:]
     private let leave = IconButton(symbol: "xmark", size: 12, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
     private let document = FlippedView()
@@ -51,12 +59,14 @@ final class StateView: NSView {
         count.textColor = Theme.secondaryText
         modes.setToolTip("List", forSegment: 0)
         modes.setToolTip("Overview", forSegment: 1)
+        modes.setToolTip("Summaries", forSegment: 2)
         modes.selectedSegment = 0
         modes.onChange = { [weak self] _ in self?.modeChosen() }
+        filter.onChange = { [weak self] i in self?.onFilterChanged?(i) }
         leave.target = self
         leave.action = #selector(leaveClicked)
         leave.toolTip = "Back to the Space (⎋)"
-        for v in [title, count, modes, leave] { header.addSubview(v) }
+        for v in [title, count, filter, modes, leave] { header.addSubview(v) }
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -67,26 +77,50 @@ final class StateView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var views: [PaneContent] { items.map(\.view) }
+    var views: [PaneContent] { items.compactMap(\.view) }
 
-    func show(_ items: [Item], title: String, mode: Mode) {
+    /// `filter`: Overview's (0 this space, 1 the agents), or none for a
+    /// status group's view.
+    func show(_ items: [Item], title: String, mode: Mode, filter chosen: Int? = nil) {
         let incoming = Set(items.map(\.shown.placement.block))
-        for v in views where !incoming.contains(v.block) && v.superview === document { v.removeFromSuperview() }
-        for (id, p) in pills where !incoming.contains(id) {
+        let live = Set(items.filter { $0.view != nil }.map(\.shown.placement.block))
+        for v in document.subviews.compactMap({ $0 as? PaneContent }) where !live.contains(v.block) { v.removeFromSuperview() }
+        for (id, p) in pills where !incoming.contains(id) || mode == .summaries {
             p.removeFromSuperview()
             pills.removeValue(forKey: id)
+        }
+        for (id, c) in cards where !incoming.contains(id) || mode != .summaries {
+            c.removeFromSuperview()
+            cards.removeValue(forKey: id)
         }
         self.items = items
         self.mode = mode
         modes.selectedSegment = mode.rawValue
+        filter.isHidden = chosen == nil
+        if let chosen { filter.selectedSegment = chosen }
         self.title.stringValue = title
         count.stringValue = items.isEmpty ? "nothing here" : "\(items.count) block\(items.count == 1 ? "" : "s")"
         for item in items {
-            if item.view.superview !== document {
-                GridView.styleBody(item.view)
-                document.addSubview(item.view)
-            }
             let block = item.shown.placement.block
+            if mode == .summaries, let content = item.summary {
+                // A summary card: clicked, gone to; ⌘-clicked, brought here.
+                let card = cards[block] ?? {
+                    let c = SummaryCard(content)
+                    c.onClick = { [weak self] in
+                        if NSApp.currentEvent?.modifierFlags.contains(.command) == true { self?.onBring?(block) } else { self?.onGoTo?(block) }
+                    }
+                    cards[block] = c
+                    document.addSubview(c)
+                    return c
+                }()
+                card.content = content
+                continue
+            }
+            guard let view = item.view else { continue }
+            if view.superview !== document {
+                GridView.styleBody(view)
+                document.addSubview(view)
+            }
             let pill = pills[block] ?? {
                 let p = TilePill()
                 p.showsButtons = false
@@ -107,6 +141,8 @@ final class StateView: NSView {
         for v in views { v.removeFromSuperview() }
         pills.values.forEach { $0.removeFromSuperview() }
         pills = [:]
+        cards.values.forEach { $0.removeFromSuperview() }
+        cards = [:]
         items = []
     }
 
@@ -121,19 +157,32 @@ final class StateView: NSView {
         leave.frame = NSRect(x: bounds.width - Self.margin - 20, y: (h - 20) / 2, width: 20, height: 20)
         let mw = modes.intrinsicContentSize.width
         modes.frame = NSRect(x: leave.frame.minX - 12 - mw, y: (h - Flat.buttonHeight) / 2, width: mw, height: Flat.buttonHeight)
+        let fw = filter.intrinsicContentSize.width
+        filter.frame = NSRect(x: modes.frame.minX - 16 - fw, y: (h - Flat.buttonHeight) / 2, width: fw, height: Flat.buttonHeight)
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight)
         let width = scroll.contentSize.width
         let m = Self.margin
         var y: CGFloat = m
         switch mode {
+        case .summaries:
+            // Cards in as many columns as fit, each as tall as a card.
+            let columns = max(1, Int((width - m) / (340 + m)))
+            let w = ((width - CGFloat(columns + 1) * m) / CGFloat(columns)).rounded(.down)
+            for (i, item) in items.enumerated() {
+                guard let card = cards[item.shown.placement.block] else { continue }
+                let row = i / columns, col = i % columns
+                card.frame = NSRect(x: m + CGFloat(col) * (w + m), y: m + CGFloat(row) * (SummaryCard.height + m), width: w, height: SummaryCard.height)
+                y = card.frame.maxY + m
+            }
         case .list:
             for item in items {
                 let block = item.shown.placement.block
+                guard let view = item.view else { continue }
                 // A card as the grid lays one out: the bar at the top, the content beneath.
-                item.view.frame = NSRect(x: m, y: y + GridView.barHeight, width: width - 2 * m, height: Self.listHeight - GridView.barHeight)
+                view.frame = NSRect(x: m, y: y + GridView.barHeight, width: width - 2 * m, height: Self.listHeight - GridView.barHeight)
                 if let pill = pills[block] {
                     pill.frame = NSRect(x: m, y: y, width: width - 2 * m, height: GridView.barHeight)
-                    document.addSubview(pill, positioned: .above, relativeTo: item.view)
+                    document.addSubview(pill, positioned: .above, relativeTo: view)
                 }
                 y += Self.listHeight + m
             }
@@ -150,10 +199,10 @@ final class StateView: NSView {
                 let rowWidth = CGFloat(inRow) * cell.width + CGFloat(inRow - 1) * m
                 let x = (width - rowWidth) / 2 + CGFloat(col) * (cell.width + m)
                 let top = top0 + CGFloat(row) * (cell.height + m)
-                item.view.frame = NSRect(x: x, y: top + GridView.barHeight, width: cell.width, height: cell.height - GridView.barHeight)
-                if let pill = pills[block] {
+                item.view?.frame = NSRect(x: x, y: top + GridView.barHeight, width: cell.width, height: cell.height - GridView.barHeight)
+                if let pill = pills[block], let view = item.view {
                     pill.frame = NSRect(x: x, y: top, width: cell.width, height: GridView.barHeight)
-                    document.addSubview(pill, positioned: .above, relativeTo: item.view)
+                    document.addSubview(pill, positioned: .above, relativeTo: view)
                 }
                 y = max(y, top + cell.height + m)
             }

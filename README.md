@@ -947,12 +947,15 @@ around it, and comes back with its history.
   status if it failed); clicked, one goes to the block, and the command. The **Inbox** (⌥⌘3, or the counts at the foot of
   the sidebar) lists what wants attention, the unread first and how
   long ago at the right. Overview (⌘') shows a space's blocks
-  themselves, live, as a **state view**: a list, stacked down one
-  scrolling column as Prism's notes are, each under its pill; or an
-  overview, all of them in one grid at once, as Mission Control lays out
-  windows: as big as they can be with every one in the room (from about
-  square to twice as wide as tall), scrolling only when there are so many
-  they'd be small. Nothing is placed: click a pill to go to the block, ⌘-click
+  themselves, live, as a **state view** — or, with its filter on
+  **Agents** (Window ▸ Agents, ⌃⌘A), every agent on every host: a list,
+  stacked down one scrolling column as Prism's notes are, each under its
+  bar; or an overview, all of them in one grid at once, as Mission
+  Control lays out windows: as big as they can be with every one in the
+  room (from about square to twice as wide as tall); or **summaries**, a
+  summary card each, in columns — what it shows by itself past ten
+  blocks, live views of so many being small (the buttons at its top
+  right choose). Nothing is placed: click a pill to go to the block, ⌘-click
   to bring it to the space you were in, ⎋ (or ×) to go back.
   **Clear Status**, in a row's menu in the Inbox or the tile's pill menu,
   forgets what a block reported until it reports again; a group's row
@@ -1036,8 +1039,8 @@ around it, and comes back with its history.
   work touched the same lines, nothing touched and Manifold says so.
   Turns are found with ⌘O — by what was asked among the names, by what
   was asked or said In Blocks — each opening as its block. **Window ▸
-  Agents** (⌃⌘A) shows every agent on every host at once, live, as a
-  list or an overview — those that need you first, then those at work,
+  Agents** (⌃⌘A) is Overview filtered to the agents — every agent on
+  every host at once, those that need you first, then those at work,
   done, idle — each bar saying what it's on, for how long (or how long
   it took) and how many files it changed; click one to go there, ⎋ to
   come back.

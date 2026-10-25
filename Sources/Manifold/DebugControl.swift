@@ -705,6 +705,9 @@ enum DebugControl {
             switch arg {
             case "list": wc.debugStateView(mode: .list)
             case "overview": wc.debugStateView(mode: .overview)
+            case "summaries": wc.debugStateView(mode: .summaries)
+            case "space": wc.showWorkspaceOverview(nil)
+            case "agents": wc.showAgents(nil)
             case "leave": wc.hideStateView()
             default: return "usage: sv list|overview|leave"
             }
