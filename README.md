@@ -90,7 +90,10 @@ and Mona Sans (bundled).
   picture of a page, a PDF or an image. Scroll through them; the one
   chosen is ringed. With ⌃⇥, each ⇥ moves the choice a card down (⌃⇧⇥
   back up), and letting go of control brings it to the top (Escape leaves
-  things be); move the pointer over the cards and the card under it is
+  things be) — and as with ⌘⇥, a ⌃⇥ let go quickly (within a fifth of a
+  second, about when macOS's switcher would appear) goes to the tile
+  behind with no cards shown at all (⌃⇧⇥, the farthest), the cards
+  coming only for a ⌃⇥ held; move the pointer over the cards and the card under it is
   chosen from then on, a click bringing it to the top. A click away from
   the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's

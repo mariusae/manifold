@@ -2462,13 +2462,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             _ = content.stepStackSwitcher(f, back: back)
             return
         }
-        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return NSSound.beep() }
-        if NSEvent.modifierFlags.contains(.control) {
-            watchStackWalk()
-        } else {
-            // From the menu: one step, seen, then settled on.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.content.settleStackSwitcher() }
+        // Pressed again before the cards show: a step more, still unseen.
+        if var q = quickWalk {
+            q.steps += back ? -1 : 1
+            quickWalk = q
+            return
         }
+        if NSEvent.modifierFlags.contains(.control) {
+            // As ⌘⇥ is: let go quickly, and it's gone to the tile behind
+            // (⌃⇧⇥, the farthest) with nothing shown; held a moment, the
+            // cards come, the steps taken meanwhile already taken.
+            guard !a.isStashed(f), let (c, _) = a.locate(f),
+                  a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return NSSound.beep() }
+            let work = DispatchWorkItem { [weak self] in self?.showQuickWalk() }
+            quickWalk = (f, back ? -1 : 1, work)
+            watchStackWalk()
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
+            return
+        }
+        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return NSSound.beep() }
+        // From the menu: one step, seen, then settled on.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.content.settleStackSwitcher() }
     }
 
     private func watchStackWalk() {
@@ -2486,7 +2500,56 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func endStackWalk(settling: Bool) {
         stackMonitors.forEach(NSEvent.removeMonitor)
         stackMonitors = []
+        // Let go before the cards showed: the tile stepped to comes up.
+        if let q = quickWalk {
+            q.show.cancel()
+            quickWalk = nil
+            if settling { quickStep(q.top, steps: q.steps) }
+            return
+        }
         content.settleStackSwitcher(cancel: !settling)
+    }
+
+    /// ⌃⇥ pressed, the cards not shown yet: the tile, the steps taken, and
+    /// what shows them if control is still held.
+    private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem)?
+    /// How long ⌃⇥ is held before the cards show — as ⌘⇥'s switcher waits
+    /// before it appears (some 200 ms; Apple doesn't say).
+    static let switcherDelay: TimeInterval = 0.2
+
+    /// Held past the wait: the cards, at the step reached.
+    private func showQuickWalk() {
+        guard let q = quickWalk else { return }
+        quickWalk = nil
+        guard NSEvent.modifierFlags.contains(.control), content.stepStackSwitcher(q.top, back: q.steps < 0) else { return endStackWalk(settling: false) }
+        for _ in 0..<max(0, abs(q.steps) - 1) { _ = content.stepStackSwitcher(q.top, back: q.steps < 0) }
+    }
+
+    /// A quick ⌃⇥: the tile `steps` down the stack (round it; negative,
+    /// up from the farthest) brought to the top, nothing shown.
+    private func quickStep(_ top: PlacementID, steps: Int) {
+        guard let a = arrangement, let (c, _) = a.locate(top) else { return }
+        let order = [top] + a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }.map(\.id)
+        let k = ((steps % order.count) + order.count) % order.count
+        guard k != 0 else { return }
+        gridSwap(order[k])
+    }
+
+    /// Debugging: ⌃⇥ pressed with control held, then let go after `hold` seconds.
+    func debugQuickWalk(steps: Int, hold: TimeInterval) -> String {
+        guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f),
+              a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return "no stack" }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let q = self.quickWalk else { return }
+            self.quickWalk = nil
+            if self.content.stepStackSwitcher(q.top, back: q.steps < 0) {
+                for _ in 0..<max(0, abs(q.steps) - 1) { _ = self.content.stepStackSwitcher(q.top, back: q.steps < 0) }
+            }
+        }
+        quickWalk = (f, steps, work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + hold) { [weak self] in self?.endStackWalk(settling: true) }
+        return "pressed"
     }
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window

@@ -323,6 +323,12 @@ enum DebugControl {
             if arg == "up" { return wc?.debugPeekUp ?? "no window" }
             let button = arg.hasPrefix("button")
             return wc?.debugPeek(!arg.hasSuffix("off"), button: button) ?? "no window"
+        case "quickwalk":
+            // "quickwalk <steps> <hold seconds>": ⌃⇥ pressed (steps of it),
+            // control let go after that long — under the wait, nothing shows.
+            let w = arg.split(separator: " ").compactMap { Double($0) }
+            guard w.count == 2 else { return "usage: quickwalk <steps> <hold>" }
+            return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1]) ?? "no window"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"
