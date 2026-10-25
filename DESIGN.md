@@ -2,14 +2,14 @@
 
 Manifold is a wiki, not a set of windows. Terminals, files, notes,
 folders, web pages and searches are **blocks**, and everything is linked:
-a workspace links the blocks it shows, a note the blocks it mentions, and
+a space links the blocks it shows, a note the blocks it mentions, and
 what you do leaves links behind — this terminal opened that file, this
 search found that line. It is all one graph, and the graph is what keeps
-things: a block stays alive as long as it is reachable, from a workspace,
-a name, a Keep or a link by hand, and what nothing reaches any more is
-collected. Nothing is filed or put away; you link, and you follow links
-back. A workspace, the blocks you've arranged to work in, is itself a block
-you can name and come back to. Blocks live on hosts — this Mac, a dev box,
+things: a block stays alive as long as a space reaches it — shows it,
+pins it, or reaches it through a link by hand — and what nothing reaches
+any more is collected. Nothing is filed or put away; you link, and you
+follow links back. A space, the blocks you've arranged to work in, is
+itself a block, and stays until you remove it. Blocks live on hosts — this Mac, a dev box,
 a server — and one window shows, and links, blocks from several at once.
 
 This document describes where Manifold is going. The app as it stands
@@ -20,7 +20,7 @@ It borrows heavily from apex (~/src/apex/DESIGN.md, sections cited as
 apex §n): its replicated logs, leases, exec entries and wire protocol. What
 differs is the shape of the thing: apex is one session per host with acme's
 windows; Manifold is a graph of blocks from many hosts, kept alive by what
-links to them, and arranged in workspaces.
+links to them, and arranged in spaces.
 
 ---
 
@@ -28,13 +28,13 @@ links to them, and arranged in workspaces.
 
 - **Everything is linked.** Actions leave links behind (this terminal opened
   that file; this search found that line), so recall can walk from one
-  thing to what was around it. The links you make — a workspace placing a
-  block, a link by hand — are what keep things (§3.4); the ones actions
-  leave are history and keep nothing.
-- **What nothing refers to goes.** A block is kept while a workspace, a
-  named workspace, a Keep, or a link by hand reaches it (§4);
-  closed everywhere, it waits half an hour to be brought back, then is
-  collected. The graph holds what you're using, not everything you ever
+  thing to what was around it. The links you make — a space placing or
+  pinning a block, a link by hand — are what keep things (§3.4); the
+  ones actions leave are history and keep nothing.
+- **What nothing refers to goes.** A block is kept while a space
+  reaches it (§4); closed everywhere, it waits half an hour to be
+  brought back, then is collected. A space itself goes only when you
+  remove it. The graph holds what you're using, not everything you ever
   touched.
 - **Losing something is said, never silent.** Closing the last reference
   to a block with unsaved edits or a running job goes through, and a
@@ -58,14 +58,15 @@ links to them, and arranged in workspaces.
 | **Block** | a thing with identity: an id, a kind, and a deterministic `apply` from its log to its state |
 | **Exec** | an entry that asks for an effect, naming who performs it; the outcome returns as entries |
 | **Link** | a typed edge from one block to another, possibly across hosts |
-| **Workspace** | a block whose content is placements of other blocks, laid out |
+| **Space** | a block (of kind `arrangement`) whose content is placements of other blocks, laid out |
 | **Lens** | a way of rendering a block (an editor or a preview of one text block) |
 | **Host** | a server owning blocks: their logs, files and processes |
 | **Attachment** | a client's standing with a host, holding leases on the shards it leads |
 
-A **placement** is one appearance of a block in a workspace: its own id,
-the block it shows, the lens, and where it sits. A block may be placed in
-many workspaces, and more than once in one; an edit shows in all of them.
+A **placement** is one appearance of a block in a space — a **tile**: its
+own id, the block it shows, the lens, and where it sits. A block may be
+placed in many spaces, and more than once in one; an edit shows in all
+of them.
 
 ### 2.2 Identity
 
@@ -94,7 +95,7 @@ lines logs up to within clock skew.
 | `git` | repository path; status, log, blame | run git | while running |
 | `process` | the host's processes | list, signal | never |
 | `agent` | the transcript, the turn in progress | the agent process | a turn is in progress |
-| `arrangement` | placements, layout, lens, title | none | never (but see §3.3) |
+| `arrangement` | placements, layout, lens, title | none | never — a space is a root (§3.3) |
 
 A Markdown preview is not a kind: it is the `preview` lens on a `text`
 block. A note is a `text` block with no path, its log its storage.
@@ -113,7 +114,7 @@ and lease. Here the unit is simply the block, plus a few per host.
 
 Selections and scroll positions live in the block's own log, keyed by
 placement: an edit must adjust every selection on the text in one order on
-every replica (apex §3.2). A workspace records where a placement is; the
+every replica (apex §3.2). A space records where a placement is; the
 block records what the placement has selected.
 
 `apply` is pure: no clock reads, no randomness, no I/O. Anything with an
@@ -121,107 +122,114 @@ effect is an exec (§5).
 
 ---
 
-## 3. Workspaces
+## 3. Spaces
 
 ### 3.1 The surface
 
-A workspace is **human-constructed**: what is in it is what you put
-there, and it stays until you take it off. Nothing in it is tidied
-away, nothing hides beneath anything, and nothing is placed for you by
-a heuristic except where in the grid a new tile lands.
+A space is **human-constructed**: what is in it is what you put there,
+and it stays until you take it off. Nothing in it is tidied away,
+nothing hides beneath anything but what you stacked, and nothing is
+placed for you by a heuristic except where in the grid a new tile lands.
 
-A workspace is a **grid**, apex's tiling (apex §11, *Tiling, as
-built*), which is acme's: columns, each a stack of **tiles** top to
-bottom, every tile a block, all of them visible. A new tile lands in
-the biggest empty space, else takes the lower half of the biggest tile
-in the active column (acme's `makenewwindow`); a tile grows by a few
+A space is a **grid**, apex's tiling (apex §11, *Tiling, as built*),
+which is acme's: columns, each a stack of **tiles** top to bottom,
+every tile a block, all of them visible. A new tile lands in the
+biggest empty space, else takes the lower half of the biggest tile in
+the active column (acme's `makenewwindow`); a tile grows by a few
 lines, as big as can be, or to the whole column; the divider between
 columns sets widths; a tile closed gives its height to its neighbor.
-Each tile is a **card** with a **bar** across its top: the block's
-symbol and name (a dot after it while edited and unsaved), where it
-is, its host in a pill after the name (a server's symbol and the
-host's name, in the accent) when that isn't the workspace's host — the
-last thing the bar gives up as it narrows — its links, its status glyph (§3.7, the program it names in the
-tooltip), and maximize and close; the stack behind it shows as its
-sheets. The bar is the tile's handle to drag, grows the tile a step
-when clicked, and holds its menu behind the symbol. As a tile narrows
-the bar gives things up in order, so the symbol and some of the name
-always show: the place goes first, then the links' pill shrinks to its
-arrow and symbol, then to its arrow alone, then maximize goes, then
-the pill altogether; close and the status glyph
-stay, and last the name is cut. A tile grown down to less than a line
-of content collapses to its bar alone, rounded all round, a pill, its
-content out of sight. The content runs beneath the bar, never under it,
-with room between cards and the window's wash — a few pools of colour
-placed afresh each day over what's behind the window, blurred — showing
-through. A stack's sheets peek out above its card, rounded, as paper.
-(Once a glass pill floating over the tile, as Prism names a column.)
+Each tile has a **bar** across its top: the block's symbol and its
+**title** (a dot after it while edited and unsaved), where it is, its
+host in a chip after the title (a server's symbol and the host's name,
+in the accent) when that isn't the space's host — the last thing the
+bar gives up as it narrows — its **links** (a capsule), its status
+glyph (§3.7, the program it names in the tooltip), and maximize and
+close; tiles stacked behind it show as its sheets. The bar is the
+tile's handle to drag, grows the tile a step when clicked (⌘-click
+maximizes, ⌃-click or the symbol opens its menu), and as a tile narrows
+gives things up in order, so the symbol and some of the title always
+show: the place goes first, then the links' capsule shrinks to its
+arrow and symbol, then to its arrow alone, then maximize goes, then the
+capsule altogether; close and the status glyph stay, and last the title
+is cut.
+
+A tile **shrinks along one ladder**, by the room it has, not by a state:
+its content; then, under a few lines' room, its **summary card** (the
+block in a few lines, §3.5, shaped as the tile, joined to its bar); then
+its bar alone, rounded all round; then stashed behind its neighbour.
+Shrink to Summary (⇧⌘M) only sets a height on that ladder, and every
+step comes back by resizing; Maximize stands apart. The content runs
+beneath the bar, never under it, with room between tiles and the
+window's wash — a few pools of colour placed afresh each day over
+what's behind the window, blurred — showing through.
 
 Two verbs, and no others, put a block in front of you:
 
 | verb | what it does |
 |---|---|
-| **Go to** | the block where it already is: the workspace it is in (this one if it is here, else the one most recently gone to) is selected and the tile focused |
-| **Bring here** | a tile of it in this workspace, by the grid's rule; if it is here already, that tile is focused |
+| **Go to** | the block where it already is: the space it is in (this one if it is here, else the one most recently gone to) is selected and the tile focused |
+| **Bring here** | a tile of it in this space, by the grid's rule; if it is here already, that tile is focused |
 
-A row clicked in the sidebar, or chosen in the finder, *goes to* the
-block if it is placed anywhere, else *brings it here*; ⌘-click and a
-drag onto the surface always bring. Anything opened from inside a block
-— a path ⌘-clicked in a terminal, a link followed, a search hit, a
-change in a git block, a definition — is brought here, into the opener's
-column (acme's `activecol`), and linked to the opener. New things (a
-terminal, a note, a search) are brought here. Go Back and Go Forward
-(⌘[ ⌘]) walk the trail across tiles and workspaces.
+Anything clicked that names a block — a sidebar row, an Open Quickly
+row, a link, a path, a search hit, a change in a git block — *goes to*
+it if a tile shows it anywhere, else *brings it* below the tile clicked
+in (acme's `activecol`), linked to it; ⌘ always brings it, beside, ⌥
+over (the one rule, §3.7). New things (a terminal, a note, a search) are
+brought here. Go Back and Go Forward (⌃- ⌃⇧-) walk the trail across
+tiles and spaces; ⌘[ ⌘] a tile's own, for the views that go on in place.
 
-The workspace's log holds `Place{placement, column, at}`, `Move`,
-`Remove`, `Focus`, `Fractions`, `Heights`, `MoveColumn` and `Title`.
+The space's log holds `Place{placement, column, at}`, `Move`, `Remove`,
+`Focus`, `Fractions`, `Heights`, `MoveColumn`, `Stash`, `Full` and
+`Title`.
 
-**Retired:** the stacks (sheets beneath a column's top, strips, ⌘E, the
-foot), tiling as a second lens, the list lens, and, since October 2026,
-the column's past of §3.1's first simplification: a column of one with
-a hidden history was still something hidden. Collection of placements
-(§4) is retired with it: a workspace is what you made it.
+**Retired:** the column's past of §3.1's first simplification (a column
+of one with a hidden history was still something hidden), tiling as a
+second lens, the list lens, collection of placements, and — in October
+2026 — the desk, Keep, and naming as keeping (§3.3).
 
-#**Undo** is the workspace put back as it was. Logs only grow (§2), so
-nothing is rewound: before each change a client makes to a workspace,
-it keeps the state; ⌘Z appends that state as one `restore` entry, ⇧⌘Z
-the state before the undo. History keeps both the change and its undoing.
-An editor's text has its own undo; the workspace's takes ⌘Z when no view
+**Undo** is the space put back as it was. Logs only grow (§2), so
+nothing is rewound: before each change a client makes to a space, it
+keeps the state; ⌘Z appends that state as one `restore` entry, ⇧⌘Z the
+state before the undo. History keeps both the change and its undoing.
+An editor's text has its own undo; the space's takes ⌘Z when no view
 does.
 
-## 3.2 Names and the desk
+### 3.2 Names
 
-A workspace has a title and nothing else to find it by: recall is by
-search (§6), not a path. The **desk** is what's in the sidebar: the
-workspaces in use, in the order you arranged them, the named ones
-that you've kept there. Taking a workspace off the desk doesn't end it
-at once (§4). An unnamed workspace is named by what it holds — the
-folder most of its blocks are at, with the repository's branch when a
-git block is there, else the focused block — so the sidebar never says
-"Untitled" twice.
+A space has a title and nothing else to find it by: recall is by
+search (§6), not a path. The sidebar lists every space, in the order you
+arranged them. An unnamed space is named by what it holds — the folder
+most of its blocks are at, with the repository's branch when a git
+block is there, else the focused block — and two called the same are
+told apart by what each is on, so the sidebar never says "Untitled"
+twice.
 
-A workspace can be shown in a window of its own or as one of the desk's
-tabs in a window, as Safari has both: drag a tab out for a window, a window
-in for a tab. Several windows may show the desk; each OS window shows one
-workspace at a time.
+A space could be shown in a window of its own or as one of a window's
+tabs, as Safari has both; each OS window shows one space at a time.
 
-Workspaces nest: a placement may show another workspace, as a card (its
-title and a small live picture of it) or opened in place. A project is an
-workspace of workspaces; nothing more is needed for folders.
+Spaces nest: a placement may show another space, as a card (its title
+and a small live picture of it) or opened in place. A project is a
+space of spaces; nothing more is needed for folders.
 
-### 3.3 Naming is keeping
+### 3.3 Spaces are the roots
 
-An **unnamed** workspace is scratch: taken off the desk, it is a root no
-longer, and it and whatever only it held are collected after the grace
-(§4). Naming one makes it a place: a root whether or not it is on the
-desk, its columns kept however long they go unseen, though the blocks
-behind them may go dormant to free their resources and come back when
-the workspace is recalled.
+A space is a root, named or not, emptied or not, until you remove it
+(⌥⇧⌘W, or its row's menu) or drop it on another; nothing removes one
+for you. What it reaches is kept: what it places, what it **pins** (Pin
+in Space: a strong link from the space, so a block can stay without a
+tile), and what those link to by hand. Naming a space names it and
+nothing more. The blocks behind a space unseen for long may go dormant
+to free their resources, and come back when it's gone to.
+
+Once there were three rules: an unnamed space was scratch, drifting off
+a **desk** after some days unseen; naming one kept it; and Keep made
+any block a root. One rule replaced them (§12).
 
 ### 3.4 Strong and weak edges
 
-Of the graph's edges (§3.5), two kinds are **strong**: a workspace's
-placement of a block, and a link made by hand (`linked`). A strong edge
+Of the graph's edges (§3.5), three kinds are **strong**: a space's
+placement of a block, its pin of one (`pinned`), and a link made by
+hand (`linked`). A strong edge
 keeps what it points at (§4). Every other edge is **weak** — what a
 terminal opened, what a search found, what a folder contains, the trail
 of where you went — history and happenstance, which keep nothing alive
@@ -240,7 +248,7 @@ while the pointer passes and live while ⌥ is held. Those are two edge
 kinds — spatial and temporal — of one graph, surfaced at the point of use
 rather than drawn as a map. Manifold's version is that graph, in whole.
 
-**Nodes** are blocks. Workspaces are blocks already (§2.3), so they are
+**Nodes** are blocks. Spaces are blocks already (§2.3), so they are
 nodes with nothing special about them; that is what makes the graph
 worth having. A node *at a time* is a block and a stamp, and every
 block's log is what makes that real.
@@ -250,16 +258,16 @@ are in the data now and only want indexing:
 
 | edge | from → to | where it comes from |
 |---|---|---|
-| **placed in** (spatial, present) | workspace → block | the workspace's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
+| **placed in** (spatial, present) | space → block | the space's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
-| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each workspace seen — the one history, which back and forward walk and ⌃⇥ orders by |
+| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each space seen — the one history, which back and forward walk and ⌃⇥ orders by |
 | **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
 Prism's backlinks are `opened` in-edges; its sheet stack is `before /
 after` within one column; a `[[link]]` is an `opened` out-edge; a note in
-many views is `placed in` in-edges. Workspaces as nodes give the two-hop
+many views is `placed in` in-edges. Spaces as nodes give the two-hop
 questions that matter most — *the other times I had this file open, and
 what was beside it then* — as `placed in` in-edges, their neighbors, cut
 at the stamp.
@@ -267,35 +275,32 @@ at the stamp.
 **Affordances.** The graph shows itself in the margins, never as a
 destination:
 
-1. **Links, in the sidebar, follows focus** (§3.6): the focused block's
-   neighborhood, bunched by edge kind — *opened here*, *mentions*,
-   *also in*, *before · after* — each row with context and age, a card
-   on hover; clicked, the block is shown here; ⌘-clicked, beside. One
-   view, given an edge kind; a workspace's row shows the same for its
-   node — its columns, the workspaces that share blocks with it, the
-   ones before and after it on the desk. (This was the foot under every
-   sheet until the surface was simplified, §3.1; the sidebar is where it
-   lives now, so there is one place to look.)
-2. **Back and forward in a column** (⌘[ ⌘]) walk the column's past
-   (§3.1); Go Back and Go Forward (⌃⌘[ ⌃⌘]) walk the trail across
-   columns and workspaces, each step previewed as it was on hover,
-   live with ⌥ — Prism's stack, but derived from the log, so it survives
-   restarts and crosses hosts.
-3. **The finder (⌘O) is ranked by the graph.** Only what is kept (§4)
+1. **A tile's links**, a capsule on its bar fanning down on hover: what
+   it links and what links it, each row with context, clicked by the one
+   rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
+   focused block's surroundings, two steps out. (This was a Links
+   organization in the sidebar, and before it the foot under every
+   sheet.)
+2. **Back and forward**: Go Back and Go Forward (⌃- ⌃⇧-) walk the trail
+   across tiles and spaces — derived from the log, so it survives
+   restarts and crosses hosts; ⌘[ ⌘] walk a tile's own, where it goes on
+   in place (a page, a preview, a listing).
+3. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
    is found. With nothing typed, the focused block's neighborhood,
-   nearest first; typed, what the query names best first, and among
-   equals the nearest to where you are over the graph's edges, strong
-   and weak alike. What was closed and not yet collected comes last,
-   marked *recent*: choosing it brings it back.
-4. **Cards** are how a node renders small, at any stamp: a hover panel
-   (Prism's `LinkCard`, non-activating, kept while the pointer is on the
-   reference or the card), a sidebar row, a finder row. Text as a read-only `TextView`; a terminal as its last
-   screen, from the transcript the host keeps; a folder as a short
-   listing; web as icon, title and address; a search as its count; a git
-   block as its branch and changes; a workspace as its diagram. Modes
-   as Prism's note cards have them — collapsed, summary, full —
-   remembered per block. With a stamp, the card shows the node *as it was
-   then*, which Prism cannot.
+   nearest first; typed, what the query names best first — its title,
+   its place, its summary — and among equals the nearest to where you
+   are over the graph's edges, strong and weak alike. What was closed
+   and not yet collected comes last, marked *recent*: choosing it brings
+   it back.
+4. **Summaries** are how a node renders small: a few lines saying what's
+   worth knowing of it at a glance — a terminal its last command and how
+   it ended, a note its first lines, a diff its files and lines changed
+   (`BlockSummary`, from its state alone, so a block off screen or on
+   another host has one too). A tile short of room shows its summary
+   card; so do Open Quickly's rows, a stack fanned out, Overview past ten
+   blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
+   never the live view. With a stamp, a summary could show the node *as
+   it was then*, which Prism cannot.
 5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
    takes a stamp — who opened it *then*. A map lens of nodes and edges
    is possible and comes last.
@@ -304,10 +309,9 @@ destination:
    block, each an editor whose typing is an `.edit` entry on the block
    (Prism's `TaskEditor` writing a task back to its note). Same undo,
    same history.
-7. **Pictures.** A snapshot of each placement when it leaves a column's
-   top, cached by placement id outside the logs (as Prism keeps them in
-   app state, never in the notes): what the cards show for a block in a
-   column's past, and what previewing a step back shows.
+7. **Pictures.** A snapshot of each placement when it goes behind
+   another, cached by placement id outside the logs (as Prism keeps them
+   in app state, never in the notes): what the hover cards show.
 
 Two touches to take as they are: **aging** — rows and cards yellow as a
 block goes unseen, the collection ladder (§4) made visible — and **⌥ to
@@ -318,10 +322,63 @@ peek live** against hover to peek the picture.
 temporal edges need no replay; `derived` links written by the host when
 it makes a diff, search or git block; and a `Graph` query layer in
 `ManifoldCore` over the replica — the app mirrors every host's registry,
-links and workspace shards already, so neighborhoods are computed
+links and space shards already, so neighborhoods are computed
 locally, and asked of the host only for a stamp its logs must be
-replayed for. A scrubber down the editor (Prism's `ScrubMark`s, from the
-language server's document symbols) sits beside this rather than in it.
+replayed for. A tile's outline (Prism's `ScrubMark`s, from the language
+server's document symbols) sits beside this rather than in it.
+
+### 3.6 Organizations: views over the graph
+
+The graph is the representation; how it is *organized* is a view over it,
+chosen as fits the task, and the organizations keep no state of their
+own. A folder being open or a day being shown is view state; nothing
+about the data changes when you look at it another way. The rule is that
+the graph has to capture everything any organization needs:
+
+| organization | a view of | roots |
+|---|---|---|
+| **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, a stack's tiles in a dotted outline | the spaces |
+| **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
+| **Inbox** | the blocks whose status wants attention (§3.7), by host and space | hosts |
+
+Three. The links live on the tile's bar and in the neighborhood map
+(⌥⌘M, or a link's menu) as the one big view of them; what's working,
+done or needing you is the counts at the sidebar's foot, which open the
+Inbox, and Overview; and time is ⌘O with nothing typed, which is the
+trail.
+
+Two edges make the first two possible. **`contains`** (folder → file or
+folder) is read off the paths: every block with a path is under the
+folder blocks (listings, repositories) whose path is its parent, and the
+file tree is the trie of all paths on a host. **`mention`** is kept
+*complete*: the host parses `[[titles]]` and `[words](paths)` out of a
+text block as it changes and brings its mention links to match — making
+a block for a file a link names before anyone opens it — so backlinks
+are whole without anyone having followed them, as a wiki's are.
+
+The sidebar is the one browser for all of them, and the **spine** of the
+window: kept beside the surface (it can be let slide out over it
+instead), a filter, a row at the foot (by space, by file, the inbox,
+the counts), and the same row — symbol, title, a count, a detail,
+fading with age — with the same gestures everywhere (the one rule,
+§3.7), a picture of the tile on hover, the Neighborhood Map in the menu.
+Under Spaces, every space shows its tiles, in order, the focused one
+marked, so the sidebar is the table of contents of the screen; clicking
+a tile row focuses it, and a block dragged onto a space is shown there.
+Recently Closed (§4), a row at the foot, pushes its list over the tree,
+with a back button and the list's name in the header. The space stays
+the working surface; organizations are how you reach blocks, never
+where they live.
+
+One exception is on purpose: **Overview** (⌘') shows a space's blocks
+themselves in the surface — or, filtered, every agent's on every host
+(⌃⌘A) — in one of three ways: a **list**, stacked down one scrolling
+column as Prism's column of notes is, each under its bar; an
+**overview**, all of them laid out in one grid at once, as Mission
+Control lays out windows; or **summaries**, a summary card each, what
+it shows by itself past ten blocks. A block clicked there goes by the
+one rule — gone to, ⌘ beside the tile you were on, ⌥ over. Overview is
+not a space: nothing is placed, nothing is logged.
 
 ### 3.7 Status: what every block is doing
 
@@ -359,8 +416,8 @@ becomes the focused tile while the window is key. The host does the
 dismissing for the blocks it leads, on the client's `attend` proposal.
 
 **Indicators**, as apex's handle says what a window waits for: one
-glyph, drawn wherever a block's name is — its pill, its sidebar row, a
-finder row, a card. `working` is an open ring, three quarters of it
+glyph, drawn wherever a block's title is — its bar, its sidebar row, an
+Open Quickly row, a summary card. `working` is an open ring, three quarters of it
 turning while the program does not say how far and filled clockwise
 from the top as far as it does (OSC 9;4 progress counts); `blocked` an
 amber ring with a dot, its tooltip the kind and the message; `done` a
@@ -372,63 +429,22 @@ line beneath the name. The Dock badge counts the blocks blocked and
 done.
 
 **One rule for the modifiers**, wherever a click opens a block — a
-sidebar row, a note's link or pill, a badge, a listing's entry, a
-scrubber's command, a finder row chosen with ⏎: plain **goes to** it
-where it is (here, if nowhere); **⌥ means over** — the block goes over
-the tile clicked in, which is stashed behind it (`showOver`), as
-⌥-drag stacks a tile over another; **⌘ means beside** — below the tile
-clicked in, taking its lower half. ⇧ is about the path: ⇧-click a bar
-for where the block is, ⇧-drag a bar to link. One `Where` case carries
-each, read off the click wherever a view opens (a terminal's link needs
-⌘ to be a link at all, so there ⌘⌥ is over and ⌘ alone beside; the
-terminal keeps ⌥ back and remembers it).
+sidebar row, a link or a block's link in a note, a tile's links, a
+path, a search or git hit, a listing's entry, an outline's command, a
+card in Overview, an Open Quickly row chosen with ⏎: plain **goes to**
+it where a tile shows it, in any space (beside, if none does); **⌘
+means beside** — below the tile clicked in, taking its lower half; **⌥
+means over** — the block goes over the tile clicked in, which is
+stashed behind it (`showOver`), as ⌥-drag stacks a tile over another;
+**⇧⌘** gives it to the system's app. ⇧ alone is about the path: ⇧-click
+a bar for where the block is, ⇧-drag a bar to link. One `Disposition`
+carries each, read off the click (or ⏎) wherever a view opens, and
+`follow` does it (a terminal's link needs ⌘ to be a link at all, so
+there ⌘⌥ is over and ⌘ alone beside).
 
-### 3.10 Links by hand, and notes about blocks
+### 3.8 A terminal's outline
 
-A block ⇧-dragged onto any tile is *linked* to the tile's block: one
-`linked` edge (§3.5), from the dragged block to the target, read both
-ways — the source *links*, the target is *linked from*. Both tiles
-wear a badge at the upper right, fanning down when hovered: each link
-with an arrow for its direction, clicked to go to, and an × that ends
-the edge (`unlink`), so in both readings at once. Links lists them
-under *links* (outbound) and *linked from* (inbound). A note made
-with a block focused (⇧⌘N) is the same edge, from the block to the
-note, as if the block had been ⇧-dragged into it. Into a note the
-block also lands as a Markdown link, `[title](manifold:host/ulid)`,
-hence a `mention` edge too; the editor draws such a link as the
-block's pill — symbol, name and status as the tile's pill has them,
-redrawn as they change — and the preview as a small pill, either
-clicked to go to the block. Annotation is thus the graph again:
-nothing new is stored but edges and the note's own text.
-
-### 3.9 Hosts that come and go
-
-A remote host is a client the app keeps whether or not it can reach it
-(§8): `HostClient.link` is connecting, connected, or unreachable with a
-reason. A remembered host is made at launch in the connecting state,
-bootstrapped in the background, and tried again while unreachable with
-the wait doubling from two seconds to two minutes (reset once it
-answers; Try Again Now hurries it); a connected bridge is pinged every
-fifteen seconds and dropped (to be made again) when a pong doesn't
-come, and three bridges in a row that close before the welcome mean the
-server there is gone: the host is bootstrapped again. A welcome in
-another protocol version means the server still running is the old
-one (the bootstrap installed ours beside it, by hash): it is sent
-`shutdown`, once per version seen, and the bridge the client comes
-back through a second later starts the installed one. The mirrored
-node stays as last seen: tiles of its blocks wear the offline glyph,
-editors there take no edits, appends go nowhere. The sidebar's host row
-shows the state and opens the host's home (the welcome carries it).
-
-**The Inbox** is a derivation, not a flag: the blocks whose root
-status wants attention — done or failed and not yet read, or needing
-you — by host and workspace. Reading a block (focusing it) takes it
-out; nothing is set or cleared by hand. (Keeping a block is a separate
-thing, §4.)
-
-### 3.8 The scrubber: a terminal's outline
-
-A terminal's scroll bar is a scrubber (§3.1, as Prism's): the strip's
+A terminal's scroll bar carries its outline (as Prism's scrubber): the strip's
 length is the screen and its history, the knob the viewport, and the
 ticks the shell's commands — its outline. It comes and goes as an
 overlay scroll bar does — shown while the content scrolls or grows and
@@ -462,60 +478,47 @@ the command line and its outcome above, read-only, Copy putting the
 command and the text on the clipboard and Show in Terminal going back
 to the command.
 
-### 3.6 Organizations: views over the graph
+### 3.9 Hosts that come and go
 
-The graph is the representation; how it is *organized* is a view over it,
-chosen as fits the task, and the organizations keep no state of their
-own. A folder being open or a day being shown is view state; nothing
-about the data changes when you look at it another way. The rule is that
-the graph has to capture everything any organization needs:
+A remote host is a client the app keeps whether or not it can reach it
+(§8): `HostClient.link` is connecting, connected, or unreachable with a
+reason. A remembered host is made at launch in the connecting state,
+bootstrapped in the background, and tried again while unreachable with
+the wait doubling from two seconds to two minutes (reset once it
+answers; Try Again Now hurries it); a connected bridge is pinged every
+fifteen seconds and dropped (to be made again) when a pong doesn't
+come, and three bridges in a row that close before the welcome mean the
+server there is gone: the host is bootstrapped again. A welcome in
+another protocol version means the server still running is the old
+one (the bootstrap installed ours beside it, by hash): it is sent
+`shutdown`, once per version seen, and the bridge the client comes
+back through a second later starts the installed one. The mirrored
+node stays as last seen: tiles of its blocks wear the offline glyph,
+editors there take no edits, appends go nowhere. The sidebar's host row
+shows the state and opens the host's home (the welcome carries it).
 
-| organization | a view of | roots |
-|---|---|---|
-| **Desk** | workspaces and what they place (§3): one shape, nothing folding by itself, the current workspace barred at its left, a workspace closed by its chevron staying closed | the desk's workspaces |
-| **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
-| **Inbox** | the blocks whose status wants attention (§3.7), by host and workspace | hosts |
-| **Search** | the words typed, in the contents of every kept block — a text's lines, a terminal's commands, names, places, addresses — each block with its matches beneath, pushed over the tree as Kept is | blocks |
+**The Inbox** is a derivation, not a flag: the blocks whose root
+status wants attention — done or failed and not yet read, or needing
+you — by host and space. Reading a block (focusing it) takes it
+out; nothing is set or cleared by hand. (Keeping a block is a separate
+thing, §4.)
 
-Three, and Search beside them. The links live on the tile's badge and its fan, and in
-the neighborhood map (⌥⌘N, or the badge's menu) as the one big view
-of them; what's working, done or needing you is the counts in the
-sidebar's bar, which open the Inbox, and the state views; and time is
-⌘O with nothing typed, which is the trail.
+### 3.10 Links by hand, and notes about blocks
 
-Two edges make the first two possible. **`contains`** (folder → file or
-folder) is read off the paths: every block with a path is under the
-folder blocks (listings, repositories) whose path is its parent, and the
-file tree is the trie of all paths on a host. **`mention`** is kept
-*complete*: the host parses `[[titles]]` and `[words](paths)` out of a
-text block as it changes and brings its mention links to match — making
-a block for a file a link names before anyone opens it — so backlinks
-are whole without anyone having followed them, as a wiki's are.
-
-The sidebar is the one browser for all of them, and the **spine** of the
-window: pinned beside the surface (it can still be set to slide out
-over it), a filter, a bar at the foot (search, by workspace or by file,
-the inbox, the counts), and the same row — symbol, name, a count, a
-detail, fading with age — with the same gestures everywhere (the one
-rule: click to go to, ⌘-click to show beside, ⌥-click to show over,
-§3.1), a card on hover (with a picture of the block's tile when one is
-on screen), the Neighborhood Map in the menu. Under Desk, every
-workspace shows its tiles, in order, the focused one marked, so the
-sidebar is the table of contents of the screen; clicking a tile row
-focuses it, and a block dragged onto a workspace is shown there. Two
-rows at the foot, Kept and Recently Closed (§4), each push their list
-over the tree, with a back button and the list's name in the header.
-The workspace stays the working surface; organizations are how you
-reach blocks, never where they live. One exception is on purpose: a
-**state view** shows a status group's blocks themselves in the surface,
-live, in one of two ways — a **list**, the blocks stacked down one
-scrolling column as Prism's column of notes is, each under its pill; or
-an **overview**, all of them laid out in one grid at once, as Mission
-Control lays out windows — so what is blocked, or done, can be looked at
-without placing any of it. A block clicked in a state view is gone to;
-⌘-clicked, brought to the workspace last shown. A state view is not
-a workspace: nothing is placed, nothing is logged. ⌘O stays the quick
-way in.
+A block ⇧-dragged onto any tile is *linked* to the tile's block: one
+`linked` edge (§3.5), from the dragged block to the target, read both
+ways — the source *links*, the target is *linked from*. Both tiles
+show it among their links, the capsule on the bar fanning down when
+hovered: each link with an arrow for its direction, clicked as any
+link is, and an × that ends the edge (`unlink`), so in both readings
+at once. A note made
+with a block focused (⇧⌘N) is the same edge, from the block to the
+note, as if the block had been ⇧-dragged into it. Into a note the
+block also lands as a Markdown link, `[title](manifold:host/ulid)`,
+hence a `mention` edge too; the editor draws such a link as a capsule
+— symbol, title and status as the tile's bar has them, redrawn as they
+change — and the preview as a small one, either clicked as any link. Annotation is thus the graph again:
+nothing new is stored but edges and the note's own text.
 
 ---
 
@@ -526,32 +529,28 @@ from a **root** to it. The roots on a host are
 
 | root | why |
 |---|---|
-| a workspace on a desk | what is in front of you |
-| a named workspace | naming is keeping (§3.3), on the desk or off |
-| a kept block | Keep, by hand: a root whatever refers to it; Keep and Close (⇧⌘W) keeps it and takes its tiles off |
+| a space | what you made; removed only by hand (§3.3) |
 | a **hold** | another host's standing reference (below) |
 
-and every block a root places, links by hand, or reaches through what it
-places and links, is kept. The host is the collector: once a minute it
-walks its own shards from its roots, notes each block nothing reaches
-with the moment that began, and **collects** any that has been so for
-the grace (`collectAfterMinutes`, 30 by default, a setting): its
+and every block a root places, pins, links by hand, or reaches through
+what it places and links, is kept. The host is the collector: once a
+minute it walks its own shards from its roots, notes each block nothing
+reaches with the moment that began, and **collects** any that has been
+so for the grace (`collectAfterMinutes`, 30 by default, a setting): its
 session ended, its file unwatched, its links gone, its log deleted, the
 registry told, and every replica following. A block reached again
 within the grace is simply kept, its mark forgotten.
 
 Closing is what makes things unreachable. ⌘W takes a tile off its
-workspace; an unnamed workspace left empty leaves the desk; ⌥⇧⌘W takes
-one off whole; and an unnamed workspace unseen for some days
-(`workspaceDriftDays`, 3 by default) drifts off the desk by itself. The app keeps what it closed on a stack, and **⇧⌘T**
-puts the last thing back where it was — a tile at its old column and
-place (here, if that workspace has gone), a workspace onto the desk —
-skipping whatever has been collected meanwhile. **Recently Closed**, a
-row at the sidebar's foot with a count, lists what exists and nothing
-reaches, and the finder marks it *recent*; either brings it back by a
-click. **Kept**, the row beside it, lists kept blocks on no workspace
-of the desk and named workspaces off it. Neither is in the tree: the
-tree is only what's on the desk.
+space — when it was the last tile of a block nothing else reaches, a
+toast says so; ⌥⇧⌘W removes a space whole. The app keeps what it closed
+on a stack, and **⇧⌘T** puts the last thing back where it was — a tile
+at its old column and place (here, if that space has gone), a space
+back in the sidebar — skipping whatever has been collected meanwhile.
+**Recently Closed**, a row at the sidebar's foot with a count, lists
+what exists and nothing reaches, and Open Quickly marks it *recent*;
+either brings it back by a click. It isn't in the tree: the tree is the
+spaces.
 
 Collection is never refused and never silent. Closing takes with it
 everything the closed block alone reached — what it placed, what it
@@ -563,12 +562,12 @@ each of them and offers Restore, which reopens what was closed and so
 reaches them all again.
 
 **Holds, across hosts.** A host sees only its own shards, so a reference
-from another host — a workspace there placing a block here, a link by
-hand there to a block here, a desk there listing a workspace of this
-host — would be invisible to its collector. The client that holds both
+from another host — a space there placing a block here, a link by
+hand there to a block here, the window's list of spaces naming a space
+of this host — would be invisible to its collector. The client that holds both
 sides tells the target host: a `Hold{id, block, holder}` in the target's
 registry, keyed by the edge it stands for (the placement's or link's
-id, or `desk:<holder>:<workspace>`), proposed when the edge exists and
+id, or `desk:<holder>:<space>`, after the list's old name), proposed when the edge exists and
 released when it goes or its source is no longer reached. Holds are
 roots. A client reconciles the holds of the hosts it has whenever its
 shards settle, so a hold is not lost to a moment offline: the next
@@ -599,7 +598,7 @@ writes and proposes `Clean{version}`.
 
 Cross-host operations are ordinary execs: ⌘-clicking `main.go` in a
 terminal on `devbox` asks devbox to resolve it, and the answer is a
-proposal to the workspace (which may live on `local`) to place
+proposal to the space (which may live on `local`) to place
 `devbox/<id>` beside the terminal, plus a `Link` on devbox.
 
 ---
@@ -619,33 +618,35 @@ A link is `Link{from, to, kind, at}` in the `links` shard of the host the
 | `cwd` | a terminal's working directory (to the directory block) |
 | `source` | a preview, a diff side |
 | `mention` | `[[title]]` or a block URL in text |
-| `linked` | a block ⇧-dragged onto a tile; a note made about a block (block → note); the one strong link kind (§3.4) |
-| `placed` | placed next to each other in a workspace, by you |
+| `linked` | a block ⇧-dragged onto a tile; a note made about a block (block → note); strong (§3.4) |
+| `pinned` | Pin in Space (space → block); strong, keeping a block without a tile |
+| `placed` | placed next to each other in a space, by you |
 
 Each host indexes the links pointing at its blocks; a client merges the
 indexes of every host it is attached to, so backlinks cross hosts.
 
 ### 6.2 Recall
 
-One box, two ways in. **⌘T** over the graph: blocks by title and path,
-workspaces by name — and the verbs (new terminal, new note, attach a
-host, launch an agent), found by name among them, marked *do*. **⌘O**
-over the same blocks and the files in the focused block's folder. It
-ranks as §3.5 says, and shows each result's state, host, and where it
-is. A block an agent works in answers to the agent's names (its
-command, its product name, from the block's command, its status hooks,
-or a command running in it) as surely as to its title.
+One box: **Open Quickly** (⌘O), over the graph — blocks by title, place
+and summary, each row the block's summary card; spaces by name. ⇥ turns
+it to the blocks' texts. Files are Find in Files' (⇧⌘F), not its; the
+verbs are the menus'. It ranks as §3.5 says, and shows each result's
+state, host, and where it is. A block an agent works in answers to the
+agent's names (its command, its product name, from the block's command,
+its status hooks, or a command running in it) as surely as to its
+title. ⌘P is its sibling over the focused tile's outline, ⇥ widening
+it to the space's.
 
 It must never stutter. What can be found is taken once as it opens (a
-snapshot of the blocks, a millisecond or so), files are listed in the
-background and kept per folder, and every keystroke ranks the snapshot
-off the main thread, giving up on the keystroke before; the main thread
-only ever fills sixty rows, laid out by hand. The panel grows to fit
-and never shrinks under the pointer while open. Alongside it:
+snapshot of the blocks, a millisecond or so), and every keystroke ranks
+the snapshot off the main thread, giving up on the keystroke before;
+the main thread only ever fills sixty rows, laid out by hand. The panel
+grows to fit and never shrinks under the pointer while open. Alongside
+it:
 
-- **Back and forward** along the trail, across workspaces (§3.5).
+- **Back and forward** along the trail, across spaces (§3.5).
 - **The neighborhood map** for the focused block: its links both ways,
-  the workspaces it appears in, what was placed beside it.
+  the spaces it appears in, what was placed beside it.
 
 ---
 
@@ -720,7 +721,7 @@ split the tile keeps) when the tile is wide enough. The preview is Quick
 Look's (`QLPreviewView`) over the name, kind, size and date; a remote file
 is fetched first (`readPath`, 20 MB at most) into a folder by host and
 path. Over them, the way up (an arrow, ⌘↑) and a filter: typed, it lists
-the tree's files matching it, ranked as the finder ranks (`FileFinder`),
+the tree's files matching it, ranked as Open Quickly ranks (`FileFinder`),
 the letters matched shown; "?" and words search the files' contents, in a
 search block (§7.5) beside.
 
@@ -883,13 +884,13 @@ until they're taken off.
 ### 8.2 Leadership
 
 *As built.* Every host-side shard but the blocks a client edits has one
-writer, the host: the registry, the links, and the **desk**, a host's
-metalog of its workspaces — which exist, in order — and its settings;
-clients propose (`workspaces`, `settings`). What is a client's alone —
-the workspace it shows, its window, its appearance — is `ClientState`,
-in a file beside its hosts file, so two
-machines attached to one host see the same workspaces and each its own
-selection. The blocks a client may lead — text, web, workspaces — have **one owner
+writer, the host: the registry, the links, and the **desk** — the
+code's name for a host's list of its spaces, which exist, in order —
+and its settings; clients propose (`workspaces`, `settings`). What is a
+client's alone — the space it shows, its window, its appearance — is
+`ClientState`, in a file beside its hosts file, so two machines attached
+to one host see the same spaces and each its own selection. The blocks
+a client may lead — text, web, spaces — have **one owner
 at a time**, by focus: the host hands a block's pen to whichever
 attachment last focused it (`own`), tells the one that held it it is
 fenced (`fenced`), and refuses appends from any other, sending the shard
@@ -951,7 +952,7 @@ they can be exported, or given a path, which makes them files.
 
 ---
 
-## 8.5 As built, in short
+### 8.5 As built, in short
 
 Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 
@@ -963,8 +964,8 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   links kept in step; proposals for terminals, files, folders, `seen`,
   links and history; file watching; terminal dormancy with the seam.
 - The app: `HostClient` (the replica, leading and proposing),
-  `MainWindowController` over workspaces and placements, the surface
-  (`ColumnsView`), the sidebar, the finder, collection, the history
+  `MainWindowController` over spaces and placements, the surface
+  (`GridView`), the sidebar, Open Quickly, collection, the history
   view, and the lenses: terminal, editor (`TextView`), preview,
   directory, web.
 
@@ -982,7 +983,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
 - The graph (§3.5): `Graph` in the core, kept in step by `Node` with every
-  entry — `placed` intervals from workspace logs, the link kinds from
+  entry — `placed` intervals from space logs, the link kinds from
   the links shards (with `context`), the trail from `focus` and `select` —
   indexed by block and kind both ways with live counts, every edge
   stamped (a placement keeps its stamp in the state, so a snapshot keeps
@@ -997,47 +998,51 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   the core (`Mention.find`) and kept as links by the host (`Mentions`);
   the sidebar's chooser, filter and `OrganizationView` over `OrgNode`
   trees built by the controller; `HoverCard`.
-- The neighborhood (§3.5): Links in the sidebar, following the focus,
-  from the same bunches per edge kind (`footBunches`); Go Back and Go
-  Forward (⌃⌘[ ⌃⌘]) walk the trail; the finder ranked by graph
-  distance; `NeighborhoodView`, the neighborhood to distance 2 in graph
-  form, walked by re-centering, from the palette.
+- The neighborhood (§3.5): a tile's links on its bar (`LinkBadge`);
+  Go Back and Go Forward (⌃- ⌃⇧-) walk the trail; Open Quickly ranked by
+  graph distance; `NeighborhoodView`, the neighborhood to distance 2 in
+  graph form, walked by re-centering (⌥⌘M).
 - The surface (§3.1, milestones 14–18): `ArrangementState` as acme's
   tiling — columns of tiles with `heights`, a new tile taking the lower
   half of the column's biggest (`bringing(_:lens:inColumn:below:)`),
   `growing(_:step:whole:)` for colgrow, a removed tile's height to its
-  neighbor; a share of 0 is a stashed tile, bunched as a pill under
-  the column's top pill and fanned out on hover (`stashing`,
+  neighbor; a share of 0 is a stashed tile, a sheet behind its
+  stack's top, fanned out from the stack button (`stashing`,
   `unstashing`; `revealing`, what going to a tile does, brings a
   stashed one to the top of its stack, `toppingStack`, and a new tile
   goes after its anchor's stack, never inside it); `full` a tile
-  maximized over the workspace;
-  `GridView` with `TilePill` (one width, opaque; symbol, name, status
-  glyph, a maximize corner; drag to move, click for the menu),
+  maximized over the space;
+  `GridView` with each tile's bar (`TilePill`: symbol, title, place,
+  links, status glyph, maximize and close; drag to move, click to grow),
   dividers, drops between tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
-  here) as the two verbs, in the controller, the sidebar, the finder
-  and every opener; collection of placements retired; the sidebar as
-  spine: `OrganizationView` for every organization including the desk
+  here) as the two verbs, and `follow` by the one rule, in the
+  controller, the sidebar, Open Quickly and every opener; collection of
+  placements retired; the sidebar as spine: `OrganizationView` for
+  every organization including Spaces
   (`deskTree`, a row per tile), rows that drag and take drops
   (`OrgDragItem`), New and ⋯ in its header, pinned by default.
 - Status (§3.7, milestone 17): `StatusRecord` and `Block.status`,
   `.status` entries, `StatusScanner` for OSC 7501, 9;4 and 133 fed by
   each session on the host, the host reporting for searches, git and
-  diffs, `attend` marking done and error read; `StatusGlyph` in pills,
-  rows and the finder; the Inbox; the Dock badge.
-- State views (§3.6, milestone 19): `StateView` over the surface for a
-  workspace's blocks, live, as a list or an overview (⌘'); the blocks'
-  views under `state:` placement ids, kept while it's up; ⎋ leaves it.
+  diffs, `attend` marking done and error read; `StatusGlyph` in bars,
+  rows and Open Quickly; the Inbox; the Dock badge.
+- Overview (§3.6, milestone 19): `StateView` over the surface for a
+  space's blocks, or every agent's (⌘', ⌃⌘A), as a list, an overview or
+  summaries; the blocks' views under `state:` placement ids, kept while
+  it's up; ⎋ leaves it.
+- Summaries (§3.5): `BlockSummary` in the core; `SummaryCard` for a
+  tile short of room, a fanned stack, Open Quickly's rows, Overview.
 - History of a text: `Block.replaying(_:upTo:)` rebuilds a block from its
   log at a moment; the history view (⌥⌘Y) scrubs a text block through
   its changes, and a diff block can compare a text block at two moments
-  (`DiffSubject.versions`). (Workspaces were scrubbed the same way once;
+  (`DiffSubject.versions`). (Spaces were scrubbed the same way once;
   that went unused and was taken out with keeping by reachability, §4.)
 - Keeping (§4): `EdgeKind.isStrong`, `Graph.reachable`, `Node.roots(on:)`
-  and `Node.reachable(on:)` in the core; the host's `collect` once a
-  minute, `discard` for what goes; `Hold` in the registry with the
-  `hold`/`release` events and proposals, `Hosts.reconcileHolds` in the
-  app; `pinned` on a block; the app's closed stack, ⇧⌘T and the toast.
+  (the spaces, and holds) and `Node.reachable(on:)` in the core; the
+  host's `collect` once a minute, `discard` for what goes; `Hold` in the
+  registry with the `hold`/`release` events and proposals,
+  `Hosts.reconcileHolds` in the app; `pinned` links from a space; the
+  app's closed stack, ⇧⌘T and the toast.
 
 - The image, PDF, process and agent lenses (§7.5): bytes read on the
   host; `ps` as entries; an agent is a terminal block with a command.
@@ -1048,6 +1053,9 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 Still open: sharing (§10), and the finer points listed there.
 
 ## 9. From here to there
+
+*A record of the steps as they were taken, in the names of their time —
+workspaces, the desk, the finder.*
 
 Today's pieces map directly:
 
@@ -1142,9 +1150,9 @@ Then, putting the model to use (§3.7, §3.1 as a grid, state views):
 
 - **Language servers** run per host now (§7.1); what's open is whether
   their diagnostics and edits should also be entries, so they scrub.
-- **Tuning.** The defaults of §4 — when a placement leaves an unnamed
-  workspace, when a terminal goes dormant, how long history stays at full
-  resolution — are guesses until used.
+- **Tuning.** The defaults of §4 — how long a closed block waits, when a
+  terminal goes dormant, how long history stays at full resolution — are
+  guesses until used.
 - **Sharing**, when it comes (§8.2).
 
 ## 11. Engineering notes
@@ -1301,8 +1309,6 @@ on a panel or a card in either appearance.
 
 Where Manifold parts from macOS's conventions, or from its own rules, on
 purpose — set down so a later audit reads them as choices, not slips.
-Where §1–§4 still speak of workspaces, the desk and Keep, this section
-and the README are current.
 
 ### The model
 

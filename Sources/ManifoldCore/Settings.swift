@@ -94,9 +94,6 @@ public struct Settings: Codable, Equatable, Sendable {
     /// Hours after which a terminal off screen with an idle shell goes
     /// dormant (its shell ended, its transcript kept); 0 never.
     public var terminalDormantAfterHours: Int = 8
-    /// Days after which an unnamed workspace unseen leaves the desk (§4),
-    /// for collection; 0 never.
-    public var workspaceDriftDays: Int = 3
     /// Days of full-resolution history kept for text; 0 forever.
     public var textHistoryDays: Int = 0
     /// Days of transcript kept for terminals.
@@ -117,7 +114,6 @@ public struct Settings: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         collectAfterMinutes = (try? c.decodeIfPresent(Int.self, forKey: .collectAfterMinutes)) ?? 30
         terminalDormantAfterHours = (try? c.decodeIfPresent(Int.self, forKey: .terminalDormantAfterHours)) ?? 8
-        workspaceDriftDays = (try? c.decodeIfPresent(Int.self, forKey: .workspaceDriftDays)) ?? 3
         textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
         terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30
         undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0
