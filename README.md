@@ -73,25 +73,19 @@ and Mona Sans (bundled).
   to the top, or drag it out to put the tile anywhere, as a fanned card
   is dragged (past four, the count fans the stack). **Click those sheets**, or
   the stack button on the tile's bar (beside maximize), or press ⌃⇥, and
-  the stack's tiles hang over it as cards,
-  live, the tile's own bar put away, on the window's own background
-  (a stack too short to hold them, down to its bar say, first grows —
-  more than a tile gone to does: 320 points, or half the column): each
-  as wide as the column, the tile at its own size, a title bar lower than the
-  one behind it, all leaning back a little alike, and the one chosen
-  peeking out between the rest, those in front of it let down part of
-  the way. Clicked open, the card under the pointer is
-  the one chosen (scrolling works too): clicked, it takes the top,
-  whole, the tile that showed going behind it with the rest of the
-  stack, as with ⌃⇥; ⎋ or a click away from the cards leaves things be
-  (a drag on the sheets moves the line between the tiles, as it would
-  there; right-clicking a title is always the tile's menu). With ⌃⇥, each ⇥
-  moves the choice a card down (⌃⇧⇥ back up), and letting go of control brings
-  the chosen one forward to the top (Escape leaves things be; a card
-  clicked is chosen at once) — or move the pointer over the cards and
-  they follow it from then on, as when fanned from the sheets: the card
-  under it peeks out, a click brings it to the top, and letting go of
-  control leaves them open. Either way, **drag a card** to take that tile out of the stack:
+  in the tile's place the stack opens as a column of **summary cards**,
+  as iOS opens a stack of notifications: the top first, then those behind
+  it, nearest first, each its symbol, title and where it is, when it last
+  did something (or its state, in its color), and two or three lines of
+  what it holds — a terminal its last command and the last lines of its
+  screen, an agent what it was asked and what it said, a note its first
+  lines, a diff its files and lines changed, a search its hits — with a
+  picture of a page, a PDF or an image. Scroll through them; the one
+  chosen is ringed. With ⌃⇥, each ⇥ moves the choice a card down (⌃⇧⇥
+  back up), and letting go of control brings it to the top (Escape leaves
+  things be); move the pointer over the cards and the card under it is
+  chosen from then on, a click bringing it to the top. A click away from
+  the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows. ⌥-click the top tile's own pill and it swaps with the next

@@ -311,6 +311,9 @@ enum DebugControl {
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
+        case "column":
+            // The open stack column's cards, the chosen marked.
+            return wc?.debugColumn ?? "no window"
         case "peek":
             // "peek [off]": the focused (else first) stack's sheets hovered (or
             // left); "peek pick <i>": tab i of those up clicked.

@@ -1346,7 +1346,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is StackSwitcherView || view is OrganizationView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is StackColumnView || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
@@ -1465,6 +1465,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugPills: String { content.debugPills }
     var debugTiles: String { content.debugTiles }
     func debugPeek(_ on: Bool) -> String { content.debugPeek(on) }
+    var debugColumn: String { content.debugColumn }
     func debugPeekPick(_ i: Int) -> String { content.debugPeekPick(i) }
     var debugDirty: String { content.debugDirty }
     func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
@@ -5485,6 +5486,32 @@ extension MainWindowController: SidebarDelegate {
 }
 
 extension MainWindowController: GridDelegate {
+    /// A tile as a summary card: its block's summary, and what only the
+    /// window has — a terminal's last lines on its screen, a picture of a
+    /// page or a PDF as it was last seen.
+    func gridSummary(_ placement: PlacementID) -> SummaryCardContent? {
+        guard let p = arrangement?.placement(placement), let b = hosts.block(p.block) else { return nil }
+        var s = b.summary()
+        // A shell's screen says more than its command: its last lines (not
+        // the prompt waiting at the end).
+        if let t = views[placement] as? TerminalView, b.terminal?.turns?.isEmpty ?? true {
+            var screen = t.visibleText.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            // The prompt waiting at the end, and every line that begins with
+            // it — the prompt again, or a command the card says already.
+            if b.terminal?.commands?.last?.isRunning != true, let prompt = screen.last {
+                screen.removeAll { $0.hasPrefix(prompt) }
+            }
+            let tail = screen.suffix(2).map { String($0) }
+            if !tail.isEmpty { s.lines = Array(s.lines.prefix(1)) + tail }
+        }
+        s.place = s.place.map { $0.abbreviatingHome }
+        var thumbnail: NSImage?
+        if s.wantsThumbnail {
+            thumbnail = tilePictures[b.id] ?? views[placement].flatMap { HoverCard.picture(of: $0, evenHidden: true) }
+        }
+        return SummaryCardContent(id: placement, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+    }
+
     func gridFocus(_ placement: PlacementID) { focus(placement) }
 
     func gridSwitcherFollowsPointer() {

@@ -6,6 +6,8 @@ protocol GridDelegate: AnyObject {
     /// A stack about to fan out: its tile grown to hold the fan, if it's
     /// short of it. True when it was (the fan waits for the tile to settle).
     func gridRoomForFan(_ top: PlacementID) -> Bool
+    /// A tile as its summary card shows it (a stack's column).
+    func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
     /// A fan opened from ⌃⇥ taken over by the pointer: letting go of control no
     /// longer settles it (a click does).
     func gridSwitcherFollowsPointer()
@@ -563,6 +565,9 @@ final class GridView: NSView, NSDraggingSource {
             return "\(title) center \(Int(r.midX)) \(Int(top)) size \(Int(r.width))x\(Int(r.height))"
         }.joined(separator: "\n")
     }
+
+    /// Debugging: the open column's cards, the chosen marked.
+    var debugColumn: String { switcher?.debugCards ?? "no column" }
 
     /// Debugging: the open switcher's pointer resting on card `i`.
     func debugSwitcherHover(_ i: Int) -> String { switcher?.debugHover(i) ?? "no switcher" }
@@ -1209,7 +1214,7 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: ⌃⇥
 
-    private var switcher: StackSwitcherView?
+    private var switcher: StackColumnView?
     /// The tiles whose views the switcher holds: the grid leaves them be.
     private var switching: Set<PlacementID> = []
     /// Tiles whose views are lent out (to a hover card, live): left be
@@ -1264,10 +1269,14 @@ final class GridView: NSView, NSDraggingSource {
         }
         layoutSubtreeIfNeeded()
         let body = stack.top.view.frame
-        let order = Array(stack.behind.reversed()) + [stack.top]
-        let s = StackSwitcherView(entries: order.map { .init(id: $0.shown.id, title: $0.shown.title, symbol: $0.shown.symbol, view: $0.view) },
-                                  contentSize: body.size, selection: order.count - 1)
-        // Over the tile's bar too: the cards hang where it was.
+        // The top first, then those behind it, nearest first: each as its
+        // summary card, in place of the tile, its bar too.
+        let order = [stack.top] + stack.behind
+        let entries = order.map { t in
+            delegate?.gridSummary(t.shown.id) ?? SummaryCardContent(id: t.shown.id, symbol: t.shown.symbol,
+                                                                     summary: t.shown.block?.summary() ?? BlockSummary(title: t.shown.title))
+        }
+        let s = StackColumnView(entries: entries)
         s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
         s.layer?.zPosition = 20
         s.followsPointer = followingPointer
@@ -1284,7 +1293,6 @@ final class GridView: NSView, NSDraggingSource {
             self.watchSwitcherClicks()
             self.delegate?.gridSwitcherFollowsPointer()
         }
-        switching = Set(order.map(\.shown.id))
         addSubview(s)
         switcher = s
         needsLayout = true
@@ -1313,7 +1321,7 @@ final class GridView: NSView, NSDraggingSource {
     /// tile has no stack.
     func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
         guard openStackSwitcher(top, followingPointer: false) else { return false }
-        if fanWaiting { fanSteps += back ? 1 : -1 } else { switcher?.move(back ? 1 : -1) }
+        if fanWaiting { fanSteps += back ? -1 : 1 } else { switcher?.move(back ? -1 : 1) }
         return true
     }
 
@@ -1488,7 +1496,7 @@ final class GridView: NSView, NSDraggingSource {
         var wanted: [(NSRect, Int, PlacementID)] = []
         var targets: [(PlacementID, NSRect)] = []
         var depths: [PlacementID: Int] = [:]
-        for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id {
+        for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id && switcher?.topID != id {
             let bar = pill.frame
             depths[id] = pill.behind
             for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
