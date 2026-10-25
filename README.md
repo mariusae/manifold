@@ -286,7 +286,8 @@ parts from the Mac's conventions on purpose.
   live. Every character stays where it is — the line the caret is on
   shows as written, markers dimmed — and the file is plain Markdown; a
   note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌘⇧C wrap the selection
-  in bold, italic, strikethrough and code marks, or take them off.
+  in bold, italic, strikethrough and code marks, or take them off
+  (Edit ▸ Format).
   Return in a list carries it on — the next marker or number, an empty
   box in a task list — a quote with its mark, and on an empty item ends
   it. The bar's menu has Show Raw Markdown, kept per tile. Markdown
@@ -419,7 +420,8 @@ around it, and comes back with its history.
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
   (⌘L), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
-  comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection),
+  comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection —
+  Edit ▸ Lines and Edit ▸ Selection list them),
   brackets and quotes paired, new lines indented like the last, undo as
   entries in the block's log (undone back to what was saved, it's clean
   again). Page Up and Down move the view a screenful, the caret along
@@ -541,7 +543,7 @@ around it, and comes back with its history.
   and date, as the Finder's columns do (the divider dragged as you like;
   a narrow tile shows the tree alone). What the folder's repository
   ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
-  shows them, dimmed. The **filter** at the top (⌘F) looks through the
+  (View ▸ Show Hidden Files) shows them, dimmed. The **filter** at the top (⌘F) looks through the
   whole tree beneath as it's typed, less what's ignored, and lists the
   files that match — their letters in order, as Open Quickly matches —
   best first, the letters matched in bold and the folder each is in
@@ -707,7 +709,7 @@ around it, and comes back with its history.
   cell is there in the next. ⌘↩ runs a cell; ⇧↩ runs it and goes to the
   next (made if it's the last); ⌥↩ runs it and makes one below; ↑ and ↓
   past a cell's first or last line go to the cells beside it; ⌥⌘↑ and
-  ⌥⌘↓ move it. A run's output streams in as it comes and replaces the
+  ⌥⌘↓ move it (the bar's menu lists them, for the focused cell). A run's output streams in as it comes and replaces the
   last; beneath it, the sidebar's status glyph (turning while it runs, a
   check once done, red when it failed) with how it ended (Done, Exit 1,
   Interrupted), how long it took and when; the gutter numbers the runs as

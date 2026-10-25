@@ -871,6 +871,12 @@ extension TextView: NSMenuItemValidation {
         case #selector(cut(_:)), #selector(copy(_:)): return hasSelectedText
         // Whether there's text to paste, not the text itself read out.
         case #selector(paste(_:)): return isEditable && NSPasteboard.general.availableType(from: [.string]) != nil
+        // Marks for a note's Markdown; not code's.
+        case #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatStrikethrough(_:)), #selector(formatCode(_:)):
+            return isEditable && acceptsBlockLinks
+        case #selector(deleteLine(_:)), #selector(duplicateLine(_:)), #selector(moveLineUp(_:)), #selector(moveLineDown(_:)),
+             #selector(joinLine(_:)), #selector(toggleLineComment(_:)):
+            return isEditable
         default: return true
         }
     }

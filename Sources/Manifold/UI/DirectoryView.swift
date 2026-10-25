@@ -397,6 +397,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         return super.performKeyEquivalent(with: event)
     }
 
+    /// View ▸ Show Hidden Files (⇧⌘.), titled by what it will do.
+    @objc func toggleHiddenFiles(_ sender: Any?) { toggleHidden() }
+
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleHiddenFiles(_:)) {
+            item.title = model?.showHidden == true ? "Hide Hidden Files" : "Show Hidden Files"
+        }
+        return true
+    }
+
     func toggleHidden() {
         guard let model else { return }
         model.showHidden.toggle()

@@ -1618,6 +1618,21 @@ final class TextView: NSView, NSTextInputClient {
     /// ⇧⌘K (and ⌃⇧K): the lines the selections are on, gone.
     @objc func deleteLine(_ sender: Any?) { deleteLines() }
 
+    // Edit ▸ Lines, Selection and Format: what handleShortcut's keys do,
+    // there to be found in the menus.
+    @objc func duplicateLine(_ sender: Any?) { duplicateLines() }
+    @objc func moveLineUp(_ sender: Any?) { moveLines(up: true) }
+    @objc func moveLineDown(_ sender: Any?) { moveLines(up: false) }
+    @objc func joinLine(_ sender: Any?) { joinLines() }
+    @objc func toggleLineComment(_ sender: Any?) { toggleComment() }
+    @objc func addNextOccurrence(_ sender: Any?) { selectNextOccurrence() }
+    @objc func addCaretAbove(_ sender: Any?) { addCaret(up: true) }
+    @objc func addCaretBelow(_ sender: Any?) { addCaret(up: false) }
+    @objc func formatBold(_ sender: Any?) { toggleWrap("**") }
+    @objc func formatItalic(_ sender: Any?) { toggleWrap("_") }
+    @objc func formatStrikethrough(_ sender: Any?) { toggleWrap("~~") }
+    @objc func formatCode(_ sender: Any?) { toggleWrap("`") }
+
     private func deleteLines() {
         let lines = selectedLines()
         guard let first = lines.first, let last = lines.last else { return }

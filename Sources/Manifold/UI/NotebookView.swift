@@ -345,20 +345,33 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     private func more(from view: NSView, at rect: NSRect) {
         let menu = NSMenu()
+        for item in cellItems { menu.addItem(item) }
         menu.addItem(ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() })
         menu.addItem(ClosureMenuItem("Clear All Outputs", symbol: "eraser") { [weak self] in
             guard let self else { return }
             self.delegate?.notebook(self, edit: .clearAll)
         })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Interrupt", symbol: "stop.fill") { [weak self] in self?.interrupt() })
+        menu.addItem(ClosureMenuItem("Interrupt", symbol: "stop.fill", key: ".") { [weak self] in self?.interrupt() })
         menu.addItem(ClosureMenuItem("Restart Shell", symbol: "arrow.clockwise") { [weak self] in self?.restart() })
         menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.minY - 4), in: view)
     }
 
+    /// The focused cell's own, with the keys a cell takes: run it (⌘↩,
+    /// ⇧↩ to the next), move it (⌥⌘↑ ⌥⌘↓).
+    private var cellItems: [NSMenuItem] {
+        guard let id = focusedCell else { return [] }
+        let run = ClosureMenuItem("Run Cell", symbol: "play.fill", key: "\r") { [weak self] in self?.run(id, then: .stay) }
+        let up = ClosureMenuItem("Move Cell Up", symbol: "arrow.up", key: String(UnicodeScalar(NSUpArrowFunctionKey)!)) { [weak self] in self?.move(id, by: -1) }
+        let down = ClosureMenuItem("Move Cell Down", symbol: "arrow.down", key: String(UnicodeScalar(NSDownArrowFunctionKey)!)) { [weak self] in self?.move(id, by: 1) }
+        up.keyEquivalentModifierMask = [.command, .option]
+        down.keyEquivalentModifierMask = [.command, .option]
+        return [run, up, down, .separator()]
+    }
+
     var pillItems: [NSMenuItem] {
-        [ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() },
-         ClosureMenuItem("Interrupt", symbol: "stop.fill") { [weak self] in self?.interrupt() },
+        cellItems + [ClosureMenuItem("Run All Cells", symbol: "forward.end.fill") { [weak self] in self?.runAll() },
+         ClosureMenuItem("Interrupt", symbol: "stop.fill", key: ".") { [weak self] in self?.interrupt() },
          ClosureMenuItem("Restart Shell", symbol: "arrow.clockwise") { [weak self] in self?.restart() },
          ClosureMenuItem("Clear All Outputs", symbol: "eraser") { [weak self] in
              guard let self else { return }

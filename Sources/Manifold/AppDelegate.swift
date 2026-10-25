@@ -317,7 +317,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codeItem.submenu = code
         edit.addItem(codeItem)
         edit.addItem(.separator())
-        item(edit, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
+        // An editor's own: lines, carets, and a note's marks.
+        let up = String(UnicodeScalar(NSUpArrowFunctionKey)!), down = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+        let lines = NSMenu(title: "Lines")
+        item(lines, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
+        item(lines, "Duplicate Line", #selector(TextView.duplicateLine(_:)), "d", [.command, .shift])
+        item(lines, "Move Line Up", #selector(TextView.moveLineUp(_:)), up, [.command, .control])
+        item(lines, "Move Line Down", #selector(TextView.moveLineDown(_:)), down, [.command, .control])
+        item(lines, "Join Lines", #selector(TextView.joinLine(_:)), "j", [.control])
+        item(lines, "Comment or Uncomment", #selector(TextView.toggleLineComment(_:)), "/")
+        let linesItem = NSMenuItem(title: "Lines", action: nil, keyEquivalent: "")
+        linesItem.submenu = lines
+        edit.addItem(linesItem)
+        let carets = NSMenu(title: "Selection")
+        item(carets, "Add Next Occurrence", #selector(TextView.addNextOccurrence(_:)), "d")
+        item(carets, "Add Caret Above", #selector(TextView.addCaretAbove(_:)), up, [.control, .shift])
+        item(carets, "Add Caret Below", #selector(TextView.addCaretBelow(_:)), down, [.control, .shift])
+        let caretsItem = NSMenuItem(title: "Selection", action: nil, keyEquivalent: "")
+        caretsItem.submenu = carets
+        edit.addItem(caretsItem)
+        let format = NSMenu(title: "Format")
+        item(format, "Bold", #selector(TextView.formatBold(_:)), "b")
+        item(format, "Italic", #selector(TextView.formatItalic(_:)), "i")
+        item(format, "Strikethrough", #selector(TextView.formatStrikethrough(_:)), "x", [.command, .shift])
+        item(format, "Code", #selector(TextView.formatCode(_:)), "c", [.command, .shift])
+        let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
+        formatItem.submenu = format
+        edit.addItem(formatItem)
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
         let view = submenu(main, "View")
@@ -347,6 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Back in This Tile", #selector(WebView.goBack(_:)), "[", [.command])
         item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
+        item(view, "Show Hidden Files", #selector(DirectoryView.toggleHiddenFiles(_:)), ".", [.command, .shift])
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.
