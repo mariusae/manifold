@@ -26,14 +26,9 @@ parts from the Mac's conventions on purpose.
   window's left edge instead. Drag its right edge to resize it, and its
   top to move the window. Along the bottom of the sidebar run Spaces and Files, the Inbox,
   and, at the right, counts of what needs you,
-  is working and is done and not yet read, which open the Inbox. The window sits on a wash of soft colour — a few
-  pools of pastel light, deep tints in the dark — placed afresh each
-  day, with what's behind the window blurred beneath it, and lit by the
-  hour: the sun's height where your time zone's city is gives its
-  light's colour temperature, so the wash is a touch warmer while the
-  sun is low, morning and evening, a touch cooler when it's high, and a
-  dim cool blue at night, looked at again every five minutes and eased
-  into over a few seconds. The tree is one shape, always: a host's
+  is working and is done and not yet read, which open the Inbox. The
+  window sits on a wash of soft colour (Look, below). Under Spaces the
+  tree is one shape, always: a host's
   heading, then each of its spaces, then every tile in it, in
   order. Nothing folds by itself; the current space wears a bar at
   its left edge, and a space's chevron closes it until you open it
@@ -1034,6 +1029,14 @@ sidebar sliding out) are rounded alike with one soft shadow; Open Quickly
 is plain, not glass. The sizes, radii, shadows and motion are a few
 named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
+The window sits on a wash of soft colour — a few pools of pastel light,
+deep tints in the dark — placed afresh each day, with what's behind the
+window blurred beneath it, and lit by the hour: the sun's height where
+your time zone's city is gives its light's colour temperature, so the
+wash is a touch warmer while the sun is low, morning and evening, a
+touch cooler when it's high, and a dim cool blue at night, looked at
+again every five minutes and eased into over a few seconds.
+
 ## Contrast correction
 
 Text in a program's own colors that can't be read on its background (a
@@ -1151,11 +1154,7 @@ is migrated into logs on first run.
   it: each block a client can edit (a note, a file, a web page, a
   space) has one owner at a time, whichever focused it last; the
   other mirrors until it focuses the block again. Linux servers (x86_64
-  and aarch64, static) come from `scripts/build-linux.sh`, which
-  `scripts/build-app.sh` runs: they are built with a swift.org toolchain
-  through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its
-  Static Linux SDK, if missing), since the SDK goes with the toolchain
-  of its own version and not with Xcode's; `LINUX=0` skips them.
+  and aarch64, static) are bundled with the app (Building, below).
 - **`$EDITOR`** in Manifold's shells is `mani open --wait` (on a remote
   host, `manifoldd mani open --wait`): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
@@ -1283,19 +1282,6 @@ is migrated into logs on first run.
 - Protocol: length-prefixed binary frames over a Unix socket
   ([Protocol.swift](Sources/ManifoldCore/Protocol.swift)); the same
   `Codable` entries as the logs, raw bytes for terminal I/O.
-- `MANIFOLD_DIR` runs everything against another directory, for a second,
-  throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one
-  driven by a script); with `MANIFOLD_DEBUG` set too, the app listens on
-  `$MANIFOLD_DIR/app-debug.sock` for scripted commands (see
-  [DebugControl.swift](Sources/Manifold/DebugControl.swift)).
-  `MANIFOLD_NO_NOTIFY` keeps such an instance from posting notifications
-  (it shares the app's identity, and so its permission), and
-  `MANIFOLD_NO_OCCLUSION` has its terminals and status glyphs drawn and
-  turning when its window is behind others. Its `busy start` / `busy stop`
-  time every turn of the main thread in between — the hitches a person
-  would feel — and `picker bench`, `layouts` and `spinners` look at
-  Open Quickly's ranking, the grid's layouts and the backdrop's drawings, and
-  the turning glyphs.
 - **Secure Keyboard Entry** keeps what you type from other apps (as
   Terminal's does): on by hand in the Manifold menu, and on by itself
   while the focused terminal's program reads a password — `sudo`, `ssh`,
@@ -1321,6 +1307,26 @@ scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```
+
+The Linux servers come from `scripts/build-linux.sh`, which
+`scripts/build-app.sh` runs: they are built with a swift.org toolchain
+through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its
+Static Linux SDK, if missing), since the SDK goes with the toolchain of
+its own version and not with Xcode's; `LINUX=0` skips them.
+
+`MANIFOLD_DIR` runs everything against another directory, for a second,
+throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one
+driven by a script); with `MANIFOLD_DEBUG` set too, the app listens on
+`$MANIFOLD_DIR/app-debug.sock` for scripted commands (see
+[DebugControl.swift](Sources/Manifold/DebugControl.swift)).
+`MANIFOLD_NO_NOTIFY` keeps such an instance from posting notifications
+(it shares the app's identity, and so its permission), and
+`MANIFOLD_NO_OCCLUSION` has its terminals and status glyphs drawn and
+turning when its window is behind others. Its `busy start` / `busy stop`
+time every turn of the main thread in between — the hitches a person
+would feel — and `picker bench`, `layouts` and `spinners` look at
+Open Quickly's ranking, the grid's layouts and the backdrop's drawings, and
+the turning glyphs.
 
 Ghostty is pinned to v1.3.1 with [a small patch](patches/ghostty.patch): Metal
 shaders compile at runtime (no Metal toolchain needed), archives are merged in
