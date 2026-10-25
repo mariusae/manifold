@@ -1058,7 +1058,7 @@ Today's pieces map directly:
 | `Tab` | an unnamed workspace on the desk |
 | `Column` (a stack) | a column, shown by the stacks lens |
 | put-away timer | collection (§4) |
-| ⌃⇥'s settled order | the trail (§3.5) |
+| ⌘`'s settled order | the trail (§3.5) |
 | `state.json` and JSON commands | per-shard logs and entries |
 | editor drafts in `editors/` | the text block's log |
 

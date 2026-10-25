@@ -63,7 +63,7 @@ and Mona Sans (bundled).
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
   out above its card, as a stack of paper. **Click those sheets**, or
-  the stack button on the tile's bar (beside maximize), or press ⌘\`, and
+  the stack button on the tile's bar (beside maximize), or press ⌃⇥, and
   the stack's tiles hang over it as cards,
   live, the tile's own bar put away, on the window's own background
   (a stack too short to hold them, down to its bar say, first grows —
@@ -74,20 +74,19 @@ and Mona Sans (bundled).
   the way. Clicked open, the card under the pointer is
   the one chosen (scrolling works too): clicked, it takes the top,
   whole, the tile that showed going behind it with the rest of the
-  stack, as with ⌘\`; ⎋ or a click away from the cards leaves things be
+  stack, as with ⌃⇥; ⎋ or a click away from the cards leaves things be
   (a drag on the sheets moves the line between the tiles, as it would
-  there; right-clicking a title is always the tile's menu). With ⌘\`, each \`
-  moves the choice a card down (⇧⌘\` back up), and letting go of ⌘ brings
+  there; right-clicking a title is always the tile's menu). With ⌃⇥, each ⇥
+  moves the choice a card down (⌃⇧⇥ back up), and letting go of control brings
   the chosen one forward to the top (Escape leaves things be; a card
   clicked is chosen at once) — or move the pointer over the cards and
   they follow it from then on, as when fanned from the sheets: the card
-  under it peeks out, a click brings it to the top, and letting go of ⌘
-  leaves them open; without a stack, ⌘\` goes to Manifold's next window,
-  as macOS has it. Either way, **drag a card** to take that tile out of the stack:
+  under it peeks out, a click brings it to the top, and letting go of
+  control leaves them open. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows. ⌥-click the top tile's own pill and it swaps with the next
-  behind it; keep ⌥ held and click again, as ⌃⇥ walks workspaces, and
+  behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
   the next behind that comes up, round the stack, the tiles passed
   staying where they were — letting go of ⌥ settles on the one come to
   (⌥-clicking a pill peeking out above the stack goes straight to it). A stack is one
@@ -202,9 +201,10 @@ and Mona Sans (bundled).
   Code. ⌘[ and ⌘] are for what has a history of its own: a web page's,
   and a folder tile's (the folders it showed, as a Finder window's Back
   goes); the mouse's buttons go there first in such a tile.
-- **⌃⇥** walks the workspaces most recently gone to first, each
-  sliding in from the right (⌃⇧⇥ from the left), for as long as control is
-  held; letting go settles on the one come to. ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
+- **⌘\`** walks the workspaces most recently gone to first, each
+  sliding in from the right (⇧⌘\` from the left), for as long as ⌘ is
+  held; letting go settles on the one come to (with one workspace, it
+  goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
   workspaces too, as does the Dock icon's menu: every workspace, under
   its host when there are several, the one shown checked. A file or
   folder dropped on the Dock icon opens in the workspace shown, as a
@@ -879,7 +879,7 @@ around it, and comes back with its history.
   block to look around *it* instead (Back returns), double-click or ⏎ to
   go there, arrow keys move, Space re-centers, ⎋ closes. The trail —
   every tile focused and every workspace gone to, which the host keeps
-  — orders ⌃⇥'s round of the workspaces and the map's before and after.
+  — orders ⌘\`'s round of the workspaces and the map's before and after.
 - **Every block has a status** (DESIGN.md §3.7), in the schema of
   [OSC 7501](https://mitchellh.com/writing/program-status-osc7501):
   idle, working (with progress, or without), done, blocked (waiting for

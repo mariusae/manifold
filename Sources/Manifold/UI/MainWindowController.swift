@@ -20,7 +20,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The grid for no workspace (none selected).
     private lazy var blankGrid: GridView = content
     /// The content area, which the grids are clipped to: a workspace
-    /// sliding out (⌃⇥) leaves through its edge, never under the sidebar
+    /// sliding out (⌘`) leaves through its edge, never under the sidebar
     /// (which is translucent, and would show it).
     private let stage: NSView = {
         let v = NSView()
@@ -49,11 +49,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var shownArrangement: BlockID?
     private var pendingSlide: CGFloat?
     private var sliding = false
-    /// ⌃⇥'s walk, while control is held: the arrangements in the order it
+    /// ⌘`'s walk, while ⌘ is held: the arrangements in the order it
     /// began with, and how far along it is.
     private var walk: (ids: [BlockID], index: Int)?
     private var walkMonitors: [Any] = []
-    /// ⌘`'s switcher, while ⌘ is held: what ends it.
+    /// ⌃⇥'s switcher, while control is held: what ends it.
     private var stackMonitors: [Any] = []
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
@@ -1493,14 +1493,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
     func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
     func debugSwitcherPointer() -> String { content.debugSwitcherPointer() }
-    /// ⌘` with ⌘ held, as far as the fan and its watching for ⌘'s release.
+    /// ⌃⇥ with control held, as far as the fan and its watching for its release.
     func debugWalkStack() {
         guard let a = arrangement, let f = a.focused, content.stepStackSwitcher(f, back: false) else { return }
         watchStackWalk()
     }
-    /// ⌘ let go, as the walk's monitor sees it (if it's still watching).
+    /// Control let go, as the walk's monitor sees it (if it's still watching).
     func debugReleaseCommand() -> String {
-        guard !stackMonitors.isEmpty else { return "not watching ⌘" }
+        guard !stackMonitors.isEmpty else { return "not watching control" }
         endStackWalk(settling: true)
         return "settled"
     }
@@ -2374,24 +2374,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.select(id)
     }
 
-    // MARK: ⌃⇥
+    // MARK: ⌘`
 
-    /// ⌃⇥ (⌃⇧⇥ back): with control held, a walk through the arrangements
-    /// most recently settled on first, each shown at once sliding in from
-    /// the right (from the left, going back); letting go of control settles
-    /// on the one come to. The ones passed on the way aren't settled on;
-    /// Escape goes back to where the walk began.
+    /// ⌘` (⇧⌘` back): with ⌘ held, a walk through the arrangements most
+    /// recently settled on first, each shown at once sliding in from the
+    /// right (from the left, going back); letting go of ⌘ settles on the
+    /// one come to. The ones passed on the way aren't settled on; Escape
+    /// goes back to where the walk began. With one workspace, ⌘` goes to
+    /// the app's next window, as macOS has it.
     @objc func walkTabs(_ sender: Any?) { walkTabs(back: false) }
     @objc func walkTabsBack(_ sender: Any?) { walkTabs(back: true) }
 
     private func walkTabs(back: Bool) {
         let live = Set(allWorkspaces)
         if walk == nil {
-            guard let current = selected, allWorkspaces.count > 1 else { return }
+            guard let current = selected, allWorkspaces.count > 1 else { return cycleWindows(back: back) }
             var order = [current]
             for id in hosts.recentWorkspaces() + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
             walk = (order, 0)
-            if NSEvent.modifierFlags.contains(.control) { watchWalk() }
+            if NSEvent.modifierFlags.contains(.command) { watchWalk() }
         }
         guard var w = walk else { return }
         w.ids = w.ids.filter { live.contains($0) }
@@ -2400,13 +2401,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
         walk = w
         show(arrangement: w.ids[w.index], slidingFrom: back ? -1 : 1)
-        // From the menu, without control held, it's one step and settled.
+        // From the menu, without ⌘ held, it's one step and settled.
         if walkMonitors.isEmpty { endWalk(settling: true) }
     }
 
     private func watchWalk() {
         walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.control) { self?.endWalk(settling: true) }
+            if !event.modifierFlags.contains(.command) { self?.endWalk(settling: true) }
             return event
         } as Any)
         walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -2426,26 +2427,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    // MARK: ⌘`
+    // MARK: ⌃⇥
 
-    /// ⌘` (⇧⌘` back): with ⌘ held, the focused tile's stack as a file of
-    /// cards over its tile — the top drops flat to the bottom and the one
-    /// beneath stands up in front, leaning back, the title bars of the
-    /// rest behind it; each ` flips the next one down, scrolling works
-    /// too, and letting go of ⌘ brings the chosen one forward to the top
-    /// (Escape leaves things be). From the menu it's one step. Without a
-    /// stack, ⌘` goes to the app's next window, as macOS has it.
+    /// ⌃⇥ (⌃⇧⇥ back): with control held, the focused tile's stack as a file
+    /// of cards over its tile — the top drops flat to the bottom and the
+    /// one beneath stands up in front, leaning back, the title bars of the
+    /// rest behind it; each ⇥ flips the next one down, scrolling works
+    /// too, and letting go of control brings the chosen one forward to the
+    /// top (Escape leaves things be). From the menu it's one step.
     @objc func walkStack(_ sender: Any?) { walkStack(back: false) }
     @objc func walkStackBack(_ sender: Any?) { walkStack(back: true) }
 
     private func walkStack(back: Bool) {
-        guard let a = arrangement, let f = a.focused else { return cycleWindows(back: back) }
+        guard let a = arrangement, let f = a.focused else { return NSSound.beep() }
         if content.isSwitching {
             _ = content.stepStackSwitcher(f, back: back)
             return
         }
-        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return cycleWindows(back: back) }
-        if NSEvent.modifierFlags.contains(.command) {
+        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return NSSound.beep() }
+        if NSEvent.modifierFlags.contains(.control) {
             watchStackWalk()
         } else {
             // From the menu: one step, seen, then settled on.
@@ -2455,7 +2455,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func watchStackWalk() {
         stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.command) { self?.endStackWalk(settling: true) }
+            if !event.modifierFlags.contains(.control) { self?.endStackWalk(settling: true) }
             return event
         } as Any)
         stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -2471,8 +2471,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.settleStackSwitcher(cancel: !settling)
     }
 
-    /// No stack to switch: ⌘` as macOS has it, the app's next window (or,
-    /// backward, its previous) — Settings, another window.
+    /// One workspace to walk: ⌘` as macOS has it, the app's next window
+    /// (or, backward, its previous) — Settings, another window.
     private func cycleWindows(back: Bool) {
         let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.canBecomeKey && !$0.isMiniaturized }
         guard windows.count > 1, let key = NSApp.keyWindow, let i = windows.firstIndex(of: key) else { return }
@@ -3674,16 +3674,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.setString(id.description, forType: .manifoldBlock)
             return item
         }
-        // ⌃- and ⌃⇧- go back and forward; ⌃⇥ and ⌃⇧⇥ walk the workspaces
-        // here, before anything else sees them — whatever has the keyboard,
-        // or nothing (a workspace's row clicked, its tile not taking it,
-        // where AppKit's own going round the views took ⌃⇥ before the menu).
+        // ⌃- and ⌃⇧- go back and forward, ⌃⇥ and ⌃⇧⇥ walk the focused
+        // tile's stack, ⌘` and ⇧⌘` the workspaces, here, before anything
+        // else sees them — whatever has the keyboard, or nothing (a
+        // workspace's row clicked, its tile not taking it, where AppKit's
+        // own going round the views took ⌃⇥ before the menu).
         navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window, event.keyCode == 27 || event.keyCode == 48 else { return event }
+            guard let self, event.window === self.window, [27, 48, 50].contains(event.keyCode) else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if event.keyCode == 50 {
+                guard mods == .command || mods == [.command, .shift] else { return event }
+                if mods.contains(.shift) { self.walkTabsBack(nil) } else { self.walkTabs(nil) }
+                return nil
+            }
             guard mods == .control || mods == [.control, .shift] else { return event }
             if event.keyCode == 48 {
-                if mods.contains(.shift) { self.walkTabsBack(nil) } else { self.walkTabs(nil) }
+                if mods.contains(.shift) { self.walkStackBack(nil) } else { self.walkStack(nil) }
             } else if mods.contains(.shift) {
                 self.navigateForward(nil)
             } else {
@@ -5569,7 +5575,7 @@ extension MainWindowController: GridDelegate {
     }
 
     /// ⌥-click on a shown tile's pill: the first tile behind it takes its
-    /// place. With ⌥ held, clicked again (as ⌃⇥ walks workspaces) the next
+    /// place. With ⌥ held, clicked again (as ⌘` walks workspaces) the next
     /// behind that, and so on round the stack, the ones passed staying as
     /// they were; letting go of ⌥ settles on the one come to.
     func gridSwapNext(_ placement: PlacementID) {

@@ -365,12 +365,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.addItem(.separator())
         item(window, "Show Next Workspace", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
         item(window, "Show Previous Workspace", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
-        item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
-        // ⌘`, as macOS cycles an app's windows: here, a stack's sheets (and,
-        // with no stack, the windows).
-        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "`", [.command])
-        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "`", [.command, .shift])
+        // ⌘`, as macOS cycles an app's windows: here, its workspaces (and,
+        // with one, the windows).
+        item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
+        item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
+        // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's sheets.
+        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
+        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
             item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }

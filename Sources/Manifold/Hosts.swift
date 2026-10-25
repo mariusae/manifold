@@ -118,7 +118,7 @@ final class Hosts {
     }
 
     /// Workspaces as the trail has them (§3.5), the one gone to most
-    /// recently first: ⌃⇥'s order, and where a block is looked for first.
+    /// recently first: ⌘`'s order, and where a block is looked for first.
     func recentWorkspaces() -> [BlockID] {
         var steps: [Step] = []
         for c in all {
