@@ -195,7 +195,7 @@ final class AppearancePane: SettingsPane {
     private var showContrast: ((ContrastCorrection) -> Void)?
     private let tints = TintPicker()
     private let themes = FontThemeList()
-    private let advanced = NSButton(checkboxWithTitle: "Enable advanced typography", target: nil, action: nil)
+    private let advanced = Flat.checkbox("Enable advanced typography")
 
     init(_ source: SettingsSource) { super.init(source, title: "Appearance") }
     required init?(coder: NSCoder) { fatalError() }
@@ -292,8 +292,24 @@ final class TintPicker: NSView {
     override func draw(_ dirtyRect: NSRect) {
         for (i, t) in Tint.allCases.enumerated() {
             let r = rect(i)
-            t.accent.setFill()
-            NSBezierPath(ovalIn: r).fill()
+            if t == .system {
+                // System: the system's own colours round it, as macOS draws
+                // its Multicolor — not a second blue beside Blue.
+                let colors: [NSColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .systemPurple, .systemPink]
+                let c = NSPoint(x: r.midX, y: r.midY)
+                for (k, color) in colors.enumerated() {
+                    let wedge = NSBezierPath()
+                    wedge.move(to: c)
+                    wedge.appendArc(withCenter: c, radius: r.width / 2, startAngle: CGFloat(k) * 360 / CGFloat(colors.count) + 90,
+                                    endAngle: CGFloat(k + 1) * 360 / CGFloat(colors.count) + 90)
+                    wedge.close()
+                    color.setFill()
+                    wedge.fill()
+                }
+            } else {
+                t.accent.setFill()
+                NSBezierPath(ovalIn: r).fill()
+            }
             if t == tint || hovered == i {
                 let ring = NSBezierPath(ovalIn: r.insetBy(dx: -2.5, dy: -2.5))
                 ring.lineWidth = 1.5
@@ -365,7 +381,7 @@ final class FontThemeList: NSView {
             // Editing, then reading if it's another face, then monospaced.
             let names = [t.proportionalName] + (t.readingName != t.proportionalName ? [t.readingName] : []) + [t.monospacedName]
             let fonts = NSAttributedString(string: names.joined(separator: " · "), attributes: [
-                .font: t.font(.monospaced, size: 11), .foregroundColor: Theme.secondaryText,
+                .font: UIType.detail, .foregroundColor: Theme.secondaryText,
             ])
             let ns = name.size(), fs = fonts.size()
             name.draw(at: NSPoint(x: r.minX + 10, y: r.midY - ns.height / 2))
@@ -394,18 +410,17 @@ final class FontThemeList: NSView {
 // MARK: Terminals
 
 final class TerminalsPane: SettingsPane {
-    private let copyOnSelect = NSButton()
+    private let copyOnSelect = Flat.checkbox("")
     private var showDormancy: ((Int) -> Void)?
 
     init(_ source: SettingsSource) { super.init(source, title: "Terminals") }
     required init?(coder: NSCoder) { fatalError() }
 
     override func build() {
-        copyOnSelect.setButtonType(.switch)
         copyOnSelect.title = "Copy text as it's selected"
         copyOnSelect.target = self
         copyOnSelect.action = #selector(copyOnSelectClicked)
-        row("Selection", copyOnSelect, note: "Not in full screen.")
+        row("Selection", copyOnSelect, note: "A terminal's selection on the clipboard as it's made — except in full screen.")
         let (dormancy, d) = segments(["2 Hours", "8 Hours", "A Day", "A Week", "Never"], [2, 8, 24, 168, 0]) { [weak self] v in
             self?.source.change { (s: inout Settings) in s.terminalDormantAfterHours = v }
         }

@@ -3249,6 +3249,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             var ids = c.desk.order.filter { $0.host == c.host }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
             let nodes = ids.compactMap(workspace)
+            // Unnamed spaces called the same (their folder): told apart by
+            // what each is on, after the name.
+            let counts = Dictionary(grouping: nodes, by: \.title).filter { $0.value.count > 1 }
+            for n in nodes where counts[n.title] != nil {
+                guard let id = n.block, let a = hosts.arrangement(id), !a.isNamed,
+                      let on = (a.focusedPlacement ?? a.placements.first).flatMap({ hosts.block($0.block) }) else { continue }
+                n.title += " · " + Self.linkTitle(on)
+            }
             byHost.append((c, nodes))
         }
         guard byHost.count > 1 else { return (byHost.first?.1 ?? [], open) }

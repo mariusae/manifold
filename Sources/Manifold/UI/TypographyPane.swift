@@ -8,7 +8,7 @@ import ManifoldCore
 /// sample as it changes. Changing anything here sets Manifold in it.
 final class TypographyPane: SettingsPane {
     private var role: FontRole = .editing
-    private let use = NSButton(checkboxWithTitle: "Set Manifold in custom typography", target: nil, action: nil)
+    private let use = Flat.checkbox("Set Manifold in custom typography")
     private let start = NSPopUpButton(frame: .zero, pullsDown: true)
     private var showRole: ((FontRole) -> Void)?
     private let family = NSPopUpButton()
@@ -17,15 +17,15 @@ final class TypographyPane: SettingsPane {
     private let bold = NSPopUpButton()
     private let size = NSTextField()
     private let sizeStepper = NSStepper()
-    private let leading = NSSlider(value: 1.4, minValue: 0.9, maxValue: 2.4, target: nil, action: nil)
+    private let leading = Flat.slider(value: 1.4, min: 0.9, max: 2.4)
     private let leadingValue = NSTextField(labelWithString: "")
-    private let tracking = NSSlider(value: 0, minValue: -80, maxValue: 200, target: nil, action: nil)
+    private let tracking = Flat.slider(value: 0, min: -80, max: 200)
     private let trackingValue = NSTextField(labelWithString: "")
     private let features = NSTextField()
     private let featureMenu = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let measure = NSSlider(value: 0, minValue: 0, maxValue: 120, target: nil, action: nil)
+    private let measure = Flat.slider(value: 0, min: 0, max: 120)
     private let measureValue = NSTextField(labelWithString: "")
-    private let gapSlider = NSSlider(value: 1, minValue: 0, maxValue: 2.5, target: nil, action: nil)
+    private let gapSlider = Flat.slider(value: 1, min: 0, max: 2.5)
     private let gapValue = NSTextField(labelWithString: "")
     private let sample = NSTextField(wrappingLabelWithString: "")
     /// The role the fields were last filled for: they're filled again for

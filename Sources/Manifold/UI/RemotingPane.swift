@@ -11,7 +11,9 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
     var onChange: (([RemoteProvider]) -> Void)?
     var onAttach: (() -> Void)?
 
-    private var providers: [RemoteProvider] = []
+    private var providers: [RemoteProvider] = [] { didSet { empty.isHidden = !providers.isEmpty } }
+    /// What the list says with nothing in it.
+    private let empty = NSTextField(wrappingLabelWithString: "No providers. Add one with +: a name, and the command line that reaches a destination.")
     private let table = NSTableView()
     private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
 
@@ -62,12 +64,22 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
         Flat.headers(table)
         scroll.documentView = table
         content.addSubview(scroll)
+        empty.font = UIType.body
+        empty.textColor = Theme.secondaryText
+        empty.alignment = .center
+        empty.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(empty)
+        NSLayoutConstraint.activate([
+            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+            empty.widthAnchor.constraint(lessThanOrEqualTo: scroll.widthAnchor, constant: -40),
+        ])
 
         let add = IconButton(symbol: "plus", size: 12, weight: .medium, target: self, action: #selector(addRow))
         remove.target = self
         remove.action = #selector(removeRow)
         let attach = FlatButton("Attach to Host…", target: self, action: #selector(attachClicked))
-        let note = NSTextField(wrappingLabelWithString: "A provider runs a command line on a destination with stdio connected, as ssh does: %h is the destination, %c the command (appended when there is no %c). Attach to a host as user@host for ssh, or provider:target for another. Manifold installs its server on the host, in ~/.manifold/bin, if it isn't already there.")
+        let note = NSTextField(wrappingLabelWithString: "A provider is a command line that reaches a destination with its input and output connected, as ssh does: in it, %h stands for the destination and %c for the command run there (put at the end if there's no %c). Attach to a host as user@host for ssh, or provider:target for another. Manifold installs its server on the host, in ~/.manifold/bin, if it isn't already there.")
         note.font = .systemFont(ofSize: 11)
         note.textColor = Theme.secondaryText
         for v in [add, remove, attach, note] {

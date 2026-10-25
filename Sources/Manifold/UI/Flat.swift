@@ -440,17 +440,34 @@ final class FlatSliderCell: NSSliderCell {
 /// A checkbox in a table's cells: a small rounded square, a hairline on a
 /// faint fill; checked, filled in the accent with a white tick.
 final class FlatCheckboxCell: NSButtonCell {
+    private static let box: CGFloat = 14, gap: CGFloat = 7
+
     override init(textCell string: String) {
         super.init(textCell: string)
         setButtonType(.switch)
-        title = ""
+        title = string
+        font = .systemFont(ofSize: 13)
     }
 
     required init(coder: NSCoder) { super.init(coder: coder) }
 
+    override var cellSize: NSSize {
+        guard !title.isEmpty else { return NSSize(width: Self.box + 2, height: Self.box + 2) }
+        let t = (title as NSString).size(withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 13)])
+        return NSSize(width: Self.box + Self.gap + ceil(t.width) + 2, height: max(Self.box + 2, ceil(t.height)))
+    }
+
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
-        let d: CGFloat = 14
-        let r = NSRect(x: (cellFrame.midX - d / 2).rounded(), y: (cellFrame.midY - d / 2).rounded(), width: d, height: d)
+        let d = Self.box
+        // Alone (a table's cell): the box in the middle; titled, at the
+        // left, its title after it.
+        let x = title.isEmpty ? (cellFrame.midX - d / 2).rounded() : cellFrame.minX + 1
+        let r = NSRect(x: x, y: (cellFrame.midY - d / 2).rounded(), width: d, height: d)
+        if !title.isEmpty {
+            let a = NSAttributedString(string: title, attributes: [.font: font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: isEnabled ? Theme.text : Theme.tertiaryText])
+            let size = a.size()
+            a.draw(at: NSPoint(x: r.maxX + Self.gap, y: cellFrame.midY - size.height / 2))
+        }
         let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
         let on = state == .on
         (on ? Theme.accent : Flat.fill).setFill()
@@ -463,6 +480,25 @@ final class FlatCheckboxCell: NSButtonCell {
             tick.draw(in: NSRect(x: r.midX - tick.size.width / 2, y: r.midY - tick.size.height / 2, width: tick.size.width, height: tick.size.height),
                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
+    }
+}
+
+extension Flat {
+    /// A checkbox, flat: the box and its title.
+    static func checkbox(_ title: String) -> NSButton {
+        let b = NSButton(frame: .zero)
+        b.cell = FlatCheckboxCell(textCell: title)
+        return b
+    }
+
+    /// A slider, flat: a thin bar, a round knob.
+    static func slider(value: Double, min: Double, max: Double) -> NSSlider {
+        let s = NSSlider(frame: .zero)
+        s.cell = FlatSliderCell()
+        s.minValue = min
+        s.maxValue = max
+        s.doubleValue = value
+        return s
     }
 }
 

@@ -29,6 +29,8 @@ final class PanelView: NSView, PaneContent {
     private var shownValues: [String: String] = [:]
     /// The widgets with ids, to set their values as they change.
     private var controls: [String: Control] = [:]
+    /// What the buttons' clicks run, kept while they're shown.
+    private var targets: [ClosureTarget] = []
     private var tables: [TableSource] = []
 
     var focusView: NSView { self }
@@ -90,6 +92,7 @@ final class PanelView: NSView, PaneContent {
         shownSpec = ui.spec
         shownValues = ui.values
         controls = [:]
+        targets = []
         tables = []
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let data = ui.spec.data(using: .utf8), let spec = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -157,11 +160,12 @@ final class PanelView: NSView, PaneContent {
             if let id { controls[id] = Control(set: { render(Self.string($0)) }) }
             view = l
         case "button":
-            let b = ActionButton(title: label ?? id ?? "Button") { [weak self] in
-                self?.tell(["event": "click", "id": id ?? ""], changed: [:], item: item)
-            }
-            b.bezelStyle = .rounded
-            if item["style"] as? String == "primary" { b.keyEquivalent = "\r" }
+            // Flat, as every button of Manifold's: the primary one in the tint.
+            let primary = item["style"] as? String == "primary"
+            let run = ClosureTarget { [weak self] in self?.tell(["event": "click", "id": id ?? ""], changed: [:], item: item) }
+            targets.append(run)
+            let b = FlatButton(label ?? id ?? "Button", style: primary ? .primary : .normal, target: run, action: #selector(ClosureTarget.fire))
+            if primary { b.keyEquivalent = "\r" }
             b.isEnabled = enabled
             view = b
         case "field", "text":
@@ -228,7 +232,7 @@ final class PanelView: NSView, PaneContent {
         case "slider":
             let minimum = item["min"] as? Double ?? 0, maximum = item["max"] as? Double ?? 1
             let step = item["step"] as? Double
-            let s = NSSlider(value: value(item, values) as? Double ?? minimum, minValue: minimum, maxValue: maximum, target: nil, action: nil)
+            let s = Flat.slider(value: value(item, values) as? Double ?? minimum, min: minimum, max: maximum)
             s.isContinuous = false
             s.isEnabled = enabled
             let shown = NSTextField(labelWithString: "")
@@ -336,16 +340,38 @@ final class PanelView: NSView, PaneContent {
             for child in item["items"] as? [[String: Any]] ?? [] {
                 if let v = widget(child, values: values) { add(v, to: inner) }
             }
-            let box = NSBox()
-            box.title = label ?? ""
-            box.titlePosition = label == nil ? .noTitle : .atTop
-            box.contentView = inner
-            box.contentViewMargins = NSSize(width: 10, height: 10)
-            box.fullWidth = true
-            view = box
+            // A group: its label small and grey above, its items on a hairline
+            // rounded as a control is — not the system's box.
+            let frame = NSView()
+            frame.wantsLayer = true
+            frame.layer?.cornerRadius = Radius.control
+            frame.layer?.borderWidth = 0.5
+            frame.themed { $0.layer?.borderColor = EdgeColor.subtle.cgColor }
+            inner.translatesAutoresizingMaskIntoConstraints = false
+            frame.addSubview(inner)
+            NSLayoutConstraint.activate([
+                inner.leadingAnchor.constraint(equalTo: frame.leadingAnchor, constant: 10),
+                inner.trailingAnchor.constraint(equalTo: frame.trailingAnchor, constant: -10),
+                inner.topAnchor.constraint(equalTo: frame.topAnchor, constant: 10),
+                inner.bottomAnchor.constraint(equalTo: frame.bottomAnchor, constant: -10),
+            ])
+            let group = NSStackView()
+            group.orientation = .vertical
+            group.alignment = .leading
+            group.spacing = 4
+            if let label {
+                let t = NSTextField(labelWithString: label)
+                t.font = UIType.caption
+                t.textColor = Theme.secondaryText
+                group.addArrangedSubview(t)
+            }
+            group.addArrangedSubview(frame)
+            frame.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
+            group.fullWidth = true
+            view = group
         case "divider":
-            let line = NSBox()
-            line.boxType = .separator
+            let line = FlatDivider()
+            line.heightAnchor.constraint(equalToConstant: 1).isActive = true
             line.fullWidth = true
             view = line
         case "html":
@@ -486,6 +512,13 @@ final class PanelView: NSView, PaneContent {
     }
 }
 
+/// What a flat button's click runs.
+private final class ClosureTarget: NSObject {
+    let run: () -> Void
+    init(_ run: @escaping () -> Void) { self.run = run }
+    @objc func fire() { run() }
+}
+
 /// A button whose click is a closure (a push button, or a checkbox).
 private final class ActionButton: NSButton {
     var onClick: () -> Void = {}
@@ -501,8 +534,8 @@ private final class ActionButton: NSButton {
 
     convenience init(checkboxTitle title: String, _ unused: (Bool) -> Void) {
         self.init(frame: .zero)
-        self.title = title
-        setButtonType(.switch)
+        // Flat, as Settings' are.
+        cell = FlatCheckboxCell(textCell: title)
         target = self
         action = #selector(clicked)
     }
