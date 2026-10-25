@@ -548,7 +548,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let rows: [FloatingList.Row] = [
             .init(title: c.text, detail: detail, code: true, failed: c.failed, header: true),
             .init(title: "Copy Command and Output", symbol: "doc.on.doc", action: { [weak self] in self?.copyTranscript(command: id) }),
-            .init(title: "Show as Block", symbol: "rectangle.portrait.on.rectangle.portrait", action: { [weak self] in self?.open(command: id) }),
+            .init(title: "Open as Block", symbol: "rectangle.portrait.on.rectangle.portrait", action: { [weak self] in self?.open(command: id) }),
         ]
         FloatingList.shared.show(rows, for: dots, in: window, place: .rightOf(dots.convert(rect, to: nil)))
     }

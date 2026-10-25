@@ -1637,7 +1637,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.showFileHistory(nil)
             })
         }
-        items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Show the Neighborhood Map", subtitle: "Action") { [weak self] in
+        items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Show the Neighborhood Map", subtitle: "⌥⌘M") { [weak self] in
             self?.showNeighborhood(nil)
         })
         items.append(PaletteItem(symbol: "sparkles", title: "New Agent Here", subtitle: "⌥⌘A") { [weak self] in
@@ -2303,6 +2303,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.title = on ? "Unpin" : "Pin in Space"
             item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
             return true
+        case #selector(unstackFocused(_:)), #selector(closeFocusedStack(_:)):
+            // Only for a tile with a stack behind it.
+            guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return false }
+            return a.columns[c].contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
@@ -2341,7 +2345,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case #selector(nameFocusedNote(_:)):
             return focusedShown?.block?.isNote == true
         case #selector(togglePinnedSidebar(_:)):
-            item.title = pinned ? "Hide Sidebar" : "Show Sidebar"
+            item.title = pinned ? "Let Sidebar Slide Out" : "Keep Sidebar Shown"
         default:
             break
         }
@@ -5689,6 +5693,17 @@ extension MainWindowController: GridDelegate {
     }
 
     /// Unstack: every tile behind this one shows, sharing its room.
+    /// Tile ▸ Unstack, Close Stack: the focused tile's stack.
+    @objc func unstackFocused(_ sender: Any?) {
+        guard let f = arrangement?.focused else { return NSSound.beep() }
+        gridUnstackAll(f)
+    }
+
+    @objc func closeFocusedStack(_ sender: Any?) {
+        guard let f = arrangement?.focused else { return NSSound.beep() }
+        gridCloseStack(f)
+    }
+
     func gridUnstackAll(_ placement: PlacementID) {
         guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
         let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }
@@ -7249,7 +7264,7 @@ extension MainWindowController: TerminalViewDelegate {
         if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {
             for item in turnItems(turn, of: view.block, beside: view.placement) { menu.addItem(item) }
         } else {
-            menu.addItem(ClosureMenuItem("Show Output", symbol: "text.alignleft") { [weak view] in _ = view?.showOutput(ofCommand: command.id, beside: view?.placement) })
+            menu.addItem(ClosureMenuItem("Open as Block", symbol: "text.alignleft") { [weak view] in _ = view?.showOutput(ofCommand: command.id, beside: view?.placement) })
             menu.addItem(ClosureMenuItem("Copy Command", symbol: "doc.on.clipboard") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(command.text, forType: .string)

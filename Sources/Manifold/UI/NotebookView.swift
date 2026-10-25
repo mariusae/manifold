@@ -765,7 +765,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(self.output.string, forType: .string)
         })
-        menu.addItem(ClosureMenuItem("Open Output as Block", symbol: "rectangle.portrait.on.rectangle.portrait") { owner.openOutput(self.id) })
+        menu.addItem(ClosureMenuItem("Open as Block", symbol: "rectangle.portrait.on.rectangle.portrait") { owner.openOutput(self.id) })
         menu.addItem(ClosureMenuItem("Clear Output", symbol: "eraser") { owner.clearOutput(self.id) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Delete Cell", symbol: "trash") { owner.delete(self.id) })

@@ -250,26 +250,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         agentsItem.submenu = agents
         file.addItem(agentsItem)
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
-        item(file, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
-        item(file, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
+        file.addItem(.separator())
         item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
         item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
-        item(file, "Go to Tile or Outline…", #selector(MainWindowController.goToTile(_:)), "p")
-        file.addItem(.separator())
-        item(file, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
-        item(file, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "i", [.command, .option])
-        item(file, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
+        // Source control in one place: the project's, its smartlog, the
+        // file against its last commit, the file's history.
+        let source = NSMenu(title: "Source Control")
+        item(source, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
+        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "i", [.command, .option])
+        item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
+        item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
+        let sourceItem = NSMenuItem(title: "Source Control", action: nil, keyEquivalent: "")
+        sourceItem.submenu = source
+        file.addItem(sourceItem)
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
-        item(file, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         file.addItem(.separator())
-        // From the menu alone: ⌘P is the workspace's outline.
+        // From the menu alone: ⌘P is the outline.
         item(file, "Print…", #selector(MainWindowController.printTile(_:)), "")
-        file.addItem(.separator())
-        item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
-        item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
-        item(file, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")
@@ -309,10 +308,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let code = NSMenu(title: "Code")
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
         item(code, "Go to Definition", #selector(EditorView.goToDefinition(_:)), "j", [.command, .control])
-        item(code, "Find References", #selector(EditorView.findReferences(_:)), "r", [.command, .control])
+        item(code, "Find References", #selector(EditorView.findReferences(_:)), "r", [.command, .control, .shift])
         item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
         code.addItem(.separator())
-        item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "n", [.command, .control])
+        item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "r", [.command, .control])
         item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .option, .shift])
         let codeItem = NSMenuItem(title: "Code", action: nil, keyEquivalent: "")
         codeItem.submenu = code
@@ -321,20 +320,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
-        let arrangement = submenu(main, "Space")
-        item(arrangement, "Name…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
-        arrangement.addItem(.separator())
-        item(arrangement, "Grow Tile", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
-        item(arrangement, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
-        item(arrangement, "Maximize Tile", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
-        item(arrangement, "Stash Tile", #selector(MainWindowController.stashTile(_:)), "m")
-        item(arrangement, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
-        item(arrangement, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
-        arrangement.addItem(.separator())
-        item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
-
         let view = submenu(main, "View")
-        item(view, "Show Sidebar", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
+        // Titled by what it does now: the sidebar kept beside the tiles, or
+        // let slide out over them at the window's edge.
+        item(view, "Keep Sidebar Shown", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
         item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
         view.addItem(.separator())
         let organize = NSMenu(title: "Organize By")
@@ -353,38 +342,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Scroll to Top", #selector(TerminalView.scrollToTop(_:)), String(UnicodeScalar(NSHomeFunctionKey)!), [.command])
         item(view, "Scroll to Bottom", #selector(TerminalView.scrollToBottom(_:)), String(UnicodeScalar(NSEndFunctionKey)!), [.command])
         view.addItem(.separator())
-        item(view, "Edit Address", #selector(MainWindowController.editAddress(_:)), "")
-        item(view, "Back", #selector(WebView.goBack(_:)), "[", [.command])
-        item(view, "Forward", #selector(WebView.goForward(_:)), "]", [.command])
+        // A page's or a folder's own history, as a browser's Back — not the
+        // places you've been (Go ▸ Back, ⌃-).
+        item(view, "Back in This Tile", #selector(WebView.goBack(_:)), "[", [.command])
+        item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
+        // Go: finding a place and getting there.
+        let go = submenu(main, "Go")
+        item(go, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
+        item(go, "Outline…", #selector(MainWindowController.goToTile(_:)), "p")
+        item(go, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
+        go.addItem(.separator())
+        // The places you've been (§3.5): ⌃- and ⌃⇧-, as VS Code's.
+        item(go, "Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
+        item(go, "Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
+        item(go, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
+        go.addItem(.separator())
+        item(go, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
+        item(go, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
+        // ⌘`, as macOS cycles an app's windows: here, its spaces (and,
+        // with one, the windows).
+        item(go, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
+        item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
+        for n in 1...9 {
+            item(go, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
+        }
+        go.addItem(.separator())
+        item(go, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
+        item(go, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
+
+        // Tile: the focused tile — its size, its stack, its keeping.
+        let tile = submenu(main, "Tile")
+        item(tile, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
+        item(tile, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
+        tile.addItem(.separator())
+        item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
+        item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
+        item(tile, "Maximize", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
+        item(tile, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
+        item(tile, "Stash", #selector(MainWindowController.stashTile(_:)), "m")
+        tile.addItem(.separator())
+        // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's tiles.
+        item(tile, "Next in Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
+        item(tile, "Previous in Stack", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
+        item(tile, "Unstack", #selector(MainWindowController.unstackFocused(_:)), "")
+        item(tile, "Close Stack", #selector(MainWindowController.closeFocusedStack(_:)), "")
+        tile.addItem(.separator())
+        item(tile, "Pin in Space", #selector(MainWindowController.togglePinInWorkspace(_:)), "")
+        item(tile, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
+        item(tile, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "m", [.command, .option])
+
+        // Space: the space itself.
+        let space = submenu(main, "Space")
+        item(space, "Name Space…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
+        item(space, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
+        space.addItem(.separator())
+        item(space, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
+
         let window = submenu(main, "Window")
-        item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m", [.command, .option])
+        // ⌘M is Stash: Minimize from the menu alone.
+        item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "")
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())
-        item(window, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
-        item(window, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        // ⌘`, as macOS cycles an app's windows: here, its workspaces (and,
-        // with one, the windows).
-        item(window, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
-        item(window, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
-        // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's sheets.
-        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
-        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
-        for n in 1...9 {
-            item(window, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
-        }
-        window.addItem(.separator())
-        // The block navigation stack (§3.5): ⌃- and ⌃⇧-, as VS Code's.
-        item(window, "Navigate Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
-        item(window, "Navigate Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
-        item(window, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
         item(window, "Agents", #selector(MainWindowController.showAgents(_:)), "a", [.command, .control])
-        item(window, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
-        item(window, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
-        window.addItem(.separator())
-        item(window, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "n", [.command, .option])
         NSApp.windowsMenu = window
 
         // Help: the system's search over every menu command (it puts the

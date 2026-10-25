@@ -58,7 +58,7 @@ and Mona Sans (bundled).
   A space is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
   below the biggest tile of the active column, taking its lower half;
-  Space ▸ Grow Tile (⌃⌘=) takes a step from its neighbors; Fill
+  Tile ▸ Grow (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
   out above its card, as a stack of paper — each a card of its own, with
@@ -211,7 +211,7 @@ and Mona Sans (bundled).
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
   beside the focused block; Browse This Folder (⌃⌘O) its own (a
   terminal's working directory, a file's folder, the folder a search looks under).
-  The **block navigation stack**: **Navigate Back** and **Navigate
+  The **block navigation stack**: **Go ▸ Back** and **Go ▸
   Forward** (⌃- and ⌃⇧-, as in VS Code — except in a terminal, where
   ⌃- is the shell's or Emacs's undo; or the mouse's back and forward
   buttons) go along every place you've been — the tiles focused and,
@@ -291,7 +291,7 @@ and Mona Sans (bundled).
   foot) lists the blocks whose status wants attention — done or failed
   and not yet read, or needing you — by host and space, each with
   what it said and how long ago. Reading a block (focusing it) takes it
-  out; there is nothing to clear by hand. **⌘J** (Window ▸ Next in
+  out; there is nothing to clear by hand. **⌘J** (Go ▸ Next in
   Inbox) goes through it in that order, from anywhere: to the next block
   after the focused one (or the first), in whatever space holds it,
   the pointer warped to its tile and the block marked read — a block
@@ -322,7 +322,16 @@ around it, and comes back with its history.
   block running Claude Code, Codex or another known agent answers to
   "claude", "codex" as surely as to its own title, and says so
   ("Terminal in ~/src · Claude Code").
-- **Help ▸ Search** finds any menu command by name, as in every Mac app.
+- **The menus** go by what a command is about: **File** makes things
+  (terminals, notes, pages, agents) and holds Source Control (the
+  project's, its smartlog, the last commit, a file's history); **Edit**,
+  text; **View**, how things look (and a tile's own Back and Forward, ⌘[
+  ⌘]); **Go**, finding a place and getting there (Open Quickly, the
+  outline, Back and Forward through the places you've been, the Inbox,
+  the spaces, the tiles); **Tile**, the focused tile (close, grow, fill,
+  maximize, shrink, stash, its stack, its pin); **Space**, the space
+  (name, overview, remove); **Window**, the window and Agents. **Help ▸
+  Search** finds any menu command by name, as in every Mac app.
 - **Open Quickly** finds anything the host keeps. What the query *names* comes
   first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in
@@ -434,7 +443,7 @@ around it, and comes back with its history.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
-  Name… in its pill's menu or File ▸ Name Note… turns its
+  Name… in its bar's menu or Tile ▸ Name Note… turns its
   pill's title into a field (⏎ names it, emptied it's Untitled again);
   saved, it's offered under that name, and its file's name names it
   from then on. A file's text is the file's: one shown whose text hasn't
@@ -536,10 +545,10 @@ around it, and comes back with its history.
   Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
   color, glowing softly in it, the one under the pointer on a soft band — a step in lightness,
-  not a hue, as a chosen row's), Find References (⌃⌘R: a
+  not a hue, as a chosen row's), Find References (⌃⇧⌘R: a
   block of every use, beside, as a search's hits are shown — this file's
   first, each line previewed), Show Documentation
-  (⌃⌘H), Rename Symbol… (⌃⌘N; other files change through their blocks, or
+  (⌃⌘H), Rename Symbol… (⌃⌘R; other files change through their blocks, or
   on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
   Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
@@ -736,8 +745,8 @@ around it, and comes back with its history.
   what's typed, then leaves; ⇧⌘P again leaves. Either way the tile has
   the keyboard back, and a sidebar opened for it is put away again; the
   filter stands until cleared. (A tile with an outline but no sidebar
-  gets ⌘P.) A command's **output** (Show Output in its ⋯,
-  or Show as Block on its dot) opens as a block of
+  gets ⌘P.) A command's **output** (Open as Block in its ⋯,
+  or on its dot) opens as a block of
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in
   the terminal's palette and font — read-only, with Copy (the command
@@ -781,7 +790,7 @@ around it, and comes back with its history.
   notebook's status (working, done, failed) shows in the sidebar and the
   Inbox as a terminal's does. Cells, outputs and counts are kept in the
   notebook's log; the shell itself goes with the host's server, and the
-  next run starts a new one. A cell's menu has Open Output as Block: what it
+  next run starts a new one. A cell's menu has Open as Block: what it
   printed, as a command's output block, beside the notebook and linked
   from it.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
@@ -903,7 +912,7 @@ around it, and comes back with its history.
   moment is made once. The tile's links badge shows the ones by hand,
   and a note's images (the note, on an image's), which go when the note
   stops showing them rather than by ×; **the Neighborhood Map**
-  (Window ▸ Show the Neighborhood Map, ⌥⌘N, or the badge's or a row's
+  (Tile ▸ Show the Neighborhood Map, ⌥⌘M, or the badge's or a row's
   menu) draws a block's surroundings in graph form, two steps out —
   what it's joined to on a ring around it, what those are joined to
   beyond, with what made each link shown when a block is pointed at,
