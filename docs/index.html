@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manifold</title>
+<meta name="description" content="Manifold is a programming environment for the Mac, built around terminals and the work that grows out of them.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="site.css">
+<script>
+  // The appearance chosen before, before anything is drawn.
+  try { const t = localStorage.getItem("manifold-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<div class="wash" aria-hidden="true"></div>
+
+<div class="window">
+  <aside class="sidebar" aria-label="Spaces">
+    <div class="sidebar-head">
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <button class="icon-button" data-action="quick" title="Open Quickly (⌘K)" aria-label="Open Quickly">
+        <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+      </button>
+    </div>
+    <div class="host-row">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M1 13.5h14"/></svg>
+      <span>This Mac</span>
+    </div>
+    <nav class="tree" aria-label="Tiles"></nav>
+    <div class="sidebar-foot">
+      <button class="foot-row" data-action="closed" title="Bring back the tile closed last">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.6"/><path d="M3 2.5v2.5h2.5"/><path d="M8 5.5V8l1.8 1.2"/></svg>
+        <span>Recently Closed</span><span class="pill" data-count="closed">0</span>
+      </button>
+      <div class="foot-buttons">
+        <button class="icon-button" data-action="theme" title="Appearance" aria-label="Appearance">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" class="fill"/></svg>
+        </button>
+        <span class="theme-name" data-theme-name>Auto</span>
+        <a class="icon-button" href="https://github.com/mariusae/manifold" title="Manifold on GitHub" aria-label="GitHub">
+          <svg viewBox="0 0 16 16"><path class="fill" d="M8 1.2a6.8 6.8 0 0 0-2.15 13.26c.34.06.47-.15.47-.33v-1.2c-1.9.41-2.3-.8-2.3-.8-.31-.79-.76-1-.76-1-.62-.42.05-.41.05-.41.68.05 1.04.7 1.04.7.61 1.04 1.6.74 1.98.57.06-.44.24-.74.43-.91-1.51-.17-3.1-.76-3.1-3.36 0-.74.27-1.35.7-1.83-.07-.17-.3-.86.07-1.8 0 0 .57-.18 1.87.7a6.4 6.4 0 0 1 3.4 0c1.3-.88 1.87-.7 1.87-.7.37.94.14 1.63.07 1.8.44.48.7 1.09.7 1.83 0 2.61-1.6 3.19-3.11 3.36.24.21.46.62.46 1.25v1.85c0 .18.12.4.47.33A6.8 6.8 0 0 0 8 1.2z"/></svg>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <header class="mobile-head">
+    <span class="mobile-title">Manifold</span>
+    <button class="icon-button" data-action="quick" aria-label="Open Quickly">
+      <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+    </button>
+    <button class="icon-button" data-action="theme" aria-label="Appearance">
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" class="fill"/></svg>
+    </button>
+  </header>
+
+  <main class="grid" aria-label="Tiles"></main>
+</div>
+
+<div class="quick" hidden>
+  <div class="quick-panel" role="dialog" aria-label="Open Quickly">
+    <input class="quick-field" type="text" placeholder="Open quickly…" autocomplete="off" spellcheck="false" aria-label="Find a block">
+    <ul class="quick-list" role="listbox"></ul>
+    <div class="quick-hint">↩ Go &nbsp;&nbsp; ⌘↩ Beside &nbsp;&nbsp; ⌥↩ Over &nbsp;&nbsp; ⎋ Close</div>
+  </div>
+</div>
+
+<noscript>
+  <div class="noscript doc">
+    <h1>Manifold</h1>
+    <p>A programming environment for the Mac, built around terminals and the work that grows out of them.</p>
+    <p>This page is drawn as Manifold is, and needs JavaScript for it. The
+    <a href="https://github.com/mariusae/manifold#readme">README</a> says everything it says.</p>
+  </div>
+</noscript>
+
+<!-- ===================================================================
+     The blocks. Each template is one block: its kind, title, where it is,
+     and the few lines its summary card shows. A link with data-open opens
+     another block by the one rule.
+     =================================================================== -->
+
+<template data-block="overview" data-kind="note" data-title="Manifold" data-place="github.com/mariusae/manifold"
+          data-summary="A programming environment for the Mac | built around terminals and what grows out of them">
+  <div class="doc">
+    <p class="eyebrow">A programming environment for the Mac</p>
+    <h1>Manifold</h1>
+    <p class="lead">Built around terminals and the work that grows out of them — on this Mac, and on the machines you work on.</p>
+    <p>Manifold works like a wiki rather than a set of windows. Terminals, files,
+    notes, folders and web pages are <b>blocks</b>, and everything is linked: a
+    space links the blocks it shows, a note the blocks it mentions, and what
+    you do leaves links behind — this terminal opened that file, this search
+    found that line. You arrange blocks in <b>spaces</b>, come back to them,
+    and follow the links back.</p>
+
+    <figure class="teardown">
+      <img class="only-light" src="help/teardown-bare.svg" alt="Manifold taken apart into four layers: tiles on screen; the spaces that arrange them; the graph of blocks and links; the hosts the blocks live on.">
+      <img class="only-dark" src="help/teardown-bare-dark.svg" alt="">
+      <figcaption>
+        <div><b>On screen</b> Tiles in a grid, each a block through a lens — a terminal, an editor, a preview — under a bar with its title and its links.</div>
+        <div><b>Spaces</b> arrange placements: which block, which lens, where. A pin keeps a block without a tile. A space stays until you remove it.</div>
+        <div><b>The graph</b> Blocks and the links between them. Solid links keep what they reach; dashed ones are history. What no space reaches is collected after half an hour.</div>
+        <div><b>Hosts</b> Every block lives on a host — this Mac, a dev box — as a log its server keeps. One window shows blocks from many.</div>
+      </figcaption>
+    </figure>
+
+    <h2>Start here</h2>
+    <ul class="links">
+      <li><a href="#start" data-open="start">Getting started</a> — build it, run it, attach a host.</li>
+      <li><a href="#guide" data-open="guide">The guide</a> — spaces, tiles, opening things, finding things.</li>
+      <li><a href="#keys" data-open="keys">Keys</a> — every shortcut, by menu.</li>
+      <li><a href="https://github.com/mariusae/manifold">The source</a>, the <a href="https://github.com/mariusae/manifold#readme">README</a> and <a href="https://github.com/mariusae/manifold/blob/main/DESIGN.md">DESIGN.md</a>.</li>
+    </ul>
+
+    <div class="aside">
+      <b>This page works as Manifold does.</b> Click a link and its block opens
+      below the tile you clicked in — or, if it's open already, you go to it.
+      <kbd>⌘</kbd>-click opens it beside; <kbd>⌥</kbd>-click stacks it over.
+      Click a bar to grow its tile, <kbd>⌘</kbd>-click it to fill the column,
+      drag the gaps to resize, and press <kbd>⌘K</kbd> to open anything quickly.
+    </div>
+  </div>
+</template>
+
+<template data-block="start" data-kind="page" data-title="Getting started" data-place="README.md"
+          data-summary="macOS 15 · scripts/build-app.sh run | Attach to Host… for another machine">
+  <div class="doc">
+    <h1>Getting started</h1>
+    <p>Manifold runs on macOS 15 or later. It builds from source: Ghostty's
+    terminal library first (the script fetches Zig and Ghostty itself), then the app.</p>
+<pre><code>git clone https://github.com/mariusae/manifold
+cd manifold
+scripts/build-ghostty.sh     # once: Zig and Ghostty into vendor/
+scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pre>
+    <p>The first time, Manifold opens a space with a terminal in your home
+    folder. Everything you do from there is kept by <code>manifoldd</code>, a
+    server the app starts and that outlives it: quit and reopen, and every
+    terminal is back with its processes still running.</p>
+    <h2>Next</h2>
+    <ul>
+      <li><b>The command line.</b> Manifold ▸ Install Command Line Tool… puts
+      <a href="#mani" data-open="mani"><code>mani</code></a> on your PATH; in
+      Manifold's own terminals it's there already.</li>
+      <li><b>Another machine.</b> Manifold ▸ Attach to Host… takes anything
+      <code>ssh</code> understands. Manifold installs its server there and its
+      blocks join yours — see <a href="#hosts" data-open="hosts">Remote hosts</a>.</li>
+      <li><b>Agents.</b> File ▸ New Agent (<kbd>⌥⌘A</kbd>) runs your coding agent
+      in a terminal, and <code>mani skill install</code> teaches it to see your
+      screen — see <a href="#agents" data-open="agents">Agents</a>.</li>
+      <li><b>Find your way.</b> The <a href="#guide" data-open="guide">guide</a>
+      in ten minutes, or <a href="#keys" data-open="keys">the keys</a>.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="guide" data-kind="note" data-title="Guide" data-place="Using Manifold"
+          data-summary="Spaces, tiles, opening, stacks | finding, terminals, notes, hosts">
+  <div class="doc">
+    <h1>Guide</h1>
+    <p>Each of these opens as a block of its own, below this one. <kbd>⌘</kbd>-click to open beside instead.</p>
+    <h3>The basics</h3>
+    <ul class="toc">
+      <li><a href="#blocks" data-open="blocks">Blocks and spaces</a></li>
+      <li><a href="#tiles" data-open="tiles">Tiles and the bar</a></li>
+      <li><a href="#opening" data-open="opening">Opening things</a></li>
+      <li><a href="#stacks" data-open="stacks">Stacks</a></li>
+      <li><a href="#keeping" data-open="keeping">What stays, what goes</a></li>
+    </ul>
+    <h3>Getting around</h3>
+    <ul class="toc">
+      <li><a href="#finding" data-open="finding">Open Quickly and the outline</a></li>
+      <li><a href="#navigation" data-open="navigation">Back, forward, and between spaces</a></li>
+      <li><a href="#sidebar" data-open="sidebar">The sidebar</a></li>
+      <li><a href="#overview-inbox" data-open="overview-inbox">Overview, status and the Inbox</a></li>
+    </ul>
+    <h3>Blocks</h3>
+    <ul class="toc">
+      <li><a href="#terminals" data-open="terminals">Terminals</a></li>
+      <li><a href="#editor" data-open="editor">Files and the editor</a></li>
+      <li><a href="#notes" data-open="notes">Notes</a></li>
+      <li><a href="#folders" data-open="folders">Folders</a></li>
+      <li><a href="#search" data-open="search">Search, git and diffs</a></li>
+      <li><a href="#web" data-open="web">Web pages</a></li>
+      <li><a href="#agents" data-open="agents">Agents</a></li>
+      <li><a href="#notebooks" data-open="notebooks">Notebooks and panels</a></li>
+    </ul>
+    <h3>Machines</h3>
+    <ul class="toc">
+      <li><a href="#hosts" data-open="hosts">Remote hosts</a></li>
+      <li><a href="#mani" data-open="mani">The <code>mani</code> command</a></li>
+      <li><a href="#keys" data-open="keys">Keys</a></li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="terminal" data-kind="terminal" data-lens="terminal" data-title="Terminal" data-place="~/src/manifold"
+          data-summary="$ mani ls | ok" data-note="1m">
+  <div class="term" data-typed>
+<div class="t-line"><span class="t-prompt">~/src/manifold ›</span> <span class="t-cmd">mani ls</span></div>
+<div class="t-out"> 1  note      Manifold            @left
+ 2  note      Guide               @above
+ 3  terminal  Terminal            @here</div>
+<div class="t-line"><span class="t-prompt">~/src/manifold ›</span> <span class="t-cmd">git log --oneline | head -3 | mani new note --preview</span></div>
+<div class="t-out">made a note, below</div>
+<div class="t-line"><span class="t-prompt">~/src/manifold ›</span> <span class="t-cmd">mani read @selection</span></div>
+<div class="t-out">Manifold works like a wiki rather than a set of windows.</div>
+<div class="t-line"><span class="t-prompt">~/src/manifold ›</span> <span class="t-caret"></span></div>
+  </div>
+</template>
+
+<template data-block="blocks" data-kind="note" data-title="Blocks and spaces" data-place="Guide"
+          data-summary="Everything is a block | a space is a grid of them, and a block too">
+  <div class="doc">
+    <h1>Blocks and spaces</h1>
+    <p>A <b>block</b> is anything Manifold shows: a terminal, a file, a note, a
+    folder, a web page, a search, a diff, a git repository, an agent. Each has
+    an identity that outlives its window — a file's block keeps its links
+    through a rename — and a history you can scrub through.</p>
+    <p>A <b>space</b> is a grid of <b>tiles</b>: columns, each a stack of tiles top to
+    bottom, every one of them a block, all visible at once — acme's tiling. A
+    new tile takes the lower half of the tile it came from; a closed tile gives
+    its room to its neighbour. Nothing hides behind anything except what you
+    stacked.</p>
+    <p>A space is a block too, so it has a title (<kbd>⇧⌘R</kbd> names it; an unnamed
+    one is called by what it holds), and you can have as many as you like:
+    <kbd>⌥⌘T</kbd> makes one with a terminal in it, <kbd>⌘1</kbd>–<kbd>⌘9</kbd> and
+    <kbd>⌘`</kbd> go between them.</p>
+    <p>The same block can be in several spaces, or twice in one, through
+    different <b>lenses</b> — a Markdown file in an editor on the left and a
+    preview on the right (<kbd>⌥⇧⌘P</kbd>), every keystroke showing in both.</p>
+    <p>See also <a href="#tiles" data-open="tiles">Tiles and the bar</a> and
+    <a href="#keeping" data-open="keeping">What stays, what goes</a>.</p>
+  </div>
+</template>
+
+<template data-block="tiles" data-kind="note" data-title="Tiles and the bar" data-place="Guide"
+          data-summary="Click a bar to grow, ⌘-click to fill the column | a tile shrinks to its summary, then its bar">
+  <div class="doc">
+    <h1>Tiles and the bar</h1>
+    <p>Every tile has a <b>bar</b> across its top: the block's symbol and
+    <b>title</b>, where it is in grey, its <b>links</b> as a capsule, its status, and
+    maximize and close.</p>
+    <ul>
+      <li><b>Click</b> the bar to grow the tile a step; click again for another.</li>
+      <li><b><kbd>⌘</kbd>-click</b> it to fill the column, the others down to their bars.</li>
+      <li>The corner, or <kbd>⇧⌘↩</kbd>, <b>maximizes</b> it over the whole space.</li>
+      <li><b><kbd>⌃</kbd>-click</b>, or click its symbol, for the tile's menu; <kbd>⇧</kbd>-click for where the block is, folder by folder.</li>
+      <li><b>Drag</b> the bar to move the tile, onto another to stack it; drag the gaps between tiles to resize.</li>
+    </ul>
+    <p>A tile <b>shrinks along one ladder</b>, by the room it has: its content; then,
+    with only a few lines' room, its <b>summary card</b> — the block in a few lines,
+    a terminal's last command and how it ended, a note's first lines; then its
+    bar alone; then stashed behind its neighbour (<kbd>⌘M</kbd>). Shrink to Summary
+    (<kbd>⇧⌘M</kbd>) is only a height on that ladder: resize, and it's back.</p>
+    <p>Try it here: drag the gap under a tile until it's a few lines tall.</p>
+  </div>
+</template>
+
+<template data-block="opening" data-kind="note" data-title="Opening things" data-place="Guide"
+          data-summary="Plain goes to it, ⌘ beside | ⌥ over, ⇧⌘ the system's app">
+  <div class="doc">
+    <h1>Opening things</h1>
+    <p>One rule, for every click that opens something — a link in a note, a
+    path in a terminal, a search hit, a sidebar row, a tile's link, a row of
+    Open Quickly chosen with <kbd>↩</kbd>:</p>
+    <table class="rule">
+      <tr><td>click</td><td><b>goes to it</b>, wherever a tile shows it, in any space — or, if none does, opens it below the tile you clicked in</td></tr>
+      <tr><td><kbd>⌘</kbd>-click</td><td>opens it <b>beside</b>, below the tile, taking its lower half</td></tr>
+      <tr><td><kbd>⌥</kbd>-click</td><td>opens it <b>over</b> the tile, which goes behind it — a <a href="#stacks" data-open="stacks">stack</a></td></tr>
+      <tr><td><kbd>⇧⌘</kbd>-click</td><td>gives it to the <b>system</b>: an address to your browser, a file to its app</td></tr>
+    </table>
+    <p>In a terminal, <kbd>⌘</kbd> is what makes a click a click on a link at all,
+    so there <kbd>⌘</kbd> is beside and <kbd>⌥⌘</kbd> over.</p>
+    <p>Three views go on in place on a plain click, as a browser does: a web
+    page's link, a preview's link to another Markdown file, a folder in a
+    listing. <kbd>⌘[</kbd> and <kbd>⌘]</kbd> go back and forth along what the tile showed.</p>
+    <p>What you open from inside a block is linked to it — this terminal opened
+    that file — and the link shows on both tiles' bars.</p>
+  </div>
+</template>
+
+<template data-block="stacks" data-kind="note" data-title="Stacks" data-place="Guide"
+          data-summary="Tiles behind a tile, as sheets | ⌃⇥ walks them">
+  <div class="doc">
+    <h1>Stacks</h1>
+    <p>A tile can have others <b>behind it</b>: what you <kbd>⌥</kbd>-click opens over
+    it, a bar dropped on another stacks it there, <kbd>⌘M</kbd> stashes the focused
+    tile behind its neighbour. Those behind peek out above the bar as
+    <b>sheets</b>.</p>
+    <ul>
+      <li>Click the sheets, or the stack button on the bar, to fan the stack out as summary cards: a click brings one to the top, <kbd>⌘</kbd>-click takes it out of the stack.</li>
+      <li><kbd>⌃⇥</kbd> walks the stack, as a browser's tabs: let go quickly and it switches without showing anything; hold, and the cards show.</li>
+      <li>Close the top (<kbd>⌘W</kbd>) and the next comes out.</li>
+      <li>Rest the pointer on the sheets for their tabs, each the title of a tile behind.</li>
+    </ul>
+    <p>The Guide on this page has Getting started stacked behind it — click its sheet.</p>
+  </div>
+</template>
+
+<template data-block="keeping" data-kind="note" data-title="What stays, what goes" data-place="Guide"
+          data-summary="Spaces stay until you remove them | a block lives while a space reaches it">
+  <div class="doc">
+    <h1>What stays, what goes</h1>
+    <p>Nothing is filed and nothing is saved by hand into a project. Instead:</p>
+    <ul>
+      <li><b>Spaces stay</b>, named or not, empty or not, until you remove one (<kbd>⌥⇧⌘W</kbd>). They're the roots.</li>
+      <li>A block is kept while a space <b>reaches</b> it: shows it in a tile, <b>pins</b> it (Pin in Space, for a block with no tile), or reaches it through a link made by hand.</li>
+      <li>The links that happen as you work — opened, found, mentioned — are history: they help you find things again, and keep nothing.</li>
+      <li>Close the last tile of a block nothing else keeps and it waits <b>half an hour</b> to be brought back — <kbd>⇧⌘T</kbd>, Recently Closed, or Open Quickly's <i>recent</i> rows — then it's collected. A toast says when closing would lose unsaved edits or a running job.</li>
+    </ul>
+    <p>Terminals off screen with an idle shell go <b>dormant</b> after a while: the
+    shell ends, the transcript stays, and a new shell starts under it when you
+    come back.</p>
+  </div>
+</template>
+
+<template data-block="finding" data-kind="note" data-title="Open Quickly and the outline" data-place="Guide"
+          data-summary="⌘O finds every block and space | ⌘P goes through an outline">
+  <div class="doc">
+    <h1>Open Quickly and the outline</h1>
+    <p><b>Open Quickly</b> (<kbd>⌘O</kbd>) finds every block and space your hosts keep —
+    by title, by where it is, by what its summary says (a command run a while
+    ago, an agent's last words). Each row is the block's summary card, nearest
+    first: this space, then what's linked to where you are. <kbd>↩</kbd> goes,
+    <kbd>⌘↩</kbd> opens beside, <kbd>⌥↩</kbd> over; <kbd>⇥</kbd> switches to <b>In Blocks</b>, which
+    looks inside their text.</p>
+    <p><b>The outline</b> (<kbd>⌘P</kbd>) goes through the focused tile's outline — a
+    Markdown file's headings, a source file's symbols, a terminal's commands,
+    an agent's turns, a PDF's contents — and <kbd>⇥</kbd> widens it to the whole
+    space. <kbd>⇧⌘P</kbd> filters the outline in the tile's own sidebar.</p>
+    <p><b>Find in Files</b> (<kbd>⇧⌘F</kbd>) searches a project's files on disk, as a
+    search block of its own.</p>
+    <p>On this page, <kbd>⌘K</kbd> (or <kbd>/</kbd>) opens Open Quickly.</p>
+  </div>
+</template>
+
+<template data-block="navigation" data-kind="note" data-title="Back, forward, and between spaces" data-place="Guide"
+          data-summary="⌃- and ⌃⇧- along where you've been | ⌘` between spaces">
+  <div class="doc">
+    <h1>Back, forward, and between spaces</h1>
+    <ul>
+      <li><b>Go ▸ Back</b> and <b>Forward</b> (<kbd>⌃-</kbd>, <kbd>⌃⇧-</kbd>, or the mouse's buttons) go along every place you've been — tiles focused, a definition gone to, a found line, a heading — across spaces. In a terminal <kbd>⌃-</kbd> stays the shell's.</li>
+      <li><kbd>⌘[</kbd> and <kbd>⌘]</kbd> are a tile's own history: a page's, a preview's, a listing's.</li>
+      <li><kbd>⌘`</kbd> walks the spaces most recently gone to first; <kbd>⇧⌘]</kbd> and <kbd>⇧⌘[</kbd> go in order; <kbd>⌘1</kbd>–<kbd>⌘9</kbd> pick one.</li>
+      <li><kbd>⌥⌘]</kbd> and <kbd>⌥⌘[</kbd> move the focus between tiles.</li>
+      <li>The <b>Neighborhood Map</b> (<kbd>⌥⌘M</kbd>) draws a block's surroundings two steps out — what it's linked to, and what you went to before and after.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="sidebar" data-kind="note" data-title="The sidebar" data-place="Guide"
+          data-summary="Spaces, Files, the Inbox | every row by the one rule">
+  <div class="doc">
+    <h1>The sidebar</h1>
+    <p>The sidebar shows the same graph three ways (<kbd>⌥⌘1</kbd>–<kbd>⌥⌘3</kbd>):</p>
+    <ul>
+      <li><b>Spaces</b> — each host, its spaces, and every tile in them, in order: the table of contents of the screen. A stack's tiles sit in a dotted outline.</li>
+      <li><b>Files</b> — every block with a path, in its folders, across hosts.</li>
+      <li><b>Inbox</b> — what wants you: done or failed and not yet seen, or needing an answer.</li>
+    </ul>
+    <p>Rows open by <a href="#opening" data-open="opening">the one rule</a>; rest the pointer
+    on one for a picture of the tile. <kbd>⌃⌘S</kbd> keeps the sidebar shown or lets it slide
+    out at the window's edge.</p>
+  </div>
+</template>
+
+<template data-block="overview-inbox" data-kind="note" data-title="Overview, status and the Inbox" data-place="Guide"
+          data-summary="Every block reports a status | ⌘J walks what wants you">
+  <div class="doc">
+    <h1>Overview, status and the Inbox</h1>
+    <p>Every block has a <b>status</b> — working (with progress), done, needs you,
+    failed — that programs report themselves (the OSC 7501 protocol), and that
+    searches, git and saves report as they go. It shows at the right of each
+    bar and sidebar row; the Dock counts what needs you.</p>
+    <ul>
+      <li><b>The Inbox</b> lists what wants attention; focusing a block marks it read. <kbd>⌘J</kbd> goes to the next, from anywhere.</li>
+      <li><b>Overview</b> (<kbd>⌘'</kbd>) shows every block in the space at once, live — or, past ten, as summary cards. Filtered to <b>Agents</b> (<kbd>⌃⌘A</kbd>), it shows every agent on every host.</li>
+      <li>Out of sight, the Mac's notifications say when something finishes, fails or needs you.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="terminals" data-kind="terminal" data-title="Terminals" data-place="Guide"
+          data-summary="Ghostty, attached to a shell the server owns | ⌘-click a path to open it">
+  <div class="doc">
+    <h1>Terminals</h1>
+    <p>Terminals are drawn by <a href="https://ghostty.org">Ghostty</a>'s library and
+    attached to a shell the server owns, so quitting the app ends nothing:
+    reopen it and every terminal is back, its processes still running.</p>
+    <ul>
+      <li><b><kbd>⌘</kbd>-click</b> a file's name, a <code>path:line</code>, or an address to open it below; <kbd>⌥⌘</kbd>-click to stack it over.</li>
+      <li>Each command is a <b>dot</b> beside its prompt — red if it failed — and a tick in the scroll bar: the terminal's <b>outline</b>. Open one's output as a block of its own.</li>
+      <li><code>$EDITOR</code> opens files in Manifold, over the terminal, and waits for you to close them.</li>
+      <li>Another host's <code>localhost:3000</code>, clicked, opens here, its port forwarded.</li>
+      <li>Typing echoes as you type, even to a far server, and is corrected when the server answers.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="editor" data-kind="file" data-title="Files and the editor" data-place="Guide"
+          data-summary="Viewed, or edited with language servers | ⌘↩ between the two">
+  <div class="doc">
+    <h1>Files and the editor</h1>
+    <p>A file opens to be <b>viewed</b> — Markdown rendered as go.dev sets its pages,
+    code highlighted — and <kbd>⌘↩</kbd> turns it into an <b>editor</b>, in place.</p>
+    <ul>
+      <li>Language servers run on the file's host: diagnostics, completion (<kbd>⌃Space</kbd>), definitions (<kbd>⌃⌘J</kbd>, or <kbd>⌘</kbd>-click), references, rename, format.</li>
+      <li>Several carets (<kbd>⌘D</kbd>, <kbd>⌃⇧↑</kbd>), line moves (<kbd>⌃⌘↑</kbd>), duplicate, join, comment — all in Edit ▸ Lines and Selection.</li>
+      <li>Edits are entries in the block's log, so <b>History of This File…</b> (<kbd>⌥⌘Y</kbd>) scrubs back through every change, and a diff can compare any two moments.</li>
+      <li>A file changed on disk while you edit says so in its bar, and lets you choose.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="notes" data-kind="note" data-title="Notes" data-place="Guide"
+          data-summary="Markdown, shown richly as you write | link a block by dragging it in">
+  <div class="doc">
+    <h1>Notes</h1>
+    <p>A note (<kbd>⇧⌘N</kbd>) is Markdown, shown richly as you write — headings set,
+    the markers dimmed until the caret is on their line — and kept as a block,
+    or saved as a file wherever you like (<kbd>⌘S</kbd>).</p>
+    <ul>
+      <li>A note made with a block focused is <b>about</b> it: linked from it, and found from it.</li>
+      <li>Drag any tile's bar into a note and it becomes a <b>link</b> to the block, drawn as a capsule with its title and status, kept up to date.</li>
+      <li>Paste an image and it's saved beside the note and shown in it.</li>
+      <li><kbd>⌘B</kbd>, <kbd>⌘I</kbd>, <kbd>⇧⌘X</kbd>, <kbd>⇧⌘C</kbd> for bold, italic, strikethrough and code.</li>
+      <li><code>[[a title]]</code> links to whatever block has it, as a wiki does — and the link shows from both ends.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="folders" data-kind="folder" data-title="Folders" data-place="Guide"
+          data-summary="One tree, filtered as you type | files cross between hosts by dragging">
+  <div class="doc">
+    <h1>Folders</h1>
+    <p>A folder opens as one tree, with a preview of the file chosen beside it
+    when there's room. What git or Sapling ignores is left out (<kbd>⇧⌘.</kbd> shows it).</p>
+    <ul>
+      <li>The <b>filter</b> (<kbd>⌘F</kbd>) looks through the whole tree as you type, best matches first.</li>
+      <li>Drag an entry out and it's a path: a terminal types it, an editor inserts it, the grid opens it.</li>
+      <li>Drop files onto a folder of another host and they're <b>copied there</b>, paced and shown as they go.</li>
+      <li>Browse This Folder (<kbd>⌃⌘O</kbd>) shows the focused block's folder; Find in This Folder searches it.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="search" data-kind="file" data-title="Search, git and diffs" data-place="Guide"
+          data-summary="Searches are blocks | git and Sapling get one each">
+  <div class="doc">
+    <h1>Search, git and diffs</h1>
+    <ul>
+      <li><b>Find in Files</b> (<kbd>⇧⌘F</kbd>) is a block: the query, the hits by file, the chosen one previewed. It's linked to where it was asked, and found again with its results.</li>
+      <li><b>Source Control</b> (<kbd>⌥⌘G</kbd>) gives a repository a block: its branch, its changes, its log. Double-click a change for its diff.</li>
+      <li><b>Compare with Last Commit</b> (<kbd>⌥⇧⌘D</kbd>) diffs the file you're editing against HEAD.</li>
+      <li><b>Interactive Smartlog</b> (<kbd>⌥⌘I</kbd>) is Sapling's, as a block.</li>
+      <li><code>git diff | mani diff</code> shows any patch as a diff block.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="web" data-kind="page" data-title="Web pages" data-place="Guide"
+          data-summary="An embedded browser, one per tile | another host's localhost, forwarded">
+  <div class="doc">
+    <h1>Web pages</h1>
+    <p>An address opens in an embedded browser, in a tile like any other — the
+    bar is its address field (<kbd>⌘L</kbd>), with back, forward and reload.</p>
+    <ul>
+      <li>A link in the page follows in the page; <kbd>⌘</kbd>-click opens it beside, <kbd>⇧⌘</kbd>-click in your browser.</li>
+      <li>A <code>localhost</code> address from another host's terminal opens here, its port forwarded for you.</li>
+      <li>HTML files open as pages, and reload when the file changes.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="agents" data-kind="terminal" data-title="Agents" data-place="Guide"
+          data-summary="Coding agents in terminals | they see what you see, with mani">
+  <div class="doc">
+    <h1>Agents</h1>
+    <p>An agent is a terminal running your coding agent — Claude Code, Codex,
+    Gemini CLI, Pi — started with File ▸ New Agent (<kbd>⌥⌘A</kbd>) or Launch Agent Here.</p>
+    <ul>
+      <li>Its <b>turns</b> are its outline: what was asked, what it said, what it changed. <b>Changes in This Turn</b> shows a turn's diff; <b>Undo This Turn</b> takes it back.</li>
+      <li>Its status shows as it works; the Inbox and <kbd>⌘J</kbd> take you to the one that needs you; <kbd>⌃⌘A</kbd> shows every agent on every host.</li>
+      <li><code>mani skill install</code> gives agents a guide to <a href="#mani" data-open="mani"><code>mani</code></a>, so "the code I highlighted" or "the diff on my right" means what you see.</li>
+      <li>An agent can draw you a small UI — a form, a choice, progress — with <code>mani ui</code>.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="notebooks" data-kind="note" data-title="Notebooks and panels" data-place="Guide"
+          data-summary="Jupyter's notebooks, for a shell | panels drawn from JSON">
+  <div class="doc">
+    <h1>Notebooks and panels</h1>
+    <p>A <b>shell notebook</b> (<kbd>⌃⇧⌘N</kbd>) is a column of cells run in one shell that
+    lives on — a variable set in one cell is there in the next. <kbd>⌘↩</kbd> runs a
+    cell, <kbd>⇧↩</kbd> runs it and moves on, <kbd>⌘.</kbd> interrupts.</p>
+    <p>A <b>panel</b> is a small UI made by <code>mani ui new</code> from JSON — labels,
+    buttons, fields, sliders, progress, tables — in the system's own controls.
+    A script waits for what's done in it with <code>mani ui wait</code>.</p>
+  </div>
+</template>
+
+<template data-block="hosts" data-kind="folder" data-title="Remote hosts" data-place="Guide"
+          data-summary="Attach to Host… over ssh | its blocks join yours">
+  <div class="doc">
+    <h1>Remote hosts</h1>
+    <p><b>Manifold ▸ Attach to Host…</b> takes anything <code>ssh</code> understands (or a
+    provider of your own, <code>provider:name</code>). Manifold installs its server
+    there — Linux or a Mac — and runs it, so a remote terminal, file or folder is
+    placed, linked and found like a local one, and outlives the connection.</p>
+    <ul>
+      <li>Terminals type ahead of the network, and are corrected when the server answers.</li>
+      <li>A host that drops off stays in the sidebar, its tiles marked, and comes back by itself.</li>
+      <li>Files cross between hosts by dragging; another host's ports come here by clicking.</li>
+      <li>Two Macs attached to one host share it: each sees the same spaces.</li>
+    </ul>
+  </div>
+</template>
+
+<template data-block="mani" data-kind="terminal" data-title="The mani command" data-place="Guide"
+          data-summary="Manifold from a shell | for you and for your agents">
+  <div class="doc">
+    <h1>The <code>mani</code> command</h1>
+    <p>Manifold from a shell — for you, and for the agents in its terminals.
+    Blocks are named by id, path, title, or position: <code>@here</code>, <code>@focused</code>,
+    <code>@selection</code>, <code>@left</code>, <code>@right:diff</code>…</p>
+<pre><code>mani ls                         # the space's tiles, and what each shows
+mani read @selection            # the text last selected, anywhere
+mani open src/main.swift:42     # a file, at a line, below this terminal
+mani new note --preview &lt; plan.md
+mani run @left 'make test' --wait
+git diff | mani diff
+mani ui new &lt; form.json          # a small panel, from JSON
+mani watch                      # a JSON line for each thing that happens</code></pre>
+    <p><code>mani help</code> lists every command; each takes <code>--help</code>.</p>
+  </div>
+</template>
+
+<template data-block="keys" data-kind="keys" data-title="Keys" data-place="Guide"
+          data-summary="⌘O Open Quickly · ⌘P outline | ⌘W close · ⇧⌘T reopen">
+  <div class="doc keys">
+    <h1>Keys</h1>
+    <div class="key-grid">
+      <section><h3>File</h3><dl>
+        <dt>⌘N</dt><dd>New Terminal</dd><dt>⌥⌘T</dt><dd>…in a New Space</dd><dt>⇧⌘N</dt><dd>New Note</dd>
+        <dt>⌥⌘A</dt><dd>New Agent</dd><dt>⌥⌘O</dt><dd>Open Folder…</dd><dt>⌃⌘O</dt><dd>Browse This Folder</dd>
+        <dt>⌥⌘G</dt><dd>Source Control</dd><dt>⌥⌘Y</dt><dd>History of This File</dd></dl></section>
+      <section><h3>Go</h3><dl>
+        <dt>⌘O</dt><dd>Open Quickly</dd><dt>⌘P</dt><dd>Outline</dd><dt>⇧⌘P</dt><dd>Filter Outline</dd>
+        <dt>⌃-</dt><dd>Back</dd><dt>⌃⇧-</dt><dd>Forward</dd><dt>⌘J</dt><dd>Next in Inbox</dd>
+        <dt>⌘`</dt><dd>Recent Space</dd><dt>⌘1–9</dt><dd>Space by number</dd></dl></section>
+      <section><h3>Tile</h3><dl>
+        <dt>⌘W</dt><dd>Close Tile</dd><dt>⇧⌘T</dt><dd>Reopen Closed</dd><dt>⌃⌘=</dt><dd>Grow</dd>
+        <dt>⇧⌘↩</dt><dd>Maximize</dd><dt>⇧⌘M</dt><dd>Shrink to Summary</dd><dt>⌘M</dt><dd>Stash</dd>
+        <dt>⌃⇥</dt><dd>Next in Stack</dd><dt>⌥⌘M</dt><dd>Neighborhood Map</dd></dl></section>
+      <section><h3>Edit</h3><dl>
+        <dt>⌘↩</dt><dd>Edit or View</dd><dt>⇧⌘F</dt><dd>Find in Files</dd><dt>⌘L</dt><dd>Go to Line</dd>
+        <dt>⌃Space</dt><dd>Complete</dd><dt>⌃⌘J</dt><dd>Go to Definition</dd><dt>⌃⌘R</dt><dd>Rename Symbol</dd>
+        <dt>⇧⌘K</dt><dd>Delete Line</dd><dt>⌘D</dt><dd>Add Next Occurrence</dd></dl></section>
+      <section><h3>Space</h3><dl>
+        <dt>⇧⌘R</dt><dd>Name Space</dd><dt>⌘'</dt><dd>Overview</dd><dt>⌃⌘A</dt><dd>Agents</dd>
+        <dt>⌥⇧⌘W</dt><dd>Remove Space</dd></dl></section>
+      <section><h3>View</h3><dl>
+        <dt>⌃⌘S</dt><dd>Keep Sidebar Shown</dd><dt>⌥⌘S</dt><dd>Show Outline</dd><dt>⌥⌘1–3</dt><dd>Spaces · Files · Inbox</dd>
+        <dt>⌘[ ⌘]</dt><dd>Back, Forward in Tile</dd></dl></section>
+    </div>
+  </div>
+</template>
+
+<script src="site.js"></script>
+</body>
+</html>

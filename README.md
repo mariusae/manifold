@@ -1308,6 +1308,12 @@ scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```
 
+The web page, in `docs/` (for GitHub Pages, served from `main`'s
+`docs` folder), is drawn as Manifold is — tiles in columns, the one rule
+for links, stacks, the shrink ladder, Open Quickly — from one static
+`index.html` whose blocks are templates; `docs/help/teardown.py` draws
+its figure, light and dark (`python3 docs/help/teardown.py`).
+
 The Linux servers come from `scripts/build-linux.sh`, which
 `scripts/build-app.sh` runs: they are built with a swift.org toolchain
 through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its

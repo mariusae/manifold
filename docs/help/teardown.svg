@@ -1,0 +1,297 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1179" width="1440" height="1179">
+<defs>
+  <filter id="blur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="8"/></filter>
+  <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#e9e3f7"/><stop offset="0.55" stop-color="#f6e6ec"/><stop offset="1" stop-color="#fbeedd"/>
+  </linearGradient>
+</defs>
+<rect width="100%" height="100%" fill="#f5f4f0"/>
+<polygon points="260.0,836.0 922.4,980.0 746.4,1164.8 84.0,1020.8" fill="#000000" opacity="0.05" filter="url(#blur)"/>
+<polygon points="912.4,964.0 736.4,1148.8 736.4,1153.8 912.4,969.0" fill="#d8d5cc"/>
+<polygon points="736.4,1148.8 74.0,1004.8 74.0,1009.8 736.4,1153.8" fill="#cbc7bd"/>
+<polygon points="250.0,820.0 912.4,964.0 736.4,1148.8 74.0,1004.8" fill="#efede7" fill-opacity="0.92" stroke="#d6d2c8" stroke-width="1"/>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 820)"><text x="706" y="22" text-anchor="end" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="1.2" fill="#a1a1a6">HOSTS</text></g>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 820)" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect x="16" y="16" width="466" height="408" rx="12" fill="#ffffff" fill-opacity="0.55" stroke="#bdb8ad" stroke-width="1"/>
+<text x="30" y="396" font-size="15" font-weight="650" fill="#1d1d1f">This Mac</text>
+<text x="30" y="411" font-size="8.5" fill="#6e6e73">manifoldd · ~/Library/Application Support/Manifold</text>
+<rect x="494" y="16" width="210" height="408" rx="12" fill="#ffffff" fill-opacity="0.55" stroke="#bdb8ad" stroke-width="1"/>
+<text x="508" y="396" font-size="15" font-weight="650" fill="#1d1d1f">devbox</text>
+<text x="508" y="411" font-size="8.5" fill="#6e6e73">manifoldd over ssh</text>
+</g>
+<rect x="393.8" y="855.3" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="393.8" y="859.3" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="393.8" y="863.3" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="708.2" y="945.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="708.2" y="949.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="708.2" y="953.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="394.6" y="909.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="394.6" y="913.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="394.6" y="917.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="318.6" y="989.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="318.6" y="993.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="318.6" y="997.0" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="535.9" y="952.1" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="535.9" y="956.1" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="535.9" y="960.1" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="463.1" y="1028.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="463.1" y="1032.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="463.1" y="1036.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="605.8" y="920.7" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="605.8" y="924.7" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="605.8" y="928.7" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="179.6" y="969.5" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="179.6" y="973.5" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="179.6" y="977.5" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="478.9" y="1072.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="478.9" y="1076.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="478.9" y="1080.6" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="738.7" y="992.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="738.7" y="996.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="738.7" y="1000.2" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="689.5" y="1043.8" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.35"/>
+<rect x="689.5" y="1047.8" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.55"/>
+<rect x="689.5" y="1051.8" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.75"/>
+<rect x="639.3" y="1102.4" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.14"/>
+<rect x="639.3" y="1106.4" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.22"/>
+<rect x="639.3" y="1110.4" width="18" height="3" rx="1.2" fill="#6e6e73" opacity="0.30"/>
+<line x1="402.8" y1="611.3" x2="402.8" y2="861.3" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="717.2" y1="701.0" x2="717.2" y2="951.0" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="403.6" y1="665.2" x2="403.6" y2="915.2" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="327.6" y1="745.0" x2="327.6" y2="995.0" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="544.9" y1="708.1" x2="544.9" y2="958.1" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="472.1" y1="784.6" x2="472.1" y2="1034.6" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="614.8" y1="676.7" x2="614.8" y2="926.7" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="188.6" y1="725.5" x2="188.6" y2="975.5" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="487.9" y1="828.6" x2="487.9" y2="1078.6" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="747.7" y1="748.2" x2="747.7" y2="998.2" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="698.5" y1="799.8" x2="698.5" y2="1049.8" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<line x1="648.3" y1="858.4" x2="648.3" y2="1108.4" stroke="#a1a1a6" stroke-width="0.8" stroke-dasharray="1.5 3"/>
+<polygon points="260.0,586.0 922.4,730.0 746.4,914.8 84.0,770.8" fill="#000000" opacity="0.05" filter="url(#blur)"/>
+<polygon points="912.4,714.0 736.4,898.8 736.4,903.8 912.4,719.0" fill="#d8d5cc"/>
+<polygon points="736.4,898.8 74.0,754.8 74.0,759.8 736.4,903.8" fill="#cbc7bd"/>
+<polygon points="250.0,570.0 912.4,714.0 736.4,898.8 74.0,754.8" fill="#f7f6f2" fill-opacity="0.92" stroke="#d6d2c8" stroke-width="1"/>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 570)"><text x="706" y="22" text-anchor="end" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="1.2" fill="#a1a1a6">THE GRAPH</text></g>
+<g font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<line x1="402.8" y1="611.3" x2="403.6" y2="665.2" stroke="#3373f2" stroke-width="1.6"/>
+<line x1="402.8" y1="611.3" x2="327.6" y2="745.0" stroke="#3373f2" stroke-width="1.6"/>
+<line x1="402.8" y1="611.3" x2="544.9" y2="708.1" stroke="#3373f2" stroke-width="1.6"/>
+<rect x="452.0" y="652.7" width="43.6" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="473.8" y="662.7" text-anchor="middle" font-size="9.5" font-style="italic" fill="#3373f2">placed</text>
+<line x1="402.8" y1="611.3" x2="472.1" y2="784.6" stroke="#3373f2" stroke-width="1.6"/>
+<line x1="402.8" y1="611.3" x2="614.8" y2="676.7" stroke="#3373f2" stroke-width="1.6"/>
+<line x1="402.8" y1="611.3" x2="188.6" y2="725.5" stroke="#3373f2" stroke-width="1.6"/>
+<rect x="273.9" y="661.4" width="43.6" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="295.7" y="671.4" text-anchor="middle" font-size="9.5" font-style="italic" fill="#3373f2">pinned</text>
+<line x1="717.2" y1="701.0" x2="747.7" y2="748.2" stroke="#3373f2" stroke-width="1.6"/>
+<rect x="710.6" y="717.6" width="43.6" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="732.4" y="727.6" text-anchor="middle" font-size="9.5" font-style="italic" fill="#3373f2">placed</text>
+<line x1="717.2" y1="701.0" x2="698.5" y2="799.8" stroke="#3373f2" stroke-width="1.6"/>
+<line x1="472.1" y1="784.6" x2="327.6" y2="745.0" stroke="#3373f2" stroke-width="1.6"/>
+<rect x="355.6" y="757.8" width="88.4" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="399.8" y="767.8" text-anchor="middle" font-size="9.5" font-style="italic" fill="#3373f2">linked by hand</text>
+<line x1="472.1" y1="784.6" x2="487.9" y2="828.6" stroke="#3373f2" stroke-width="1.6"/>
+<rect x="435.8" y="799.6" width="88.4" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="480.0" y="809.6" text-anchor="middle" font-size="9.5" font-style="italic" fill="#3373f2">linked by hand</text>
+<line x1="403.6" y1="665.2" x2="327.6" y2="745.0" stroke="#6e6e73" stroke-width="1.1" stroke-dasharray="4 3.5"/>
+<rect x="343.8" y="698.1" width="43.6" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="365.6" y="708.1" text-anchor="middle" font-size="9.5" font-style="italic" fill="#6e6e73">opened</text>
+<line x1="544.9" y1="708.1" x2="614.8" y2="676.7" stroke="#6e6e73" stroke-width="1.1" stroke-dasharray="4 3.5"/>
+<rect x="552.4" y="685.4" width="54.8" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="579.8" y="695.4" text-anchor="middle" font-size="9.5" font-style="italic" fill="#6e6e73">mentions</text>
+<line x1="747.7" y1="748.2" x2="698.5" y2="799.8" stroke="#6e6e73" stroke-width="1.1" stroke-dasharray="4 3.5"/>
+<rect x="701.3" y="767.0" width="43.6" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="723.1" y="777.0" text-anchor="middle" font-size="9.5" font-style="italic" fill="#6e6e73">opened</text>
+<line x1="403.6" y1="665.2" x2="648.3" y2="858.4" stroke="#a1a1a6" stroke-width="1.1" stroke-dasharray="4 3.5"/>
+<rect x="501.4" y="754.8" width="49.2" height="13" rx="6.5" fill="#f5f4f0" opacity="0.92"/>
+<text x="526.0" y="764.8" text-anchor="middle" font-size="9.5" font-style="italic" fill="#6e6e73">printed</text>
+<rect x="389.8" y="598.3" width="26" height="26" rx="7" fill="#3373f2"/>
+<text x="402.8" y="615.8" text-anchor="middle" font-size="13" fill="#fff">▦</text>
+<text x="421.8" y="615.3" font-size="11.5" font-weight="650" fill="#3373f2">manifold</text>
+<rect x="704.2" y="688.0" width="26" height="26" rx="7" fill="#3373f2"/>
+<text x="717.2" y="705.5" text-anchor="middle" font-size="13" fill="#fff">▦</text>
+<text x="736.2" y="705.0" font-size="11.5" font-weight="650" fill="#3373f2">website</text>
+<g opacity="1">
+<circle cx="403.6" cy="665.2" r="11" fill="#ffffff" stroke="#2c2c2e" stroke-width="1.6"/>
+<text x="403.6" y="668.4" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#2c2c2e">>_</text>
+<text x="419.6" y="669.2" font-size="11" font-weight="600" fill="#1d1d1f">Terminal</text>
+</g>
+<g opacity="1">
+<circle cx="327.6" cy="745.0" r="11" fill="#ffffff" stroke="#4f7bd9" stroke-width="1.6"/>
+<text x="327.6" y="748.2" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#4f7bd9">{ }</text>
+<text x="343.6" y="749.0" font-size="11" font-weight="600" fill="#1d1d1f">Server.swift</text>
+</g>
+<g opacity="1">
+<circle cx="544.9" cy="708.1" r="11" fill="#ffffff" stroke="#7a5af8" stroke-width="1.6"/>
+<text x="544.9" y="711.3" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#7a5af8">◐</text>
+<text x="560.9" y="712.1" font-size="11" font-weight="600" fill="#1d1d1f">README.md</text>
+</g>
+<g opacity="1">
+<circle cx="472.1" cy="784.6" r="11" fill="#ffffff" stroke="#d99a06" stroke-width="1.6"/>
+<text x="472.1" y="787.8" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#d99a06">¶</text>
+<text x="488.1" y="788.6" font-size="11" font-weight="600" fill="#1d1d1f">Plan</text>
+</g>
+<g opacity="1">
+<circle cx="614.8" cy="676.7" r="11" fill="#ffffff" stroke="#4f7bd9" stroke-width="1.6"/>
+<text x="614.8" y="679.9" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#4f7bd9">{ }</text>
+<text x="630.8" y="680.7" font-size="11" font-weight="600" fill="#1d1d1f">notes.md</text>
+</g>
+<g opacity="1">
+<circle cx="188.6" cy="725.5" r="11" fill="#ffffff" stroke="#d99a06" stroke-width="1.6"/>
+<text x="188.6" y="728.7" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#d99a06">¶</text>
+<text x="204.6" y="729.5" font-size="11" font-weight="600" fill="#1d1d1f">todo.md</text>
+</g>
+<g opacity="1">
+<circle cx="487.9" cy="828.6" r="11" fill="#ffffff" stroke="#d14343" stroke-width="1.6"/>
+<text x="487.9" y="831.8" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#d14343">▤</text>
+<text x="503.9" y="832.6" font-size="11" font-weight="600" fill="#1d1d1f">design.pdf</text>
+</g>
+<g opacity="1">
+<circle cx="747.7" cy="748.2" r="11" fill="#ffffff" stroke="#2c2c2e" stroke-width="1.6"/>
+<text x="747.7" y="751.4" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#2c2c2e">>_</text>
+<text x="763.7" y="752.2" font-size="11" font-weight="600" fill="#1d1d1f">Terminal</text>
+</g>
+<g opacity="1">
+<circle cx="698.5" cy="799.8" r="11" fill="#ffffff" stroke="#7a5af8" stroke-width="1.6"/>
+<text x="698.5" y="803.0" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#7a5af8">◐</text>
+<text x="714.5" y="803.8" font-size="11" font-weight="600" fill="#1d1d1f">localhost:3000</text>
+</g>
+<g opacity="0.45">
+<circle cx="648.3" cy="858.4" r="11" fill="#ffffff" stroke="#4f7bd9" stroke-width="1.6" stroke-dasharray="2.5 2"/>
+<text x="648.3" y="861.6" text-anchor="middle" font-size="8.5" font-family="'SF Mono', Menlo, monospace" fill="#4f7bd9">{ }</text>
+<text x="664.3" y="862.4" font-size="11" font-weight="600" fill="#1d1d1f">old.log</text>
+<text x="664.3" y="875.4" font-size="9.5" font-style="italic" fill="#6e6e73">nothing keeps it: collected in 30 min</text>
+</g>
+</g>
+<line x1="403.6" y1="415.2" x2="403.6" y2="665.2" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="327.6" y1="495.0" x2="327.6" y2="745.0" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="544.9" y1="458.1" x2="544.9" y2="708.1" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="472.1" y1="534.6" x2="472.1" y2="784.6" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="402.8" y1="361.3" x2="402.8" y2="611.3" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="717.2" y1="451.0" x2="717.2" y2="701.0" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="188.6" y1="475.5" x2="188.6" y2="725.5" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<polygon points="260.0,336.0 922.4,480.0 746.4,664.8 84.0,520.8" fill="#000000" opacity="0.05" filter="url(#blur)"/>
+<polygon points="912.4,464.0 736.4,648.8 736.4,653.8 912.4,469.0" fill="#d8d5cc"/>
+<polygon points="736.4,648.8 74.0,504.8 74.0,509.8 736.4,653.8" fill="#cbc7bd"/>
+<polygon points="250.0,320.0 912.4,464.0 736.4,648.8 74.0,504.8" fill="#f3f6fd" fill-opacity="0.92" stroke="#d6d2c8" stroke-width="1"/>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 320)"><text x="706" y="22" text-anchor="end" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="1.2" fill="#a1a1a6">SPACES</text></g>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 320)" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect x="134" y="28" width="334" height="386" rx="10" fill="#ffffff" fill-opacity="0.6" stroke="#3373f2" stroke-width="1.2" stroke-opacity="0.6"/>
+<rect x="134" y="8" width="78" height="16" rx="8" fill="#3373f2"/>
+<text x="145" y="19.5" font-size="9" font-weight="600" fill="#fff">manifold</text>
+<text x="220" y="19.5" font-size="8" fill="#6e6e73">a space: its tiles' places</text>
+<rect x="140" y="34" width="160" height="164" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="149" y="49" font-size="8.5" font-weight="600" fill="#1d1d1f">Terminal</text>
+<text x="149" y="61" font-size="7.5" fill="#6e6e73">terminal lens</text>
+<rect x="140" y="204" width="160" height="204" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="149" y="219" font-size="8.5" font-weight="600" fill="#1d1d1f">Server.swift</text>
+<text x="149" y="231" font-size="7.5" fill="#6e6e73">editor lens</text>
+<rect x="306" y="50" width="156" height="180" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="315" y="65" font-size="8.5" font-weight="600" fill="#1d1d1f">README.md</text>
+<text x="315" y="77" font-size="7.5" fill="#6e6e73">preview lens</text>
+<rect x="306" y="236" width="156" height="172" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="315" y="251" font-size="8.5" font-weight="600" fill="#1d1d1f">Plan</text>
+<text x="315" y="263" font-size="7.5" fill="#6e6e73">editor lens</text>
+<rect x="314" y="38" width="140" height="9" rx="4" fill="none" stroke="#3373f2" stroke-opacity="0.45" stroke-dasharray="3 2"/>
+<text x="320" y="45.5" font-size="6.5" fill="#6e6e73">notes.md, stashed behind</text>
+<rect x="32" y="318" width="92" height="30" rx="7" fill="#ffffff" stroke="#3373f2" stroke-opacity="0.6" stroke-dasharray="4 3"/>
+<text x="42" y="331" font-size="8.5" font-weight="600" fill="#1d1d1f">📌 todo.md</text>
+<text x="42" y="342" font-size="7.2" fill="#6e6e73">pinned, no tile</text>
+<rect x="498" y="70" width="206" height="260" rx="10" fill="#ffffff" fill-opacity="0.6" stroke="#3373f2" stroke-width="1.2" stroke-opacity="0.6"/>
+<rect x="498" y="50" width="71" height="16" rx="8" fill="#3373f2"/>
+<text x="509" y="61.5" font-size="9" font-weight="600" fill="#fff">website</text>
+<text x="577" y="61.5" font-size="8" fill="#6e6e73">another space</text>
+<rect x="508" y="80" width="186" height="116" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="517" y="95" font-size="8.5" font-weight="600" fill="#1d1d1f">Terminal</text>
+<text x="517" y="107" font-size="7.5" fill="#6e6e73">on devbox · npm run dev</text>
+<rect x="508" y="202" width="186" height="118" rx="7" fill="#eef3fe" stroke="#3373f2" stroke-opacity="0.45" stroke-width="0.9"/>
+<text x="517" y="217" font-size="8.5" font-weight="600" fill="#1d1d1f">localhost:3000</text>
+<text x="517" y="229" font-size="7.5" fill="#6e6e73">web lens</text>
+</g>
+<line x1="403.6" y1="165.2" x2="403.6" y2="415.2" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="327.6" y1="245.0" x2="327.6" y2="495.0" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="544.9" y1="208.1" x2="544.9" y2="458.1" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<line x1="472.1" y1="284.6" x2="472.1" y2="534.6" stroke="#3373f2" stroke-width="1" stroke-opacity="0.55" stroke-dasharray="3 3"/>
+<polygon points="272.5,100.9 682.8,190.1 526.0,354.7 115.7,265.5" fill="#000000" opacity="0.05" filter="url(#blur)"/>
+<polygon points="672.8,174.1 516.0,338.7 516.0,343.7 672.8,179.1" fill="#d8d5cc"/>
+<polygon points="516.0,338.7 105.7,249.5 105.7,254.5 516.0,343.7" fill="#cbc7bd"/>
+<g transform="matrix(0.92 0.2 -0.4 0.42 250 70)" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect x="24" y="24" width="446" height="392" fill="url(#wash)" stroke="#cfcac0"/>
+<circle cx="38" cy="37" r="3.6" fill="#ff5f57"/>
+<circle cx="49" cy="37" r="3.6" fill="#febc2e"/>
+<circle cx="60" cy="37" r="3.6" fill="#28c840"/>
+<rect x="28" y="54" width="2.5" height="14" rx="1" fill="#3373f2"/>
+<text x="36" y="64" font-size="8.5" font-weight="600" fill="#1d1d1f">manifold</text>
+<text x="46" y="84" font-size="8.5" font-weight="400" fill="#1d1d1f">Terminal</text>
+<text x="46" y="104" font-size="8.5" font-weight="400" fill="#1d1d1f">Server.swift</text>
+<text x="46" y="124" font-size="8.5" font-weight="400" fill="#1d1d1f">README.md</text>
+<text x="46" y="144" font-size="8.5" font-weight="400" fill="#1d1d1f">Plan</text>
+<text x="36" y="164" font-size="8.5" font-weight="600" fill="#1d1d1f">website</text>
+<text x="36" y="198" font-size="7.5" fill="#a1a1a6">Pinned: todo.md</text>
+<rect x="316" y="38" width="136" height="14" rx="5" fill="#f2f2f2" stroke="#bdbdbd" stroke-width="0.6"/>
+<rect x="311" y="43" width="146" height="14" rx="5" fill="#f2f2f2" stroke="#bdbdbd" stroke-width="0.6"/>
+<rect x="140" y="34" width="160" height="164" rx="8" fill="#1f1f22" stroke="#d2d2d7" stroke-width="0.7"/>
+<rect x="140" y="34" width="160" height="18" rx="8" fill="#2c2c2f"/>
+<rect x="140" y="44" width="160" height="8" fill="#2c2c2f"/>
+<text x="148" y="46.5" font-size="7" fill="#aaaaaa" font-family="'SF Mono', Menlo, monospace">>_</text>
+<text x="164" y="46.5" font-size="8.5" font-weight="600" fill="#eeeeee">Terminal</text>
+<text x="210" y="46.5" font-size="7.5" fill="#a1a1a6">~/src/app</text>
+<text x="150" y="70" font-size="8" font-weight="400" fill="#d8d8d8" font-family="'SF Mono', Menlo, monospace">$ make test</text>
+<text x="150" y="85" font-size="8" font-weight="400" fill="#d8d8d8" font-family="'SF Mono', Menlo, monospace">ok  32 tests</text>
+<text x="150" y="100" font-size="8" font-weight="400" fill="#d8d8d8" font-family="'SF Mono', Menlo, monospace">$ git status</text>
+<rect x="140" y="204" width="160" height="204" rx="8" fill="#ffffff" stroke="#d2d2d7" stroke-width="0.7"/>
+<rect x="140" y="204" width="160" height="18" rx="8" fill="#f3f3f5"/>
+<rect x="140" y="214" width="160" height="8" fill="#f3f3f5"/>
+<text x="148" y="216.5" font-size="7" fill="#4f7bd9" font-family="'SF Mono', Menlo, monospace">{ }</text>
+<text x="164" y="216.5" font-size="8.5" font-weight="600" fill="#1d1d1f">Server.swift</text>
+<text x="230" y="216.5" font-size="7.5" fill="#a1a1a6">Sources</text>
+<text x="150" y="240" font-size="8" font-weight="400" fill="#1d1d1f" font-family="'SF Mono', Menlo, monospace">func serve() {</text>
+<text x="150" y="255" font-size="8" font-weight="400" fill="#3c3c43" font-family="'SF Mono', Menlo, monospace">  let s = Session()</text>
+<text x="150" y="270" font-size="8" font-weight="400" fill="#3c3c43" font-family="'SF Mono', Menlo, monospace">  s.start()</text>
+<text x="150" y="285" font-size="8" font-weight="400" fill="#3c3c43" font-family="'SF Mono', Menlo, monospace">}</text>
+<rect x="306" y="50" width="156" height="180" rx="8" fill="#ffffff" stroke="#d2d2d7" stroke-width="0.7"/>
+<rect x="306" y="50" width="156" height="18" rx="8" fill="#f3f3f5"/>
+<rect x="306" y="60" width="156" height="8" fill="#f3f3f5"/>
+<text x="314" y="62.5" font-size="7" fill="#7a5af8" font-family="'SF Mono', Menlo, monospace">◐</text>
+<text x="330" y="62.5" font-size="8.5" font-weight="600" fill="#1d1d1f">README.md</text>
+<text x="381" y="62.5" font-size="7.5" fill="#a1a1a6">~/src/app</text>
+<text x="316" y="86" font-size="10.5" font-weight="650" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">App</text>
+<text x="316" y="101" font-size="8" font-weight="400" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">A small server and</text>
+<text x="316" y="116" font-size="8" font-weight="400" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">the notes about it.</text>
+<rect x="306" y="236" width="156" height="172" rx="8" fill="#ffffff" stroke="#d2d2d7" stroke-width="0.7"/>
+<rect x="306" y="236" width="156" height="18" rx="8" fill="#f3f3f5"/>
+<rect x="306" y="246" width="156" height="8" fill="#f3f3f5"/>
+<text x="314" y="248.5" font-size="7" fill="#d99a06" font-family="'SF Mono', Menlo, monospace">¶</text>
+<text x="330" y="248.5" font-size="8.5" font-weight="600" fill="#1d1d1f">Plan</text>
+<rect x="404" y="240" width="50" height="10" rx="5" fill="#ffffff" stroke="#c7c7cc" stroke-width="0.5"/>
+<text x="409" y="247.6" font-size="6.3" fill="#6e6e73">→ Server.swift</text>
+<text x="316" y="272" font-size="8" font-weight="400" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">Ship the server</text>
+<text x="316" y="287" font-size="8" font-weight="400" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">☐ sessions</text>
+<text x="316" y="302" font-size="8" font-weight="400" fill="#1d1d1f" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif">☐ the README</text>
+</g>
+<polyline points="608.2,248.2 965.0,248.2 1021.0,222.2" fill="none" stroke="#a1a1a6" stroke-width="0.8"/>
+<circle cx="608.2" cy="248.2" r="2.5" fill="#a1a1a6"/>
+<text x="1035" y="226.168" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="650" fill="#1d1d1f">What you see</text>
+<text x="1035" y="250.168" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">Tiles in a grid. Each shows a block through a lens —</text>
+<text x="1035" y="269.168" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">a terminal, an editor, a preview — under a bar</text>
+<text x="1035" y="288.168" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">with its title and its links.</text>
+<polyline points="839.2,547.2 965.0,547.2 1021.0,521.2" fill="none" stroke="#a1a1a6" stroke-width="0.8"/>
+<circle cx="839.2" cy="547.2" r="2.5" fill="#a1a1a6"/>
+<text x="1035" y="525.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="650" fill="#1d1d1f">Spaces</text>
+<text x="1035" y="549.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">A space arranges placements: which block, through</text>
+<text x="1035" y="568.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">which lens, where. A pin keeps a block without a tile.</text>
+<text x="1035" y="587.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">A space stays until you remove it.</text>
+<polyline points="839.2,797.2 965.0,797.2 1021.0,771.2" fill="none" stroke="#a1a1a6" stroke-width="0.8"/>
+<circle cx="839.2" cy="797.2" r="2.5" fill="#a1a1a6"/>
+<text x="1035" y="775.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="650" fill="#1d1d1f">The graph</text>
+<text x="1035" y="799.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">Blocks, and the links between them. Solid links keep</text>
+<text x="1035" y="818.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">what they reach — placed, pinned, linked by hand;</text>
+<text x="1035" y="837.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">dashed ones are history — opened, mentioned, printed.</text>
+<text x="1035" y="856.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">What no space reaches is collected after half an hour.</text>
+<polyline points="839.2,1047.2 965.0,1047.2 1021.0,1021.2" fill="none" stroke="#a1a1a6" stroke-width="0.8"/>
+<circle cx="839.2" cy="1047.2" r="2.5" fill="#a1a1a6"/>
+<text x="1035" y="1025.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="650" fill="#1d1d1f">Hosts</text>
+<text x="1035" y="1049.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">Every block lives on a host — this Mac, a dev box —</text>
+<text x="1035" y="1068.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">as an append-only log its server keeps.</text>
+<text x="1035" y="1087.16" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#6e6e73">One window shows blocks from many.</text>
+</svg>
