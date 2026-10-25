@@ -1690,7 +1690,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.showGit(nil)
         })
         if let f = focusedShown, f.lens == .editor || f.lens == .preview, f.path != nil {
-            items.append(PaletteItem(symbol: "arrow.left.arrow.right", title: "Compare with Last Commit", subtitle: "⌥⌘D") { [weak self] in
+            items.append(PaletteItem(symbol: "arrow.left.arrow.right", title: "Compare with Last Commit", subtitle: "⌥⇧⌘D") { [weak self] in
                 self?.compareWithHead(nil)
             })
         }

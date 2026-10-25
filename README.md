@@ -827,7 +827,7 @@ around it, and comes back with its history.
   as one diff** (first under the changes, or in the tile's menu), every
   outstanding change at once, as plain `git diff` (`sl diff`) shows it,
   read again as the repository moves. Compare with Last
-  Commit (⌥⌘D) does the same for the file being edited. A diff shows
+  Commit (⌥⇧⌘D; ⌥⌘D is the system's, hiding the Dock) does the same for the file being edited. A diff shows
   old and new side by side when its tile is wide enough for two
   columns, unified when it isn't. A diff's row or file has a menu:
   Open This Version (the file as it was at the commit, from `git show`,
