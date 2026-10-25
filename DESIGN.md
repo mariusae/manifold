@@ -1362,6 +1362,8 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
   the step above it. Minimize stays in the Window menu, keyless.
 - **⌥⌘M is the map,** taking macOS's Minimize All.
+- **⌃⌘T pins,** the Finder's Add to Sidebar: a pin keeps a block in its
+  space's part of the sidebar, with a tile or without.
 - **⌘` walks spaces,** the app's windows; with one space it walks
   windows.
 - **⌃⇥ walks a stack** as a browser's tabs, in every view, a terminal's

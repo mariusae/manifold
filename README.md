@@ -809,8 +809,9 @@ around it, and comes back with its history.
   kind, its message — not "Done"); an untitled note goes by its first
   words, as its links name it; a text with unsaved edits has its bar's
   dot after the name; a page has its site's icon.
-- **Pin in Space** (a tile's bar menu, a terminal's or an editor's
-  right-click menu, or a sidebar row's): the block stays
+- **Pin in Space** (⌃⌘T, as the Finder's Add to Sidebar; a tile's bar
+  menu, a terminal's or an editor's right-click menu, or a sidebar
+  row's): the block stays
   at the top of its space in the sidebar, above a hairline, in the
   order pinned — and stays there with its tile closed, dimmed, to click
   for the tile back in that space. A pin is an edge from the

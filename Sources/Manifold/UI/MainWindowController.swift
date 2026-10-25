@@ -5898,9 +5898,11 @@ extension MainWindowController: GridDelegate {
         }
         if let ws = selected {
             let on = isPinned(block, in: ws)
-            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin") { [weak self] in
+            let pin = ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin", key: "t") { [weak self] in
                 self?.setPinned(block, in: ws, !on)
-            })
+            }
+            pin.keyEquivalentModifierMask = [.command, .control]
+            menu.addItem(pin)
         }
         if views[placement]?.outline != nil {
             menu.addItem(ClosureMenuItem("Filter Outline", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
@@ -7747,7 +7749,8 @@ final class SearchText {
 /// its tile, named Unpin when it's pinned (`validateMenuItem`).
 enum PinMenu {
     static func item(for placement: PlacementID) -> NSMenuItem {
-        let item = NSMenuItem(title: "Pin in Space", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "Pin in Space", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "t")
+        item.keyEquivalentModifierMask = [.command, .control]
         item.representedObject = placement
         return item
     }
