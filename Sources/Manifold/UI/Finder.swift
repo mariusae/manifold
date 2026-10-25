@@ -651,7 +651,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard shown.indices.contains(row) else { return Self.rowHeight }
         let item = shown[row]
-        return item.excerpt != nil ? Self.excerptHeight : item.block != nil && summary(for: item) != nil ? Self.cardHeight : Self.rowHeight
+        if item.excerpt != nil { return Self.excerptHeight }
+        if item.block != nil, let s = summary(for: item) { return SummaryCard.height(for: s) }
+        return Self.rowHeight
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -665,7 +667,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             // A block: its card, where the finder's own word (here, linked,
             // recent) stands, after any state of its own; its age in a pill.
             let state = content.summary.note.flatMap { $0.range(of: #"^(now|\d+[mhd])$"#, options: .regularExpression) == nil ? $0 : nil }
-            content.summary.note = [state, item.note.isEmpty ? nil : item.note].compactMap { $0 }.joined(separator: " · ")
+            // ("edited" said once: the card's "unsaved" says it.)
+            let word = state == "unsaved" ? item.note.replacingOccurrences(of: #"^edited( · )?"#, with: "", options: .regularExpression) : item.note
+            content.summary.note = [state, word.isEmpty ? nil : word].compactMap { $0 }.joined(separator: " · ")
             if content.summary.note?.isEmpty == true { content.summary.note = nil }
             content.age = item.age
             let cell = tableView.makeView(withIdentifier: CardCell.identifier, owner: nil) as? CardCell ?? CardCell()

@@ -200,7 +200,8 @@ final class HoverCard: NSObject {
         picture.isHidden = image == nil || loan != nil
         liveHolder.isHidden = loan == nil
         if summarized { body.isHidden = true }
-        let height = summarized ? topHeight + SummaryCard.height
+        let cardHeight = summaryCard.map { SummaryCard.height(for: $0.content) } ?? SummaryCard.height
+        let height = summarized ? topHeight + cardHeight
             : topHeight + pad + 17 + 2 + (c.detail.isEmpty ? 0 : 16) + (body.isHidden ? 0 : 8 + bodyHeight) + pad
         let top = NSRect(x: 0, y: height - topHeight, width: width, height: topHeight)
         picture.frame = top
@@ -214,7 +215,7 @@ final class HoverCard: NSObject {
         title.frame = NSRect(x: pad, y: height - topHeight - pad - 17, width: width - 2 * pad, height: 17)
         detail.frame = NSRect(x: pad, y: height - topHeight - pad - 17 - 2 - 16, width: width - 2 * pad, height: 16)
         detail.isHidden = c.detail.isEmpty || summarized
-        summaryCard?.frame = NSRect(x: 0, y: 0, width: width, height: SummaryCard.height)
+        summaryCard?.frame = NSRect(x: 0, y: 0, width: width, height: cardHeight)
         body.frame = NSRect(x: pad, y: pad, width: width - 2 * pad, height: bodyHeight)
         // Beside the row, in the window, kept inside it.
         let rect = root.convert(c.rect, from: nil)

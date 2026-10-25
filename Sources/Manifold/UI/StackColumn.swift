@@ -61,6 +61,14 @@ final class SummaryCard: NSView {
         }
     }
     static let height: CGFloat = 88
+
+    /// As tall as what it says: its title and its lines (a picture keeps
+    /// it at full height) — where cards needn't line up, as a stack's do.
+    static func height(for content: SummaryCardContent) -> CGFloat {
+        if content.thumbnail != nil { return height }
+        let lines = min(3, content.summary.lines.count)
+        return min(height, 10 + 21 + CGFloat(lines) * 16 + 8)
+    }
     /// Clicked, where it stands in for its tile; elsewhere a click is its
     /// container's.
     var onClick: (() -> Void)?
