@@ -118,11 +118,11 @@ and Mona Sans (bundled).
   maximized tile, Close Column takes the column).
   Opening a block that isn't in the space always makes it a tile of
   its own (below the biggest tile, after that tile's stack, never into
-  it); going to one that is — a link, the sidebar, the finder, ⌘J,
+  it); going to one that is — a link, the sidebar, Open Quickly, ⌘J,
   ⌘P, Back, a found line, opening it again — goes there: a tile on its
   own is focused, one in a stack comes to the top of it (the rest
   behind it, as they were), and the pointer follows. Going to a tile
-  squeezed down to its bar — by a link, the sidebar, the finder, ⌘J,
+  squeezed down to its bar — by a link, the sidebar, Open Quickly, ⌘J,
   Back, or opening what's already there (Browse This Folder on a
   folder shown), or down to its summary — grows it a little, to show some of what's in it (160
   points, or a quarter of the column), taken from its neighbours as
@@ -197,7 +197,7 @@ and Mona Sans (bundled).
   the one most recently gone to) is selected and the tile focused.
   **Bring here** makes a tile of it in this space; if it is here
   already, that tile is focused. A row clicked in the sidebar, or
-  chosen in the finder (⌘O), goes to the block if it is placed anywhere,
+  chosen in Open Quickly (⌘O), goes to the block if it is placed anywhere,
   else brings it here; ⌘-click, Bring Here in the menu, and a drag onto
   the grid always bring (a drop between two tiles lands there). Opening
   something from inside a block — ⌘-click a path in a terminal, follow
@@ -315,24 +315,21 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
-- **⌘O** finds every block and space, and the files in the focused
-  block's folder (a terminal's working directory, a file's folder),
-  listed in the background and kept a while, so asking again is
-  instant. It ranks off the main thread as you type, each keystroke
+- **Open Quickly** (⌘O) finds every block and space — files are found
+  by Find in Files (⇧⌘F), a search block of their own. It ranks off the main thread as you type, each keystroke
   giving up on the last, so typing never waits; the panel grows to fit
   and doesn't shrink under you. An agent is found by what it is: a
   block running Claude Code, Codex or another known agent answers to
   "claude", "codex" as surely as to its own title, and says so
   ("Terminal in ~/src · Claude Code").
 - **Help ▸ Search** finds any menu command by name, as in every Mac app.
-- **⌘O finds anything** the host keeps. What the query *names* comes
+- **Open Quickly** finds anything the host keeps. What the query *names* comes
   first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in
   what's around a block (its folder, its program). Among equals, the
   nearest to where you are over the graph — this space, then what's
   linked to the focused block, then step by step outward — and the most
-  recently seen; with nothing typed, that is the whole order. Files not
-  yet blocks come below the blocks (the system's scratch folders last).
+  recently seen; with nothing typed, that is the whole order.
   Each row says at the right where the block
   is — here, linked, near, kept, or *recent* for one closed
   and not yet collected, which choosing brings back — and, in a pill,
@@ -346,12 +343,10 @@ around it, and comes back with its history.
   space is found by its own name only — what it holds is found as
   itself. Choosing a block goes to it where it's placed, or brings it into
   the focused column if it's nowhere (⌘ beside, ⌥ over);
-  choosing a space shows it. ⇥ goes round the finder's scopes: **In Files** has the host
-  look for the words in the files under the project (as Find in Files
-  does; the last row makes it a search block); **In Blocks** looks in
-  the texts of the blocks — the space's first, then every note and
-  file kept as a block. Either lists what it finds as a site's search
-  does: a row a file or block, its name, where it is, and the lines that
+  choosing a space shows it. ⇥ goes to its other scope, **In Blocks**,
+  which looks in the texts of the blocks — the space's first, then every
+  note and file kept as a block — and lists what it finds as a site's
+  search does: a row a block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them.
   A typed URL opens as a web page.
@@ -372,7 +367,7 @@ around it, and comes back with its history.
   shell for eight hours (Settings ▸ Terminals) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
   transcript, with a line across it saying when the last one ended and
-  after how long idle, so it's never a surprise. The finder says
+  after how long idle, so it's never a surprise. Open Quickly says
   *dormant* before you go to one.
 - Blocks are linked by what you do: ⌘-clicking a file in a terminal links
   the two, and ⌘O ranks what's linked to the focused block first.
@@ -489,7 +484,7 @@ around it, and comes back with its history.
   it is, below; `#anchors` scroll.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
-  finder, a folder listing, a link in a preview, or the `mani`
+  Open Quickly, a folder listing, a link in a preview, or the `mani`
   command. Besides the interface's system font, a theme has three: a
   **monospaced** one for terminals and code, an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
@@ -888,7 +883,7 @@ around it, and comes back with its history.
   reaches is pinned in a space named Kept.)
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
-  finder row chosen with ⏎: plain **goes to** it
+  row of Open Quickly chosen with ⏎: plain **goes to** it
   where it is (or opens it here); **⌥ puts it over** the tile you
   clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
   beside** that tile; **⇧⌘ gives it to the system** (the browser, the
@@ -933,7 +928,7 @@ around it, and comes back with its history.
   not read yet (red for failed), a plain check once read, a moon for a
   terminal gone inactive — at the right of each tile's bar and of the
   sidebar's rows, with how long ago beside it there, and in the
-  finder; the Dock badge counts the blocks that need you or are
+  Open Quickly; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile
   not showing — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's
@@ -970,7 +965,7 @@ around it, and comes back with its history.
   Compare with Now opens a diff block of then against now. Open This
   Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
-  terminal, typed in the finder, or made with File ▸ New Web Page: the page
+  terminal, typed in Open Quickly, or made with File ▸ New Web Page: the page
   has the whole tile, its pill has the address (click it, or ⌘L — Go to
   Line's key in an editor, the address's elsewhere), and
   back, forward and reload (stop, while it loads) are buttons on its bar

@@ -250,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         agentsItem.submenu = agents
         file.addItem(agentsItem)
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
-        item(file, "Find Anything…", #selector(MainWindowController.openDocument(_:)), "o")
+        item(file, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
         item(file, "Search Outline…", #selector(MainWindowController.searchOutline(_:)), "o", [.command, .shift])
         item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
         item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])

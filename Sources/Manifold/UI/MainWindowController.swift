@@ -279,7 +279,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             FontTheme.typography = appearance.typography
             for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
         }
-        if finder.isShowing, finder.scope == .contents { finder.refreshResults() }
         settingsWindow?.refresh(tables: false)
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }
@@ -1588,7 +1587,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.renameTab(nil)
             })
         }
-        items.append(PaletteItem(symbol: "magnifyingglass", title: "Find Anything…", subtitle: "⌘O") { [weak self] in
+        items.append(PaletteItem(symbol: "magnifyingglass", title: "Open Quickly…", subtitle: "⌘O") { [weak self] in
             self?.openDocument(nil)
         })
         items.append(PaletteItem(symbol: "gearshape", title: "Preferences for \(hosts.label(of: host.host))…", subtitle: "shell, language servers") { [weak self] in
@@ -3736,7 +3735,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return [] }
             switch scope {
             case .names: return []
-            case .contents: return self.finderContentItems(query)
             case .blocks: return self.finderBlockItems(query)
             }
         }
@@ -3766,14 +3764,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return FinderItem(symbol: "globe", title: title, detail: detail, note: "web", run: { [weak self] in self?.openAddress(q, place: .here) })
         }
         f.openFile = { [weak self] path in self?.open(path, from: nil) }
-        f.onQueryChanged = { [weak self] query, scope in self?.finderQueryChanged(query, scope) }
         return f
     }()
-
-    /// The search block ⌘O's "In Files" scope asks the host through: one,
-    /// kept, asked again as the query changes.
-    private var finderSearch: BlockID?
-    private var finderSearchWork: DispatchWorkItem?
 
     /// The project the focused block is in: its repository's root (git
     /// or Sapling), else its own folder.
@@ -3781,58 +3773,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let root = cwd ?? NSHomeDirectory()
         guard on == host.host else { return root }
         return VCS.repository(of: root)?.root ?? root
-    }
-
-    /// "In Files": the host looks, a moment after the typing pauses.
-    private func finderQueryChanged(_ query: String, _ scope: Finder.Scope) {
-        finderSearchWork?.cancel()
-        guard scope == .contents, query.count >= 2 else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, let client = self.hosts.client(self.focusedHost) else { return }
-            let q = SearchQuery(text: query, root: self.projectRoot(from: self.focusedCwd, on: self.focusedHost))
-            if let id = self.finderSearch, self.hosts.block(id) != nil, id.host == client.host {
-                client.propose(.search(block: id, query: q))
-            } else {
-                self.finderSearch = client.newSearch(q)
-            }
-        }
-        finderSearchWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
-    }
-
-    /// "In Files": what the host has found so far, each line going to its
-    /// place in the file.
-    private func finderContentItems(_ query: String) -> [FinderItem] {
-        guard query.count >= 2, let id = finderSearch, let s = hosts.block(id)?.search, s.query?.text == query else { return [] }
-        let on = id.host
-        // A row a file, as a site's search lists pages: its name, its folder,
-        // the lines that hold the query run together, each match marked.
-        var order: [String] = []
-        var byPath: [String: [SearchHit]] = [:]
-        for hit in s.hits.prefix(400) {
-            if byPath[hit.path] == nil { order.append(hit.path) }
-            byPath[hit.path, default: []].append(hit)
-        }
-        var items: [FinderItem] = order.map { path in
-            let hits = byPath[path]!
-            let first = hits[0]
-            return FinderItem(symbol: Finder.symbol(forFile: path.lastPathComponent), title: path.lastPathComponent,
-                              detail: path.deletingLastPathComponent.abbreviatingHome,
-                              note: hits.count == 1 ? "line \(first.line)" : "\(hits.count) lines",
-                              run: { [weak self] in
-                                  guard let self else { return }
-                                  // Found by the finder's search block: linked from it, not the focused tile.
-                                  self.open(path: first.path, line: first.line, column: first.column, on: on, from: nil, kind: .opened, context: query)
-                                  self.hosts.link(from: id, to: self.hosts.textBlock(for: first.path, on: on), kind: .opened, context: "found “\(query)”")
-                              },
-                              excerpt: Self.excerpt(hits.map(\.text)), marked: query,
-                              drag: { Drags.path?(path, false, on, Drags.modifiers) })
-        }
-        if s.running || s.truncated || s.error != nil || !s.hits.isEmpty {
-            items.append(FinderItem(symbol: "magnifyingglass", title: s.running ? "Looking…" : s.error ?? "\(s.hits.count)\(s.truncated ? "+" : "") lines", detail: "As a search block", note: "",
-                                    run: { [weak self] in self?.show(id, lens: .search, .here) }))
-        }
-        return items
     }
 
     /// The lines that hold a query, as one excerpt: trimmed, run together.
@@ -3898,13 +3838,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// ⌘O: the finder, over everything, and the files where the focused
     /// placement is.
+    /// ⌘O, Open Quickly: every block and space, by name — or, In Blocks,
+    /// by the words in it. Files are found by Find in Files (⇧⌘F), a search
+    /// block of their own.
     @objc func openDocument(_ sender: Any?) {
-        // The files where the focused block is: its folder (a terminal's
-        // working directory, a file's folder), on this Mac.
-        let root = focusedShown.flatMap { $0.placement.block.host == host.host ? ($0.block?.terminal?.cwd ?? $0.block?.place) : nil } ?? NSHomeDirectory()
         let (corpus, actions) = finderCorpus()
-        let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
-        finder.show(corpus: corpus, actions: actions, filesUnder: root, knownPaths: known, scopes: true, placeholder: "Find a block, or a file in \(root.abbreviatingHome)…", over: window)
+        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scopes: true, placeholder: "Open quickly…", over: window)
     }
 
     /// What the finder finds by name (§3.5), taken once as it opens: every

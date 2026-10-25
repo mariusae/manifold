@@ -209,17 +209,16 @@ enum FinderRanking {
 /// — lines in the texts of the workspace's blocks. ↩ goes there.
 final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     enum Scope: Int, CaseIterable {
-        case names, contents, blocks
+        case names, blocks
         var title: String {
             switch self {
             case .names: "Names"
-            case .contents: "In Files"
             case .blocks: "In Blocks"
             }
         }
     }
 
-    /// Items for a query in the other scopes (In Files, In Blocks), as the
+    /// Items for a query in the other scope (In Blocks), as the
     /// controller finds them.
     var search: ((String, Scope) -> [FinderItem])?
     /// A row before the rest for a query, if it calls for one (a web address).
@@ -507,12 +506,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             hint.stringValue = "The space, by column and tile, headings within    ↩ Go    ⎋ Close"
             return
         }
-        let folder = root.abbreviatingHome
         hint.stringValue = switch scope {
-        case .names: !withFiles ? "Blocks and spaces, and what to make    ↩ Go    ⎋ Close"
-            : fileCandidates.isEmpty ? "Blocks, spaces, and files in \(folder) (looking…)    ↩ Open    ⎋ Close"
-            : "Blocks, spaces, and files in \(folder)    ⇥ Scope    ↩ Open    ⎋ Close"
-        case .contents: "Lines in the files under the project    ⇥ Scope    ↩ Open    ⎋ Close"
+        case .names: "Blocks and spaces    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⎋ Close"
         case .blocks: "The blocks' texts, this space's first    ⇥ Scope    ↩ Go    ⎋ Close"
         }
     }
