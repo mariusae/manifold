@@ -53,7 +53,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// began with, and how far along it is.
     private var walk: (ids: [BlockID], index: Int)?
     private var walkMonitors: [Any] = []
-    /// ⌘E's switcher, while ⌘ is held: what ends it.
+    /// ⌘`'s switcher, while ⌘ is held: what ends it.
     private var stackMonitors: [Any] = []
     private let sidebar = SidebarView()
     private var palette: CommandPaletteView?
@@ -1493,7 +1493,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
     func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
     func debugSwitcherPointer() -> String { content.debugSwitcherPointer() }
-    /// ⌘E with ⌘ held, as far as the fan and its watching for ⌘'s release.
+    /// ⌘` with ⌘ held, as far as the fan and its watching for ⌘'s release.
     func debugWalkStack() {
         guard let a = arrangement, let f = a.focused, content.stepStackSwitcher(f, back: false) else { return }
         watchStackWalk()
@@ -2426,25 +2426,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    // MARK: ⌘E
+    // MARK: ⌘`
 
-    /// ⌘E (⇧⌘E back): with ⌘ held, the focused tile's stack as a file of
+    /// ⌘` (⇧⌘` back): with ⌘ held, the focused tile's stack as a file of
     /// cards over its tile — the top drops flat to the bottom and the one
     /// beneath stands up in front, leaning back, the title bars of the
-    /// rest behind it; each E flips the next one down, scrolling works
+    /// rest behind it; each ` flips the next one down, scrolling works
     /// too, and letting go of ⌘ brings the chosen one forward to the top
     /// (Escape leaves things be). From the menu it's one step. Without a
-    /// stack, ⌘E finds the word at hand, as the Find menu has it.
+    /// stack, ⌘` goes to the app's next window, as macOS has it.
     @objc func walkStack(_ sender: Any?) { walkStack(back: false) }
     @objc func walkStackBack(_ sender: Any?) { walkStack(back: true) }
 
     private func walkStack(back: Bool) {
-        guard let a = arrangement, let f = a.focused else { return findWordAtHand() }
+        guard let a = arrangement, let f = a.focused else { return cycleWindows(back: back) }
         if content.isSwitching {
             _ = content.stepStackSwitcher(f, back: back)
             return
         }
-        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return findWordAtHand() }
+        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return cycleWindows(back: back) }
         if NSEvent.modifierFlags.contains(.command) {
             watchStackWalk()
         } else {
@@ -2471,11 +2471,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         content.settleStackSwitcher(cancel: !settling)
     }
 
-    /// Find Word at Hand, as the Find menu's item does it.
-    private func findWordAtHand() {
-        let item = NSMenuItem()
-        item.tag = NSTextFinder.Action.setSearchString.rawValue
-        NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
+    /// No stack to switch: ⌘` as macOS has it, the app's next window (or,
+    /// backward, its previous) — Settings, another window.
+    private func cycleWindows(back: Bool) {
+        let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.canBecomeKey && !$0.isMiniaturized }
+        guard windows.count > 1, let key = NSApp.keyWindow, let i = windows.firstIndex(of: key) else { return }
+        // Ordered front to back: the next is the one behind; backward, the last.
+        let next = back ? windows[(i + 1) % windows.count] : windows.last!
+        next.makeKeyAndOrderFront(nil)
     }
 
     /// The arrangement about to be shown (`content`, its grid shown) slides

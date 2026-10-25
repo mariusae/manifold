@@ -6,7 +6,7 @@ protocol GridDelegate: AnyObject {
     /// A stack about to fan out: its tile grown to hold the fan, if it's
     /// short of it. True when it was (the fan waits for the tile to settle).
     func gridRoomForFan(_ top: PlacementID) -> Bool
-    /// A fan opened from ⌘E taken over by the pointer: letting go of ⌘ no
+    /// A fan opened from ⌘` taken over by the pointer: letting go of ⌘ no
     /// longer settles it (a click does).
     func gridSwitcherFollowsPointer()
     /// A tile dropped at a place in the grid: into column `column` at
@@ -1193,7 +1193,7 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    // MARK: ⌘E
+    // MARK: ⌘`
 
     private var switcher: StackSwitcherView?
     /// The tiles whose views the switcher holds: the grid leaves them be.
@@ -1218,14 +1218,14 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
     }
     var isSwitching: Bool { switcher != nil || fanWaiting }
-    /// The fan asked for, waiting on its tile to grow; and ⌘E's steps meanwhile.
+    /// The fan asked for, waiting on its tile to grow; and ⌘`'s steps meanwhile.
     private var fanWaiting = false
     private var fanSteps = 0
 
     private var switcherMonitor: Any?
 
     /// The stack under `top` as cards hanging over its tile, if it has one:
-    /// from ⌘E, the choice then stepped along; from a right-click on its
+    /// from ⌘`, the choice then stepped along; from a right-click on its
     /// title, the choice following the pointer, from the top. Either way a
     /// card clicked comes to the top, and one dragged comes out of the stack
     /// as a block dragged does (the fan closing, the rest as they were).
@@ -1264,7 +1264,7 @@ final class GridView: NSView, NSDraggingSource {
             self.beginDrag(of: id, event: event, from: self, alone: true)
         }
         s.onCancel = { [weak self] in self?.settleStackSwitcher(cancel: true) }
-        // From ⌘E, the pointer over the cards: as from the sheets after.
+        // From ⌘`, the pointer over the cards: as from the sheets after.
         s.onFollowsPointer = { [weak self] in
             guard let self else { return }
             self.watchSwitcherClicks()
@@ -1294,7 +1294,7 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    /// ⌘E: the stack under `top` as cards over its tile, opened if it
+    /// ⌘`: the stack under `top` as cards over its tile, opened if it
     /// isn't, and the choice moved a step down (back: up). False when the
     /// tile has no stack.
     func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
@@ -2087,7 +2087,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         fanButton.isHidden = !showFan
         if showFan {
             fanButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
-            fanButton.toolTip = "Show the \(behind == 1 ? "tile" : "\(behind) tiles") behind this one (⌘E)"
+            fanButton.toolTip = "Show the \(behind == 1 ? "tile" : "\(behind) tiles") behind this one (⌘`)"
             right -= 22
         }
         sidebarButton.isHidden = !showSidebar

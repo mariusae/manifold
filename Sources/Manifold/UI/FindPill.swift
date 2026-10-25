@@ -49,6 +49,12 @@ final class FindPill: NSView, NSTextFieldDelegate {
         set { field.stringValue = newValue; refresh() }
     }
 
+    /// What matches are replaced with.
+    var replacement: String {
+        get { replaceField.stringValue }
+        set { replaceField.stringValue = newValue }
+    }
+
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         wantsLayer = true
@@ -230,6 +236,9 @@ enum PageFind {
 /// down where the tile's own pill would be in the way), hands it the Find
 /// menu's actions, and takes it away.
 final class FindHost {
+    /// The Find menu's Use Selection for Replace (⇧⌘E): a tag NSTextFinder's actions don't use.
+    static let useForReplace = 1000
+
     private(set) var pill: FindPill?
     private weak var view: NSView?
     private weak var target: Searchable?
@@ -247,9 +256,18 @@ final class FindHost {
 
     /// The Find menu's action, by its NSTextFinder tag: ⌘F shows the pill
     /// (with the selection as the query), ⌥⌘F with replace, ⌘E with the
-    /// word at hand and goes to it, ⌘G and ⇧⌘G step.
+    /// selection or the word at hand and goes to it, ⇧⌘E puts it in
+    /// Replace, ⌘G and ⇧⌘G step.
     func perform(_ sender: Any?) {
         let tag = (sender as? NSMenuItem)?.tag ?? NSTextFinder.Action.showFindInterface.rawValue
+        if tag == Self.useForReplace {
+            target?.textForFind { [weak self] text in
+                guard let self, let text, !text.isEmpty else { return }
+                self.show(replace: true, fromSelection: false)
+                self.pill?.replacement = text
+            }
+            return
+        }
         switch NSTextFinder.Action(rawValue: tag) {
         case .showReplaceInterface?: show(replace: true, fromSelection: true)
         case .nextMatch?: pill == nil ? show(fromSelection: true) : target?.findNext(forward: true)

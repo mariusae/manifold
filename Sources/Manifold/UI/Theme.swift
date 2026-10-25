@@ -43,7 +43,7 @@ enum Theme {
     static let panelBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.12), NSColor(white: 1, alpha: 0.14))
     /// Over the window, behind the palette.
     static let scrim = NSColor.dynamic(NSColor(white: 0.9, alpha: 0.35), NSColor(white: 0, alpha: 0.3))
-    /// Behind the ⌘E switcher's cards, top to bottom.
+    /// Behind the ⌘` switcher's cards, top to bottom.
     static let switcherTop = NSColor.dynamic(NSColor(white: 0.87, alpha: 1), NSColor(white: 0.27, alpha: 1))
     static let switcherBottom = NSColor.dynamic(NSColor(srgbRed: 0.76, green: 0.79, blue: 0.84, alpha: 1),
                                                 NSColor(srgbRed: 0.25, green: 0.29, blue: 0.35, alpha: 1))

@@ -1,7 +1,7 @@
 import AppKit
 import ManifoldCore
 
-/// ⌘E, or a right-click on a tile's title (§3.1): a stack's tiles as
+/// ⌘`, or a right-click on a tile's title (§3.1): a stack's tiles as
 /// cards hanging in the air over the stack's tile, its own bar put away.
 /// Each hangs a title bar lower than the one behind it, all leaning back
 /// a little alike; the cards in front of the chosen one are let down part
@@ -30,11 +30,11 @@ final class StackSwitcherView: NSView {
     /// A click on none of the cards.
     var onCancel: (() -> Void)?
     /// The card under the pointer is the one chosen (opened from its sheets
-    /// or its button; or from ⌘E, once the pointer moves over the cards).
+    /// or its button; or from ⌘`, once the pointer moves over the cards).
     var followsPointer = false
-    /// Opened from ⌘E, the pointer moved over the cards: following it now.
+    /// Opened from ⌘`, the pointer moved over the cards: following it now.
     var onFollowsPointer: (() -> Void)?
-    /// Where the pointer was first seen over the cards (from ⌘E): moving
+    /// Where the pointer was first seen over the cards (from ⌘`): moving
     /// from there is wanting it.
     private var pointerSeenAt: NSPoint?
 
@@ -279,7 +279,7 @@ final class StackSwitcherView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         if !followsPointer {
-            // From ⌘E: the pointer moved over the cards — peeking and
+            // From ⌘`: the pointer moved over the cards — peeking and
             // choosing with it from now on, as from the sheets.
             guard !isClosing else { return }
             guard let seen = pointerSeenAt else { pointerSeenAt = p; return }
@@ -297,7 +297,7 @@ final class StackSwitcherView: NSView {
         return "picked \(cards[i].id)"
     }
 
-    /// Debugging: the pointer moved over the cards, as from ⌘E.
+    /// Debugging: the pointer moved over the cards, as from ⌘`.
     func debugPointerMoves() {
         guard !followsPointer else { return }
         followsPointer = true

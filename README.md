@@ -63,7 +63,7 @@ and Mona Sans (bundled).
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek
   out above its card, as a stack of paper. **Click those sheets**, or
-  the stack button on the tile's bar (beside maximize), or press ⌘E, and
+  the stack button on the tile's bar (beside maximize), or press ⌘\`, and
   the stack's tiles hang over it as cards,
   live, the tile's own bar put away, on the window's own background
   (a stack too short to hold them, down to its bar say, first grows —
@@ -74,16 +74,16 @@ and Mona Sans (bundled).
   the way. Clicked open, the card under the pointer is
   the one chosen (scrolling works too): clicked, it takes the top,
   whole, the tile that showed going behind it with the rest of the
-  stack, as with ⌘E; ⎋ or a click away from the cards leaves things be
+  stack, as with ⌘\`; ⎋ or a click away from the cards leaves things be
   (a drag on the sheets moves the line between the tiles, as it would
-  there; right-clicking a title is always the tile's menu). With ⌘E, each E
-  moves the choice a card down (⇧⌘E back up), and letting go of ⌘ brings
+  there; right-clicking a title is always the tile's menu). With ⌘\`, each \`
+  moves the choice a card down (⇧⌘\` back up), and letting go of ⌘ brings
   the chosen one forward to the top (Escape leaves things be; a card
   clicked is chosen at once) — or move the pointer over the cards and
   they follow it from then on, as when fanned from the sheets: the card
   under it peeks out, a click brings it to the top, and letting go of ⌘
-  leaves them open; without a stack, ⌘E finds the word at
-  hand. Either way, **drag a card** to take that tile out of the stack:
+  leaves them open; without a stack, ⌘\` goes to Manifold's next window,
+  as macOS has it. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows. ⌥-click the top tile's own pill and it swaps with the next
@@ -650,8 +650,10 @@ around it, and comes back with its history.
   else edited.
 - **Find** is a pill at a tile's upper right (⌘F): the query, how many
   matches, ↑ ↓ for the previous and next (↩ and ⇧↩, ⌘G and ⇧⌘G too), Aa
-  for case, and ×; ⌥⌘F adds a row to replace with. ⌘E finds the word at
-  hand and goes on to its next occurrence. Editors, Markdown previews,
+  for case, and ×; ⌥⌘F adds a row to replace with. ⌘E (Use Selection
+  for Find) finds the selection, or the word at hand, and goes on to its
+  next occurrence; ⇧⌘E (Use Selection for Replace) puts it in the
+  replace row. Editors, Markdown previews,
   web pages, diffs and terminals are searched this way; in a terminal,
   Ghostty itself finds through the screen and its history and marks
   every match.

@@ -287,11 +287,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
             ("Find Next", .nextMatch, "g", .command),
             ("Find Previous", .previousMatch, "g", [.command, .shift]),
-            // ⌘E is the stack switch; without a stack it finds the word at hand.
-            ("Find Word at Hand", .setSearchString, "", .command),
+            // As macOS has them: the selection (or the word at hand) found,
+            // or put in Replace.
+            ("Use Selection for Find", .setSearchString, "e", .command),
         ] {
             item(find, title, #selector(NSTextView.performTextFinderAction(_:)), key, mods).tag = action.rawValue
         }
+        // NSTextFinder has no action of its own for it: a tag of the find pill's.
+        item(find, "Use Selection for Replace", #selector(NSTextView.performTextFinderAction(_:)), "e", [.command, .shift]).tag = FindHost.useForReplace
         find.addItem(.separator())
         item(find, "Find in Files…", #selector(MainWindowController.findInFiles(_:)), "f", [.command, .shift])
         let findItem = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
@@ -364,8 +367,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Show Previous Workspace", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
         item(window, "Switch to Recent Workspace", #selector(MainWindowController.walkTabs(_:)), "\t", [.control])
         item(window, "Switch to Recent Workspace, Backward", #selector(MainWindowController.walkTabsBack(_:)), "\t", [.control, .shift])
-        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "e", [.command])
-        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "e", [.command, .shift])
+        // ⌘`, as macOS cycles an app's windows: here, a stack's sheets (and,
+        // with no stack, the windows).
+        item(window, "Switch Stack", #selector(MainWindowController.walkStack(_:)), "`", [.command])
+        item(window, "Switch Stack, Backward", #selector(MainWindowController.walkStackBack(_:)), "`", [.command, .shift])
         for n in 1...9 {
             item(window, n == 9 ? "Select Last Workspace" : "Select Workspace \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
