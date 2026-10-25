@@ -34,7 +34,7 @@ final class HoverCard: NSObject {
     private override init() {
         super.init()
         Flat.float(box)
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        title.font = UIType.title
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingMiddle
         detail.font = .systemFont(ofSize: 11.5)

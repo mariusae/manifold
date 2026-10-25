@@ -106,26 +106,22 @@ final class SummaryCard: NSView {
         let s = content.summary
         if inTile { Theme.windowBackground.setFill(); bounds.fill() }
         let card = inTile ? bounds : bounds.insetBy(dx: 1, dy: 1)
-        let path = NSBezierPath(roundedRect: card, xRadius: 10, yRadius: 10)
+        let path = NSBezierPath(roundedRect: card, xRadius: Radius.surface, yRadius: Radius.surface)
         if !plain {
         NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
-        shadow.shadowBlurRadius = 4
-        shadow.shadowOffset = NSSize(width: 0, height: -1)
-        shadow.set()
+        Elevation.resting.shadow.set()
         Self.fill.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
         if chosen {
             Theme.accent.withAlphaComponent(0.08).setFill()
             path.fill()
-            let ring = NSBezierPath(roundedRect: card.insetBy(dx: 0.75, dy: 0.75), xRadius: 9.5, yRadius: 9.5)
+            let ring = NSBezierPath(roundedRect: card.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.surface - 0.5, yRadius: Radius.surface - 0.5)
             ring.lineWidth = 1.5
             Theme.accent.setStroke()
             ring.stroke()
         } else {
-            Theme.text.withAlphaComponent(0.14).setStroke()
+            EdgeColor.subtle.setStroke()
             path.lineWidth = 0.5
             path.stroke()
         }
@@ -138,11 +134,11 @@ final class SummaryCard: NSView {
             let w = min(h * thumb.size.width / thumb.size.height, card.width * 0.32)
             let r = NSRect(x: card.maxX - 10 - w, y: card.minY + 10, width: w, height: h)
             NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).addClip()
+            NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).addClip()
             thumb.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             NSGraphicsContext.restoreGraphicsState()
             Theme.text.withAlphaComponent(0.12).setStroke()
-            let border = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
+            let border = NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control)
             border.lineWidth = 0.5
             border.stroke()
             right = r.minX - 10
@@ -154,9 +150,9 @@ final class SummaryCard: NSView {
             return
         }
         // The symbol, the title, where it is; the note at the right.
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: UIType.symbolSize, weight: .medium)
             .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.secondaryText]))
-        if let image = NSImage(systemSymbolName: content.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(content.symbol, size: 13) {
+        if let image = NSImage(systemSymbolName: content.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(content.symbol, size: UIType.symbolSize) {
             let size = image.size
             image.draw(in: NSRect(x: x, y: top + 9 - size.height / 2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             x += 22
@@ -171,15 +167,15 @@ final class SummaryCard: NSView {
         }
         var noteWidth: CGFloat = 0
         if let note = s.note {
-            let n = NSAttributedString(string: note, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: toneColor(s.tone)])
+            let n = NSAttributedString(string: note, attributes: [.font: UIType.detail, .foregroundColor: toneColor(s.tone)])
             noteWidth = n.size().width
             n.draw(at: NSPoint(x: titleRight - noteWidth, y: top + 1))
             noteWidth += 10
         }
         let titleRoom = titleRight - noteWidth - x
-        let title = NSMutableAttributedString(string: s.title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Theme.text])
+        let title = NSMutableAttributedString(string: s.title, attributes: [.font: UIType.title, .foregroundColor: Theme.text])
         if let place = s.place, !place.isEmpty {
-            title.append(NSAttributedString(string: "  " + place, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: Theme.tertiaryText]))
+            title.append(NSAttributedString(string: "  " + place, attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText]))
         }
         title.draw(with: NSRect(x: x, y: top, width: max(0, titleRoom), height: 18), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
         // Its lines, under the title, set in from the symbol.
@@ -194,13 +190,13 @@ final class SummaryCard: NSView {
         style.lineBreakMode = .byTruncatingTail
         var noteWidth: CGFloat = 0
         if note, let n = s.note {
-            let a = NSAttributedString(string: n, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: toneColor(s.tone)])
+            let a = NSAttributedString(string: n, attributes: [.font: UIType.detail, .foregroundColor: toneColor(s.tone)])
             noteWidth = a.size().width + 10
             a.draw(at: NSPoint(x: right - a.size().width, y: top + 1))
         }
         for (i, line) in s.lines.prefix(max(0, min(3, room))).enumerated() {
             let a = NSAttributedString(string: line, attributes: [
-                .font: s.code ? FontTheme.code(11.5) : NSFont.systemFont(ofSize: 12), .foregroundColor: i == 0 ? Theme.text.withAlphaComponent(0.85) : Theme.secondaryText,
+                .font: s.code ? FontTheme.code(11.5) : UIType.body, .foregroundColor: i == 0 ? Theme.text.withAlphaComponent(0.85) : Theme.secondaryText,
                 .paragraphStyle: style,
             ])
             let r = i == 0 ? right - noteWidth : right
@@ -213,9 +209,9 @@ final class SummaryCard: NSView {
         if let p = s.progress {
             let track = NSRect(x: card.minX + pad, y: card.maxY - 5, width: card.width - 2 * pad, height: 2)
             Theme.text.withAlphaComponent(0.1).setFill()
-            NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: track, xRadius: Radius.hair, yRadius: Radius.hair).fill()
             Theme.accent.setFill()
-            NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: track.width * CGFloat(max(0, min(1, p))), height: 2), xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: track.width * CGFloat(max(0, min(1, p))), height: 2), xRadius: Radius.hair, yRadius: Radius.hair).fill()
         }
     }
 }
@@ -285,7 +281,7 @@ final class StackColumnView: NSView {
         layoutSubtreeIfNeeded()
         alphaValue = 0
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
+            ctx.duration = Motion.fast
             animator().alphaValue = 1
         }
         for (i, c) in cards.enumerated() {
@@ -298,10 +294,10 @@ final class StackColumnView: NSView {
             fade.toValue = 1
             let g = CAAnimationGroup()
             g.animations = [deal, fade]
-            g.duration = 0.24
+            g.duration = Motion.spatial
             g.beginTime = CACurrentMediaTime() + Double(i) * 0.025
             g.fillMode = .backwards
-            g.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+            g.timingFunction = Motion.travel
             l.add(g, forKey: "deal")
         }
         reveal(selection)
@@ -336,7 +332,7 @@ final class StackColumnView: NSView {
             cards[i].chosen = true
         }
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.12
+            ctx.duration = Motion.fast
             animator().alphaValue = 0
         }, completionHandler: done)
     }

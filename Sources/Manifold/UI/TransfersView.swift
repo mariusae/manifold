@@ -207,7 +207,7 @@ final class TransfersBadge: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 12
+        layer?.cornerRadius = Radius.surface
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         themed {

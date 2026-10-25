@@ -47,7 +47,7 @@ final class ToastView: NSView {
         hideWork = nil
         guard !isHidden else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.25
+            ctx.duration = Motion.fast
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             self?.isHidden = true

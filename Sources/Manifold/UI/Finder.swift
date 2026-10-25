@@ -314,7 +314,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 22, weight: .regular)
+        field.font = UIType.display
         field.placeholderString = "Find anything…"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
@@ -740,8 +740,9 @@ final class FileCell: NSTableCellView {
     private var level = 0
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
-    private static let titleFont = NSFont.systemFont(ofSize: 14, weight: .medium)
-    private static let detailFont = NSFont.systemFont(ofSize: 12)
+    // As a summary card sets them, a file's row and a block's alike.
+    private static let titleFont = UIType.title
+    private static let detailFont = UIType.detail
 
     /// A symbol's image, made once.
     static func image(_ name: String) -> NSImage {
@@ -756,13 +757,13 @@ final class FileCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
-        symbol.symbolConfiguration = .init(pointSize: 16, weight: .regular)
+        symbol.symbolConfiguration = .init(pointSize: UIType.symbolSize, weight: .medium)
         symbol.contentTintColor = Theme.secondaryText
         title.font = Self.titleFont
         title.textColor = Theme.text
         detail.font = Self.detailFont
         detail.textColor = Theme.secondaryText
-        note.font = .systemFont(ofSize: 11)
+        note.font = UIType.detail
         note.textColor = Theme.tertiaryText
         note.alignment = .right
         for field in [title, detail, note] {
@@ -857,17 +858,17 @@ final class ExcerptCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
-        symbol.symbolConfiguration = .init(pointSize: 15, weight: .regular)
+        symbol.symbolConfiguration = .init(pointSize: UIType.symbolSize, weight: .medium)
         symbol.contentTintColor = Theme.secondaryText
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1
-        detail.font = .systemFont(ofSize: 11, weight: .medium)
+        detail.font = UIType.caption
         detail.textColor = Theme.tertiaryText
         detail.lineBreakMode = .byTruncatingMiddle
         excerpt.maximumNumberOfLines = 2
         excerpt.lineBreakMode = .byTruncatingTail
         excerpt.cell?.truncatesLastVisibleLine = true
-        note.font = .systemFont(ofSize: 11)
+        note.font = UIType.detail
         note.textColor = Theme.tertiaryText
         note.alignment = .right
         for v in [symbol, title, detail, excerpt, note] { addSubview(v) }
@@ -892,11 +893,11 @@ final class ExcerptCell: NSTableCellView {
 
     func show(_ item: FinderItem, excerpt text: String) {
         symbol.image = FileCell.image(item.symbol)
-        title.attributedStringValue = Self.marking(item.title, item.marked, font: .systemFont(ofSize: 14, weight: .semibold),
-                                                   bold: .systemFont(ofSize: 14, weight: .bold), color: Theme.text)
+        title.attributedStringValue = Self.marking(item.title, item.marked, font: UIType.title,
+                                                   bold: .systemFont(ofSize: 13, weight: .bold), color: Theme.text)
         detail.stringValue = item.detail.uppercased()
-        excerpt.attributedStringValue = Self.marking(text, item.marked, font: .systemFont(ofSize: 12.5),
-                                                     bold: .systemFont(ofSize: 12.5, weight: .semibold), color: Theme.secondaryText)
+        excerpt.attributedStringValue = Self.marking(text, item.marked, font: UIType.body,
+                                                     bold: .systemFont(ofSize: 12, weight: .semibold), color: Theme.secondaryText)
         note.stringValue = item.note
         needsLayout = true
     }

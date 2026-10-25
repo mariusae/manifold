@@ -187,7 +187,7 @@ final class LinkBadge: NSView {
                 badge.frame = first
             } else {
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.16
+                    ctx.duration = Motion.base
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                     badge.animator().frame = first
                 }
@@ -205,7 +205,7 @@ final class LinkBadge: NSView {
                     p.frame = first
                     p.isHidden = false
                     NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = 0.16
+                        ctx.duration = Motion.base
                         ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                         p.animator().frame = target
                     }
@@ -214,7 +214,7 @@ final class LinkBadge: NSView {
                 }
             } else if !p.isHidden {
                 NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.12
+                    ctx.duration = Motion.fast
                     p.animator().frame = first
                 }, completionHandler: { [weak self, weak p] in
                     guard let self, let p, !self.fanned else { return }

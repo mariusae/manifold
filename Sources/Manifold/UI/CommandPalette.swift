@@ -155,7 +155,7 @@ final class PaletteRowView: NSView {
         super.init(frame: .zero)
         icon.image = Theme.symbol(item.symbol, size: 13)
         title.stringValue = item.title
-        title.font = .systemFont(ofSize: 13.5)
+        title.font = UIType.row
         title.lineBreakMode = .byTruncatingTail
         subtitle.stringValue = item.subtitle
         subtitle.font = .systemFont(ofSize: 12)

@@ -319,13 +319,10 @@ final class GraphCanvas: NSView {
         for n in model.nodes {
             guard let r = rect(of: n.id) else { continue }
             let isCenter = n.id == model.center
-            let path = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.surface, yRadius: Radius.surface)
             NSGraphicsContext.saveGraphicsState()
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(isCenter ? 0.18 : 0.1)
-            shadow.shadowBlurRadius = isCenter ? 8 : 4
-            shadow.shadowOffset = NSSize(width: 0, height: 1.5)
-            shadow.set()
+            // Resting on the map, the light from above, as every card's.
+            Elevation.resting.shadow.set()
             (n.id == focus ? Theme.selected : n.isArrangement ? Theme.sheet(level: 1) : Theme.windowBackground).setFill()
             path.fill()
             NSGraphicsContext.restoreGraphicsState()

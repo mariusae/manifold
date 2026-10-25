@@ -116,7 +116,7 @@ final class GridView: NSView, NSDraggingSource {
     /// pill costs more to make than to show again.
     private var sparePills: [PlacementID: TilePill] = [:]
     /// How long a tile takes to glide to a new place or size.
-    static let glide: TimeInterval = 0.18
+    static let glide: TimeInterval = Motion.base
     /// Debugging: grid layouts so far (the debug "layouts").
     static var layouts = 0
     private var columnDividers: [DividerView] = []
@@ -924,10 +924,7 @@ final class GridView: NSView, NSDraggingSource {
         while shadowLayers.count < wanted.count {
             let l = CAShapeLayer()
             l.zPosition = -10
-            l.shadowColor = NSColor.black.cgColor
-            l.shadowOpacity = 0.10
-            l.shadowRadius = 10
-            l.shadowOffset = CGSize(width: 0, height: -4)
+            Elevation.tile.apply(to: l)
             layer?.insertSublayer(l, at: 0)
             shadowLayers.append(l)
         }
@@ -1646,10 +1643,10 @@ final class GridView: NSView, NSDraggingSource {
             fade.toValue = 1
             let group = CAAnimationGroup()
             group.animations = [drop, fade]
-            group.duration = 0.28
+            group.duration = Motion.spatial
             group.beginTime = CACurrentMediaTime() + Double(level - 1) * 0.05
             group.fillMode = .backwards
-            group.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.15)
+            group.timingFunction = Motion.settle
             l.add(group, forKey: "drop")
         }
     }
@@ -1916,11 +1913,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
-        name.font = .systemFont(ofSize: 12.5, weight: .semibold)
+        name.font = UIType.title
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         name.alignment = .left
-        subtitle.font = .systemFont(ofSize: 11.5)
+        subtitle.font = UIType.detail
         subtitle.textColor = Theme.secondaryText
         subtitle.lineBreakMode = .byTruncatingMiddle
         close.target = self
@@ -2724,7 +2721,7 @@ final class StackPeek: NSView {
         let end = frame
         setFrameOrigin(NSPoint(x: end.minX, y: end.minY + (below ? 6 : -6)))
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.14
+            ctx.duration = Motion.base
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animator().alphaValue = 1
             animator().setFrameOrigin(end.origin)
@@ -2733,7 +2730,7 @@ final class StackPeek: NSView {
 
     func fall() {
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.1
+            ctx.duration = Motion.fast
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in self?.removeFromSuperview() })
     }
@@ -2789,13 +2786,9 @@ final class StackPeek: NSView {
         // Farthest first, so the nearer tabs overlap the ones behind them.
         for (i, t) in labels.enumerated().reversed() {
             let r = tabRect(i)
-            let path = NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7)
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.surface, yRadius: Radius.surface)
             NSGraphicsContext.saveGraphicsState()
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
-            shadow.shadowBlurRadius = 3
-            shadow.shadowOffset = NSSize(width: 0, height: -1)
-            shadow.set()
+            Elevation.resting.shadow.set()
             Theme.sheet(level: i + 1).setFill()
             path.fill()
             NSGraphicsContext.restoreGraphicsState()
@@ -2819,7 +2812,7 @@ final class StackPeek: NSView {
                 image.draw(in: NSRect(x: x, y: r.midY - size.height / 2, width: size.width, height: size.height))
                 x += size.width + 6
             }
-            let label = NSAttributedString(string: t.title, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: Theme.text])
+            let label = NSAttributedString(string: t.title, attributes: [.font: UIType.caption, .foregroundColor: Theme.text])
             let room = r.maxX - 10 - x
             let size = label.size()
             label.draw(with: NSRect(x: x, y: r.midY - size.height / 2, width: max(0, room), height: size.height), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])

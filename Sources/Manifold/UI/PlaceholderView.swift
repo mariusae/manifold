@@ -48,7 +48,7 @@ final class PlaceholderView: NSView, PaneContent {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self, self.window != nil else { return }
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
+                ctx.duration = Motion.base
                 for v in [self.title, self.note, self.button] as [NSView] { v.animator().alphaValue = 1 }
             }
         }

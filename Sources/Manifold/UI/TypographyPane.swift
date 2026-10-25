@@ -115,7 +115,7 @@ final class TypographyPane: SettingsPane {
         // On a card of its own, a little in from its edges.
         let card = NSView()
         card.wantsLayer = true
-        card.layer?.cornerRadius = 8
+        card.layer?.cornerRadius = Radius.surface
         card.themed { $0.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor }
         card.addSubview(sample)
         NSLayoutConstraint.activate([

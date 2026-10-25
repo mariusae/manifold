@@ -269,7 +269,7 @@ final class ResizeHandleView: NSView {
 
     private func updatePill() {
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
+            ctx.duration = Motion.fast
             pill.animator().alphaValue = hovering || dragging ? 1 : 0
         }
     }
