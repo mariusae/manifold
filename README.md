@@ -223,7 +223,8 @@ and Mona Sans (bundled).
   Going somewhere new from back there drops what was forward, as in VS
   Code. ⌘[ and ⌘] are for what has a history of its own: a web page's,
   and a folder tile's (the folders it showed, as a Finder window's Back
-  goes); the mouse's buttons go there first in such a tile.
+  goes); the mouse's buttons go there first in such a tile. A web page
+  zooms with ⌘+ and ⌘− in Safari's steps (50% to 300%), ⌘0 back.
 - **⌘\`** walks the workspaces most recently gone to first, each
   sliding in from the right (⇧⌘\` from the left), for as long as ⌘ is
   held; letting go settles on the one come to (with one workspace, it

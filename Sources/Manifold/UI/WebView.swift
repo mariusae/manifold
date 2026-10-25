@@ -256,6 +256,13 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     @objc func reloadPage(_ sender: Any?) { web.reload() }
     @objc func stopLoading(_ sender: Any?) { web.stopLoading() }
 
+    /// ⌘+, ⌘−, ⌘0: the page zoomed a step, as Safari steps it, or back.
+    private static let zooms: [CGFloat] = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3]
+    @objc func increaseFontSize(_ sender: Any?) { web.pageZoom = Self.zooms.first { $0 > web.pageZoom + 0.001 } ?? web.pageZoom }
+    @objc func decreaseFontSize(_ sender: Any?) { web.pageZoom = Self.zooms.last { $0 < web.pageZoom - 0.001 } ?? web.pageZoom }
+    @objc func resetFontSize(_ sender: Any?) { web.pageZoom = 1 }
+    var debugZoom: CGFloat { web.pageZoom }
+
     private var watching: [NSKeyValueObservation] = []
 
     /// Back, forward, and reload — stop, while it loads — on its bar.
