@@ -337,6 +337,7 @@ around it, and comes back with its history.
   block running Claude Code, Codex or another known agent answers to
   "claude", "codex" as surely as to its own title, and says so
   ("Terminal in ~/src · Claude Code").
+- **Help ▸ Search** finds any menu command by name, as in every Mac app.
 - **⌘O finds anything** the host keeps. What the query *names* comes
   first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in

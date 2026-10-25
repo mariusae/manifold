@@ -391,6 +391,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(window, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "n", [.command, .option])
         NSApp.windowsMenu = window
 
+        // Help: the system's search over every menu command (it puts the
+        // field in itself), for an app with some ninety of them.
+        NSApp.helpMenu = submenu(main, "Help")
+
         return main
     }
 
