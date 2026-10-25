@@ -3181,6 +3181,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// is more than one, each expanding to its tiles in order (by column,
     /// top to bottom), the selected one open and the focused tile marked:
     /// the table of contents of the screen.
+    /// A workspace's rows as they're listed: each run of a tile and those
+    /// behind it in its column (in a run, as listed) sharing a ground.
+    private static func markStacks(_ rows: [OrgNode]) {
+        var i = 0
+        while i < rows.count {
+            var j = i + 1
+            while j < rows.count, rows[j].behind, rows[j].column == rows[i].column, rows[j].style == .row { j += 1 }
+            if j - i > 1 || rows[i].behind {
+                for k in i..<j { rows[k].stack = SelectionRowView.Grouped(first: k == i, last: k == j - 1) }
+            }
+            i = j
+        }
+    }
+
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
         func workspace(_ id: BlockID) -> OrgNode? {
@@ -3191,7 +3205,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             var tiles: [OrgNode] = []
             let pinned = pins(of: id).map(\.to)
             for (c, column) in a.columns.enumerated() {
-                for p in column {
+                // A stack's tiles under its top, nearest first, as it fans
+                // (any stashed before the column's first shown tile are its).
+                let lead = column.prefix { a.isStashed($0.id) }
+                var ordered = Array(column.dropFirst(lead.count))
+                if !ordered.isEmpty { ordered.insert(contentsOf: lead, at: 1) } else { ordered = Array(lead) }
+                for p in ordered {
                     let b = hosts.block(p.block)
                     // An untitled note by its first words, as its links name it.
                     let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
@@ -3208,7 +3227,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.dirty = b?.text?.isDirty == true
                     n.stale = b?.text?.stale == true
                     n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
-                    if a.isStashed(p.id) { n.detailSymbol = "tray.and.arrow.down" } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
+                    if a.isStashed(p.id) { n.behind = true } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
                     n.trailing = StatusGlyph.at(of: b).map(Age.short)
                     n.arrangement = id
@@ -3243,6 +3262,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     tiles = top + (rest.isEmpty ? [] : [rule]) + rest
                 }
             }
+            Self.markStacks(tiles)
             let titleMatches = matches(filter, [title(of: a)])
             guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }

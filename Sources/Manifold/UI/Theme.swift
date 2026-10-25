@@ -238,6 +238,11 @@ final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
+    /// One of a run of rows sharing a faint ground (a stack's tiles in the
+    /// sidebar): rounded at the first's top and the last's bottom.
+    struct Grouped: Equatable { var first: Bool; var last: Bool }
+    var grouped: Grouped? { didSet { if grouped != oldValue { needsDisplay = true } } }
+    private static let groundColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.035), NSColor(white: 1, alpha: 0.04))
     override var isFloating: Bool { didSet { needsDisplay = true } }
     /// Under the pointer: one row at a time, in every list — a row taking
     /// it takes it from the last. Rows are reused and move under a still
@@ -298,6 +303,21 @@ final class SelectionRowView: NSTableRowView {
         if isGroupRowStyle, isFloating {
             Theme.windowBackground.setFill()
             bounds.fill()
+        }
+        if let g = grouped {
+            // Square where it runs on into the next row: the rounded rect
+            // carried past that edge, and cut there.
+            let reach = Flat.radius * 2
+            // Its top and bottom edges, as the run reads (flipped or not).
+            let (low, high) = isFlipped ? (g.first, g.last) : (g.last, g.first)
+            let minY = low ? bounds.minY + 1 : bounds.minY - reach
+            let maxY = high ? bounds.maxY - 1 : bounds.maxY + reach
+            let r = NSRect(x: bounds.minX + 6, y: minY, width: bounds.width - 12, height: maxY - minY)
+            NSGraphicsContext.saveGraphicsState()
+            bounds.clip()
+            Self.groundColor.setFill()
+            NSBezierPath(roundedRect: r, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+            NSGraphicsContext.restoreGraphicsState()
         }
         if hovered, !isSelected, !isGroupRowStyle {
             Flat.hovered.setFill()

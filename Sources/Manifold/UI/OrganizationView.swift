@@ -57,6 +57,10 @@ final class OrgNode {
     /// Not on any workspace now (Files): after the ones that are, in a
     /// dimmer face.
     var dimmed = false
+    /// In a stack (on the desk): its rows share a faint ground, the top's
+    /// first; and one behind the top, set in and dimmer, as out of sight.
+    var stack: SelectionRowView.Grouped?
+    var behind = false
     /// What the block is doing (§3.7), shown as a glyph.
     var look: StatusGlyph.Look?
     /// A text edited and unsaved: a dot after the name, as on its bar —
@@ -119,7 +123,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale && image === o.image
+            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && behind == o.behind
     }
 
     /// Takes another's values (the same row made again), its children
@@ -128,7 +132,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale; image = o.image
+        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; behind = o.behind
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -391,7 +395,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
         let v = SelectionRowView()
         // The current workspace's label wears a bar at its left edge.
-        if let n = item as? OrgNode { v.marked = n.style == .section && n.emphasis && n.arrangement != nil }
+        if let n = item as? OrgNode {
+            v.marked = n.style == .section && n.emphasis && n.arrangement != nil
+            v.grouped = n.stack
+        }
         return v
     }
 
@@ -735,6 +742,7 @@ final class OrgRowView: NSTableCellView {
     private var node: OrgNode?
     /// Set by the outline: flat rows have two lines when there's a detail.
     var flat = false
+    private static let behindInset: CGFloat = 12
     private let tipOwner = LiveTip()
     private var liveTipTag: NSView.ToolTipTag?
 
@@ -797,7 +805,7 @@ final class OrgRowView: NSTableCellView {
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-            name.textColor = node.dimmed ? Theme.secondaryText : Theme.text
+            name.textColor = node.dimmed || node.behind ? Theme.secondaryText : Theme.text
         }
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {
@@ -808,7 +816,9 @@ final class OrgRowView: NSTableCellView {
         }
         icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
-        icon.alphaValue = node.dimmed ? 0.6 : 1
+        icon.alphaValue = node.dimmed || node.behind ? 0.6 : 1
+        // Its row's ground, if it's in a stack (a row reused keeps the last).
+        (superview as? SelectionRowView)?.grouped = node.stack
         count.stringValue = node.count.map { "\($0)" } ?? ""
         count.isHidden = node.count == nil
         detail.stringValue = node.detail
@@ -829,6 +839,11 @@ final class OrgRowView: NSTableCellView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         placeLiveTip()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if let node { (superview as? SelectionRowView)?.grouped = node.stack }
     }
 
     /// The live tooltip's rect is the row's, kept so as it resizes.
@@ -888,7 +903,8 @@ final class OrgRowView: NSTableCellView {
         if let node, flat, node.style == .row, !detail.isHidden {
             // Two lines: the name with the status at its right, then what
             // the status says beneath, aligned with the name.
-            icon.frame = NSRect(x: 2, y: h - 20 + 1, width: 16, height: 14)
+            let ix: CGFloat = node.behind ? Self.behindInset : 0
+            icon.frame = NSRect(x: 2 + ix, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4
             if !count.isHidden {
                 let w = count.wantedWidth
@@ -896,8 +912,8 @@ final class OrgRowView: NSTableCellView {
                 right -= w + 6
             }
             statusAtRight(&right, y: h - 21)
-            name.frame = NSRect(x: 22, y: h - 21, width: max(0, right - 22), height: 17)
-            var x: CGFloat = 22
+            name.frame = NSRect(x: 22 + ix, y: h - 21, width: max(0, right - 22 - ix), height: 17)
+            var x: CGFloat = 22 + ix
             if !detailIcon.isHidden {
                 detailIcon.frame = NSRect(x: x, y: 4.5, width: 13, height: 12)
                 x += 16
@@ -908,7 +924,9 @@ final class OrgRowView: NSTableCellView {
             detailIcon.alphaValue = 1
             return
         }
-        icon.frame = NSRect(x: 2, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
+        // One behind its stack's top: set in.
+        let ix: CGFloat = node?.behind == true ? Self.behindInset : 0
+        icon.frame = NSRect(x: 2 + ix, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
         var right = bounds.width - 4
         if !count.isHidden {
             let w = count.wantedWidth
@@ -916,16 +934,16 @@ final class OrgRowView: NSTableCellView {
             right -= w + 6
         }
         statusAtRight(&right, y: (h - 17) / 2)
-        let nameWidth = max(0, right - 22)
+        let nameWidth = max(0, right - 22 - ix)
         if detail.isHidden {
-            name.frame = NSRect(x: 22, y: (h - 17) / 2, width: nameWidth, height: 17)
+            name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth, height: 17)
         } else {
             let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? NSFont.systemFont(ofSize: 13)]).width) + 4
             // The name whole whenever it fits; the detail gets what's left,
             // and goes when that's too little to say anything.
             let nw = min(wanted, nameWidth)
-            name.frame = NSRect(x: 22, y: (h - 17) / 2, width: nw, height: 17)
-            var x = 22 + nw + 6
+            name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nw, height: 17)
+            var x = 22 + ix + nw + 6
             var dw = nameWidth - nw - 6
             if !detailIcon.isHidden {
                 detailIcon.frame = NSRect(x: x, y: (h - 12) / 2, width: 13, height: 12)

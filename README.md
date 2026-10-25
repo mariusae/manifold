@@ -47,8 +47,11 @@ and Mona Sans (bundled).
   list over the tree, the header showing a back button, the list's
   name and what it holds, as Safari's Bookmarks does; neither is in
   the tree itself. Under **Workspaces**, the sidebar is
-  the table of contents of the screen:
-  click a tile to focus it, a workspace to go to it, double-click
+  the table of contents of the screen: a workspace's tiles in order,
+  a stack's tiles together under its top — nearest first, as it fans,
+  those behind set in and a step dimmer, the stack's rows on one faint
+  rounded ground. Click a tile to focus it (one behind comes to the top
+  of its stack), a workspace to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
   to bring it in beside, onto a workspace for its active column, or
   between workspaces for one of its own, and drag workspaces to
