@@ -200,9 +200,12 @@ extension Block {
         return values.prefix(3).map { "\($0.0): \($0.1)" }
     }
 
-    /// A line as it fits on one: whitespace run together, cut at a length.
+    /// A line as it fits on one: a terminal's escapes taken out, whitespace
+    /// run together, cut at a length.
     static func oneLine(_ s: String, max: Int = 140) -> String {
-        let flat = s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let plain = s.replacingOccurrences(of: #"\x{1B}(\][^\x{07}\x{1B}]*(\x{07}|\x{1B}\\)?|\[[0-?]*[ -/]*[@-~]|.)|[\x{00}-\x{08}\x{0E}-\x{1F}\x{7F}]"#,
+                                           with: "", options: .regularExpression)
+        let flat = plain.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return flat.count > max ? String(flat.prefix(max - 1)) + "…" : flat
     }
 }

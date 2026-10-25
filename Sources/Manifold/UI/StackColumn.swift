@@ -18,6 +18,9 @@ struct SummaryCardContent {
 final class SummaryCard: NSView {
     let content: SummaryCardContent
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
+    /// Set in something that's a card already (a hover card): no card of
+    /// its own drawn, only what it says.
+    var plain = false
     static let height: CGFloat = 88
 
     init(_ content: SummaryCardContent) {
@@ -46,6 +49,7 @@ final class SummaryCard: NSView {
         let s = content.summary
         let card = bounds.insetBy(dx: 1, dy: 1)
         let path = NSBezierPath(roundedRect: card, xRadius: 10, yRadius: 10)
+        if !plain {
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
@@ -66,6 +70,7 @@ final class SummaryCard: NSView {
             Theme.text.withAlphaComponent(0.14).setStroke()
             path.lineWidth = 0.5
             path.stroke()
+        }
         }
         let pad: CGFloat = 12
         // A picture at the right, its corners rounded.

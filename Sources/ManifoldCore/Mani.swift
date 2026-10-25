@@ -71,17 +71,20 @@ public enum Mani {
              summary: "List the workspace's tiles: what each shows, where",
              details: """
                  The shown workspace's tiles, a row each: number, block id, kind,
-                 title, and the names it answers to from here. With --json, the
+                 title, and the names it answers to from here, and under it the
+                 tile in a line (its summary: a terminal's last command and how it
+                 ended, a note's first lines). With --json, the
                  whole layout: columns of tiles, each with its block, kind, title,
                  path, frame (x, y, width, height as shares of the window, from
                  the top left), the tiles sharing each of its edges (adjacent),
-                 the names it answers to, and the tiles stacked under it.
+                 the names it answers to, its summary (title, place, lines, note,
+                 tone), and the tiles stacked under it.
                  """, inApp: true),
         Verb(words: ["info"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Describe a block, as JSON",
              details: """
                  A block: its id, kind, title, path, working directory, status,
-                 where it's shown, its links, its outline. For @selection, where
+                 where it's shown, its summary, its links, its outline. For @selection, where
                  the selection is (block, path, lines, page).
                  """, inApp: true),
         Verb(words: ["read"], args: "<name>", minArgs: 1, maxArgs: 1,
@@ -287,7 +290,8 @@ public enum Mani {
               commands and how they ended, unsaved files. Start here when unsure.
             - `mani ls --json` — every tile: its block id, kind, title, path, frame (x, y, width,
               height as shares of the window, from the top left), the tiles on each edge
-              (adjacent), the names it answers to (@left, @2, …), what's stacked under it.
+              (adjacent), the names it answers to (@left, @2, …), a summary of each (its
+              last command and how it ended, its first lines), what's stacked under it.
             - `mani read <name>` — what a block holds, as text; `mani info <name>` — about it (JSON).
 
             ## Naming

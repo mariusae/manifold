@@ -3766,6 +3766,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private lazy var finder: Finder = {
         let f = Finder()
+        // The chosen row's block: its card beside the list, at once.
+        f.onSelect = { [weak self, weak f] item in
+            guard let self, let f, let window = self.window else { return }
+            guard let id = item?.block, f.isShowing else { return HoverCard.shared.hide() }
+            let rect = window.convertFromScreen(f.panelFrame)
+            self.showBlockCard(id, beside: rect, in: window, under: true, delay: 0.08)
+        }
         f.search = { [weak self] query, scope in
             guard let self else { return [] }
             switch scope {
@@ -3909,7 +3916,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                         self.warpPointerToFocus()
                                     },
                                     excerpt: Self.excerpt(matches), marked: query,
-                                    drag: { Drags.block?(block, Drags.modifiers) }))
+                                    drag: { Drags.block?(block, Drags.modifiers) }, block: block))
             if items.count >= 100 { break }
         }
         // Agents' turns: what was asked and what each said.
@@ -5490,11 +5497,20 @@ extension MainWindowController: GridDelegate {
     /// window has — a terminal's last lines on its screen, a picture of a
     /// page or a PDF as it was last seen.
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent? {
-        guard let p = arrangement?.placement(placement), let b = hosts.block(p.block) else { return nil }
+        guard let p = arrangement?.placement(placement) else { return nil }
+        return cardContent(for: p.block, view: views[placement], id: placement)
+    }
+
+    /// A block's summary card: its summary, and what only the window has —
+    /// a terminal's last lines on its screen, a picture of a page or a PDF
+    /// as it was last seen. `view`: its tile's, if it has one shown.
+    func cardContent(for block: BlockID, view: PaneContent? = nil, id: PlacementID = "") -> SummaryCardContent? {
+        guard let b = hosts.block(block) else { return nil }
+        let view = view ?? views.values.first { $0.block == block }
         var s = b.summary()
         // A shell's screen says more than its command: its last lines (not
         // the prompt waiting at the end).
-        if let t = views[placement] as? TerminalView, b.terminal?.turns?.isEmpty ?? true {
+        if let t = view as? TerminalView, b.terminal?.turns?.isEmpty ?? true {
             var screen = t.visibleText.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             // The prompt waiting at the end, and every line that begins with
             // it — the prompt again, or a command the card says already.
@@ -5507,9 +5523,9 @@ extension MainWindowController: GridDelegate {
         s.place = s.place.map { $0.abbreviatingHome }
         var thumbnail: NSImage?
         if s.wantsThumbnail {
-            thumbnail = tilePictures[b.id] ?? views[placement].flatMap { HoverCard.picture(of: $0, evenHidden: true) }
+            thumbnail = tilePictures[b.id] ?? view.flatMap { HoverCard.picture(of: $0, evenHidden: true) }
         }
-        return SummaryCardContent(id: placement, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+        return SummaryCardContent(id: id, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
     }
 
     func gridFocus(_ placement: PlacementID) { focus(placement) }
@@ -7398,7 +7414,14 @@ extension MainWindowController: OrganizationViewDelegate {
                                   beside: rect, in: window)
             return
         }
-        guard let node, let id = node.block, let b = hosts.block(id), let window else { return HoverCard.shared.hide() }
+        guard let node, let id = node.block, let window else { return HoverCard.shared.hide() }
+        showBlockCard(id, beside: rect, in: window)
+    }
+
+    /// A block's card beside a rect (a sidebar row, ⌘O's list): a picture
+    /// of its tile, or the block itself live, over its summary card.
+    func showBlockCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow, under: Bool = false, delay: TimeInterval = 0.45) {
+        guard let b = hosts.block(id) else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
         if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }
         if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }
@@ -7426,7 +7449,9 @@ extension MainWindowController: OrganizationViewDelegate {
         let key = id.description
         var picture: NSImage? = nil
         var lend: (() -> HoverCard.LiveLoan?)? = nil
-        if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
+        if under {
+            // Under ⌘O's list: the summary alone, its thumbnail for a picture.
+        } else if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
             switch shown {
             case let t as TerminalView:
                 picture = HoverCard.picture(of: t)
@@ -7457,7 +7482,11 @@ extension MainWindowController: OrganizationViewDelegate {
                 picture = kept
             }
         }
-        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture, lend: lend, beside: rect, in: window)
+        // Under it, the block in a few lines, as a stack's column has it
+        // (an arrangement, which has none, as it was).
+        let summary = b.kind == .arrangement ? nil : cardContent(for: id)
+        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture,
+                              summary: summary, lend: lend, beside: rect, in: window, under: under, delay: delay)
     }
 
     /// The block's own view, for a card to show live while the block is

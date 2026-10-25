@@ -27,3 +27,9 @@ import Testing
     #expect(diff.summary(now: now).lines == ["1 file, +2 −1", "x.swift"])
     #expect(BlockSummary.ago(at(10_000 - 7200), now: now) == "2h")
 }
+
+@Test func summaryLinesLeaveATerminalsEscapesOut() {
+    // Shell integration's marks and colors, as output captures them.
+    #expect(Block.oneLine("\u{1B}]133;C\u{07}\u{1B}[1;32mwait-test\u{1B}[0m \u{1B}]133;D;0\u{1B}\\") == "wait-test")
+    #expect(Block.oneLine("a\tb\r\n c") == "a b c")
+}

@@ -88,7 +88,12 @@ and Mona Sans (bundled).
   the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
-  on its own — the top dragged out, the next behind it shows. ⌥-click the top tile's own pill and it swaps with the next
+  on its own — the top dragged out, the next behind it shows.
+  The same summary is everywhere a block is shown small: a tile squeezed
+  down to its bar has its summary's line in the bar where the folder
+  was ("$ make test · exit 2 · 4m"); a sidebar row's hover card has it
+  under its picture; ⌘O shows the chosen row's card under the list;
+  `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
   behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
   the next behind that comes up, round the stack, the tiles passed
   staying where they were — letting go of ⌥ settles on the one come to
@@ -321,7 +326,8 @@ around it, and comes back with its history.
   Each row says at the right where the block
   is — here, linked, near, kept, or *recent* for one closed
   and not yet collected, which choosing brings back — and how long
-  since it was last seen. A
+  since it was last seen; the chosen block's summary card shows under
+  the list, as wide as it. A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host
@@ -836,7 +842,9 @@ around it, and comes back with its history.
   still running in it, an editor, a page, a notebook as they are, put
   back when the card goes (one with no view yet gets one made for the
   card, let go after); a block whose tile is on screen, a picture of
-  it, as Safari previews a tab. The card is drawn in the window, and
+  it, as Safari previews a tab — and under the picture, the block's
+  **summary card**, as a stack's column has it (its title, where it is,
+  when it last did something, its few lines). The card is drawn in the window, and
   goes when Manifold isn't in front;
   right-click for Go To, Show Beside, Show
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
@@ -1216,8 +1224,10 @@ is migrated into logs on first run.
     workspace); `--json` gives the whole layout — columns of tiles, each
     with its block, kind, title, path, frame (x, y, width, height as
     shares of the window), the tiles sharing each of its edges, the
-    names it answers to, and the tiles stacked under it. `mani info`
-    describes a block (its commands, links, outline); `mani read` prints
+    names it answers to, the tiles stacked under it, and its summary
+    (title, place, lines, note — what a summary card shows; `mani ls`
+    prints the lines under each tile). `mani info`
+    describes a block (its summary, commands, links, outline); `mani read` prints
     what it holds as text — a note's or file's text as it is now, saved
     or not, a terminal's screen (`--all`, its transcript; `--command -1`,
     its last command's output), a page's or PDF's text (`--pages`), a

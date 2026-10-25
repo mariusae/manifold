@@ -322,6 +322,7 @@ final class ManiDesk {
         if p.block.host != wc.host.host { out["host"] = hosts.label(of: p.block.host) }
         if p.block == scope.here { out["here"] = true }
         if p.id == layout.arrangement.focused { out["focused"] = true }
+        if let summary = summaryJSON(p.block, view: wc.views[p.id]) { out["summary"] = summary }
         guard deep else { return out }
         if let f = layout.frames[p.id] {
             out["frame"] = f.array.map(Self.decimal)
@@ -378,6 +379,7 @@ final class ManiDesk {
                 row[1] = row[1].padding(toLength: 9, withPad: " ", startingAt: 0)
                 row[2] = row[2].padding(toLength: 37, withPad: " ", startingAt: 0)
                 var lines = [row.joined(separator: "  ")]
+                if let summary = summaryLine(p.block, view: wc.views[id]) { lines.append("      " + String(summary.prefix(140))) }
                 for s in layout.stack(behind: id).compactMap({ a.placement($0) }) {
                     let sb = hosts.block(s.block)
                     lines.append("      under: \(kindName(sb, lens: s.lens)) \(sb?.displayTitle ?? "")  \(s.block)")
@@ -410,6 +412,7 @@ final class ManiDesk {
             if let cwd = b.terminal?.cwd ?? b.home { out["cwd"] = cwd }
             out["shown"] = false
         }
+        if out["summary"] == nil, let summary = summaryJSON(b.id, view: nil) { out["summary"] = summary }
         if let s = t.selection {
             var sel: [String: Any] = ["text": s.text]
             if let l = s.lines { sel["lines"] = [l.lowerBound, l.upperBound] }
@@ -441,6 +444,24 @@ final class ManiDesk {
         if let s = c.status { o["status"] = Int(s) }
         if c.isRunning { o["running"] = true }
         return o
+    }
+
+    /// A block's summary card, as JSON: title, place, lines, note, tone (and
+    /// progress) — the terminal's last screen lines, where it's shown.
+    private func summaryJSON(_ block: BlockID, view: PaneContent?) -> [String: Any]? {
+        guard let c = wc.cardContent(for: block, view: view), let data = try? JSONEncoder().encode(c.summary),
+              var o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        o.removeValue(forKey: "wantsThumbnail")
+        o.removeValue(forKey: "code")
+        if o["tone"] as? String == "plain" { o.removeValue(forKey: "tone") }
+        return o
+    }
+
+    /// A block's summary as a line: its lines and its note, run together.
+    private func summaryLine(_ block: BlockID, view: PaneContent?) -> String? {
+        guard let s = wc.cardContent(for: block, view: view)?.summary else { return nil }
+        let line = (s.lines.prefix(2) + [s.note].compactMap { $0 }).joined(separator: " · ")
+        return line.isEmpty ? nil : line
     }
 
     // MARK: Reading

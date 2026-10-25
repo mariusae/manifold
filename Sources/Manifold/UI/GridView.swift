@@ -1719,6 +1719,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var collapsed = false {
         didSet {
             guard collapsed != oldValue else { return }
+            if let shown = lastShown { updateSubtitle(shown) }
             glass.layer?.maskedCorners = collapsed
                 ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
                 : [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
@@ -2107,6 +2108,26 @@ final class TilePill: NSView, NSTextFieldDelegate {
             }
             name.toolTip = shown.isDirty ? (stale ? "Edited, and the file changed on disk — the menu says which to keep" : "Edited — ⌘S saves") : nil
         }
+        lastShown = shown
+        updateSubtitle(shown)
+        // From another host than the workspace's: the host in its pill.
+        if hostPill.host != shown.foreignHost { hostPill.host = shown.foreignHost; needsLayout = true }
+        showRest(shown, stashed: stashed, focused: focused)
+    }
+
+    /// What the bar was last shown for: its subtitle made again as the tile
+    /// collapses or opens.
+    private var lastShown: Shown?
+
+    /// After the name, in grey: where it is — or, the tile down to its bar,
+    /// what its summary card says first (a terminal's last command and how
+    /// it ended, a note's first line), its content being out of sight.
+    private func updateSubtitle(_ shown: Shown) {
+        if collapsed, let s = shown.block?.summary() {
+            let line = (s.lines.prefix(2) + [s.note].compactMap { $0 }).joined(separator: " · ")
+            if subtitle.stringValue != line { subtitle.stringValue = line; needsLayout = true }
+            return
+        }
         // Where it is, after the name, in grey: a folder, an address.
         let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""
         // Not when the name already says it (a terminal named for its
@@ -2115,9 +2136,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let tail = String(shown.title.drop(while: { $0 == "…" }))
         let said = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail))
         let where_ = said && shown.block?.web == nil ? "" : place
-        if subtitle.stringValue != where_ { subtitle.stringValue = where_ }
-        // From another host than the workspace's: the host in its pill.
-        if hostPill.host != shown.foreignHost { hostPill.host = shown.foreignHost; needsLayout = true }
+        if subtitle.stringValue != where_ { subtitle.stringValue = where_; needsLayout = true }
+    }
+
+    private func showRest(_ shown: Shown, stashed: Bool, focused: Bool) {
         if close.isHidden != stashed { close.isHidden = stashed }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
         if glyph.look != look { glyph.look = look }

@@ -19,6 +19,8 @@ struct FinderItem {
     /// Dragged out of the list: the block (to bring; with ⇧ its path and
     /// link), or the file.
     var drag: (() -> NSPasteboardWriting?)? = nil
+    /// The block it is, if one: its card shown beside the list while chosen.
+    var block: BlockID? = nil
 }
 
 /// Something to be found (§3.5): taken when the finder opens, and ranked
@@ -237,6 +239,11 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private var tallest = 0
     /// The scope or query changed: what's asked of a host can start.
     var onQueryChanged: ((String, Scope) -> Void)?
+    /// The row chosen, as it changes (nil: none, or the list gone): a
+    /// block's card shown beside the list.
+    var onSelect: ((FinderItem?) -> Void)?
+    /// Where the list is, on screen.
+    var panelFrame: NSRect { panel.frame }
     private(set) var scope: Scope = .names
     private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
     var isShowing: Bool { panel.isVisible }
@@ -462,7 +469,13 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
     func debugMove(_ by: Int) { move(by) }
 
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let row = table.selectedRow
+        onSelect?(row >= 0 && row < shown.count ? shown[row] : nil)
+    }
+
     func close() {
+        onSelect?(nil)
         listing += 1
         _ = generation.next()
         panel.orderOut(nil)
@@ -544,7 +557,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
             else if let path = c.path, c.action < 0 { drag = { Drags.path?(path, false, .local, Drags.modifiers) } }
             else { drag = nil }
-            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run, drag: drag)
+            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run, drag: drag, block: c.block)
         }
         if let first = special?(query) { items.insert(first, at: 0) }
         return items
