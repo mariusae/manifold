@@ -21,8 +21,9 @@ struct LinkCard: Equatable {
 /// readings at once). More than one, and the pill has sheets behind it,
 /// as a stack of paper; the pointer on it fans the rest out below.
 final class LinkBadge: NSView {
-    /// A link clicked: the block, and whether ⌥ was held (over the tile).
-    var onOpen: ((BlockID, Bool) -> Void)?
+    /// A link clicked: the block, and the keys held (⌘ beside, ⌥ over,
+    /// ⇧⌘ the system's app).
+    var onOpen: ((BlockID, NSEvent.ModifierFlags) -> Void)?
     var onBreak: ((String) -> Void)?
     /// Right-clicked: the neighborhood map, the big view of the links.
     var onMap: (() -> Void)?
@@ -66,9 +67,9 @@ final class LinkBadge: NSView {
         clipsToBounds = false
         layer?.masksToBounds = false
         badge.breaksOnHover = true
-        badge.onClick = { [weak self] over in
+        badge.onClick = { [weak self] mods in
             guard let self, let c = self.cards.first else { return }
-            self.onOpen?(c.block, over)
+            self.onOpen?(c.block, mods)
         }
         badge.onMenu = { [weak self] in self?.showMenu() }
         badge.onDragStart = { [weak self] event in
@@ -156,7 +157,7 @@ final class LinkBadge: NSView {
             p.toolTip = card.breakable ? (card.outbound ? "Links to it" : "Linked from it") : (card.outbound ? "Shows it" : "Shown in it")
             p.isHidden = true
             let block = card.block, link = card.link
-            p.onClick = { [weak self] over in self?.onOpen?(block, over) }
+            p.onClick = { [weak self] mods in self?.onOpen?(block, mods) }
             p.onBreak = card.breakable ? { [weak self] in self?.onBreak?(link) } : nil
             p.onDragStart = { [weak self, weak p] event in
                 guard let self, let p else { return }
@@ -308,7 +309,7 @@ final class LinkBadge: NSView {
     /// few words, and an × to break the link.
     final class Capsule: NSView {
         /// Clicked: whether ⌥ was held.
-        var onClick: ((Bool) -> Void)?
+        var onClick: ((NSEvent.ModifierFlags) -> Void)?
         /// Dragged a little: what to do with the drag (a stack's pill comes out).
         var onDragStart: ((NSEvent) -> Void)?
         /// Right-clicked: its menu.
@@ -433,7 +434,7 @@ final class LinkBadge: NSView {
             guard downAt != nil else { return }
             let p = convert(event.locationInWindow, from: nil)
             guard bounds.contains(p) else { return }
-            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags.contains(.option)) }
+            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags) }
         }
     }
 }

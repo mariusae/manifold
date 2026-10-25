@@ -66,7 +66,7 @@ protocol GridDelegate: AnyObject {
     /// The links' badge asks for the map around the tile's block.
     func gridShowMap(for placement: PlacementID)
     /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
-    func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool)
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID, modifiers: NSEvent.ModifierFlags)
     /// × on a badge's link: the edge ends.
     func gridBreakLink(_ link: String)
     /// A block ⇧-dragged onto a tile: linked to its block.
@@ -407,7 +407,7 @@ final class GridView: NSView, NSDraggingSource {
                     }()
                     badge.cards = tile.links
                     pill.linkWanted = badge.capsuleWantedWidth
-                    badge.onOpen = { [weak self] block, over in self?.delegate?.gridOpenLink(block, from: id, over: over) }
+                    badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }

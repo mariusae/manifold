@@ -135,8 +135,8 @@ and Mona Sans (bundled).
   click that opens something** puts what opens over the tile clicked
   in, that tile going behind it (as ⌥-drag stacks): a link or a
   block's pill in a note, a badge's link, a sidebar row, a listing's
-  file or folder, ⌘⌥-click on a terminal's link or on a symbol in an
-  editor (its definition stacked over the editor), ⌥⇧⌘-click on a page's. Drop a pill on
+  file or folder, ⌘⌥-click on a terminal's link, a page's, or a symbol in an
+  editor (its definition stacked over the editor). Drop a pill on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
   while you drag is the target tile's shape, to say so; ⇧-drag a pill
@@ -679,10 +679,13 @@ around it, and comes back with its history.
   Note from Clipboard makes one of what was copied (a picture, an image
   block), and a
   terminal's Save Scrollback as Note keeps its whole transcript.
-- **Links** go by the click: ⌘-click a web address — in a terminal, an
-  editor, a preview or a web page — and the system's browser opens it;
-  ⇧⌘-click and it opens in Manifold's own web lens beside (a plain click
-  in a preview or a page does the same). File links in a Markdown
+- **Links** go by the click, every kind alike — a web address, a path,
+  a block's pill, a tile's link — in a terminal, an editor, a preview or
+  a page: **⌘-click** opens it in Manifold beside (a page in its web
+  lens), ⌘⌥ over; **⇧⌘-click** gives it to the system — an address to
+  your browser, a file of this Mac to the app that opens it. A plain
+  click in a page follows the link in the page, as a browser does; in a
+  preview it opens beside. File links in a Markdown
   preview go where the file leads: another Markdown file is previewed
   in the same tile, a folder is listed, an image or PDF shown, anything
   else edited.
@@ -899,7 +902,8 @@ around it, and comes back with its history.
   finder row chosen with ⏎: plain **goes to** it
   where it is (or opens it here); **⌥ puts it over** the tile you
   clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
-  beside** that tile. ⇧ is about the path: ⇧-click a bar for where the
+  beside** that tile; **⇧⌘ gives it to the system** (the browser, the
+  file's app). ⇧ alone is about the path: ⇧-click a bar for where the
   block is, folder by folder; ⇧-drag a bar to link. In a terminal, ⌘ is
   what makes a click a click on a link at all, so there ⌘⌥ is over and
   ⌘ alone beside.
@@ -976,7 +980,7 @@ around it, and comes back with its history.
   in Manifold: Restore This Text puts a version back (one undoable edit);
   Compare with Now opens a diff block of then against now. Open This
   Version opens the text as it was then as a block of its own, beside.
-- **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
+- **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in the finder, or made with File ▸ New Web Page: the page
   has the whole tile, its pill has the address (click it, or ⌘L — Go to
   Line's key in an editor, the address's elsewhere), and

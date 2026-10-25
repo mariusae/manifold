@@ -1505,7 +1505,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugSheetTargets: String { content.debugSheetTargets }
     func debugFollowLink(toPlacementEndingIn suffix: String) -> String {
         guard let a = arrangement, let f = a.focused, let t = a.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return "no \(suffix)" }
-        gridOpenLink(t.block, from: f, over: false)
+        gridOpenLink(t.block, from: f, modifiers: [])
         return debugStack(swap: false)
     }
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
@@ -2017,9 +2017,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A linked block from a tile's badge: gone to where it is; placed
     /// nowhere, opened beside the tile.
-    func gridOpenLink(_ block: BlockID, from placement: PlacementID, over: Bool) {
+    /// A tile's link clicked, as every link goes: to it (or, if it's
+    /// nowhere, beside); ⌘ beside; ⌥ over; ⇧⌘ to the system's app.
+    func gridOpenLink(_ block: BlockID, from placement: PlacementID, modifiers: NSEvent.ModifierFlags) {
+        if modifiers.isSuperset(of: [.command, .shift]) { return openInSystem(block) }
+        let over = modifiers.contains(.option)
         let placed = allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
-        if over, let b = hosts.block(block), b.kind != .arrangement {
+        if modifiers.contains(.command), !over, let b = hosts.block(block), b.kind != .arrangement {
+            show(block, lens: Lens.default(for: b.kind, path: b.path), .besideOpener(placement), kind: .opened, context: "from its links")
+        } else if over, let b = hosts.block(block), b.kind != .arrangement {
             show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "from its links")
         } else if placed, let b = hosts.block(block) {
             goTo(b.id, near: placement)
@@ -4934,11 +4940,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Opens what a link in a placement points at: Markdown files in a
     /// preview beside it, folders in a listing, text to edit, anything else
     /// with the system.
-    /// Whether a link just clicked is for Manifold's own web lens: ⌘-click
-    /// goes to the system's handler, ⇧⌘-click (or a plain click, or an
-    /// opening that isn't a click) stays here.
+    /// Whether a link just clicked stays in Manifold: every way of clicking
+    /// it does (⌘ beside, ⌥ over) but ⇧⌘, which goes to the system's app —
+    /// the browser, for an address.
     static func opensHere(_ flags: NSEvent.ModifierFlags) -> Bool {
-        !(flags.contains(.command) && !flags.contains(.shift))
+        !flags.isSuperset(of: [.command, .shift])
+    }
+
+    /// A block given to the system's app: a page's address to the browser,
+    /// a file of this Mac to what opens it; else a beep.
+    func openInSystem(_ id: BlockID) {
+        guard let b = hosts.block(id) else { return NSSound.beep() }
+        if let address = b.web?.url, let url = URL(string: address) { NSWorkspace.shared.open(url); return }
+        if let path = b.path, id.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: path)); return }
+        NSSound.beep()
     }
 
     private static var clickModifiers: NSEvent.ModifierFlags? {
@@ -4956,7 +4971,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // A link to a block (manifold:host/ulid, as a note's pill is): go to
         // it — and to a place in it, if the link names one (#command=7).
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
-            arrive(b, from: placement, over: over)
+            // ⇧⌘: to the system's app; ⌘: beside, as any link; else there.
+            let mods = Self.clickModifiers ?? []
+            if mods.isSuperset(of: [.command, .shift]) { return openInSystem(b) }
+            if mods.contains(.command), over != true, let blk = hosts.block(b), blk.kind != .arrangement, let placement {
+                show(b, lens: Lens.default(for: blk.kind, path: blk.path), .besideOpener(placement), kind: .opened, context: "followed")
+            } else {
+                arrive(b, from: placement, over: over)
+            }
             linkFollowed(from: placement, to: b)
             if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
             // A place in it: a line (a heading's), a PDF's page.
@@ -5018,6 +5040,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
+        // ⇧⌘: a file or folder of this Mac to the system's app (Finder's).
+        if on == host.host, let mods = Self.clickModifiers, mods.isSuperset(of: [.command, .shift]) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return
+        }
         if let (block, lens) = pathBlock(path, isDirectory: isDir.boolValue, on: on) {
             show(block, lens: lens, place, context: target)
         } else {
@@ -6566,6 +6593,11 @@ extension MainWindowController: MarkdownViewDelegate {
         if url.isFileURL {
             let path = url.standardizedFileURL.path
             let over = modifiers.contains(.option)
+            // ⇧⌘: a file of this Mac to the system's app, as any link.
+            if modifiers.isSuperset(of: [.command, .shift]), p.block.host == host.host {
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                return
+            }
             if Lens.isMarkdown(path), !modifiers.contains(.command) {
                 let block = hosts.textBlock(for: path, on: p.block.host)
                 // Not "[[…]]": that's the mention scan's, which would take it for its own.
