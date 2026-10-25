@@ -300,6 +300,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             panel.standardWindowButton(button)?.isHidden = true
         }
         panel.onResign = { [weak self] in self?.close() }
+        panel.onCommandReturn = { [weak self] in self?.openSelected() }
 
         // Flat, as the other panels are: their background, not the glass.
         let background = FlatBackground()
@@ -605,7 +606,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         switch selector {
         case #selector(NSResponder.moveUp(_:)): move(-1)
         case #selector(NSResponder.moveDown(_:)): move(1)
-        case #selector(NSResponder.insertNewline(_:)): openSelected()
+        // ↩ goes; ⌥↩ (which the field calls this) puts it over.
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)): openSelected()
         case #selector(NSResponder.cancelOperation(_:)): close()
         case #selector(NSResponder.insertTab(_:)) where outline == nil: cycleScope()
         default: return false
@@ -885,7 +887,16 @@ final class ExcerptCell: NSTableCellView {
 /// take the keyboard and gives it back when it loses it.
 final class PickerPanel: NSPanel {
     var onResign: (() -> Void)?
+    /// ⌘↩: the row chosen beside — before the menu's Edit or View takes it.
+    var onCommandReturn: (() -> Void)?
     override var canBecomeKey: Bool { true }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 36, event.modifierFlags.intersection([.command, .shift, .control]) == .command, let onCommandReturn {
+            onCommandReturn()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
     override func resignKey() {
         super.resignKey()
         onResign?()
