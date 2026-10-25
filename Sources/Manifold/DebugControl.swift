@@ -1051,9 +1051,6 @@ enum DebugControl {
             let line = before.components(separatedBy: "\n").count
             let column = loc - (before as NSString).range(of: "\n", options: .backwards).location
             return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
-        case "collect":
-            wc?.debugCollect(agingBy: Double(arg) ?? 120)
-            return "ok"
         case "state":
             return wc?.debugDescribe() ?? "no window"
         case "attach":

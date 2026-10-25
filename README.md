@@ -242,9 +242,9 @@ and Mona Sans (bundled).
   its own. To another space it moves, as a file does; ⌥-dragged it
   is copied — shown there as well, the same block in both. Held over a
   space's row, the space springs open under the drag, to drop
-  it exactly where it should go there; one left empty and unnamed by a
-  move goes. A stack's top takes the stack along; ⌘-drag it to take it
-  alone, the next behind coming out in its place — a fanned-out card
+  it exactly where it should go there; one left empty by a move stays,
+  as every space does until it's removed. A stack's top takes the
+  stack along; ⌘-drag it to take it alone, the next behind coming out in its place — a fanned-out card
   drags its tile out alone the same way. ⌘W on a stack's top takes it
   off and the next comes out. Spaces drag from the sidebar onto the grid the same
   way, their columns coming over.
@@ -301,7 +301,7 @@ and Mona Sans (bundled).
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
 - **⌘W** closes the focused tile. **Spaces stay** until you remove
-  one (**⌥⇧⌘W**, File ▸ Remove Space, or its row's menu): named or
+  one (**⌥⇧⌘W**, Space ▸ Remove Space, or its row's menu): named or
   not, emptied or not, nothing removes one for you. A block is kept while
   a space reaches it — shows it, pins it, or reaches it through a
   link by hand — and once none does it waits half an hour in

@@ -175,7 +175,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
-            self?.collect()
         }
         hosts.onTerminalEnded = { [weak self] block in self?.terminalEnded(block) }
         hosts.onHistory = { [weak self] shard, base, entries in self?.historyArrived(shard, base?.state.block, entries) }
@@ -989,21 +988,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// An arrangement is what you made it (§3.1): nothing in it is tidied
-    /// away. An unnamed one left empty leaves the desk (§4); the host sees
-    /// to terminals' dormancy.
-    private func collect() {
-        for c in hosts.all where c.isConnected {
-            var order = c.desk.order
-            for id in c.desk.order {
-                guard let a = hosts.arrangement(id), !a.isNamed, a.isEmpty, id != selected else { continue }
-                order.removeAll { $0 == id }
-            }
-            if order != c.desk.order { c.setWorkspaceOrder(order) }
-        }
-    }
-
-    func debugCollect(agingBy minutes: Double) { collect() }
 
     @objc func setTextHistory(_ sender: NSMenuItem) {
         var s = desk.settings
@@ -5665,11 +5649,10 @@ extension MainWindowController: GridDelegate {
         if !copy { takeOut(from.placement.id, of: from.arrangement) }
     }
 
-    /// A tile taken off a workspace it was moved from; the workspace, left
-    /// empty and unnamed, off the desk.
+    /// A tile taken off a space it was moved from; the space stays, emptied
+    /// or not, until it's removed (§4).
     private func takeOut(_ placement: PlacementID, of arrangement: BlockID) {
         hosts.append(.remove(placement), to: .block(arrangement))
-        if arrangement != selected, let a = hosts.arrangement(arrangement), a.isEmpty, !a.isNamed { removeFromDesk(arrangement) }
     }
 
     /// A block from the sidebar dropped in the grid: brought there.
