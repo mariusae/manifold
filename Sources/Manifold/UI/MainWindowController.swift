@@ -2046,7 +2046,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The bar's ×: the tile taken off, as ⌘W takes the focused one.
     func gridClose(_ placement: PlacementID) {
-        guard let a = arrangement, let id = selected, let block = a.placement(placement)?.block else { return }
+        guard let id = selected else { return }
+        closeTile(placement, in: id)
+    }
+
+    /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
+    /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
+    /// collected said, with Restore, if it had edits or a job running.
+    func closeTile(_ placement: PlacementID, in id: BlockID) {
+        guard let a = hosts.arrangement(id), a.placement(placement) != nil else { return }
         let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
@@ -6102,7 +6110,7 @@ extension MainWindowController: GridDelegate {
                 menu.addItem(ClosureMenuItem("Reload from Disk, Losing the Edits", symbol: "arrow.clockwise") { [weak self] in self?.hosts.propose(.readFile(block)) })
                 menu.addItem(ClosureMenuItem("Overwrite with the Edits", symbol: "square.and.arrow.down") { [weak self] in self?.save(block, from: placement) })
             } else {
-                menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "S") { [weak self] in self?.save(block, from: placement) })
+                menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "s") { [weak self] in self?.save(block, from: placement) })
             }
         }
         if let ws = selected {
@@ -6174,9 +6182,7 @@ extension MainWindowController: GridDelegate {
         for item in copyItems(for: block) { menu.addItem(item) }
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(block.host))
-        menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
-            self?.hosts.append(.remove(placement), to: .block(id))
-        })
+        menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark", key: "w") { [weak self] in self?.closeTile(placement, in: id) })
         return menu
     }
 
@@ -7809,11 +7815,7 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(.separator())
         }
         if let arr = node.arrangement, let p = node.placement {
-            menu.addItem(ClosureMenuItem("Take Off This Workspace", symbol: "xmark") { [weak self] in
-                guard let self else { return }
-                self.hosts.append(.remove(p), to: .block(arr))
-                if self.isLeftEmpty(arr), self.hosts.arrangement(arr)?.isNamed == false { self.removeFromDesk(arr) }
-            })
+            menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark") { [weak self] in self?.closeTile(p, in: arr) })
             menu.addItem(.separator())
         } else {
             menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.organizationOpen(node, modifiers: []) })
