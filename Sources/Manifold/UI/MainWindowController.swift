@@ -1464,6 +1464,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugPills: String { content.debugPills }
     var debugTiles: String { content.debugTiles }
+    /// Debugging: a shown tile, by its title, given this much content
+    /// height — taken from or given to the biggest other in its column.
+    func debugTileHeight(_ title: String, _ points: CGFloat) -> String {
+        guard let a = arrangement else { return "no workspace" }
+        for (c, column) in a.columns.enumerated() {
+            guard let p = column.first(where: { !a.isStashed($0.id) && hosts.block($0.block)?.displayTitle == title }) else { continue }
+            let shown = a.shownTiles(inColumn: c)
+            let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
+            let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
+            guard let other = shown.filter({ $0.id != p.id }).max(by: { a.height(of: $0.id) < a.height(of: $1.id) }) else { return "alone" }
+            let want = Double((points + GridView.barHeight) / usable) * sum
+            let delta = want - a.height(of: p.id)
+            appendToSelected([.heights([p.id: want, other.id: a.height(of: other.id) - delta])])
+            return "ok"
+        }
+        return "no tile \(title)"
+    }
     func debugPeek(_ on: Bool) -> String { content.debugPeek(on) }
     var debugColumn: String { content.debugColumn }
     func debugPeekPick(_ i: Int) -> String { content.debugPeekPick(i) }
@@ -2637,7 +2654,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Events that leave a tile focused (or `placement`), with that tile
     /// grown to `reveal` if it's short of it — for a glimpse, only one
-    /// collapsed to its bar (a pill, less than a line of it showing) —
+    /// too short for its content (its summary in its place, or its bar alone) —
     /// taken from its neighbours as growing takes it.
     private func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil, _ reveal: Reveal = .glimpse) -> [Event] {
         var after = a
@@ -2651,7 +2668,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let share = after.height(of: f) / sum
         let body = usable * CGFloat(share) - GridView.barHeight
         let target = min(reveal.points, usable * reveal.share)
-        guard reveal == .glimpse ? body < 20 : body < target - 1 else { return events }
+        guard reveal == .glimpse ? body < GridView.summarizeBelow : body < target - 1 else { return events }
         let want = Double((target + GridView.barHeight) / usable)
         return events + after.growing(f, step: (want - share) * sum)
     }
@@ -5529,6 +5546,8 @@ extension MainWindowController: GridDelegate {
     }
 
     func gridFocus(_ placement: PlacementID) { focus(placement) }
+
+    func gridArrive(_ placement: PlacementID) { arrive(atTile: placement) }
 
     func gridSwitcherFollowsPointer() {
         stackMonitors.forEach(NSEvent.removeMonitor)

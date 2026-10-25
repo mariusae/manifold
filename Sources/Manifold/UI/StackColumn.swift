@@ -16,12 +16,33 @@ struct SummaryCardContent {
 /// the right for a page or a PDF, a thin bar for progress. Chosen, ringed in
 /// the accent.
 final class SummaryCard: NSView {
-    let content: SummaryCardContent
+    var content: SummaryCardContent { didSet { needsDisplay = true } }
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     /// Set in something that's a card already (a hover card): no card of
     /// its own drawn, only what it says.
     var plain = false
+    /// In a tile's body, the tile too short for its content (its bar
+    /// naming it): its lines alone, from the top, as many as fit, the note
+    /// at the right of the first, on the body's own ground.
+    var inTile = false {
+        didSet {
+            guard inTile != oldValue else { return }
+            plain = inTile
+            layer?.backgroundColor = inTile ? Theme.windowBackground.cgColor : nil
+            needsDisplay = true
+        }
+    }
     static let height: CGFloat = 88
+    /// Clicked, where it stands in for its tile; elsewhere a click is its
+    /// container's.
+    var onClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        guard let onClick else { return super.mouseDown(with: event) }
+        onClick()
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onClick != nil }
 
     init(_ content: SummaryCardContent) {
         self.content = content
@@ -47,7 +68,8 @@ final class SummaryCard: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let s = content.summary
-        let card = bounds.insetBy(dx: 1, dy: 1)
+        if inTile { Theme.windowBackground.setFill(); bounds.fill() }
+        let card = inTile ? bounds : bounds.insetBy(dx: 1, dy: 1)
         let path = NSBezierPath(roundedRect: card, xRadius: 10, yRadius: 10)
         if !plain {
         NSGraphicsContext.saveGraphicsState()
@@ -75,8 +97,8 @@ final class SummaryCard: NSView {
         let pad: CGFloat = 12
         // A picture at the right, its corners rounded.
         var right = card.maxX - pad
-        if let thumb = content.thumbnail, thumb.size.width > 0 {
-            let h = card.height - 2 * 10
+        if let thumb = content.thumbnail, thumb.size.width > 0, card.height > 36 {
+            let h = min(card.height, SummaryCard.height) - 2 * 10
             let w = min(h * thumb.size.width / thumb.size.height, card.width * 0.32)
             let r = NSRect(x: card.maxX - 10 - w, y: card.minY + 10, width: w, height: h)
             NSGraphicsContext.saveGraphicsState()
@@ -89,9 +111,13 @@ final class SummaryCard: NSView {
             border.stroke()
             right = r.minX - 10
         }
-        // The symbol, the title, where it is; the note at the right.
         var x = card.minX + pad
         let top = card.minY + 10
+        if inTile {
+            drawLines(s, x: x, right: right, top: top - 2, room: Int((card.height - 8) / 16))
+            return
+        }
+        // The symbol, the title, where it is; the note at the right.
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
             .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.secondaryText]))
         if let image = NSImage(systemSymbolName: content.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(content.symbol, size: 13) {
@@ -113,15 +139,33 @@ final class SummaryCard: NSView {
         }
         title.draw(with: NSRect(x: x, y: top, width: max(0, titleRoom), height: 18), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
         // Its lines, under the title, set in from the symbol.
+        drawLines(s, x: x, right: right, top: top + 21, room: 3, note: false)
+        drawProgress(s, in: card, pad: pad)
+    }
+
+    /// Its lines, `room` of them at most, from `top` — in a tile, the
+    /// note at the right of the first.
+    private func drawLines(_ s: BlockSummary, x: CGFloat, right: CGFloat, top: CGFloat, room: Int, note: Bool = true) {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
-        for (i, line) in s.lines.prefix(3).enumerated() {
+        var noteWidth: CGFloat = 0
+        if note, let n = s.note {
+            let a = NSAttributedString(string: n, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: toneColor(s.tone)])
+            noteWidth = a.size().width + 10
+            a.draw(at: NSPoint(x: right - a.size().width, y: top + 1))
+        }
+        for (i, line) in s.lines.prefix(max(0, min(3, room))).enumerated() {
             let a = NSAttributedString(string: line, attributes: [
                 .font: s.code ? FontTheme.code(11.5) : NSFont.systemFont(ofSize: 12), .foregroundColor: i == 0 ? Theme.text.withAlphaComponent(0.85) : Theme.secondaryText,
                 .paragraphStyle: style,
             ])
-            a.draw(with: NSRect(x: x, y: top + 21 + CGFloat(i) * 16, width: max(0, right - x), height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            let r = i == 0 ? right - noteWidth : right
+            a.draw(with: NSRect(x: x, y: top + CGFloat(i) * 16, width: max(0, r - x), height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
+        if inTile { drawProgress(s, in: bounds, pad: 12) }
+    }
+
+    private func drawProgress(_ s: BlockSummary, in card: NSRect, pad: CGFloat) {
         if let p = s.progress {
             let track = NSRect(x: card.minX + pad, y: card.maxY - 5, width: card.width - 2 * pad, height: 2)
             Theme.text.withAlphaComponent(0.1).setFill()

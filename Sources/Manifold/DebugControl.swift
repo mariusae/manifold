@@ -322,6 +322,11 @@ enum DebugControl {
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"
+        case "tileheight":
+            // "tileheight <points> <title>": a shown tile given that much content.
+            let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard w.count == 2, let pts = Double(w[0]) else { return "usage: tileheight <points> <title>" }
+            return wc?.debugTileHeight(w[1], CGFloat(pts)) ?? "no window"
         case "dirty":
             // "dirty": each tile's dirty dot; "dirty click": the focused one's clicked.
             return arg == "click" ? wc?.debugDirtyClick() ?? "no window" : wc?.debugDirty ?? "no window"

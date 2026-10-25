@@ -89,9 +89,12 @@ and Mona Sans (bundled).
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows.
-  The same summary is everywhere a block is shown small: a tile squeezed
-  down to its bar has its summary's line in the bar where the folder
-  was ("$ make test · exit 2 · 4m"); a sidebar row's hover card has it
+  The same summary is everywhere a block is shown small. **A tile shrinks
+  in steps**: under 80 points of content, its summary stands in for it
+  in its body, under its bar — its lines, as many as fit, when at the
+  right (a click goes to it and grows it a little); under 24, it's down to its
+  bar, its summary's line in the bar where the folder was ("$ make test ·
+  exit 2 · 4m"); a sidebar row's hover card has it
   under its picture; ⌘O shows the chosen row's card under the list;
   `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
   behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
@@ -111,7 +114,7 @@ and Mona Sans (bundled).
   behind it, as they were), and the pointer follows. Going to a tile
   squeezed down to its bar — by a link, the sidebar, the finder, ⌘J,
   Back, or opening what's already there (Browse This Folder on a
-  folder shown) — grows it a little, to show some of what's in it (160
+  folder shown), or down to its summary — grows it a little, to show some of what's in it (160
   points, or a quarter of the column), taken from its neighbours as
   growing takes it, and the pointer goes to it, as apex does. **⌥ with any
   click that opens something** puts what opens over the tile clicked

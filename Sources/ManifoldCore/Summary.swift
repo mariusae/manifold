@@ -181,6 +181,7 @@ extension Block {
             var plain = inFence ? line : line.replacingOccurrences(of: #"^(#{1,6}\s+|[-*+]\s+(\[[ xX]\]\s+)?|>\s*|\d+\.\s+)"#, with: "", options: .regularExpression)
             if !inFence {
                 plain = plain.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
+                    .replacingOccurrences(of: #"(?<![\w*_])[*_]([^*_\s][^*_]*?)[*_](?![\w*_])"#, with: "$1", options: .regularExpression)
                     .replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
             }
             if out.isEmpty, plain == title { continue }
@@ -194,7 +195,11 @@ extension Block {
     static func panelLines(_ b: Block) -> [String] {
         guard let ui = b.ui else { return [] }
         let values = ui.values.compactMap { k, v -> (String, String)? in
-            let shown = v.hasPrefix("\"") && v.hasSuffix("\"") ? String(v.dropFirst().dropLast()) : v
+            var shown = v.hasPrefix("\"") && v.hasSuffix("\"") ? String(v.dropFirst().dropLast()) : v
+            // A number as it'd be said: 0.6, not 0.5999999999999998.
+            if let d = Double(shown), d != d.rounded(), d.isFinite {
+                shown = String(format: "%.2f", d).replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression)
+            }
             return (k, shown)
         }.sorted { $0.0 < $1.0 }
         return values.prefix(3).map { "\($0.0): \($0.1)" }

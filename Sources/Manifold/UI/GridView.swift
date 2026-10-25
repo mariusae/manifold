@@ -8,6 +8,9 @@ protocol GridDelegate: AnyObject {
     func gridRoomForFan(_ top: PlacementID) -> Bool
     /// A tile as its summary card shows it (a stack's column).
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
+    /// A tile gone to by a click on its summary (it's too short for its
+    /// content): focused, and grown to show some.
+    func gridArrive(_ placement: PlacementID)
     /// A fan opened from ⌃⇥ taken over by the pointer: letting go of control no
     /// longer settles it (a click does).
     func gridSwitcherFollowsPointer()
@@ -155,6 +158,11 @@ final class GridView: NSView, NSDraggingSource {
     static let gap: CGFloat = 8
     static let inset: CGFloat = 8
     static let corner: CGFloat = 10
+    /// A tile shrinks in steps: under this much of its content showing,
+    /// its summary card stands in for it, in its body under its bar…
+    static let summarizeBelow: CGFloat = 80
+    /// …and under this, it's down to its bar alone.
+    static let collapseBelow: CGFloat = 24
 
     var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
 
@@ -245,6 +253,10 @@ final class GridView: NSView, NSDraggingSource {
         for (id, t) in ticks where !incoming.contains(id) {
             t.removeFromSuperview()
             ticks.removeValue(forKey: id)
+        }
+        for (id, c) in tileSummaries where !incoming.contains(id) {
+            c.removeFromSuperview()
+            tileSummaries.removeValue(forKey: id)
         }
         self.columns = columns
         self.fractions = fractions.count == columns.count ? fractions : Array(repeating: 1 / Double(max(columns.count, 1)), count: columns.count)
@@ -392,7 +404,9 @@ final class GridView: NSView, NSDraggingSource {
                 // shown here, a sliver of it showed under its bar until the
                 // next layout (and blinked with each, typing in a note whose
                 // title is in its bar).
-                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id)) }
+                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id) || summarized.contains(id)) }
+                // Its summary standing in for it, said afresh with each render.
+                if let card = tileSummaries[id], summarized.contains(id), let s = summaryContent(tile) { card.content = s }
             }
         }
         if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
@@ -460,6 +474,11 @@ final class GridView: NSView, NSDraggingSource {
     /// under them): their content stays hidden between layouts, as renders
     /// (every keystroke) come and go.
     private var collapsed: Set<PlacementID> = []
+    /// The tiles the last layout summarized (too short for their content,
+    /// tall enough for a line or more of their summary), and the cards
+    /// standing in for their content.
+    private var summarized: Set<PlacementID> = []
+    private var tileSummaries: [PlacementID: SummaryCard] = [:]
 
     func clear() {
         show([], fractions: [], heights: [:], focused: nil)
@@ -621,7 +640,7 @@ final class GridView: NSView, NSDraggingSource {
         columns.flatMap { $0 }.map { t in
             let v = t.view
             let p = pills[t.shown.id]
-            return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) stashed=\(isStashed(t.shown.id)) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false)"
+            return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) stashed=\(isStashed(t.shown.id)) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false) summarized=\(summarized.contains(t.shown.id))"
         }.joined(separator: "\n")
     }
 
@@ -638,6 +657,13 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A view above another in the order, put there only when it isn't:
     /// re-adding a layer-backed view at every layout flashes it.
+    /// A tile's summary card, as its delegate makes it (a terminal's
+    /// screen, a page's picture) or, failing that, from its block alone.
+    private func summaryContent(_ tile: Tile) -> SummaryCardContent? {
+        delegate?.gridSummary(tile.shown.id)
+            ?? tile.shown.block.map { SummaryCardContent(id: tile.shown.id, symbol: tile.shown.symbol, summary: $0.summary()) }
+    }
+
     private func keep(_ v: NSView, above other: NSView) {
         guard let i = subviews.firstIndex(of: v), let j = subviews.firstIndex(of: other) else {
             addSubview(v, positioned: .above, relativeTo: other)
@@ -748,6 +774,7 @@ final class GridView: NSView, NSDraggingSource {
         lastLayoutBounds = bounds
         var frameNow: [PlacementID: NSRect] = [:]
         var collapsedNow: Set<PlacementID> = []
+        var summarizedNow: Set<PlacementID> = []
         func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
             if gliding, let was, was != .zero, was != frame, !view.isHidden {
                 // A tile's content takes its new size at once and glides to
@@ -786,16 +813,34 @@ final class GridView: NSView, NSDraggingSource {
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
                 let held = held(tile.shown.id)
                 let was = lastFrames[tile.shown.id]
-                // Less than a line of content under the bar: the tile is
-                // collapsed to its bar, a pill, its content out of sight.
-                let collapsed = body.height < 20
+                // Too little of its content under the bar to be worth
+                // showing: its summary card in its place; less than a line
+                // of that, the tile is collapsed to its bar, a pill.
+                let collapsed = body.height < Self.collapseBelow
+                let summarized = !collapsed && body.height < Self.summarizeBelow
                 if collapsed { collapsedNow.insert(tile.shown.id) }
+                if summarized { summarizedNow.insert(tile.shown.id) }
                 frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
                 if !held {
                     settle(tile.view, body, was: was)
-                    setHidden(tile.view, collapsed)
+                    setHidden(tile.view, collapsed || summarized)
                 }
-                placeTicks(of: tile, in: body, shown: !held && !collapsed)
+                if summarized, !held, let content = summaryContent(tile) {
+                    let card = tileSummaries[tile.shown.id] ?? {
+                        let c = SummaryCard(content)
+                        c.inTile = true
+                        Self.styleBody(c)
+                        let id = tile.shown.id
+                        c.onClick = { [weak self] in self?.delegate?.gridArrive(id) }
+                        tileSummaries[tile.shown.id] = c
+                        return c
+                    }()
+                    card.content = content
+                    card.frame = body
+                    card.isHidden = false
+                    keep(card, above: tile.view)
+                }
+                placeTicks(of: tile, in: body, shown: !held && !collapsed && !summarized)
                 // The switcher over the whole tile, its bar put away meanwhile.
                 if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
                 if top == nil { top = r }
@@ -824,6 +869,8 @@ final class GridView: NSView, NSDraggingSource {
         }
         lastFrames = frameNow
         self.collapsed = collapsedNow
+        self.summarized = summarizedNow
+        for (id, c) in tileSummaries where !summarizedNow.contains(id) || held(id) { c.isHidden = true }
         if dragging { dragCatcher.frame = bounds }
         // The focus ring: around the focused tile, over everything.
         if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
@@ -1523,11 +1570,15 @@ final class GridView: NSView, NSDraggingSource {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        // Under the cards, and the nearer sheet (the wider) over the farther:
+        // each stack's are wanted farthest first, and laid in that order,
+        // bottommost first (a zPosition alone left the farthest on top).
+        for (i, l) in sheetLayers.enumerated() where layer?.sublayers?.firstIndex(of: l) != i {
+            l.removeFromSuperlayer()
+            layer?.insertSublayer(l, at: UInt32(i))
+        }
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (l, (rect, level, _)) in zip(sheetLayers, wanted) {
-                // Under the cards, and the nearer sheet (the wider) over the
-                // farther, whichever layer each got.
-                l.zPosition = -CGFloat(level)
                 let path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
                 l.path = path
                 l.fillColor = Theme.sheet(level: level).cgColor

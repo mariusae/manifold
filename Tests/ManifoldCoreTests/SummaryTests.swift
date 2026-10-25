@@ -12,6 +12,7 @@ import Testing
     let ns = note.summary(now: now)
     #expect(ns.title == "Plan")
     #expect(ns.lines == ["ship the beta", "then rest"])
+    #expect(Block.firstLines("Plain, _italic_, *bold italic*, snake_case_name", skipping: "", count: 1) == ["Plain, italic, bold italic, snake_case_name"])
     // A terminal: its last command, how it ended, the one before; when.
     var term = Block(id: BlockID(host: h), kind: .terminal, created: at(0))
     term.apply(.ran(id: 1, "make", at: at(9000)), at: at(9000))
