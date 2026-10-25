@@ -13,7 +13,8 @@ you can name and come back to, and anything reachable can be found and
 followed, with its history. Light or dark, in SF Pro and Menlo
 as Notes sets them, or in [Monaspace](https://monaspace.githubnext.com)
 and Mona Sans (bundled).
-[DESIGN.md](DESIGN.md) says where it's going.
+[DESIGN.md](DESIGN.md) says where it's going, and §12 where Manifold
+parts from the Mac's conventions on purpose.
 
 ## Using it
 

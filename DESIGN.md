@@ -1294,3 +1294,104 @@ accent), done, attention, failed, offline, each its own in light and
 dark and darker in the light to read as text; a **Pill** for counts and
 ages; one row band (Flat.rowBand) for every list. Text is at least 4.5:1
 on a panel or a card in either appearance.
+
+---
+
+## 12. Deliberate departures
+
+Where Manifold parts from macOS's conventions, or from its own rules, on
+purpose — set down so a later audit reads them as choices, not slips.
+Where §1–§4 still speak of workspaces, the desk and Keep, this section
+and the README are current.
+
+### The model
+
+- **Spaces, though macOS has Spaces.** Manifold's are inside the window
+  and never touch Mission Control; the word is short and the same
+  everywhere — the Spaces organization, the Space menu, the Dock menu,
+  `@space` in `mani`.
+- **Spaces are the only roots, and only you remove one.** No Keep, no
+  favourites: a block lives while a space reaches it — shows it, pins it,
+  or reaches it through a link by hand — and a space stays, named or
+  not, emptied or not, until it's removed (⌥⇧⌘W, its row's menu) or
+  dropped on another. One rule for what lasts. Pin in Space is how a
+  block stays without a tile.
+- **Closing can lose a block.** ⌘W on the last tile showing a block lets
+  it go after half an hour, where macOS's closing never deletes. It's
+  said, not silent: a toast with Restore, ⇧⌘T, Recently Closed, and
+  Open Quickly's *recent* rows.
+- **Size is presentation, not state.** A tile shrinks along one ladder —
+  content, summary card, bar, stashed — by the room it has; there is no
+  minimized or collapsed state to get stuck in, and every step comes
+  back by resizing. Shrink to Summary (⇧⌘M) only sets a height.
+  Maximize stands apart, a layout of its own.
+- **Overview is the one view across spaces.** Agents is a filter of it
+  (⌃⌘A), and past ten blocks it shows summaries rather than live tiles.
+  The Inbox marks a block read when it's focused; there's nothing to
+  clear.
+- **Hover cards are pictures, not live views,** so hovering never
+  moves a view out of its tile.
+
+### Words
+
+- **A tile's bar, its title, its links (capsules), a summary card.** Not
+  title bar, header or chip. *Pill* is only for a count or an age.
+
+### Keys
+
+- **⌘O is Open Quickly** — blocks and spaces, not files; Open Folder… is
+  ⌥⌘O, and file contents are Find in Files (⇧⌘F), after Xcode and VS
+  Code. There's no ⌘T.
+- **⌘P is the outline, not Print.** Scoped to the focused tile, ⇥ widens
+  it to the space; ⇧⌘P filters the tile's own outline and doesn't forget
+  its filter, and pressed again leaves it. Print stays in the File menu,
+  keyless: rare in a tiling tool.
+- **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
+  the step above it. Minimize stays in the Window menu, keyless.
+- **⌥⌘M is the map,** taking macOS's Minimize All.
+- **⌘` walks spaces,** the app's windows; with one space it walks
+  windows.
+- **⌃⇥ walks a stack** as a browser's tabs, in every view, a terminal's
+  too; a quick release switches without showing cards, as ⌘⇥ does.
+- **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-
+  stays readline's and Emacs's undo; the mouse's back and forward buttons
+  work there. **⌘[ ⌘]** are a tile's own history.
+- **⌃⌘R Rename Symbol, ⌃⇧⌘R Find References, ⇧⌘K Delete Line,**
+  near Xcode's and VS Code's; **⌥⇧⌘D Compare with Last Commit**, as
+  ⌥⌘D hides the Dock.
+- **Escape:** a picker that comes and goes (Open Quickly, ⌘P, the find
+  pill, a walk) closes on the first press; a filter that's part of a
+  view (⇧⌘P, a listing's) clears first, then leaves, as a search field
+  does. Maximize isn't a mode and Escape doesn't undo it.
+
+### The pointer
+
+- **One rule for opening anything** — a link, a capsule, a sidebar row, a
+  ⌘O row: plain goes to it, ⌘ opens it beside, ⌥⌘ over, ⇧⌘ in the
+  system's app or browser. In a terminal ⌘ is what makes a click a link
+  click, so ⌥⌘ is over there.
+- **The bar:** a click grows the tile a step (acme's colgrow — clicks
+  build up; no double-click), ⌘-click maximizes, ⌃-click or the icon
+  opens the tile's menu, ⇧-click the path menu.
+- **In a stack** a click brings a tile to the top and ⌘-click takes it
+  out, as ⌘-drag takes the top alone.
+- **The map** is a graph browser: a click re-centres, double-click or ↩
+  goes.
+- **Reset Graph is only on the host's own row,** not in every menu as
+  Reset Server is: it can't be undone, and the friction is the point.
+
+### Look
+
+- **Open Quickly's field is 22 points,** the one big field; the stack
+  button's count is 8-point bold on a 5-point radius, a badge on a
+  button.
+- **Colours that say something keep their own:** the diff's, a find
+  match's, the terminal's palette, the code page's (go.dev's), a remote
+  host's chip in the accent, the summary card's fill lifted above the
+  panel in the dark.
+- **Motion that isn't a transition** keeps its own time: the status
+  spinner's 2 s loop, the backdrop's 0.6 s wash, the scroller's fade
+  after a second (as the system's), predicted echo's glow.
+- **Printing is black on white;** a system alert's accessory takes the
+  system's label colours; content — editor, terminal, diff, notebook —
+  takes the font themes, not the chrome's UIType.
