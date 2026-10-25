@@ -8,6 +8,34 @@ struct SummaryCardContent {
     var symbol: String
     var summary: BlockSummary
     var thumbnail: NSImage?
+    /// How long since it was seen, in a pill at the far right (⌘O's).
+    var age: String? = nil
+}
+
+/// How long ago, in a capsule: a grey ground, the words heavier.
+enum AgeBadge {
+    static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let ground = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.1))
+
+    static func size(_ text: String) -> NSSize {
+        let w = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        return NSSize(width: w + 14, height: 18)
+    }
+
+    static func draw(_ text: String, in r: NSRect) {
+        ground.setFill()
+        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+        let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: Theme.secondaryText])
+        let s = a.size()
+        a.draw(at: NSPoint(x: r.midX - s.width / 2, y: r.midY - s.height / 2))
+    }
+}
+
+/// An `AgeBadge` as a view, for a row laid out by views.
+final class AgePill: NSView {
+    var text: String? { didSet { if text != oldValue { needsDisplay = true; superview?.needsLayout = true } } }
+    var wanted: NSSize? { text.map(AgeBadge.size) }
+    override func draw(_ dirtyRect: NSRect) { if let text { AgeBadge.draw(text, in: bounds) } }
 }
 
 /// A tile as a card in a few lines (§3.1), one look for every kind: its
@@ -125,14 +153,22 @@ final class SummaryCard: NSView {
             image.draw(in: NSRect(x: x, y: top + 9 - size.height / 2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             x += 22
         }
+        // Its age in a pill at the far right; the note before it.
+        var titleRight = right
+        if let age = content.age {
+            let size = AgeBadge.size(age)
+            let r = NSRect(x: titleRight - size.width, y: top, width: size.width, height: size.height)
+            AgeBadge.draw(age, in: r)
+            titleRight = r.minX - 8
+        }
         var noteWidth: CGFloat = 0
         if let note = s.note {
             let n = NSAttributedString(string: note, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: toneColor(s.tone)])
             noteWidth = n.size().width
-            n.draw(at: NSPoint(x: right - noteWidth, y: top + 1))
+            n.draw(at: NSPoint(x: titleRight - noteWidth, y: top + 1))
             noteWidth += 10
         }
-        let titleRoom = right - noteWidth - x
+        let titleRoom = titleRight - noteWidth - x
         let title = NSMutableAttributedString(string: s.title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Theme.text])
         if let place = s.place, !place.isEmpty {
             title.append(NSAttributedString(string: "  " + place, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: Theme.tertiaryText]))

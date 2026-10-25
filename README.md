@@ -106,8 +106,8 @@ and Mona Sans (bundled).
   again (Show Content), it's back as it was. Under 24, it's down to its
   bar, its summary's line in the bar where the folder was ("$ make test ·
   exit 2 · 4m"); a sidebar row's hover card has it
-  under its picture; in ⌘O a block's row is its summary in small and
-  the chosen row opens into its card;
+  under its picture; in ⌘O a block's row is its card, and what it says
+  is found;
   `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
   behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
   the next behind that comes up, round the stack, the tiles passed
@@ -341,12 +341,14 @@ around it, and comes back with its history.
   yet blocks come below the blocks (the system's scratch folders last).
   Each row says at the right where the block
   is — here, linked, near, kept, or *recent* for one closed
-  and not yet collected, which choosing brings back — and how long
-  since it was last seen. A block's row is its summary card in small —
-  its title and where it is, its first lines under them ("$ make test ·
-  exit 2"), so the many "Terminal"s are told apart — and the chosen row
-  opens into the card itself, a line or two more of it (a found line's
-  row, in In Blocks, stays as found). A
+  and not yet collected, which choosing brings back — and, in a pill,
+  how long since it was last seen (nothing, for just now). A block's row
+  is its summary card — its title and where it is, two or three lines of
+  what it holds under them ("$ make test", "exit 2"), so the many
+  "Terminal"s are told apart — and what the summary says is found as
+  well as the name, every word of the query in it (a command run a while
+  ago, an agent's last words), ranked with the names the query is only
+  scattered in (a found line's row, in In Blocks, stays as found). A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it in spaces. ⇥ goes round the finder's scopes: **In Files** has the host

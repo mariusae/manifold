@@ -4092,16 +4092,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if onDesk.contains(block.id) {
                 distance = min(distance, 3)
             }
+            // How long since it was seen, in a pill — none for just now.
             let seen = Age.short(entry.lastSeen)
-            note = note.isEmpty ? seen : note + " · " + seen
+            let age = seen == "now" ? nil : seen
             // Words as good as the title's own: the kind ("terminal", "note"),
             // and the agent at work in it ("claude", "Claude Code").
             let kindWord = block.kind == .text ? (block.path == nil ? "Note" : "File") : block.kind.defaultTitle
             let agentWords = agent.map { " " + $0.command + " " + $0.name } ?? ""
             secondary += " " + block.id.host.raw
             let id = block.id
-            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note,
+            // What its summary says is found too: often the best of what
+            // it holds (a terminal's last command, an agent's last words).
+            let summary = block.kind == .arrangement ? "" : block.summary().lines.joined(separator: " ")
+            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note, age: age,
                                           name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
+                                          summary: summary,
                                           distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id))
             actions.append { [weak self] in self?.recall(id) }
         }
@@ -4115,7 +4120,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let files = (turn.files ?? []).prefix(3).joined(separator: ", ")
                 corpus.append(FinderCandidate(symbol: "text.bubble", title: String(first.prefix(120)),
                                               detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
-                                              note: Age.short(turn.began), name: first + " turn " + turn.agent,
+                                              note: "", age: Age.short(turn.began) == "now" ? nil : Age.short(turn.began), name: first + " turn " + turn.agent,
                                               around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
                                               distance: 60, recency: turn.began.wall, action: actions.count))
                 actions.append { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) }

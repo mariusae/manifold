@@ -9,6 +9,9 @@ struct FinderItem {
     var detail: String
     /// A word on the right: "edited", "dormant", "named", or where it is.
     var note: String
+    /// How long since it was seen, for a pill at the right: none for one
+    /// seen just now.
+    var age: String? = nil
     /// How far in, in an outline (⌘P): 0 at the top.
     var level: Int = 0
     var run: () -> Void
@@ -19,8 +22,7 @@ struct FinderItem {
     /// Dragged out of the list: the block (to bring; with ⇧ its path and
     /// link), or the file.
     var drag: (() -> NSPasteboardWriting?)? = nil
-    /// The block it is, if one: its row says its summary in a line, and
-    /// opens into its summary card while chosen.
+    /// The block it is, if one: its row is its summary card.
     var block: BlockID? = nil
 }
 
@@ -40,6 +42,10 @@ struct FinderCandidate: Sendable {
     var aliases: [String] = []
     /// What's around it, lowercased: a path, a folder, a program.
     var around: String
+    /// What its summary says (a terminal's last commands, a note's first
+    /// lines, an agent's last words), lowercased: found as well as its name.
+    var summary: String
+    var age: String?
     /// How far from where you are (§3.5); lower is nearer.
     var distance: Int
     var recency: Int64
@@ -49,8 +55,11 @@ struct FinderCandidate: Sendable {
     /// The block it is, if one.
     var block: BlockID?
 
-    init(symbol: String, title: String, detail: String, note: String, name: String, aliases: [String] = [], around: String, distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil) {
+    init(symbol: String, title: String, detail: String, note: String, age: String? = nil, name: String, aliases: [String] = [], around: String, summary: String = "",
+         distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil) {
         self.block = block
+        self.age = age
+        self.summary = summary.lowercased()
         self.aliases = aliases.map { $0.lowercased() }
         self.symbol = symbol
         self.title = title
@@ -108,7 +117,8 @@ enum FinderRanking {
         for (i, c) in candidates.enumerated() {
             if i % 2000 == 0, !current() { return nil }
             // Every letter, in order, somewhere: else no match at all (cheap, first).
-            guard Self.hasInOrder(letters, c.name) || Self.hasInOrder(letters, c.around) || c.aliases.contains(where: { Self.hasInOrder(letters, $0) }) else { continue }
+            guard Self.hasInOrder(letters, c.name) || Self.hasInOrder(letters, c.around) || c.aliases.contains(where: { Self.hasInOrder(letters, $0) })
+                    || Self.hasInOrder(letters, c.summary) else { continue }
             let m = Self.match(q, qWords, ascii, c)
             guard m > 0 else { continue }
             let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : m >= 200 ? 1 : 0
@@ -182,6 +192,9 @@ enum FinderRanking {
             if all { return 480 }
         }
         if Self.contains(t, q) { return 400 }
+        // In its summary, as said (every word of the query, in any order):
+        // with the titles the query is only scattered in.
+        if !c.summary.isEmpty, qWords.allSatisfy({ Self.contains(c.summary, $0) }) { return 300 }
         if let f = score(t) { return 200 + min(f, 150) / 2 }
         if let f = score(c.around) { return 100 + min(f, 150) / 3 }
         return 0
@@ -244,8 +257,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// while the finder is open.
     var summarize: ((BlockID) -> SummaryCardContent?)?
     private var summaries: [BlockID: SummaryCardContent?] = [:]
-    /// The row opened into its card: the chosen one, if it's a block's.
-    private var expanded: Int?
     private(set) var scope: Scope = .names
     private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
     var isShowing: Bool { panel.isVisible }
@@ -381,7 +392,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.stringValue = ""
         shown = []
         summaries = [:]
-        expanded = nil
         // At its full height from the start: the files arriving, or the
         // rows thinning as you type, never move it.
         tallest = Self.visibleRows
@@ -421,7 +431,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.placeholderString = placeholder
         shown = []
         summaries = [:]
-        expanded = nil
         tallest = 0
         listing += 1
         if let window {
@@ -476,29 +485,12 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
     func debugMove(_ by: Int) { move(by) }
 
-    /// The chosen row opens into its card, the one before closing back to
-    /// a line — a block's, not a found line's (its lines are the point).
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        let row = table.selectedRow
-        let open = row >= 0 && row < shown.count && shown[row].excerpt == nil && summary(for: shown[row]) != nil ? row : nil
-        guard open != expanded else { return }
-        let changed = IndexSet([expanded, open].compactMap { $0 }.filter { $0 < shown.count })
-        expanded = open
-        // At once: animated, the list scrolled while the rows were still
-        // changing height, and came to rest a little off.
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0
-            table.noteHeightOfRows(withIndexesChanged: changed)
-        }
-        table.reloadData(forRowIndexes: changed, columnIndexes: [0])
-        if let open { table.scrollRowToVisible(open) }
-    }
-
-    /// A row's block's summary card, made once.
+    /// A row's block's summary card, made once; none for one with nothing
+    /// to say beyond its name (a workspace: its row says what it holds).
     private func summary(for item: FinderItem) -> SummaryCardContent? {
         guard let id = item.block else { return nil }
         if let known = summaries[id] { return known }
-        let made = summarize?(id)
+        let made = summarize?(id).flatMap { $0.summary.lines.isEmpty ? nil : $0 }
         summaries[id] = made
         return made
     }
@@ -531,8 +523,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         // Rows with an excerpt are taller: the panel is as tall as the first
         // rows it has room for.
         let excerpts = shown.prefix(rows).filter { $0.excerpt != nil }.count
-        // And room for the chosen row opened into its card, always (choosing
-        // a file after a block never moves the panel).
+        // And a little more, for the blocks' cards, taller than a line.
         let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + CGFloat(excerpts) * (Self.excerptHeight - Self.rowHeight)
             + (outline == nil ? Self.cardHeight - Self.rowHeight : 0) + 12
         let hintHeight: CGFloat = 24
@@ -588,7 +579,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
             else if let path = c.path, c.action < 0 { drag = { Drags.path?(path, false, .local, Drags.modifiers) } }
             else { drag = nil }
-            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, run: run, drag: drag, block: c.block)
+            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block)
         }
         if let first = special?(query) { items.insert(first, at: 0) }
         return items
@@ -598,10 +589,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func show(_ items: [FinderItem], query: String) {
         let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note && $0.excerpt == $1.excerpt }
         shown = items
-        if !same {
-            expanded = nil
-            table.reloadData()
-        }
+        if !same { table.reloadData() }
         if !shown.isEmpty, !same || table.selectedRow < 0 {
             let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
             table.selectRowIndexes([row], byExtendingSelection: false)
@@ -659,7 +647,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        row == expanded ? Self.cardHeight : shown.indices.contains(row) && shown[row].excerpt != nil ? Self.excerptHeight : Self.rowHeight
+        guard shown.indices.contains(row) else { return Self.rowHeight }
+        let item = shown[row]
+        return item.excerpt != nil ? Self.excerptHeight : item.block != nil && summary(for: item) != nil ? Self.cardHeight : Self.rowHeight
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -669,20 +659,19 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             cell.show(item, excerpt: excerpt)
             return cell
         }
-        let summary = summary(for: item)
-        if row == expanded, var content = summary {
-            // Opened: its card, where the finder's own word (here, linked,
-            // recent; when) stands, after any state of its own.
-            if !item.note.isEmpty {
-                let state = content.summary.note.flatMap { $0.range(of: #"^(now|\d+[mhd])$"#, options: .regularExpression) == nil ? $0 : nil }
-                content.summary.note = [state, item.note].compactMap { $0 }.joined(separator: " · ")
-            }
+        if var content = summary(for: item) {
+            // A block: its card, where the finder's own word (here, linked,
+            // recent) stands, after any state of its own; its age in a pill.
+            let state = content.summary.note.flatMap { $0.range(of: #"^(now|\d+[mhd])$"#, options: .regularExpression) == nil ? $0 : nil }
+            content.summary.note = [state, item.note.isEmpty ? nil : item.note].compactMap { $0 }.joined(separator: " · ")
+            if content.summary.note?.isEmpty == true { content.summary.note = nil }
+            content.age = item.age
             let cell = tableView.makeView(withIdentifier: CardCell.identifier, owner: nil) as? CardCell ?? CardCell()
             cell.show(content)
             return cell
         }
         let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
-        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level, summary: summary?.summary)
+        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level, age: item.age)
         return cell
     }
 
@@ -713,6 +702,7 @@ final class FileCell: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
+    private let agePill = AgePill()
     private var level = 0
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
@@ -746,32 +736,21 @@ final class FileCell: NSTableCellView {
             field.maximumNumberOfLines = 1
             field.cell?.usesSingleLineMode = true
         }
-        for view in [symbol, title, detail, note] { addSubview(view) }
+        for view in [symbol, title, detail, note, agePill] { addSubview(view) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// With a block's `summary`, its card in small: where it is after the
-    /// title, its first lines under it in place of the detail.
-    func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0, summary: BlockSummary? = nil) {
+    func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0, age: String? = nil) {
         if name != symbolName {
             symbolName = name
             let image = Self.image(name)
             symbol.image = image
         }
-        let titled = NSMutableAttributedString(string: text, attributes: [.font: Self.titleFont, .foregroundColor: Theme.text])
-        var under = folder
-        var underFont = Self.detailFont
-        if let summary, !summary.lines.isEmpty {
-            if let place = summary.place?.abbreviatingHome, !place.isEmpty, place != text {
-                titled.append(NSAttributedString(string: "  " + place, attributes: [.font: Self.detailFont, .foregroundColor: Theme.tertiaryText]))
-            }
-            under = summary.lines.prefix(2).joined(separator: " · ")
-            if summary.code { underFont = FontTheme.code(11.5) }
-        }
-        if title.attributedStringValue != titled { title.attributedStringValue = titled }
-        if detail.stringValue != under || detail.font != underFont { detail.stringValue = under; detail.font = underFont }
-        detail.isHidden = under.isEmpty
+        if title.stringValue != text { title.stringValue = text }
+        if detail.stringValue != folder { detail.stringValue = folder }
+        detail.isHidden = folder.isEmpty
+        agePill.text = age
         if note.stringValue != text2 { note.stringValue = text2 }
         if self.level != level { self.level = level; needsLayout = true }
         needsLayout = true
@@ -782,8 +761,14 @@ final class FileCell: NSTableCellView {
         let h = bounds.height, w = bounds.width
         let x = 8 + CGFloat(level) * 22
         symbol.frame = NSRect(x: x, y: (h - 22) / 2, width: 22, height: 22)
+        var right = w - 12
+        if let size = agePill.wanted {
+            agePill.frame = NSRect(x: right - size.width, y: ((h - size.height) / 2).rounded(), width: size.width, height: size.height)
+            right = agePill.frame.minX - 6
+        }
+        agePill.isHidden = agePill.wanted == nil
         let noteWidth = min(160, ceil(note.attributedStringValue.size().width) + 4)
-        note.frame = NSRect(x: w - 12 - noteWidth, y: (h - 15) / 2, width: noteWidth, height: 15)
+        note.frame = NSRect(x: right - noteWidth, y: (h - 15) / 2, width: noteWidth, height: 15)
         let textX = x + 32, textWidth = max(0, note.frame.minX - 8 - textX)
         if detail.isHidden {
             title.frame = NSRect(x: textX, y: (h - 19) / 2, width: textWidth, height: 19)
