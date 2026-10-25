@@ -43,7 +43,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
     }
 
     /// The index of the heading at the top of the page now (the last one
-    /// at or above the viewport's top), for ⌘\ to begin there.
+    /// at or above the viewport's top), for ⌘P to begin there.
     func headingAtTop(_ done: @escaping (Int?) -> Void) {
         web.evaluateJavaScript("(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var at=-1;for(var i=0;i<hs.length;i++){if(hs[i].getBoundingClientRect().top<=24)at=i;}return at;})()") { r, _ in
             let i = (r as? Int) ?? (r as? Double).map(Int.init) ?? -1
@@ -74,7 +74,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDeleg
 
     private var pendingTopLine: Double?
 
-    /// Scrolls to the page's `index`th heading (⌘\), the pointer
+    /// Scrolls to the page's `index`th heading (⌘P), the pointer
     /// following — not from the tile's own outline, where it stays.
     func scroll(toHeading index: Int, warping: Bool = true) {
         NavJumps.willJump?(self)

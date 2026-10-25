@@ -121,7 +121,7 @@ and Mona Sans (bundled).
   Opening a block that isn't in the workspace always makes it a tile of
   its own (below the biggest tile, after that tile's stack, never into
   it); going to one that is — a link, the sidebar, the finder, ⌘J,
-  ⌘\, Back, a found line, opening it again — goes there: a tile on its
+  ⌘P, Back, a found line, opening it again — goes there: a tile on its
   own is focused, one in a stack comes to the top of it (the rest
   behind it, as they were), and the pointer follows. Going to a tile
   squeezed down to its bar — by a link, the sidebar, the finder, ⌘J,
@@ -174,7 +174,7 @@ and Mona Sans (bundled).
   as one entry, so the history keeps what was undone. In the sidebar,
   ⇧-click (or ⌥-click) a chevron to open or close the whole subtree. Every lens shows its scroll
   bar; a terminal's comes from Ghostty's own account of the screen and
-  its history. Going somewhere (⌘O, ⌘\, a found line) brings the pointer
+  its history. Going somewhere (⌘O, ⌘P, a found line) brings the pointer
   along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
   workspace at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
@@ -358,7 +358,7 @@ around it, and comes back with its history.
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them.
   A typed URL opens as a web page.
-- **⌘\ goes through the workspace as an outline**, as Prism's Move to
+- **⌘P goes through the workspace as an outline**, as Prism's Move to
   Heading does: its tiles by column, and under each its outline, set in
   by level — a Markdown tile's headings, and whatever else has one
   (§7.5): a terminal's commands (how each ended beside it), an agent's
@@ -693,7 +693,7 @@ around it, and comes back with its history.
   so (not in
   full screen, where selecting is for reading); off and on from the
   terminal's pill menu, for every terminal.
-- **Every tile prints** (File ▸ Print…, ⌘P), as it best goes on paper:
+- **Every tile prints** (File ▸ Print…), as it best goes on paper:
   a text or code as text, in its font; a Markdown preview or a web page
   as rendered; a PDF's pages and an image, fitted; a command's output, a
   terminal's transcript, a diff's changes and a notebook's cells as

@@ -9,7 +9,7 @@ struct FinderItem {
     var detail: String
     /// A word on the right: "edited", "dormant", "named", or where it is.
     var note: String
-    /// How far in, in an outline (⌘\): 0 at the top.
+    /// How far in, in an outline (⌘P): 0 at the top.
     var level: Int = 0
     var run: () -> Void
     /// Found in its content: the lines holding the query, run together
@@ -249,7 +249,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private(set) var scope: Scope = .names
     private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
     var isShowing: Bool { panel.isVisible }
-    /// ⌘\: the workspace as a hierarchy, filtered by a query, instead.
+    /// ⌘P: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
     /// The row the outline begins at (where you are), while nothing is typed.
     private var outlineStart: Int?
@@ -410,7 +410,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         panel.makeFirstResponder(field)
     }
 
-    /// Shows the workspace's outline (⌘\): tiles by column, and what is in
+    /// Shows the workspace's outline (⌘P): tiles by column, and what is in
     /// them, as `provider` lists them for a query.
     func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil,
                      placeholder: String = "Go to a tile, or a place in its outline…", over window: NSWindow?) {

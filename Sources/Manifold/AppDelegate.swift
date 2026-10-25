@@ -255,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Search Outline…", #selector(MainWindowController.searchOutline(_:)), "o", [.command, .shift])
         item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
         item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
-        item(file, "Go to Tile or Outline…", #selector(MainWindowController.goToTile(_:)), "\\")
+        item(file, "Go to Tile or Outline…", #selector(MainWindowController.goToTile(_:)), "p")
         file.addItem(.separator())
         item(file, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
         item(file, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "i", [.command, .option])
@@ -265,7 +265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         item(file, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         file.addItem(.separator())
-        item(file, "Print…", #selector(MainWindowController.printTile(_:)), "p")
+        // From the menu alone: ⌘P is the workspace's outline.
+        item(file, "Print…", #selector(MainWindowController.printTile(_:)), "")
         file.addItem(.separator())
         item(file, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])

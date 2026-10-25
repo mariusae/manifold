@@ -2624,7 +2624,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// and it is focused.
     private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] { a.revealing(placement) }
 
-    /// Going to a tile of the workspace shown (⌘\'s outline): revealed —
+    /// Going to a tile of the workspace shown (⌘P's outline): revealed —
     /// to the top of its stack, if it's in one — grown a little if it's
     /// down to its bar, and the pointer on it.
     func arrive(atTile placement: PlacementID) {
@@ -3789,7 +3789,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !finder.isShowing { searchOutline(of: f) }
         return finder.debugQuery(query).joined(separator: "\n")
     }
-    /// ⌘\'s list: opened afresh with no query (shown once a preview
+    /// ⌘P's list: opened afresh with no query (shown once a preview
     /// focused says where it's at, a moment later); else, the list as it's
     /// filtered by one.
     func debugWorkspaceOutline(_ query: String) -> String {
@@ -4144,7 +4144,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         else { goTo(id) }
     }
 
-    /// After a go-to (⌘O, ⌘\, a found line): the pointer moves to what was
+    /// After a go-to (⌘O, ⌘P, a found line): the pointer moves to what was
     /// gone to — the text cursor if the tile has one, else the tile's
     /// middle — a moment later, once it is laid out.
     func warpPointerToFocus() {
@@ -4622,7 +4622,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌥⌘P: the focused text block the other way round, in place — its
     /// preview as an editor, its editor as a preview (Markdown only).
     /// Editor and preview share the block, so an edit shows live.
-    /// ⌘\: the workspace as a hierarchy, as Prism's Move to Heading is —
+    /// ⌘P: the workspace as a hierarchy, as Prism's Move to Heading is —
     /// its tiles by column, and the headings of the text in them, set in
     /// under their tile; those whose words have every word of the query.
     /// ↩ goes to a tile, or to a heading in its editor or preview.
@@ -4764,7 +4764,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return (items, start)
     }
 
-    /// A tile's outline as its view has it, for ⌘\: each item under the
+    /// A tile's outline as its view has it, for ⌘P: each item under the
     /// tile, gone to as a click in the tile's own outline goes; the item
     /// you're at where to begin, in the focused tile. The last 500 at most
     /// (a terminal's long history of commands).

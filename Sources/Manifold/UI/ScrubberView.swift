@@ -142,7 +142,7 @@ final class ScrubberView: NSView {
 }
 
 /// The headings of a Markdown text, by line: what an outline of it is
-/// made of (⌘\, the scrubber).
+/// made of (⌘P, the scrubber).
 enum MarkdownOutline {
     struct Heading { var line: Int; var level: Int; var text: String }
 
