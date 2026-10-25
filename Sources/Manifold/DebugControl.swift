@@ -1099,7 +1099,6 @@ enum DebugControl {
                 wc?.debugFinderChoose()
                 return "ok"
             }
-            if arg == "graph" { wc?.newTab(nil); return "ok" }
             if arg.hasPrefix("picture ") { return wc?.debugFinderPicture(String(arg.dropFirst(8))) ?? "no window" }
             if arg.hasPrefix("bench ") {
                 let words = arg.dropFirst(6).split(separator: " ").map(String.init)

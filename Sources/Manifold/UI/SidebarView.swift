@@ -95,7 +95,7 @@ final class SidebarView: NSView {
         card.addSubview(pinButton)
         newButton.target = self
         newButton.action = #selector(newClicked)
-        newButton.toolTip = "New… (⌘T)"
+        newButton.toolTip = "New Workspace (⌥⌘T)"
         card.addSubview(newButton)
         moreButton.target = self
         moreButton.action = #selector(moreClicked)

@@ -326,12 +326,10 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
-- **⌘T finds the graph**: every block and workspace kept, and what can
-  be made (new terminal, new note, attach a host, launch an agent),
-  marked *do*. **⌘O** finds the same blocks and the files in the focused
+- **⌘O** finds every block and workspace, and the files in the focused
   block's folder (a terminal's working directory, a file's folder),
   listed in the background and kept a while, so asking again is
-  instant. Both rank off the main thread as you type, each keystroke
+  instant. It ranks off the main thread as you type, each keystroke
   giving up on the last, so typing never waits; the panel grows to fit
   and doesn't shrink under you. An agent is found by what it is: a
   block running Claude Code, Codex or another known agent answers to
@@ -390,7 +388,7 @@ around it, and comes back with its history.
   after how long idle, so it's never a surprise. The finder says
   *dormant* before you go to one.
 - Blocks are linked by what you do: ⌘-clicking a file in a terminal links
-  the two, and the palette lists what's linked to the focused block.
+  the two, and ⌘O ranks what's linked to the focused block first.
 
 ## Blocks
 
@@ -454,7 +452,7 @@ around it, and comes back with its history.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
-  Name… in its pill's menu, File ▸ Name Note… or the palette turns its
+  Name… in its pill's menu or File ▸ Name Note… turns its
   pill's title into a field (⏎ names it, emptied it's Untitled again);
   saved, it's offered under that name, and its file's name names it
   from then on. A file's text is the file's: one shown whose text hasn't
@@ -769,8 +767,7 @@ around it, and comes back with its history.
   is the outline's, above.) It shows as macOS shows its scroll bars: while you scroll,
   while the pointer rests on it, and a moment after, fading otherwise
   (and staying, if your scroll bars are set to always show).
-- **Shell notebooks** (File ▸ New Shell Notebook, ⌃⇧⌘N, or New Shell
-  Notebook in ⌘T) are Jupyter's notebooks for a shell: a column of cells,
+- **Shell notebooks** (File ▸ New Shell Notebook, ⌃⇧⌘N) are Jupyter's notebooks for a shell: a column of cells,
   each a command (as many lines as you like) with what its last run
   printed beneath it, all run in one shell that lives on — your zsh or
   bash, with your rc files, on the notebook's host, `TERM=dumb` — so a
@@ -980,7 +977,7 @@ around it, and comes back with its history.
   Compare with Now opens a diff block of then against now. Open This
   Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⇧⌘-clicked in a
-  terminal, typed in the finder, or asked for in the palette: the page
+  terminal, typed in the finder, or made with File ▸ New Web Page: the page
   has the whole tile, its pill has the address (click it, or ⌘L — Go to
   Line's key in an editor, the address's elsewhere), and
   back, forward and reload (stop, while it loads) are buttons on its bar
@@ -1048,7 +1045,7 @@ around it, and comes back with its history.
   An agent's **to-do list** (Claude Code's) is a checklist note of its
   own, linked from it and kept by it, rewritten as the list changes:
   done ticked, the item at work in bold. Launch
-  Agent Here (in the File menu, a tile's menu, or the box, ⌘T) offers each
+  Agent Here (in the File menu or a tile's menu) offers each
   agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
   opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's
   host has: the host looks for them through your login shell (the
@@ -1165,8 +1162,7 @@ is migrated into logs on first run.
   A workspace lives on a host too, in that host's spaces, which every Mac
   attached to the host sees: New Terminal in a New Workspace (⌥⌘T)
   makes it on the focused block's host, a host's row in the Workspaces
-  sidebar has New Workspace on *host* in its menu, and the box (⌘T)
-  lists one per host. What a Mac shows and settles on is its own.
+  sidebar has New Workspace on *host* in its menu. What a Mac shows and settles on is its own.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
@@ -1194,10 +1190,10 @@ is migrated into logs on first run.
   to make something (a command's output, a turn, a version, a notebook,
   a port forwarded) says what it's getting from where, and if the host
   doesn't answer in half a minute, that too. **Detach from *host*…**
-  (in the row's menu, or the box, ⌘T) forgets it here, even while it's still
+  (in the row's menu) forgets it here, even while it's still
   being reached: it isn't attached again at start, and its server,
   shells and blocks stay there for attaching again. **Reset Server on
-  *host*…** (the same menu, or the palette) installs the server there
+  *host*…** (the same menu) installs the server there
   again whatever is there, stops the one running and starts the new one:
   its shells end and its terminals start fresh ones, its blocks and
   workspaces stay. **Reset Graph on *host*…** forgets every link between
@@ -1335,7 +1331,7 @@ is migrated into logs on first run.
   couple of seconds. A shell on another machine, through ssh in the
   terminal, names that host and is left alone. Manifold starts the
   shell a host's preferences name (Preferences for *host*… in its
-  row's menu, or the box, ⌘T: a name on its PATH or a path, kept on the
+  row's menu: a name on its PATH or a path, kept on the
   host, so every Mac attached shares it, and refused if the host can't
   run it); else `MANIFOLD_SHELL` in the server's environment; else your
   login shell. Shells already running keep theirs.

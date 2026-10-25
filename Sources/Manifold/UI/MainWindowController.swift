@@ -1696,7 +1696,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         items.append(PaletteItem(symbol: "globe", title: "New Web Page", subtitle: "Action") { [weak self] in
             guard let self else { return }
-            self.show(self.host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
+            self.newWebPage(nil)
         })
         // The text shown, the other way: edit what's viewed, view what's edited.
         if let f = focusedShown, f.lens.isText, f.block?.kind == .text, let a = arrangement, let column = a.columnIndex(of: f.id) {
@@ -1804,11 +1804,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return id
     }
 
-    /// ⌘T: the one box (§3.5) — the finder, where the verbs (new terminal,
-    /// new note, attach…) are found by name beside the blocks. With
-    /// nothing on the desk, the palette of verbs alone.
-    @objc func newTab(_ sender: Any?) {
-        if allWorkspaces.isEmpty { showPalette() } else { showGraphFinder() }
+    /// A new web page beside the focused tile, its address to be typed.
+    @objc func newWebPage(_ sender: Any?) {
+        show(host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
     }
 
     /// ⌥⌘T (and the first thing at launch): a new terminal in a new
@@ -3846,7 +3844,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugFinderTime(_ query: String) -> String {
         if query == "open" {
             let start = Date()
-            let (c, _) = finderCorpus(verbs: true)
+            let (c, _) = finderCorpus()
             return String(format: "snapshot of %d in %.1f ms", c.count, Date().timeIntervalSince(start) * 1000)
         }
         if query.hasPrefix("blocks ") {
@@ -4046,25 +4044,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // The files where the focused block is: its folder (a terminal's
         // working directory, a file's folder), on this Mac.
         let root = focusedShown.flatMap { $0.placement.block.host == host.host ? ($0.block?.terminal?.cwd ?? $0.block?.place) : nil } ?? NSHomeDirectory()
-        let (corpus, actions) = finderCorpus(verbs: false)
+        let (corpus, actions) = finderCorpus()
         let known = Set(hosts.blocks.filter { $0.id.host == host.host }.compactMap(\.path))
         finder.show(corpus: corpus, actions: actions, filesUnder: root, knownPaths: known, scopes: true, placeholder: "Find a block, or a file in \(root.abbreviatingHome)…", over: window)
-    }
-
-    /// ⌘T: the graph alone — blocks and workspaces, what's kept — and
-    /// what can be made, found by name (§3.5).
-    private func showGraphFinder() {
-        let (corpus, actions) = finderCorpus(verbs: true)
-        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scopes: false, placeholder: "Go to a block, or make one…", over: window)
     }
 
     /// What the finder finds by name (§3.5), taken once as it opens: every
     /// block and workspace, each with what it's called (and words as good:
     /// its kind, the agent at work in it), what's around it, how far it is
-    /// from the focused block and how lately seen — and with `verbs`, what
-    /// can be made. Ranked off the main thread as you type (FinderRanking).
+    /// from the focused block and how lately seen. Ranked off the main
+    /// thread as you type (FinderRanking).
     /// What nothing keeps (§4) comes last, marked recent.
-    private func finderCorpus(verbs: Bool) -> ([FinderCandidate], [() -> Void]) {
+    private func finderCorpus() -> ([FinderCandidate], [() -> Void]) {
         var corpus: [FinderCandidate] = []
         var actions: [() -> Void] = []
         let near = focusedShown.map { hosts.distances(from: $0.placement.block, limit: 6) } ?? [:]
@@ -4197,13 +4188,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                               around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
                                               distance: 60, recency: turn.began.wall, action: actions.count))
                 actions.append { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) }
-            }
-        }
-        if verbs {
-            for item in paletteItems() where item.title != "Find Anything…" {
-                corpus.append(FinderCandidate(symbol: item.symbol, title: item.title, detail: item.subtitle, note: "do",
-                                              name: item.title, around: item.subtitle, distance: 45, recency: 0, action: actions.count))
-                actions.append(item.run)
             }
         }
         return (corpus, actions)
@@ -5060,7 +5044,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]
 
-    /// An address typed (in ⌘T, as in a page's bar) opened in a web tile:
+    /// An address typed (in a page's bar) opened in a web tile:
     /// an attached host's name, with a port (`anotherone:8080`) or in a whole
     /// address (`http://anotherone:8080/`), is that host's own localhost — the
     /// port forwarded here first; anything else as it is.
@@ -5575,7 +5559,8 @@ extension MainWindowController: SidebarDelegate {
     func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
-    func sidebarNewTab() { newTab(nil) }
+    /// The sidebar's +: a new workspace with a terminal in it (⌥⌘T).
+    func sidebarNewTab() { newTerminal(nil) }
 
     func sidebarMove(_ arrangement: BlockID, to index: Int) {
         guard let client = hosts.client(of: arrangement) else { return }

@@ -7,7 +7,8 @@ struct PaletteItem {
     var run: () -> Void
 }
 
-/// The ⌘T palette: open something new, or go to an existing tab.
+/// The palette of what can be made, shown with nothing in any workspace:
+/// open something new, or go to an existing tab.
 final class CommandPaletteView: NSView, NSTextFieldDelegate {
     var onDismiss: (() -> Void)?
     /// Whether Escape and clicking outside close it (not when there's
