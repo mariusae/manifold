@@ -98,7 +98,9 @@ and Mona Sans (bundled).
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows.
   The same summary is everywhere a block is shown small. **A tile shrinks
-  in steps**: under 80 points of content, its summary stands in for it
+  in steps**, one ladder — its content, its summary card, its bar alone,
+  stashed behind another — as a presentation of the room it has, not a
+  state of its own (Maximize stands apart): under 80 points of content, its summary stands in for it
   in its body, under its bar — its lines, as many as fit, when at the
   right (a click goes to it and grows it a little), squared off under
   its bar and rounded below as a tile is. **Shrink to Summary** (⇧⌘M, or the
@@ -112,9 +114,9 @@ and Mona Sans (bundled).
   `mani ls`, `info` and `context` print it. A bar peeking out above its
   stack, clicked, comes to the top; ⌘-clicked, it comes out of the
   stack. The peek's tabs go the same way. A stack is one
-  thing: drop its top tile's pill on another's and the whole stack goes
+  thing: drop its top tile's bar on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it.
-  Unstack in the pill's menu lays the whole stack out in the column;
+  Unstack in the bar's menu (or Tile ▸ Unstack) lays the whole stack out in the column;
   Close Stack takes the tile and its stack off the space (from a
   maximized tile, Close Column takes the column).
   Opening a block that isn't in the space always makes it a tile of
@@ -130,12 +132,12 @@ and Mona Sans (bundled).
   growing takes it, and the pointer goes to it, as apex does. **⌥ with any
   click that opens something** puts what opens over the tile clicked
   in, that tile going behind it (as ⌥-drag stacks): a link or a
-  block's pill in a note, a badge's link, a sidebar row, a listing's
+  block's link in a note, a bar's link, a sidebar row, a listing's
   file or folder, ⌘⌥-click on a terminal's link, a page's, or a symbol in an
-  editor (its definition stacked over the editor). Drop a pill on
+  editor (its definition stacked over the editor). Drop a bar on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
-  while you drag is the target tile's shape, to say so; ⇧-drag a pill
+  while you drag is the target tile's shape, to say so; ⇧-drag a bar
   and it's not the tile you
   carry but its path (a terminal's folder, a page's address): dropped on
   a terminal it's typed there, quoted for the shell; on an editor,
@@ -143,26 +145,26 @@ and Mona Sans (bundled).
   It carries the block too, linking it to where it lands (below);
   ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
   note) is linked to it, nothing typed or put in.
-  Stash Tile (⌘M, or Stash in a pill's menu) puts the
+  Stash Tile (⌘M, or Stash in a bar's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
   height stashes it, in the direction it was pushed (pushed up, behind
   the tile above it; pushed down, behind the tile below it), and goes
   on against the next, until all above or below are put away. Maximize Tile (⇧⌘↩, or the ⤢ at the right of a
-  pill) puts a tile over the whole space until it is restored, or
-  until you go to another tile. A pill is as wide as its title needs
+  bar) puts a tile over the whole space until it is restored, or
+  until you go to another tile. A bar's title is as wide as it needs
   and never more than half its tile, so what's under the band stays
   reachable at the sides; the focused tile's is plain, the others'
-  quieter. The focused tile's pill fades out while what's under it is
+  quieter. The focused tile's title fades out while what's under it is
   in use — the text cursor on its line in an editor or a terminal, a
   page's address or the process list's filter taking the keyboard — and
   comes back when that's done, or when the pointer rests where it would
-  be; the other tiles' pills stay, whatever is under them. A pill can
+  be; the other tiles' titles stay, whatever is under them. A title can
   also **become a field**: a web page has no address bar of its own —
-  click the address in its pill (or ⌘L) and it becomes one, there, the
+  click the address in its bar (or ⌘L) and it becomes one, there, the
   title left as it is and the address selected to type over, or words
   to search for (the rest of the bar grows the tile, as any bar does); ⏎ goes, ⎋ leaves it. ⌘[ and ⌘]
-  go back and forward, ⌘R reloads. The pill's menu (its icon) carries
+  go back and forward, ⌘R reloads. The bar's menu (its icon) carries
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
   The focused tile has a ring around it. **⌘Z undoes** the space's
@@ -177,13 +179,14 @@ and Mona Sans (bundled).
   along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
   space at once, Mission Control fashion; ⎋ comes back. Drag the
   lines between tiles and columns to
-  resize them. Each tile is a **card** with a bar across its top:
-  its symbol and name, where it is in grey, its links, the program its
+  resize them. Each tile is a **card** with a **bar** across its top:
+  its symbol and **title** (its name), where it is in grey, its
+  **links** (each a capsule), the program its
   status names in a grey capsule, its status
   glyph, and maximize and close (×) at the right. The bar is always there; as
   a tile narrows it gives things up in order — the place, then the
-  links' pill shrunk to its arrow and symbol, then the program, then
-  the pill to its arrow alone, then maximize, then the pill — so the
+  link shrunk to its arrow and symbol, then the program, then
+  the link to its arrow alone, then maximize, then the link — so the
   symbol and some of the name always show. The content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
@@ -233,7 +236,7 @@ and Mona Sans (bundled).
   its host when there are several, the one shown checked. A file or
   folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
-- Drag a tile by its pill: between two tiles to put it there, near a
+- Drag a tile by its bar: between two tiles to put it there, near a
   column's side for a new column there, onto a space in the
   sidebar for its active column, or between spaces for one of
   its own. To another space it moves, as a file does; ⌥-dragged it
@@ -241,24 +244,24 @@ and Mona Sans (bundled).
   space's row, the space springs open under the drag, to drop
   it exactly where it should go there; one left empty and unnamed by a
   move goes. A stack's top takes the stack along; ⌘-drag it to take it
-  alone, the next behind coming out in its place — a fanned-out pill
+  alone, the next behind coming out in its place — a fanned-out card
   drags its tile out alone the same way. ⌘W on a stack's top takes it
   off and the next comes out. Spaces drag from the sidebar onto the grid the same
   way, their columns coming over.
-- **Links by hand**: ⇧-drag any block's pill onto any tile and the
+- **Links by hand**: ⇧-drag any block's bar onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
-  ways. Both tiles wear the link in their bar, as a pill: an arrow for
+  ways. Both tiles wear the **link** in their bar, a capsule: an arrow for
   its direction (→ links to, ← linked from), the block's symbol and
   name, to click and go to, and (under the pointer) an × that breaks
-  the link, both ways at once. With more than one link, the first's
-  pill has sheets peeking out to its right, as a stack of cards, and the pointer
-  resting on it fans the rest out below, each a pill the same. Links lists them under *links*
+  the link, both ways at once. With more than one link, the first
+  has sheets peeking out to its right, as a stack of cards, and the pointer
+  resting on it fans the rest out below, each a link the same. Links lists them under *links*
   and *linked from*. A note made with a block focused (⇧⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
-  block also lands in the text, `[title](manifold:…)`, shown as its
-  pill — the block's symbol, name and status, live, as its tile's
-  pill shows them — in the editor and as a small pill in the preview,
+  block also lands in the text, `[title](manifold:…)`, shown as a
+  link — the block's symbol, name and status, live, as its tile's
+  bar shows them — in the editor and in the preview,
   clicked to go to the block; the note then *mentions* it too. So a
   web of annotations grows: notes about blocks, blocks in notes,
   blocks linked to blocks.
@@ -271,7 +274,7 @@ and Mona Sans (bundled).
   Markdown reader finds it (`![](image-2026-10-21-225841.png)`), or for
   a note in Manifold's own folder (`![](manifold:…)`) — and shown where
   the caret was: in the preview as the picture, in the editor as its
-  pill. The text *embeds* it, a strong link: the image is kept while a
+  link. The text *embeds* it, a strong link: the image is kept while a
   text shows it, and once none does it's collected like anything else
   nothing keeps (a note's own copy with it).
 - **Notes are Markdown, shown richly** as you write, the markers out
@@ -279,14 +282,14 @@ and Mona Sans (bundled).
   their faces, `` `code` `` in its font on a tint, fenced code blocks
   in the code font edge to edge, list markers and quotes set off,
   links as their words, clicked to follow (the pointer over one is the
-  hand), an address pasted over words making a link of them; a block's link is its pill,
+  hand), an address pasted over words making a link of them; a block's link shows as it,
   live. Every character stays where it is — the line the caret is on
   shows as written, markers dimmed — and the file is plain Markdown; a
   note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌘⇧C wrap the selection
   in bold, italic, strikethrough and code marks, or take them off.
   Return in a list carries it on — the next marker or number, an empty
   box in a task list — a quote with its mark, and on an empty item ends
-  it. The pill's menu has Show Raw Markdown, kept per tile. Markdown
+  it. The bar's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
 - **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
   foot) lists the blocks whose status wants attention — done or failed
@@ -445,13 +448,13 @@ around it, and comes back with its history.
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
   Name… in its bar's menu or Tile ▸ Name Note… turns its
-  pill's title into a field (⏎ names it, emptied it's Untitled again);
+  bar's title into a field (⏎ names it, emptied it's Untitled again);
   saved, it's offered under that name, and its file's name names it
   from then on. A file's text is the file's: one shown whose text hasn't
   come in is asked for until it does (whatever went astray on the way),
   says "Reading the file…" and can't be typed into or saved meanwhile,
   and a file opened again is looked at on disk again. The **editor** lens is Manifold's own
-  text view (the pill's menu switches a tile between the fixed-width
+  text view (the bar's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out
   with Core Text, line numbers, several
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
@@ -470,7 +473,7 @@ around it, and comes back with its history.
   and overwriting it with the edits.
 - **Viewing and editing**: a file opens to be viewed (unless `$EDITOR`
   opened it, to be edited) and a note to be written in; ⌘↩ (Edit ▸
-  Edit or View, or the pill's menu) goes between the two in the same
+  Edit or View, or the bar's menu) goes between the two in the same
   tile, the line at the top staying at the top and an editor's caret
   going along. How a file is viewed goes by its extension (a table in
   [Blocks.swift](Sources/ManifoldCore/Blocks.swift), anything not in
@@ -597,7 +600,7 @@ around it, and comes back with its history.
   and it's its path — a terminal types it, an editor inserts it, the
   grid opens it where it lands (on its host, another's too), another
   app takes the file (one of this Mac's); ⇧-drag it
-  and it's its block too, as a pill ⇧-dragged is: a note mentions it, a
+  and it's its block too, as a bar ⇧-dragged is: a note mentions it, a
   terminal or a tile it's dropped on is linked to it; ⌥⇧-drag it for
   the link alone. The
   selection, the folders left open, the divider and the filter are kept
@@ -660,7 +663,7 @@ around it, and comes back with its history.
   `open manifold:…` in a shell — going there as a link in a note does
   (a terminal's `#command=N` to that command). Copy Link in a tile's
   menu puts it on the clipboard: a link where links are taken, named
-  for the block; text elsewhere; the block's pill in a note. Copy Path
+  for the block; text elsewhere; the block's link in a note. Copy Path
   and Reveal in Finder are beside it. Closer in, the editor's menu has Copy
   Link to This Line (`#line=N`), an outline's heading or a PDF's page
   menu Copy Link to it (`#line=`, `#page=`), and a terminal's command or
@@ -672,7 +675,7 @@ around it, and comes back with its history.
   block), and a
   terminal's Save Scrollback as Note keeps its whole transcript.
 - **Links** go by the click, every kind alike — a web address, a path,
-  a block's pill, a tile's link — in a terminal, an editor, a preview or
+  a block's link in a note or a bar — in a terminal, an editor, a preview or
   a page: **⌘-click** opens it in Manifold beside (a page in its web
   lens), ⌘⌥ over; **⇧⌘-click** gives it to the system — an address to
   your browser, a file of this Mac to the app that opens it. A plain
@@ -681,7 +684,7 @@ around it, and comes back with its history.
   preview go where the file leads: another Markdown file is previewed
   in the same tile, a folder is listed, an image or PDF shown, anything
   else edited.
-- **Find** is a pill at a tile's upper right (⌘F): the query, how many
+- **Find** is a small field at a tile's upper right (⌘F): the query, how many
   matches, ↑ ↓ for the previous and next (↩ and ⇧↩, ⌘G and ⇧⌘G too), Aa
   for case, and ×; ⌥⌘F adds a row to replace with. ⌘E (Use Selection
   for Find) finds the selection, or the word at hand, and goes on to its
@@ -695,7 +698,7 @@ around it, and comes back with its history.
   typed-ahead keystrokes have — around it, as if lit from behind — to say
   so (not in
   full screen, where selecting is for reading); off and on from the
-  terminal's pill menu, for every terminal.
+  terminal's bar menu, for every terminal.
 - **Every tile prints** (File ▸ Print…), as it best goes on paper:
   a text or code as text, in its font; a Markdown preview or a web page
   as rendered; a PDF's pages and an image, fitted; a command's output, a
@@ -715,7 +718,7 @@ around it, and comes back with its history.
   and the whole outline opens over them, indented by level, where you are
   marked: click an item to go there, or its ⋯ (or right-click it) for what
   else it can do — copy a link to a heading or a page, a turn's changes,
-  undo a turn. **⇧-drag an item** and it carries what the block's pill
+  undo a turn. **⇧-drag an item** and it carries what the block's bar
   ⇧-dragged does, its link naming the item's place (`#line=`, `#page=`):
   into a note it's a link to that heading or page; on a tile, the blocks
   are linked; on a terminal or an editor, the block's path; ⌥⇧-drag for
@@ -952,9 +955,9 @@ around it, and comes back with its history.
   room (from about square to twice as wide as tall); or **summaries**, a
   summary card each, in columns — what it shows by itself past ten
   blocks, live views of so many being small (the buttons at its top
-  right choose). Nothing is placed: click a pill to go to the block, ⌘-click
+  right choose). Nothing is placed: click a card or a bar to go to the block, ⌘-click
   to bring it to the space you were in, ⎋ (or ×) to go back.
-  **Clear Status**, in a row's menu in the Inbox or the tile's pill menu,
+  **Clear Status**, in a row's menu in the Inbox or the tile's bar menu,
   forgets what a block reported until it reports again; a group's row
   offers Clear All. From a shell:
 
@@ -977,14 +980,14 @@ around it, and comes back with its history.
   Version opens the text as it was then as a block of its own, beside.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in Open Quickly, or made with File ▸ New Web Page: the page
-  has the whole tile, its pill has the address (click it, or ⌘L — Go to
+  has the whole tile, its bar has the address (click it, or ⌘L — Go to
   Line's key in an editor, the address's elsewhere), and
   back, forward and reload (stop, while it loads) are buttons on its bar
   as well as ⌘[ and ⌘]; its pages are in its log. The address works as
   Chrome's: `localhost:3000`, `10.0.0.5`, any `name:port` are addresses
   (not searches); **`host:port`, an attached host's name** (`slowbox:3000/api`)
   is that host's own localhost — the port forwarded here and opened, the
-  pill showing it as `slowbox:3000` still; words, a search. As you type,
+  bar showing it as `slowbox:3000` still; words, a search. As you type,
   completions come under it: the page you've been to that begins with
   it, filled in inline (the rest selected — type on, or ⌫ it away),
   else what you typed (to go to, or search for); pages you've been to
@@ -1077,7 +1080,7 @@ around it, and comes back with its history.
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
   (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the
   buttons or a row's menu, which also goes to the row's block. Its
-  controls sit under the pill, and stack as the tile narrows.
+  controls sit under the bar, and stack as the tile narrows.
 
 ## Look
 
@@ -1205,7 +1208,7 @@ is migrated into logs on first run.
   space's or a block's row in the sidebar. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
-  blocks stay as last seen: each tile's pill wears the slashed ring, an
+  blocks stay as last seen: each tile's bar wears the slashed ring, an
   editor there takes no edits, and nothing new reaches it until it's
   back. Click a host's row in Files (or Spaces) and its home folder opens
   as a listing on that host; a folder row with no listing yet opens one
