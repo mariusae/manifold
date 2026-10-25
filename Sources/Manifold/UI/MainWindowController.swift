@@ -1478,7 +1478,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         return "no tile \(title)"
     }
-    func debugPeek(_ on: Bool) -> String { content.debugPeek(on) }
+    func debugPeek(_ on: Bool, button: Bool = false) -> String { content.debugPeek(on, button: button) }
+    var debugPeekUp: String { content.debugPeekUp }
     var debugColumn: String { content.debugColumn }
     func debugPeekPick(_ i: Int) -> String { content.debugPeekPick(i) }
     var debugDirty: String { content.debugDirty }

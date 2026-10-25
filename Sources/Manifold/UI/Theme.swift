@@ -179,6 +179,8 @@ extension NSPasteboard.PasteboardType {
 /// A small borderless button showing a symbol, with a hover background.
 final class IconButton: NSButton {
     private var hovering = false { didSet { needsDisplay = true } }
+    /// The pointer come over it (true) or gone (false).
+    var onHover: ((Bool) -> Void)?
 
     init(symbol: String, size: CGFloat = 11, weight: NSFont.Weight = .semibold, target: AnyObject?, action: Selector?) {
         super.init(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
@@ -198,8 +200,8 @@ final class IconButton: NSButton {
         super.updateTrackingAreas()
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { hovering = true; onHover?(true) }
+    override func mouseExited(with event: NSEvent) { hovering = false; onHover?(false) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func draw(_ dirtyRect: NSRect) {

@@ -66,8 +66,12 @@ and Mona Sans (bundled).
   an edge and a shadow, stepped in further the deeper it is, within the
   gap between tiles, so a stacked tile takes no more room than a tile
   alone — and its bar's stack button wears how many are behind. A stack
-  just made (or grown) has its sheets drop into place; the pointer over
-  them raises them into tabs, one for each tile behind, its symbol and
+  just made (or grown) has its sheets drop into place; the pointer on
+  the stack button raises them into tabs at once — on the sheets, once
+  it rests there a moment with no button down, as the sheets are in the
+  gap where a drag resizes the tiles (passing through, or pressing, they
+  stay down, and a press in the gap always resizes) — one for each tile
+  behind, its symbol and
   title, over whatever is above (or, at the top of a column, below the
   bar), staying while the pointer is on them: click one to bring its tile
   to the top, or drag it out to put the tile anywhere, as a fanned card

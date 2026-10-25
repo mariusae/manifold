@@ -369,6 +369,12 @@ final class GridView: NSView, NSDraggingSource {
                 // Its stack's button (or its sheets, clicked): the stack
                 // behind it fanned out.
                 pill.onFan = { [weak self] in self?.fanOut(id) }
+                // Over its stack button, the tiles behind rise as tabs at once.
+                pill.onFanHover = { [weak self] inside in
+                    guard let self else { return }
+                    self.hoveringSheets = inside ? id : nil
+                    if inside { self.showPeek(id) } else { self.leavePeekSoon() }
+                }
                 // A fanned pill drags its tile out alone; the top's takes
                 // the stack along, unless ⌘ is held.
                 pill.onDragStart = { [weak self, weak pill] event in
@@ -568,14 +574,24 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: the first stack's sheets hovered — their tabs risen — or,
     /// `off`, left.
-    func debugPeek(_ on: Bool) -> String {
-        guard on else { hidePeek(); return "left" }
-        if let p = peek { return "already up over \(p.top)" }
+    /// Debugging: the focused (else first) stack's sheets hovered — the
+    /// tabs rising after the dwell — or, `button`, its stack button
+    /// (at once); or left.
+    func debugPeek(_ on: Bool, button: Bool = false) -> String {
         let focusedTarget = sheetTargets.first { $0.top == focused }
         guard let t = focusedTarget ?? sheetTargets.first, let top = t.top else { return "no sheets" }
-        showPeek(top)
-        return peek.map { "peek over \($0.top): \(NSStringFromRect($0.frame))" } ?? "no peek"
+        guard on else {
+            (button ? pills[top]?.onFanHover : t.onHover)?(false)
+            hidePeek()
+            return "left"
+        }
+        if let p = peek { return "already up over \(p.top)" }
+        if button { pills[top]?.onFanHover?(true) } else { t.onHover?(true) }
+        return peek.map { "peek over \($0.top): \(NSStringFromRect($0.frame))" } ?? "rising in \(Self.peekDwellTime)s"
     }
+
+    /// Debugging: whether the tabs are up.
+    var debugPeekUp: String { peek.map { "up over \($0.top)" } ?? "none" }
 
     /// Debugging: tab `i` of the tabs up clicked.
     func debugPeekPick(_ i: Int) -> String { peek?.debugPick(i) ?? "no tabs up" }
@@ -1491,10 +1507,25 @@ final class GridView: NSView, NSDraggingSource {
                 self.hidePeek()
                 self.fanOut(top)
             }
+            // Over the sheets — the gap between tiles, where a drag resizes
+            // — they rise only once the pointer rests there, no button
+            // down: passing through to the line between the tiles, they don't.
             t.onHover = { [weak self, weak t] inside in
                 guard let self else { return }
                 self.hoveringSheets = inside ? t?.top : nil
-                if inside, let top = t?.top { self.showPeek(top) } else { self.leavePeekSoon() }
+                self.peekDwell?.cancel()
+                guard inside, let top = t?.top else { return self.leavePeekSoon() }
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, self.hoveringSheets == top, NSEvent.pressedMouseButtons == 0 else { return }
+                    self.showPeek(top)
+                }
+                self.peekDwell = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.peekDwellTime, execute: work)
+            }
+            // A press there is the resize's: no tabs over it.
+            t.onPress = { [weak self] in
+                self?.peekDwell?.cancel()
+                self?.hidePeek()
             }
             // Dragged, it's the line between the tiles that moves.
             t.divider = { [weak self, weak t] in
@@ -1654,8 +1685,12 @@ final class GridView: NSView, NSDraggingSource {
         p.rise()
     }
 
-    /// The sheets hovered now, if any (the tabs stay while either is).
+    /// The sheets (or stack button) hovered now, if any (the tabs stay
+    /// while either is).
     private var hoveringSheets: PlacementID?
+    /// The tabs to rise once the pointer has rested on the sheets.
+    private var peekDwell: DispatchWorkItem?
+    private static let peekDwellTime: TimeInterval = 0.5
 
     /// The pointer gone from the sheets or the tabs: the tabs go too, a
     /// moment later, unless it's come onto the other.
@@ -1802,6 +1837,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// How many are behind, on the stack button's corner, as a badge on an icon.
     private let fanCount = NSTextField(labelWithString: "")
     var onFan: (() -> Void)?
+    /// The pointer come over the stack button (true) or gone.
+    var onFanHover: ((Bool) -> Void)?
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
     private let sidebarButton = IconButton(symbol: "sidebar.left", size: 10, weight: .medium, target: nil, action: nil)
@@ -1900,6 +1937,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         sidebarButton.isHidden = true
         fanButton.target = self
         fanButton.action = #selector(fanClicked)
+        fanButton.onHover = { [weak self] inside in self?.onFanHover?(inside) }
         fanButton.isHidden = true
         fanCount.font = .monospacedDigitSystemFont(ofSize: 8, weight: .bold)
         fanCount.alignment = .center
@@ -2438,12 +2476,15 @@ final class SheetsTarget: NSView {
     override func mouseEntered(with event: NSEvent) { onHover?(true) }
     override func mouseExited(with event: NSEvent) { onHover?(false) }
     var divider: (() -> RowDividerView?)?
+    /// Pressed: before it's known to be a click or a drag.
+    var onPress: (() -> Void)?
     private var downAt: NSPoint?
     private var moved = false
     private var dragging: RowDividerView?
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseDown(with event: NSEvent) {
+        onPress?()
         downAt = event.locationInWindow
         moved = false
         dragging = nil
@@ -2678,9 +2719,13 @@ final class StackPeek: NSView {
     /// The tab at a point: the nearest one wins where they overlap.
     private func tab(at p: NSPoint) -> Int? { (0..<rows).first { tabRect($0).contains(p) } }
 
+    /// Not in the gap above the bar, where a press resizes, whatever's
+    /// over it.
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let superview else { return nil }
-        return tab(at: convert(point, from: superview)) != nil ? self : nil
+        let p = convert(point, from: superview)
+        if !below, p.y < GridView.gap { return nil }
+        return tab(at: p) != nil ? self : nil
     }
 
     func rise() {
