@@ -75,7 +75,7 @@ final class HostDashboard: NSView {
         guard let c = client else { return }
         let pad: CGFloat = 14
         let small = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        let text = NSFont.systemFont(ofSize: 11.5)
+        let text = UIType.detail
         let grey = Theme.secondaryText
         func say(_ s: String, at p: NSPoint, font: NSFont = text, color: NSColor = Theme.text, right: Bool = false) {
             let a = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])

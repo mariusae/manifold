@@ -745,11 +745,11 @@ final class OrgRowView: NSTableCellView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         icon.contentTintColor = Theme.secondaryText
-        name.font = .systemFont(ofSize: 13)
+        name.font = UIType.row
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         name.cell?.truncatesLastVisibleLine = true
-        detail.font = .systemFont(ofSize: 11)
+        detail.font = UIType.footnote
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
         trailing.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -794,7 +794,7 @@ final class OrgRowView: NSTableCellView {
         name.stringValue = node.title
         switch node.style {
         case .host:
-            name.font = .systemFont(ofSize: 13, weight: .semibold)
+            name.font = UIType.title
             name.textColor = Theme.text
         case .section:
             name.font = .systemFont(ofSize: 11.5, weight: .semibold)
@@ -933,7 +933,7 @@ final class OrgRowView: NSTableCellView {
         if detail.isHidden {
             name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth, height: 17)
         } else {
-            let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? NSFont.systemFont(ofSize: 13)]).width) + 4
+            let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? UIType.row]).width) + 4
             // The name whole whenever it fits; the detail gets what's left,
             // and goes when that's too little to say anything.
             let nw = min(wanted, nameWidth)

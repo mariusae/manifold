@@ -36,6 +36,10 @@ enum UIType {
     static let body = NSFont.systemFont(ofSize: 12)
     static let detail = NSFont.systemFont(ofSize: 11.5)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .medium)
+    /// A lens's own header line (a diff's, a git block's, a picture's).
+    static let label = NSFont.systemFont(ofSize: 12, weight: .medium)
+    /// A note under a table or a pane, a footer's words.
+    static let footnote = NSFont.systemFont(ofSize: 11)
     static let count = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
     /// A block's symbol beside its title, as a row or a card sets it.
     static let symbolSize: CGFloat = 13
@@ -43,7 +47,7 @@ enum UIType {
 
 /// How far a thing stands off what's under it: resting on a surface (a
 /// sheet, a tab, a card), a tile in the light, a panel floating over the
-/// window (`Flat.shadow`). One shadow each.
+/// window. One shadow each.
 enum Elevation {
     case resting, tile, float
 
@@ -64,7 +68,10 @@ enum Elevation {
         l.shadowOffset = CGSize(width: 0, height: offset)
     }
 
-    private var opacity: CGFloat { switch self { case .resting: 0.18; case .tile: 0.10; case .float: Flat.shadowOpacity } }
+    private var opacity: CGFloat { switch self { case .resting: 0.18; case .tile: 0.10; case .float: Self.floatOpacity } }
+
+    /// A floating panel's shadow at full strength (the sidebar fades it).
+    static let floatOpacity: CGFloat = 0.16
     private var radius: CGFloat { switch self { case .resting: 3; case .tile: 10; case .float: 12 } }
     /// Light from above: the shadow falls below (negative is down).
     private var offset: CGFloat { switch self { case .resting: -1; case .tile: -4; case .float: -3 } }
@@ -89,6 +96,15 @@ enum EdgeColor {
     static let hairline = Theme.panelBorder
     static let subtle = Theme.cardBorder
     static let strong = Theme.sheetEdge(hovered: false)
+    /// A control's edge that must show on any ground — a checkbox, a
+    /// slider's knob, a badge — and a sheet's or a tab's behind a tile;
+    /// a step darker under the pointer.
+    static var control: NSColor { Theme.text.withAlphaComponent(0.3) }
+    static var controlHovered: NSColor { Theme.text.withAlphaComponent(0.5) }
+    /// The tint as an edge: strong round what has the keyboard, is chosen
+    /// or is the pointer's target; soft round what's on or focused within.
+    static var accentStrong: NSColor { Theme.accent.withAlphaComponent(0.75) }
+    static var accentSoft: NSColor { Theme.accent.withAlphaComponent(0.45) }
 }
 
 /// A pill: a count, an age — a few figures on a grey capsule, one look

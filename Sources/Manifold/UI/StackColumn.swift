@@ -43,7 +43,7 @@ final class SummaryCard: NSView {
         didSet {
             guard inTile != oldValue else { return }
             plain = inTile
-            layer?.backgroundColor = inTile ? Theme.windowBackground.cgColor : nil
+            effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = inTile ? Theme.windowBackground.cgColor : nil }
             needsDisplay = true
         }
     }
@@ -71,6 +71,8 @@ final class SummaryCard: NSView {
         self.content = content
         super.init(frame: .zero)
         wantsLayer = true
+        // In a tile, on the body's ground, light or dark.
+        themed { $0.layer?.backgroundColor = $0.inTile ? Theme.windowBackground.cgColor : nil }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -105,7 +107,7 @@ final class SummaryCard: NSView {
             path.fill()
             let ring = NSBezierPath(roundedRect: card.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.surface - 0.5, yRadius: Radius.surface - 0.5)
             ring.lineWidth = 1.5
-            Theme.accent.setStroke()
+            EdgeColor.accentStrong.setStroke()
             ring.stroke()
         } else {
             EdgeColor.subtle.setStroke()
@@ -232,7 +234,7 @@ final class StackColumnView: NSView {
         self.selection = selection
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = Radius.surface
         layer?.masksToBounds = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.blended(withFraction: 0.04, of: .textColor)?.cgColor }
         scroll.drawsBackground = false

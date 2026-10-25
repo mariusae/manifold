@@ -319,7 +319,7 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         window.isReleasedWhenClosed = false
         let box = NSView(frame: window.contentView!.bounds)
         box.wantsLayer = true
-        box.layer?.cornerRadius = Flat.panelRadius
+        box.layer?.cornerRadius = Radius.surface
         box.layer?.cornerCurve = .continuous
         box.layer?.borderWidth = 0.5
         box.layer?.masksToBounds = true

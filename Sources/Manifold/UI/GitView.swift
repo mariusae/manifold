@@ -49,7 +49,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        header.font = .systemFont(ofSize: 12, weight: .medium)
+        header.font = UIType.label
         header.textColor = Theme.secondaryText
         header.lineBreakMode = .byTruncatingMiddle
         branchLabel.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -252,7 +252,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         case let .section(title):
             f.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
         case let .note(text):
-            f.attributedStringValue = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: Status.failed]).truncatingTail()
+            f.attributedStringValue = NSMutableAttributedString(string: text, attributes: [.font: UIType.body, .foregroundColor: Status.failed]).truncatingTail()
         case let .change(s):
             let letters = (s.index == " " ? "·" : s.index) + (s.workTree == " " ? "·" : s.workTree)
             let color: NSColor = s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor)
@@ -268,7 +268,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             let a = NSMutableAttributedString(string: c.short + "  ", attributes: [.font: mono, .foregroundColor: Theme.secondaryText])
             a.append(NSAttributedString(string: c.summary, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
             let when = Self.relative.localizedString(for: Date(timeIntervalSince1970: c.date), relativeTo: Date())
-            a.append(NSAttributedString(string: "   \(c.author), \(when)", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText]))
+            a.append(NSAttributedString(string: "   \(c.author), \(when)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = a.truncatingTail()
         }
         return cell

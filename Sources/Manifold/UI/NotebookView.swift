@@ -495,7 +495,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         box.layer?.cornerCurve = .continuous
         addSubview(box)
         bar.wantsLayer = true
-        bar.layer?.cornerRadius = 1.5
+        bar.layer?.cornerRadius = Radius.hair
         addSubview(bar)
         editor.font = font
         editor.textColor = Theme.codeText
@@ -542,7 +542,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         outputScroll.autohidesScrollers = true
         output.autoresizingMask = [.width]
         addSubview(outputScroll)
-        footer.font = .systemFont(ofSize: 11)
+        footer.font = UIType.footnote
         footer.textColor = Theme.secondaryText
         addSubview(footer)
         refreshChrome()
@@ -572,7 +572,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         // Layers' colours, as the view's appearance has them (light or dark).
         effectiveAppearance.performAsCurrentDrawingAppearance {
             box.layer?.backgroundColor = Theme.codePage.cgColor
-            box.layer?.borderColor = (focused ? Theme.accent.withAlphaComponent(0.45) : Theme.divider).cgColor
+            box.layer?.borderColor = (focused ? EdgeColor.accentSoft : Theme.divider).cgColor
             bar.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.85).cgColor
         }
         box.layer?.borderWidth = focused || hovered ? 1 : 0
@@ -1097,7 +1097,7 @@ final class HoverLink: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private var label: NSAttributedString {
-        NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
+        NSAttributedString(string: title, attributes: [.font: UIType.label,
                                                        .foregroundColor: hovered ? Theme.text : Theme.secondaryText])
     }
 

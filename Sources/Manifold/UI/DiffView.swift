@@ -47,10 +47,10 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        header.font = .systemFont(ofSize: 12, weight: .medium)
+        header.font = UIType.label
         header.textColor = Theme.secondaryText
         header.lineBreakMode = .byTruncatingMiddle
-        note.font = .systemFont(ofSize: 11.5)
+        note.font = UIType.detail
         note.textColor = Theme.secondaryText
         note.alignment = .right
         addSubview(header)

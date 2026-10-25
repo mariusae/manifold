@@ -68,7 +68,7 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
             guard let owner else { done(nil); return {} }
             return owner.resolve(path, done: done)
         }
-        nothing.font = .systemFont(ofSize: 12)
+        nothing.font = UIType.body
         nothing.textColor = Theme.secondaryText
         nothing.alignment = .center
         right.addSubview(preview)
@@ -406,7 +406,7 @@ final class TreeCell: NSTableCellView {
         }
         if let folder, !folder.isEmpty {
             text.append(NSAttributedString(string: "  " + folder, attributes: [
-                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: Theme.secondaryText,
+                .font: UIType.body, .foregroundColor: Theme.secondaryText,
             ]))
         }
         label.attributedStringValue = text

@@ -1936,7 +1936,7 @@ final class TextView: NSView, NSTextInputClient {
         let drag = NSDraggingItem(pasteboardWriter: item)
         let shown = String(s.prefix(200)).replacingOccurrences(of: "\t", with: "  ")
         let label = NSAttributedString(string: shown.split(separator: "\n", omittingEmptySubsequences: false).prefix(6).joined(separator: "\n"),
-                                       attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor])
+                                       attributes: [.font: UIType.body, .foregroundColor: NSColor.labelColor])
         let size = NSSize(width: min(ceil(label.size().width) + 12, 420), height: min(ceil(label.size().height) + 8, 140))
         let image = NSImage(size: size, flipped: false) { r in
             NSColor.windowBackgroundColor.withAlphaComponent(0.85).setFill()

@@ -37,15 +37,15 @@ final class HoverCard: NSObject {
         title.font = UIType.title
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingMiddle
-        detail.font = .systemFont(ofSize: 11.5)
+        detail.font = UIType.detail
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingMiddle
-        body.font = .systemFont(ofSize: 12)
+        body.font = UIType.body
         body.textColor = Theme.text
         body.maximumNumberOfLines = 8
         for v in [picture, liveHolder] {
             v.wantsLayer = true
-            v.layer?.cornerRadius = 10
+            v.layer?.cornerRadius = Radius.surface
             v.layer?.cornerCurve = .continuous
             v.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
             v.layer?.masksToBounds = true
@@ -183,7 +183,7 @@ final class HoverCard: NSObject {
         title.stringValue = c.title
         detail.stringValue = c.detail
         body.stringValue = c.body
-        body.font = c.font ?? .systemFont(ofSize: 12)
+        body.font = c.font ?? UIType.body
         body.isHidden = c.body.isEmpty || image != nil || loan != nil
         // Wide with a picture or the block itself, as Safari's preview of a tab is.
         let width: CGFloat = image == nil && loan == nil ? 320 : 480, pad: CGFloat = 12

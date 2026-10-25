@@ -26,11 +26,11 @@ final class FilePreviewView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         icon.imageScaling = .scaleProportionallyUpOrDown
-        name.font = .systemFont(ofSize: 13, weight: .semibold)
+        name.font = UIType.title
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingMiddle
         for f in [info, date] {
-            f.font = .systemFont(ofSize: 11.5)
+            f.font = UIType.detail
             f.textColor = Theme.secondaryText
             f.lineBreakMode = .byTruncatingTail
         }

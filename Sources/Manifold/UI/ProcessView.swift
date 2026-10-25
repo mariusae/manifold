@@ -54,7 +54,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         field.placeholderString = "Filter"
         field.delegate = self
         fieldBox.onChange = { [weak self] in self?.filterChanged() }
-        status.font = .systemFont(ofSize: 11)
+        status.font = UIType.footnote
         status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingTail
         for (b, action) in [(end, #selector(endClicked)), (kill, #selector(killClicked))] {
@@ -343,7 +343,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             return c
         }()
         let numeric = id == "pid" || id == "cpu" || id == "memory"
-        cell.textField?.font = numeric ? .monospacedDigitSystemFont(ofSize: 11, weight: .regular) : .systemFont(ofSize: 11)
+        cell.textField?.font = numeric ? .monospacedDigitSystemFont(ofSize: 11, weight: .regular) : UIType.footnote
         cell.textField?.textColor = Theme.text
         switch shown[row] {
         case let .group(b):

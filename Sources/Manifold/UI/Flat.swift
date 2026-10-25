@@ -6,18 +6,14 @@ import AppKit
 /// the keyboard, is on, is chosen (a thin band of it), or is the thing to
 /// do; a faint grey band under the pointer; the system font throughout.
 enum Flat {
-    /// Fields and buttons.
-    static let radius: CGFloat = 6
-    /// Floating panels: the palette, cards, toasts, the sidebar over the window.
-    static let panelRadius: CGFloat = 10
+    // Radii, type and shadows are Design.swift's measures (Radius.control
+    // for fields and buttons, Radius.surface for floating panels,
+    // UIType.body, Elevation.float).
     static let fieldHeight: CGFloat = 28
     static let buttonHeight: CGFloat = 24
-    static let font = NSFont.systemFont(ofSize: 12)
     /// A control's edge, and its fill.
     static var line: NSColor { Theme.text.withAlphaComponent(0.14) }
     static var fill: NSColor { Theme.text.withAlphaComponent(0.025) }
-    /// The edge of what has the keyboard.
-    static var focusLine: NSColor { Theme.accent.withAlphaComponent(0.75) }
     /// A band: chosen (stronger with the keyboard), under the pointer, pressed.
     static func chosen(emphasized: Bool = true) -> NSColor { emphasized ? Theme.selection : Theme.selectionInactive }
     static var hovered: NSColor { Theme.hover }
@@ -30,10 +26,10 @@ enum Flat {
     static func float(_ v: NSView, background: NSColor = Theme.panel) {
         v.wantsLayer = true
         guard let l = v.layer else { return }
-        l.cornerRadius = panelRadius
+        l.cornerRadius = Radius.surface
         l.cornerCurve = .continuous
         l.borderWidth = 0.5
-        shadow(l)
+        Elevation.float.apply(to: l)
         v.themed {
             $0.layer?.backgroundColor = background.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
@@ -47,22 +43,12 @@ enum Flat {
         NSBezierPath(roundedRect: r.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control)
     }
 
-    /// The floating panels' shadow, on a layer of its own.
-    static func shadow(_ l: CALayer, strength: CGFloat = 1) {
-        l.shadowColor = NSColor.black.cgColor
-        l.shadowOpacity = Float(shadowOpacity * strength)
-        l.shadowRadius = 12
-        l.shadowOffset = CGSize(width: 0, height: -3)
-    }
-
-    static let shadowOpacity: CGFloat = 0.16
-
     /// A list set in a window (a settings table): a hairline round it,
     /// rounded as a field is, not the system's sunken bezel.
     static func outline(_ scroll: NSScrollView) {
         scroll.borderType = .noBorder
         scroll.wantsLayer = true
-        scroll.layer?.cornerRadius = radius + 1
+        scroll.layer?.cornerRadius = Radius.control + 1
         scroll.layer?.cornerCurve = .continuous
         scroll.layer?.borderWidth = 1
         scroll.layer?.masksToBounds = true
@@ -187,11 +173,11 @@ final class FlatFieldBox: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Flat.radius + 1, yRadius: Flat.radius + 1)
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control + 1, yRadius: Radius.control + 1)
         Flat.fill.setFill()
         path.fill()
         path.lineWidth = 1
-        (hasKeyboard ? Flat.focusLine : Flat.line).setStroke()
+        (hasKeyboard ? EdgeColor.accentStrong : Flat.line).setStroke()
         path.stroke()
     }
 
@@ -212,7 +198,7 @@ final class FlatButton: NSButton {
     /// The symbol before the words (or alone, with none).
     var symbolName: String? { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
 
-    init(_ title: String, symbol: String? = nil, style: Style = .normal, toggles: Bool = false, font: NSFont = Flat.font,
+    init(_ title: String, symbol: String? = nil, style: Style = .normal, toggles: Bool = false, font: NSFont = UIType.body,
          target: AnyObject? = nil, action: Selector? = nil) {
         self.style = style
         self.toggles = toggles
@@ -239,7 +225,7 @@ final class FlatButton: NSButton {
     }
     private var symbol: NSImage? { symbolName.flatMap { Theme.symbol($0, size: (font?.pointSize ?? 12) - 1, weight: .medium) } }
     private var label: NSAttributedString {
-        NSAttributedString(string: title, attributes: [.font: font ?? Flat.font, .foregroundColor: ink])
+        NSAttributedString(string: title, attributes: [.font: font ?? UIType.body, .foregroundColor: ink])
     }
 
     override var intrinsicContentSize: NSSize {
@@ -265,7 +251,7 @@ final class FlatButton: NSButton {
         defer { ctx?.restoreGState() }
         if !isEnabled { ctx?.setAlpha(0.4) }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Flat.radius, yRadius: Flat.radius)
+        let path = NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control)
         let pressed = isHighlighted && isEnabled, over = hovering && isEnabled
         switch style {
         case .primary:
@@ -276,7 +262,7 @@ final class FlatButton: NSButton {
                 : pressed ? Flat.pressed : over ? Flat.hovered : Flat.fill).setFill()
             path.fill()
             path.lineWidth = 1
-            (on ? Theme.accent.withAlphaComponent(0.45) : Flat.line).setStroke()
+            (on ? EdgeColor.accentSoft : Flat.line).setStroke()
             path.stroke()
         }
         // The symbol and the words, centered together.
@@ -312,14 +298,14 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
     var onChange: ((Int) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
 
-    init(_ items: [Item], font: NSFont = Flat.font) {
+    init(_ items: [Item], font: NSFont = UIType.body) {
         self.items = items
         self.font = font
         super.init(frame: .zero)
         setFrameSize(intrinsicContentSize)
     }
 
-    convenience init(titles: [String], font: NSFont = Flat.font) { self.init(titles.map { .title($0) }, font: font) }
+    convenience init(titles: [String], font: NSFont = UIType.body) { self.init(titles.map { .title($0) }, font: font) }
     convenience init(symbols: [String]) { self.init(symbols.map { .symbol($0) }) }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -387,7 +373,7 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
             let chosen = i == selectedSegment
             if chosen || hovered == i {
                 (chosen ? Flat.chosen() : Flat.hovered).setFill()
-                NSBezierPath(roundedRect: r, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+                NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
             }
             let ink = chosen ? Theme.text : Theme.secondaryText
             switch item {
@@ -418,9 +404,9 @@ final class FlatSliderCell: NSSliderCell {
         let inset = max(0, (knob.width - Self.knob) / 2)
         let bar = NSRect(x: rect.minX + inset, y: rect.midY - 1.5, width: rect.width - 2 * inset, height: 3)
         Theme.text.withAlphaComponent(0.12).setFill()
-        NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
+        NSBezierPath(roundedRect: bar, xRadius: Radius.hair, yRadius: Radius.hair).fill()
         Theme.accent.setFill()
-        NSBezierPath(roundedRect: NSRect(x: bar.minX, y: bar.minY, width: max(0, knob.midX - bar.minX), height: bar.height), xRadius: 1.5, yRadius: 1.5).fill()
+        NSBezierPath(roundedRect: NSRect(x: bar.minX, y: bar.minY, width: max(0, knob.midX - bar.minX), height: bar.height), xRadius: Radius.hair, yRadius: Radius.hair).fill()
     }
 
     override func drawKnob(_ knobRect: NSRect) {
@@ -430,7 +416,7 @@ final class FlatSliderCell: NSSliderCell {
         Theme.panel.setFill()
         path.fill()
         path.lineWidth = 1
-        Theme.text.withAlphaComponent(0.3).setStroke()
+        EdgeColor.control.setStroke()
         path.stroke()
     }
 }
@@ -446,14 +432,14 @@ final class FlatCheckboxCell: NSButtonCell {
         super.init(textCell: string)
         setButtonType(.switch)
         title = string
-        font = .systemFont(ofSize: 13)
+        font = UIType.row
     }
 
     required init(coder: NSCoder) { super.init(coder: coder) }
 
     override var cellSize: NSSize {
         guard !title.isEmpty else { return NSSize(width: Self.box + 2, height: Self.box + 2) }
-        let t = (title as NSString).size(withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 13)])
+        let t = (title as NSString).size(withAttributes: [.font: font ?? UIType.row])
         return NSSize(width: Self.box + Self.gap + ceil(t.width) + 2, height: max(Self.box + 2, ceil(t.height)))
     }
 
@@ -464,17 +450,17 @@ final class FlatCheckboxCell: NSButtonCell {
         let x = title.isEmpty ? (cellFrame.midX - d / 2).rounded() : cellFrame.minX + 1
         let r = NSRect(x: x, y: (cellFrame.midY - d / 2).rounded(), width: d, height: d)
         if !title.isEmpty {
-            let a = NSAttributedString(string: title, attributes: [.font: font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: isEnabled ? Theme.text : Theme.tertiaryText])
+            let a = NSAttributedString(string: title, attributes: [.font: font ?? UIType.row, .foregroundColor: isEnabled ? Theme.text : Theme.tertiaryText])
             let size = a.size()
             a.draw(at: NSPoint(x: r.maxX + Self.gap, y: cellFrame.midY - size.height / 2))
         }
-        let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+        let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.inline, yRadius: Radius.inline)
         let on = state == .on
         (on ? Tints.accentFill : Flat.fill).setFill()
         path.fill()
         if !on {
             path.lineWidth = 1
-            Theme.text.withAlphaComponent(0.3).setStroke()
+            EdgeColor.control.setStroke()
             path.stroke()
         } else if let tick = Theme.symbol("checkmark", size: 9, weight: .bold)?.tinted(.white) {
             tick.draw(in: NSRect(x: r.midX - tick.size.width / 2, y: r.midY - tick.size.height / 2, width: tick.size.width, height: tick.size.height),
@@ -519,7 +505,7 @@ final class FlatHeaderCell: NSTableHeaderCell {
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        let a = NSAttributedString(string: stringValue, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: Theme.secondaryText])
+        let a = NSAttributedString(string: stringValue, attributes: [.font: UIType.caption, .foregroundColor: Theme.secondaryText])
         let s = a.size()
         let x = alignment == .right ? cellFrame.maxX - 6 - s.width : cellFrame.minX + 6
         a.draw(in: NSRect(x: x, y: cellFrame.midY - s.height / 2, width: min(s.width, cellFrame.width - 12), height: s.height))

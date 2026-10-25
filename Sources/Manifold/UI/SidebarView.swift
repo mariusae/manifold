@@ -74,10 +74,10 @@ final class SidebarView: NSView {
         inboxButton = IconButton(symbol: Organization.inbox.symbol, size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
         wantsLayer = true
-        if let layer { Flat.shadow(layer) }
+        if let layer { Elevation.float.apply(to: layer) }
 
         card.wantsLayer = true
-        card.layer?.cornerRadius = Flat.panelRadius
+        card.layer?.cornerRadius = Radius.surface
         card.layer?.cornerCurve = .continuous
         card.layer?.masksToBounds = true
         addSubview(card)
@@ -100,7 +100,7 @@ final class SidebarView: NSView {
         pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
-        pushedSubtitle.font = .systemFont(ofSize: 11.5)
+        pushedSubtitle.font = UIType.detail
         pushedSubtitle.textColor = Theme.secondaryText
         for v in [backButton, pushedTitle, pushedSubtitle] { v.isHidden = true; card.addSubview(v) }
 
@@ -129,7 +129,7 @@ final class SidebarView: NSView {
         card.frame = bounds
         // The shadow's shape given, not found from what's drawn (offscreen,
         // every frame it slides).
-        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Flat.panelRadius, cornerHeight: Flat.panelRadius, transform: nil)
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
         moreButton.frame = NSRect(x: bounds.width - 54, y: bounds.height - 30, width: 20, height: 20)
@@ -223,7 +223,7 @@ final class SidebarView: NSView {
     }
 
     private func updateChrome() {
-        layer?.shadowOpacity = pinned ? 0 : Float(Flat.shadowOpacity)
+        layer?.shadowOpacity = pinned ? 0 : Float(Elevation.floatOpacity)
         if chromeThemed {
             card.effectiveAppearance.performAsCurrentDrawingAppearance { applyCard(card) }
         } else {
@@ -255,7 +255,7 @@ final class ResizeHandleView: NSView {
         super.init(frame: frame)
         pill.wantsLayer = true
         pill.themed { $0.layer?.backgroundColor = Theme.handle.cgColor }
-        pill.layer?.cornerRadius = 1.5
+        pill.layer?.cornerRadius = Radius.hair
         pill.alphaValue = 0
         addSubview(pill)
     }
@@ -367,7 +367,7 @@ final class FootRowView: NSView {
         icon.image = Theme.symbol(symbol, size: 11)
         icon.contentTintColor = Theme.secondaryText
         label.stringValue = title
-        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.font = UIType.label
         label.textColor = Theme.secondaryText
         for v in [icon, label, countLabel] { addSubview(v) }
     }

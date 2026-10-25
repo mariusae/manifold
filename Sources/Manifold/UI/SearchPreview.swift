@@ -94,7 +94,7 @@ final class SearchPreviewView: NSView {
         addSubview(gutter)
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(gutter, selector: #selector(LineGutter.scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
-        empty.font = .systemFont(ofSize: 12)
+        empty.font = UIType.body
         empty.textColor = Theme.secondaryText
         empty.alignment = .center
         addSubview(empty)

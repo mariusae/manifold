@@ -21,8 +21,8 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private let header = NSView()
     private let prompt = NSTextField(labelWithString: "")
     private let outcome = NSTextField(labelWithString: "")
-    private let back = FlatButton("Show in Terminal", symbol: "arrow.uturn.backward", font: .systemFont(ofSize: 11))
-    private let copy = FlatButton("Copy", symbol: "doc.on.doc", font: .systemFont(ofSize: 11))
+    private let back = FlatButton("Show in Terminal", symbol: "arrow.uturn.backward", font: UIType.footnote)
+    private let copy = FlatButton("Copy", symbol: "doc.on.doc", font: UIType.footnote)
     private let scroll = ClippingScrollView()
     private let text = OutputFindTextView()
     private var shown: OutputState?
@@ -58,7 +58,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         prompt.lineBreakMode = .byTruncatingTail
         prompt.textColor = Theme.text
         outcome.lineBreakMode = .byTruncatingTail
-        outcome.font = .systemFont(ofSize: 11)
+        outcome.font = UIType.footnote
         outcome.textColor = Theme.secondaryText
         for (b, action) in [(back, #selector(backClicked)), (copy, #selector(copyClicked))] {
             b.target = self

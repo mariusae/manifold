@@ -43,7 +43,7 @@ final class HistoryView: NSView {
         slider.target = self
         slider.action = #selector(scrubbed)
         slider.isContinuous = true
-        when.font = .systemFont(ofSize: 12)
+        when.font = UIType.body
         when.textColor = Theme.secondaryText
         when.alignment = .center
         restore.target = self
@@ -186,7 +186,7 @@ final class ArrangementDiagram: NSView {
         let n = state.columns.count
         guard n > 0 else {
             let s = NSAttributedString(string: state.isNamed ? "“\(state.title!)”, empty" : "Empty",
-                                       attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: Theme.secondaryText])
+                                       attributes: [.font: UIType.row, .foregroundColor: Theme.secondaryText])
             let size = s.size()
             s.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
             return
@@ -215,11 +215,11 @@ final class ArrangementDiagram: NSView {
             let r = NSRect(x: rect.minX, y: y - h, width: rect.width, height: h)
             // A card as the grid draws one: rounded, borderless, the
             // focused one ringed in the accent.
-            let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control)
             Theme.panel.setFill()
             path.fill()
             if p.id == state.focused {
-                Theme.accent.withAlphaComponent(0.45).setStroke()
+                EdgeColor.accentSoft.setStroke()
                 path.lineWidth = 1.5
                 path.stroke()
             }

@@ -153,7 +153,7 @@ class SettingsPane: NSViewController {
     /// A row: its label, and what it sets — sized as it wants to be.
     func row(_ label: String, _ control: NSView, note: String? = nil, top: Bool = false) {
         let l = NSTextField(labelWithString: label.isEmpty ? "" : label + ":")
-        l.font = .systemFont(ofSize: 13)
+        l.font = UIType.row
         l.textColor = Theme.text
         control.setContentHuggingPriority(.required, for: .horizontal)
         let r = form.addRow(with: [l, control])
@@ -165,7 +165,7 @@ class SettingsPane: NSViewController {
         }
         if let note {
             let n = NSTextField(wrappingLabelWithString: note)
-            n.font = .systemFont(ofSize: 11)
+            n.font = UIType.footnote
             n.textColor = Theme.secondaryText
             n.preferredMaxLayoutWidth = Self.width - 200
             let nr = form.addRow(with: [NSGridCell.emptyContentView, n])
@@ -181,7 +181,7 @@ class SettingsPane: NSViewController {
 
     /// Choices in a row of segments, `values` in their order.
     func segments<T: Equatable>(_ titles: [String], _ values: [T], set: @escaping (T) -> Void) -> (FlatSegments, (T) -> Void) {
-        let s = FlatSegments(titles: titles, font: .systemFont(ofSize: 12))
+        let s = FlatSegments(titles: titles, font: UIType.body)
         s.onChange = { i in if i < values.count { set(values[i]) } }
         return (s, { v in s.selectedSegment = values.firstIndex(of: v) ?? 0 })
     }
@@ -268,7 +268,7 @@ final class TintPicker: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        name.font = .systemFont(ofSize: 12)
+        name.font = UIType.body
         name.textColor = Theme.secondaryText
         addSubview(name)
         for (i, t) in Tint.allCases.enumerated() { addToolTip(rect(i), owner: t.title as NSString, userData: nil) }

@@ -31,7 +31,7 @@ final class StateView: NSView {
     private let title = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let modes = FlatSegments(symbols: ["list.bullet", "square.grid.2x2", "rectangle.grid.1x2"])
-    private let filter = FlatSegments(titles: ["This Space", "Agents"], font: .systemFont(ofSize: 12))
+    private let filter = FlatSegments(titles: ["This Space", "Agents"], font: UIType.body)
     private var cards: [BlockID: SummaryCard] = [:]
     private let leave = IconButton(symbol: "xmark", size: 12, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
@@ -54,9 +54,9 @@ final class StateView: NSView {
         header.wantsLayer = true
         header.layer?.backgroundColor = .clear
         addSubview(header)
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.font = UIType.heading
         title.textColor = Theme.text
-        count.font = .systemFont(ofSize: 12)
+        count.font = UIType.body
         count.textColor = Theme.secondaryText
         modes.setToolTip("List", forSegment: 0)
         modes.setToolTip("Overview", forSegment: 1)

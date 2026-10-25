@@ -60,7 +60,7 @@ enum MarkdownStyle {
     static func isFence(_ line: String) -> Bool { line.hasPrefix("```") || line.hasPrefix("~~~") }
 
     /// The pill's font and the width it takes for a look, at a row height.
-    static let pillFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+    static let pillFont = UIType.caption
     static func pillWidth(_ look: PillLook) -> CGFloat {
         let text = ceil((look.title as NSString).size(withAttributes: [.font: pillFont]).width)
         return 8 + 13 + 5 + text + (look.status == nil ? 0 : 4 + 11) + 8

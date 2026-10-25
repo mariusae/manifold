@@ -1292,12 +1292,16 @@ The app's own chrome is drawn from a few named measures (Design.swift),
 not literals: **Radius** — hair 1.5, inline 4, control 6, surface 10,
 capsule (half the height); **UIType** — display 22, heading 15 semibold,
 title 13 semibold, row 13, body 12, detail 11.5, caption 11 medium,
-count 10.5 (figures of one width), a block's symbol 13; **Elevation** —
+count 10.5 (figures of one width), label 12 medium (a lens's header),
+footnote 11, a block's symbol 13; **Elevation** —
 resting (a sheet, a tab, a card: 0.18, blur 3, a point below), tile (in
 the light: 0.10, 10, four below), float (a panel: Flat.shadow);
 **Motion** — fast 0.12 s, base 0.16, spatial 0.24, easing out to appear
 and in to go, one curve to travel and one that overshoots to settle;
-**EdgeColor** — hairline, subtle, strong; **Status** — running (the
+**EdgeColor** — hairline, subtle, strong, control (a checkbox, a
+knob, a badge, a sheet or tab behind a tile, darker hovered), and the
+tint strong (what has the keyboard, is chosen or targeted) and soft
+(what's on, or focused within); **Status** — running (the
 accent), done, attention, failed, offline, each its own in light and
 dark and darker in the light to read as text; the tint as text
 (`Tints.accentText`, darkened or lightened until it reads on a panel)

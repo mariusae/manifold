@@ -76,7 +76,7 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
             } else {
                 let cell = NSTextFieldCell()
                 cell.isEditable = true
-                cell.font = .systemFont(ofSize: 12)
+                cell.font = UIType.body
                 column.dataCell = cell
             }
             table.addTableColumn(column)
@@ -95,11 +95,11 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
         remove.action = #selector(removeRow)
         defaults.target = self
         defaults.action = #selector(restoreDefaults)
-        note.font = .systemFont(ofSize: 11)
+        note.font = UIType.footnote
         note.textColor = Theme.secondaryText
-        status.font = .systemFont(ofSize: 11)
+        status.font = UIType.footnote
         status.textColor = Theme.secondaryText
-        rootLabel.font = .systemFont(ofSize: 12)
+        rootLabel.font = UIType.body
         rootLabel.textColor = Theme.text
         rootBox.field.placeholderString = "as for all hosts"
         NotificationCenter.default.addObserver(self, selector: #selector(rootEdited), name: NSControl.textDidEndEditingNotification, object: rootBox.field)
@@ -194,7 +194,7 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
         if ids != scopeHosts || scopeBar.superview == nil {
             scopeHosts = ids
             scopeBar.removeFromSuperview()
-            scopeBar = FlatSegments(titles: ["All Hosts"] + list.map(\.1), font: .systemFont(ofSize: 12))
+            scopeBar = FlatSegments(titles: ["All Hosts"] + list.map(\.1), font: UIType.body)
             scopeBar.onChange = { [weak self] i in
                 guard let self else { return }
                 self.select(i == 0 ? nil : self.scopeHosts[i - 1])

@@ -73,7 +73,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         scroll.drawsBackground = false
         addSubview(scroll)
         empty.stringValue = emptyText
-        empty.font = .systemFont(ofSize: 12)
+        empty.font = UIType.body
         empty.textColor = Theme.secondaryText
         empty.alignment = .center
         addSubview(empty)
@@ -87,7 +87,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         if let pagesView { addSubview(pagesView) }
         search.placeholderString = "Filter"
         search.controlSize = .small
-        search.font = .systemFont(ofSize: 12)
+        search.font = UIType.body
         search.focusRingType = .none
         search.delegate = self
         search.sendsSearchStringImmediately = true

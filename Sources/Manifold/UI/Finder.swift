@@ -257,7 +257,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     var summarize: ((BlockID) -> SummaryCardContent?)?
     private var summaries: [BlockID: SummaryCardContent?] = [:]
     private(set) var scope: Scope = .names
-    private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
+    private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: UIType.footnote)
     var isShowing: Bool { panel.isVisible }
     /// ⌘P: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
@@ -340,7 +340,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         scroll.autohidesScrollers = true
         background.addSubview(scroll)
 
-        hint.font = .systemFont(ofSize: 11)
+        hint.font = UIType.footnote
         hint.textColor = Theme.tertiaryText
         hint.alignment = .right
         background.addSubview(hint)

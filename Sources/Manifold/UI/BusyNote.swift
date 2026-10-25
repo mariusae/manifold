@@ -26,7 +26,7 @@ final class BusyNote: NSView {
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
-        label.font = .systemFont(ofSize: 13)
+        label.font = UIType.row
         label.textColor = Theme.secondaryText
         label.alignment = .center
         label.lineBreakMode = .byTruncatingTail

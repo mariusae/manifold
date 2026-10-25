@@ -89,7 +89,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         searchBox.onChange = { [weak self] in self?.filterTyped() }
         for v in [up, searchBox] as [NSView] { header.addSubview(v) }
         addSubview(header)
-        footer.font = .systemFont(ofSize: 11)
+        footer.font = UIType.footnote
         footer.textColor = Theme.secondaryText
         footer.alignment = .center
         footer.isHidden = true

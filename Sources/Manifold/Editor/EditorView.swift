@@ -150,7 +150,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
-        status.font = .systemFont(ofSize: 11.5)
+        status.font = UIType.detail
         status.textColor = Theme.text
         status.lineBreakMode = .byTruncatingTail
         status.maximumNumberOfLines = 1

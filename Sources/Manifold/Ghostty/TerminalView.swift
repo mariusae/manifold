@@ -186,7 +186,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 l.textColor = Theme.text
                 l.wantsLayer = true
                 l.layer?.cornerRadius = Radius.capsule(18)
-                l.layer?.backgroundColor = Theme.panel.cgColor
+                l.layer?.borderWidth = 1
+                l.themed {
+                    $0.layer?.backgroundColor = Theme.panel.cgColor
+                    $0.layer?.borderColor = EdgeColor.hairline.cgColor
+                }
                 l.toolTip = "A password is being read: other apps can't see what you type"
                 addSubview(l)
                 lock = l

@@ -25,8 +25,8 @@ final class OutlineRow: NSTableCellView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         mark.wantsLayer = true
-        mark.layer?.cornerRadius = 1.5
-        title.font = .systemFont(ofSize: 12)
+        mark.layer?.cornerRadius = Radius.hair
+        title.font = UIType.body
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail
         detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)

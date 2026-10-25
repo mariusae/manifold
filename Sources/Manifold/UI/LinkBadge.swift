@@ -63,6 +63,8 @@ final class LinkBadge: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        // Its sheets' layers coloured as laid out: again when light and dark switch.
+        themed { $0.needsLayout = true }
         // The sheets rise above the pill, out of the view's frame.
         clipsToBounds = false
         layer?.masksToBounds = false
@@ -188,7 +190,7 @@ final class LinkBadge: NSView {
             } else {
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = Motion.base
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    ctx.timingFunction = Motion.appear
                     badge.animator().frame = first
                 }
             }
@@ -206,7 +208,7 @@ final class LinkBadge: NSView {
                     p.isHidden = false
                     NSAnimationContext.runAnimationGroup { ctx in
                         ctx.duration = Motion.base
-                        ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                        ctx.timingFunction = Motion.appear
                         p.animator().frame = target
                     }
                 } else if p.layer?.animationKeys()?.isEmpty ?? true {
@@ -249,7 +251,7 @@ final class LinkBadge: NSView {
                 l.zPosition = -level
                 l.path = CGPath(roundedRect: r, cornerWidth: r.height / 2, cornerHeight: r.height / 2, transform: nil)
                 l.fillColor = Theme.sheet(level: i + 1).cgColor
-                l.strokeColor = Theme.text.withAlphaComponent(0.25).cgColor
+                l.strokeColor = EdgeColor.control.cgColor
             }
         }
         CATransaction.commit()
@@ -332,7 +334,7 @@ final class LinkBadge: NSView {
             didSet {
                 guard hovered != oldValue else { return }
                 effectiveAppearance.performAsCurrentDrawingAppearance {
-                    layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : Theme.panelBorder).cgColor
+                    layer?.borderColor = (hovered ? EdgeColor.accentStrong : EdgeColor.hairline).cgColor
                 }
                 layer?.borderWidth = hovered ? 1.5 : 0.5
                 updateClose()
@@ -355,7 +357,7 @@ final class LinkBadge: NSView {
             arrow.isHidden = true
             icon.image = Theme.symbol(symbol, size: 10)
             icon.contentTintColor = Theme.secondaryText
-            label.font = .systemFont(ofSize: 11, weight: .medium)
+            label.font = UIType.caption
             label.textColor = Theme.text
             label.lineBreakMode = .byTruncatingTail
             label.maximumNumberOfLines = 1

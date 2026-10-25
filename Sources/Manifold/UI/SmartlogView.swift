@@ -62,7 +62,7 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
         // Nothing white before the page draws.
         web.setValue(false, forKey: "drawsBackground")
         web.isHidden = true
-        note.font = .systemFont(ofSize: 13)
+        note.font = UIType.row
         note.textColor = Theme.secondaryText
         note.alignment = .center
         addSubview(web)

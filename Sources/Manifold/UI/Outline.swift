@@ -271,7 +271,7 @@ final class FloatingList: NSView {
     private init() {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = Flat.panelRadius
+        layer?.cornerRadius = Radius.surface
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         applyColors()
@@ -561,7 +561,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         super.init(frame: frame)
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
-        detail.font = .systemFont(ofSize: 11.5)
+        detail.font = UIType.detail
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
         detail.alignment = .right

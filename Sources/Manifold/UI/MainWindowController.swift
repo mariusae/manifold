@@ -1069,7 +1069,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             sidebar.alphaValue = 0
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Motion.base
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.timingFunction = Motion.appear
                 sidebar.animator().frame = target
                 sidebar.animator().alphaValue = 1
             }
@@ -1103,7 +1103,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let target = sidebar.frame.offsetBy(dx: -24, dy: 0)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.fast
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            ctx.timingFunction = Motion.disappear
             sidebar.animator().frame = target
             sidebar.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
@@ -5123,7 +5123,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 76))
         func label(_ text: String, y: CGFloat, small: Bool = false) {
             let l = NSTextField(wrappingLabelWithString: text)
-            l.font = small ? .systemFont(ofSize: 11) : .systemFont(ofSize: 13, weight: .medium)
+            l.font = small ? UIType.footnote : .systemFont(ofSize: 13, weight: .medium)
             l.textColor = small ? .secondaryLabelColor : .labelColor
             let h = l.sizeThatFits(NSSize(width: w, height: 200)).height
             l.frame = NSRect(x: 0, y: y, width: w, height: h)

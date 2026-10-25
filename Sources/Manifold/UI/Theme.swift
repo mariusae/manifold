@@ -208,7 +208,7 @@ final class IconButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         if hovering {
             (isHighlighted ? Flat.pressed : Flat.hovered).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+            NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
         }
         super.draw(dirtyRect)
     }
@@ -316,7 +316,7 @@ final class SelectionRowView: NSTableRowView {
         if let g = grouped {
             // Square where it runs on into the next row: the rounded rect
             // carried past that edge, and cut there.
-            let reach = Flat.radius * 2
+            let reach = Radius.control * 2
             // Its top and bottom edges, as the run reads (flipped or not).
             let (low, high) = isFlipped ? (g.first, g.last) : (g.last, g.first)
             let minY = low ? bounds.minY + 1 : bounds.minY - reach
@@ -325,7 +325,7 @@ final class SelectionRowView: NSTableRowView {
             NSGraphicsContext.saveGraphicsState()
             bounds.clip()
             Self.outlineColor.setStroke()
-            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Flat.radius, yRadius: Flat.radius)
+            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
             path.lineWidth = 1
             path.setLineDash([1.5, 2.5], count: 2, phase: 0)
             path.lineCapStyle = .round
@@ -338,7 +338,7 @@ final class SelectionRowView: NSTableRowView {
         }
         guard marked else { return }
         Theme.accent.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: 3, height: bounds.height - 10), xRadius: 1.5, yRadius: 1.5).fill()
+        NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: 3, height: bounds.height - 10), xRadius: Radius.hair, yRadius: Radius.hair).fill()
     }
 
     override func drawSelection(in dirtyRect: NSRect) {

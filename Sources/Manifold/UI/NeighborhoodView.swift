@@ -67,10 +67,10 @@ final class NeighborhoodView: NSView {
         themed { $0.layer?.backgroundColor = Theme.scrim.cgColor }
         Flat.float(panel)
         addSubview(panel)
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        title.font = UIType.title
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingMiddle
-        hint.font = .systemFont(ofSize: 11.5)
+        hint.font = UIType.detail
         hint.textColor = Theme.secondaryText
         hint.alignment = .center
         back.target = self
@@ -312,7 +312,7 @@ final class GraphCanvas: NSView {
                 let mid = NSPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
                 let box = NSRect(x: mid.x - size.width / 2 - 4, y: mid.y - size.height / 2 - 1, width: size.width + 8, height: size.height + 2)
                 Theme.panel.withAlphaComponent(0.92).setFill()
-                NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+                NSBezierPath(roundedRect: box, xRadius: Radius.inline, yRadius: Radius.inline).fill()
                 text.draw(at: NSPoint(x: box.minX + 4, y: box.minY + 1))
             }
         }

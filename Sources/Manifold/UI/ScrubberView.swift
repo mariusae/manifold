@@ -87,7 +87,7 @@ final class ScrubberView: NSView {
         Theme.scrubberTrack.setFill()
         bounds.fill()
         (dragging != nil ? Theme.handle : Theme.scrubberKnob).setFill()
-        NSBezierPath(roundedRect: knobRect, xRadius: 4, yRadius: 4).fill()
+        NSBezierPath(roundedRect: knobRect, xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }
 
     // MARK: The pointer

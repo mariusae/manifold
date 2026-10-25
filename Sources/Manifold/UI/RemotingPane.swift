@@ -54,7 +54,7 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
             column.minWidth = 60
             let cell = NSTextFieldCell()
             cell.isEditable = true
-            cell.font = id == "command" ? .monospacedSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 12)
+            cell.font = id == "command" ? .monospacedSystemFont(ofSize: 12, weight: .regular) : UIType.body
             column.dataCell = cell
             table.addTableColumn(column)
         }
@@ -80,7 +80,7 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
         remove.action = #selector(removeRow)
         let attach = FlatButton("Attach to Host…", target: self, action: #selector(attachClicked))
         let note = NSTextField(wrappingLabelWithString: "A provider is a command line that reaches a destination with its input and output connected, as ssh does: in it, %h stands for the destination and %c for the command run there (put at the end if there's no %c). Attach to a host as user@host for ssh, or provider:target for another. Manifold installs its server on the host, in ~/.manifold/bin, if it isn't already there.")
-        note.font = .systemFont(ofSize: 11)
+        note.font = UIType.footnote
         note.textColor = Theme.secondaryText
         for v in [add, remove, attach, note] {
             v.translatesAutoresizingMaskIntoConstraints = false

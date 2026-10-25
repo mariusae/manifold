@@ -14,7 +14,7 @@ final class TransfersView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        more.font = .systemFont(ofSize: 11)
+        more.font = UIType.footnote
         more.textColor = Theme.secondaryText
         addSubview(more)
     }
@@ -113,7 +113,7 @@ final class TransferRowView: NSView {
         close.target = self
         close.action = #selector(closeClicked)
         icon.image = Theme.symbol(item.symbol, size: 11, weight: .semibold)
-        title.font = .systemFont(ofSize: 12, weight: .medium)
+        title.font = UIType.label
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingMiddle
         detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
@@ -214,7 +214,7 @@ final class TransfersBadge: NSView {
             $0.layer?.backgroundColor = Theme.panel.cgColor
             $0.layer?.borderColor = Theme.panelBorder.cgColor
         }
-        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.font = UIType.caption
         label.textColor = Theme.text
         addSubview(label)
     }

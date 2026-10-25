@@ -158,7 +158,6 @@ final class GridView: NSView, NSDraggingSource {
     static let barHeight: CGFloat = 30
     static let gap: CGFloat = 8
     static let inset: CGFloat = 8
-    static let corner: CGFloat = 10
     /// A tile shrinks in steps: under this much of its content showing,
     /// its summary card stands in for it, in its body under its bar…
     static let summarizeBelow: CGFloat = 80
@@ -171,7 +170,7 @@ final class GridView: NSView, NSDraggingSource {
     /// place that shows a tile (the grid, the overview) has it.
     static func styleBody(_ view: NSView) {
         view.wantsLayer = true
-        view.layer?.cornerRadius = corner
+        view.layer?.cornerRadius = Radius.surface
         view.layer?.cornerCurve = .continuous
         view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         view.layer?.masksToBounds = true
@@ -181,6 +180,9 @@ final class GridView: NSView, NSDraggingSource {
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = .clear
+        // The sheets' layers take their colours as laid out: laid out again
+        // when light and dark switch.
+        themed { $0.needsLayout = true }
         dropOverlay.isHidden = true
         registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath, .URL, .string, .png, .tiff] + Promises.types)
     }
@@ -804,7 +806,7 @@ final class GridView: NSView, NSDraggingSource {
                 if resized { view.setFrameSize(frame.size) }
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = Self.glide
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    ctx.timingFunction = Motion.appear
                     if resized { view.animator().setFrameOrigin(frame.origin) } else { view.animator().frame = frame }
                 }
             } else {
@@ -932,7 +934,7 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.setDisableActions(true)
         for (l, body) in zip(shadowLayers, wanted) {
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
-            let path = CGPath(roundedRect: card, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+            let path = CGPath(roundedRect: card, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
             l.path = path
             l.shadowPath = path
             l.fillColor = NSColor.black.withAlphaComponent(0.001).cgColor
@@ -1271,7 +1273,7 @@ final class GridView: NSView, NSDraggingSource {
     private func showDrop(_ rect: NSRect) {
         if drop?.rect != rect || dropOverlay.isHidden {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = dropOverlay.isHidden ? 0 : 0.12
+                ctx.duration = dropOverlay.isHidden ? 0 : Motion.fast
                 dropOverlay.animator().frame = rect
             }
             dropOverlay.isHidden = false
@@ -1588,7 +1590,7 @@ final class GridView: NSView, NSDraggingSource {
             for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
                 let inset = CGFloat(level) * Self.sheetStep.inset
                 let rise = CGFloat(level) * Self.sheetStep.rise
-                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Self.corner, width: bar.width - 2 * inset, height: Self.corner + rise), level, id))
+                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Radius.surface, width: bar.width - 2 * inset, height: Radius.surface + rise), level, id))
             }
             // What shows of the sheets above the bar takes a click — a
             // little taller than they are, to be hit.
@@ -1618,12 +1620,12 @@ final class GridView: NSView, NSDraggingSource {
         }
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (l, (rect, level, _)) in zip(sheetLayers, wanted) {
-                let path = CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+                let path = CGPath(roundedRect: rect, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
                 l.path = path
                 l.fillColor = Theme.sheet(level: level).cgColor
                 // Each a card of its own: an edge, and a shadow on the one
                 // beneath.
-                l.strokeColor = Theme.text.withAlphaComponent(0.4).cgColor
+                l.strokeColor = EdgeColor.control.cgColor
                 l.shadowPath = path
                 l.shadowColor = NSColor.black.cgColor
                 l.shadowOpacity = 0.18
@@ -1906,7 +1908,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         super.init(frame: frame)
         wantsLayer = true
         glass.wantsLayer = true
-        glass.layer?.cornerRadius = GridView.corner
+        glass.layer?.cornerRadius = Radius.surface
         glass.layer?.cornerCurve = .continuous
         glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         glass.layer?.borderWidth = 0
@@ -1941,13 +1943,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
         themed {
             $0.fanCount.textColor = Theme.text
             $0.fanCount.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
-            $0.fanCount.layer?.borderColor = Theme.text.withAlphaComponent(0.3).cgColor
+            $0.fanCount.layer?.borderColor = EdgeColor.control.cgColor
         }
         fanCount.layer?.borderWidth = 0.5
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
-        editor.font = .systemFont(ofSize: 11.5)
+        editor.font = UIType.detail
         editor.cell?.usesSingleLineMode = true
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
@@ -2252,7 +2254,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (hovered ? Theme.accent.withAlphaComponent(0.9) : Theme.cardBorder).cgColor
+            glass.layer?.borderColor = (hovered ? EdgeColor.accentStrong : EdgeColor.subtle).cgColor
         }
         glass.layer?.borderWidth = hovered ? 1.5 : 0
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
@@ -2572,9 +2574,9 @@ final class FocusRingView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: GridView.corner, yRadius: GridView.corner)
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: Radius.surface, yRadius: Radius.surface)
         path.lineWidth = 2
-        Theme.accent.withAlphaComponent(0.6).setStroke()
+        EdgeColor.accentStrong.setStroke()
         path.stroke()
     }
 }
@@ -2606,7 +2608,7 @@ final class DropOverlayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         Theme.dropHighlight.setFill()
         bounds.fill()
-        Theme.accent.withAlphaComponent(0.5).setStroke()
+        EdgeColor.accentSoft.setStroke()
         NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
     }
 }
@@ -2722,7 +2724,7 @@ final class StackPeek: NSView {
         setFrameOrigin(NSPoint(x: end.minX, y: end.minY + (below ? 6 : -6)))
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.base
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            ctx.timingFunction = Motion.appear
             animator().alphaValue = 1
             animator().setFrameOrigin(end.origin)
         }
@@ -2799,7 +2801,7 @@ final class StackPeek: NSView {
                 path.fill()
                 path.fill()
             }
-            Theme.text.withAlphaComponent(hoveredTab == i ? 0.5 : 0.3).setStroke()
+            (hoveredTab == i ? EdgeColor.controlHovered : EdgeColor.control).setStroke()
             path.lineWidth = 0.5
             path.stroke()
             var x = r.minX + 10
