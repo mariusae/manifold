@@ -11,7 +11,7 @@ enum Status {
     static let offline = Theme.secondaryText
 }
 
-/// Corner radii, by what's rounded (§9): a hairline's ends, a chip in
+/// Corner radii, by what's rounded (DESIGN.md §11): a hairline's ends, a chip in
 /// text, a control (a button, a field, a row's band, a thumbnail), a
 /// surface (a tile, a card, a sheet, a tab, a panel), and a capsule (a pill:
 /// half its height).

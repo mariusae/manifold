@@ -389,61 +389,17 @@ around it, and comes back with its history.
 
 - **Terminals** are streams of their host's one connection, attached to a
   shell the server owns, so quitting and reopening the app brings every
-  terminal back with the same processes still running. Ghostty runs in
-  the app with no pty or process of its own: what the shell prints goes
-  straight into it, off the main thread, and what's typed goes up the
-  stream. A terminal whose host goes away keeps what it showed, and
-  picks up where it was when the host is back — its history, scroll and
-  selection kept, caught up with the screen; a remote host is one ssh session
-  however many terminals it has. By each remote host's name in the sidebar,
-  a sparkline of its ping times over the last five minutes, relative to
-  their median, which sits at the middle — a settled link is a line across
-  it, slower above, faster below (amber when the latest is well above the
-  rest, a red band where pings went unanswered);
-  resting the pointer on the host shows its link's dashboard: those times
-  plotted with their numbers (now, median, 95th percentile, best), where
-  links were given up on, how it stands and since when, the links that went
-  in the last hour and why, and how its link is paced and what compression
-  saves. A host that's gone quiet (a ping every two
-  seconds, one unanswered with nothing else heard for three) shows a broken
-  amber ring by its name in the sidebar, which on hover says how long since
-  it was last heard from; quiet for six (or four round trips), its link is
-  taken for dead and made again at once, as it is when the Mac wakes or
-  moves to another network (a spinner there then). What's typed into a dying
-  link or while it's away isn't lost: a terminal attaching again sends its
-  last 15 seconds of input, and the host writes only what it hadn't taken —
-  a keystroke the host had already isn't written twice. The host keeps each terminal itself, in
-  the same emulator (Ghostty's, built into the server): a terminal
-  attaching is sent a snapshot of it — screen, modes, cursor, a full-
-  screen program on its own screen — not the output that made it; and
-  one that falls behind (a flood of output on a slow link) skips to the
-  screen as it is now, as mosh does, instead of draining all it missed.
-  Either way the screen comes at once, and the history it hasn't got
-  comes after, behind everything else of the terminal's: the host numbers
-  each line as it scrolls off, the app says how far it has them, and what's
-  missing is sent newest first and put into the scrollback above the
-  lines already there (a line wrapped over rows still one line), without
-  moving what you're looking at. Up to 5,000 lines for a terminal opened
-  anew, and up to 10,000 of what a terminal missed (after a break, or
-  behind a flood), past which an “earlier output not kept” line marks the
-  hole; a break while history is still coming sends the rest after it.
-  On a link slow enough to feel (a keystroke's echo taking 30 ms or more),
-  what's typed shows at once, as mosh's does: characters, backspaces and
-  ← on the cursor's row are drawn over the screen before the host echoes
-  them — never put in the terminal — and, from 80 ms on, glow softly until
-  the host's echo takes their place. A guess shows only once the host has
-  echoed one as guessed since the last miss, so a program that takes keys
-  for commands (vi's normal mode) shows none; a password the host's pty
-  reads without echoing isn't guessed at all (the host says how its pty
-  takes what's typed), and anything else typed (a return, a tab, a paste)
-  waits for the screen's answer.
-  Terminals are paced to the link as files are, but ahead of them, and
-  over a link to another host go compressed (zstd, built from its sources
-  in Sources/CZstd), each stream's output against what it sent before:
-  history after a break comes in a fraction of a second, not seconds. A
-  terminal's menu (right-click) has, under Copy, Paste and Clear, the tree
-  of what runs under its shell, the shell first, each process a submenu of
-  End, Force End and what runs under it.
+  terminal back with the same processes still running. A terminal whose
+  host goes away keeps what it showed and picks up where it was when the
+  host is back, what was typed meanwhile not lost. By each remote host's
+  name in the sidebar, a sparkline of its ping times over the last five
+  minutes (resting the pointer on the host shows its link's dashboard);
+  a host gone quiet wears a broken amber ring there, and its link is made
+  again by itself. On a slow link what's typed shows at once, as mosh's
+  does, before the host echoes it. A terminal's menu (right-click) has,
+  under Copy, Paste and Clear, the tree of what runs under its shell,
+  each process a submenu of End, Force End and what runs under it.
+  (How the screen, its history and what's typed travel: DESIGN.md §11.)
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
@@ -498,7 +454,8 @@ around it, and comes back with its history.
 - **HTML files** open as web blocks, read from the file with their
   folder (so their images and stylesheets work), from a terminal, the
   Open Quickly, a folder listing, a link in a preview, or the `mani`
-  command. Besides the interface's system font, a theme has three: a
+  command.
+- **Fonts**: besides the interface's system font, a theme has three: a
   **monospaced** one for terminals and code, an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
@@ -511,9 +468,7 @@ around it, and comes back with its history.
   ligatures, `lnum, tnum, liga`; Chronicle 15.5 to read, at 1.55, with
   ligatures; Menlo 13), which is offered only where Ideal Sans SSm and
   Chronicle SSm are installed (without them, a saved Humanist is set as
-  Apple, and it comes back when they are). Lines are 1.45 to edit, 1.3
-  for code, and to read 1.45 (SF), 1.5 (New York), 1.55 (Chronicle).
-  Headings in a preview take the reading role's heading weight, as the
+  Apple, and it comes back when they are). Headings in a preview take the reading role's heading weight, as the
   family's nearest face (Humanist's a step below Bold: Chronicle has no
   Semibold, so Medium). In the dark, what's read and edited at length —
   an editor's text, a preview's body — is 86% white, against glare over
@@ -533,12 +488,7 @@ around it, and comes back with its history.
   Bold) — or the face a role names (its **Bold** menu: Humanist's
   editing role names Semibold, Ideal's Bold being heavy beside Book, and
   its weights too close together to say so) — italic the slanted face of the weight, in editors, previews and
-  terminals alike. Each role's size scales everything set in it, and all
-  of it reaches everywhere the role is used: editors and notes (the
-  editor's lines and letters too; a file viewed has lines of 1.4 at
-  least), previews (as CSS), and terminals (as Ghostty's font family,
-  style, size and features, its cells' height and width giving the line
-  height and spacing). A sample shows the role as it's set; changes
+  terminals alike. A sample shows the role as it's set; changes
   apply as you make them (and choose Custom); Start From copies a
   theme's, all of it or the role's. Fonts installed while Manifold runs
   are taken up at once.
@@ -623,26 +573,7 @@ around it, and comes back with its history.
   nothing half-written; a failed one stays, red, until it's dismissed,
   and a finished download's row shows it in the Finder. With the sidebar
   away, a badge at the window's lower left says copies are going and
-  brings it out. A drop of many things is one row. A copy between two
-  hosts goes straight from the one to the other through this Mac, never
-  onto its disk; a copy within a host is made by the host. Each copy is
-  a stream of its own in the host's one connection — a whole folder
-  one stream, its files' permissions, times and links kept — paced to
-  what the link can take: the round trips it measures as it goes show
-  how long what's sent waits in queues on the way, and how much may be on
-  its way at once is steered to keep that wait small (15 ms, or a fifth
-  of the round trip on a long link), following a link that slows within
-  round trips; files go in pieces of half that, so a file on its way — an
-  image or a PDF opening too — leaves a keystroke, an edit or an answer
-  behind little of it, on a slow link or a fast one. A terminal's small
-  frames (a keystroke, its echo) go as soon as it's their turn, held for
-  nothing else; and its output waits to go no more than the link holds
-  before it's behind, and skips to the screen as it is. To and from
-  another host a copy goes compressed, as terminals do (one that doesn't
-  get smaller — an image, an archive — soon goes as it is), but not on a
-  link fast enough not to gain. The host reads
-  and writes them aside from its terminals and other clients, and a
-  file being replaced is only put in place once all of it has come.
+  brings it out. A drop of many things is one row. (How copies are paced: DESIGN.md §11.)
 - **Another host's ports come here**: open a `localhost` address from
   its tiles — ⌘-click `http://localhost:3000` in a remote terminal, a
   dev server's banner — and the port is forwarded through the host's
@@ -651,13 +582,7 @@ around it, and comes back with its history.
   `ssh -L`. **Forward a Port from *host*…** in the host's menu asks for
   one; each forward is listed there, to open or stop. A forward keeps
   listening while the host is away, and its connections go again when
-  it's back. Each forwarded connection is a stream of the host's
-  connection, paced as files are (not compressed: what goes through a
-  port is mostly compressed already, or encrypted, and its size could
-  tell what it holds), and keeps no more than a megabyte on
-  the way each way, so a fast server and a slow reader (or the other
-  way round) fill nothing but themselves; and one side done sending
-  still hears the other's answer.
+  it's back. (How: DESIGN.md §11.)
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does
@@ -1089,25 +1014,21 @@ no bezel: a hairline on a faint fill, darker under the pointer; a field
 outlined in the accent while it has the keyboard, a magnifier at its left
 when it filters and a cross at its right to clear it (⎋ clears it too). A
 toggle (Aa, .*) that's on is in the accent; the one thing to do (Attach)
-is filled in it. A choice of a few (the picker's scopes, the state view's
-modes) is a row of words or symbols, the chosen one on a grey band. Every
-list's chosen row is a soft grey band, a fainter one under the pointer.
+is filled in it. A choice of a few (Open Quickly's scopes, the state view's
+modes) is a row of words or symbols, the chosen one on a band of the
+accent. Every list's chosen row is a thin band of the accent, a faint
+grey one under the pointer.
 Panels floating over the window (the palette, cards, toasts, history, the
-sidebar unpinned) are rounded alike with one soft shadow; the picker is
-plain, not glass. The system's own alerts are left as they are.
+sidebar unpinned) are rounded alike with one soft shadow; Open Quickly
+is plain, not glass. The sizes, radii, shadows and motion are a few
+named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
 ## Contrast correction
 
-Programs pick their colors for dark terminals, so on light paper `fd`'s greens
-or an `ls`'s yellows can't be read. Manifold checks each cell's text against
-its background as it's drawn and, where they don't reach WCAG AA (4.5:1),
-moves the text's color in Oklab lightness until they do. Its hue and chroma
-are kept, and nudged toward the nearest theme color. With deuteranopia
-correction (the default), the text must also read as a deuteranope sees it.
-**Settings ▸ Appearance ▸ Contrast** switches between that, typical vision only,
-and off. This is a port of apex's `contrast.rs`, in [the Ghostty
-patch](patches/ghostty.patch). Its Appearance follows the system, or
-keeps to light or dark.
+Text in a program's own colors that can't be read on its background (a
+dark terminal's greens on light paper) is moved in lightness until it
+can, its hue kept — for deuteranopia too, by default (Settings ▸
+Appearance ▸ Contrast). (How: DESIGN.md §11.)
 
 **Settings** (⌘,) holds every setting, a pane each: Appearance (light or
 dark, the accent color, the fonts, the editor's text, contrast), Terminals (copy
@@ -1338,12 +1259,9 @@ is migrated into logs on first run.
   host, so every Mac attached shares it, and refused if the host can't
   run it); else `MANIFOLD_SHELL` in the server's environment; else your
   login shell. Shells already running keep theirs.
-- **A memory watchdog** keeps an eye on the app's own footprint from a
-  thread of its own: past 6 GB it has the system sample the process
-  (every thread's stack) into `logs/memory-sample.txt` in the data
-  folder, once, for finding what runs away; past 24 GB it ends the
-  app — a renderer; the server keeps everything — rather than take the
-  machine down, and says so in the log.
+- **A memory watchdog** samples the app if it grows past 6 GB and ends
+  it (the server keeps everything) before it could take the machine
+  down (DESIGN.md §11).
 - **Retention** is tunable, in Settings ▸ History: how many days of text
   changes to keep (older ones are folded into a base state beside the
   log, once an hour; history and scrubbing start from the base), how long
