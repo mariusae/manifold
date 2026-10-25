@@ -1198,10 +1198,11 @@ is migrated into logs on first run.
   spaces stay. **Reset Graph on *host*…** forgets every link between
   the host's blocks — opened from, found by, mentions, compared, made by
   hand — and its trail, leaving the graph empty (what's on each
-  space stays; mentions come back as texts change). Both are in
-  every menu of something on a host, under the host's name: a tile's,
-  a terminal's or an editor's right-click, a space's or a block's
-  row in the sidebar; the host's own row has them as they are. A bridge that keeps
+  space stays; mentions come back as texts change) — only from the
+  host's own row in the sidebar, and only once you've said so: it can't
+  be undone. Reset Server is in every menu of something on a host, under
+  the host's name: a tile's, a terminal's or an editor's right-click, a
+  space's or a block's row in the sidebar. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an

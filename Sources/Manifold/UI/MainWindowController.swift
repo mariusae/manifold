@@ -1615,12 +1615,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 self?.detach(h)
             })
         }
-        for client in hosts.all where client.isConnected {
-            let h = client.host
-            items.append(PaletteItem(symbol: "point.3.connected.trianglepath.dotted", title: "Reset Graph on \(hosts.label(of: h))…", subtitle: "forget links and trail") { [weak self] in
-                self?.resetGraph(h)
-            })
-        }
         for (dest, error) in hosts.errors {
             items.append(PaletteItem(symbol: "exclamationmark.triangle", title: "\(dest): \(error)", subtitle: "Attach failed") { [weak self] in
                 self?.attachToHost(nil)
@@ -2117,7 +2111,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The host's own resets, for a menu of something on it: Reset Server
     /// (a remote's) and Reset Graph — as items, in a host's own menu, or
     /// as a submenu named for the host, in any other.
-    func hostItems(_ host: HostID) -> [NSMenuItem] {
+    /// `ownRow`: for the host's own row in the sidebar, the only place
+    /// Reset Graph is offered (it forgets every link, past undoing).
+    func hostItems(_ host: HostID, ownRow: Bool = false) -> [NSMenuItem] {
         let label = hosts.label(of: host)
         var items: [NSMenuItem] = []
         if let c = hosts.client(host), c.isRemote {
@@ -2144,9 +2140,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // This Mac's own (another host's are in its own menu).
             items.append(ClosureMenuItem("Preferences for \(label)…", symbol: "gearshape") { [weak self] in self?.editPreferences(host) })
         }
-        let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
-        graph.isEnabled = hosts.client(host)?.isConnected == true
-        items.append(graph)
+        if ownRow {
+            let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
+            graph.isEnabled = hosts.client(host)?.isConnected == true
+            items.append(.separator())
+            items.append(graph)
+        }
         return items
     }
 
@@ -7533,7 +7532,7 @@ extension MainWindowController: OrganizationViewDelegate {
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
         if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), !c.isRemote {
-            for item in hostItems(c.host) { menu.addItem(item) }
+            for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
             return menu
         }
         if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote {
@@ -7558,7 +7557,7 @@ extension MainWindowController: OrganizationViewDelegate {
             preferences.isEnabled = c.link == .connected
             menu.addItem(preferences)
             menu.addItem(.separator())
-            for item in hostItems(c.host) { menu.addItem(item) }
+            for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
             menu.addItem(ClosureMenuItem("Detach from \(hosts.label(of: c.host))…", symbol: "xmark") { [weak self] in
                 self?.detach(c.host)
             })
