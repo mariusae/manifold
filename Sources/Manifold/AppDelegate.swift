@@ -249,7 +249,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let agentsItem = NSMenuItem(title: "Launch Agent Here", action: nil, keyEquivalent: "")
         agentsItem.submenu = agents
         file.addItem(agentsItem)
-        item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         file.addItem(.separator())
         item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
         item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
@@ -344,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
         formatItem.submenu = format
         edit.addItem(formatItem)
-        item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
+        item(edit, "Clear Screen", #selector(TerminalView.clearScreen(_:)), "k")
 
         let view = submenu(main, "View")
         // Titled by what it does now: the sidebar kept beside the tiles, or
@@ -362,6 +361,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(organizeItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
+        // ⌘= too, the key + is on, unshifted.
+        let bigger = item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "=")
+        bigger.isHidden = true
+        bigger.allowsKeyEquivalentWhenHidden = true
         item(view, "Smaller", #selector(TerminalView.decreaseFontSize(_:)), "-")
         item(view, "Actual Size", #selector(TerminalView.resetFontSize(_:)), "0")
         view.addItem(.separator())
@@ -374,6 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Show Hidden Files", #selector(DirectoryView.toggleHiddenFiles(_:)), ".", [.command, .shift])
+        view.addItem(.separator())
+        item(view, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.

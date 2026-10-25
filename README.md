@@ -88,7 +88,8 @@ parts from the Mac's conventions on purpose.
   picture of a page, a PDF or an image. Scroll through them; the one
   chosen is ringed. With ⌃⇥, each ⇥ moves the choice a card down (⌃⇧⇥
   back up), and letting go of control brings it to the top (Escape leaves
-  things be) — and as with ⌘⇥, a ⌃⇥ let go quickly (within a fifth of a
+  things be; ⌃⇥ is the stack's in every tile, a terminal's too, so
+  tmux and Emacs don't get it) — and as with ⌘⇥, a ⌃⇥ let go quickly (within a fifth of a
   second, about when macOS's switcher would appear) goes to the tile
   behind with no cards shown at all (⌃⇧⇥, the farthest), the cards
   coming only for a ⌃⇥ held; move the pointer over the cards and the card under it is
@@ -1010,7 +1011,7 @@ around it, and comes back with its history.
   Installing again replaces Manifold's hooks and keeps the rest of each
   file (a copy of it as it was is left beside it, `.before-manifold`);
   `mani skill uninstall` takes them out.
-- **Processes** (File ▸ Processes) is a block per host listing what `ps`
+- **Processes** (View ▸ Processes) is a block per host listing what `ps`
   sees, again every few seconds while shown, in tight rows by block:
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
   (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the

@@ -343,11 +343,12 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onIconClick = { [weak self] mods in
                     guard let self else { return }
                     if stashed {
+                        // As anywhere in a stack: to the top; ⌘, out of it.
                         self.fanned = nil
-                        if mods.contains(.option) {
-                            self.delegate?.gridSwap(id)
-                        } else {
+                        if mods.contains(.command) {
                             self.delegate?.gridUnstash(id)
+                        } else {
+                            self.delegate?.gridSwap(id)
                         }
                         return
                     }
