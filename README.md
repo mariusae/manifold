@@ -864,13 +864,9 @@ around it, and comes back with its history.
   same everywhere, by the one rule for opening things: click to go to
   the block (or bring it here, if it is nowhere), ⌘-click to show it
   beside the focused tile, ⌥-click to show it over the focused tile;
-  rest the pointer for a card — after a moment, the block itself, live,
-  when it's out of sight (another space, stacked, collapsed, or
-  nowhere): its own view lent to the card and drawn smaller, a terminal
-  still running in it, an editor, a page, a notebook as they are, put
-  back when the card goes (one with no view yet gets one made for the
-  card, let go after); a block whose tile is on screen, a picture of
-  it, as Safari previews a tab — and under the picture, the block's
+  rest the pointer for a card — after a moment, a picture of the block,
+  as Safari previews a tab (out of sight, as it was last seen; a
+  terminal, its screen as it holds it) — and under the picture, the block's
   **summary card**, as a stack's column has it (its title, where it is,
   when it last did something, its few lines). The card is drawn in the window, and
   goes when Manifold isn't in front;
