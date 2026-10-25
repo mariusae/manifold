@@ -121,18 +121,15 @@ final class HoverCard: NSObject {
         /// The block's own view, asked for when the card comes up.
         var lend: (() -> LiveLoan?)?
         var rect: NSRect
-        /// Under the rect, as wide as it (⌘O's list), rather than beside it.
-        var under = false
         weak var window: NSWindow?
     }
     private var card: Card?
 
-    /// Shows the card beside a rect (in window coordinates) after a moment —
-    /// or `under` it, as wide — and `lend`, asked then, lends the block's
-    /// own view to show live.
+    /// Shows the card beside a rect (in window coordinates) after a moment;
+    /// `lend`, asked then, lends the block's own view to show live.
     func show(key: String = "", title: String, detail: String, body: String, font: NSFont?, picture image: NSImage? = nil,
               summary: SummaryCardContent? = nil, lend: (() -> LiveLoan?)? = nil, beside rect: NSRect, in window: NSWindow,
-              under: Bool = false, delay: TimeInterval = 0.45) {
+              delay: TimeInterval = 0.45) {
         pendingShow?.cancel()
         // The same block's card, already up: left as it is.
         if card?.key == key, !key.isEmpty, !box.isHidden {
@@ -141,7 +138,7 @@ final class HoverCard: NSObject {
         }
         giveBack()
         box.isHidden = true
-        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, under: under, window: window)
+        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, window: window)
         let work = DispatchWorkItem { [weak self] in self?.present() }
         pendingShow = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -189,7 +186,7 @@ final class HoverCard: NSObject {
         body.font = c.font ?? .systemFont(ofSize: 12)
         body.isHidden = c.body.isEmpty || image != nil || loan != nil
         // Wide with a picture or the block itself, as Safari's preview of a tab is.
-        let width: CGFloat = c.under ? c.rect.width : image == nil && loan == nil ? 320 : 480, pad: CGFloat = 12
+        let width: CGFloat = image == nil && loan == nil ? 320 : 480, pad: CGFloat = 12
         body.preferredMaxLayoutWidth = width - 2 * pad
         let bodyHeight = body.isHidden ? 0 : ceil(body.sizeThatFits(NSSize(width: width - 2 * pad, height: 240)).height)
         // Across the top, as wide as the card, no taller than most of its width.
@@ -222,14 +219,8 @@ final class HoverCard: NSObject {
         // Beside the row, in the window, kept inside it.
         let rect = root.convert(c.rect, from: nil)
         var origin = NSPoint(x: rect.maxX + 8, y: rect.midY - height / 2)
-        if c.under {
-            // Just under it, or over it where there's no room below.
-            origin = NSPoint(x: rect.minX, y: rect.minY - height - 6)
-            if origin.y < 8 { origin.y = rect.maxY + 6 }
-        } else {
-            origin.y = max(8, min(origin.y, root.bounds.height - height - 8))
-            if origin.x + width > root.bounds.width - 8 { origin.x = max(8, rect.minX - width - 8) }
-        }
+        origin.y = max(8, min(origin.y, root.bounds.height - height - 8))
+        if origin.x + width > root.bounds.width - 8 { origin.x = max(8, rect.minX - width - 8) }
         if box.superview !== root || root.subviews.last !== box { root.addSubview(box, positioned: .above, relativeTo: nil) }
         box.frame = NSRect(origin: origin, size: NSSize(width: width, height: height))
         box.isHidden = false

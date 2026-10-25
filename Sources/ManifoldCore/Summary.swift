@@ -97,6 +97,7 @@ extension Block {
                 if let earlier = term.commands?.dropLast().last { s.lines.append("$ " + Self.oneLine(earlier.text)) }
             } else {
                 s.lines = [term.dormantSince != nil ? "dormant" : "no commands yet"]
+                s.code = false
             }
             s.place = term.cwd
         case .web:

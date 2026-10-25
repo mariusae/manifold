@@ -3784,12 +3784,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private lazy var finder: Finder = {
         let f = Finder()
         // The chosen row's block: its card beside the list, at once.
-        f.onSelect = { [weak self, weak f] item in
-            guard let self, let f, let window = self.window else { return }
-            guard let id = item?.block, f.isShowing else { return HoverCard.shared.hide() }
-            let rect = window.convertFromScreen(f.panelFrame)
-            self.showBlockCard(id, beside: rect, in: window, under: true, delay: 0.08)
-        }
+        f.summarize = { [weak self] id in self?.cardContent(for: id) }
         f.search = { [weak self] query, scope in
             guard let self else { return [] }
             switch scope {
@@ -7439,7 +7434,7 @@ extension MainWindowController: OrganizationViewDelegate {
 
     /// A block's card beside a rect (a sidebar row, ⌘O's list): a picture
     /// of its tile, or the block itself live, over its summary card.
-    func showBlockCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow, under: Bool = false, delay: TimeInterval = 0.45) {
+    func showBlockCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow, delay: TimeInterval = 0.45) {
         guard let b = hosts.block(id) else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
         if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }
@@ -7468,9 +7463,7 @@ extension MainWindowController: OrganizationViewDelegate {
         let key = id.description
         var picture: NSImage? = nil
         var lend: (() -> HoverCard.LiveLoan?)? = nil
-        if under {
-            // Under ⌘O's list: the summary alone, its thumbnail for a picture.
-        } else if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
+        if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
             switch shown {
             case let t as TerminalView:
                 picture = HoverCard.picture(of: t)
@@ -7505,7 +7498,7 @@ extension MainWindowController: OrganizationViewDelegate {
         // (an arrangement, which has none, as it was).
         let summary = b.kind == .arrangement ? nil : cardContent(for: id)
         HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture,
-                              summary: summary, lend: lend, beside: rect, in: window, under: under, delay: delay)
+                              summary: summary, lend: lend, beside: rect, in: window, delay: delay)
     }
 
     /// The block's own view, for a card to show live while the block is

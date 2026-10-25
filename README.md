@@ -95,7 +95,8 @@ and Mona Sans (bundled).
   right (a click goes to it and grows it a little); under 24, it's down to its
   bar, its summary's line in the bar where the folder was ("$ make test ·
   exit 2 · 4m"); a sidebar row's hover card has it
-  under its picture; ⌘O shows the chosen row's card under the list;
+  under its picture; in ⌘O a block's row is its summary in small and
+  the chosen row opens into its card;
   `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
   behind it; keep ⌥ held and click again, as ⌘\` walks workspaces, and
   the next behind that comes up, round the stack, the tiles passed
@@ -329,8 +330,11 @@ around it, and comes back with its history.
   Each row says at the right where the block
   is — here, linked, near, kept, or *recent* for one closed
   and not yet collected, which choosing brings back — and how long
-  since it was last seen; the chosen block's summary card shows under
-  the list, as wide as it. A
+  since it was last seen. A block's row is its summary card in small —
+  its title and where it is, its first lines under them ("$ make test ·
+  exit 2"), so the many "Terminal"s are told apart — and the chosen row
+  opens into the card itself, a line or two more of it (a found line's
+  row, in In Blocks, stays as found). A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
   choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host

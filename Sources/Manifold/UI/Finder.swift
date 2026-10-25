@@ -19,7 +19,8 @@ struct FinderItem {
     /// Dragged out of the list: the block (to bring; with ⇧ its path and
     /// link), or the file.
     var drag: (() -> NSPasteboardWriting?)? = nil
-    /// The block it is, if one: its card shown beside the list while chosen.
+    /// The block it is, if one: its row says its summary in a line, and
+    /// opens into its summary card while chosen.
     var block: BlockID? = nil
 }
 
@@ -239,11 +240,12 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private var tallest = 0
     /// The scope or query changed: what's asked of a host can start.
     var onQueryChanged: ((String, Scope) -> Void)?
-    /// The row chosen, as it changes (nil: none, or the list gone): a
-    /// block's card shown beside the list.
-    var onSelect: ((FinderItem?) -> Void)?
-    /// Where the list is, on screen.
-    var panelFrame: NSRect { panel.frame }
+    /// A block's summary card, for its row: asked for as rows show, kept
+    /// while the finder is open.
+    var summarize: ((BlockID) -> SummaryCardContent?)?
+    private var summaries: [BlockID: SummaryCardContent?] = [:]
+    /// The row opened into its card: the chosen one, if it's a block's.
+    private var expanded: Int?
     private(set) var scope: Scope = .names
     private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: .systemFont(ofSize: 11))
     var isShowing: Bool { panel.isVisible }
@@ -265,6 +267,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private static let fieldHeight: CGFloat = 56
     private static let rowHeight: CGFloat = 46
     private static let excerptHeight: CGFloat = 88
+    private static let cardHeight: CGFloat = SummaryCard.height
     private static let visibleRows = 9
 
     override init() {
@@ -377,6 +380,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.placeholderString = placeholder
         field.stringValue = ""
         shown = []
+        summaries = [:]
+        expanded = nil
         // At its full height from the start: the files arriving, or the
         // rows thinning as you type, never move it.
         tallest = Self.visibleRows
@@ -415,6 +420,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.stringValue = ""
         field.placeholderString = placeholder
         shown = []
+        summaries = [:]
+        expanded = nil
         tallest = 0
         listing += 1
         if let window {
@@ -469,13 +476,34 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
     func debugMove(_ by: Int) { move(by) }
 
+    /// The chosen row opens into its card, the one before closing back to
+    /// a line — a block's, not a found line's (its lines are the point).
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = table.selectedRow
-        onSelect?(row >= 0 && row < shown.count ? shown[row] : nil)
+        let open = row >= 0 && row < shown.count && shown[row].excerpt == nil && summary(for: shown[row]) != nil ? row : nil
+        guard open != expanded else { return }
+        let changed = IndexSet([expanded, open].compactMap { $0 }.filter { $0 < shown.count })
+        expanded = open
+        // At once: animated, the list scrolled while the rows were still
+        // changing height, and came to rest a little off.
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0
+            table.noteHeightOfRows(withIndexesChanged: changed)
+        }
+        table.reloadData(forRowIndexes: changed, columnIndexes: [0])
+        if let open { table.scrollRowToVisible(open) }
+    }
+
+    /// A row's block's summary card, made once.
+    private func summary(for item: FinderItem) -> SummaryCardContent? {
+        guard let id = item.block else { return nil }
+        if let known = summaries[id] { return known }
+        let made = summarize?(id)
+        summaries[id] = made
+        return made
     }
 
     func close() {
-        onSelect?(nil)
         listing += 1
         _ = generation.next()
         panel.orderOut(nil)
@@ -503,7 +531,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         // Rows with an excerpt are taller: the panel is as tall as the first
         // rows it has room for.
         let excerpts = shown.prefix(rows).filter { $0.excerpt != nil }.count
-        let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + CGFloat(excerpts) * (Self.excerptHeight - Self.rowHeight) + 12
+        // And room for the chosen row opened into its card, always (choosing
+        // a file after a block never moves the panel).
+        let listHeight = rows == 0 ? 0 : CGFloat(rows) * (Self.rowHeight + 2) + CGFloat(excerpts) * (Self.excerptHeight - Self.rowHeight)
+            + (outline == nil ? Self.cardHeight - Self.rowHeight : 0) + 12
         let hintHeight: CGFloat = 24
         let height = Self.fieldHeight + listHeight + hintHeight
         var frame = panel.frame
@@ -567,7 +598,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func show(_ items: [FinderItem], query: String) {
         let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note && $0.excerpt == $1.excerpt }
         shown = items
-        if !same { table.reloadData() }
+        if !same {
+            expanded = nil
+            table.reloadData()
+        }
         if !shown.isEmpty, !same || table.selectedRow < 0 {
             let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
             table.selectRowIndexes([row], byExtendingSelection: false)
@@ -625,7 +659,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        shown.indices.contains(row) && shown[row].excerpt != nil ? Self.excerptHeight : Self.rowHeight
+        row == expanded ? Self.cardHeight : shown.indices.contains(row) && shown[row].excerpt != nil ? Self.excerptHeight : Self.rowHeight
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -635,8 +669,20 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             cell.show(item, excerpt: excerpt)
             return cell
         }
+        let summary = summary(for: item)
+        if row == expanded, var content = summary {
+            // Opened: its card, where the finder's own word (here, linked,
+            // recent; when) stands, after any state of its own.
+            if !item.note.isEmpty {
+                let state = content.summary.note.flatMap { $0.range(of: #"^(now|\d+[mhd])$"#, options: .regularExpression) == nil ? $0 : nil }
+                content.summary.note = [state, item.note].compactMap { $0 }.joined(separator: " · ")
+            }
+            let cell = tableView.makeView(withIdentifier: CardCell.identifier, owner: nil) as? CardCell ?? CardCell()
+            cell.show(content)
+            return cell
+        }
         let cell = tableView.makeView(withIdentifier: FileCell.identifier, owner: nil) as? FileCell ?? FileCell()
-        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level)
+        cell.show(title: item.title, detail: item.detail, symbol: item.symbol, note: item.note, level: item.level, summary: summary?.summary)
         return cell
     }
 
@@ -670,6 +716,8 @@ final class FileCell: NSTableCellView {
     private var level = 0
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
+    private static let titleFont = NSFont.systemFont(ofSize: 14, weight: .medium)
+    private static let detailFont = NSFont.systemFont(ofSize: 12)
 
     /// A symbol's image, made once.
     static func image(_ name: String) -> NSImage {
@@ -686,9 +734,9 @@ final class FileCell: NSTableCellView {
         identifier = Self.identifier
         symbol.symbolConfiguration = .init(pointSize: 16, weight: .regular)
         symbol.contentTintColor = Theme.secondaryText
-        title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.font = Self.titleFont
         title.textColor = Theme.text
-        detail.font = .systemFont(ofSize: 12)
+        detail.font = Self.detailFont
         detail.textColor = Theme.secondaryText
         note.font = .systemFont(ofSize: 11)
         note.textColor = Theme.tertiaryText
@@ -703,15 +751,27 @@ final class FileCell: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0) {
+    /// With a block's `summary`, its card in small: where it is after the
+    /// title, its first lines under it in place of the detail.
+    func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0, summary: BlockSummary? = nil) {
         if name != symbolName {
             symbolName = name
             let image = Self.image(name)
             symbol.image = image
         }
-        if title.stringValue != text { title.stringValue = text }
-        if detail.stringValue != folder { detail.stringValue = folder }
-        detail.isHidden = folder.isEmpty
+        let titled = NSMutableAttributedString(string: text, attributes: [.font: Self.titleFont, .foregroundColor: Theme.text])
+        var under = folder
+        var underFont = Self.detailFont
+        if let summary, !summary.lines.isEmpty {
+            if let place = summary.place?.abbreviatingHome, !place.isEmpty, place != text {
+                titled.append(NSAttributedString(string: "  " + place, attributes: [.font: Self.detailFont, .foregroundColor: Theme.tertiaryText]))
+            }
+            under = summary.lines.prefix(2).joined(separator: " · ")
+            if summary.code { underFont = FontTheme.code(11.5) }
+        }
+        if title.attributedStringValue != titled { title.attributedStringValue = titled }
+        if detail.stringValue != under || detail.font != underFont { detail.stringValue = under; detail.font = underFont }
+        detail.isHidden = under.isEmpty
         if note.stringValue != text2 { note.stringValue = text2 }
         if self.level != level { self.level = level; needsLayout = true }
         needsLayout = true
@@ -731,6 +791,36 @@ final class FileCell: NSTableCellView {
             title.frame = NSRect(x: textX, y: h - 5 - 19, width: textWidth, height: 19)
             detail.frame = NSRect(x: textX, y: h - 5 - 19 - 1 - 16, width: textWidth, height: 16)
         }
+    }
+}
+
+/// The chosen block's row, opened into its summary card (the row's
+/// highlight its ground).
+final class CardCell: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("CardCell")
+    private var card: SummaryCard?
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ content: SummaryCardContent) {
+        if let card { card.content = content } else {
+            let c = SummaryCard(content)
+            c.plain = true
+            addSubview(c)
+            card = c
+        }
+        needsLayout = true
+    }
+
+    /// Its symbol and title where the rows' are.
+    override func layout() {
+        super.layout()
+        card?.frame = NSRect(x: 6, y: 0, width: bounds.width - 6, height: bounds.height)
     }
 }
 
