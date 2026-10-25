@@ -45,8 +45,9 @@ and Mona Sans (bundled).
   the tree itself. Under **Spaces**, the sidebar is
   the table of contents of the screen: a space's tiles in order,
   a stack's tiles together under its top — nearest first, as it fans,
-  those behind set in and a step dimmer, the stack's rows on one faint
-  rounded ground. Click a tile to focus it (one behind comes to the top
+  the titles of those behind a step dimmer, a dotted rounded line round
+  the stack's rows. A pinned tile in a stack is listed both at the top
+  and in its stack; the pointer on either lights the other too. Click a tile to focus it (one behind comes to the top
   of its stack), a space to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
   to bring it in beside, onto a space for its active column, or

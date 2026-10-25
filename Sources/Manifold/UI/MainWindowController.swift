@@ -3190,10 +3190,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // or, closed, a row to recall it here — then a hairline, then
             // the rest.
             if !pinned.isEmpty {
+                // A pinned tile in a stack is in both places: at the top, and
+                // in its stack — the two rows lighting together on hover.
+                let stacked = Set(a.placements.filter { p in
+                    a.isStashed(p.id) || a.columns.contains { col in col.contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == p.id } }
+                }.map(\.id))
                 var top: [OrgNode] = []
+                var twinned: Set<PlacementID> = []
                 for block in pinned {
                     let open = tiles.filter { $0.block == block }
-                    if !open.isEmpty { top += open; continue }
+                    for t in open {
+                        guard let p = t.placement, stacked.contains(p) else { top.append(t); continue }
+                        let copy = OrgNode(id: "\(aid)/pinned/\(p)", title: t.title, symbol: t.symbol)
+                        copy.take(t)
+                        copy.behind = false
+                        copy.twin = p
+                        t.twin = p
+                        twinned.insert(p)
+                        top.append(copy)
+                    }
+                    if !open.isEmpty { continue }
                     guard let b = hosts.block(block) else { continue }
                     let title = Self.linkTitle(b)
                     guard matches(filter, [title, b.path]) else { continue }
@@ -3204,7 +3220,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.action = { [weak self] in self?.recallPinned(block, in: id) }
                     top.append(n)
                 }
-                let rest = tiles.filter { t in !pinned.contains { $0 == t.block } }
+                let rest = tiles.filter { t in !pinned.contains { $0 == t.block } || t.placement.map(twinned.contains) == true }
                 if !top.isEmpty {
                     let rule = OrgNode(id: "\(aid)/pins", title: "", symbol: "", detail: "")
                     rule.style = .divider

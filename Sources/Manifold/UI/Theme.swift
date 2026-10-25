@@ -237,11 +237,16 @@ final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
-    /// One of a run of rows sharing a faint ground (a stack's tiles in the
-    /// sidebar): rounded at the first's top and the last's bottom.
+    /// One of a run of rows drawn round together (a stack's tiles in the
+    /// sidebar): a dotted rounded outline, its top on the first row and its
+    /// bottom on the last.
     struct Grouped: Equatable { var first: Bool; var last: Bool }
     var grouped: Grouped? { didSet { if grouped != oldValue { needsDisplay = true } } }
-    private static let groundColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.035), NSColor(white: 1, alpha: 0.04))
+    private static let outlineColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28))
+    /// Told as the pointer comes and goes (a row with a twin lights it).
+    var onHover: ((Bool) -> Void)?
+    /// Lit as if hovered: the other row of the same thing is.
+    var echo = false { didSet { if echo != oldValue { needsDisplay = true } } }
     override var isFloating: Bool { didSet { needsDisplay = true } }
     /// Under the pointer: one row at a time, in every list — a row taking
     /// it takes it from the last. Rows are reused and move under a still
@@ -257,6 +262,7 @@ final class SelectionRowView: NSTableRowView {
             } else if Self.hoveredRow === self {
                 Self.hoveredRow = nil
             }
+            onHover?(hovered)
         }
     }
     private static weak var hoveredRow: SelectionRowView?
@@ -274,6 +280,8 @@ final class SelectionRowView: NSTableRowView {
     override func prepareForReuse() {
         super.prepareForReuse()
         hovered = false
+        onHover = nil
+        echo = false
     }
 
     override func viewDidMoveToSuperview() {
@@ -314,11 +322,15 @@ final class SelectionRowView: NSTableRowView {
             let r = NSRect(x: bounds.minX + 6, y: minY, width: bounds.width - 12, height: maxY - minY)
             NSGraphicsContext.saveGraphicsState()
             bounds.clip()
-            Self.groundColor.setFill()
-            NSBezierPath(roundedRect: r, xRadius: Flat.radius, yRadius: Flat.radius).fill()
+            Self.outlineColor.setStroke()
+            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Flat.radius, yRadius: Flat.radius)
+            path.lineWidth = 1
+            path.setLineDash([1.5, 2.5], count: 2, phase: 0)
+            path.lineCapStyle = .round
+            path.stroke()
             NSGraphicsContext.restoreGraphicsState()
         }
-        if hovered, !isSelected, !isGroupRowStyle {
+        if hovered || echo, !isSelected, !isGroupRowStyle {
             Flat.hovered.setFill()
             NSBezierPath(roundedRect: band, xRadius: Flat.radius, yRadius: Flat.radius).fill()
         }

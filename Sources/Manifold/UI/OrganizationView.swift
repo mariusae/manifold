@@ -55,6 +55,9 @@ final class OrgNode {
     /// first; and one behind the top, set in and dimmer, as out of sight.
     var stack: SelectionRowView.Grouped?
     var behind = false
+    /// The same tile shown twice (pinned at the top, and in its stack):
+    /// the placement both rows are for, so the one lights with the other.
+    var twin: PlacementID?
     /// What the block is doing (§3.7), shown as a glyph.
     var look: StatusGlyph.Look?
     /// A text edited and unsaved: a dot after the name, as on its bar —
@@ -117,16 +120,16 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && behind == o.behind
+            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && behind == o.behind && twin == o.twin
     }
 
     /// Takes another's values (the same row made again), its children
     /// left to the caller.
-    fileprivate func take(_ o: OrgNode) {
+    func take(_ o: OrgNode) {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; behind = o.behind
+        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; behind = o.behind; twin = o.twin
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -392,8 +395,21 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         if let n = item as? OrgNode {
             v.marked = n.style == .section && n.emphasis && n.arrangement != nil
             v.grouped = n.stack
+            // A twin's hover lights the other row of the same tile.
+            if let twin = n.twin {
+                v.onHover = { [weak self, weak v] on in self?.echo(twin, except: v, on) }
+            }
         }
         return v
+    }
+
+    /// The other rows of a twin lit (or not) with the one hovered.
+    private func echo(_ twin: PlacementID, except row: SelectionRowView?, _ on: Bool) {
+        for r in 0..<outline.numberOfRows {
+            guard let n = outline.item(atRow: r) as? OrgNode, n.twin == twin,
+                  let v = outline.rowView(atRow: r, makeIfNecessary: false) as? SelectionRowView, v !== row else { continue }
+            v.echo = on
+        }
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -736,7 +752,6 @@ final class OrgRowView: NSTableCellView {
     private var node: OrgNode?
     /// Set by the outline: flat rows have two lines when there's a detail.
     var flat = false
-    private static let behindInset: CGFloat = 12
     private let tipOwner = LiveTip()
     private var liveTipTag: NSView.ToolTipTag?
 
@@ -810,7 +825,7 @@ final class OrgRowView: NSTableCellView {
         }
         icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
-        icon.alphaValue = node.dimmed || node.behind ? 0.6 : 1
+        icon.alphaValue = node.dimmed ? 0.6 : 1
         // Its row's ground, if it's in a stack (a row reused keeps the last).
         (superview as? SelectionRowView)?.grouped = node.stack
         count.stringValue = node.count.map { "\($0)" } ?? ""
@@ -897,7 +912,7 @@ final class OrgRowView: NSTableCellView {
         if let node, flat, node.style == .row, !detail.isHidden {
             // Two lines: the name with the status at its right, then what
             // the status says beneath, aligned with the name.
-            let ix: CGFloat = node.behind ? Self.behindInset : 0
+            let ix: CGFloat = 0
             icon.frame = NSRect(x: 2 + ix, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4
             if !count.isHidden {
@@ -918,8 +933,7 @@ final class OrgRowView: NSTableCellView {
             detailIcon.alphaValue = 1
             return
         }
-        // One behind its stack's top: set in.
-        let ix: CGFloat = node?.behind == true ? Self.behindInset : 0
+        let ix: CGFloat = 0
         icon.frame = NSRect(x: 2 + ix, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
         var right = bounds.width - 4
         if !count.isHidden {
