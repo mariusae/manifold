@@ -119,7 +119,10 @@ final class LinkBadge: NSView {
     /// shrunk, it shows its arrow and symbol, then its arrow alone.
     var capsuleLimit: CGFloat = .infinity { didSet { if capsuleLimit != oldValue { needsLayout = true } } }
     /// The first link's pill's width, as the bar has room for it.
-    var capsuleWidth: CGFloat { min(min(badge.wantedWidth, Self.barWidth), bounds.width - sheetRoom, capsuleLimit) }
+    /// The bar's limit counts the sheets beside the capsule, as its wanted
+    /// width does: the capsule gets what's left of it (else, narrowed, it
+    /// ran over the tile's name by the sheets' width).
+    var capsuleWidth: CGFloat { min(min(badge.wantedWidth, Self.barWidth), bounds.width - sheetRoom, capsuleLimit - sheetRoom) }
     /// What the first link's pill would take of the bar, its sheets included.
     var capsuleWantedWidth: CGFloat { min(badge.wantedWidth, Self.barWidth) + sheetRoom }
     /// The room the sheets take to the pill's right (kept while fanned, so the pill stays put).
