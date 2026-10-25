@@ -21,7 +21,7 @@ public struct LanguageServerConfig: Codable, Equatable, Sendable, Identifiable {
     }
 
     public static let defaults: [LanguageServerConfig] = [
-        LanguageServerConfig(id: "swift", extensions: ["swift"], command: "sourcekit-lsp", rootMarkers: ["Package.swift", "*.xcodeproj", "*.xcworkspace"]),
+        LanguageServerConfig(id: "swift", extensions: ["swift", "swiftinterface"], command: "sourcekit-lsp", rootMarkers: ["Package.swift", "*.xcodeproj", "*.xcworkspace"]),
         LanguageServerConfig(id: "go", extensions: ["go"], command: "gopls", rootMarkers: ["go.work", "go.mod"]),
         LanguageServerConfig(id: "rust", extensions: ["rs"], command: "rust-analyzer", rootMarkers: ["Cargo.toml"]),
         LanguageServerConfig(id: "python", extensions: ["py", "pyi"], command: "pyright-langserver --stdio", rootMarkers: ["pyproject.toml", "setup.py", "requirements.txt"]),

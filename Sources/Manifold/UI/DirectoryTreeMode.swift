@@ -428,7 +428,7 @@ final class TreeCell: NSTableCellView {
         let ext = lower.pathExtension
         if lower.hasPrefix(".git") { return ("arrow.triangle.branch", .systemOrange) }
         switch ext {
-        case "swift": return ("swift", .systemOrange)
+        case "swift", "swiftinterface": return ("swift", .systemOrange)
         case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", .systemGreen)
         case "md", "markdown", "txt", "rst", "org", "tex": return ("doc.text", Theme.secondaryText)
         case "pdf": return ("doc.richtext", .systemRed)

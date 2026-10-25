@@ -128,7 +128,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     public static let viewRenderings: [String: ViewRendering] = {
         var table: [String: ViewRendering] = [:]
         for e in ["md", "markdown", "mdown", "mkd", "mdx"] { table[e] = .markdown }
-        for e in ["swift", "go", "c", "h", "cc", "cpp", "hpp", "m", "mm", "rs", "zig", "py", "rb", "js", "mjs", "ts", "tsx", "jsx",
+        for e in ["swift", "swiftinterface", "go", "c", "h", "cc", "cpp", "hpp", "m", "mm", "rs", "zig", "py", "rb", "js", "mjs", "ts", "tsx", "jsx",
                   "java", "kt", "scala", "cs", "php", "lua", "sh", "bash", "zsh", "fish", "pl", "hs", "ml", "ex", "exs", "erl",
                   "clj", "el", "lisp", "scm", "sql", "r", "jl", "dart", "nim", "v", "sv", "vhd", "proto", "thrift", "graphql",
                   "json", "yaml", "yml", "toml", "ini", "cfg", "conf", "xml", "html", "htm", "css", "scss", "less",
