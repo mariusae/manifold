@@ -251,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(agentsItem)
         item(file, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
-        item(file, "Search Outline…", #selector(MainWindowController.searchOutline(_:)), "o", [.command, .shift])
+        item(file, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
         item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
         item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
         item(file, "Go to Tile or Outline…", #selector(MainWindowController.goToTile(_:)), "p")

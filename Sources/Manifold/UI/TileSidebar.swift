@@ -215,8 +215,11 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     // MARK: Filtering
 
-    /// ⇧⌘O: the keyboard in the field, what's in it chosen; `ended` when
-    /// an entry is gone to or Escape leaves.
+    /// Whether the field has the keyboard (⇧⌘P again leaves it).
+    var isSearching: Bool { onSearchEnd != nil && search.currentEditor() != nil && window?.firstResponder === search.currentEditor() }
+
+    /// ⇧⌘P: the keyboard in the field, what's in it kept and chosen;
+    /// `ended` when an entry is gone to, Escape leaves, or ⇧⌘P again.
     func beginSearch(ended: @escaping () -> Void) {
         onSearchEnd = ended
         show(page: .contents)
@@ -228,11 +231,11 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     /// Where the field is, in the window: for the pointer to go to.
     var searchFrame: NSRect { search.convert(search.bounds, to: nil) }
 
-    private func endSearch() {
+    /// The search over, what's typed kept (the filter stands until it's
+    /// cleared, with Escape or the field's ×).
+    func endSearch() {
         let ended = onSearchEnd
         onSearchEnd = nil
-        search.stringValue = ""
-        refilter()
         ended?()
     }
 

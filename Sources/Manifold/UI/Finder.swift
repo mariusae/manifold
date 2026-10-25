@@ -422,8 +422,39 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Shows the workspace's outline (⌘P): tiles by column, and what is in
     /// them, as `provider` lists them for a query.
+    /// One outline to go through; `wider`, another ⇥ goes to and back (⌘P:
+    /// the focused tile's own, then the whole space's).
+    struct OutlineScope {
+        var provider: (String) -> [FinderItem]
+        var start: Int?
+        var placeholder: String
+        var hint: String
+    }
+    private var outlineScope: OutlineScope?
+    private var otherOutline: OutlineScope?
+
+    func showOutline(_ scope: OutlineScope, wider: OutlineScope? = nil, over window: NSWindow?) {
+        outlineScope = scope
+        otherOutline = wider
+        showOutline(scope.provider, startingAt: scope.start, placeholder: scope.placeholder, over: window)
+    }
+
+    /// ⇥ in an outline with another to go to: that one, the query kept.
+    private func switchOutline() {
+        guard let other = otherOutline, let now = outlineScope else { return }
+        outlineScope = other
+        otherOutline = now
+        outline = other.provider
+        outlineStart = other.start
+        field.placeholderString = other.placeholder
+        shown = []
+        table.reloadData()
+        refresh()
+    }
+
     func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil,
                      placeholder: String = "Go to a tile, or a place in its outline…", over window: NSWindow?) {
+        if outlineScope?.placeholder != placeholder { outlineScope = nil; otherOutline = nil }
         outline = provider
         outlineStart = start
         scopes.isHidden = true
@@ -503,7 +534,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     private func updateHint() {
         if outline != nil {
-            hint.stringValue = "The space, by column and tile, headings within    ↩ Go    ⎋ Close"
+            let what = outlineScope?.hint ?? "The space, by column and tile, headings within"
+            hint.stringValue = what + (otherOutline != nil ? "    ⇥ \(otherOutline!.placeholder.hasPrefix("Go to a tile") ? "The space" : "This tile")" : "") + "    ↩ Go    ⎋ Close"
             return
         }
         hint.stringValue = switch scope {
@@ -605,6 +637,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)): openSelected()
         case #selector(NSResponder.cancelOperation(_:)): close()
         case #selector(NSResponder.insertTab(_:)) where outline == nil: cycleScope()
+        case #selector(NSResponder.insertTab(_:)) where otherOutline != nil: switchOutline()
         default: return false
         }
         return true

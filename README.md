@@ -350,14 +350,14 @@ around it, and comes back with its history.
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them.
   A typed URL opens as a web page.
-- **⌘P goes through the space as an outline**, as Prism's Move to
-  Heading does: its tiles by column, and under each its outline, set in
-  by level — a Markdown tile's headings, and whatever else has one
+- **⌘P goes through an outline**, as Prism's Move to Heading does —
+  first the focused tile's own, where you are in it; **⇥** widens it to
+  the whole space's (and back): its tiles by column, and under each its
+  outline, set in by level — a Markdown tile's headings, and whatever else has one
   (§7.5): a terminal's commands (how each ended beside it), an agent's
   turns, a source file's symbols from its language server, a PDF's
   contents, a diff's files; type words to narrow them, ↩ to focus the
-  tile or go to the place in it, as a click in its own outline goes. It
-  opens on where you are, the focused tile's item. A terminal's row
+  tile or go to the place in it, as a click in its own outline goes. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
   finds the terminal running it.
 - **Naming** a space (⇧⌘R, or double-click it in the sidebar)
@@ -727,14 +727,16 @@ around it, and comes back with its history.
   there (the pointer staying where it is), the one you're in marked as
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
   at its top). Shown or not, it's kept with the tile.
-- **Search Outline** (⇧⌘O, or in a tile's bar menu): the focused tile's
-  own sidebar — its commands, headings, symbols, contents or files —
-  shown if it wasn't, the pointer going to the **filter field** at its
-  top; type to narrow it (every word somewhere in an entry, the matches
-  listed flat), ↑↓ and ⏎ to go there, as clicking one does; Escape
-  clears what's typed, then leaves. Either way the tile has the keyboard
-  back, and a sidebar opened for the search is put away again. (A tile
-  with an outline but no sidebar searches it in the finder.) A command's **output** (Show Output in its ⋯,
+- **Filter Outline** (⇧⌘P — ⌘P's outline, in the tile — or the bar's
+  menu): the focused tile's own sidebar — its commands, headings,
+  symbols, contents or files — shown if it wasn't, the pointer going to
+  the **filter field** at its top, what was typed there last still there;
+  type to narrow it (every word somewhere in an entry, the matches listed
+  flat), ↑↓ and ⏎ to go there, as clicking one does; Escape clears
+  what's typed, then leaves; ⇧⌘P again leaves. Either way the tile has
+  the keyboard back, and a sidebar opened for it is put away again; the
+  filter stands until cleared. (A tile with an outline but no sidebar
+  gets ⌘P.) A command's **output** (Show Output in its ⋯,
   or Show as Block on its dot) opens as a block of
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in

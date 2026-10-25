@@ -4477,20 +4477,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// its tiles by column, and the headings of the text in them, set in
     /// under their tile; those whose words have every word of the query.
     /// ↩ goes to a tile, or to a heading in its editor or preview.
-    /// ⇧⌘O: the focused tile's outline — a text's headings or symbols, a
-    /// terminal's commands, a PDF's contents, a diff's files — to search,
-    /// a query narrowing it; chosen, the tile goes there, as from its
-    /// sidebar.
+    /// ⇧⌘P: the focused tile's outline — a text's headings or symbols, a
+    /// terminal's commands, a PDF's contents, a diff's files — filtered
+    /// in its sidebar; again, the sidebar's filter left.
     @objc func searchOutline(_ sender: Any?) {
         guard let f = arrangement?.focused else { return NSSound.beep() }
         searchOutline(of: f)
     }
 
-    /// ⇧⌘O: the tile's own outline, its sidebar (shown if it wasn't, put
+    /// ⇧⌘P: the tile's own outline, its sidebar (shown if it wasn't, put
     /// away again after), filtered by what's typed in the field at its
-    /// top, the pointer there — ↩ goes to the entry chosen, Escape leaves.
-    /// A tile with an outline but no sidebar: the finder, over its items.
+    /// top (kept from the last time), the pointer there — ↩ goes to the
+    /// entry chosen, Escape clears then leaves, ⇧⌘P again leaves. A tile
+    /// with an outline but no sidebar: ⌘P, on its outline.
     func searchOutline(of placement: PlacementID) {
+        // Already there: ⇧⌘P again leaves it.
+        if let view = views[placement], let s = view.sidebarView ?? Self.tileSidebar(in: view), s.isSearching {
+            return s.endSearch()
+        }
         if let view = views[placement], view.hasSidebar {
             let wasShown = view.sidebarShown
             if !wasShown {
@@ -4518,19 +4522,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
         }
-        guard let view = views[placement], let outline = view.outline, !outline.items.isEmpty else { return NSSound.beep() }
-        let symbol: (Outline.Item) -> String = { item in
-            view is TerminalView ? "chevron.right" : item.code ? "curlybraces" : "number"
+        // No sidebar: ⌘P, on this tile's outline.
+        focus(placement)
+        goToTile(nil)
+    }
+
+    /// A tile's outline as rows for ⌘P: nested as it is while all of it
+    /// shows; found, flat.
+    private func tileOutlineItems(_ view: PaneContent, _ outline: Outline, _ query: String) -> [FinderItem] {
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        return outline.items.enumerated().compactMap { i, item -> FinderItem? in
+            guard words.isEmpty || words.allSatisfy({ (item.title + " " + item.detail).lowercased().contains($0) }) else { return nil }
+            return FinderItem(symbol: view is TerminalView ? "chevron.right" : item.code ? "curlybraces" : "number", title: item.title, detail: item.detail, note: "",
+                              level: words.isEmpty ? item.level : 0, run: { outline.pick(i) })
         }
-        finder.showOutline({ query in
-            let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-            return outline.items.enumerated().compactMap { i, item -> FinderItem? in
-                guard words.isEmpty || words.allSatisfy({ (item.title + " " + item.detail).lowercased().contains($0) }) else { return nil }
-                // Nested as it is while all of it shows; found, flat.
-                return FinderItem(symbol: symbol(item), title: item.title, detail: item.detail, note: "",
-                                  level: words.isEmpty ? item.level : 0, run: { outline.pick(i) })
-            }
-        }, startingAt: outline.current, placeholder: "Search the outline…", over: window)
     }
 
     /// A tile's own sidebar, wherever its view keeps it.
@@ -4538,7 +4543,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         (view as? TileSidebar) ?? view.subviews.lazy.compactMap { tileSidebar(in: $0) }.first
     }
 
-    /// Debugging: ⇧⌘O's field in the focused tile's sidebar, typed into or keyed.
+    /// Debugging: ⇧⌘P's field in the focused tile's sidebar, typed into or keyed.
     func debugOutlineSearch(_ what: String) -> String {
         guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
         if what == "open" { searchOutline(of: f); return "opened" }
@@ -4556,17 +4561,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let pb = c.node.blocks.first { $0.kind == .process }?.id ?? BlockID(host: c.host)
             hosts.propose(.processes(block: pb))
         }
+        // The focused tile's own outline first, if it has one; ⇥ widens it
+        // to the whole space's (and back).
+        let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f] }.flatMap { view in
+            guard let outline = view.outline, !outline.items.isEmpty else { return nil }
+            return Finder.OutlineScope(provider: { query in self.tileOutlineItems(view, outline, query) }, start: outline.current,
+                                       placeholder: "Go to a place in this tile…", hint: "This tile's outline")
+        }
         let show = { [weak self] (line: Int?) in
             guard let self else { return }
             let (_, start) = self.workspaceOutline(a, currentLine: line)
-            self.finder.showOutline({ [weak self] query in
+            let space = Finder.OutlineScope(provider: { [weak self] query in
                 guard let self else { return [] }
                 let (outline, _) = self.workspaceOutline(a, currentLine: line)
                 let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
                 return outline.filter { item in
                     words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
                 }
-            }, startingAt: start, over: self.window)
+            }, start: start, placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within")
+            if let tile { self.finder.showOutline(tile, wider: space, over: self.window) } else { self.finder.showOutline(space, over: self.window) }
         }
         if let f = a.focused, let m = views[f] as? MarkdownView {
             m.headingAtTop { index in show(index.map { -($0 + 1) }) }
@@ -5869,7 +5882,7 @@ extension MainWindowController: GridDelegate {
             })
         }
         if views[placement]?.outline != nil {
-            menu.addItem(ClosureMenuItem("Search Outline…", symbol: "list.bullet.rectangle", key: "O") { [weak self] in
+            menu.addItem(ClosureMenuItem("Filter Outline", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
                 guard let self else { return }
                 self.focus(placement)
                 self.searchOutline(of: placement)
