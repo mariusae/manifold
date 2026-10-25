@@ -177,8 +177,8 @@ parts from the Mac's conventions on purpose.
   ⇧-click (or ⌥-click) a chevron to open or close the whole subtree. Every lens shows its scroll
   bar; a terminal's comes from Ghostty's own account of the screen and
   its history. Going somewhere (⌘O, ⌘P, a found line) brings the pointer
-  along, to the text cursor or the middle of the tile. Overview (⌘') shows every block in the
-  space at once, Mission Control fashion; ⎋ comes back. Drag the
+  along, to the text cursor or the middle of the tile. Overview (⌘',
+  below) shows every block in the space at once; ⎋ comes back. Drag the
   lines between tiles and columns to
   resize them. Each tile is a **card** with a **bar** across its top:
   its symbol and **title** (its name), where it is in grey, its
@@ -322,13 +322,6 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
-- **Open Quickly** (⌘O) finds every block and space — files are found
-  by Find in Files (⇧⌘F), a search block of their own. It ranks off the main thread as you type, each keystroke
-  giving up on the last, so typing never waits; the panel grows to fit
-  and doesn't shrink under you. An agent is found by what it is: a
-  block running Claude Code, Codex or another known agent answers to
-  "claude", "codex" as surely as to its own title, and says so
-  ("Terminal in ~/src · Claude Code").
 - **The menus** go by what a command is about: **File** makes things
   (terminals, notes, pages, agents) and holds Source Control (the
   project's, its smartlog, the last commit, a file's history); **Edit**,
@@ -339,8 +332,11 @@ around it, and comes back with its history.
   maximize, shrink, stash, its stack, its pin); **Space**, the space
   (name, overview, remove); **Window**, the window and Agents. **Help ▸
   Search** finds any menu command by name, as in every Mac app.
-- **Open Quickly** finds anything the host keeps. What the query *names* comes
-  first: a title it is, or starts, or starts a word of, then one it's
+- **Open Quickly** (⌘O) finds every block and space the host keeps —
+  files are found by Find in Files (⇧⌘F), a search block of their own.
+  It ranks off the main thread as you type, each keystroke giving up on
+  the last, so typing never waits; the panel grows to fit and doesn't
+  shrink under you. What the query *names* comes first: a title it is, or starts, or starts a word of, then one it's
   found in, then one with its letters in order, then a match only in
   what's around a block (its folder, its program). Among equals, the
   nearest to where you are over the graph — this space, then what's
@@ -357,14 +353,17 @@ around it, and comes back with its history.
   ago, an agent's last words), ranked with the names the query is only
   scattered in (a found line's row, in In Blocks, stays as found). A
   space is found by its own name only — what it holds is found as
-  itself. Choosing a block goes to it where it's placed, or brings it into
-  the focused column if it's nowhere (⌘ beside, ⌥ over);
-  choosing a space shows it. ⇥ goes to its other scope, **In Blocks**,
+  itself. An agent is found by what it is: a block running Claude Code,
+  Codex or another known agent answers to "claude", "codex" as surely
+  as to its own title, and says so ("Terminal in ~/src · Claude Code").
+  Choosing a block opens it by the one rule (below) — ↩ goes to it,
+  ⌘↩ beside, ⌥↩ over; choosing a space shows it. ⇥ goes to its other scope, **In Blocks**,
   which looks in the texts of the blocks — the space's first, then every
   note and file kept as a block — and lists what it finds as a site's
   search does: a row a block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
-  first of them.
+  first of them. It looks only at what's held as a block; Find in Files
+  searches a project's files on disk.
   A typed URL opens as a web page.
 - **⌘P goes through an outline**, as Prism's Move to Heading does —
   first the focused tile's own, where you are in it; **⇥** widens it to
@@ -799,9 +798,7 @@ around it, and comes back with its history.
   (repositories, `~` and `/` at the top; runs of single folders one row;
   counts beneath; rows fade as they go unseen); **Inbox** — what wants
   attention (above). A filter narrows any of them. The rows work the
-  same everywhere, by the one rule for opening things: click to go to
-  the block (or bring it here, if it is nowhere), ⌘-click to show it
-  beside the focused tile, ⌥-click to show it over the focused tile;
+  same everywhere, by the one rule for opening things (below);
   rest the pointer for a card — after a moment, a picture of the block,
   as Safari previews a tab (out of sight, as it was last seen; a
   terminal, its screen as it holds it) — and under the picture, the block's
@@ -882,9 +879,8 @@ around it, and comes back with its history.
   not showing — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's
   command that ran ten seconds or more ending (how long, and its exit
-  status if it failed); clicked, one goes to the block, and the command. The **Inbox** (⌥⌘3, or the counts at the foot of
-  the sidebar) lists what wants attention, the unread first and how
-  long ago at the right. Overview (⌘') shows a space's blocks
+  status if it failed); clicked, one goes to the block, and the command. The **Inbox**
+  (above) lists what wants attention. Overview (⌘') shows a space's blocks
   themselves, live, as a **state view** — or, with its filter on
   **Agents** (Window ▸ Agents, ⌃⌘A), every agent on every host: a list,
   stacked down one scrolling column as Prism's notes are, each under its
@@ -978,7 +974,7 @@ around it, and comes back with its history.
   work touched the same lines, nothing touched and Manifold says so.
   Turns are found with ⌘O — by what was asked among the names, by what
   was asked or said In Blocks — each opening as its block. **Window ▸
-  Agents** (⌃⌘A) is Overview filtered to the agents — every agent on
+  Agents** (⌃⌘A) is Overview (above) filtered to the agents — every agent on
   every host at once, those that need you first, then those at work,
   done, idle — each bar saying what it's on, for how long (or how long
   it took) and how many files it changed; click one to go there, ⎋ to
