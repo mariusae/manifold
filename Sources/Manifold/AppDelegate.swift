@@ -328,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(arrangement, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
         item(arrangement, "Maximize Tile", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
         item(arrangement, "Stash Tile", #selector(MainWindowController.stashTile(_:)), "m")
+        item(arrangement, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
         item(arrangement, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         arrangement.addItem(.separator())
         item(arrangement, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])

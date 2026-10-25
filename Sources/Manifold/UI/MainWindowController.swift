@@ -17,6 +17,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// own (`grids`), hidden while another shows: going back to it shows it
     /// again as it was, nothing laid out or drawn afresh.
     private var content = GridView()
+    /// Each tile shrunk to its summary, with its height before, to go back to.
+    private var unshrunk: [PlacementID: Double] = [:]
     /// The grid for no workspace (none selected).
     private lazy var blankGrid: GridView = content
     /// The content area, which the grids are clipped to: a workspace
@@ -1470,13 +1472,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement else { return "no workspace" }
         for (c, column) in a.columns.enumerated() {
             guard let p = column.first(where: { !a.isStashed($0.id) && hosts.block($0.block)?.displayTitle == title }) else { continue }
-            let shown = a.shownTiles(inColumn: c)
-            let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
-            let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
-            guard let other = shown.filter({ $0.id != p.id }).max(by: { a.height(of: $0.id) < a.height(of: $1.id) }) else { return "alone" }
-            let want = Double((points + GridView.barHeight) / usable) * sum
-            let delta = want - a.height(of: p.id)
-            appendToSelected([.heights([p.id: want, other.id: a.height(of: other.id) - delta])])
+            guard let events = settingHeight(of: p.id, points: points, in: a) else { return "alone" }
+            appendToSelected(events)
             return "ok"
         }
         return "no tile \(title)"
@@ -5544,6 +5541,72 @@ extension MainWindowController: GridDelegate {
 
     func gridArrive(_ placement: PlacementID) { arrive(atTile: placement) }
 
+    func gridShrinkToSummary(_ placement: PlacementID) { toggleSummary(placement) }
+
+    /// ⇧⌘M: the focused tile down to its summary, or back.
+    @objc func shrinkToSummary(_ sender: Any?) {
+        guard let f = arrangement?.focused else { return NSSound.beep() }
+        toggleSummary(f)
+    }
+
+    /// The content height a tile is given in summary: three of its lines.
+    private static let summaryPoints: CGFloat = 60
+
+    /// A tile down to its summary — its height given to the biggest other
+    /// in its column — or, already there, back to the height it had (or,
+    /// not shrunk here, grown a little, as going to it does).
+    private func toggleSummary(_ placement: PlacementID) {
+        guard let a = arrangement, a.full == nil, let body = contentHeight(of: placement, in: a) else { return NSSound.beep() }
+        if body >= GridView.collapseBelow, body < GridView.summarizeBelow {
+            if let back = unshrunk.removeValue(forKey: placement), let events = settingHeight(of: placement, share: back, in: a) {
+                appendToSelected(events)
+            } else {
+                arrive(atTile: placement)
+            }
+            return
+        }
+        guard let events = settingHeight(of: placement, points: Self.summaryPoints, in: a) else { return NSSound.beep() }
+        unshrunk[placement] = a.height(of: placement)
+        appendToSelected(events)
+    }
+
+    /// Whether a tile is in summary: its content too short for itself.
+    func isSummarized(_ placement: PlacementID) -> Bool {
+        guard let a = arrangement, a.full == nil, let body = contentHeight(of: placement, in: a) else { return false }
+        return body >= GridView.collapseBelow && body < GridView.summarizeBelow
+    }
+
+    /// A shown tile's content height, as the grid lays it out; nil for one
+    /// stashed, or alone in its column.
+    private func contentHeight(of placement: PlacementID, in a: ArrangementState) -> CGFloat? {
+        guard !a.isStashed(placement), let (c, _) = a.locate(placement) else { return nil }
+        let shown = a.shownTiles(inColumn: c)
+        let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
+        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
+        guard shown.count > 1, sum > 0, usable > 0 else { return nil }
+        return usable * CGFloat(a.height(of: placement) / sum) - GridView.barHeight
+    }
+
+    /// A shown tile given `points` of content (or a `share`, as heights
+    /// are kept): what it gives up to its nearest neighbour showing its
+    /// content (below, then above), what it takes from the biggest other
+    /// in its column.
+    private func settingHeight(of placement: PlacementID, points: CGFloat? = nil, share: Double? = nil, in a: ArrangementState) -> [Event]? {
+        guard !a.isStashed(placement), let (c, _) = a.locate(placement) else { return nil }
+        let shown = a.shownTiles(inColumn: c)
+        let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
+        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
+        let want = share ?? points.map { Double(($0 + GridView.barHeight) / usable) * sum } ?? a.height(of: placement)
+        let delta = want - a.height(of: placement)
+        guard usable > 0, let i = shown.firstIndex(where: { $0.id == placement }) else { return nil }
+        let others = shown.filter { $0.id != placement }
+        let showing = { (p: Placement) in usable * CGFloat(a.height(of: p.id) / sum) - GridView.barHeight >= GridView.summarizeBelow }
+        let nearest = (1..<max(shown.count, 2)).lazy.flatMap { d in [i + d, i - d] }.filter { shown.indices.contains($0) }.map { shown[$0] }.first(where: showing)
+        guard let other = (delta < 0 ? nearest : nil) ?? others.max(by: { a.height(of: $0.id) < a.height(of: $1.id) }) else { return nil }
+        guard a.height(of: other.id) - delta > 0 else { return nil }
+        return [.heights([placement: want, other.id: a.height(of: other.id) - delta])]
+    }
+
     func gridSwitcherFollowsPointer() {
         stackMonitors.forEach(NSEvent.removeMonitor)
         stackMonitors = []
@@ -5896,6 +5959,11 @@ extension MainWindowController: GridDelegate {
             menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        if !maximized, contentHeight(of: placement, in: a) != nil {
+            let summarized = isSummarized(placement)
+            menu.addItem(ClosureMenuItem(summarized ? "Show Content" : "Shrink to Summary", symbol: summarized ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
+                                         key: "M") { [weak self] in self?.toggleSummary(placement) })
+        }
         if let t = hosts.block(block)?.text, t.isDirty {
             menu.addItem(.separator())
             if t.stale {

@@ -837,17 +837,18 @@ enum DebugControl {
             }
             return "ok"
         case "click":
-            // "click x y [count] [cmd] [shift]": a left click at window
+            // "click x y [count] [cmd] [shift] [ctrl]": a left click at window
             // coordinates from the top-left, sent through the window as a
             // real one would be.
             let words = arg.split(separator: " ")
             let a = words.compactMap { Double($0) }
-            guard a.count >= 2, let window = wc?.window else { return "usage: click x y [count] [cmd] [shift]" }
+            guard a.count >= 2, let window = wc?.window else { return "usage: click x y [count] [cmd] [shift] [ctrl]" }
             let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
             let count = a.count > 2 ? Int(a[2]) : 1
             var mods: NSEvent.ModifierFlags = []
             if words.contains("cmd") { mods.insert(.command) }
             if words.contains("shift") { mods.insert(.shift) }
+            if words.contains("ctrl") { mods.insert(.control) }
             if words.contains("alt") { mods.insert(.option) }
             // "only": the one click, the count-th in a row (as a click
             // in place after others is).

@@ -11,6 +11,8 @@ protocol GridDelegate: AnyObject {
     /// A tile gone to by a click on its summary (it's too short for its
     /// content): focused, and grown to show some.
     func gridArrive(_ placement: PlacementID)
+    /// A tile down to its summary, or, already there, back as it was.
+    func gridShrinkToSummary(_ placement: PlacementID)
     /// A fan opened from ⌃⇥ taken over by the pointer: letting go of control no
     /// longer settles it (a click does).
     func gridSwitcherFollowsPointer()
@@ -307,6 +309,11 @@ final class GridView: NSView, NSDraggingSource {
                         } else {
                             self.delegate?.gridUnstash(id)
                         }
+                        return
+                    }
+                    // ⌃-click: the tile down to its summary (or back).
+                    if mods.contains(.control) {
+                        self.delegate?.gridShrinkToSummary(id)
                         return
                     }
                     // ⌥-click on a shown tile's pill: the next in its stack takes its place.
@@ -830,6 +837,9 @@ final class GridView: NSView, NSDraggingSource {
                         let c = SummaryCard(content)
                         c.inTile = true
                         Self.styleBody(c)
+                        // Square under its bar, rounded at the bottom: the
+                        // card is flipped, its layer with it.
+                        c.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
                         let id = tile.shown.id
                         c.onClick = { [weak self] in self?.delegate?.gridArrive(id) }
                         tileSummaries[tile.shown.id] = c

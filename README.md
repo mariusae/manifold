@@ -92,7 +92,11 @@ and Mona Sans (bundled).
   The same summary is everywhere a block is shown small. **A tile shrinks
   in steps**: under 80 points of content, its summary stands in for it
   in its body, under its bar — its lines, as many as fit, when at the
-  right (a click goes to it and grows it a little); under 24, it's down to its
+  right (a click goes to it and grows it a little), squared off under
+  its bar and rounded below as a tile is. **Shrink to Summary** (⇧⌘M, a
+  ⌃-click on its bar, or its bar's menu) takes a tile down to that
+  itself, giving its room to its nearest neighbour showing its content;
+  again (Show Content), it's back as it was. Under 24, it's down to its
   bar, its summary's line in the bar where the folder was ("$ make test ·
   exit 2 · 4m"); a sidebar row's hover card has it
   under its picture; in ⌘O a block's row is its summary in small and
