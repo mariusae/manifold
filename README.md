@@ -188,7 +188,7 @@ parts from the Mac's conventions on purpose.
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
   pointer follows the bar, so a click again grows again), ⌘-click
-  it (or its corner) to maximize; click its symbol, or ⌃-click the bar,
+  it to fill its column, its corner to maximize; click its symbol, or ⌃-click the bar,
   for the tile's menu; ⇧-click it for where the block is, folder by folder up
   to the root (a terminal's working directory likewise), each browsing
   that folder here, as ⌘-clicking a document's title does in the

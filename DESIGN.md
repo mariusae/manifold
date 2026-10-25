@@ -146,7 +146,7 @@ bar gives up as it narrows — its **links** (a capsule), its status
 glyph (§3.7, the program it names in the tooltip), and maximize and
 close; tiles stacked behind it show as its sheets. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌘-click
-maximizes, ⌃-click or the symbol opens its menu), and as a tile narrows
+fills its column, ⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
 show: the place goes first, then the links' capsule shrinks to its
 arrow and symbol, then to its arrow alone, then maximize goes, then the
@@ -1390,7 +1390,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   a plain click — the tile keeps a trail, ⌘[ ⌘] along it. ⌘ still
   opens beside.
 - **The bar:** a click grows the tile a step (acme's colgrow — clicks
-  build up; no double-click), ⌘-click maximizes, ⌃-click or the icon
+  build up; no double-click), ⌘-click fills the column, ⌃-click or the icon
   opens the tile's menu, ⇧-click the path menu.
 - **In a stack** a click brings a tile to the top and ⌘-click takes it
   out, as ⌘-drag takes the top alone.

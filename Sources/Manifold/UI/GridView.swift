@@ -298,7 +298,7 @@ final class GridView: NSView, NSDraggingSource {
                     pill?.sidebar = view.sidebarShown
                 }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
-                // The bar clicked grows the tile, ⌘-clicked maximizes it;
+                // The bar clicked grows the tile, ⌘-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
                 // A bar peeking out above its stack, clicked, comes to the
                 // top; ⌘-clicked, it comes out of the stack.
@@ -323,12 +323,12 @@ final class GridView: NSView, NSDraggingSource {
                         return
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused — clicked again, a step more; ⌘-clicked, it's
-                    // maximized (or restored). The pointer follows the bar to
+                    // focused — clicked again, a step more; ⌘-clicked, it
+                    // fills its column (Maximize is the corner's). The pointer follows the bar to
                     // where it was clicked, once the tile has grown and moved
                     // it, so a click again grows again.
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.command) { self.delegate?.gridToggleFull(id); return }
+                    if mods.contains(.command) { self.delegate?.gridFill(id); return }
                     self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
                 }
