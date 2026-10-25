@@ -226,7 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(.separator())
         item(app, "Secure Keyboard Entry", #selector(toggleSecureInput(_:)), "")
         item(app, "Install Command Line Tool…", #selector(installCommandLineTool(_:)), "")
-        item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "k", [.command, .shift])
+        // From the menu alone: ⇧⌘K is the editor's Delete Line.
+        item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "")
         app.addItem(.separator())
         item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
         item(app, "End All Sessions and Quit…", #selector(MainWindowController.stopServer(_:)), "")
@@ -319,6 +320,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codeItem.submenu = code
         edit.addItem(codeItem)
         edit.addItem(.separator())
+        item(edit, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
         item(edit, "Clear", #selector(TerminalView.clearScreen(_:)), "k")
 
         let arrangement = submenu(main, "Workspace")

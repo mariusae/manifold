@@ -1614,6 +1614,9 @@ final class TextView: NSView, NSTextInputClient {
         replace([(TextRange(at: end), block)], selectAfter: before.map { Selection($0.anchor + shift, $0.head + shift) })
     }
 
+    /// ⇧⌘K (and ⌃⇧K): the lines the selections are on, gone.
+    @objc func deleteLine(_ sender: Any?) { deleteLines() }
+
     private func deleteLines() {
         let lines = selectedLines()
         guard let first = lines.first, let last = lines.last else { return }

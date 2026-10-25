@@ -456,7 +456,7 @@ around it, and comes back with its history.
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
-  (⌘L), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⌃⇧K, join ⌃J,
+  (⌘L), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
   comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection),
   brackets and quotes paired, new lines indented like the last, undo as
   entries in the block's log (undone back to what was saved, it's clean
@@ -1133,10 +1133,10 @@ is migrated into logs on first run.
   a command that runs a command line on a destination with stdio
   connected, `%h` the destination and `%c` the command (appended when
   there is no `%c`), such as `my_special_script.sh %h`; `ssh` is built
-  in. Attach to a host (⇧⌘K) with a provider and a destination it
+  in. Attach to a host (Manifold ▸ Attach to Host…) with a provider and a destination it
   understands, or type `provider:target`. A provider not in the table
   is still looked for on your PATH as `manifold-remote-<provider>`.
-- **Remote hosts** (Manifold ▸ Attach to Host…, ⇧⌘K) work as apex's do: a
+- **Remote hosts** (Manifold ▸ Attach to Host…) work as apex's do: a
   destination ssh understands, or `provider:name` for a
   `manifold-remote-<provider>` command on the PATH that takes a destination
   and a command to run there. Manifold asks the host what it is, installs
