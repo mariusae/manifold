@@ -44,11 +44,10 @@ protocol GridDelegate: AnyObject {
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
     /// A stashed tile's pill was clicked: it comes back (§3.1).
     func gridUnstash(_ placement: PlacementID)
-    /// ⌥-clicked: it takes the top of its stack, the tile that showed
-    /// going behind it.
+    /// Clicked where it peeks out (a tab, a card, its bar above the
+    /// stack): it takes the top of its stack, the tile that showed going
+    /// behind it.
     func gridSwap(_ placement: PlacementID)
-    /// ⌥-click on a shown tile's pill: the first tile behind it takes its place.
-    func gridSwapNext(_ placement: PlacementID)
     /// ⌥-drag: the dragged tile over another, which goes into the stack behind it.
     /// `alone`: ⌘-drag, or a fanned pill's drag — the tile without its stack.
     func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool)
@@ -297,28 +296,20 @@ final class GridView: NSView, NSDraggingSource {
                     pill?.sidebar = view.sidebarShown
                 }
                 pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
-                // The bar clicked grows the tile, ⌘-clicked fills the
-                // column (a stashed one comes back); the symbol clicked is
-                // the tile's menu; the corner maximizes.
+                // The bar clicked grows the tile, ⌘-clicked maximizes it;
+                // ⌃-clicked (or its symbol clicked) it's the tile's menu.
+                // A bar peeking out above its stack, clicked, comes to the
+                // top; ⌘-clicked, it comes out of the stack.
                 pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
                     if stashed {
                         self.fanned = nil
-                        if mods.contains(.option) {
-                            self.delegate?.gridSwap(id)
-                        } else {
-                            self.delegate?.gridUnstash(id)
-                        }
+                        if mods.contains(.command) { self.delegate?.gridUnstash(id) } else { self.delegate?.gridSwap(id) }
                         return
                     }
-                    // ⌃-click: the tile down to its summary (or back).
                     if mods.contains(.control) {
-                        self.delegate?.gridShrinkToSummary(id)
-                        return
-                    }
-                    // ⌥-click on a shown tile's pill: the next in its stack takes its place.
-                    if mods.contains(.option) {
-                        self.delegate?.gridSwapNext(id)
+                        self.delegate?.gridFocus(id)
+                        self.showPillMenu(id)
                         return
                     }
                     // The address in a page's pill, clicked, becomes its field;
@@ -330,13 +321,14 @@ final class GridView: NSView, NSDraggingSource {
                         return
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused; ⌘-clicked, the tile fills its column. The
-                    // pointer follows the bar to where it was clicked, once
-                    // the tile has grown and moved it, so a click again
-                    // grows again.
-                    self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
+                    // focused — clicked again, a step more; ⌘-clicked, it's
+                    // maximized (or restored). The pointer follows the bar to
+                    // where it was clicked, once the tile has grown and moved
+                    // it, so a click again grows again.
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.command) { self.delegate?.gridFill(id) } else { self.delegate?.gridGrow(id) }
+                    if mods.contains(.command) { self.delegate?.gridToggleFull(id); return }
+                    self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
+                    self.delegate?.gridGrow(id)
                 }
                 pill.onPathClick = { [weak self] in
                     guard let self, !stashed else { return }
@@ -1353,7 +1345,11 @@ final class GridView: NSView, NSDraggingSource {
         s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
         s.layer?.zPosition = 20
         s.followsPointer = followingPointer
-        s.onPick = { [weak self] id, _ in self?.settleStackSwitcher(to: id) }
+        // A card clicked comes to the top; ⌘-clicked, it comes out of the
+        // stack (as ⌘ takes a stack's top alone when dragged).
+        s.onPick = { [weak self] id, mods in
+            if mods.contains(.command) { self?.settleStackSwitcher(takingOut: id) } else { self?.settleStackSwitcher(to: id) }
+        }
         s.onDragOut = { [weak self] id, event in
             guard let self else { return }
             self.settleStackSwitcher(cancel: true)
@@ -1401,12 +1397,12 @@ final class GridView: NSView, NSDraggingSource {
     /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
     /// top as it was), which comes forward to fill the tile; the views go
     /// back to the grid, and the stack is told which is its top now.
-    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false) {
+    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false, takingOut out: PlacementID? = nil) {
         guard let s = switcher, !s.isClosing else { return }
         if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
         switcherMonitor = nil
         let top = s.topID
-        let chosen = cancel ? top : (id ?? s.selectedID)
+        let chosen = cancel || out != nil ? top : (id ?? s.selectedID)
         s.dismiss(to: chosen) { [weak self, weak s] in
             guard let self, let s else { return }
             s.tearDown(keeping: chosen, in: self)
@@ -1422,6 +1418,7 @@ final class GridView: NSView, NSDraggingSource {
             self.switching = []
             self.needsLayout = true
             if chosen != top { self.delegate?.gridSwap(chosen) }
+            if let out, out != top { self.delegate?.gridUnstash(out) }
         }
     }
 
@@ -1664,10 +1661,11 @@ final class GridView: NSView, NSDraggingSource {
         hidePeek()
         let p = StackPeek(top: top, tiles: stack.behind.map { ($0.shown.id, $0.shown.title, $0.shown.block.map { Theme.symbolName(for: $0) } ?? Theme.symbolName(for: $0.shown.placement.lens, path: $0.shown.path)) })
         p.frame = p.frame(over: pill.frame, within: bounds)
-        // A tab clicked: its tile to the top, as a fanned card picked.
-        p.onPick = { [weak self] id in
+        // A tab clicked: its tile to the top, as a fanned card picked;
+        // ⌘-clicked, out of the stack.
+        p.onPick = { [weak self] id, mods in
             self?.hidePeek()
-            self?.delegate?.gridSwap(id)
+            if mods.contains(.command) { self?.delegate?.gridUnstash(id) } else { self?.delegate?.gridSwap(id) }
         }
         // Dragged: the tile out of the stack, as a fanned card dragged.
         p.onDragOut = { [weak self] id, event in
@@ -2663,7 +2661,7 @@ final class StackPeek: NSView {
     let top: PlacementID
     private let tiles: [(id: PlacementID, title: String, symbol: String)]
     private static let tabHeight: CGFloat = 20, shown = 4
-    var onPick: ((PlacementID) -> Void)?
+    var onPick: ((PlacementID, NSEvent.ModifierFlags) -> Void)?
     var onDragOut: ((PlacementID, NSEvent) -> Void)?
     var onMore: (() -> Void)?
     /// The pointer come onto the tabs (true) or gone from them (false).
@@ -2775,7 +2773,7 @@ final class StackPeek: NSView {
     override func mouseUp(with event: NSEvent) {
         guard let down = downAt else { return }
         downAt = nil
-        if down.tab < min(tiles.count, Self.shown) { onPick?(tiles[down.tab].id) } else { onMore?() }
+        if down.tab < min(tiles.count, Self.shown) { onPick?(tiles[down.tab].id, event.modifierFlags) } else { onMore?() }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -2824,7 +2822,7 @@ final class StackPeek: NSView {
     /// Debugging: tab `i` clicked, as the pointer would.
     func debugPick(_ i: Int) -> String {
         guard i < min(tiles.count, Self.shown) else { onMore?(); return "more" }
-        onPick?(tiles[i].id)
+        onPick?(tiles[i].id, [])
         return "picked \(tiles[i].title)"
     }
 }

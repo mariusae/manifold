@@ -95,8 +95,9 @@ and Mona Sans (bundled).
   second, about when macOS's switcher would appear) goes to the tile
   behind with no cards shown at all (⌃⇧⇥, the farthest), the cards
   coming only for a ⌃⇥ held; move the pointer over the cards and the card under it is
-  chosen from then on, a click bringing it to the top. A click away from
-  the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
+  chosen from then on, a click bringing it to the top and a ⌘-click
+  taking it out of the stack, beside it (as ⌘ takes a stack's top alone
+  when dragged). A click away from the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
   the cards fold away, the stack as it was, and the tile goes where it's
   dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
   on its own — the top dragged out, the next behind it shows.
@@ -104,19 +105,17 @@ and Mona Sans (bundled).
   in steps**: under 80 points of content, its summary stands in for it
   in its body, under its bar — its lines, as many as fit, when at the
   right (a click goes to it and grows it a little), squared off under
-  its bar and rounded below as a tile is. **Shrink to Summary** (⇧⌘M, a
-  ⌃-click on its bar, or its bar's menu) takes a tile down to that
+  its bar and rounded below as a tile is. **Shrink to Summary** (⇧⌘M, or the
+  bar's menu) takes a tile down to that
   itself, giving its room to its nearest neighbour showing its content;
   again (Show Content), it's back as it was. Under 24, it's down to its
   bar, its summary's line in the bar where the folder was ("$ make test ·
   exit 2 · 4m"); a sidebar row's hover card has it
   under its picture; in ⌘O a block's row is its card, and what it says
   is found;
-  `mani ls`, `info` and `context` print it. ⌥-click the top tile's own pill and it swaps with the next
-  behind it; keep ⌥ held and click again, as ⌘\` walks spaces, and
-  the next behind that comes up, round the stack, the tiles passed
-  staying where they were — letting go of ⌥ settles on the one come to
-  (⌥-clicking a pill peeking out above the stack goes straight to it). A stack is one
+  `mani ls`, `info` and `context` print it. A bar peeking out above its
+  stack, clicked, comes to the top; ⌘-clicked, it comes out of the
+  stack. The peek's tabs go the same way. A stack is one
   thing: drop its top tile's pill on another's and the whole stack goes
   behind that tile; move the top tile and the stack moves with it.
   Unstack in the pill's menu lays the whole stack out in the column;
@@ -193,8 +192,8 @@ and Mona Sans (bundled).
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
   pointer follows the bar, so a click again grows again), ⌘-click
-  to fill the column, the corner to maximize; click its symbol for the
-  tile's menu; ⇧-click it for where the block is, folder by folder up
+  it (or its corner) to maximize; click its symbol, or ⌃-click the bar,
+  for the tile's menu; ⇧-click it for where the block is, folder by folder up
   to the root (a terminal's working directory likewise), each browsing
   that folder here, as ⌘-clicking a document's title does in the
   Finder. ⌥⌘[ and ⌥⌘] move the focus between tiles.

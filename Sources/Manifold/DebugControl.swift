@@ -289,7 +289,6 @@ enum DebugControl {
             // and "stack release": ⌥ taken as held, or let go.
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
-            if a.first == "hold" || a.first == "release" { wc.debugOptionHeld = a.first == "hold" }
             // "stack golink <placement suffix>": that tile's block followed
             // from the focused tile's links, as a badge's link clicked.
             if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1]) }
