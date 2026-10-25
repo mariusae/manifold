@@ -232,7 +232,7 @@ final class SidebarView: NSView {
         guard organization == .kept || organization == .closed else { return needsLayout = true }
         let n = organization == .kept ? kept : closed
         pushedSubtitle.stringValue = organization == .kept
-            ? (n == 1 ? "1 kept off the desk" : "\(n) kept off the desk")
+            ? (n == 1 ? "1 kept out of spaces" : "\(n) kept out of spaces")
             : (n == 1 ? "1 closed, awaiting collection" : "\(n) closed, awaiting collection")
         needsLayout = true
     }

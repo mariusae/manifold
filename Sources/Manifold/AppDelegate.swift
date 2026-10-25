@@ -272,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
         item(file, "Keep and Close", #selector(MainWindowController.keepAndClose(_:)), "w", [.command, .shift])
         item(file, "Keep or Let Go", #selector(MainWindowController.togglePin(_:)), "")
-        item(file, "Take Workspace Off the Desk", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
+        item(file, "Take Workspace Out of Spaces", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
 
         let edit = submenu(main, "Edit")
         item(edit, "Undo", Selector(("undo:")), "z")

@@ -4023,7 +4023,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 title = self.title(of: a)
                 secondary = ""
                 detail = a.isNamed ? "Workspace · \(a.placements.count) blocks" : "Workspace, unnamed · \(a.placements.count) blocks"
-                note = allWorkspaces.contains(block.id) ? "on the desk" : ""
+                note = allWorkspaces.contains(block.id) ? "in spaces" : ""
             case .text:
                 secondary = block.path ?? ""
                 detail = block.path.map { ($0 as NSString).deletingLastPathComponent.abbreviatingHome } ?? "Note"
@@ -5340,7 +5340,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let window, let a = hosts.arrangement(id) else { return }
         let alert = NSAlert()
         alert.messageText = "Name This Workspace"
-        alert.informativeText = "A named workspace is kept on the desk until you take it off; an unnamed one leaves when it empties."
+        alert.informativeText = "A named workspace is kept in spaces until you take it out; an unnamed one leaves when it empties."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.stringValue = a.title ?? ""
         field.placeholderString = title(of: a)
@@ -7672,7 +7672,7 @@ extension MainWindowController: OrganizationViewDelegate {
         if let arr = node.arrangement, node.column == nil {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Take Off the Desk", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
+            menu.addItem(ClosureMenuItem("Take Out of Spaces", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             menu.addItem(.separator())
             menu.addItem(hostSubmenu(arr.host))
             return menu

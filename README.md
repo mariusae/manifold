@@ -18,7 +18,7 @@ and Mona Sans (bundled).
 
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
-  organized four ways (Desk · Files · Links · Time, below), with a
+  organized four ways (Workspaces · Files · Links · Time, below), with a
   filter. It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
@@ -56,7 +56,7 @@ and Mona Sans (bundled).
   to bring it in beside, onto a workspace for its active column, or
   between workspaces for one of its own, and drag workspaces to
   reorder them (among their host's, under its row) and hosts' rows to
-  reorder the hosts (an order of this Mac's own, in Desk and Files).
+  reorder the hosts (an order of this Mac's own, in Workspaces and Files).
 - An **workspace** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
   A workspace is what you made it: a block brought in stays until
@@ -290,7 +290,7 @@ and Mona Sans (bundled).
   makes a block a root of its own: kept whatever refers to it, until
   let go. **Keep and Close** (⇧⌘W) keeps it and takes its tiles off
   every workspace; it then sits in **Kept**, the list at the foot of the
-  sidebar, with the named workspaces off the desk, to be recalled with
+  sidebar, with the named workspaces taken out of spaces, to be recalled with
   a click. Dropping a block's bar on the Kept row keeps it too.
 - **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
   foot) lists the blocks whose status wants attention — done or failed
@@ -301,14 +301,14 @@ and Mona Sans (bundled).
   after the focused one (or the first), in whatever workspace holds it,
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
-- **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace off the
-  desk, and an unnamed workspace unseen for three days drifts off by
-  itself. A block is kept while something reaches it — a workspace on
-  the desk or a named one, a Keep, or a link by hand from a kept block
+- **⌘W** closes the focused tile; **⌥⇧⌘W** takes the workspace out of
+  spaces (where workspaces are kept), and an unnamed workspace unseen
+  for three days drifts out by itself. A block is kept while something reaches it — a workspace in
+  spaces or a named one, a Keep, or a link by hand from a kept block
   — and once nothing does it waits half an hour in
   **Recently Closed**, the list at the foot of the sidebar (and in
   ⌘O, marked *recent*), then is collected: gone, with its history. An
-  unnamed workspace taken off the desk goes the same way; a named one
+  unnamed workspace taken out of spaces goes the same way; a named one
   sits in **Kept**. **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
@@ -349,7 +349,7 @@ around it, and comes back with its history.
   row, in In Blocks, stays as found). A
   workspace is found by its own name only — what it holds is found as
   itself. Choosing a block shows it here, in the focused column;
-  choosing a workspace puts it on the desk. ⇥ goes round the finder's scopes: **In Files** has the host
+  choosing a workspace puts it in spaces. ⇥ goes round the finder's scopes: **In Files** has the host
   look for the words in the files under the project (as Find in Files
   does; the last row makes it a search block); **In Blocks** looks in
   the texts of the blocks — the workspace's first, then every note and
@@ -370,7 +370,7 @@ around it, and comes back with its history.
   finds the terminal running it.
 - **Naming keeps.** An unnamed workspace is scratch: blocks unseen for a
   while leave nothing: nothing in a workspace is tidied away; an
-  unnamed one emptied by hand leaves the desk. Name one (⇧⌘R, or double-click it in the sidebar)
+  unnamed one emptied by hand leaves spaces. Name one (⇧⌘R, or double-click it in the sidebar)
   and it's kept as it is until you change it. Named workspaces wear a
   bookmark in the sidebar.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
@@ -554,7 +554,7 @@ around it, and comes back with its history.
   Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a workspace root, on or
-  off; it's a setting on the desk, so every host runs the same — unless
+  off; it's a setting in spaces, so every host runs the same — unless
   the host says otherwise. Above the table, **All Hosts** or one host
   (This Mac too; or Preferences for *host*… ▸ Language Servers… in its
   menu): set for one host, the same table shows what that host runs, and a
@@ -842,7 +842,7 @@ around it, and comes back with its history.
   where they're commonly installed — Homebrew's and Linuxbrew's folders,
   `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize
-  By, ⌥⌘1–3): **Workspaces** — the desk, each workspace named by what it
+  By, ⌥⌘1–3): **Workspaces** — spaces, each workspace named by what it
   holds unless you name it (its blocks' folder, with the branch when a
   git block is there); **Files** — every
   block with a path under its folders — and every block that is *at* a
@@ -882,7 +882,7 @@ around it, and comes back with its history.
   for the tile back in that workspace. A pin is an edge from the
   workspace to the block, a strong one: the workspace keeps the block,
   and a workspace with anything pinned is kept itself — a root, as a
-  named one is; it doesn't drift off the desk, nor go when its last
+  named one is; it doesn't drift out of spaces, nor go when its last
   tile closes. Unpin from the same menus.
 - **One rule for the modifiers**, wherever a click opens a block — a
   sidebar row, a link, a tile's links badge, a listing's entry, a
@@ -1114,9 +1114,9 @@ Everything lives in `manifoldd`, a server (one per host) the app starts
 when it isn't running and that outlives it. Every block is a shard with
 its own append-only log, kept in `~/Library/Application Support/Manifold/
 logs` with snapshots beside, plus a registry of the host's blocks (kind,
-title, last seen, held or dormant), their links, and the desk. The app
+title, last seen, held or dormant), their links, and spaces. The app
 mirrors the host's shards and **leads** the ones it edits — workspaces,
-text, the desk — appending entries locally first, so nothing waits on a
+text, spaces — appending entries locally first, so nothing waits on a
 round trip; the host leads terminals and folders and does the file system
 work (reading, writing, watching) on proposal. Both apply the same entries
 with the same code, so they agree. State from before blocks (`state.json`)
@@ -1149,9 +1149,9 @@ is migrated into logs on first run.
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
-  A workspace lives on a host too, in that host's desk, which every Mac
+  A workspace lives on a host too, in that host's spaces, which every Mac
   attached to the host sees: New Terminal in a New Workspace (⌥⌘T)
-  makes it on the focused block's host, a host's row in the Desk
+  makes it on the focused block's host, a host's row in the Workspaces
   sidebar has New Workspace on *host* in its menu, and the box (⌘T)
   lists one per host. What a Mac shows and settles on is its own.
   A host names itself: a session id minted once, which every block made
@@ -1198,7 +1198,7 @@ is migrated into logs on first run.
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's pill wears the slashed ring, an
   editor there takes no edits, and nothing new reaches it until it's
-  back. Click a host's row in Files (or Desk) and its home folder opens
+  back. Click a host's row in Files (or Workspaces) and its home folder opens
   as a listing on that host; a folder row with no listing yet opens one
   when clicked (the disclosure, or a double-click, unfolds it); a host
   with nothing of it yet shows just its `~`. A tile whose block is on a
