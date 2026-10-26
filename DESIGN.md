@@ -546,7 +546,12 @@ within the grace is simply kept, its mark forgotten.
 
 Closing is what makes things unreachable. ⌘W takes a tile off its
 space — when it was the last tile of a block nothing else reaches, a
-toast says so; ⌥⇧⌘W removes a space whole. The app keeps what it closed
+toast says so; ⌥⇧⌘W removes a space whole. **Deleting** (⇧⌘W) is the
+one way a block goes at once: its tiles taken off everywhere, its links
+both ways broken on every host (`unlink`), and the host discarding it
+(`discard`: its session ended, its log deleted, unregistered). What only
+it reached is left to the collector like anything closed — in Recently
+Closed for the grace, not deleted with it. The app keeps what it closed
 on a stack, and **⇧⌘T** puts the last thing back where it was — a tile
 at its old column and place (here, if that space has gone), a space
 back in the sidebar — skipping whatever has been collected meanwhile.
@@ -1366,6 +1371,9 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
   the step above it. Minimize stays in the Window menu, keyless.
 - **⌥⌘M is the map,** taking macOS's Minimize All.
+- **⇧⌘W deletes a block,** where the Mac closes a window: Manifold's
+  windows are its spaces, removed with ⌥⇧⌘W, and ⌘W on Settings
+  closes it.
 - **⌃⌘T pins,** the Finder's Add to Sidebar: a pin keeps a block in its
   space's part of the sidebar, with a tile or without.
 - **⌘` walks spaces,** the app's windows; with one space it walks

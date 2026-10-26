@@ -312,6 +312,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
       <li><b>Spaces stay</b>, named or not, empty or not, until you remove one (<kbd>⌥⇧⌘W</kbd>). They're the roots.</li>
       <li>A block is kept while a space <b>reaches</b> it: shows it in a tile, <b>pins</b> it (Pin in Space, <kbd>⌃⌘T</kbd>, for a block with no tile), or reaches it through a link made by hand.</li>
       <li>The links that happen as you work — opened, found, mentioned — are history: they help you find things again, and keep nothing.</li>
+      <li><kbd>⇧⌘W</kbd> <b>deletes</b> a block: its tiles and links gone, the block with them. What only it reached goes to Recently Closed, not with it.</li>
       <li>Close the last tile of a block nothing else keeps and it waits <b>half an hour</b> to be brought back — <kbd>⇧⌘T</kbd>, Recently Closed, or Open Quickly's <i>recent</i> rows — then it's collected. A toast says when closing would lose unsaved edits or a running job.</li>
     </ul>
     <p>Terminals off screen with an idle shell go <b>dormant</b> after a while: the
@@ -561,7 +562,7 @@ mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pr
         <dt>⌃-</dt><dd>Back</dd><dt>⌃⇧-</dt><dd>Forward</dd><dt>⌘J</dt><dd>Next in Inbox</dd>
         <dt>⌘`</dt><dd>Recent Space</dd><dt>⌘1–9</dt><dd>Space by number</dd></dl></section>
       <section><h3>Tile</h3><dl>
-        <dt>⌘W</dt><dd>Close Tile</dd><dt>⇧⌘T</dt><dd>Reopen Closed</dd><dt>⌃⌘=</dt><dd>Grow</dd>
+        <dt>⌘W</dt><dd>Close Tile</dd><dt>⇧⌘W</dt><dd>Delete Block</dd><dt>⇧⌘T</dt><dd>Reopen Closed</dd><dt>⌃⌘=</dt><dd>Grow</dd>
         <dt>⇧⌘↩</dt><dd>Maximize</dd><dt>⇧⌘M</dt><dd>Shrink to Summary</dd><dt>⌘M</dt><dd>Stash</dd>
         <dt>⌃⇥</dt><dd>Next in Stack</dd><dt>⌃⌘T</dt><dd>Pin in Space</dd><dt>⌥⌘M</dt><dd>Neighborhood Map</dd></dl></section>
       <section><h3>Edit</h3><dl>

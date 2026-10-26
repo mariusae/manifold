@@ -319,6 +319,14 @@ parts from the Mac's conventions on purpose.
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
   foot of the window names each, with Restore.
+- **⇧⌘W deletes** the focused tile's block (Tile ▸ Delete Block, or
+  the bar's menu): every tile of it taken off, in every space, every
+  link to and from it broken, on every host, and the block itself gone
+  at once, its history with it. What only it reached isn't deleted with
+  it — unreached now, it's in Recently Closed, collected after the half
+  hour unless something reaches it again, and a toast says how many.
+  When the block has something to lose — a note's words, which are kept
+  nowhere else, unsaved edits, a job running — it asks first.
 
 ## Finding and following
 

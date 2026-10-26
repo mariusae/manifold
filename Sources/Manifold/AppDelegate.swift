@@ -409,6 +409,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let tile = submenu(main, "Tile")
         item(tile, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(tile, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
+        // Deleted, not closed: its links broken, the block gone; what only
+        // it reached into Recently Closed.
+        item(tile, "Delete Block", #selector(MainWindowController.deleteFocusedBlock(_:)), "w", [.command, .shift])
         tile.addItem(.separator())
         item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])

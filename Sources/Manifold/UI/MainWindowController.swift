@@ -1904,6 +1904,75 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         afterClosing(reachedBefore: before)
     }
 
+    /// ⇧⌘W: the focused tile's block deleted (or `sender`'s, a menu's).
+    @objc func deleteFocusedBlock(_ sender: Any?) {
+        let block = ((sender as? NSMenuItem)?.representedObject as? PlacementID).flatMap { arrangement?.placement($0)?.block }
+            ?? focusedShown?.placement.block
+        guard let block else { return NSSound.beep() }
+        deleteBlock(block)
+    }
+
+    /// A block deleted (§4): every tile of it taken off, in every space;
+    /// every link to it and from it broken, on every host, pins too; the
+    /// block itself gone at once — its log, its session, its entry in the
+    /// registry. What only it reached isn't deleted with it: unreached now,
+    /// it's in Recently Closed, and collected after the grace unless
+    /// something reaches it again. Asked first when there's something to
+    /// lose: a note's words (a note has no file), unsaved edits, a job.
+    func deleteBlock(_ block: BlockID) {
+        guard let b = hosts.block(block), b.kind != .arrangement else { return NSSound.beep() }
+        var loses: [String] = []
+        if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) { loses.append("its text, which is kept nowhere else") }
+        else if b.text?.isDirty == true { loses.append("its unsaved edits") }
+        if b.terminal?.busy == true { loses.append(b.kind == .agent ? "the agent at work in it" : "the job running in it") }
+        if !loses.isEmpty, let window {
+            let alert = NSAlert()
+            alert.messageText = "Delete “\(b.displayTitle)”?"
+            alert.informativeText = "Deleting it loses " + loses.joined(separator: " and ") + ". It can't be undone."
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons.first?.hasDestructiveAction = true
+            alert.beginSheetModal(for: window) { [weak self] response in
+                if response == .alertFirstButtonReturn { self?.deleteNow(block) }
+            }
+            return
+        }
+        deleteNow(block)
+    }
+
+    private func deleteNow(_ block: BlockID) {
+        let title = hosts.block(block)?.displayTitle ?? "the block"
+        let before = hosts.reachable()
+        // Its tiles, in every space; and what ⇧⌘T would bring back of it.
+        for ws in allWorkspaces {
+            guard let a = hosts.arrangement(ws) else { continue }
+            let tiles = a.placements(of: block)
+            if !tiles.isEmpty { hosts.append(tiles.map { .remove($0.id) }, to: .block(ws)) }
+        }
+        closedStack.removeAll { if case let .tile(_, _, _, p, _) = $0 { return p.block == block } else { return false } }
+        // Its links, both ways, wherever they're kept.
+        var links = Set<String>()
+        for c in hosts.all {
+            for e in c.node.graph.edges(from: block) + c.node.graph.edges(to: block) where e.isLive {
+                if case .link = e.kind { links.insert(e.id) }
+            }
+        }
+        for l in links { hosts.propose(.unlink(l)) }
+        hosts.propose(.discard(block))
+        // What only it reached, now in Recently Closed.
+        let let_go = before.subtracting(hosts.reachable()).subtracting([block]).count
+        let minutes = hosts.local.desk.settings.collectAfterMinutes
+        if let_go > 0 {
+            let what = let_go == 1 ? "1 block only it reached is" : "\(let_go) blocks only it reached are"
+            toast.show("Deleted “\(title)”; \(what) in Recently Closed" + (minutes > 0 ? ", gone in \(minutes) min" : ""), action: "Show", for: 10) { [weak self] in
+                self?.setOrganization(.closed)
+            }
+        } else {
+            toast.show("Deleted “\(title)”", action: "OK", for: 4) {}
+        }
+        layoutViews()
+    }
+
     /// ⌥⇧⌘W: the workspace removed — the only way one goes (§4); what only
     /// it kept is collected after the grace, reopened meanwhile by ⇧⌘T.
     @objc func closeTab(_ sender: Any?) {
@@ -2182,6 +2251,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.title = isSummarized(f) ? "Show Content" : "Shrink to Summary"
         case #selector(growTile(_:)), #selector(fillColumn(_:)):
             return arrangement?.focused != nil
+        case #selector(deleteFocusedBlock(_:)):
+            return focusedShown.map { $0.block?.kind != .arrangement } ?? false
         case #selector(stashTile(_:)):
             // As the tile's menu: not for a tile alone in its column.
             guard let a = arrangement, let f = a.focused, let c = a.columnIndex(of: f), !a.isStashed(f) else { return false }
@@ -5977,6 +6048,9 @@ extension MainWindowController: GridDelegate {
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(block.host))
         menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark", key: "w") { [weak self] in self?.closeTile(placement, in: id) })
+        let delete = ClosureMenuItem("Delete Block", symbol: "trash", key: "w") { [weak self] in self?.deleteBlock(block) }
+        delete.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(delete)
         return menu
     }
 
