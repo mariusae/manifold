@@ -248,8 +248,8 @@ parts from the Mac's conventions on purpose.
   dragged block *links* to the tile's block — one edge, read both
   ways. Both tiles show the **link** in their bar, as the linked
   block's face — its symbol (an agent's mark) on a small rounded square,
-  with a badge at its corner for the direction (a loop forward, links
-  to; back, linked from). Several stack up, the most recent in front
+  with a chevron in it on the side it points (› links to, ‹ linked
+  from). Several stack up, the most recent in front
   and the edges of two more behind it; the pointer on them fans them
   out along the bar — the title showing up to the first of them, fading
   out before it — and resting on one a moment shows its **summary

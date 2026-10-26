@@ -83,11 +83,11 @@ function tileElement(t) {
   if (el && el.dataset.key === key) return el;
   const b = BLOCKS[t.block];
   const summary = b.summary.map((l) => `<div>${esc(l)}</div>`).join("");
-  // Its link, as the app's bar shows one: the other block's face, a badge
-  // for the direction (here always back: linked from), its summary card
-  // on a rest.
+  // Its link, as the app's bar shows one: the other block's face, a
+  // chevron in it for the direction (here always ‹, linked from), its
+  // summary card on a rest.
   const capsule = t.from && BLOCKS[t.from]
-    ? `<a class="face" href="#${t.from}" data-open="${t.from}" data-preview="${t.from}" aria-label="Linked from ${esc(BLOCKS[t.from].title)}">${icon(BLOCKS[t.from].kind)}<span class="dir" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3.5 2 1.5 4l2 2M1.8 4h4.2a2.3 2.3 0 0 1 0 4.6H5"/></svg></span></a>` : "";
+    ? `<a class="face" href="#${t.from}" data-open="${t.from}" data-preview="${t.from}" aria-label="Linked from ${esc(BLOCKS[t.from].title)}"><span class="dir" aria-hidden="true"><svg viewBox="0 0 6 10"><path d="M4.5 1.5 1.5 5l3 3.5"/></svg></span>${icon(BLOCKS[t.from].kind)}</a>` : "";
   const sheets = t.stack.slice(0, 2).map((s, i) =>
     `<div class="sheet" data-behind="${i}" title="${esc(BLOCKS[s].title)} — behind; click to bring it to the top"></div>`).join("");
   const fresh = html(`

@@ -274,8 +274,8 @@ at the stamp.
 **Affordances.** The graph shows itself in the margins, never as a
 destination:
 
-1. **A tile's links**, on its bar: each linked block's face, a badge
-   at its corner for the direction, stacked most recent first; the
+1. **A tile's links**, on its bar: each linked block's face, a chevron
+   in it for the direction (› to, ‹ from), stacked most recent first; the
    pointer fans them out along the bar (the title fading out before the
    first), and resting on one shows its summary card beneath — one card
    at a time, so many links cost no room. More than fit, the last is a
@@ -511,8 +511,8 @@ thing, §4.)
 A block ⇧-dragged onto any tile is *linked* to the tile's block: one
 `linked` edge (§3.5), from the dragged block to the target, read both
 ways — the source *links*, the target is *linked from*. Both tiles
-show it among their links on the bar: the other block's face, a badge
-for the direction, its summary card on a rest, clicked as any link is;
+show it among their links on the bar: the other block's face, a chevron
+in it for the direction, its summary card on a rest, clicked as any link is;
 its menu's Remove Link ends the edge (`unlink`), in both readings at
 once. A note made
 with a block focused (⇧⌘N) is the same edge, from the block to the

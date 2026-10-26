@@ -311,20 +311,17 @@ a:hover { text-decoration: underline; }
 .capsule .arrow { color: var(--text-2); font-size: 10px; }
 .capsule .sym { width: 11px; height: 11px; color: var(--text-2); }
 
-/* A link, as the bar shows it: the other block's face, a badge for its
-   direction; rested on, its summary card beneath. */
+/* A link, as the bar shows it: the other block's face, a chevron in it
+   on the side it points; rested on, its summary card beneath. */
 .face {
-  position: relative; display: grid; place-items: center; flex: none;
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 1px; flex: none;
   width: 22px; height: 22px; border-radius: var(--r-control);
   border: 0.5px solid var(--hairline); background: var(--panel); color: var(--text-2); cursor: pointer;
 }
 .face:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); text-decoration: none; }
-.face .sym { width: 13px; height: 13px; }
-.face .dir {
-  position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--panel); border: 0.5px solid var(--hairline);
-}
-.face .dir svg { width: 7px; height: 7px; fill: none; stroke: var(--text-2); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.face .sym { width: 12px; height: 12px; }
+.face .dir { display: grid; place-items: center; width: 5px; height: 9px; }
+.face .dir svg { width: 5px; height: 9px; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .link-card {
   position: absolute; z-index: 6; display: flex; gap: 8px; padding: 9px 12px 10px;
   border-radius: var(--r-surface); background: var(--panel);

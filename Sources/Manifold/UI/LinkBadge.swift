@@ -16,8 +16,8 @@ struct LinkCard: Equatable {
 }
 
 /// A block's links by hand (§3.5), in its tile's bar: each linked block's
-/// own face, a small rounded square with a badge at its corner for the
-/// direction (a loop forward, links to; back, linked from) — the most
+/// own face, a small rounded square with a chevron in it for the
+/// direction (right, links to; left, linked from) — the most
 /// recent in front, two more peeking out behind it. The pointer on them
 /// fans them out along the bar, the title fading out before the first;
 /// resting on one a moment shows its summary card under the bar, one at a
@@ -429,21 +429,22 @@ final class LinkBadge: NSView {
 
     // MARK: A face
 
-    /// One linked block: its symbol on a small rounded square, and a badge
-    /// at its lower right for the direction.
+    /// One linked block: its symbol on a small rounded square, a chevron
+    /// in it on the side it points — right, links to; left, linked from.
     final class Chip: NSView {
         var onClick: ((NSEvent.ModifierFlags) -> Void)?
         var onMenu: (() -> Void)?
         var onDragStart: ((NSEvent) -> Void)?
         var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 12) } }
-        var outbound = true { didSet { badgeIcon.image = Theme.symbol(outbound ? "arrow.uturn.forward" : "arrow.uturn.backward", size: 6.5, weight: .bold) } }
+        var outbound = true { didSet { chevron.image = Self.chevron(outbound); needsLayout = true } }
+        private static func chevron(_ outbound: Bool) -> NSImage? { Theme.symbol(outbound ? "chevron.right" : "chevron.left", size: 8, weight: .bold) }
         /// Folded behind the front one (1, 2), only its edge showing: nothing
         /// on it, in a stack's sheet greys, as a tile's sheets are.
         var depth = 0 {
             didSet {
                 guard depth != oldValue else { return }
                 icon.isHidden = depth > 0
-                badge.isHidden = depth > 0
+                chevron.isHidden = depth > 0
                 colour()
             }
         }
@@ -461,8 +462,7 @@ final class LinkBadge: NSView {
             }
         }
         private let icon = NSImageView()
-        private let badge = NSView()
-        private let badgeIcon = NSImageView()
+        private let chevron = NSImageView()
         private var downAt: NSPoint?
 
         override init(frame: NSRect) {
@@ -474,30 +474,30 @@ final class LinkBadge: NSView {
             layer?.masksToBounds = false
             icon.contentTintColor = Theme.secondaryText
             icon.image = Theme.symbol(symbol, size: 12)
-            badge.wantsLayer = true
-            badge.layer?.cornerRadius = 5.5
-            badge.layer?.borderWidth = LinkCapsule.edgeWidth
-            badgeIcon.contentTintColor = Theme.secondaryText
-            badgeIcon.image = Theme.symbol("arrow.uturn.forward", size: 6.5, weight: .bold)
-            badge.addSubview(badgeIcon)
-            themed {
-                $0.colour()
-                $0.badge.layer?.backgroundColor = LinkCapsule.fill.cgColor
-                $0.badge.layer?.borderColor = LinkCapsule.edge.cgColor
-            }
+            // The direction in the text's own colour, stronger than the symbol.
+            chevron.contentTintColor = Theme.text
+            chevron.image = Self.chevron(outbound)
+            themed { $0.colour() }
             addSubview(icon)
-            addSubview(badge)
+            addSubview(chevron)
         }
 
         required init?(coder: NSCoder) { fatalError() }
 
         override func layout() {
             super.layout()
-            let s: CGFloat = 13
-            icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
-            // The badge at the lower right, a little past the corner.
-            badge.frame = NSRect(x: bounds.maxX - 8, y: -3, width: 11, height: 11)
-            badgeIcon.frame = badge.bounds.insetBy(dx: 2, dy: 2)
+            let s: CGFloat = 12, c: CGFloat = 5
+            // The symbol and the chevron side by side, the chevron on the
+            // side it points, the two together centred.
+            let left = (bounds.width - s - c - 1) / 2
+            let iy = (bounds.height - s) / 2, cy = (bounds.height - 8) / 2
+            if outbound {
+                icon.frame = NSRect(x: left, y: iy, width: s, height: s)
+                chevron.frame = NSRect(x: left + s + 1, y: cy, width: c, height: 8)
+            } else {
+                chevron.frame = NSRect(x: left, y: cy, width: c, height: 8)
+                icon.frame = NSRect(x: left + c + 1, y: iy, width: s, height: s)
+            }
         }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
