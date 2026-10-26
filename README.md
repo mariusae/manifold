@@ -178,12 +178,11 @@ parts from the Mac's conventions on purpose.
   lines between tiles and columns to
   resize them. Each tile is a **card** with a **bar** across its top:
   its symbol and **title** (its name), where it is in grey, its
-  **links** (each a capsule), the program its
+  **links** (the linked blocks' faces, stacked), the program its
   status names in a grey capsule, its status
   glyph, and maximize and close (×) at the right. The bar is always there; as
   a tile narrows it gives things up in order — the place, then the
-  link shrunk to its arrow and symbol, then the program, then
-  the link to its arrow alone, then maximize, then the link — so the
+  program, then maximize, then the links — so the
   symbol and some of the name always show. The content runs beneath it, rounded,
   with room between cards and the window's wash showing through. Drag
   the bar to move the tile; click it to grow the tile a step (the
@@ -247,12 +246,17 @@ parts from the Mac's conventions on purpose.
   way, their columns coming over.
 - **Links by hand**: ⇧-drag any block's bar onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
-  ways. Both tiles wear the **link** in their bar, a capsule: an arrow for
-  its direction (→ links to, ← linked from), the block's symbol and
-  name, to click and go to, and (under the pointer) an × that breaks
-  the link, both ways at once. With more than one link, the first
-  has sheets peeking out to its right, as a stack of cards, and the pointer
-  resting on it fans the rest out below, each a link the same. A note made with a block focused (⇧⌘N) is linked
+  ways. Both tiles show the **link** in their bar, as the linked
+  block's face — its symbol (an agent's mark) on a small rounded square,
+  with a badge at its corner for the direction (a loop forward, links
+  to; back, linked from). Several stack up, the most recent in front
+  and the edges of two more behind it; the pointer on them fans them
+  out along the bar, and resting on one a moment shows its **summary
+  card** under the bar — one at a time, moving along them. A click
+  opens it by the one rule (⌘ beside, ⌥ over, ⇧⌘ the system's app);
+  ⌃-click or right-click for its menu — Go To, Show Beside, Show Over,
+  Remove Link (both ways at once), the Neighborhood Map. Past eight, the
+  last is "+n", for the map. A note made with a block focused (⇧⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
   block also lands in the text, `[title](manifold:…)`, shown as a

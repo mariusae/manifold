@@ -1,7 +1,7 @@
 import AppKit
 import ManifoldCore
 
-/// A link a block has by hand, as its tile's badge names it: to a block
+/// A link a block has by hand, as its tile's links show it: to a block
 /// (outbound, →) or from one (inbound, ←).
 struct LinkCard: Equatable {
     /// The edge's id, to break it by.
@@ -15,80 +15,265 @@ struct LinkCard: Equatable {
     var breakable = true
 }
 
-/// A block's links by hand (§3.5), in its tile's bar: the first link's
-/// own pill — an arrow for its direction, the block's symbol and name, to
-/// click and go to, and an × that breaks the link (one edge, so in both
-/// readings at once). More than one, and the pill has sheets behind it,
-/// as a stack of paper; the pointer on it fans the rest out below.
+/// A block's links by hand (§3.5), in its tile's bar: each linked block's
+/// own face, a small rounded square with a badge at its corner for the
+/// direction (a loop forward, links to; back, linked from) — the most
+/// recent in front, two more peeking out behind it. The pointer on them
+/// fans them out along the bar; resting on one a moment shows its summary
+/// card under the bar, one at a time. A click opens it by the one rule (⌘
+/// beside, ⌥ over, ⇧⌘ the system's app); right-clicked, its menu.
 final class LinkBadge: NSView {
     /// A link clicked: the block, and the keys held (⌘ beside, ⌥ over,
     /// ⇧⌘ the system's app).
     var onOpen: ((BlockID, NSEvent.ModifierFlags) -> Void)?
     var onBreak: ((String) -> Void)?
-    /// Right-clicked: the neighborhood map, the big view of the links.
+    /// The neighborhood map, the big view of the links.
     var onMap: (() -> Void)?
+    /// A linked block's summary card, for the preview under the bar.
+    var summary: ((BlockID) -> SummaryCardContent?)?
     var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
-            if cards.map(\.link) == oldValue.map(\.link) {
-                // The same links, named afresh (a first line typed): in place.
-                for (p, c) in zip([badge] + pills, cards) {
-                    if p.title != c.title { p.title = c.title }
-                    if p.symbol != c.symbol { p.symbol = c.symbol }
-                }
-                badge.toolTip = tooltip
-                needsLayout = true
-            } else {
-                rebuild()
-            }
+            rebuild()
         }
     }
 
     static let capsuleHeight: CGFloat = 22
+    static let chip: CGFloat = 22
+    /// Folded, how far each one behind peeks out past the one before.
+    static let peek: CGFloat = 4
+    /// Fanned out, from one to the next.
     static let step: CGFloat = 26
-    static let mostWidth: CGFloat = 260
-    /// The most of the bar the first link's pill takes.
-    static let barWidth: CGFloat = 200
+    /// The most fanned out at once: past that, the last is "+n", the map.
+    static let mostShown = 8
+    /// The preview's width under the bar.
+    static let previewWidth: CGFloat = 280
+    /// How long the pointer rests on a face before its card shows: long
+    /// enough that sweeping across the bar doesn't flash cards.
+    static let previewDelay: TimeInterval = 0.15
 
-    /// At a tile's upper right the fan opens downward.
-    var fansDown = false { didSet { if fansDown != oldValue { needsLayout = true } } }
-    /// The first link, in the bar.
-    private let badge = Capsule()
-    /// The rest, fanned out.
-    private var pills: [Capsule] = []
-    /// The sheets peeking out behind the first link's pill, for the rest.
-    private var sheets: [CAShapeLayer] = []
-    private var fanned = false { didSet { if fanned != oldValue { needsLayout = true } } }
+    /// At a tile's upper right: kept for the grid, which places it in the bar.
+    var fansDown = false
+    private var chips: [Chip] = []
+    /// Past `mostShown`, the rest as one: the map.
+    private let more = Chip()
+    private var fanned = false { didSet { if fanned != oldValue { needsLayout = true; if !fanned { hidePreview() } } } }
+    private var preview: Preview?
+    private var previewed: Int?
+    private var previewWork: DispatchWorkItem?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        // Its sheets' layers coloured as laid out: again when light and dark switch.
-        themed { $0.needsLayout = true }
-        // The sheets rise above the pill, out of the view's frame.
+        // The faces' badges reach past its frame.
         clipsToBounds = false
         layer?.masksToBounds = false
-        badge.breaksOnHover = true
-        badge.onClick = { [weak self] mods in
-            guard let self, let c = self.cards.first else { return }
-            self.onOpen?(c.block, mods)
-        }
-        badge.onMenu = { [weak self] in self?.showMenu() }
-        badge.onDragStart = { [weak self] event in
-            guard let self, let c = self.cards.first else { return }
-            self.drag(c.block, from: self.badge, event)
-        }
-        addSubview(badge)
+        more.isMore = true
+        more.onClick = { [weak self] _ in self?.onMap?() }
+        more.isHidden = true
+        addSubview(more)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// A link's pill dragged: the block, to bring where it's dropped; with
-    /// ⇧ what it stands for (its path, its link), as a tile's pill is.
+    // MARK: Size, as the bar gives it
+
+    /// What the bar gives the folded stack; under its own width, it hides.
+    var capsuleLimit: CGFloat = .infinity { didSet { if capsuleLimit != oldValue { isHidden = capsuleLimit < foldedWidth; needsLayout = true } } }
+    /// The folded stack's width: one face, and the edges of two more.
+    var foldedWidth: CGFloat { cards.isEmpty ? 0 : Self.chip + CGFloat(min(cards.count, 3) - 1) * Self.peek }
+    /// What it takes of the bar, folded.
+    var capsuleWantedWidth: CGFloat { foldedWidth }
+    /// How much room it wants: fanned out along the bar.
+    var wantedSize: NSSize {
+        let n = min(cards.count, Self.mostShown)
+        return NSSize(width: max(foldedWidth, Self.chip + CGFloat(max(n - 1, 0)) * Self.step), height: Self.capsuleHeight)
+    }
+
+    // MARK: Faces
+
+    private func rebuild() {
+        hidePreview()
+        for c in chips { c.removeFromSuperview() }
+        chips = cards.prefix(Self.mostShown).map { card in
+            let c = Chip()
+            c.symbol = card.symbol
+            c.outbound = card.outbound
+            c.toolTip = (card.breakable ? (card.outbound ? "Links to " : "Linked from ") : (card.outbound ? "Shows " : "Shown in ")) + card.title
+            c.onClick = { [weak self] mods in self?.onOpen?(card.block, mods) }
+            c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
+            c.onDragStart = { [weak self, weak c] event in if let self, let c { self.drag(card.block, from: c, event) } }
+            return c
+        }
+        // The most recent on top of the ones behind it: added last, just
+        // under "+n".
+        for c in chips.reversed() { addSubview(c, positioned: .below, relativeTo: more) }
+        if cards.count > Self.mostShown { more.moreCount = cards.count - Self.mostShown + 1 }
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let right = bounds.maxX
+        let y = (bounds.height - Self.chip) / 2
+        // Fanned: as many as fit, the last "+n" if there are more.
+        let fit = max(1, Int((bounds.width - Self.chip) / Self.step) + 1)
+        let overflow = cards.count > min(fit, Self.mostShown)
+        let shown = overflow ? min(fit, Self.mostShown) - 1 : chips.count
+        let foldedLeft = right - foldedWidth
+        for (i, c) in chips.enumerated() {
+            let folded = NSRect(x: foldedLeft + CGFloat(min(i, 2)) * Self.peek, y: y, width: Self.chip, height: Self.chip)
+            let open = NSRect(x: right - Self.chip - CGFloat(i) * Self.step, y: y, width: Self.chip, height: Self.chip)
+            let target = fanned ? open : folded
+            // Folded, the front on top (by the views' order), two edges
+            // behind it, the rest out of sight.
+            c.depth = fanned ? 0 : min(i, 2)
+            let visible = fanned ? i < shown : i < 3
+            if visible, c.isHidden { c.frame = folded; c.isHidden = false }
+            if !visible { if !c.isHidden { c.isHidden = true }; c.frame = folded; continue }
+            if c.frame != target {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = Motion.base
+                    ctx.timingFunction = fanned ? Motion.appear : Motion.disappear
+                    ctx.allowsImplicitAnimation = true
+                    c.frame = target
+                }
+            }
+        }
+        more.isHidden = !(fanned && overflow)
+        if overflow {
+            more.moreCount = cards.count - shown
+            more.frame = NSRect(x: right - Self.chip - CGFloat(shown) * Self.step, y: y, width: Self.chip, height: Self.chip)
+        }
+        for c in chips + [more] { window?.invalidateCursorRects(for: c) }
+    }
+
+    // MARK: The pointer
+
+    /// Only the faces take the mouse; between them, the bar does.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        for v in [more] + chips where !v.isHidden && v.frame.contains(p) { return v }
+        return nil
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds.insetBy(dx: 0, dy: -6), options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let live = chips.filter { !$0.isHidden }
+        if !fanned, live.contains(where: { $0.frame.insetBy(dx: -3, dy: -4).contains(p) }) { fanned = true }
+        guard fanned else { return }
+        // Off the faces (and the gaps between them): folded again.
+        let span = (live + (more.isHidden ? [] : [more])).reduce(NSRect.null) { $0.union($1.frame) }.insetBy(dx: -6, dy: -8)
+        if !span.contains(p) { fanned = false; return }
+        let under = chips.firstIndex { !$0.isHidden && $0.frame.insetBy(dx: -2, dy: -4).contains(p) }
+        for (i, c) in chips.enumerated() { c.hovered = i == under }
+        more.hovered = !more.isHidden && more.frame.contains(p)
+        if let under { hover(under) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        fanned = false
+        for c in chips { c.hovered = false }
+        more.hovered = false
+    }
+
+    /// A face under the pointer: its card, once it has rested a moment —
+    /// or at once, when a card shows already (moving along the faces).
+    private func hover(_ i: Int) {
+        guard i != previewed || preview == nil else { return }
+        previewWork?.cancel()
+        if preview != nil { return showPreview(i) }
+        let work = DispatchWorkItem { [weak self] in self?.showPreview(i) }
+        previewWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewDelay, execute: work)
+    }
+
+    // MARK: The card under the bar
+
+    private func showPreview(_ i: Int) {
+        guard fanned, i < chips.count, i < cards.count, let host = superview,
+              let content = summary?(cards[i].block) else { return }
+        previewed = i
+        let p = preview ?? {
+            let p = Preview()
+            host.addSubview(p, positioned: .above, relativeTo: nil)
+            preview = p
+            return p
+        }()
+        p.card.content = content
+        let h = SummaryCard.height(for: content) + 2
+        // Under the bar, beneath the face, kept inside what holds it.
+        let chip = chips[i].convert(chips[i].bounds, to: host)
+        var x = chip.midX - Self.previewWidth / 2
+        x = min(max(x, host.bounds.minX + 6), host.bounds.maxX - Self.previewWidth - 6)
+        let gap: CGFloat = 8
+        let y = host.isFlipped ? chip.maxY + gap : chip.minY - gap - h
+        let target = NSRect(x: x, y: y, width: Self.previewWidth, height: h)
+        if p.frame.isEmpty || p.alphaValue == 0 {
+            p.frame = target
+            p.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                ctx.timingFunction = Motion.appear
+                p.animator().alphaValue = 1
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                ctx.timingFunction = Motion.travel
+                p.animator().frame = target
+            }
+        }
+    }
+
+    private func hidePreview() {
+        previewWork?.cancel()
+        previewWork = nil
+        previewed = nil
+        guard let p = preview else { return }
+        preview = nil
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Motion.fast
+            ctx.timingFunction = Motion.disappear
+            p.animator().alphaValue = 0
+        }, completionHandler: { p.removeFromSuperview() })
+    }
+
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        if newSuperview == nil { hidePreview() }
+        super.viewWillMove(toSuperview: newSuperview)
+    }
+
+    // MARK: Menu, and dragging out
+
+    /// A face's menu: the one rule's three ways, the link broken, the map.
+    private func showMenu(for card: LinkCard, from chip: NSView) {
+        hidePreview()
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.onOpen?(card.block, []) })
+        menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.1x2") { [weak self] in self?.onOpen?(card.block, .command) })
+        menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.onOpen?(card.block, .option) })
+        menu.addItem(.separator())
+        if card.breakable {
+            menu.addItem(ClosureMenuItem("Remove Link", symbol: "link.badge.plus") { [weak self] in self?.onBreak?(card.link) })
+        }
+        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
+        guard let event = NSApp.currentEvent else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: chip)
+    }
+
+    /// A face dragged: the block, to bring where it's dropped; with ⇧ what
+    /// it stands for (its path, its link), as a tile's bar is.
     private func drag(_ block: BlockID, from view: NSView, _ event: NSEvent) {
+        hidePreview()
         guard let item = Drags.block?(block, event.modifierFlags) else { return }
         let drag = NSDraggingItem(pasteboardWriter: item)
-        // The pill itself, under the pointer.
         let picture = NSImage(size: view.bounds.size)
         if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
             view.cacheDisplay(in: view.bounds, to: rep)
@@ -101,323 +286,116 @@ final class LinkBadge: NSView {
 
     private var dragIsPath = false
 
-    /// The capsule's menu: the map, and the link broken.
-    private func showMenu() {
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
-        if let c = cards.first, c.breakable {
-            menu.addItem(ClosureMenuItem("Break the Link", symbol: "xmark") { [weak self] in self?.onBreak?(c.link) })
-        }
-        guard let event = NSApp.currentEvent else { return }
-        NSMenu.popUpContextMenu(menu, with: event, for: badge)
-    }
+    // MARK: Debugging
 
-    private var tooltip: String {
-        guard let c = cards.first else { return "" }
-        let first = (c.outbound ? "Links to " : "Linked from ") + c.title
-        return cards.count == 1 ? first : first + ", and \(cards.count - 1) more"
-    }
-
-    /// The most the bar gives the first link's pill, its sheets aside:
-    /// shrunk, it shows its arrow and symbol, then its arrow alone.
-    var capsuleLimit: CGFloat = .infinity { didSet { if capsuleLimit != oldValue { needsLayout = true } } }
-    /// The first link's pill's width, as the bar has room for it.
-    /// The bar's limit counts the sheets beside the capsule, as its wanted
-    /// width does: the capsule gets what's left of it (else, narrowed, it
-    /// ran over the tile's name by the sheets' width).
-    var capsuleWidth: CGFloat { min(min(badge.wantedWidth, Self.barWidth), bounds.width - sheetRoom, capsuleLimit - sheetRoom) }
-    /// What the first link's pill would take of the bar, its sheets included.
-    var capsuleWantedWidth: CGFloat { min(badge.wantedWidth, Self.barWidth) + sheetRoom }
-    /// The room the sheets take to the pill's right (kept while fanned, so the pill stays put).
-    private var sheetRoom: CGFloat { CGFloat(min(pills.count, 2)) * Self.sheetStep }
-    static let sheetStep: CGFloat = 4
-
-    /// How much of the tile it needs: the pill, and room for the fan.
-    var wantedSize: NSSize {
-        let widest = max(capsuleWantedWidth, (pills.map(\.wantedWidth).max() ?? 0) + sheetRoom)
-        return NSSize(width: min(widest, Self.mostWidth), height: Self.capsuleHeight + CGFloat(pills.count) * Self.step + 4)
-    }
-
-    private func configure(_ p: Capsule, _ card: LinkCard) {
-        p.direction = card.outbound ? "arrow.right" : "arrow.left"
-        p.symbol = card.symbol
-        p.title = card.title
-    }
-
-    private func rebuild() {
-        for p in pills { p.removeFromSuperview() }
-        if let first = cards.first {
-            configure(badge, first)
-            badge.onBreak = first.breakable ? { [weak self] in
-                guard let self, let c = self.cards.first else { return }
-                self.onBreak?(c.link)
-            } : nil
-        }
-        pills = cards.dropFirst().map { card in
-            let p = Capsule()
-            configure(p, card)
-            p.toolTip = card.breakable ? (card.outbound ? "Links to it" : "Linked from it") : (card.outbound ? "Shows it" : "Shown in it")
-            p.isHidden = true
-            let block = card.block, link = card.link
-            p.onClick = { [weak self] mods in self?.onOpen?(block, mods) }
-            p.onBreak = card.breakable ? { [weak self] in self?.onBreak?(link) } : nil
-            p.onDragStart = { [weak self, weak p] event in
-                guard let self, let p else { return }
-                self.drag(block, from: p, event)
-            }
-            addSubview(p)
-            return p
-        }
-        badge.toolTip = tooltip
-        if pills.isEmpty { fanned = false }
-        needsLayout = true
-    }
-
-    override func layout() {
-        super.layout()
-        let w = bounds.width
-        let bw = capsuleWidth
-        let capsuleY = fansDown ? bounds.height - Self.capsuleHeight : 0
-        // Its sheets to its right, the stack ending where a lone pill would.
-        let right = w - sheetRoom
-        // Fanned out, every pill (the first too) as wide as the widest, so
-        // the stack reads as one; folded, the first as the bar has room for.
-        let common = min(max(bw, pills.map(\.wantedWidth).max() ?? 0), right)
-        let first = NSRect(x: right - (fanned ? common : bw), y: capsuleY, width: fanned ? common : bw, height: Self.capsuleHeight)
-        if badge.frame != first {
-            if badge.frame.isEmpty || !(badge.layer?.animationKeys()?.isEmpty ?? true) {
-                badge.frame = first
-            } else {
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = Motion.base
-                    ctx.timingFunction = Motion.appear
-                    badge.animator().frame = first
-                }
-            }
-        }
-        // Where the first pill is going, not where it is mid-animation:
-        // the sheets and the folding pills go by that.
-        layoutSheets(around: first)
-        for (i, p) in pills.enumerated() {
-            let pw = common
-            let y = fansDown ? capsuleY - 4 - CGFloat(i + 1) * Self.step + (Self.step - Self.capsuleHeight) : Self.capsuleHeight + 4 + CGFloat(i) * Self.step
-            let target = NSRect(x: right - pw, y: y, width: pw, height: Self.capsuleHeight)
-            if fanned {
-                if p.isHidden {
-                    p.frame = first
-                    p.isHidden = false
-                    NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = Motion.base
-                        ctx.timingFunction = Motion.appear
-                        p.animator().frame = target
-                    }
-                } else if p.layer?.animationKeys()?.isEmpty ?? true {
-                    p.frame = target
-                }
-            } else if !p.isHidden {
-                NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = Motion.fast
-                    p.animator().frame = first
-                }, completionHandler: { [weak self, weak p] in
-                    guard let self, let p, !self.fanned else { return }
-                    p.isHidden = true
-                    self.window?.invalidateCursorRects(for: p)
-                })
-            }
-        }
-        // The capsules moved: their cursor rects (the pointing hand) with them.
-        for c in [badge] + pills { window?.invalidateCursorRects(for: c) }
-    }
-
-    /// Behind the first link's pill, one sheet for each further link (two
-    /// at most), each peeking out a little further to its right and a
-    /// little shorter than the one before, as a stack of cards; gone while
-    /// the rest are fanned out.
-    private func layoutSheets(around first: NSRect) {
-        let wanted = fanned ? 0 : min(pills.count, 2)
-        while sheets.count > wanted { sheets.removeLast().removeFromSuperlayer() }
-        while sheets.count < wanted {
-            let l = CAShapeLayer()
-            l.lineWidth = 0.5
-            layer?.insertSublayer(l, below: badge.layer)
-            sheets.append(l)
-        }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            for (i, l) in sheets.enumerated() {
-                let level = CGFloat(i + 1)
-                let r = first.insetBy(dx: 0, dy: 1.5 * level).offsetBy(dx: Self.sheetStep * level, dy: 0)
-                l.zPosition = -level
-                l.path = CGPath(roundedRect: r, cornerWidth: r.height / 2, cornerHeight: r.height / 2, transform: nil)
-                l.fillColor = Theme.sheet(level: i + 1).cgColor
-                l.strokeColor = EdgeColor.control.cgColor
-            }
-        }
-        CATransaction.commit()
-    }
-
-    /// Only the capsules take the mouse; between them, the tile does.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let p = convert(point, from: superview)
-        for v in [badge] + pills where !v.isHidden && v.frame.contains(p) { return v.hitTest(point) ?? v }
-        return nil
-    }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        if !pills.isEmpty {
-            let over = ([badge] + pills).contains { !$0.isHidden && $0.frame.insetBy(dx: -6, dy: -4).contains(p) }
-            if over { fanned = true } else if fanned, !badge.frame.insetBy(dx: -10, dy: -10).contains(p) { fanned = false }
-        }
-        // The capsule under the pointer is ringed: the one a click takes.
-        for c in [badge] + pills { c.hovered = !c.isHidden && c.frame.contains(p) }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        fanned = false
-        for c in [badge] + pills { c.hovered = false }
-    }
-
-    /// Debugging: the fan, as the pointer resting on the pill would open it.
-    func debugFan(_ open: Bool) { fanned = open && !pills.isEmpty }
-    var debugTitles: [String] { ([badge] + pills).map { ($0.direction == "arrow.right" ? "→ " : "← ") + $0.title } }
-    var debugSheets: Int { sheets.count }
-    /// Debugging: the first pill's frame and each sheet's, in the badge.
-    var debugGeometry: String {
-        "pill \(NSStringFromRect(badge.frame)) sheets " + sheets.map { NSStringFromRect($0.path?.boundingBox ?? .zero) }.joined(separator: " ")
-    }
-    /// Debugging: the first link's pill's middle, in the window from its top left.
+    /// Debugging: the fan, as the pointer resting on the stack would open it.
+    func debugFan(_ open: Bool) { fanned = open }
+    var debugTitles: [String] { cards.prefix(chips.count).map { ($0.outbound ? "→ " : "← ") + $0.title } }
+    /// How many faces peek out behind the front one, folded.
+    var debugSheets: Int { fanned ? 0 : max(0, min(cards.count, 3) - 1) }
+    var debugGeometry: String { chips.filter { !$0.isHidden }.map { NSStringFromRect($0.frame) }.joined(separator: " ") }
+    /// Debugging: the front face's middle, in the window from its top left.
     var debugCapsuleCenter: NSPoint? {
-        guard let frameView = window?.contentView?.superview else { return nil }
-        let r = badge.convert(badge.bounds, to: nil)
+        guard let first = chips.first, let frameView = window?.contentView?.superview else { return nil }
+        let r = first.convert(first.bounds, to: nil)
         return NSPoint(x: r.midX, y: frameView.bounds.height - r.midY)
     }
-    /// Debugging: the × of the nth link (the first in the bar), as clicked.
+    /// Debugging: the nth link broken, as its menu's Remove Link does.
     func debugBreak(_ n: Int) -> Bool {
-        let all = [badge] + pills
-        guard n < all.count else { return false }
-        all[n].onBreak?()
+        guard n < cards.count, cards[n].breakable else { return false }
+        onBreak?(cards[n].link)
         return true
     }
+    /// Debugging: the nth face's card shown, as resting on it does; its title.
+    func debugPreview(_ n: Int) -> String {
+        fanned = true
+        layoutSubtreeIfNeeded()
+        showPreview(n)
+        return preview.map { "card: \($0.card.content.summary.title) at \(NSStringFromRect($0.frame))" } ?? "no card"
+    }
 
-    /// A small opaque capsule: an arrow for the direction, a symbol, a
-    /// few words, and an × to break the link.
-    final class Capsule: NSView {
-        /// Clicked: whether ⌥ was held.
+    // MARK: A face
+
+    /// One linked block: its symbol on a small rounded square, and a badge
+    /// at its lower right for the direction. Or, as `isMore`, "+n".
+    final class Chip: NSView {
         var onClick: ((NSEvent.ModifierFlags) -> Void)?
-        /// Dragged a little: what to do with the drag (a stack's pill comes out).
-        var onDragStart: ((NSEvent) -> Void)?
-        /// Right-clicked: its menu.
         var onMenu: (() -> Void)?
-        private var downAt: NSPoint?
-        /// With this set, an × at the right end, to call.
-        var onBreak: (() -> Void)? { didSet { updateClose(); needsLayout = true } }
-        /// The × only under the pointer (in a tile's bar, beside the tile's own ×); its room kept.
-        var breaksOnHover = false { didSet { updateClose() } }
-        private func updateClose() { close.isHidden = onBreak == nil || compact || (breaksOnHover && !hovered) }
-        /// Too narrow for words: the arrow and the symbol, or the arrow alone.
-        private var compact = false
-        private let arrow = NSImageView()
-        private let icon = NSImageView()
-        private let label = NSTextField(labelWithString: "")
-        private let close = NSImageView()
-        var direction: String? { didSet { arrow.image = direction.flatMap { Theme.symbol($0, size: 9, weight: .semibold) }; arrow.isHidden = direction == nil; needsLayout = true } }
-        /// Under the pointer: ringed in the accent, as a fanned pill is.
+        var onDragStart: ((NSEvent) -> Void)?
+        var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 12) } }
+        var outbound = true { didSet { badgeIcon.image = Theme.symbol(outbound ? "arrow.uturn.forward" : "arrow.uturn.backward", size: 6.5, weight: .bold) } }
+        var isMore = false { didSet { icon.isHidden = isMore; badge.isHidden = isMore; label.isHidden = !isMore } }
+        var moreCount = 0 { didSet { label.stringValue = "+\(moreCount)"; toolTip = "\(moreCount) more — the Neighborhood Map" } }
+        /// Folded behind the front one (1, 2), only its edge showing: nothing
+        /// on it, in a stack's sheet greys, as a tile's sheets are.
+        var depth = 0 {
+            didSet {
+                guard depth != oldValue else { return }
+                icon.isHidden = depth > 0 || isMore
+                badge.isHidden = depth > 0 || isMore
+                colour()
+            }
+        }
+        private func colour() {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                layer?.backgroundColor = (depth > 0 ? Theme.sheet(level: depth) : LinkCapsule.fill).cgColor
+                layer?.borderColor = (hovered ? EdgeColor.accentStrong : depth > 0 ? EdgeColor.control : LinkCapsule.edge).cgColor
+            }
+        }
         var hovered = false {
             didSet {
                 guard hovered != oldValue else { return }
-                effectiveAppearance.performAsCurrentDrawingAppearance {
-                    layer?.borderColor = (hovered ? EdgeColor.accentStrong : EdgeColor.hairline).cgColor
-                }
+                colour()
                 layer?.borderWidth = hovered ? 1.5 : LinkCapsule.edgeWidth
-                updateClose()
             }
         }
-        var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 10) } }
-        var title = "" { didSet { label.stringValue = title; needsLayout = true } }
+        private let icon = NSImageView()
+        private let badge = NSView()
+        private let badgeIcon = NSImageView()
+        private let label = NSTextField(labelWithString: "")
+        private var downAt: NSPoint?
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
-            layer?.cornerRadius = LinkBadge.capsuleHeight / 2
+            layer?.cornerRadius = Radius.control
             layer?.cornerCurve = .continuous
             layer?.borderWidth = LinkCapsule.edgeWidth
-            themed {
-                $0.layer?.backgroundColor = LinkCapsule.fill.cgColor
-                $0.layer?.borderColor = LinkCapsule.edge.cgColor
-            }
-            arrow.contentTintColor = Theme.secondaryText
-            arrow.isHidden = true
-            icon.image = Theme.symbol(symbol, size: 10)
+            layer?.masksToBounds = false
             icon.contentTintColor = Theme.secondaryText
-            label.font = LinkCapsule.font
-            label.textColor = Theme.text
-            label.lineBreakMode = .byTruncatingTail
-            label.maximumNumberOfLines = 1
-            close.image = Theme.symbol("xmark", size: 8, weight: .bold)
-            close.contentTintColor = Theme.secondaryText
-            close.isHidden = true
-            close.toolTip = "Break the link"
-            addSubview(arrow)
+            icon.image = Theme.symbol(symbol, size: 12)
+            badge.wantsLayer = true
+            badge.layer?.cornerRadius = 5.5
+            badge.layer?.borderWidth = LinkCapsule.edgeWidth
+            badgeIcon.contentTintColor = Theme.secondaryText
+            badgeIcon.image = Theme.symbol("arrow.uturn.forward", size: 6.5, weight: .bold)
+            badge.addSubview(badgeIcon)
+            label.font = UIType.count
+            label.textColor = Theme.secondaryText
+            label.alignment = .center
+            label.isHidden = true
+            themed {
+                $0.colour()
+                $0.badge.layer?.backgroundColor = LinkCapsule.fill.cgColor
+                $0.badge.layer?.borderColor = LinkCapsule.edge.cgColor
+            }
             addSubview(icon)
             addSubview(label)
-            addSubview(close)
+            addSubview(badge)
         }
 
         required init?(coder: NSCoder) { fatalError() }
 
-        private var arrowWidth: CGFloat { direction == nil ? 0 : 14 }
-        private var closeWidth: CGFloat { onBreak == nil ? 0 : 18 }
-
-        var wantedWidth: CGFloat {
-            let text = title.isEmpty ? 0 : ceil(label.intrinsicContentSize.width) + 12
-            return 10 + arrowWidth + 14 + text + closeWidth + 10
-        }
-
         override func layout() {
             super.layout()
-            let h = bounds.height
-            let w = bounds.width
-            // Shrinkage: under the room for a word of the title, the words
-            // go; under the room for the symbol, the symbol goes too, and
-            // the arrow sits in the middle alone.
-            let wordRoom = 10 + arrowWidth + 20 + 24
-            compact = w < wordRoom
-            updateClose()
-            if w < 44 {
-                let only = direction == nil ? icon : arrow
-                only.frame = NSRect(x: (w - 12) / 2, y: (h - 12) / 2, width: 12, height: 12)
-                arrow.isHidden = direction == nil
-                icon.isHidden = direction != nil
-                label.isHidden = true
-                return
-            }
-            arrow.isHidden = direction == nil
-            icon.isHidden = false
-            var x: CGFloat = compact ? (w - (arrowWidth + 14)) / 2 : 9
-            if !arrow.isHidden {
-                arrow.frame = NSRect(x: x, y: (h - 10) / 2, width: 10, height: 10)
-                x += arrowWidth
-            }
-            icon.frame = NSRect(x: x, y: (h - 12) / 2, width: 14, height: 12)
-            x += 20
-            if compact { label.isHidden = true; return }
-            let right = w - 10 - closeWidth
-            if onBreak != nil { close.frame = NSRect(x: w - 10 - 12, y: (h - 12) / 2, width: 12, height: 12) }
+            let s: CGFloat = 13
+            icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
+            // The badge at the lower right, a little past the corner.
+            badge.frame = NSRect(x: bounds.maxX - 8, y: -3, width: 11, height: 11)
+            badgeIcon.frame = badge.bounds.insetBy(dx: 2, dy: 2)
             let lh = ceil(label.intrinsicContentSize.height)
-            label.frame = NSRect(x: x, y: ((h - lh) / 2).rounded(), width: max(right - x, 0), height: lh)
-            label.isHidden = title.isEmpty
+            label.frame = NSRect(x: 0, y: (bounds.height - lh) / 2, width: bounds.width, height: lh)
         }
-
-        /// Where the × takes a click: its end of the capsule.
-        private var closeRect: NSRect { NSRect(x: bounds.width - 10 - closeWidth, y: 0, width: closeWidth + 10, height: bounds.height) }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
         /// A click in a window not yet active goes to the link too.
@@ -433,11 +411,27 @@ final class LinkBadge: NSView {
         }
         override func mouseUp(with event: NSEvent) {
             defer { downAt = nil }
-            guard downAt != nil else { return }
-            let p = convert(event.locationInWindow, from: nil)
-            guard bounds.contains(p) else { return }
-            if onBreak != nil, closeRect.contains(p) { onBreak?() } else { onClick?(event.modifierFlags) }
+            guard downAt != nil, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+            // ⌃-click is a right-click, on the Mac: the menu.
+            if event.modifierFlags.contains(.control) { return onMenu?() ?? () }
+            onClick?(event.modifierFlags)
         }
+    }
+
+    /// The card under the bar: a summary card, which the pointer passes
+    /// through (it's a look, not a place to click).
+    final class Preview: NSView {
+        let card = SummaryCard(SummaryCardContent(id: "", symbol: "doc", summary: BlockSummary(title: "")))
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            card.autoresizingMask = [.width, .height]
+            card.frame = bounds
+            addSubview(card)
+            layer?.zPosition = 20
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 

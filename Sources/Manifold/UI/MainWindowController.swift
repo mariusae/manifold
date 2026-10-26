@@ -1714,30 +1714,41 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(note, lens: .editor, .here)
     }
 
-    /// The links a block has by hand (§3.5), for its badge: what it links
-    /// to (→) and what links to it (←), each by its title; then a note's
-    /// images, and the note an image is in.
+    /// The links a block has by hand (§3.5), for its bar: what it links to
+    /// (→) and what links to it (←), and a note's images and the note an
+    /// image is in — the most recent first, whichever way.
     private func links(of block: BlockID) -> [LinkCard] {
         // Straight from the graphs' edges: this runs for every tile on
         // every render.
         var seen = Set<BlockID>()
         var cards: [LinkCard] = []
+        var stamps: [String: Stamp] = [:]
         // A note's images too (embeds), which aren't broken by hand.
         for kind in [LinkKind.linked, .embeds] {
             for c in hosts.all {
                 for e in c.node.graph.edges(from: block, kind: .link(kind)) where e.isLive {
                     guard seen.insert(e.to).inserted, let b = hosts.block(e.to) else { continue }
                     cards.append(LinkCard(link: e.id, block: e.to, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b), outbound: true, breakable: kind == .linked))
+                    stamps[e.id] = e.at
                 }
             }
             for c in hosts.all {
                 for e in c.node.graph.edges(to: block, kind: .link(kind)) where e.isLive {
                     guard seen.insert(e.from).inserted, let b = hosts.block(e.from) else { continue }
                     cards.append(LinkCard(link: e.id, block: e.from, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b), outbound: false, breakable: kind == .linked))
+                    stamps[e.id] = e.at
                 }
             }
         }
-        return cards
+        // Stable: the edges' order among equal stamps, and unstamped last.
+        return cards.enumerated().sorted { a, b in
+            switch (stamps[a.element.link], stamps[b.element.link]) {
+            case let (x?, y?) where x != y: return x > y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
     }
 
     /// A linked block's name on a badge: a note by its title or first words.
@@ -5466,6 +5477,8 @@ extension MainWindowController: GridDelegate {
     /// A tile as a summary card: its block's summary, and what only the
     /// window has — a terminal's last lines on its screen, a picture of a
     /// page or a PDF as it was last seen.
+    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent? { cardContent(for: block) }
+
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent? {
         guard let p = arrangement?.placement(placement) else { return nil }
         return cardContent(for: p.block, view: views[placement], id: placement)

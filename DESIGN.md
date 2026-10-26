@@ -142,16 +142,15 @@ Each tile has a **bar** across its top: the block's symbol and its
 **title** (a dot after it while edited and unsaved), where it is, its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the
-bar gives up as it narrows — its **links** (a capsule), its status
+bar gives up as it narrows — its **links** (the linked blocks' faces,
+stacked), its status
 glyph (§3.7, the program it names in the tooltip), and maximize and
 close; tiles stacked behind it show as its sheets. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌘-click
 fills its column, ⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
-show: the place goes first, then the links' capsule shrinks to its
-arrow and symbol, then to its arrow alone, then maximize goes, then the
-capsule altogether; close and the status glyph stay, and last the title
-is cut.
+show: the place goes first, then maximize, then the links; close and
+the status glyph stay, and last the title is cut.
 
 A tile **shrinks along one ladder**, by the room it has, not by a state:
 its content; then, under a few lines' room, its **summary card** (the
@@ -275,9 +274,11 @@ at the stamp.
 **Affordances.** The graph shows itself in the margins, never as a
 destination:
 
-1. **A tile's links**, a capsule on its bar fanning down on hover: what
-   it links and what links it, each row with context, clicked by the one
-   rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
+1. **A tile's links**, on its bar: each linked block's face, a badge
+   at its corner for the direction, stacked most recent first; the
+   pointer fans them out along the bar, and resting on one shows its
+   summary card beneath — one card at a time, so many links cost no
+   room. Clicked by the one rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
    focused block's surroundings, two steps out. (This was a Links
    organization in the sidebar, and before it the foot under every
    sheet.)
@@ -297,8 +298,8 @@ destination:
    it ended, a note its first lines, a diff its files and lines changed
    (`BlockSummary`, from its state alone, so a block off screen or on
    another host has one too). A tile short of room shows its summary
-   card; so do Open Quickly's rows, a stack fanned out, Overview past ten
-   blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
+   card; so do Open Quickly's rows, a stack fanned out, a link's face
+   rested on, Overview past ten blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
    never the live view. With a stamp, a summary could show the node *as
    it was then*, which Prism cannot.
 5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
@@ -508,10 +509,10 @@ thing, §4.)
 A block ⇧-dragged onto any tile is *linked* to the tile's block: one
 `linked` edge (§3.5), from the dragged block to the target, read both
 ways — the source *links*, the target is *linked from*. Both tiles
-show it among their links, the capsule on the bar fanning down when
-hovered: each link with an arrow for its direction, clicked as any
-link is, and an × that ends the edge (`unlink`), so in both readings
-at once. A note made
+show it among their links on the bar: the other block's face, a badge
+for the direction, its summary card on a rest, clicked as any link is;
+its menu's Remove Link ends the edge (`unlink`), in both readings at
+once. A note made
 with a block focused (⇧⌘N) is the same edge, from the block to the
 note, as if the block had been ⇧-dragged into it. Into a note the
 block also lands as a Markdown link, `[title](manifold:host/ulid)`,
@@ -1347,7 +1348,8 @@ purpose — set down so a later audit reads them as choices, not slips.
 
 ### Words
 
-- **A tile's bar, its title, its links (capsules), a summary card.** Not
+- **A tile's bar, its title, its links (faces, stacked), a summary
+  card;** a block's link in a note's text is a capsule. Not
   title bar, header or chip. *Pill* is only for a count or an age.
 
 ### Keys
@@ -1383,7 +1385,7 @@ purpose — set down so a later audit reads them as choices, not slips.
 
 ### The pointer
 
-- **One rule for opening anything** — a link, a capsule, a sidebar row, a
+- **One rule for opening anything** — a link, a link's face, a sidebar row, a
   ⌘O row: plain goes to it, ⌘ opens it beside, ⌥⌘ over, ⇧⌘ in the
   system's app or browser. In a terminal ⌘ is what makes a click a link
   click, so ⌥⌘ is over there.

@@ -311,6 +311,32 @@ a:hover { text-decoration: underline; }
 .capsule .arrow { color: var(--text-2); font-size: 10px; }
 .capsule .sym { width: 11px; height: 11px; color: var(--text-2); }
 
+/* A link, as the bar shows it: the other block's face, a badge for its
+   direction; rested on, its summary card beneath. */
+.face {
+  position: relative; display: grid; place-items: center; flex: none;
+  width: 22px; height: 22px; border-radius: var(--r-control);
+  border: 0.5px solid var(--hairline); background: var(--panel); color: var(--text-2); cursor: pointer;
+}
+.face:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); text-decoration: none; }
+.face .sym { width: 13px; height: 13px; }
+.face .dir {
+  position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--panel); border: 0.5px solid var(--hairline);
+}
+.face .dir svg { width: 7px; height: 7px; fill: none; stroke: var(--text-2); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.link-card {
+  position: absolute; z-index: 6; display: flex; gap: 8px; padding: 9px 12px 10px;
+  border-radius: var(--r-surface); background: var(--panel);
+  box-shadow: var(--float), 0 0 0 0.5px var(--hairline); pointer-events: none;
+  animation: card-in var(--fast) ease-out;
+}
+@keyframes card-in { from { opacity: 0; transform: translateY(-3px); } }
+.link-card .sym { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--text-2); }
+.link-card .t { font-weight: 600; font-size: 13px; }
+.link-card .t .where { font-weight: 400; color: var(--text-3); margin-left: 6px; font-size: 12px; }
+.link-card .l { font-size: 12px; color: var(--text-2); }
+
 .body { position: relative; flex: 1; min-height: 0; overflow: auto; border-radius: 0 0 var(--r-surface) var(--r-surface); }
 .tile.collapsed .body, .tile.summarized .body > .content { display: none; }
 

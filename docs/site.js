@@ -83,8 +83,11 @@ function tileElement(t) {
   if (el && el.dataset.key === key) return el;
   const b = BLOCKS[t.block];
   const summary = b.summary.map((l) => `<div>${esc(l)}</div>`).join("");
+  // Its link, as the app's bar shows one: the other block's face, a badge
+  // for the direction (here always back: linked from), its summary card
+  // on a rest.
   const capsule = t.from && BLOCKS[t.from]
-    ? `<a class="capsule" href="#${t.from}" data-open="${t.from}" title="Linked from ${esc(BLOCKS[t.from].title)}"><span class="arrow">←</span>${icon(BLOCKS[t.from].kind)}${esc(BLOCKS[t.from].title)}</a>` : "";
+    ? `<a class="face" href="#${t.from}" data-open="${t.from}" data-preview="${t.from}" aria-label="Linked from ${esc(BLOCKS[t.from].title)}">${icon(BLOCKS[t.from].kind)}<span class="dir" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3.5 2 1.5 4l2 2M1.8 4h4.2a2.3 2.3 0 0 1 0 4.6H5"/></svg></span></a>` : "";
   const sheets = t.stack.slice(0, 2).map((s, i) =>
     `<div class="sheet" data-behind="${i}" title="${esc(BLOCKS[s].title)} — behind; click to bring it to the top"></div>`).join("");
   const fresh = html(`
@@ -363,6 +366,32 @@ function toggleMaximize(id) {
   focus(id);
 }
 
+// ---- A link's card, under the bar ------------------------------------------
+
+let cardWork = null, cardEl = null;
+function hideCard() { clearTimeout(cardWork); cardWork = null; if (cardEl) { cardEl.remove(); cardEl = null; } }
+document.addEventListener("mouseover", (e) => {
+  const face = e.target.closest("[data-preview]");
+  if (!face) return hideCard();
+  if (cardEl && cardEl.dataset.for === face.dataset.preview) return;
+  clearTimeout(cardWork);
+  // A moment's rest first, so sweeping across the bar doesn't flash cards.
+  cardWork = setTimeout(() => {
+    hideCard();
+    const b = BLOCKS[face.dataset.preview];
+    const tileEl = face.closest("[data-tile]");
+    if (!b || !tileEl) return;
+    cardEl = html(`<div class="link-card" data-for="${b.id}">${icon(b.kind)}<div><div class="t">${esc(b.title)}<span class="where">${esc(b.place)}</span></div>
+      ${b.summary.map((l) => `<div class="l">${esc(l)}</div>`).join("")}</div></div>`);
+    tileEl.append(cardEl);
+    const f = face.getBoundingClientRect(), r = tileEl.getBoundingClientRect();
+    const w = Math.min(280, r.width - 12);
+    cardEl.style.width = w + "px";
+    cardEl.style.left = Math.max(6, Math.min(f.left + f.width / 2 - w / 2 - r.left, r.width - w - 6)) + "px";
+    cardEl.style.top = (f.bottom - r.top + 8) + "px";
+  }, 150);
+});
+
 // ---- The tile's menu -------------------------------------------------------
 
 let menuEl = null;
@@ -612,3 +641,9 @@ render();
 const asked = location.hash.slice(1);
 if (BLOCKS[asked] && asked !== "overview") follow(asked, columns[0].tiles[0].id, "go");
 addEventListener("resize", () => elements.forEach(ladder));
+// A link to another block of the page (#keys) followed from elsewhere, or
+// typed: opened as a click would.
+addEventListener("hashchange", () => {
+  const id = location.hash.slice(1);
+  if (BLOCKS[id] && !(tileById(focused) && tileById(focused).block === id)) follow(id, focused, "go");
+});

@@ -239,8 +239,13 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
   <div class="doc">
     <h1>Tiles and the bar</h1>
     <p>Every tile has a <b>bar</b> across its top: the block's symbol and
-    <b>title</b>, where it is in grey, its <b>links</b> as a capsule, its status, and
+    <b>title</b>, where it is in grey, its <b>links</b>, its status, and
     maximize and close.</p>
+    <p>A tile's <b>links</b> are the linked blocks' faces, stacked, most recent
+    in front, each with a badge for its direction. Point at them and they fan out
+    along the bar; rest on one and its summary card shows beneath. Click to
+    follow it by <a href="#opening" data-open="opening">the one rule</a>; right-click
+    for its menu.</p>
     <ul>
       <li><b>Click</b> the bar to grow the tile a step; click again for another.</li>
       <li><b><kbd>⌘</kbd>-click</b> it to fill the column, the others down to their bars.</li>

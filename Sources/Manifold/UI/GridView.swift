@@ -8,6 +8,8 @@ protocol GridDelegate: AnyObject {
     func gridRoomForFan(_ top: PlacementID) -> Bool
     /// A tile as its summary card shows it (a stack's column).
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
+    /// A linked block's summary card, under the bar's links.
+    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent?
     /// A tile gone to by a click on its summary (it's too short for its
     /// content): focused, and grown to show some.
     func gridArrive(_ placement: PlacementID)
@@ -402,10 +404,8 @@ final class GridView: NSView, NSDraggingSource {
                     }()
                     badge.cards = tile.links
                     pill.linkWanted = badge.capsuleWantedWidth
-                    pill.onLinkRoom = { [weak badge] room in
-                        badge?.capsuleLimit = room
-                        badge?.isHidden = room == 0
-                    }
+                    pill.onLinkRoom = { [weak badge] room in badge?.capsuleLimit = room }
+                    badge.summary = { [weak self] block in self?.delegate?.gridLinkSummary(block) }
                     badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
@@ -633,6 +633,8 @@ final class GridView: NSView, NSDraggingSource {
         if words.first == "break", let n = words.dropFirst().first.flatMap({ Int($0) }) {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
         }
+        if words.first == "preview", let n = words.dropFirst().first.flatMap({ Int($0) }) { return b.debugPreview(n) }
+        if arg == "fanned" { return "badge \(NSStringFromRect(b.frame)): " + b.debugGeometry }
         return b.debugTitles.joined(separator: " | ") + " (sheets \(folded) folded)"
     }
 
@@ -1146,13 +1148,13 @@ final class GridView: NSView, NSDraggingSource {
         let size = badge.wantedSize
         let w = min(size.width, max(r.width - 40, 60))
         let h = min(size.height, r.height - 12)
-        // Its capsule in the bar, before the bar's buttons, as wide as the
-        // bar gave it (shrunk to its arrow when the bar is narrow).
+        // Its faces in the bar, before the bar's buttons; its frame as wide
+        // as they fan out, leftward over the title.
         let capsuleTop = r.maxY - (Self.barHeight - LinkBadge.capsuleHeight) / 2
         let taken = pills[id]?.rightTaken ?? TilePill.rightChrome
         let given = pills[id]?.linkGiven ?? .infinity
         badge.capsuleLimit = given
-        badge.isHidden = given == 0
+        badge.isHidden = given < badge.foldedWidth
         badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 
