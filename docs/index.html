@@ -538,6 +538,11 @@ mani run @left 'make test' --wait
 git diff | mani diff
 mani ui new &lt; form.json          # a small panel, from JSON
 mani watch                      # a JSON line for each thing that happens</code></pre>
+    <p>A script can make a space and fill it — <code>MANI_SPACE</code> has every command after act there:</p>
+<pre><code>export MANI_SPACE=$(mani new space --title app --cwd ~/src/app)
+mani new agent --right --size 0.6 --run "read the README and wait"
+mani new git --at @leftmost --below
+mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pre>
     <p><code>mani help</code> lists every command; each takes <code>--help</code>.</p>
   </div>
 </template>

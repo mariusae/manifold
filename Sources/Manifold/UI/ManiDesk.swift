@@ -80,7 +80,8 @@ final class ManiDesk {
     }
 
     private func run(_ r: ManiRequest, _ asker: Asker) async throws -> String? {
-        let scope = Scope(self, r, asker)
+        var scope = Scope(self, r, asker)
+        if let name = r.flags["space"] { scope.act(in: try space(named: name), hosts: hosts) }
         switch r.verb {
         case "ls": return try ls(r, scope)
         case "info": return json(try await info(try await target(r.args[0], scope), scope))
@@ -132,6 +133,9 @@ final class ManiDesk {
         var arrangement: ArrangementState?
         var reference: PlacementID?
         var host: HostID
+        /// Told its space (`--space`, `MANI_SPACE`): what it places goes
+        /// there whichever is shown, and the shown one stays.
+        var spaceGiven = false
 
         @MainActor init(_ desk: ManiDesk, _ r: ManiRequest, _ asker: Asker) {
             request = r
@@ -148,6 +152,31 @@ final class ManiDesk {
             arrangement = workspace.flatMap { hosts.arrangement($0) }
             reference = hereTile ?? arrangement?.focused
         }
+
+        /// About another space: positions from its focused tile (or @here,
+        /// if it's there).
+        @MainActor mutating func act(in ws: BlockID, hosts: Hosts) {
+            workspace = ws
+            arrangement = hosts.arrangement(ws)
+            hereTile = here.flatMap { h in arrangement?.placements.first { $0.block == h }?.id }
+            reference = hereTile ?? arrangement?.focused
+            spaceGiven = true
+        }
+    }
+
+    /// A space by what it's called (as the sidebar names it, or as named),
+    /// its id, or @space.
+    private func space(named name: String) throws -> BlockID {
+        let spaces = wc.allWorkspaces
+        if name == "@space", let ws = wc.selected { return ws }
+        if let id = BlockID(string: name), spaces.contains(id) { return id }
+        let called = spaces.filter { ws in
+            guard let a = hosts.arrangement(ws) else { return false }
+            return wc.title(of: a).caseInsensitiveCompare(name) == .orderedSame || hosts.block(ws)?.title?.caseInsensitiveCompare(name) == .orderedSame
+        }
+        if called.count == 1 { return called[0] }
+        if called.isEmpty { throw Failure(message: "no space called \(name)") }
+        throw Failure(message: "more than one space is called \(name): " + called.map(\.description).joined(separator: ", "))
     }
 
     /// What a name came to: a block, its tile (and workspace) if it's
@@ -634,6 +663,10 @@ final class ManiDesk {
     /// Where `block` goes, by the flags: by `--at`, else @here's tile, else
     /// the focused; below it unless told otherwise.
     private func place(_ block: BlockID, lens: Lens, _ r: ManiRequest, _ scope: Scope, context: String) throws {
+        let size = try r.flags["size"].map { s -> Double in
+            guard let f = Double(s), f > 0, f < 1 else { throw Failure(message: "--size is a share, between 0 and 1", status: 2) }
+            return f
+        }
         var ref = scope.reference
         var ws = scope.workspace
         if let at = r.flags["at"] {
@@ -642,26 +675,66 @@ final class ManiDesk {
             ref = id
             ws = t.workspace ?? ws
         }
-        if let ws2 = ws, ws2 != wc.selected { hosts.select(ws2) }
-        ws = wc.selected
-        guard let ws, let a = hosts.arrangement(ws) else { return wc.show(block, lens: lens, .here, context: context) }
-        guard let ref, let (c, i) = a.locate(ref) else { return wc.show(block, lens: lens, .here, context: context) }
-        let refBlock = a.placement(ref)?.block
-        if r.flags["over"] != nil { return wc.show(block, lens: lens, .over(ref), context: context) }
-        if r.flags["right"] != nil {
-            return wc.show(block, lens: lens, c + 1 < a.columns.count ? .inColumn(c + 1) : .inNewColumn(c + 1), context: context)
+        // Told its space, placed there, the one shown staying; else the
+        // space it goes in is shown.
+        if !scope.spaceGiven {
+            if let ws2 = ws, ws2 != wc.selected { hosts.select(ws2) }
+            ws = wc.selected
         }
-        if r.flags["left"] != nil { return wc.show(block, lens: lens, c > 0 ? .inColumn(c - 1) : .inNewColumn(0), context: context) }
-        if r.flags["column"] != nil { return wc.show(block, lens: lens, .inNewColumn(c + 1), context: context) }
+        put(block, lens: lens, r, ws: ws, ref: ref, context: context)
+        if let size, let ws { sized(block, lens: lens, in: ws, size) }
+    }
+
+    private func put(_ block: BlockID, lens: Lens, _ r: ManiRequest, ws: BlockID?, ref: PlacementID?, context: String) {
+        guard let ws, let a = hosts.arrangement(ws) else { return wc.show(block, lens: lens, .here, context: context) }
+        guard let ref, let (c, i) = a.locate(ref) else { return wc.show(block, lens: lens, .here, context: context, in: ws) }
+        let refBlock = a.placement(ref)?.block
+        if r.flags["over"] != nil {
+            if ws == wc.selected { return wc.show(block, lens: lens, .over(ref), context: context) }
+            // Over a tile of a space not shown: placed after it, which goes behind it.
+            let p = Placement(block: block, lens: lens)
+            hosts.append([.place(p, column: c, at: i + 1), .stash(ref, behind: p.id), .focus(p.id)], to: .block(ws))
+            if let refBlock, refBlock != block { hosts.link(from: refBlock, to: block, kind: .opened, context: context) }
+            return
+        }
+        if r.flags["right"] != nil {
+            return wc.show(block, lens: lens, c + 1 < a.columns.count ? .inColumn(c + 1) : .inNewColumn(c + 1), context: context, in: ws)
+        }
+        if r.flags["left"] != nil { return wc.show(block, lens: lens, c > 0 ? .inColumn(c - 1) : .inNewColumn(0), context: context, in: ws) }
+        if r.flags["column"] != nil { return wc.show(block, lens: lens, .inNewColumn(c + 1), context: context, in: ws) }
         if r.flags["above"] != nil {
-            if let t = a.tile(of: block, lens: lens) { return wc.focus(t.id) }
+            if let t = a.tile(of: block, lens: lens) { return ws == wc.selected ? wc.focus(t.id) : () }
             let p = Placement(block: block, lens: lens)
             let h = a.height(of: ref)
             hosts.append([.place(p, column: c, at: i), .heights([p.id: h / 2, ref: h / 2]), .focus(p.id)], to: .block(ws))
             if let refBlock, refBlock != block { hosts.link(from: refBlock, to: block, kind: .opened, context: context) }
             return
         }
-        wc.show(block, lens: lens, .besideOpener(ref), context: context)
+        wc.show(block, lens: lens, .besideOpener(ref), context: context, in: ws)
+    }
+
+    /// `--size`: a block's tile given a share of its column — or, alone in
+    /// a column, its column that share of the width — the others the rest,
+    /// in proportion.
+    private func sized(_ block: BlockID, lens: Lens, in ws: BlockID, _ share: Double) {
+        guard let a = hosts.arrangement(ws),
+              let p = a.tile(of: block, lens: lens) ?? a.placements.first(where: { $0.block == block }),
+              let (c, _) = a.locate(p.id) else { return }
+        let shown = a.shownTiles(inColumn: c)
+        if shown.count == 1, a.columns.count > 1 {
+            let n = a.columns.count
+            let fractions = a.fractions.count == n ? a.fractions : Array(repeating: 1 / Double(n), count: n)
+            let rest = fractions.enumerated().filter { $0.offset != c }.reduce(0) { $0 + $1.element }
+            let new = fractions.enumerated().map { i, f in i == c ? share : (rest > 0 ? f / rest : 1 / Double(n - 1)) * (1 - share) }
+            hosts.append(.fractions(new), to: .block(ws))
+        } else if shown.count > 1 {
+            let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
+            let others = shown.filter { $0.id != p.id }
+            let rest = others.reduce(0.0) { $0 + a.height(of: $1.id) }
+            var heights: [PlacementID: Double] = [p.id: share * sum]
+            for o in others { heights[o.id] = (rest > 0 ? a.height(of: o.id) / rest : 1 / Double(others.count)) * (1 - share) * sum }
+            hosts.append(.heights(heights), to: .block(ws))
+        }
     }
 
     /// After a block is placed: gone to its line, and the app brought
@@ -708,6 +781,9 @@ final class ManiDesk {
         let on = scope.host
         guard let client = hosts.client(on) else { throw Failure(message: "that host isn't attached") }
         let cwd = r.flags["cwd"].map { $0.hasPrefix("/") ? $0 : r.cwd.appendingPathComponent($0) } ?? r.cwd
+        if r.flags["run"] != nil, !["terminal", "agent", "space"].contains(kind) {
+            throw Failure(message: "--run is for a terminal, an agent or a space's terminal", status: 2)
+        }
         let block: BlockID
         var lens: Lens
         switch kind {
@@ -719,7 +795,9 @@ final class ManiDesk {
             block = hosts.newTerminal(on: on, cwd: cwd)
             lens = .terminal
         case "agent":
-            block = client.newAgent(cwd: cwd, command: what ?? wc.host.desk.settings.agentCommand)
+            // Its first prompt, to its command, as `claude "…"` takes one.
+            let command = what ?? wc.host.desk.settings.agentCommand
+            block = client.newAgent(cwd: cwd, command: r.flags["run"].map { command + " " + Self.quoted($0) } ?? command)
             lens = .agent
         case "web":
             guard let url = what else { throw Failure(message: "new web needs an address", status: 2) }
@@ -729,15 +807,49 @@ final class ManiDesk {
             guard let text = what else { throw Failure(message: "new search needs what to look for", status: 2) }
             block = client.newSearch(SearchQuery(text: text, root: cwd))
             lens = .search
+        case "git":
+            if on == wc.host.host, VCS.repository(of: cwd) == nil { throw Failure(message: "no repository at \(cwd.abbreviatingHome)") }
+            block = client.gitBlock(for: cwd)
+            lens = .git
+        case "smartlog":
+            block = client.smartlogBlock(for: cwd)
+            lens = .smartlog
+        case "space":
+            return try makeSpace(r, on: on, cwd: cwd, scope: scope)
         default:
-            throw Failure(message: "no kind \(kind) to make: note, terminal, agent, web, search", status: 2)
+            throw Failure(message: "no kind \(kind) to make: note, terminal, agent, web, search, git, smartlog, space", status: 2)
         }
         if let title = r.flags["title"] { hosts.append(.title(title), to: .block(block)) }
         try place(block, lens: lens, r, scope, context: "mani new \(kind)")
         last = block
+        if let run = r.flags["run"] {
+            // An agent's was given to its command, above.
+            if kind == "terminal" { type(run, into: block) }
+        }
         shown(block, line: nil, scope: scope)
         return block.description
     }
+
+    /// `new space`: a space with a terminal in `cwd`, shown and named; its
+    /// id printed (for `MANI_SPACE`), the terminal `@last`.
+    private func makeSpace(_ r: ManiRequest, on: HostID, cwd: String, scope: Scope) throws -> String {
+        guard r.args.count == 1 else { throw Failure(message: "a space's name comes from --title", status: 2) }
+        guard let ws = wc.newWorkspace(on: on, cwd: cwd) else { throw Failure(message: "that host isn't attached") }
+        if let title = r.flags["title"] { hosts.append(.title(title), to: .block(ws)) }
+        last = hosts.arrangement(ws)?.placements.first?.block
+        if let run = r.flags["run"], let t = last { type(run, into: t) }
+        if scope.here == nil { NSApp.activate() }
+        return ws.description
+    }
+
+    /// A command typed into a terminal, as `run` does — once its shell is
+    /// up, if it's only now starting.
+    private func type(_ command: String, into terminal: BlockID) {
+        hosts.propose(.input(block: terminal, text: command + "\r"))
+    }
+
+    /// A word for a shell, quoted as it must be.
+    private static func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
     private func write(_ r: ManiRequest, _ scope: Scope) throws -> String {
         let t = try resolve(r.args[0], scope)
@@ -1043,8 +1155,11 @@ final class ManiDesk {
 
     /// A share, to three places, as JSON writes it exactly (a Double's
     /// 0.227 comes out 0.22700000000000001).
+    /// A share as JSON says it: three places, no more (0.6, not
+    /// 0.59999999999999998) — and not rounded to a whole number, as a
+    /// decimal's default rounding does.
     static func decimal(_ d: Double) -> NSDecimalNumber {
-        NSDecimalNumber(string: String(format: "%.3f", d)).rounding(accordingToBehavior: nil)
+        NSDecimalNumber(string: String(format: "%.3f", d))
     }
 
     private func json(_ object: Any) -> String {

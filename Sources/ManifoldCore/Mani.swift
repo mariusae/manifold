@@ -62,12 +62,16 @@ public enum Mani {
         Flag(name: "column", help: "in a new column, right of it"),
         Flag(name: "over", help: "stacked over it, as ⌥ stacks"),
         Flag(name: "at", value: "name", help: "the tile it goes by"),
+        Flag(name: "size", value: "share", help: "its share of its column, 0 to 1 (of the width, in a column of its own)"),
     ]
     static let json = Flag(name: "json", help: "as JSON")
+    /// The space a command acts in, if not the one it runs in (or, run
+    /// elsewhere, the one shown); `MANI_SPACE` says it for every command.
+    static let space = Flag(name: "space", value: "name", help: "in that space, by name or id, not this one (else $MANI_SPACE)")
 
     public static let verbs: [Verb] = [
         Verb(words: ["ls"], args: "", minArgs: 0, maxArgs: 0,
-             flags: [Flag(name: "all", help: "every space, and pinned blocks"), json],
+             flags: [Flag(name: "all", help: "every space, and pinned blocks"), json, space],
              summary: "List the space's tiles: what each shows, where",
              details: """
                  The shown space's tiles, a row each: number, block id, kind,
@@ -110,7 +114,7 @@ public enum Mani {
                  """, inApp: true),
         Verb(words: ["open"], args: "[path|url ...]", minArgs: 0, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "return once they've been put away again (what $EDITOR runs)"),
-                     Flag(name: "line", value: "n", help: "at this line")] + placing,
+                     Flag(name: "line", value: "n", help: "at this line"), space] + placing,
              summary: "Open files, folders and pages",
              details: """
                  Markdown opens in a live preview, a folder in a listing, a web
@@ -123,8 +127,10 @@ public enum Mani {
              flags: [Flag(name: "title", short: "t", value: "title", help: "its title"),
                      Flag(name: "text", value: "text", help: "a note's text (else its input, if piped)"),
                      Flag(name: "preview", help: "a note shown rendered, as Markdown"),
-                     Flag(name: "cwd", value: "dir", help: "a terminal's or agent's directory (else this one)")] + placing,
-             summary: "Make a block: note, terminal, agent, web, search",
+                     Flag(name: "cwd", value: "dir", help: "a terminal's, agent's or repository's directory (else this one)"),
+                     Flag(name: "run", value: "command", help: "a terminal's command, typed in once it starts; an agent's first prompt"),
+                     space] + placing,
+             summary: "Make a block or a space: note, terminal, agent, web, search, git, smartlog, space",
              details: """
                  Makes a block and shows it, printing its id (and it's @last):
                    note           a note, its text from --text or the input
@@ -132,6 +138,17 @@ public enum Mani {
                    agent [cmd]    a coding agent (the one Settings name, else cmd)
                    web <url>      a page
                    search <text>  a search of the files under --cwd or here
+                   git            the repository's block (git or Sapling) at --cwd or here
+                   smartlog       Sapling's interactive smartlog, for the repository
+                   space          a space with a terminal in --cwd, named --title;
+                                  it prints the space's id, @last is the terminal
+
+                 A script can make a space and fill it, every command after
+                 the first acting there:
+                   export MANI_SPACE=$(mani new space --title app --cwd ~/src/app)
+                   mani new agent --right --size 0.6 --run "read the README"
+                   mani new terminal --at @leftmost --below --run "make test"
+                   mani new git --at @leftmost --over
                  """, inApp: true, readsInput: true),
         Verb(words: ["write"], args: "<name>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "append", short: "a", help: "after what's there, not in its place"),
@@ -143,7 +160,7 @@ public enum Mani {
                  file left unsaved unless --save).
                  """, inApp: true, readsInput: true),
         Verb(words: ["show"], args: "<name>", minArgs: 1, maxArgs: 1,
-             flags: [Flag(name: "line", value: "n", help: "at this line")] + placing,
+             flags: [Flag(name: "line", value: "n", help: "at this line"), space] + placing,
              summary: "Bring a block to view and focus it",
              details: """
                  A tile on screen is focused (its space shown); a block that
@@ -154,7 +171,7 @@ public enum Mani {
              details: "The tile goes, as ⌘W takes it. A block nothing else keeps (no other tile, pin or link by hand) is collected after half an hour; until then ⌘O or Recently Closed brings it back.", inApp: true),
         Verb(words: ["run"], args: "<terminal> <command ...>", minArgs: 2, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to end: print its output, exit with its status"),
-                     Flag(name: "timeout", value: "seconds", help: "with --wait, give up after this long (status 124)")],
+                     Flag(name: "timeout", value: "seconds", help: "with --wait, give up after this long (status 124)"), space],
              summary: "Run a command in a terminal",
              details: """
                  Types the command into the terminal's shell, and return, as if
@@ -311,6 +328,9 @@ public enum Mani {
               `mani ui new <<< '{"title":"Pick","items":[{"type":"list","id":"pick","items":["a","b"],"select":"single"},{"type":"button","id":"ok","label":"OK","style":"primary"}]}'`,
               then `mani ui wait @last --id ok` and `mani ui get @last pick`.
             - "show progress": a panel with a progress widget, and `mani ui set @last progress=0.5 status="Building"`.
+            - "set up a space for this repo": `export MANI_SPACE=$(mani new space --title app --cwd .)`,
+              then `mani new agent --right --size 0.6 --run "…"`, `mani new terminal --at @leftmost
+              --below --run "make test"`, `mani new git --at @leftmost --over` — each in that space.
 
             ## Commands
             \(commands.joined(separator: "\n"))
@@ -319,8 +339,9 @@ public enum Mani {
 
             ## Conventions
             - What you make goes below this terminal unless told: --right, --left, --above,
-              --column (a new one), --over (stacked), by --at another tile. `@last` is what mani
-              last made.
+              --column (a new one), --over (stacked), by --at another tile; --size gives it a share
+              of its column. `@last` is what mani last made. --space (or $MANI_SPACE) acts in
+              another space, without showing it.
             - `new`, `open` and `show` move the user's focus; prefer `read`, `info`, `ls` to look.
             - Output is for reading; errors go to stderr with status 1 (couldn't), 2 (asked wrong).
               A name that could be several tiles fails and lists them: pick one by its id.
@@ -523,6 +544,11 @@ public enum Mani {
         if verb(invocation.verb)?.inApp == true {
             var request = ManiRequest(verb: invocation.verb, flags: invocation.flags, args: invocation.args,
                                       cwd: FileManager.default.currentDirectoryPath, here: here)
+            // A script's space, said once for all its commands.
+            if request.flags["space"] == nil, verb(invocation.verb)?.flags.contains(where: { $0.name == "space" }) == true,
+               let s = ProcessInfo.processInfo.environment["MANI_SPACE"], !s.isEmpty {
+                request.flags["space"] = s
+            }
             if invocation.verb == "open" {
                 // Paths made whole here, where they are; addresses as they are.
                 var resolved: [String] = []

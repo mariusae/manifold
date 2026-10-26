@@ -20,6 +20,12 @@ import Testing
     #expect(run(["diff", "-t", "lunch"])?.value("title") == "lunch")
     #expect(run(["skill", "install", "claude", "pi"]) == Mani.Invocation(verb: "skill install", flags: [:], args: ["claude", "pi"]))
     #expect(run(["agent", "stop", "--agent", "codex", #"{"a":1}"#])?.args == ["stop", #"{"a":1}"#])
+    // A space made and filled: its flags, and the ones that place things there.
+    #expect(run(["new", "space", "--title", "app", "--cwd", "~/src/app"]) == Mani.Invocation(verb: "new", flags: ["title": "app", "cwd": "~/src/app"], args: ["space"]))
+    #expect(run(["new", "terminal", "--run", "make test", "--size", "0.3", "--space", "app"])?.flags == ["run": "make test", "size": "0.3", "space": "app"])
+    #expect(run(["ls", "--space", "app"])?.value("space") == "app")
+    #expect(run(["run", "@last", "ls", "--space", "app"])?.args == ["@last", "ls"])
+    #expect(Mani.help("new").contains("smartlog") && Mani.help("new").contains("MANI_SPACE"))
     // Help: about mani, a command, a group.
     #expect(Mani.parse([]) == .success(.help(nil)))
     #expect(Mani.parse(["--help"]) == .success(.help(nil)))

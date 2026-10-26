@@ -1208,12 +1208,29 @@ is migrated into logs on first run.
     `mani context` says it all at once: the layout, the selection, the
     terminals' last commands and how they ended, unsaved files.
   - **Doing.** `mani open` (files, folders, addresses), `mani new note |
-    terminal | agent | web | search` (a note's text from its input:
-    `… | mani new note --preview` renders it), `mani show`, `mani close`,
-    `mani write` (a note's or file's text; `--append`, `--save`),
-    `mani rename`, `mani pin`/`unpin`, `mani link`; what they show goes
-    below `@here` unless told `--above`, `--right`, `--left`, `--column`
-    or `--over`, by `--at` another tile. `mani run <terminal> <command>`
+    terminal | agent | web | search | git | smartlog` (a note's text from
+    its input: `… | mani new note --preview` renders it; `--run` a
+    terminal's command, typed in once it starts, or an agent's first
+    prompt), `mani show`, `mani close`, `mani write` (a note's or file's
+    text; `--append`, `--save`), `mani rename`, `mani pin`/`unpin`, `mani
+    link`; what they show goes below `@here` unless told `--above`,
+    `--right`, `--left`, `--column` or `--over`, by `--at` another tile,
+    `--size` its share of its column (of the width, in a column of its
+    own).
+  - **Spaces, by script.** `mani new space --title app --cwd ~/src/app`
+    makes a space with a terminal there, shows it and prints its id
+    (`@last` is the terminal); `--space` — by name or id — has `ls`,
+    `open`, `new`, `show` or `run` act in another space without showing
+    it, and `MANI_SPACE` says it for every command after, so a script
+    makes a space and fills it:
+
+    ```sh
+    export MANI_SPACE=$(mani new space --title app --cwd ~/src/app)
+    mani new agent --right --size 0.6 --run "read the README and wait"
+    mani new git --at @leftmost --below
+    mani new terminal --at @leftmost --below --size 0.3 --run "make test"
+    mani open ~/src/app/README.md --at @leftmost --over
+    ``` `mani run <terminal> <command>`
     types a command into a terminal's shell (through its host, shown or
     not); `--wait` waits for it to end, prints its output and exits with
     its status (`--timeout`: 124 if it doesn't). A terminal with no shell
