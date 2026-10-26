@@ -439,7 +439,8 @@ final class LinkBadge: NSView {
         var outbound = true { didSet { chevron.image = Self.chevron(outbound); needsLayout = true } }
         private static func chevron(_ outbound: Bool) -> NSImage? { Theme.symbol(outbound ? "chevron.right" : "chevron.left", size: 8, weight: .bold) }
         /// Folded behind the front one (1, 2), only its edge showing: nothing
-        /// on it, in a stack's sheet greys, as a tile's sheets are.
+        /// on it, a step darker than the front for each one back, so the
+        /// front leads.
         var depth = 0 {
             didSet {
                 guard depth != oldValue else { return }
@@ -450,9 +451,13 @@ final class LinkBadge: NSView {
         }
         private func colour() {
             effectiveAppearance.performAsCurrentDrawingAppearance {
-                layer?.backgroundColor = (depth > 0 ? Theme.sheet(level: depth) : LinkCapsule.fill).cgColor
-                layer?.borderColor = (hovered ? EdgeColor.accentStrong : depth > 0 ? EdgeColor.control : LinkCapsule.edge).cgColor
+                layer?.backgroundColor = (depth > 0 ? Self.behind(depth) : LinkCapsule.fill).cgColor
+                layer?.borderColor = (hovered ? EdgeColor.accentStrong : LinkCapsule.edge).cgColor
             }
+        }
+        /// The greys behind the front face: darker than its fill, light or dark.
+        private static func behind(_ depth: Int) -> NSColor {
+            .dynamic(NSColor(white: 0.93 - CGFloat(depth) * 0.04, alpha: 1), NSColor(white: 0.145 - CGFloat(depth) * 0.02, alpha: 1))
         }
         var hovered = false {
             didSet {
