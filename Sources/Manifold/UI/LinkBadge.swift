@@ -19,8 +19,10 @@ struct LinkCard: Equatable {
 /// own face, a small rounded square with a badge at its corner for the
 /// direction (a loop forward, links to; back, linked from) — the most
 /// recent in front, two more peeking out behind it. The pointer on them
-/// fans them out along the bar; resting on one a moment shows its summary
-/// card under the bar, one at a time. A click opens it by the one rule (⌘
+/// fans them out along the bar, the title fading out before the first;
+/// resting on one a moment shows its summary card under the bar, one at a
+/// time. More than fit, the last is a stack of the rest, scrubbed through
+/// by the pointer over the title. A click opens a link by the one rule (⌘
 /// beside, ⌥ over, ⇧⌘ the system's app); right-clicked, its menu.
 final class LinkBadge: NSView {
     /// A link clicked: the block, and the keys held (⌘ beside, ⌥ over,
@@ -31,6 +33,10 @@ final class LinkBadge: NSView {
     var onMap: (() -> Void)?
     /// A linked block's summary card, for the preview under the bar.
     var summary: ((BlockID) -> SummaryCardContent?)?
+    /// Fanned out: where the fan begins (its left, in this view), for the
+    /// bar's title to fade out before it; nil, folded again.
+    var onFanEdge: ((CGFloat?) -> Void)?
+    private var reportedEdge: CGFloat??
     var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
@@ -44,8 +50,10 @@ final class LinkBadge: NSView {
     static let peek: CGFloat = 4
     /// Fanned out, from one to the next.
     static let step: CGFloat = 26
-    /// The most fanned out at once: past that, the last is "+n", the map.
+    /// The most fanned out one by one: past that, the rest are a stack.
     static let mostShown = 8
+    /// Left of a stack, the least room kept to scrub through it.
+    static let scrubRoom: CGFloat = 90
     /// The preview's width under the bar.
     static let previewWidth: CGFloat = 280
     /// How long the pointer rests on a face before its card shows: long
@@ -54,13 +62,30 @@ final class LinkBadge: NSView {
 
     /// At a tile's upper right: kept for the grid, which places it in the bar.
     var fansDown = false
+    /// A face for each of the first links (one by one when fanned out).
     private var chips: [Chip] = []
-    /// Past `mostShown`, the rest as one: the map.
-    private let more = Chip()
-    private var fanned = false { didSet { if fanned != oldValue { needsLayout = true; if !fanned { hidePreview() } } } }
+    /// The rest, once they don't fit one by one: the face scrubbed to, and
+    /// two edges behind it.
+    private let stackFront = Chip()
+    private let stackBack = [Chip(), Chip()]
+    /// Fanned out: how many one by one; the rest are the stack's.
+    private var singles = 0
+    private var overflow: Bool { fanned && singles < cards.count }
+    /// Which of the stack's links is in front of it (0, the most recent).
+    private var scrubbed = 0
+    /// Where the pointer scrubs through the stack: the bar left of it.
+    private var scrubRect = NSRect.null
+    private var fanned = false {
+        didSet {
+            guard fanned != oldValue else { return }
+            needsLayout = true
+            if !fanned { hidePreview(); scrubbed = 0 }
+        }
+    }
     private var preview: Preview?
     private var previewed: Int?
     private var previewWork: DispatchWorkItem?
+    private var downAt: NSPoint?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -68,10 +93,11 @@ final class LinkBadge: NSView {
         // The faces' badges reach past its frame.
         clipsToBounds = false
         layer?.masksToBounds = false
-        more.isMore = true
-        more.onClick = { [weak self] _ in self?.onMap?() }
-        more.isHidden = true
-        addSubview(more)
+        for (i, c) in stackBack.enumerated() { c.depth = i + 1; c.isHidden = true; addSubview(c) }
+        stackFront.isHidden = true
+        stackFront.onClick = { [weak self] mods in self?.openScrubbed(mods) }
+        stackFront.onMenu = { [weak self] in self?.menuScrubbed() }
+        addSubview(stackFront)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -97,29 +123,38 @@ final class LinkBadge: NSView {
         for c in chips { c.removeFromSuperview() }
         chips = cards.prefix(Self.mostShown).map { card in
             let c = Chip()
-            c.symbol = card.symbol
-            c.outbound = card.outbound
-            c.toolTip = (card.breakable ? (card.outbound ? "Links to " : "Linked from ") : (card.outbound ? "Shows " : "Shown in ")) + card.title
+            dress(c, card)
             c.onClick = { [weak self] mods in self?.onOpen?(card.block, mods) }
             c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
             c.onDragStart = { [weak self, weak c] event in if let self, let c { self.drag(card.block, from: c, event) } }
             return c
         }
         // The most recent on top of the ones behind it: added last, just
-        // under "+n".
-        for c in chips.reversed() { addSubview(c, positioned: .below, relativeTo: more) }
-        if cards.count > Self.mostShown { more.moreCount = cards.count - Self.mostShown + 1 }
+        // under the stack (which is never over them).
+        for c in chips.reversed() { addSubview(c, positioned: .below, relativeTo: stackBack[1]) }
+        scrubbed = 0
         needsLayout = true
+    }
+
+    private func dress(_ c: Chip, _ card: LinkCard) {
+        c.symbol = card.symbol
+        c.outbound = card.outbound
+        c.toolTip = (card.breakable ? (card.outbound ? "Links to " : "Linked from ") : (card.outbound ? "Shows " : "Shown in ")) + card.title
     }
 
     override func layout() {
         super.layout()
         let right = bounds.maxX
         let y = (bounds.height - Self.chip) / 2
-        // Fanned: as many as fit, the last "+n" if there are more.
-        let fit = max(1, Int((bounds.width - Self.chip) / Self.step) + 1)
-        let overflow = cards.count > min(fit, Self.mostShown)
-        let shown = overflow ? min(fit, Self.mostShown) - 1 : chips.count
+        // Fanned: all one by one if they fit; else as many as leave room
+        // to scrub, and a stack of the rest.
+        let all = Self.chip + CGFloat(max(cards.count - 1, 0)) * Self.step
+        if cards.count <= Self.mostShown, all <= bounds.width {
+            singles = cards.count
+        } else {
+            let fit = Int((bounds.width - Self.chip - Self.scrubRoom) / Self.step)
+            singles = max(0, min(Self.mostShown - 1, fit, cards.count - 1))
+        }
         let foldedLeft = right - foldedWidth
         for (i, c) in chips.enumerated() {
             let folded = NSRect(x: foldedLeft + CGFloat(min(i, 2)) * Self.peek, y: y, width: Self.chip, height: Self.chip)
@@ -128,32 +163,60 @@ final class LinkBadge: NSView {
             // Folded, the front on top (by the views' order), two edges
             // behind it, the rest out of sight.
             c.depth = fanned ? 0 : min(i, 2)
-            let visible = fanned ? i < shown : i < 3
+            let visible = fanned ? i < singles : i < 3
             if visible, c.isHidden { c.frame = folded; c.isHidden = false }
             if !visible { if !c.isHidden { c.isHidden = true }; c.frame = folded; continue }
-            if c.frame != target {
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = Motion.base
-                    ctx.timingFunction = fanned ? Motion.appear : Motion.disappear
-                    ctx.allowsImplicitAnimation = true
-                    c.frame = target
-                }
-            }
+            move(c, to: target)
         }
-        more.isHidden = !(fanned && overflow)
+        // The stack of the rest, in the next place along, its edges toward
+        // where it's scrubbed (the older, farther left).
+        let stackAt = NSRect(x: right - Self.chip - CGFloat(singles) * Self.step, y: y, width: Self.chip, height: Self.chip)
+        let rest = cards.count - singles
+        stackFront.isHidden = !overflow
+        for (j, b) in stackBack.enumerated() {
+            b.isHidden = !overflow || rest <= j + 1
+            b.frame = stackAt.offsetBy(dx: -CGFloat(j + 1) * Self.peek, dy: 0)
+        }
         if overflow {
-            more.moreCount = cards.count - shown
-            more.frame = NSRect(x: right - Self.chip - CGFloat(shown) * Self.step, y: y, width: Self.chip, height: Self.chip)
+            stackFront.frame = stackAt
+            scrubbed = min(scrubbed, rest - 1)
+            dress(stackFront, cards[singles + scrubbed])
+            scrubRect = NSRect(x: bounds.minX, y: 0, width: stackAt.maxX - bounds.minX, height: bounds.height)
+        } else {
+            scrubRect = .null
         }
-        for c in chips + [more] { window?.invalidateCursorRects(for: c) }
+        for c in chips + [stackFront] { window?.invalidateCursorRects(for: c) }
+        // Where the fan now begins, for the title to give way to it.
+        var edge: CGFloat?
+        if fanned {
+            let backs = overflow ? stackBack.filter { !$0.isHidden }.map(\.frame.minX) : []
+            let ones = singles > 0 ? [right - Self.chip - CGFloat(singles - 1) * Self.step] : []
+            edge = ((overflow ? [stackAt.minX] : []) + backs + ones).min()
+        }
+        if reportedEdge != .some(edge) {
+            reportedEdge = .some(edge)
+            onFanEdge?(edge)
+        }
+    }
+
+    private func move(_ c: Chip, to target: NSRect) {
+        guard c.frame != target else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.base
+            ctx.timingFunction = fanned ? Motion.appear : Motion.disappear
+            ctx.allowsImplicitAnimation = true
+            c.frame = target
+        }
     }
 
     // MARK: The pointer
 
-    /// Only the faces take the mouse; between them, the bar does.
+    /// The faces take the mouse; fanned with a stack, so does the bar left
+    /// of it, where the stack is scrubbed; elsewhere, the bar does.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = convert(point, from: superview)
-        for v in [more] + chips where !v.isHidden && v.frame.contains(p) { return v }
+        for v in [stackFront] + chips where !v.isHidden && v.frame.contains(p) { return v }
+        if overflow, scrubRect.contains(p) { return self }
         return nil
     }
 
@@ -166,56 +229,90 @@ final class LinkBadge: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let live = chips.filter { !$0.isHidden }
-        if !fanned, live.contains(where: { $0.frame.insetBy(dx: -3, dy: -4).contains(p) }) { fanned = true }
+        if !fanned, live.contains(where: { $0.frame.insetBy(dx: -3, dy: -4).contains(p) }) { fanned = true; layoutSubtreeIfNeeded() }
         guard fanned else { return }
-        // Off the faces (and the gaps between them): folded again.
-        let span = (live + (more.isHidden ? [] : [more])).reduce(NSRect.null) { $0.union($1.frame) }.insetBy(dx: -6, dy: -8)
-        if !span.contains(p) { fanned = false; return }
+        // Off the faces, the gaps between them and the scrubbing: folded again.
+        var span = (chips.filter { !$0.isHidden } + (overflow ? [stackFront] : [])).reduce(NSRect.null) { $0.union($1.frame) }
+        if overflow { span = span.union(scrubRect) }
+        if !span.insetBy(dx: -6, dy: -8).contains(p) { fanned = false; return }
+        if overflow, p.x <= stackFront.frame.maxX {
+            // Scrubbing: from the stack leftward, further back.
+            let rest = cards.count - singles
+            let t = (stackFront.frame.maxX - p.x) / max(1, stackFront.frame.maxX - scrubRect.minX)
+            let k = min(rest - 1, max(0, Int(t * CGFloat(rest))))
+            if k != scrubbed { scrubbed = k; dress(stackFront, cards[singles + k]) }
+            for c in chips { c.hovered = false }
+            stackFront.hovered = true
+            hover(singles + k, at: p.x)
+            return
+        }
+        stackFront.hovered = false
         let under = chips.firstIndex { !$0.isHidden && $0.frame.insetBy(dx: -2, dy: -4).contains(p) }
         for (i, c) in chips.enumerated() { c.hovered = i == under }
-        more.hovered = !more.isHidden && more.frame.contains(p)
-        if let under { hover(under) }
+        if let under { hover(under, at: chips[under].frame.midX) }
     }
 
     override func mouseExited(with event: NSEvent) {
         fanned = false
-        for c in chips { c.hovered = false }
-        more.hovered = false
+        for c in chips + [stackFront] { c.hovered = false }
     }
 
+    // The bar left of a stack, clicked: the link scrubbed to.
+    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+    override func mouseUp(with event: NSEvent) {
+        defer { downAt = nil }
+        guard downAt != nil else { return }
+        if event.modifierFlags.contains(.control) { return menuScrubbed() }
+        openScrubbed(event.modifierFlags)
+    }
+    override func rightMouseDown(with event: NSEvent) { menuScrubbed() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private var scrubbedCard: LinkCard? { overflow && singles + scrubbed < cards.count ? cards[singles + scrubbed] : nil }
+    private func openScrubbed(_ mods: NSEvent.ModifierFlags) { if let c = scrubbedCard { onOpen?(c.block, mods) } }
+    private func menuScrubbed() { if let c = scrubbedCard { showMenu(for: c, from: stackFront) } }
+
     /// A face under the pointer: its card, once it has rested a moment —
-    /// or at once, when a card shows already (moving along the faces).
-    private func hover(_ i: Int) {
-        guard i != previewed || preview == nil else { return }
+    /// or at once, when a card shows already (moving along the faces, or
+    /// scrubbing).
+    private func hover(_ i: Int, at x: CGFloat) {
+        if preview != nil { return showPreview(i, at: x) }
+        guard i != previewed else { return }
         previewWork?.cancel()
-        if preview != nil { return showPreview(i) }
-        let work = DispatchWorkItem { [weak self] in self?.showPreview(i) }
+        let work = DispatchWorkItem { [weak self] in self?.showPreview(i, at: x) }
         previewWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewDelay, execute: work)
     }
 
     // MARK: The card under the bar
 
-    private func showPreview(_ i: Int) {
-        guard fanned, i < chips.count, i < cards.count, let host = superview,
-              let content = summary?(cards[i].block) else { return }
-        previewed = i
-        let p = preview ?? {
-            let p = Preview()
-            host.addSubview(p, positioned: .above, relativeTo: nil)
-            preview = p
-            return p
-        }()
-        p.card.content = content
-        let h = SummaryCard.height(for: content) + 2
-        // Under the bar, beneath the face, kept inside what holds it.
-        let chip = chips[i].convert(chips[i].bounds, to: host)
-        var x = chip.midX - Self.previewWidth / 2
-        x = min(max(x, host.bounds.minX + 6), host.bounds.maxX - Self.previewWidth - 6)
+    /// Link `i`'s card under the bar, beneath `x` (in this view).
+    private func showPreview(_ i: Int, at x: CGFloat) {
+        guard fanned, i < cards.count, let host = superview else { return }
+        let same = i == previewed && preview != nil
+        if !same {
+            guard let content = summary?(cards[i].block) else { return }
+            let p = preview ?? {
+                let p = Preview()
+                host.addSubview(p, positioned: .above, relativeTo: nil)
+                preview = p
+                return p
+            }()
+            p.card.content = content
+            previewed = i
+        }
+        guard let p = preview else { return }
+        let h = SummaryCard.height(for: p.card.content) + 2
+        // Under the bar, beneath the face (or the pointer, scrubbing), kept
+        // inside what holds it.
+        let anchor = convert(NSPoint(x: x, y: bounds.midY), to: host)
+        let bar = convert(bounds, to: host)
+        var left = anchor.x - Self.previewWidth / 2
+        left = min(max(left, host.bounds.minX + 6), host.bounds.maxX - Self.previewWidth - 6)
         let gap: CGFloat = 8
-        let y = host.isFlipped ? chip.maxY + gap : chip.minY - gap - h
-        let target = NSRect(x: x, y: y, width: Self.previewWidth, height: h)
-        if p.frame.isEmpty || p.alphaValue == 0 {
+        let top = host.isFlipped ? bar.maxY + gap : bar.minY - gap - h
+        let target = NSRect(x: left, y: top, width: Self.previewWidth, height: h)
+        if p.alphaValue == 0 || p.frame.isEmpty {
             p.frame = target
             p.alphaValue = 0
             NSAnimationContext.runAnimationGroup { ctx in
@@ -224,11 +321,8 @@ final class LinkBadge: NSView {
                 p.animator().alphaValue = 1
             }
         } else {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = Motion.fast
-                ctx.timingFunction = Motion.travel
-                p.animator().frame = target
-            }
+            // Following the pointer: no lag behind it.
+            p.frame = target
         }
     }
 
@@ -289,11 +383,17 @@ final class LinkBadge: NSView {
     // MARK: Debugging
 
     /// Debugging: the fan, as the pointer resting on the stack would open it.
-    func debugFan(_ open: Bool) { fanned = open }
-    var debugTitles: [String] { cards.prefix(chips.count).map { ($0.outbound ? "→ " : "← ") + $0.title } }
+    func debugFan(_ open: Bool) { fanned = open; layoutSubtreeIfNeeded() }
+    var debugTitles: [String] {
+        let one = cards.prefix(fanned ? singles : chips.count).map { ($0.outbound ? "→ " : "← ") + $0.title }
+        return overflow ? one + ["[stack of \(cards.count - singles)]"] : one
+    }
     /// How many faces peek out behind the front one, folded.
     var debugSheets: Int { fanned ? 0 : max(0, min(cards.count, 3) - 1) }
-    var debugGeometry: String { chips.filter { !$0.isHidden }.map { NSStringFromRect($0.frame) }.joined(separator: " ") }
+    var debugGeometry: String {
+        (chips + [stackFront]).filter { !$0.isHidden }.map { NSStringFromRect($0.frame) }.joined(separator: " ")
+            + (overflow ? " scrub \(NSStringFromRect(scrubRect))" : "")
+    }
     /// Debugging: the front face's middle, in the window from its top left.
     var debugCapsuleCenter: NSPoint? {
         guard let first = chips.first, let frameView = window?.contentView?.superview else { return nil }
@@ -306,33 +406,44 @@ final class LinkBadge: NSView {
         onBreak?(cards[n].link)
         return true
     }
-    /// Debugging: the nth face's card shown, as resting on it does; its title.
+    /// Debugging: the nth face's card shown, as resting on it does.
     func debugPreview(_ n: Int) -> String {
-        fanned = true
-        layoutSubtreeIfNeeded()
-        showPreview(n)
+        debugFan(true)
+        guard n < chips.count else { return "no face \(n)" }
+        showPreview(n, at: chips[n].frame.midX)
         return preview.map { "card: \($0.card.content.summary.title) at \(NSStringFromRect($0.frame))" } ?? "no card"
+    }
+    /// Debugging: the pointer at a fraction (0 by the stack, 1 at the
+    /// bar's left) of the scrubbing: which link is in front, and its card.
+    func debugScrub(_ fraction: CGFloat) -> String {
+        debugFan(true)
+        guard overflow else { return "no stack (\(singles) of \(cards.count) fit)" }
+        let x = stackFront.frame.maxX - fraction * (stackFront.frame.maxX - scrubRect.minX) - 0.5
+        let rest = cards.count - singles
+        let k = min(rest - 1, max(0, Int(((stackFront.frame.maxX - x) / (stackFront.frame.maxX - scrubRect.minX)) * CGFloat(rest))))
+        scrubbed = k
+        dress(stackFront, cards[singles + k])
+        showPreview(singles + k, at: x)
+        return "\(singles) one by one; stack of \(rest), at \(k): \(cards[singles + k].title)"
     }
 
     // MARK: A face
 
     /// One linked block: its symbol on a small rounded square, and a badge
-    /// at its lower right for the direction. Or, as `isMore`, "+n".
+    /// at its lower right for the direction.
     final class Chip: NSView {
         var onClick: ((NSEvent.ModifierFlags) -> Void)?
         var onMenu: (() -> Void)?
         var onDragStart: ((NSEvent) -> Void)?
         var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 12) } }
         var outbound = true { didSet { badgeIcon.image = Theme.symbol(outbound ? "arrow.uturn.forward" : "arrow.uturn.backward", size: 6.5, weight: .bold) } }
-        var isMore = false { didSet { icon.isHidden = isMore; badge.isHidden = isMore; label.isHidden = !isMore } }
-        var moreCount = 0 { didSet { label.stringValue = "+\(moreCount)"; toolTip = "\(moreCount) more — the Neighborhood Map" } }
         /// Folded behind the front one (1, 2), only its edge showing: nothing
         /// on it, in a stack's sheet greys, as a tile's sheets are.
         var depth = 0 {
             didSet {
                 guard depth != oldValue else { return }
-                icon.isHidden = depth > 0 || isMore
-                badge.isHidden = depth > 0 || isMore
+                icon.isHidden = depth > 0
+                badge.isHidden = depth > 0
                 colour()
             }
         }
@@ -352,7 +463,6 @@ final class LinkBadge: NSView {
         private let icon = NSImageView()
         private let badge = NSView()
         private let badgeIcon = NSImageView()
-        private let label = NSTextField(labelWithString: "")
         private var downAt: NSPoint?
 
         override init(frame: NSRect) {
@@ -370,17 +480,12 @@ final class LinkBadge: NSView {
             badgeIcon.contentTintColor = Theme.secondaryText
             badgeIcon.image = Theme.symbol("arrow.uturn.forward", size: 6.5, weight: .bold)
             badge.addSubview(badgeIcon)
-            label.font = UIType.count
-            label.textColor = Theme.secondaryText
-            label.alignment = .center
-            label.isHidden = true
             themed {
                 $0.colour()
                 $0.badge.layer?.backgroundColor = LinkCapsule.fill.cgColor
                 $0.badge.layer?.borderColor = LinkCapsule.edge.cgColor
             }
             addSubview(icon)
-            addSubview(label)
             addSubview(badge)
         }
 
@@ -393,8 +498,6 @@ final class LinkBadge: NSView {
             // The badge at the lower right, a little past the corner.
             badge.frame = NSRect(x: bounds.maxX - 8, y: -3, width: 11, height: 11)
             badgeIcon.frame = badge.bounds.insetBy(dx: 2, dy: 2)
-            let lh = ceil(label.intrinsicContentSize.height)
-            label.frame = NSRect(x: 0, y: (bounds.height - lh) / 2, width: bounds.width, height: lh)
         }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }

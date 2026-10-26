@@ -251,12 +251,16 @@ parts from the Mac's conventions on purpose.
   with a badge at its corner for the direction (a loop forward, links
   to; back, linked from). Several stack up, the most recent in front
   and the edges of two more behind it; the pointer on them fans them
-  out along the bar, and resting on one a moment shows its **summary
-  card** under the bar — one at a time, moving along them. A click
-  opens it by the one rule (⌘ beside, ⌥ over, ⇧⌘ the system's app);
-  ⌃-click or right-click for its menu — Go To, Show Beside, Show Over,
-  Remove Link (both ways at once), the Neighborhood Map. Past eight, the
-  last is "+n", for the map. A note made with a block focused (⇧⌘N) is linked
+  out along the bar — the title showing up to the first of them, fading
+  out before it — and resting on one a moment shows its **summary
+  card** under the bar, one at a time, moving along them. More than fit
+  (or than eight), the last is a stack of the rest: the pointer over
+  the title, left of it, scrubs through them, further back the further
+  left, its face and its card following, a click there opening the one
+  in front. A click opens a link by the one rule (⌘ beside, ⌥ over,
+  ⇧⌘ the system's app); ⌃-click or right-click for its menu — Go To,
+  Show Beside, Show Over, Remove Link (both ways at once), the
+  Neighborhood Map. A note made with a block focused (⇧⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
   block also lands in the text, `[title](manifold:…)`, shown as a

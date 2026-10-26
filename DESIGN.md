@@ -276,9 +276,11 @@ destination:
 
 1. **A tile's links**, on its bar: each linked block's face, a badge
    at its corner for the direction, stacked most recent first; the
-   pointer fans them out along the bar, and resting on one shows its
-   summary card beneath — one card at a time, so many links cost no
-   room. Clicked by the one rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
+   pointer fans them out along the bar (the title fading out before the
+   first), and resting on one shows its summary card beneath — one card
+   at a time, so many links cost no room. More than fit, the last is a
+   stack of the rest, scrubbed through by the pointer across the title.
+   Clicked by the one rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
    focused block's surroundings, two steps out. (This was a Links
    organization in the sidebar, and before it the foot under every
    sheet.)

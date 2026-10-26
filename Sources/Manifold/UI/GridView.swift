@@ -395,6 +395,7 @@ final class GridView: NSView, NSDraggingSource {
                     badges[id]?.removeFromSuperview()
                     badges.removeValue(forKey: id)
                     pill.linkWanted = 0
+                    pill.fanEdge = nil
                 } else {
                     let badge = badges[id] ?? {
                         let b = LinkBadge()
@@ -406,6 +407,11 @@ final class GridView: NSView, NSDraggingSource {
                     pill.linkWanted = badge.capsuleWantedWidth
                     pill.onLinkRoom = { [weak badge] room in badge?.capsuleLimit = room }
                     badge.summary = { [weak self] block in self?.delegate?.gridLinkSummary(block) }
+                    // Fanned out, the title fades out before the first face.
+                    badge.onFanEdge = { [weak pill, weak badge] edge in
+                        guard let pill, let badge else { return }
+                        pill.fanEdge = edge.map { badge.convert(NSPoint(x: $0, y: 0), to: pill).x }
+                    }
                     badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
@@ -634,7 +640,8 @@ final class GridView: NSView, NSDraggingSource {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
         }
         if words.first == "preview", let n = words.dropFirst().first.flatMap({ Int($0) }) { return b.debugPreview(n) }
-        if arg == "fanned" { return "badge \(NSStringFromRect(b.frame)): " + b.debugGeometry }
+        if arg == "fanned" { return "badge \(NSStringFromRect(b.frame)): " + b.debugGeometry + " · bar's fan edge \(pills[placement]?.fanEdge.map { "\(Int($0))" } ?? "none")" }
+        if words.first == "scrub", let f = words.dropFirst().first.flatMap({ Double($0) }) { return b.debugScrub(CGFloat(f)) }
         return b.debugTitles.joined(separator: " | ") + " (sheets \(folded) folded)"
     }
 
@@ -1146,7 +1153,10 @@ final class GridView: NSView, NSDraggingSource {
         // The bar has settled what room the pill gets and what else shows.
         pills[id]?.layoutSubtreeIfNeeded()
         let size = badge.wantedSize
-        let w = min(size.width, max(r.width - 40, 60))
+        // From after the tile's symbol to the buttons: the faces fan out
+        // over the title, and a stack of more is scrubbed across it.
+        let left = r.minX + 32
+        let w = max(r.maxX - (pills[id]?.rightTaken ?? TilePill.rightChrome) - 8 - left, min(size.width, 60))
         let h = min(size.height, r.height - 12)
         // Its faces in the bar, before the bar's buttons; its frame as wide
         // as they fan out, leftward over the title.
@@ -1813,6 +1823,37 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The links' room changed as the bar laid out (it was resized): for
     /// the capsule, which the grid placed, to take it at once.
     var onLinkRoom: ((CGFloat) -> Void)?
+    /// Where the links fanned out over the bar begin (in the bar): the
+    /// title and the place show up to there, fading out before it; nil,
+    /// all of them.
+    var fanEdge: CGFloat? { didSet { if fanEdge != oldValue { fadeForFan() } } }
+
+    /// The title, the place and the host's chip, masked to fade out before
+    /// the fan — only where the fan is over them.
+    private func fadeForFan() {
+        let fade: CGFloat = 22
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Motion.base)
+        for v in [name, subtitle, hostPill] as [NSView] {
+            v.wantsLayer = true
+            guard let layer = v.layer else { continue }
+            guard let edge = fanEdge.map({ $0 - 6 - v.frame.minX }), edge < v.bounds.width, !v.isHidden else {
+                layer.mask = nil
+                continue
+            }
+            let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
+            mask.startPoint = CGPoint(x: 0, y: 0.5)
+            mask.endPoint = CGPoint(x: 1, y: 0.5)
+            mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor, NSColor.clear.cgColor]
+            let w = max(v.bounds.width, 1)
+            let end = max(0, min(1, edge / w)), start = max(0, min(1, (edge - fade) / w))
+            mask.locations = [0, NSNumber(value: Double(start)), NSNumber(value: Double(end)), 1]
+            mask.frame = v.bounds
+            layer.mask = mask
+        }
+        CATransaction.commit()
+    }
+
     /// The links' pill shrunk: the arrow and the symbol; the arrow alone.
     static let linkCompact: CGFloat = 50
     static let linkMinimal: CGFloat = 30
@@ -2381,6 +2422,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         let sh = ceil(subtitle.intrinsicContentSize.height)
         subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
+        if fanEdge != nil { fadeForFan() }
         if isEditing {
             // Over the address, where it was; over the name when the
             // address would have too little room.
