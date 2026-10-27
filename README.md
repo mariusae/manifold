@@ -573,6 +573,17 @@ around it, and comes back with its history.
   language's project root (a monorepo one root). A host's own
   settings are its preferences, shared by every Mac attached to it. A
   change restarts the servers it touches, their open files with them.
+- **Insert Path** (⌃⌘I, Edit ▸ Insert Path…), in a terminal or an
+  agent's, opens a menu over the cursor of the paths where its shell is:
+  the folder's own folders and files, and under them, nearest the field
+  at its foot, the last three put in on that host (a clock at their
+  right). Type to find any file or folder under the folder, however deep
+  — the best nearest the field; ↑↓ choose, ⇥ goes into a folder, ↩ types
+  the path at the cursor, ⎋ leaves. It's typed as the shell would have
+  it: relative to the folder when it's under it, else from `~`, quoted
+  where it must be (a `~/` left outside the quotes); a folder with its
+  slash, a file with a space after. On another host, its files are the
+  host's, listed there.
 - **⌘-click** a file's name in a terminal to open it below the terminal,
   in its column: Markdown in a preview, folders in a listing (a folder's
   bare name too, as `ls` prints it, if there's a folder by that name where

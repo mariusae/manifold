@@ -317,6 +317,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// host not reached); nil for a terminal on this Mac, whose files are
     /// looked at here.
     var lookUp: (([String], @escaping ([PathKind?]?) -> Void) -> Void)?
+    /// Where its shell is, for Insert Path (⌃⌘I): the folder, its host, and
+    /// the tree there; nil while it isn't known.
+    var pathSource: (() -> PathInserter.Source?)?
 
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
@@ -1762,6 +1765,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     // MARK: Actions
+
+    /// ⌃⌘I: a menu of paths over the cursor, from where the shell is; the
+    /// one chosen typed there.
+    @objc func insertPath(_ sender: Any?) {
+        guard var source = pathSource?(), let window, let caret = caretRectInWindow else { return NSSound.beep() }
+        source.type = { [weak self] text in
+            guard let self, let surface = self.surface else { return }
+            self.window?.makeKey()
+            self.window?.makeFirstResponder(self)
+            text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+        }
+        PathInserter.shared.show(source, over: caret, in: window)
+    }
 
     private func perform(_ action: String) {
         guard let surface else { return }

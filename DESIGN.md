@@ -454,6 +454,15 @@ there ⌘⌥ is over and ⌘ alone beside).
 
 ### 3.8 A terminal's outline
 
+(Insert Path, ⌃⌘I, is a terminal's too: a menu over its cursor of the
+paths under where its shell is — the host's tree there (`listTree`),
+so a remote's are the remote's — the last three put in on the host at
+its foot (kept per host), a field that ranks the whole tree as Open
+Quickly ranks names. The one chosen is typed as the shell would have
+it, relative where it can be. Styled as a menu, not the finder: the
+system's frosted ground, the Finder's icons, the accent under the
+chosen row.)
+
 A terminal's scroll bar carries its outline (as Prism's scrubber): the strip's
 length is the screen and its history, the knob the viewport, and the
 ticks the shell's commands — its outline. It comes and goes as an

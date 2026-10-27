@@ -1,0 +1,451 @@
+import AppKit
+import ManifoldCore
+import UniformTypeIdentifiers
+
+/// Insert Path (⌃⌘I, §3.8): over a terminal's cursor, a menu of the paths
+/// where its shell is — the folder's own entries, and the last three put
+/// in on that host, nearest the field — and a field at its foot that
+/// finds any file or folder under it as you type. Chosen, the path is
+/// typed at the cursor as the shell would have it: relative to the
+/// folder when it's under it, else from `~`, quoted where it needs to be;
+/// a folder with its slash, a file with a space after.
+final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+    static let shared = PathInserter()
+
+    /// What a terminal gives it: where its shell is, on which host, the
+    /// host's home, its tree there, and how to type at the cursor.
+    struct Source {
+        var host: HostID
+        var directory: String
+        var home: String?
+        var listTree: (String, @escaping ([DirectoryEntry]?, Bool) -> Void) -> Void
+        var type: (String) -> Void
+    }
+
+    /// A row: a path under the folder (relative), or one put in lately
+    /// (absolute).
+    private struct Row: Equatable {
+        var path: String
+        var isFolder: Bool
+        var recent: Bool
+    }
+
+    private let panel = Panel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+    private let ground = NSVisualEffectView()
+    private let table = NSTableView()
+    private let scroll = NSScrollView()
+    private let field = NSTextField()
+    private let glass = NSImageView()
+    private var source: Source?
+    /// The folder's tree, named relative to it; nil until it's come.
+    private var tree: [DirectoryEntry]?
+    /// Shown bottom up: the last row is nearest the field, and the best.
+    private var rows: [Row] = []
+    private var listing = 0
+
+    private static let width: CGFloat = 320
+    private static let rowHeight: CGFloat = 24
+    private static let fieldHeight: CGFloat = 30
+    private static let pad: CGFloat = 6
+    private static let visibleRows = 12
+    private static let recentCount = 3
+
+    /// Takes the keyboard (the field), stays over its window, and goes when
+    /// it's let go.
+    private final class Panel: NSPanel {
+        var onResign: (() -> Void)?
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { false }
+        override func resignKey() {
+            super.resignKey()
+            onResign?()
+        }
+    }
+
+    private override init() {
+        super.init()
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = true
+        panel.animationBehavior = .none
+        panel.onResign = { [weak self] in self?.close(typing: nil) }
+
+        // A menu's ground: the system's frosted one, rounded, a hairline at its edge.
+        ground.material = .menu
+        ground.state = .active
+        ground.blendingMode = .behindWindow
+        ground.wantsLayer = true
+        ground.layer?.cornerRadius = 10
+        ground.layer?.cornerCurve = .continuous
+        ground.layer?.masksToBounds = true
+        ground.layer?.borderWidth = 0.5
+        ground.themed { v in v.layer?.borderColor = Theme.panelBorder.cgColor }
+        panel.contentView = ground
+
+        table.headerView = nil
+        table.backgroundColor = .clear
+        table.rowHeight = Self.rowHeight
+        table.intercellSpacing = .zero
+        table.style = .plain
+        table.selectionHighlightStyle = .regular
+        table.addTableColumn(NSTableColumn(identifier: .init("path")))
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.action = #selector(clicked)
+        table.refusesFirstResponder = true
+        scroll.documentView = table
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        ground.addSubview(scroll)
+
+        // The field at the foot, on a lighter ground, the folder as its placeholder.
+        let well = NSView()
+        well.wantsLayer = true
+        well.layer?.cornerRadius = 7
+        well.themed { v in v.layer?.backgroundColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.06), NSColor(white: 1, alpha: 0.09)).cgColor }
+        well.identifier = .init("well")
+        ground.addSubview(well)
+        glass.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
+        glass.contentTintColor = Theme.secondaryText
+        ground.addSubview(glass)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 13)
+        field.delegate = self
+        field.cell?.usesSingleLineMode = true
+        field.cell?.lineBreakMode = .byTruncatingHead
+        ground.addSubview(field)
+    }
+
+    var isShowing: Bool { panel.isVisible }
+
+    /// Opens over `caret` (in `window`), for a terminal's shell.
+    func show(_ source: Source, over caret: NSRect, in window: NSWindow) {
+        close(typing: nil)
+        self.source = source
+        tree = nil
+        field.stringValue = ""
+        let shown = Self.shown(source.directory, home: source.home)
+        field.placeholderString = shown.hasSuffix("/") ? shown : shown + "/"
+        refresh()
+        listing += 1
+        let token = listing
+        source.listTree(source.directory) { [weak self] entries, _ in
+            DispatchQueue.main.async {
+                guard let self, self.listing == token else { return }
+                self.tree = entries ?? []
+                self.refresh()
+            }
+        }
+        place(over: caret, in: window)
+        if panel.parent !== window {
+            panel.parent?.removeChildWindow(panel)
+            window.addChildWindow(panel, ordered: .above)
+        }
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+    }
+
+    /// Gone; with `typing`, that typed at the terminal's cursor first.
+    private func close(typing text: String?) {
+        guard panel.isVisible || text != nil else { return }
+        listing += 1
+        let source = self.source
+        self.source = nil
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+        if let text { source?.type(text) }
+    }
+
+    // MARK: Rows
+
+    /// The rows for what's typed: nothing, the folder's own entries (its
+    /// folders first) and then what was put in lately, nearest the field;
+    /// a query, the best of everything under the folder (and the recent),
+    /// the best nearest the field.
+    private func refresh() {
+        guard let source else { return }
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let recent = Self.recents(on: source.host).suffix(Self.recentCount).map { Row(path: $0.path, isFolder: $0.isFolder, recent: true) }
+        let entries = tree ?? []
+        if query.isEmpty {
+            let own = entries.filter { !$0.name.contains("/") && !$0.isHidden }
+                .sorted { $0.isDirectory != $1.isDirectory ? $0.isDirectory : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                .map { Row(path: $0.name, isFolder: $0.isDirectory, recent: false) }
+            // Under the folder's own, read top down; the recent at the foot.
+            rows = Array(own.reversed().prefix(200).reversed()) + recent
+        } else {
+            var candidates: [FinderCandidate] = []
+            var all: [Row] = []
+            for r in recent {
+                candidates.append(FinderCandidate(symbol: "", title: r.path, detail: "", note: "", name: r.path.lastPathComponent, around: r.path,
+                                                  distance: 0, recency: 0, action: all.count))
+                all.append(r)
+            }
+            for e in entries {
+                candidates.append(FinderCandidate(symbol: "", title: e.name, detail: "", note: "", name: e.name.lastPathComponent, around: e.name,
+                                                  distance: e.name.split(separator: "/").count, recency: Int64(e.modified), action: all.count))
+                all.append(Row(path: e.name, isFolder: e.isDirectory, recent: false))
+            }
+            let ranked = FinderRanking.rank(query, candidates, limit: 60)?.rows ?? []
+            rows = ranked.map { all[$0.action] }.reversed()
+        }
+        table.reloadData()
+        layout()
+        if !rows.isEmpty {
+            table.selectRowIndexes([rows.count - 1], byExtendingSelection: false)
+            table.scrollRowToVisible(rows.count - 1)
+        }
+    }
+
+    /// Sized to the rows, its foot (the field) where it was put.
+    private func layout() {
+        let visible = min(rows.count, Self.visibleRows)
+        let listHeight = CGFloat(visible) * Self.rowHeight
+        let height = Self.pad + listHeight + (visible > 0 ? Self.pad : 0) + Self.fieldHeight + Self.pad
+        var frame = panel.frame
+        if frame.height != height {
+            if growsDown { frame.origin.y += frame.height - height }
+            frame.size = NSSize(width: Self.width, height: height)
+            panel.setFrame(frame, display: true)
+        }
+        ground.frame = NSRect(x: 0, y: 0, width: Self.width, height: height)
+        scroll.frame = NSRect(x: 0, y: Self.pad + Self.fieldHeight + Self.pad, width: Self.width, height: listHeight)
+        table.tableColumns[0].width = Self.width
+        let well = NSRect(x: Self.pad, y: Self.pad, width: Self.width - 2 * Self.pad, height: Self.fieldHeight)
+        ground.subviews.first { $0.identifier?.rawValue == "well" }?.frame = well
+        glass.frame = NSRect(x: well.minX + 8, y: well.minY + (well.height - 16) / 2, width: 16, height: 16)
+        field.frame = NSRect(x: glass.frame.maxX + 6, y: well.minY + (well.height - 18) / 2, width: well.maxX - glass.frame.maxX - 14, height: 18)
+    }
+
+    /// Opened under the cursor, for want of room over it: it grows down.
+    private var growsDown = false
+
+    /// Its foot just over the cursor's line, its left a little before the
+    /// cursor; under the line if there's no room over it.
+    private func place(over caret: NSRect, in window: NSWindow) {
+        layout()
+        let content = window.contentView.map { $0.convert($0.bounds, to: nil) } ?? .zero
+        let room = content.insetBy(dx: 8, dy: 8)
+        let full = Self.pad + CGFloat(Self.visibleRows) * Self.rowHeight + 2 * Self.pad + Self.fieldHeight
+        growsDown = caret.maxY + 4 + full > room.maxY && caret.minY - 4 - full > room.minY
+        let height = panel.frame.height
+        var frame = NSRect(x: caret.minX - 14, y: growsDown ? caret.minY - 4 - height : caret.maxY + 4, width: Self.width, height: height)
+        frame.origin.x = min(max(frame.minX, room.minX), room.maxX - frame.width)
+        panel.setFrame(window.convertToScreen(frame), display: false)
+    }
+
+    // MARK: Keys
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.moveUp(_:)): move(-1)
+        case #selector(NSResponder.moveDown(_:)): move(1)
+        case #selector(NSResponder.insertNewline(_:)): choose()
+        case #selector(NSResponder.cancelOperation(_:)): close(typing: nil)
+        // ⇥: into the folder chosen — what's under it, as typed.
+        case #selector(NSResponder.insertTab(_:)): descend()
+        default: return false
+        }
+        return true
+    }
+
+    func controlTextDidChange(_ obj: Notification) { refresh() }
+
+    private func move(_ by: Int) {
+        guard !rows.isEmpty else { return }
+        let row = min(max(table.selectedRow + by, 0), rows.count - 1)
+        table.selectRowIndexes([row], byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+    }
+
+    private func descend() {
+        guard table.selectedRow >= 0, rows[table.selectedRow].isFolder, !rows[table.selectedRow].recent else { return NSSound.beep() }
+        field.stringValue = rows[table.selectedRow].path + "/"
+        refresh()
+    }
+
+    @objc private func clicked() {
+        guard table.clickedRow >= 0 else { return }
+        table.selectRowIndexes([table.clickedRow], byExtendingSelection: false)
+        choose()
+    }
+
+    /// The row chosen, typed — and kept as the latest put in on its host.
+    private func choose() {
+        guard let source, table.selectedRow >= 0, table.selectedRow < rows.count else { return }
+        let row = rows[table.selectedRow]
+        let absolute = row.recent ? row.path : source.directory.appendingPathComponent(row.path)
+        Self.remember(absolute, isFolder: row.isFolder, on: source.host)
+        close(typing: Self.typed(absolute, isFolder: row.isFolder, from: source.directory, home: source.home))
+    }
+
+    // MARK: Paths
+
+    /// As the shell is given it: relative to the folder when under it,
+    /// else from `~` when under home; quoted where it must be (a `~/`
+    /// left outside the quotes, for the shell to expand); a folder with
+    /// its slash, a file with a space after.
+    static func typed(_ path: String, isFolder: Bool, from directory: String, home: String?) -> String {
+        let shown = shown(path, from: directory, home: home)
+        let quoted = shown.hasPrefix("~/") ? "~/" + TerminalView.shellQuoted(String(shown.dropFirst(2))) : TerminalView.shellQuoted(shown)
+        return quoted + (isFolder ? "/" : " ")
+    }
+
+    /// A path as rows show it and the shell is given it: relative to the
+    /// folder when under it, else from `~` when under home.
+    static func shown(_ path: String, from directory: String, home: String?) -> String {
+        let dir = directory.hasSuffix("/") ? directory : directory + "/"
+        if path.hasPrefix(dir), path.count > dir.count { return String(path.dropFirst(dir.count)) }
+        return shown(path, home: home)
+    }
+
+    /// From `~` when under home.
+    static func shown(_ path: String, home: String?) -> String {
+        guard let home else { return path }
+        if path == home { return "~" }
+        return path.hasPrefix(home + "/") ? "~/" + path.dropFirst(home.count + 1) : path
+    }
+
+    /// The paths last put in on a host, oldest first.
+    private static func recents(on host: HostID) -> [(path: String, isFolder: Bool)] {
+        let raw = UserDefaults.standard.stringArray(forKey: recentsKey(host)) ?? []
+        return raw.map { $0.hasSuffix("/") && $0.count > 1 ? (String($0.dropLast()), true) : ($0, false) }
+    }
+
+    private static func remember(_ path: String, isFolder: Bool, on host: HostID) {
+        let entry = isFolder ? path + "/" : path
+        var raw = (UserDefaults.standard.stringArray(forKey: recentsKey(host)) ?? []).filter { $0 != entry }
+        raw.append(entry)
+        UserDefaults.standard.set(Array(raw.suffix(recentCount)), forKey: recentsKey(host))
+    }
+
+    private static func recentsKey(_ host: HostID) -> String { "insertPath.recent.\(host.raw)" }
+
+    // MARK: Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { MenuRowView() }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let cell = tableView.makeView(withIdentifier: PathCell.identifier, owner: nil) as? PathCell ?? PathCell()
+        let r = rows[row]
+        let title = r.recent ? source.map { Self.shown(r.path, from: $0.directory, home: $0.home) } ?? r.path : r.path
+        cell.show(title: title, icon: Self.icon(for: r.path, isFolder: r.isFolder), recent: r.recent)
+        return cell
+    }
+
+    private static var icons: [String: NSImage] = [:]
+
+    /// The Finder's icon for its kind — by its extension, so a remote
+    /// host's file has one too.
+    static func icon(for path: String, isFolder: Bool) -> NSImage {
+        let ext = isFolder ? "/" : path.pathExtension.lowercased()
+        if let i = icons[ext] { return i }
+        let type: UTType = isFolder ? .folder : (UTType(filenameExtension: ext) ?? .data)
+        let image = NSWorkspace.shared.icon(for: type)
+        image.size = NSSize(width: 16, height: 16)
+        icons[ext] = image
+        return image
+    }
+
+    // MARK: Debugging
+
+    /// "rows", "type <query>", "down", "up", "tab", "go", "close", "frame".
+    func debug(_ arg: String) -> String {
+        let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        switch words.first ?? "rows" {
+        case "type": field.stringValue = words.count > 1 ? words[1] : ""; refresh()
+        case "down": move(1)
+        case "up": move(-1)
+        case "tab": descend()
+        case "go": choose(); return "chose"
+        case "close": close(typing: nil); return "closed"
+        case "frame": return NSStringFromRect(panel.parent?.convertFromScreen(panel.frame) ?? .zero)
+        case "picture":
+            guard words.count > 1, let rep = ground.bitmapImageRepForCachingDisplay(in: ground.bounds) else { return "no" }
+            ground.cacheDisplay(in: ground.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: words[1]))
+            return "wrote \(words[1])"
+        default: break
+        }
+        guard panel.isVisible else { return "not shown" }
+        return "\(field.placeholderString ?? "") [\(field.stringValue)] \(tree == nil ? "listing…" : "\(tree!.count) under")\n"
+            + rows.enumerated().map { i, r in (i == table.selectedRow ? "> " : "  ") + r.path + (r.isFolder ? "/" : "") + (r.recent ? " (recent)" : "") }.joined(separator: "\n")
+    }
+}
+
+/// A row of the menu: its icon, its path — the folders it's in dimmer
+/// than its name — and, for one put in lately, a clock at the right.
+private final class PathCell: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("PathCell")
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private let clock = NSImageView()
+    private var title = ""
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+        label.lineBreakMode = .byTruncatingHead
+        label.maximumNumberOfLines = 1
+        clock.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Recent")?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+        for v in [icon, label, clock] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(title: String, icon image: NSImage, recent: Bool) {
+        self.title = title
+        icon.image = image
+        clock.isHidden = !recent
+        restyle()
+        needsLayout = true
+    }
+
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { restyle() }
+    }
+
+    /// On the accent when chosen: white, as a menu's chosen item is.
+    private func restyle() {
+        let chosen = backgroundStyle == .emphasized
+        let text = chosen ? NSColor.white : Theme.text
+        let dim = chosen ? NSColor.white.withAlphaComponent(0.75) : Theme.secondaryText
+        let s = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: text])
+        if let slash = title.dropLast().lastIndex(of: "/"), !title.hasPrefix("~") || title.filter({ $0 == "/" }).count > 1 {
+            let n = title.distance(from: title.startIndex, to: title.index(after: slash))
+            s.addAttribute(.foregroundColor, value: dim, range: NSRange(location: 0, length: (String(title.prefix(n)) as NSString).length))
+        }
+        label.attributedStringValue = s
+        clock.contentTintColor = dim
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        icon.frame = NSRect(x: 12, y: (h - 16) / 2, width: 16, height: 16)
+        clock.frame = NSRect(x: bounds.width - 12 - 16, y: (h - 16) / 2, width: 16, height: 16)
+        let right = clock.isHidden ? bounds.width - 12 : clock.frame.minX - 6
+        label.frame = NSRect(x: icon.frame.maxX + 8, y: (h - 17) / 2, width: max(0, right - icon.frame.maxX - 8), height: 17)
+    }
+}
+
+/// A menu's chosen row: the accent, rounded, inset from the menu's edges.
+private final class MenuRowView: NSTableRowView {
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard selectionHighlightStyle != .none else { return }
+        Theme.accent.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0.5), xRadius: 5, yRadius: 5).fill()
+    }
+    // Chosen, its cell's text is white (`.emphasized`), whatever has the keyboard.
+    override var isEmphasized: Bool { get { true } set {} }
+}

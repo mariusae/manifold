@@ -293,6 +293,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Copy", #selector(TerminalView.copy(_:)), "c")
         item(edit, "Paste", #selector(TerminalView.paste(_:)), "v")
         item(edit, "Select All", #selector(NSResponder.selectAll(_:)), "a")
+        // A terminal's (an agent's): a path from where its shell is, typed at the cursor.
+        item(edit, "Insert Path…", #selector(TerminalView.insertPath(_:)), "i", [.command, .control])
         edit.addItem(.separator())
         let find = NSMenu(title: "Find")
         for (title, action, key, mods) in [

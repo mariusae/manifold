@@ -605,6 +605,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
             t.directory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
+            t.pathSource = { [weak self] in
+                guard let self, let cwd = self.hosts.block(p.block)?.terminal?.cwd, let client = self.hosts.client(p.block.host) else { return nil }
+                let here = p.block.host == self.host.host
+                return PathInserter.Source(host: p.block.host, directory: cwd, home: here ? NSHomeDirectory() : client.home,
+                                           listTree: { path, done in client.listTree(path, done: done) }, type: { _ in })
+            }
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
                 t.lookUp = { [weak self] paths, done in

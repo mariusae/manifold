@@ -1083,6 +1083,14 @@ enum DebugControl {
         case "remoting":
             // "remoting add" presses +; "remoting" lists the rows.
             return wc?.debugRemoting(arg) ?? "no window"
+        case "insertpath":
+            // "insertpath open": ⌃⌘I in the focused terminal; "insertpath rows|type <q>|down|up|tab|go|close|frame|picture <path>".
+            if arg == "open" {
+                guard let t = wc?.debugFocusedTerminal else { return "no terminal focused" }
+                t.insertPath(nil)
+                return "opened"
+            }
+            return PathInserter.shared.debug(arg)
         case "picker":
             // "picker" opens it; "picker <query>" says what it lists for one.
             // "picker go" chooses the selected row; "picker down"/"up" move it.
