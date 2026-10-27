@@ -628,6 +628,21 @@ final class Server {
                 let entries = FolderListing.children(of: path)
                 self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: entries, complete: true))) }
             }
+        case let .lookUpPaths(paths):
+            // Each path looked at, for so long: a slow filesystem (a
+            // network's) answers for those looked at in time, the rest
+            // left as the app had them.
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let fm = FileManager.default, until = Date().addingTimeInterval(1.5)
+                var kinds: [PathKind?] = []
+                for p in paths.prefix(4000) {
+                    guard Date() < until else { break }
+                    var isDir: ObjCBool = false
+                    let path = (p as NSString).expandingTildeInPath
+                    kinds.append(fm.fileExists(atPath: path, isDirectory: &isDir) ? (isDir.boolValue ? .folder : .file) : nil)
+                }
+                self?.queue.async { conn.send(.message(ServerMessage.pathKinds(id: id, kinds))) }
+            }
         case let .listTree(path, limit):
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 var isDir: ObjCBool = false
@@ -1495,6 +1510,11 @@ final class Server {
                 // before it.
                 let list = node.block(block)?.terminal?.commands ?? []
                 let id = (list.last?.id ?? 0) + 1
+                // Where it runs, kept with it: a shell that doesn't say
+                // where it is (OSC 7) asked of its process first.
+                if sessions[block]?.reportsDirectory == false, let cwd = sessions[block]?.cwd, b.terminal?.cwd != cwd {
+                    append(.cwd(cwd), to: .block(block))
+                }
                 append(.ran(id: id, text, at: clock.now()), to: .block(block))
                 sessions[block]?.beginCapture(id)
             case let .commandEnded(status):

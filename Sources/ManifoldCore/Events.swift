@@ -568,7 +568,7 @@ extension TerminalState {
             turns = list
         case let .ran(id, text, at):
             var list = commands ?? []
-            list.append(ShellCommand(id: id, text: text, at: at))
+            list.append(ShellCommand(id: id, text: text, at: at, cwd: cwd))
             if list.count > Self.commandLimit { list.removeFirst(list.count - Self.commandLimit) }
             commands = list
         case let .exited(id, status, at):

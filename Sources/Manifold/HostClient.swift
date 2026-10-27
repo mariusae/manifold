@@ -193,6 +193,7 @@ final class HostClient {
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
     private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
+    private var pendingLookUps: [Int: ([PathKind?]?) -> Void] = [:]
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
     /// How each text block stands against what's committed.
@@ -332,6 +333,17 @@ final class HostClient {
     /// A folder's entries, ignored ones marked (§7.4).
     func listFolder(_ path: String, done: @escaping ([DirectoryEntry]?) -> Void) {
         list(.listFolder(path: path)) { entries, _ in done(entries) }
+    }
+
+    /// What each path is on the host, in order (nil: nothing there); nil
+    /// for none, not attached. Fewer than asked when the host ran out of
+    /// time looking.
+    func lookUp(_ paths: [String], done: @escaping ([PathKind?]?) -> Void) {
+        guard conn != nil else { return done(nil) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingLookUps[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .lookUpPaths(paths: paths))))
     }
 
     /// The tree under a folder, less what's ignored, named relative to it.
@@ -1027,6 +1039,8 @@ final class HostClient {
             SecureInput.shared.set(block, readingPassword: on)
         case let .listing(id, entries, complete):
             pendingListings.removeValue(forKey: id)?(entries, complete)
+        case let .pathKinds(id, kinds):
+            pendingLookUps.removeValue(forKey: id)?(kinds)
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
             onLanguageServer?(language, root, state)

@@ -604,10 +604,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     v.readingPassword = SecureInput.shared.reading.contains(block)
                 }
             }
+            t.directory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
-            } else {
-                t.localDirectory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
+                t.lookUp = { [weak self] paths, done in
+                    guard let client = self?.hosts.client(p.block.host) else { return done(nil) }
+                    client.lookUp(paths, done: done)
+                }
             }
             TerminalView.copyOnSelect = desk.settings.copyOnSelect
             v = t
@@ -7265,28 +7268,13 @@ extension MainWindowController: TerminalViewDelegate {
         return over ? .over : .beside
     }
 
-    /// A ⌘-clicked word that isn't a link to ghostty (`ls` prints a folder
-    /// as a bare name): a folder by that name where the terminal is opens
-    /// as a listing; anything else, nothing. On another host, what can't
-    /// be looked at from here is taken for a folder when it ends in /.
+    /// A ⌘-clicked word that isn't a link to ghostty or to the terminal's
+    /// reading of its screen (which takes the names it shows, looked for on
+    /// their host): a folder by that name where the terminal is opens as a
+    /// listing; anything else, nothing. On another host, nothing.
     func terminal(_ view: TerminalView, openFolder name: String, over: Bool) {
         let word = name.trimmingCharacters(in: CharacterSet(charactersIn: "'\"`,;"))
-        guard !word.isEmpty else { return }
-        guard view.block.host == host.host else {
-            if word.hasSuffix("/") { return open(word, from: view.placement, as: Self.commandClick(over: over)) }
-            // Another host's: what can't be looked at from here, asked of
-            // it — a name in the folder the terminal's in (as `ls` prints
-            // ROADMAP.md, or src/main.c from a level up) opens as what it is.
-            guard let base = hosts.block(view.block)?.terminal?.cwd, let client = hosts.client(view.block.host) else { return }
-            let path = word.hasPrefix("/") || word.hasPrefix("~") ? word : (base as NSString).appendingPathComponent(word)
-            let folder = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
-            let d = Self.commandClick(over: over)
-            client.listFolder(folder) { [weak self] entries in
-                guard let self, let e = entries?.first(where: { $0.name == name }) else { return }
-                self.open(e.isDirectory ? word + "/" : word, from: view.placement, as: d)
-            }
-            return
-        }
+        guard !word.isEmpty, view.block.host == host.host else { return }
         var path = (word as NSString).expandingTildeInPath
         if !path.hasPrefix("/"), let base = hosts.block(view.block)?.terminal?.cwd { path = (base as NSString).appendingPathComponent(path) }
         var isDir: ObjCBool = false

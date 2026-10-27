@@ -253,13 +253,36 @@ public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
     /// The exit status, once it has ended.
     public var status: Int32?
     public var ended: Stamp?
+    /// Where the shell was as it ran the command: what the names in its
+    /// line and its output are relative to. Nil for one from before
+    /// commands kept it.
+    public var cwd: String?
 
-    public init(id: Int, text: String, at: Stamp, status: Int32? = nil, ended: Stamp? = nil) {
+    public init(id: Int, text: String, at: Stamp, status: Int32? = nil, ended: Stamp? = nil, cwd: String? = nil) {
         self.id = id
         self.text = text
         self.at = at
         self.status = status
         self.ended = ended
+        self.cwd = cwd
+    }
+
+    /// The directory a row of a terminal's names are relative to: the
+    /// command's whose prompt is at or above it (by `rows`, each command's
+    /// row), where it ran — so after `ls` and then `cd sub`, the names `ls`
+    /// printed are still the folder's it listed. Below the last command
+    /// once it has ended, the prompt the shell is at now: where it is
+    /// (`current`); so too above every command, or for one that didn't
+    /// keep where it ran.
+    public static func directory(ofRow row: Int, commands: [ShellCommand], rows: [Int: Int], current: String?) -> String? {
+        var at: (command: ShellCommand, row: Int)?
+        for c in commands {
+            guard let r = rows[c.id], r <= row, r >= (at?.row ?? Int.min) else { continue }
+            at = (c, r)
+        }
+        guard let (c, r) = at else { return current }
+        if c.id == commands.last?.id, c.ended != nil, row > r { return current }
+        return c.cwd ?? current
     }
 
     public var isRunning: Bool { ended == nil }

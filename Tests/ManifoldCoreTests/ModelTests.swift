@@ -1712,6 +1712,59 @@ private final class Seen: @unchecked Sendable {
     #expect(TerminalLinks.links(in: "gone.txt:4:", exists: { _ in false }).isEmpty)
 }
 
+@Test func linksNotLookedForAreLikelyOrPossible() {
+    // Not looked for (another host's): a path by its look, unsure; a bare
+    // name only when asked for, to be looked for.
+    let ls = "ROADMAP.md  src/main.c  /data/x  notes"
+    #expect(TerminalLinks.links(in: ls).map(\.target) == ["src/main.c", "/data/x"])
+    #expect(TerminalLinks.links(in: ls).map(\.standing) == [.likely, .likely])
+    #expect(TerminalLinks.links(in: ls, possible: true).map(\.standing) == [.possible, .likely, .likely, .possible])
+    // Looked for: those there sure, those not gone.
+    let found = TerminalLinks.links(in: ls, exists: { $0 == "ROADMAP.md" || $0 == "/data/x" }, possible: true)
+    #expect(found.map(\.target) == ["ROADMAP.md", "/data/x"])
+    #expect(found.map(\.standing) == [.sure, .sure])
+    // An address is sure; a word and a line, possible.
+    #expect(TerminalLinks.links(in: "https://example.com error:12", possible: true).map(\.standing) == [.sure, .possible])
+    // Named from where the command ran: the line kept, `..` taken out.
+    let l = TerminalLinks.Link(range: 0..<1, target: "../src/main.c:12:3")
+    #expect(l.from("/repo/sub").target == "/repo/src/main.c:12:3")
+    #expect(l.path == "../src/main.c")
+    #expect(TerminalLinks.Link(range: 0..<1, target: "~/x").from("/repo").target == "~/x")
+    #expect(TerminalLinks.Link(range: 0..<1, target: "https://a.b/c").from("/repo").target == "https://a.b/c")
+    #expect(TerminalLinks.absolute("./dir/", from: "/a") == "/a/dir/")
+    #expect(TerminalLinks.links(in: "/p/t/c501/l/r/sub\u{203A} ls ../docs", exists: { $0 == "../docs" }).map(\.target) == ["../docs"])
+}
+
+@Test func namesAreFromWhereTheirCommandRan() {
+    // `ls` in /repo, then `cd sub`: its names /repo's; the prompt after
+    // the last command, where the shell is now.
+    var term = TerminalState()
+    let t = Stamp(wall: 1)
+    term.apply(.cwd("/repo"), at: t)
+    term.apply(.ran(id: 1, "ls", at: t), at: t)
+    term.apply(.exited(id: 1, status: 0, at: t), at: t)
+    term.apply(.ran(id: 2, "cd sub", at: t), at: t)
+    term.apply(.exited(id: 2, status: 0, at: t), at: t)
+    term.apply(.cwd("/repo/sub"), at: t)
+    let commands = term.commands ?? []
+    #expect(commands.map(\.cwd) == ["/repo", "/repo"])
+    let rows = [1: 3, 2: 6]
+    func at(_ r: Int) -> String? { ShellCommand.directory(ofRow: r, commands: commands, rows: rows, current: term.cwd) }
+    #expect(at(0) == "/repo/sub")      // above every command
+    #expect(at(3) == "/repo")          // ls's line
+    #expect(at(5) == "/repo")          // what it printed
+    #expect(at(6) == "/repo")          // cd's line
+    #expect(at(7) == "/repo/sub")      // the prompt now
+    // Running, the last command's output is from where it ran.
+    var running = commands
+    running[1].ended = nil
+    #expect(ShellCommand.directory(ofRow: 7, commands: running, rows: rows, current: "/elsewhere") == "/repo")
+    // A command from before commands kept where they ran: where it is now.
+    var old = commands
+    old[0].cwd = nil
+    #expect(ShellCommand.directory(ofRow: 4, commands: old, rows: rows, current: "/now") == "/now")
+}
+
 @Test func theAlternateScreenIsFollowedAcrossChunks() {
     var r = ReplayBuffer()
     r.append(Data("plain \u{1b}[31mred\u{1b}[0m\u{1b}[?25l".utf8))

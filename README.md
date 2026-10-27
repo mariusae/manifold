@@ -552,10 +552,17 @@ around it, and comes back with its history.
   path and a line and column, so `bootstrap.py:177:1:def run(` and
   `DESIGN.md:3:Manifold is…` each go to their file's line. A path with a
   line needs a dot or a slash; without one, the look of a path (`./x`,
-  `~/a`, a name with an extension); a bare name, to be there (on this
-  Mac). **Hold ⌘** over a terminal and what can be clicked shows, its text
-  in the link color an editor shows ⌘'s links in, with the same glow
-  around its letters, the one under the pointer on the same soft band. **`mani open`** (see **The `mani` command**) does the same from a
+  `~/a`, a name with an extension); a bare name, to be there. A name is
+  from where the command that printed it ran: after `ls` and `cd sub`,
+  the names `ls` listed are still the folder's it listed, and open as
+  that folder's files. **Hold ⌘** over a terminal and what can be clicked
+  shows, its text in the link color an editor shows ⌘'s links in, with
+  the same glow around its letters, the one under the pointer on the
+  same soft band. On another host the files are looked for there as ⌘
+  goes down: what looks like a path shows at once, without the glow,
+  until the host says it's there (it glows) or not (it goes), and a bare
+  name shows once it's found — usually before anything shows at all. A
+  click on one not answered for yet waits a moment for the answer. **`mani open`** (see **The `mani` command**) does the same from a
   shell: `mani open README.md src/`.
 - **Folders** open as one tree, as Claude Code's file panel shows one:
   flat, in the system font, each folder opening in place (a click on its

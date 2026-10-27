@@ -9,11 +9,56 @@ public enum TerminalLinks {
         public var range: Range<Int>
         /// What it opens: the address, or `path`, `path:line`, `path:line:column`.
         public var target: String
+        /// How sure it is that it's one: a file's, until it's looked for,
+        /// only as sure as the look of it.
+        public var standing: Standing = .sure
 
-        public init(range: Range<Int>, target: String) {
+        public init(range: Range<Int>, target: String, standing: Standing = .sure) {
             self.range = range
             self.target = target
+            self.standing = standing
         }
+
+        /// The file it names, the line and column left off; nil for an address.
+        public var path: String? {
+            guard !TerminalLinks.isAddress(target) else { return nil }
+            return target.split(separator: ":", maxSplits: 1).first.map(String.init) ?? target
+        }
+
+        /// Its file named from `base` (the directory it's relative to),
+        /// if it's relative: what it opens wherever the terminal is now.
+        public func from(_ base: String?) -> Link {
+            guard let base, let path, !path.hasPrefix("/"), !path.hasPrefix("~") else { return self }
+            var l = self
+            l.target = TerminalLinks.absolute(path, from: base) + target.dropFirst(path.count)
+            return l
+        }
+    }
+
+    /// A link's standing. An address, or a file that's been looked for, is
+    /// `sure`; a file not looked for yet (on another host) is `likely` if
+    /// it looks like a path (`/x`, `./x`, `a/b.md`, `main.c:12`) — shown,
+    /// as one not sure — and `possible` if it doesn't (a bare name, as `ls`
+    /// prints one), which isn't shown until it's found.
+    public enum Standing: Sendable {
+        case sure, likely, possible
+    }
+
+    /// A path from a directory, `..` and `.` taken out, as the text it is
+    /// (on another host as well as this one: nothing is looked at).
+    public static func absolute(_ path: String, from base: String) -> String {
+        if path.hasPrefix("/") || path.hasPrefix("~") { return path }
+        var parts: [Substring] = []
+        for p in (base + "/" + path).split(separator: "/") {
+            if p == "." { continue }
+            if p == ".." { if !parts.isEmpty { parts.removeLast() }; continue }
+            parts.append(p)
+        }
+        return "/" + parts.joined(separator: "/") + (path.hasSuffix("/") && !parts.isEmpty ? "/" : "")
+    }
+
+    static func isAddress(_ s: String) -> Bool {
+        s.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) != nil
     }
 
     private static let opening = Set("([{<\"'`".unicodeScalars)
@@ -31,9 +76,11 @@ public enum TerminalLinks {
     /// without one, a slash and the look of a path (`./x`, `/usr`, `~/a`,
     /// or a name with an extension at its end); a bare name, to be there.
     /// `exists` says whether a path is there (relative ones from where the
-    /// terminal is); nil where it can't be told (another host): then the
-    /// look of it decides.
-    public static func links(in line: String, exists: (String) -> Bool? = { _ in nil }) -> [Link] {
+    /// terminal is); nil where it can't be told yet (another host's, not
+    /// looked for): then the look of it decides, and the link is `likely`.
+    /// `possible`: those it can't be told of that don't look like paths
+    /// too (bare names), to be looked for.
+    public static func links(in line: String, exists: (String) -> Bool? = { _ in nil }, possible: Bool = false) -> [Link] {
         let s = Array(line.unicodeScalars)
         var out: [Link] = []
         var i = 0
@@ -41,7 +88,7 @@ public enum TerminalLinks {
             while i < s.count, CharacterSet.whitespaces.contains(s[i]) { i += 1 }
             var end = i
             while end < s.count, !CharacterSet.whitespaces.contains(s[end]) { end += 1 }
-            if let link = link(in: s, from: i, to: end, exists: exists) { out.append(link) }
+            if let link = link(in: s, from: i, to: end, exists: exists), possible || link.standing != .possible { out.append(link) }
             i = end
         }
         return out
@@ -73,29 +120,31 @@ public enum TerminalLinks {
             return (Int(String(String.UnicodeScalarView(s[(k + 1)..<e]))) ?? 0, e)
         }
         if let (line, e) = number(at: p), line > 0 {
-            guard path.contains(".") || path.contains("/") || exists(path) == true, exists(path) != false else { return nil }
+            let there = exists(path)
+            guard there != false else { return nil }
             var target = path + ":\(line)", last = e
             if let (column, e2) = number(at: e), column > 0 {
                 target += ":\(column)"
                 last = e2
             }
-            return Link(range: a..<last, target: target)
+            let looksLikeOne = path.contains(".") || path.contains("/")
+            return Link(range: a..<last, target: target, standing: there == true ? .sure : looksLikeOne ? .likely : .possible)
         }
         // A path alone: the word ends with it (a colon after it, at most).
         guard p == b || (s[p] == ":" && p + 1 == b) else { return nil }
+        let there = exists(path)
+        guard there != false else { return nil }
+        var looksLikeOne = false
         if path.contains("/") {
             let last = path.split(separator: "/").last.map(String.init) ?? ""
-            let looksLikeOne = path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("../") || path.hasPrefix("~/")
+            looksLikeOne = path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("../") || path.hasPrefix("~/")
                 || last.range(of: "\\.[A-Za-z][A-Za-z0-9]*$", options: .regularExpression) != nil
-            guard exists(path) ?? looksLikeOne else { return nil }
-        } else {
-            guard exists(path) == true else { return nil }
         }
-        return Link(range: a..<p, target: path)
+        return Link(range: a..<p, target: path, standing: there == true ? .sure : looksLikeOne ? .likely : .possible)
     }
 
     /// The link at a place in the line (by Unicode scalar), if any.
-    public static func link(at offset: Int, in line: String, exists: (String) -> Bool? = { _ in nil }) -> Link? {
-        links(in: line, exists: exists).first { $0.range.contains(offset) }
+    public static func link(at offset: Int, in line: String, exists: (String) -> Bool? = { _ in nil }, possible: Bool = false) -> Link? {
+        links(in: line, exists: exists, possible: possible).first { $0.range.contains(offset) }
     }
 }

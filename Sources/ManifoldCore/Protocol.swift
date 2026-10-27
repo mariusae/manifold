@@ -113,6 +113,11 @@ public enum ProtocolError: Error {
 /// What a client asks of a host that only the host can do (its files, its
 /// processes, its own shards), answered with `done`, and with entries or a
 /// proposal back.
+/// What a path is on its host.
+public enum PathKind: String, Codable, Sendable {
+    case file, folder
+}
+
 public enum Proposal: Codable, Sendable {
     /// Makes a terminal block, with a shell started when it's attached to.
     case newTerminal(block: BlockID, cwd: String?)
@@ -207,6 +212,11 @@ public enum Proposal: Codable, Sendable {
     case signal(pid: Int32, signal: Int32)
     /// A folder's entries, ignored ones marked (§7.4), answered with `listing`.
     case listFolder(path: String)
+    /// What each path is on the host — a file, a folder, or nothing —
+    /// answered with `pathKinds`: for telling which of the names a
+    /// terminal shows are files there (§3.8). A path starting with ~ is
+    /// from the host's home.
+    case lookUpPaths(paths: [String])
     /// The tree under a folder, less what's ignored, as paths relative to
     /// it: `limit` files at most; answered with `listing`.
     case listTree(path: String, limit: Int)
@@ -549,6 +559,9 @@ public enum ServerMessage: Codable, Sendable {
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
+    /// What `lookUpPaths` asked, path by path, in order (nil: nothing
+    /// there); fewer than asked when the host ran out of time looking.
+    case pathKinds(id: Int, [PathKind?])
     /// What a notebook's running cell has printed so far (its end, if
     /// long): sent as it comes, not kept; the cell's output is written
     /// when it ends (§7.7).

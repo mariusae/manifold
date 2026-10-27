@@ -310,10 +310,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The glow over keystrokes shown before the host echoes them.
     private let glow = PredictionGlow(frame: .zero)
     private var linkMonitor: Any?
-    /// Where the shell is, when its files can be looked at from here (a
-    /// terminal on this Mac): for telling that a bare name in its output
-    /// is a file. Nil on another host, where the look of a path decides.
-    var localDirectory: (() -> String?)?
+    /// Where the shell is now, on its host: what the names on the screen
+    /// below its last command are relative to (§3.8).
+    var directory: (() -> String?)?
+    /// On another host, what paths are there, looked up on it (nil: the
+    /// host not reached); nil for a terminal on this Mac, whose files are
+    /// looked at here.
+    var lookUp: (([String], @escaping ([PathKind?]?) -> Void) -> Void)?
 
     private var scrollbar = (total: 0, offset: 0, len: 0)
 
@@ -570,6 +573,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     var commands: [ShellCommand] = [] {
         didSet {
             guard commands != oldValue else { return }
+            // A command started or ended: the files it may have made or
+            // taken away looked up anew.
+            known = [:]
+            knownGeneration &+= 1
             scheduleLocate()
             updateDots()
             fillOutline()
@@ -728,8 +735,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             ghostty_surface_manifold_info(surface, &info)
             let p = NSPoint(x: info.pad_left + (Double(n[1]) + 0.5) * info.cell_width, y: Double(bounds.height) - info.pad_top - (Double(n[0]) + 0.5) * info.cell_height)
             guard let hit = link(at: p) else { return "no link there" }
-            delegate?.terminal(self, open: hit.target, over: false)
-            return "opened \(hit.target)"
+            open(hit, over: false)
+            return "opened \(hit.target) (\(hit.standing))"
         case "pulse":
             // "scrub pulse <row> <from> <to> [<to row>]": cells of the viewport
             // selected (through ghostty, nothing copied) and pulsed as a copy is.
@@ -762,6 +769,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             return screenLines()?.last(where: { $0.row <= r }).map { "\($0.row): \($0.text)" } ?? "none"
         case "lines":
             return (screenLines() ?? []).suffix(Int(arg) ?? 20).map { "\($0.row): \($0.text)" }.joined(separator: "\n")
+        case "rowlinks":
+            // "scrub rowlinks <r>": a viewport row's text and every link in it.
+            guard let r = Int(arg), let surface else { return "usage: scrub rowlinks <row>" }
+            let cols = Int(ghostty_surface_size(surface).columns)
+            let text = viewportRow(r, cols: cols)?.text ?? "?"
+            return text.debugDescription + "\n" + links(inRow: r, cols: cols, possible: true).map { "\($0.from)-\($0.to) \($0.link.target) \($0.link.standing)" }.joined(separator: "\n")
+        case "bases":
+            // "scrub bases": each command's row and where it ran, then each
+            // row of the viewport's directory.
+            let cs = commands.map { "\($0.id) row \(located[$0.id].map(String.init) ?? "?") ran in \($0.cwd ?? "?")" }
+            return (cs + (0..<max(scrollbar.len, 1)).map { "\($0): \(base(ofRow: $0) ?? "?")" }).joined(separator: "\n")
         default:
             return debugScrubber
         }
@@ -898,8 +916,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // off (it underlined them under the pointer); a program's own
         // links (OSC 8) are still its.
         pendingLink = nil
-        if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)) {
-            pendingLink = (hit.target, event.locationInWindow, event.modifierFlags.contains(.option))
+        if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)), hit.standing != .possible {
+            pendingLink = (hit, event.locationInWindow, event.modifierFlags.contains(.option))
             return
         }
         commandClickAt = event.modifierFlags.contains(.command) ? event.locationInWindow : nil
@@ -933,19 +951,24 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
-        if let (target, at, over) = pendingLink {
+        if let (link, at, over) = pendingLink {
             pendingLink = nil
-            if hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) < 4 { delegate?.terminal(self, open: target, over: over) }
+            if hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) < 4 { open(link, over: over) }
             return
         }
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, clickMods(event))
         ghostty_surface_mouse_pressure(surface, 0, 0)
         if ghostty_surface_has_selection(surface) { NotificationCenter.default.post(name: .manifoldSelectionMade, object: self) }
-        // A ⌘-click ghostty took for no link: the word there, for a folder.
+        // A ⌘-click ghostty took for no link: a name there not looked for
+        // yet (on another host), opened if it's found; else the word
+        // there, for a folder.
         if let down = commandClickAt, hypot(event.locationInWindow.x - down.x, event.locationInWindow.y - down.y) < 4 {
             let over = openOver
+            let possible = link(at: convert(down, from: nil)).flatMap { $0.standing == .possible ? $0 : nil }
             DispatchQueue.main.async { [weak self] in
-                guard let self, !self.linkOpened, let word = self.wordUnderPointer, !word.isEmpty else { return }
+                guard let self, !self.linkOpened else { return }
+                if let possible { return self.open(possible, over: over) }
+                guard let word = self.wordUnderPointer, !word.isEmpty else { return }
                 self.delegate?.terminal(self, openFolder: word, over: over)
             }
         }
@@ -961,17 +984,111 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// A ⌘-click on a file, until the button comes up: what it opens,
     /// where it went down, and whether ⌥ was held (to open over).
-    private var pendingLink: (target: String, at: NSPoint, over: Bool)?
+    private var pendingLink: (link: TerminalLinks.Link, at: NSPoint, over: Bool)?
 
-    /// Whether a path is there, from where the shell is — when that can be
-    /// told from here.
-    private var pathExists: (String) -> Bool? {
-        guard let base = localDirectory?() else { return { _ in nil } }
-        return { path in
-            var p = (path as NSString).expandingTildeInPath
-            if !p.hasPrefix("/") { p = (base as NSString).appendingPathComponent(p) }
-            return FileManager.default.fileExists(atPath: p)
+    /// The directory the names on a row of the viewport are relative to:
+    /// where the command they're from ran (§3.8).
+    private func base(ofRow r: Int) -> String? {
+        ShellCommand.directory(ofRow: scrollbar.offset + r, commands: commands, rows: located, current: directory?())
+    }
+
+    /// Whether a path named from a directory is there: looked at, on this
+    /// Mac; on another host, as last looked up there — nil if it hasn't
+    /// been, the path noted (`unknown`) to be asked.
+    private func exists(from base: String?) -> (String) -> Bool? {
+        if lookUp == nil {
+            return { path in
+                var p = (path as NSString).expandingTildeInPath
+                if !p.hasPrefix("/") {
+                    guard let base else { return nil }
+                    p = TerminalLinks.absolute(p, from: base)
+                }
+                return FileManager.default.fileExists(atPath: p)
+            }
         }
+        return { [weak self] path in
+            guard let self, path.hasPrefix("/") || path.hasPrefix("~") || base != nil else { return nil }
+            let p = TerminalLinks.absolute(path, from: base ?? "/")
+            if let kind = self.known[p] { return kind != nil }
+            self.unknown.insert(p)
+            return nil
+        }
+    }
+
+    /// On another host, the paths looked up there, until a command starts
+    /// or ends: what each is (nil: nothing there).
+    private var known: [String: PathKind?] = [:]
+    private var knownGeneration = 0
+    /// Those asked, not answered yet.
+    private var asking: Set<String> = []
+    /// What waits for paths to be answered.
+    private var awaiting: [(paths: Set<String>, done: () -> Void)] = []
+    /// Those a reading of the screen couldn't tell of, to be asked.
+    private var unknown: Set<String> = []
+
+    /// Paths not known asked of the terminal's host; `then`, once they're
+    /// answered — or in a moment, if they aren't.
+    private func ask(_ paths: Set<String>, then: (() -> Void)? = nil) {
+        guard let lookUp else { then?(); return }
+        let new = Array(paths.filter { known[$0] == nil && !asking.contains($0) }.prefix(4000))
+        if !new.isEmpty {
+            asking.formUnion(new)
+            let generation = knownGeneration
+            lookUp(new) { [weak self] kinds in
+                guard let self else { return }
+                if generation == self.knownGeneration {
+                    for (p, kind) in zip(new, kinds ?? []) { self.known[p] = .some(kind) }
+                }
+                self.asking.subtract(new)
+                self.answered()
+            }
+        }
+        guard let then else { return }
+        let waiting = paths.filter { asking.contains($0) }
+        guard !waiting.isEmpty else { return then() }
+        var called = false
+        let once = {
+            guard !called else { return }
+            called = true
+            then()
+        }
+        awaiting.append((waiting, once))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: once)
+    }
+
+    /// Paths answered: what waited for them, and the links marked again,
+    /// those found sure now and those not there gone.
+    private func answered() {
+        let ready = awaiting.filter { $0.paths.isDisjoint(with: asking) }
+        awaiting.removeAll { $0.paths.isDisjoint(with: asking) }
+        ready.forEach { $0.done() }
+        if markedRuns != nil { markLinks() }
+    }
+
+    /// A link ⌘-clicked: opened — a file not looked for yet once it's
+    /// been looked for, if it's there (or, the host not answering in a
+    /// moment, if it looks like one).
+    private func open(_ link: TerminalLinks.Link, over: Bool) {
+        guard link.standing != .sure, let path = link.path, path.hasPrefix("/") || path.hasPrefix("~") else {
+            return link.standing == .possible ? () : (delegate?.terminal(self, open: link.target, over: over) ?? ())
+        }
+        ask([path]) { [weak self] in
+            guard let self else { return }
+            let found = self.known[path].map { $0 != nil }
+            if found ?? (link.standing == .likely) { self.delegate?.terminal(self, open: link.target, over: over) }
+        }
+    }
+
+    /// On another host, the screen's names asked about as ⌘ goes down,
+    /// while the links wait to be marked: answered by then (on the usual
+    /// connection), none is shown unsure.
+    private func lookUpAhead() {
+        guard lookUp != nil, let surface else { return }
+        var info = ghostty_manifold_info_s()
+        ghostty_surface_manifold_info(surface, &info)
+        unknown = []
+        for r in 0..<Int(info.rows) { _ = links(inRow: r, cols: Int(info.cols)) }
+        if !unknown.isEmpty { ask(unknown) }
     }
 
     /// A row of the viewport as text, and the column each character
@@ -997,13 +1114,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return (text, columns)
     }
 
-    /// The links in a row of the viewport, as runs of its cells.
-    private func links(inRow r: Int, cols: Int, exists: (String) -> Bool?) -> [(link: TerminalLinks.Link, from: Int, to: Int)] {
+    /// The links in a row of the viewport, as runs of its cells, their
+    /// files named from where the command they're from ran. `possible`:
+    /// names not looked for yet too (`TerminalLinks.Standing`).
+    private func links(inRow r: Int, cols: Int, possible: Bool = false) -> [(link: TerminalLinks.Link, from: Int, to: Int)] {
         guard let (text, columns) = viewportRow(r, cols: cols), !columns.isEmpty else { return [] }
         let scalars = Array(text.unicodeScalars)
-        return TerminalLinks.links(in: text, exists: exists).map { l in
+        let base = base(ofRow: r)
+        return TerminalLinks.links(in: text, exists: exists(from: base), possible: possible).map { l in
             let last = l.range.upperBound - 1
-            return (l, columns[l.range.lowerBound], columns[last] + max(1, Self.width(scalars[last])))
+            return (l.from(base), columns[l.range.lowerBound], columns[last] + max(1, Self.width(scalars[last])))
         }
     }
 
@@ -1023,7 +1143,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         guard let (col, row) = cell(at: p, info) else { return nil }
-        return links(inRow: row, cols: Int(info.cols), exists: pathExists).first { $0.from <= col && col < $0.to }?.link
+        return links(inRow: row, cols: Int(info.cols), possible: true).first { $0.from <= col && col < $0.to }?.link
     }
 
     /// ⌘ held with the pointer over the terminal marks the links on its
@@ -1048,7 +1168,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             if down {
                 if event.type == .flagsChanged, self.markedRuns == nil {
                     // The screen read a moment after ⌘ goes down, if no key
-                    // follows — or the links would flash at every shortcut.
+                    // follows — or the links would flash at every shortcut;
+                    // another host's files looked up meanwhile.
+                    self.lookUpAhead()
                     self.pendingMark?.cancel()
                     let work = DispatchWorkItem { [weak self] in
                         guard let self else { return }
@@ -1081,11 +1203,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The links' reading, put off a moment after ⌘ goes down.
     private var pendingMark: DispatchWorkItem?
 
-    /// The links marked while ⌘ is held, as last read from the screen.
-    private var markedRuns: [(row: Int, from: Int, to: Int)]?
+    /// The links marked while ⌘ is held, as last read from the screen;
+    /// `sure`, those that glow.
+    private var markedRuns: [(row: Int, from: Int, to: Int, sure: Bool)]?
 
     /// Marks the screen's links (read again, or as last read), the one
-    /// under the pointer underlined.
+    /// under the pointer underlined. Those sure of glow; a file on another
+    /// host not looked for yet, though it looks like one, is in the link
+    /// color without the glow until it's found — and gone if it isn't.
     private func markLinks(reading: Bool = true) {
         guard let surface, let window else { return }
         var info = ghostty_manifold_info_s()
@@ -1094,16 +1219,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard cols > 0 else { return }
         var runs = reading ? [] : markedRuns ?? []
         if reading {
-            let exists = pathExists
+            unknown = []
             for r in 0..<Int(info.rows) {
-                for l in links(inRow: r, cols: cols, exists: exists) { runs.append((r, l.from, l.to)) }
+                for l in links(inRow: r, cols: cols) { runs.append((r, l.from, l.to, l.link.standing == .sure)) }
             }
             markedRuns = runs
-            glow.showLinks(linkGlyphs(runs, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+            glow.showLinks(linkGlyphs(runs.filter { $0.sure }.map { ($0.row, $0.from, $0.to) }, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+            if !unknown.isEmpty { ask(unknown) }
         }
         let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
         let hovered = under.flatMap { u in runs.firstIndex { $0.row == u.row && $0.from <= u.col && u.col < $0.to } }
-        showLinks(runs, hovered: hovered)
+        showLinks(runs.map { ($0.row, $0.from, $0.to) }, hovered: hovered)
         (hovered != nil ? NSCursor.pointingHand : cursor).set()
     }
 
@@ -1185,22 +1311,25 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         let cols = Int(info.cols)
-        let exists = pathExists
         var runs: [(row: Int, from: Int, to: Int)] = []
+        var sure: [(row: Int, from: Int, to: Int)] = []
         var targets: [String] = []
+        unknown = []
         for r in 0..<Int(info.rows) {
-            for l in links(inRow: r, cols: cols, exists: exists) {
+            for l in links(inRow: r, cols: cols) {
                 runs.append((r, l.from, l.to))
+                if l.link.standing == .sure { sure.append((r, l.from, l.to)) }
                 // Its middle in the window's coordinates from the top left (as `cmdclick` takes them).
                 let p = convert(NSPoint(x: info.pad_left + (Double(l.from + l.to) / 2) * info.cell_width,
                                         y: Double(bounds.height) - info.pad_top - (Double(r) + 0.5) * info.cell_height), to: nil)
                 let top = (window?.contentView?.bounds.height ?? 0) - p.y
-                targets.append("\(r):\(l.from)-\(l.to) \(l.link.target) at \(Int(p.x)) \(Int(top))")
+                targets.append("\(r):\(l.from)-\(l.to) \(l.link.target) \(l.link.standing) at \(Int(p.x)) \(Int(top))")
             }
         }
+        if !unknown.isEmpty { ask(unknown) }
         let hovered = hoverRow.flatMap { hr in runs.firstIndex { $0.row == hr && $0.from <= (col ?? 0) && (col ?? 0) < $0.to } }
         showLinks(runs, hovered: hovered)
-        glow.showLinks(linkGlyphs(runs, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+        glow.showLinks(linkGlyphs(sure, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
         return (targets + [glow.debugLinkGlow]).joined(separator: "\n")
     }
 

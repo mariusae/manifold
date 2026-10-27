@@ -481,6 +481,33 @@ the command line and its outcome above, read-only, Copy putting the
 command and the text on the clipboard and Show in Terminal going back
 to the command.
 
+A command keeps where the shell was as it ran (`cwd`, taken from the
+block's as `ran` is applied; a shell that doesn't send OSC 7 has its
+process asked first), and the names on a row are from there: the
+command's whose row is at or above it, or, below the last command once
+it has ended, where the shell is now. So ⌘ held after `ls` and `cd sub`
+still links the names `ls` printed, to the folder it listed, here and on
+another host alike; a link's target is made absolute from that
+directory before it is opened.
+
+The terminal finds its links by reading the viewport's rows with ⌘ held
+(`TerminalLinks`), and a file's link is only as sure as its path can be
+looked at. On this Mac each is looked at as the rows are read, so every
+link is `sure`. On another host it can't be, in the time a pointer
+moves, so a link is `likely` (it looks like a path: `/x`, `./x`, `a/b.md`,
+`main.c:12`) or `possible` (a bare name), and the host is asked: as ⌘
+goes down, before the links are drawn, the app sends `lookUpPaths` with
+the absolute paths it couldn't tell of, and the host answers each as a
+file, a folder or nothing (`pathKinds`; fewer than asked if it ran out
+of a second and a half, the rest left as they were). Answered, the
+links are read again: those found are `sure`, those not there are gone,
+and bare names found appear. `sure` links glow; `likely` ones are drawn
+in the link colour without the glow; `possible` ones aren't drawn. The
+answers are kept until a command starts or ends. A click on a link not
+answered for yet waits for the answer (a second at most: then a `likely`
+one opens on its look, a `possible` one doesn't). A server from before
+`lookUpPaths` ignores it, and links are as their look says.
+
 ### 3.9 Hosts that come and go
 
 A remote host is a client the app keeps whether or not it can reach it
@@ -605,7 +632,7 @@ race. Saving a file is the client leading `Exec{Save, host}`; the host
 writes and proposes `Clean{version}`.
 
 Cross-host operations are ordinary execs: ⌘-clicking `main.go` in a
-terminal on `devbox` asks devbox to resolve it, and the answer is a
+terminal on `devbox` asks devbox whether it's there (§3.8) and to resolve it, and the answer is a
 proposal to the space (which may live on `local`) to place
 `devbox/<id>` beside the terminal, plus a `Link` on devbox.
 
