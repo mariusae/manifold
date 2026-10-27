@@ -368,13 +368,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
         view.addItem(.separator())
         let organize = NSMenu(title: "Organize By")
-        for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
-                                  ("Inbox", #selector(MainWindowController.organizeByInbox(_:)), "3")] {
+        for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
         organizeItem.submenu = organize
         view.addItem(organizeItem)
+        // The sidebar narrowed, whichever way it's organized (§3.6).
+        item(view, "Show Only Blocks with a Status", #selector(MainWindowController.toggleSidebarFilter(_:)), ".")
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         // ⌘= too, the key + is on, unshifted.

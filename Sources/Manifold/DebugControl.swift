@@ -683,11 +683,13 @@ enum DebugControl {
             return "no terminal or editor focused"
         case "org":
             // "org rows": the sidebar's rows; "org click <row> [cmd|double]";
-            // "org show kept|closed|desk|files|inbox".
+            // "org show closed|desk|files"; "org filter on|off".
             let a = arg.split(separator: " ").map(String.init)
             guard let wc else { return "no window" }
             if a.first == "show", a.count >= 2, let org = Organization(rawValue: a[1]) { wc.setOrganization(org); return "ok" }
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
+            // "org filter on|off": the sidebar narrowed to blocks with a status (⌘.).
+            if a.first == "filter", a.count >= 2 { wc.setSidebarFilter(a[1] == "on" ? .status : nil); return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }
@@ -780,7 +782,7 @@ enum DebugControl {
             // US layout key codes: the menu matches by them as well as by the characters.
             let codes: [String: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12,
                                            "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38,
-                                           "k": 40, "n": 45, "m": 46, "\t": 48, "`": 50, "'": 39, "\\": 42, "[": 33, "]": 30, "=": 24, "-": 27]
+                                           "k": 40, "n": 45, "m": 46, ".": 47, "\t": 48, "`": 50, "'": 39, "\\": 42, "[": 33, "]": 30, "=": 24, "-": 27]
             guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                                windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
                                                isARepeat: false, keyCode: codes[key] ?? 37) else { return "usage: keyequiv [mods+]<key>" }

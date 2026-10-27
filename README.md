@@ -20,13 +20,13 @@ parts from the Mac's conventions on purpose.
 
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
-  organized three ways (Spaces · Files · Inbox, below), with a
-  filter. It sits beside the content; ⌃⌘S (or the button at its top
+  organized two ways (Spaces · Files, below), narrowed at a key to
+  the blocks with a status (⌘., below). It sits beside the content; ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Along the bottom of the sidebar run Spaces and Files, the Inbox,
-  and, at the right, counts of what needs you,
-  is working and is done and not yet read, which open the Inbox. The
+  top to move the window. Along the bottom of the sidebar run Spaces and Files, the
+  lighthouse (the filter, ⌘.), and, at the right, counts of what needs you,
+  is working and is done and not yet read, which turn the filter on. The
   window sits on a wash of soft colour (Look, below). Under Spaces the
   tree is one shape, always: a host's
   heading, then each of its spaces, then every tile in it, in
@@ -296,11 +296,20 @@ parts from the Mac's conventions on purpose.
   box in a task list — a quote with its mark, and on an empty item ends
   it. The bar's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
-- **Inbox** (Organize By ▸ Inbox, ⌥⌘3, or the counts at the sidebar's
-  foot) lists the blocks whose status wants attention — done or failed
-  and not yet read, or needing you — by host and space, each with
-  what it said and how long ago. Reading a block (focusing it) takes it
-  out; there is nothing to clear by hand. **⌘J** (Go ▸ Next in
+- **Blocks with a status** (⌘., View ▸ Show Only Blocks with a Status,
+  the lighthouse at the sidebar's foot, or its counts) narrows the
+  sidebar, whichever way it's organized, to the blocks that are working,
+  need you, or are done or failed — and the way to each: its host and
+  space in Spaces (a tile behind in a stack with the stack's top, the
+  two in the stack's outline), its folders in Files — every row on the
+  way open, each count of what's shown. The lighthouse fills, lit, while
+  it's on; ⌘. again, or a click, shows everything as it was, what you
+  had open and closed kept. Nothing to show says so. The filter is one
+  of a kind that may grow: it tests each block, and the trees it narrows
+  don't know which. The **Inbox** is the blocks whose status wants
+  attention — done or failed and not yet read, or needing you — by host
+  and space; reading a block (focusing it) takes it out, and there is
+  nothing to clear by hand. **⌘J** (Go ▸ Next in
   Inbox) goes through it in that order, from anywhere: to the next block
   after the focused one (or the first), in whatever space holds it,
   the pointer warped to its tile and the block marked read — a block
@@ -850,8 +859,8 @@ around it, and comes back with its history.
   space now is listed first, what's kept otherwise after it, dimmed;
   what's closed and not yet collected is only in Recently Closed
   (repositories, `~` and `/` at the top; runs of single folders one row;
-  counts beneath; rows fade as they go unseen); **Inbox** — what wants
-  attention (above). A filter narrows any of them. The rows work the
+  counts beneath; rows fade as they go unseen). The filter (⌘.) narrows
+  either to the blocks with a status (above). The rows work the
   same everywhere, by the one rule for opening things (below);
   rest the pointer for a card — after a moment, a picture of the block,
   as Safari previews a tab (out of sight, as it was last seen; a
@@ -934,8 +943,9 @@ around it, and comes back with its history.
   not showing — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's
   command that ran ten seconds or more ending (how long, and its exit
-  status if it failed); clicked, one goes to the block, and the command. The **Inbox**
-  (above) lists what wants attention. Overview (⌘') shows a space's blocks
+  status if it failed); clicked, one goes to the block, and the command. The sidebar's
+  filter (⌘., above) shows only the blocks with a status, and ⌘J goes
+  to the next that wants attention. Overview (⌘') shows a space's blocks
   themselves, live, as a **state view** — or, with its filter on
   **Agents** (Window ▸ Agents, ⌃⌘A), every agent on every host: a list,
   stacked down one scrolling column as Prism's notes are, each under its
@@ -947,7 +957,7 @@ around it, and comes back with its history.
   right choose). Nothing is placed: click a card or a bar to go to the
   block, ⌘-click to open it beside the tile you were on, ⌥-click over
   it, ⎋ (or ×) to go back.
-  **Clear Status**, in a row's menu in the Inbox or the tile's bar menu,
+  **Clear Status**, in a block's row menu in the sidebar or the tile's bar menu,
   forgets what a block reported until it reports again; a group's row
   offers Clear All. From a shell:
 

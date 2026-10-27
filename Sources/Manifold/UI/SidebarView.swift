@@ -16,6 +16,9 @@ protocol SidebarDelegate: AnyObject {
     /// Another organization was chosen, or the filter typed in.
     func sidebarOrganizationChanged(_ organization: Organization)
     func sidebarFilterChanged(_ text: String)
+    /// The bar's filter button, or the counts: narrowed to a filter, or
+    /// not (nil).
+    func sidebarFilter(_ filter: SidebarFilter?)
 }
 
 class FlippedView: NSView {
@@ -39,13 +42,15 @@ final class SidebarView: NSView {
     private let header = WindowDragView()
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
-    /// The tree; the filter over it, shown by the bar's search; the bar
-    /// at the bottom: search, by workspace or by file, the inbox, and the
-    /// counts of what's doing something, which go to Status.
+    /// The tree; the bar at the bottom: by workspace or by file, the
+    /// filter (⌘.), and the counts of what's doing something, which turn
+    /// the filter on.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
     private let byButton: IconButton
-    private let inboxButton: IconButton
+    private let filterButton: IconButton
+    /// What the tree is narrowed to, if anything.
+    private(set) var filter: SidebarFilter?
     private let counts = StatusCountsView()
     /// A quiet row above the bar (§4): what's closed and not yet
     /// collected; it opens its list in place of the tree, and again puts
@@ -71,7 +76,7 @@ final class SidebarView: NSView {
         newButton = IconButton(symbol: "plus", size: 13, weight: .medium, target: nil, action: nil)
         moreButton = IconButton(symbol: "ellipsis", size: 13, weight: .medium, target: nil, action: nil)
         byButton = IconButton(symbol: Organization.desk.symbol, size: 13, weight: .medium, target: nil, action: nil)
-        inboxButton = IconButton(symbol: Organization.inbox.symbol, size: 13, weight: .medium, target: nil, action: nil)
+        filterButton = IconButton(symbol: "circle", size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
         wantsLayer = true
         if let layer { Elevation.float.apply(to: layer) }
@@ -106,11 +111,11 @@ final class SidebarView: NSView {
 
         byButton.target = self
         byButton.action = #selector(toggleBy)
-        inboxButton.target = self
-        inboxButton.action = #selector(inboxClicked)
-        inboxButton.toolTip = "Inbox (⌥⌘3)"
-        counts.onClick = { [weak self] in self?.chooseOrganization(.inbox) }
-        for v in [byButton, inboxButton, counts, closedRow, transfers] { card.addSubview(v) }
+        filterButton.target = self
+        filterButton.action = #selector(filterClicked)
+        counts.onClick = { [weak self] in self?.delegate?.sidebarFilter(.status) }
+        for v in [byButton, filterButton, counts, closedRow, transfers] { card.addSubview(v) }
+        setFilter(nil)
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         card.addSubview(organizationView)
 
@@ -148,7 +153,7 @@ final class SidebarView: NSView {
         // The bar along the bottom: its buttons at the left, the counts at the right.
         let by: CGFloat = (Self.barHeight - 20) / 2
         var x: CGFloat = 12
-        for b in [byButton, inboxButton] {
+        for b in [byButton, filterButton] {
             b.frame = NSRect(x: x, y: by, width: 20, height: 20)
             x += 28
         }
@@ -178,7 +183,6 @@ final class SidebarView: NSView {
         byButton.image = Theme.symbol(by.symbol, size: 13, weight: .medium)
         byButton.toolTip = org == .files ? "Spaces (⌥⌘1)" : "Files (⌥⌘2)"
         byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
-        inboxButton.contentTintColor = org == .inbox ? Theme.text : Theme.secondaryText
         closedRow.current = org == .closed
         pushedTitle.stringValue = org.title
         needsLayout = true
@@ -208,7 +212,16 @@ final class SidebarView: NSView {
     }
 
     @objc private func toggleBy() { chooseOrganization(organization == .desk ? .files : .desk) }
-    @objc private func inboxClicked() { chooseOrganization(organization == .inbox ? .desk : .inbox) }
+    @objc private func filterClicked() { delegate?.sidebarFilter(filter == nil ? .status : nil) }
+
+    /// Shows the filter on (its button filled, in the accent) or off.
+    func setFilter(_ f: SidebarFilter?) {
+        filter = f
+        let shown = f ?? .status
+        filterButton.image = shown.image(on: f != nil)
+        filterButton.contentTintColor = f == nil ? Theme.secondaryText : Theme.accent
+        filterButton.toolTip = f == nil ? "Show Only \(shown.title) (⌘.)" : "Showing Only \(shown.title) — Show All (⌘.)"
+    }
 
 
 
@@ -404,7 +417,7 @@ final class FootRowView: NSView {
 
 /// The bar's counts of what's doing something (§3.7): needs you, working,
 /// done and not yet read — each its glyph and a number, hidden at zero;
-/// clicked, Status.
+/// clicked, the sidebar narrowed to blocks with a status.
 final class StatusCountsView: NSView {
     var onClick: (() -> Void)?
     var emphasized = false { didSet { for l in labels { l.textColor = emphasized ? Theme.text : Theme.secondaryText } } }
@@ -423,7 +436,7 @@ final class StatusCountsView: NSView {
             l.textColor = Theme.secondaryText
             addSubview(l)
         }
-        toolTip = "Inbox (⌥⌘3)"
+        toolTip = "Show Only Blocks with a Status (⌘.)"
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -458,4 +471,67 @@ final class StatusCountsView: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+}
+
+/// The filter's mark (§3.6): a lighthouse — there being none among the
+/// system's symbols — drawn as a template at a symbol's size, in its
+/// weight: its tower, lamp room and roof; on, filled, its light shining
+/// both ways.
+enum Lighthouse {
+    private static var made: [Bool: NSImage] = [:]
+
+    static func image(on: Bool) -> NSImage {
+        if let i = made[on] { return i }
+        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
+            NSColor.black.set()
+            let line: CGFloat = 1.3
+            let roof = NSBezierPath()
+            roof.move(to: NSPoint(x: 5.4, y: 12.0)); roof.line(to: NSPoint(x: 8, y: 14.9)); roof.line(to: NSPoint(x: 10.6, y: 12.0)); roof.close()
+            roof.fill()
+            // The gallery under the lamp room.
+            NSBezierPath(roundedRect: NSRect(x: 4.6, y: 8.7, width: 6.8, height: 1.3), xRadius: 0.4, yRadius: 0.4).fill()
+            let lamp = NSRect(x: 6.3, y: 10.0, width: 3.4, height: 2.0)
+            if on {
+                NSBezierPath(rect: lamp).fill()
+            } else {
+                let p = NSBezierPath(rect: lamp.insetBy(dx: 0.45, dy: -0.2))
+                p.lineWidth = 0.9
+                p.stroke()
+            }
+            // The tower, narrowing up to the gallery, on its base.
+            let tower = NSBezierPath()
+            tower.move(to: NSPoint(x: 4.7, y: 1.6)); tower.line(to: NSPoint(x: 11.3, y: 1.6))
+            tower.line(to: NSPoint(x: 10.1, y: 8.7)); tower.line(to: NSPoint(x: 5.9, y: 8.7)); tower.close()
+            tower.lineJoinStyle = .round
+            if on {
+                tower.fill()
+            } else {
+                tower.lineWidth = line
+                tower.stroke()
+                let band = NSBezierPath()
+                band.move(to: NSPoint(x: 5.3, y: 5.0)); band.line(to: NSPoint(x: 10.7, y: 5.0))
+                band.lineWidth = line
+                band.stroke()
+            }
+            let base = NSBezierPath()
+            base.move(to: NSPoint(x: 2.8, y: 1.0)); base.line(to: NSPoint(x: 13.2, y: 1.0))
+            base.lineWidth = line
+            base.lineCapStyle = .round
+            base.stroke()
+            if on {
+                for (a, b) in [(NSPoint(x: 4.6, y: 11.5), NSPoint(x: 1.4, y: 12.6)), (NSPoint(x: 11.4, y: 11.5), NSPoint(x: 14.6, y: 12.6)),
+                               (NSPoint(x: 4.6, y: 10.5), NSPoint(x: 1.8, y: 9.7)), (NSPoint(x: 11.4, y: 10.5), NSPoint(x: 14.2, y: 9.7))] {
+                    let ray = NSBezierPath()
+                    ray.move(to: a); ray.line(to: b)
+                    ray.lineWidth = 0.95
+                    ray.lineCapStyle = .round
+                    ray.stroke()
+                }
+            }
+            return true
+        }
+        image.isTemplate = true
+        made[on] = image
+        return image
+    }
 }

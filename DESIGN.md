@@ -342,12 +342,19 @@ the graph has to capture everything any organization needs:
 |---|---|---|
 | **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, a stack's tiles in a dotted outline | the spaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
-| **Inbox** | the blocks whose status wants attention (§3.7), by host and space | hosts |
 
-Three. The links live on the tile's bar and in the neighborhood map
+Two, and a filter over either (`SidebarFilter`, ⌘., the lighthouse at
+the foot): a test of each block — the first, blocks with a status,
+working, needing you, done or failed — that keeps the rows it admits
+and the way to each (`OrgNode.filtered`: a row stays if it or anything
+under it is admitted; a tile behind in a stack keeps its stack's top,
+the two outlined as the stack is; counts are of what's admitted), every
+row on the way open, what was open and closed by hand kept aside and
+put back. It knows nothing of the trees, so a filter more is a case
+more. The links live on the tile's bar and in the neighborhood map
 (⌥⌘M, or a link's menu) as the one big view of them; what's working,
-done or needing you is the counts at the sidebar's foot, which open the
-Inbox, and Overview; and time is ⌘O with nothing typed, which is the
+done or needing you is the counts at the sidebar's foot, which turn the
+filter on, and Overview; and time is ⌘O with nothing typed, which is the
 trail.
 
 Two edges make the first two possible. **`contains`** (folder → file or
@@ -529,7 +536,9 @@ shows the state and opens the host's home (the welcome carries it).
 
 **The Inbox** is a derivation, not a flag: the blocks whose root
 status wants attention — done or failed and not yet read, or needing
-you — by host and space. Reading a block (focusing it) takes it
+you — by host and space, gone through with ⌘J and counted on the Dock
+(no list of its own: the sidebar's filter shows them, with the rest
+that have a status). Reading a block (focusing it) takes it
 out; nothing is set or cleared by hand. (Keeping a block is a separate
 thing, §4.)
 
@@ -1081,7 +1090,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `.status` entries, `StatusScanner` for OSC 7501, 9;4 and 133 fed by
   each session on the host, the host reporting for searches, git and
   diffs, `attend` marking done and error read; `StatusGlyph` in bars,
-  rows and Open Quickly; the Inbox; the Dock badge.
+  rows and Open Quickly; the Inbox (⌘J) and the sidebar's filter; the Dock badge.
 - Overview (§3.6, milestone 19): `StateView` over the surface for a
   space's blocks, or every agent's (⌘', ⌃⌘A), as a list, an overview or
   summaries; the blocks' views under `state:` placement ids, kept while
@@ -1192,7 +1201,8 @@ Then, putting the model to use (§3.7, §3.1 as a grid, state views):
     `StatusScanner` in the core for OSC 7501, 9;4 and 133; the host
     feeding it from each session, reporting for searches, git and
     diffs, and dismissing on `attend`; the glyph (`StatusGlyph`) in
-    sidebar rows, the finder and cards; the Inbox; the Dock badge.
+    sidebar rows, the finder and cards; the Inbox (⌘J) and the sidebar's
+    filter; the Dock badge.
 18. **Grids.** `ArrangementState` as acme's tiling (columns of tiles
     with heights, `Heights` back in the log); `GridView` with pills
     (`TilePill`) for tiles; placement by acme's rule; Go to and Bring

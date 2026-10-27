@@ -373,15 +373,17 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
 </template>
 
 <template data-block="sidebar" data-kind="note" data-title="The sidebar" data-place="Guide"
-          data-summary="Spaces, Files, the Inbox | every row by the one rule">
+          data-summary="Spaces and Files, and what has a status | every row by the one rule">
   <div class="doc">
     <h1>The sidebar</h1>
-    <p>The sidebar shows the same graph three ways (<kbd>⌥⌘1</kbd>–<kbd>⌥⌘3</kbd>):</p>
+    <p>The sidebar shows the same graph two ways (<kbd>⌥⌘1</kbd>, <kbd>⌥⌘2</kbd>):</p>
     <ul>
       <li><b>Spaces</b> — each host, its spaces, and every tile in them, in order: the table of contents of the screen. A stack's tiles sit in a dotted outline.</li>
       <li><b>Files</b> — every block with a path, in its folders, across hosts.</li>
-      <li><b>Inbox</b> — what wants you: done or failed and not yet seen, or needing an answer.</li>
     </ul>
+    <p><kbd>⌘.</kbd> — or the lighthouse at its foot — narrows either to the blocks with a
+    status (working, done, failed, needing you), and the way to each: its space, a stacked
+    tile's stack, its folders.</p>
     <p>Rows open by <a href="#opening" data-open="opening">the one rule</a>; rest the pointer
     on one for a picture of the tile. <kbd>⌃⌘S</kbd> keeps the sidebar shown or lets it slide
     out at the window's edge.</p>
@@ -397,7 +399,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     searches, git and saves report as they go. It shows at the right of each
     bar and sidebar row; the Dock counts what needs you.</p>
     <ul>
-      <li><b>The Inbox</b> lists what wants attention; focusing a block marks it read. <kbd>⌘J</kbd> goes to the next, from anywhere.</li>
+      <li><b>The lighthouse</b> (<kbd>⌘.</kbd>) narrows the sidebar to the blocks with a status; focusing a block marks it read. <kbd>⌘J</kbd> goes to the next that wants you, from anywhere.</li>
       <li><b>Overview</b> (<kbd>⌘'</kbd>) shows every block in the space at once, live — or, past ten, as summary cards. Filtered to <b>Agents</b> (<kbd>⌃⌘A</kbd>), it shows every agent on every host.</li>
       <li>Out of sight, the Mac's notifications say when something finishes, fails or needs you.</li>
     </ul>
@@ -504,7 +506,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     Gemini CLI, Pi — started with File ▸ New Agent (<kbd>⌥⌘A</kbd>) or Launch Agent Here.</p>
     <ul>
       <li>Its <b>turns</b> are its outline: what was asked, what it said, what it changed. <b>Changes in This Turn</b> shows a turn's diff; <b>Undo This Turn</b> takes it back.</li>
-      <li>Its status shows as it works; the Inbox and <kbd>⌘J</kbd> take you to the one that needs you; <kbd>⌃⌘A</kbd> shows every agent on every host.</li>
+      <li>Its status shows as it works; <kbd>⌘.</kbd> shows only what has a status, and <kbd>⌘J</kbd> takes you to the one that needs you; <kbd>⌃⌘A</kbd> shows every agent on every host.</li>
       <li><code>mani skill install</code> gives agents a guide to <a href="#mani" data-open="mani"><code>mani</code></a>, so "the code I highlighted" or "the diff on my right" means what you see.</li>
       <li>An agent can draw you a small UI — a form, a choice, progress — with <code>mani ui</code>.</li>
     </ul>
@@ -591,7 +593,7 @@ mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pr
         <dt>⇧⌘R</dt><dd>Name Space</dd><dt>⌘'</dt><dd>Overview</dd><dt>⌃⌘A</dt><dd>Agents</dd>
         <dt>⌥⇧⌘W</dt><dd>Remove Space</dd></dl></section>
       <section><h3>View</h3><dl>
-        <dt>⌃⌘S</dt><dd>Keep Sidebar Shown</dd><dt>⌥⌘S</dt><dd>Show Outline</dd><dt>⌥⌘1–3</dt><dd>Spaces · Files · Inbox</dd>
+        <dt>⌃⌘S</dt><dd>Keep Sidebar Shown</dd><dt>⌥⌘S</dt><dd>Show Outline</dd><dt>⌥⌘1–2</dt><dd>Spaces · Files</dd><dt>⌘.</dt><dd>Only Blocks with a Status</dd>
         <dt>⌘[ ⌘]</dt><dd>Back, Forward in Tile</dd></dl></section>
     </div>
   </div>

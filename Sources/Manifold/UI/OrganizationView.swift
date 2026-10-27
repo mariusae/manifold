@@ -2,10 +2,10 @@ import AppKit
 import ManifoldCore
 
 /// How the sidebar organizes the graph (DESIGN.md §3.6): the workspaces
-/// and their tiles; files under folders under roots, across hosts; what
-/// wants attention (the Inbox); and the list over them (Recently Closed).
+/// and their tiles; files under folders under roots, across hosts; and
+/// the list over them (Recently Closed).
 enum Organization: String, CaseIterable {
-    case desk, files, inbox
+    case desk, files
     /// The list at the sidebar's foot (§4): what's closed and not yet
     /// collected.
     case closed
@@ -14,7 +14,6 @@ enum Organization: String, CaseIterable {
         switch self {
         case .desk: "Spaces"
         case .files: "Files"
-        case .inbox: "Inbox"
         case .closed: "Recently Closed"
         }
     }
@@ -23,8 +22,44 @@ enum Organization: String, CaseIterable {
         switch self {
         case .desk: "rectangle.3.group"
         case .files: "folder"
-        case .inbox: "tray"
         case .closed: "clock.arrow.circlepath"
+        }
+    }
+}
+
+/// What the sidebar can be narrowed to (§3.6), whichever organization it
+/// shows: each a test of a block. The rows it admits stay, with the way
+/// to each — its host, its space, its folders, a stacked tile's stack —
+/// and the rest go (`OrgNode.filtered`).
+enum SidebarFilter: String, CaseIterable {
+    /// Blocks with a status (§3.7): working, needing you, done or failed.
+    case status
+
+    var title: String {
+        switch self {
+        case .status: "Blocks with a Status"
+        }
+    }
+    /// The bar's button, off and on.
+    func image(on: Bool) -> NSImage {
+        switch self {
+        case .status: Lighthouse.image(on: on)
+        }
+    }
+    /// Said where there's nothing it admits.
+    var nothing: String {
+        switch self {
+        case .status: "No block has a status"
+        }
+    }
+
+    func admits(_ block: Block) -> Bool {
+        switch self {
+        case .status:
+            switch StatusGlyph.look(of: block) {
+            case .working?, .needsYou?, .done?, .failed?: true
+            default: false
+            }
         }
     }
 }
@@ -84,9 +119,9 @@ final class OrgNode {
     var placement: PlacementID?
     /// A row that does something rather than opening a block (New…).
     var action: (() -> Void)?
-    private var given: [OrgNode]
+    fileprivate var given: [OrgNode]
     var loadChildren: (() -> [OrgNode])?
-    private var loaded = false
+    fileprivate var loaded = false
 
     init(id: String, block: BlockID? = nil, title: String, symbol: String, detail: String = "", count: Int? = nil, age: Double? = nil,
          isGroup: Bool = false, children: [OrgNode] = [], loadChildren: (() -> [OrgNode])? = nil) {
@@ -114,6 +149,68 @@ final class OrgNode {
 
     /// The children given, never loading any.
     fileprivate var givenChildren: [OrgNode] { given }
+
+    /// The rows `keep` says to, and the way to each: a row stays if it's
+    /// kept or anything under it is; a tile behind in a stack keeps its
+    /// stack's top, the two outlined together as the stack is; a hairline
+    /// stays only between rows that do; a row's count is of the rows
+    /// under it admitted. Rows made for one showing: their children are
+    /// pruned in place.
+    static func filtered(_ nodes: [OrgNode], keep: (OrgNode) -> Bool) -> [OrgNode] {
+        var admitted = 0
+        return filtered(nodes, keep: keep, admitted: &admitted)
+    }
+
+    private static func filtered(_ nodes: [OrgNode], keep: (OrgNode) -> Bool, admitted: inout Int) -> [OrgNode] {
+        var kept = [Bool](repeating: false, count: nodes.count)
+        for (i, n) in nodes.enumerated() {
+            let own = n.style != .divider && keep(n)
+            if own { admitted += 1 }
+            if n.hasChildren {
+                var under = 0
+                n.given = filtered(n.children, keep: keep, admitted: &under)
+                n.loadChildren = nil
+                n.loaded = true
+                if n.count != nil { n.count = under }
+                admitted += under
+            }
+            kept[i] = n.style != .divider && (own || !n.given.isEmpty)
+        }
+        // Each row's stack (its index among the stacks here), and a kept
+        // row behind its top keeps the top.
+        var stackOf = [Int?](repeating: nil, count: nodes.count)
+        var top: Int?, count = 0
+        for (i, n) in nodes.enumerated() {
+            guard let s = n.stack else { top = nil; continue }
+            if s.first || top == nil { top = i; count += 1 }
+            stackOf[i] = count
+            if kept[i], let t = top { kept[t] = true }
+        }
+        // A hairline between kept rows.
+        for (i, n) in nodes.enumerated() where n.style == .divider {
+            kept[i] = kept[..<i].contains(true) && kept[(i + 1)...].contains(true)
+        }
+        let out = nodes.indices.filter { kept[$0] }
+        // Stacks outlined again around what's left of each: a top alone
+        // isn't a stack (a tile alone behind is, as it was).
+        for (k, i) in out.enumerated() {
+            guard let s = stackOf[i] else { continue }
+            let first = k == 0 || stackOf[out[k - 1]] != s
+            let last = k == out.count - 1 || stackOf[out[k + 1]] != s
+            nodes[i].stack = first && last && !nodes[i].behind ? nil : SelectionRowView.Grouped(first: first, last: last)
+        }
+        return out.map { nodes[$0] }
+    }
+
+    /// Every row under these that has rows under it.
+    static func groups(_ nodes: [OrgNode]) -> Set<String> {
+        var ids: Set<String> = []
+        for n in nodes where !n.given.isEmpty {
+            ids.insert(n.id)
+            ids.formUnion(groups(n.given))
+        }
+        return ids
+    }
 
     /// Whether it would draw as another does: what its row shows.
     fileprivate func looksLike(_ o: OrgNode) -> Bool {
@@ -232,6 +329,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var expandedByDefault: Set<String> = []
     /// Rows closed by hand: remembered (the client's state keeps them).
     var collapsedByHand: Set<String> = []
+    /// While a filter shows: what was open and closed by hand before it.
+    private var unfiltered: (open: Set<String>, closed: Set<String>)?
     var onCollapsedChanged: ((Set<String>) -> Void)?
     private var trackedRow: Int = -1
     private var selecting = false
@@ -287,8 +386,23 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     /// Shows a tree; rows open as they were, or as `openByDefault` says
-    /// the first time; the row `selected` is highlighted.
-    func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
+    /// the first time; the row `selected` is highlighted. `openAll`: every
+    /// row open, whatever was closed by hand (a filter's: the way to each
+    /// row it admits shown whole).
+    func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil, openAll: Bool = false) {
+        // Opened for a filter, then as it was: what was open and closed
+        // before kept aside, and back after (nothing opened or closed
+        // while filtered is remembered).
+        if openAll, unfiltered == nil {
+            unfiltered = (expanded, collapsedByHand)
+            collapsedByHand = []
+        } else if !openAll, let (open, closed) = unfiltered {
+            unfiltered = nil
+            expanded = open
+            collapsedByHand = closed
+            roots = []
+        }
+        let openByDefault = openAll ? OrgNode.groups(nodes) : openByDefault
         // The same rows in the same places (most of what comes, as the
         // sidebar is made again after each change): the new values taken
         // over and only the rows that look different redrawn — a reload
@@ -413,11 +527,18 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
-        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.insert(n.id); if collapsedByHand.remove(n.id) != nil { onCollapsedChanged?(collapsedByHand) } }
+        if let n = notification.userInfo?["NSObject"] as? OrgNode {
+            expanded.insert(n.id)
+            if collapsedByHand.remove(n.id) != nil, unfiltered == nil { onCollapsedChanged?(collapsedByHand) }
+        }
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
-        if let n = notification.userInfo?["NSObject"] as? OrgNode { expanded.remove(n.id); collapsedByHand.insert(n.id); onCollapsedChanged?(collapsedByHand) }
+        if let n = notification.userInfo?["NSObject"] as? OrgNode {
+            expanded.remove(n.id)
+            collapsedByHand.insert(n.id)
+            if unfiltered == nil { onCollapsedChanged?(collapsedByHand) }
+        }
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
@@ -581,7 +702,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.stack.map { " [stack\($0.first ? " first" : "")\($0.last ? " last" : "")]" } ?? "")\(n.behind ? " [behind]" : "")"
         }.joined(separator: "\n")
     }
 
