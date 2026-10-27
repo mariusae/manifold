@@ -24,6 +24,8 @@ struct FinderItem {
     var drag: (() -> NSPasteboardWriting?)? = nil
     /// The block it is, if one: its row is its summary card.
     var block: BlockID? = nil
+    /// What kinds it's found as (FindKinds): a chip narrows to them.
+    var kinds: [String] = []
 }
 
 /// Something to be found (§3.5): taken when the finder opens, and ranked
@@ -54,10 +56,13 @@ struct FinderCandidate: Sendable {
     var path: String?
     /// The block it is, if one.
     var block: BlockID?
+    /// What kinds it's found as (FindKinds).
+    var kinds: [String]
 
     init(symbol: String, title: String, detail: String, note: String, age: String? = nil, name: String, aliases: [String] = [], around: String, summary: String = "",
-         distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil) {
+         distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil, kinds: [String] = []) {
         self.block = block
+        self.kinds = kinds
         self.age = age
         self.summary = summary.lowercased()
         self.aliases = aliases.map { $0.lowercased() }
@@ -80,7 +85,7 @@ struct FinderCandidate: Sendable {
         let name = path.lastPathComponent
         let scratch = path.hasPrefix("/tmp/") || path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/folders/")
         return FinderCandidate(symbol: Finder.symbol(forFile: name), title: name, detail: path.deletingLastPathComponent.abbreviatingHome,
-                               note: "file", name: name, around: path, distance: scratch ? 80 : 70, recency: 0, action: -1, path: path)
+                               note: "file", name: name, around: path, distance: scratch ? 80 : 70, recency: 0, action: -1, path: path, kinds: ["file"])
     }
 }
 
@@ -94,18 +99,30 @@ final class FinderGeneration: @unchecked Sendable {
 }
 
 enum FinderRanking {
-    /// The best `limit` of the candidates for a query (§3.5): what the
-    /// query names best first — the whole title, its start, a word's
-    /// start, all its words, somewhere in it, its letters in order, only
-    /// what's around it — and among equals the nearest, then the
-    /// stronger match, then the latest. With nothing typed, the nearest
-    /// and latest. Nil if given up on (`current` turned false).
-    static func rank(_ query: String, _ candidates: [FinderCandidate], limit: Int = 60, current: () -> Bool = { true }) -> [FinderCandidate]? {
+    /// What a ranking found: the rows, and how many matched of each kind
+    /// (whatever kinds it was narrowed to: the counts say what a chip
+    /// more would find).
+    struct Ranked {
+        var rows: [FinderCandidate]
+        var counts: [String: Int]
+    }
+
+    /// The best `limit` of the candidates for a query (§3.5), of the kinds
+    /// in `only` if any: what the query names best first — the whole
+    /// title, its start, a word's start, all its words, somewhere in it,
+    /// its letters in order, only what's around it — and among equals the
+    /// nearest, then the stronger match, then the latest. With nothing
+    /// typed, the nearest and latest. Nil if given up on (`current`
+    /// turned false).
+    static func rank(_ query: String, _ candidates: [FinderCandidate], only: Set<String> = [], limit: Int = 60, current: () -> Bool = { true }) -> Ranked? {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        func wanted(_ c: FinderCandidate) -> Bool { only.isEmpty || c.kinds.contains(where: only.contains) }
+        var counts: [String: Int] = [:]
         if q.isEmpty {
-            let blocks = candidates.filter { $0.action >= 0 }.sorted { $0.distance != $1.distance ? $0.distance < $1.distance : $0.recency > $1.recency }
-            let files = candidates.lazy.filter { $0.action < 0 }.prefix(max(0, limit - min(blocks.count, limit)))
-            return Array(blocks.prefix(limit)) + files
+            for c in candidates { for k in c.kinds { counts[k, default: 0] += 1 } }
+            let blocks = candidates.filter { $0.action >= 0 && wanted($0) }.sorted { $0.distance != $1.distance ? $0.distance < $1.distance : $0.recency > $1.recency }
+            let files = candidates.lazy.filter { $0.action < 0 && wanted($0) }.prefix(max(0, limit - min(blocks.count, limit)))
+            return Ranked(rows: Array(blocks.prefix(limit)) + files, counts: counts)
         }
         let letters = Array(q.utf8.filter { $0 != 32 })
         let qWords = q.split(separator: " ").map(String.init)
@@ -121,6 +138,8 @@ enum FinderRanking {
                     || Self.hasInOrder(letters, c.summary) else { continue }
             let m = Self.match(q, qWords, ascii, c)
             guard m > 0 else { continue }
+            for k in c.kinds { counts[k, default: 0] += 1 }
+            guard wanted(c) else { continue }
             let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : m >= 200 ? 1 : 0
             let s = Scored(band: band, distance: c.distance, match: m, recency: c.recency, i: i)
             if best.count == limit, let last = best.last, !s.beats(last) { continue }
@@ -133,7 +152,7 @@ enum FinderRanking {
             if best.count > limit { best.removeLast() }
         }
         guard current() else { return nil }
-        return best.map { candidates[$0.i] }
+        return Ranked(rows: best.map { candidates[$0.i] }, counts: counts)
     }
 
     /// A match, by what it's ranked on: what the query names best, then
@@ -201,21 +220,17 @@ enum FinderRanking {
     }
 }
 
-/// ⌘O: one field that finds anything the attached hosts know, in one of
-/// three scopes (⇥ goes round them): **names** — blocks by title and
-/// path, workspaces by name, processes, files under the focused folder
-/// by name — ranked by how well the query matches; **in files** — lines
-/// in the files under the project, as the host finds them; **in blocks**
-/// — lines in the texts of the workspace's blocks. ↩ goes there.
+/// One field that finds anything the attached hosts know, in one of two
+/// scopes, each its own key: **names** (⌘O) — blocks by title and path,
+/// workspaces by name, agents' turns by what was asked — ranked by how
+/// well the query matches; **in blocks** (⇧⌘O) — lines in the texts of
+/// the workspace's blocks. Either narrows to kinds: a kind's name, or its
+/// start, then ⇥, is a chip before the query (⌫ at the start takes it
+/// back), and the foot counts what each kind found, a click narrowing to
+/// it. ↩ goes there.
 final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     enum Scope: Int, CaseIterable {
         case names, blocks
-        var title: String {
-            switch self {
-            case .names: "Names"
-            case .blocks: "In Blocks"
-            }
-        }
     }
 
     /// Items for a query in the other scope (In Blocks), as the
@@ -257,7 +272,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     var summarize: ((BlockID) -> SummaryCardContent?)?
     private var summaries: [BlockID: SummaryCardContent?] = [:]
     private(set) var scope: Scope = .names
-    private let scopes = FlatSegments(titles: Scope.allCases.map(\.title), font: UIType.footnote)
+    /// The kinds it's narrowed to, as chips before the query, in the
+    /// order chosen: what's of any of them is found.
+    private var chosen: [FindKinds.Kind] = []
+    /// A chip ⇥ just made, from the word typed: ⇥ again makes it the next
+    /// kind the word begins, ⌫ the word again. Gone once anything's typed.
+    private var completing: (word: String, index: Int)?
+    /// How many of each kind the query found, before the chips narrowed it.
+    private var counts: [String: Int] = [:]
+    private let chipRow = NSView()
+    private let countRow = NSView()
     var isShowing: Bool { panel.isVisible }
     /// ⌘P: the workspace as a hierarchy, filtered by a query, instead.
     private var outline: ((String) -> [FinderItem])?
@@ -279,6 +303,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private static let excerptHeight: CGFloat = 88
     private static let cardHeight: CGFloat = SummaryCard.height
     private static let visibleRows = 9
+    private static let keys = "⇥ Kind    ↩ Go    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"
 
     override init() {
         panel = PickerPanel(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.fieldHeight),
@@ -343,22 +368,108 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         hint.font = UIType.footnote
         hint.textColor = Theme.tertiaryText
         hint.alignment = .right
+        hint.lineBreakMode = .byTruncatingHead
         background.addSubview(hint)
-        scopes.selectedSegment = 0
-        scopes.onChange = { [weak self] _ in self?.scopeChosen() }
-        background.addSubview(scopes)
+        background.addSubview(chipRow)
+        background.addSubview(countRow)
     }
 
-    @objc private func scopeChosen() {
-        scope = Scope(rawValue: scopes.selectedSegment) ?? .names
-        queryChanged()
+    // MARK: Kinds
+
+    /// ⇥: the word at the query's end, if it begins a kind's name, made a
+    /// chip; ⇥ again, the next kind it begins.
+    private func completeKind() {
+        if let (word, index) = completing, !chosen.isEmpty {
+            let options = FindKinds.starting(word).filter { k in !chosen.dropLast().contains(k) }
+            guard options.count > 1 else { return NSSound.beep() }
+            let next = (index + 1) % options.count
+            chosen[chosen.count - 1] = options[next]
+            completing = (word, next)
+            return kindsChanged()
+        }
+        let text = field.stringValue
+        let word = text.split(separator: " ", omittingEmptySubsequences: false).last.map(String.init) ?? ""
+        guard let first = FindKinds.starting(word).first(where: { !chosen.contains($0) }) else { return NSSound.beep() }
+        chosen.append(first)
+        completing = (word, FindKinds.starting(word).filter { !chosen.dropLast().contains($0) }.firstIndex(of: first) ?? 0)
+        field.stringValue = String(text.dropLast(word.count))
+        field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+        kindsChanged()
+    }
+
+    /// ⌫ at the query's start: the last chip gone — the word it was made
+    /// from back, if ⇥ only just made it.
+    private func removeLastKind() {
+        guard !chosen.isEmpty else { return }
+        chosen.removeLast()
+        if let (word, _) = completing {
+            field.stringValue = word + field.stringValue
+            field.currentEditor()?.selectedRange = NSRange(location: (word as NSString).length, length: 0)
+        }
+        completing = nil
+        kindsChanged()
+    }
+
+    /// A kind clicked, at the foot or as a chip: narrowed to, or no longer.
+    private func toggle(_ kind: FindKinds.Kind) {
+        if let i = chosen.firstIndex(of: kind) { chosen.remove(at: i) } else { chosen.append(kind) }
+        completing = nil
+        kindsChanged()
         panel.makeFirstResponder(field)
+        field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
     }
 
-    private func cycleScope() {
-        scope = Scope(rawValue: (scope.rawValue + 1) % Scope.allCases.count) ?? .names
-        scopes.selectedSegment = scope.rawValue
+    private func kindsChanged() {
+        layoutChips()
+        layout()
         queryChanged()
+    }
+
+    private var only: Set<String> { Set(chosen.map(\.name)) }
+
+    /// The chips, before the query.
+    private func layoutChips() {
+        chipRow.subviews.forEach { $0.removeFromSuperview() }
+        var x: CGFloat = 0
+        for k in chosen {
+            let chip = KindToken(kind: k, style: .chip)
+            chip.toolTip = "Only \(k.title.lowercased())s — click or ⌫ to remove"
+            chip.onClick = { [weak self] in self?.toggle(k) }
+            chip.frame = NSRect(origin: NSPoint(x: x, y: 0), size: chip.wanted)
+            chipRow.addSubview(chip)
+            x = chip.frame.maxX + 4
+        }
+        chipRow.frame.size = NSSize(width: x, height: KindToken.chipHeight)
+    }
+
+    /// The counts at the foot: each kind the query found (and any chosen
+    /// one that found none), once something's typed or chosen — in the
+    /// table's order, those that found fewest left out if they don't all
+    /// fit (never a chosen one).
+    private func layoutCounts(width: CGFloat) {
+        countRow.subviews.forEach { $0.removeFromSuperview() }
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard outline == nil, !query.isEmpty || !chosen.isEmpty else { countRow.frame.size.width = 0; return }
+        var tokens = FindKinds.all.compactMap { k -> KindToken? in
+            let n = counts[k.name] ?? 0, on = chosen.contains(k)
+            guard n > 0 || on else { return nil }
+            let token = KindToken(kind: k, style: .count(n, on: on))
+            token.toolTip = "\(n) \(k.title.lowercased())\(n == 1 ? "" : "s") — click for \(on ? "every kind again" : "only these")"
+            token.onClick = { [weak self] in self?.toggle(k) }
+            return token
+        }
+        func total() -> CGFloat { tokens.reduce(0) { $0 + $1.wanted.width + 2 } }
+        while total() > width, let fewest = tokens.indices.filter({ !chosen.contains(tokens[$0].kind) })
+                .min(by: { (counts[tokens[$0].kind.name] ?? 0) < (counts[tokens[$1].kind.name] ?? 0) }) {
+            tokens.remove(at: fewest)
+        }
+        var x: CGFloat = 0
+        for token in tokens {
+            token.frame = NSRect(origin: NSPoint(x: x, y: 0), size: token.wanted)
+            countRow.addSubview(token)
+            x = token.frame.maxX + 2
+        }
+        countRow.frame.size = NSSize(width: x, height: KindToken.countHeight)
     }
 
     private func queryChanged() {
@@ -372,24 +483,43 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         refresh()
     }
 
+    /// Debugging: the chips and the counts.
+    func debugKinds() -> String {
+        let shownCounts = countRow.subviews.compactMap { ($0 as? KindToken)?.said }
+        return "chips: [\(chosen.map(\.name).joined(separator: ", "))] field: \"\(field.stringValue)\" counts: \(shownCounts.joined(separator: " "))"
+    }
+    func debugTab() { completeKind() }
+    func debugBackspace() {
+        if field.stringValue.isEmpty || field.currentEditor()?.selectedRange.location == 0 { removeLastKind() }
+    }
+    func debugClickCount(_ name: String) {
+        guard let k = FindKinds.named(name) else { return }
+        toggle(k)
+    }
+
     // MARK: Showing
 
-    /// Shows: what can be found by name (`corpus`, each running its
-    /// action), and with `filesUnder`, the files under that folder too —
-    /// from the last listing at once, listed afresh behind. `scopes`: the
-    /// other scopes (In Files, In Blocks) on offer.
-    func show(corpus: [FinderCandidate], actions: [() -> Void], filesUnder root: String?, knownPaths: Set<String> = [], scopes showScopes: Bool, placeholder: String, over window: NSWindow?) {
+    /// Shows, in a scope: what can be found by name (`corpus`, each
+    /// running its action), and with `filesUnder`, the files under that
+    /// folder too — from the last listing at once, listed afresh behind.
+    /// Shown already, in the other scope: the query and its chips kept.
+    func show(corpus: [FinderCandidate], actions: [() -> Void], filesUnder root: String?, knownPaths: Set<String> = [], scope: Scope = .names, placeholder: String, over window: NSWindow?) {
+        let switching = panel.isVisible && outline == nil && scope != self.scope
         self.corpus = corpus
         self.actions = actions
         self.root = root ?? ""
         self.knownPaths = knownPaths
         withFiles = root != nil
         outline = nil
-        scope = .names
-        scopes.selectedSegment = 0
-        scopes.isHidden = !showScopes
+        self.scope = scope
         field.placeholderString = placeholder
-        field.stringValue = ""
+        if !switching {
+            field.stringValue = ""
+            chosen = []
+        }
+        completing = nil
+        counts = [:]
+        layoutChips()
         shown = []
         summaries = [:]
         // At its full height from the start: the files arriving, or the
@@ -411,13 +541,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
                 }
             }
         }
-        if let window {
+        if let window, !switching {
             let frame = window.frame
             panel.setFrameOrigin(NSPoint(x: frame.midX - Self.width / 2, y: frame.maxY - frame.height * 0.18 - panel.frame.height))
         }
+        if switching { onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope) }
         refreshNow()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
+        field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
     }
 
     /// Shows the workspace's outline (⌘P): tiles by column, and what is in
@@ -459,7 +591,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         if outlineScope?.placeholder != placeholder { outlineScope = nil; otherOutline = nil }
         outline = provider
         outlineStart = start
-        scopes.isHidden = true
+        chosen = []
+        completing = nil
+        layoutChips()
         field.stringValue = ""
         field.placeholderString = placeholder
         shown = []
@@ -478,6 +612,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// Types a query and says what's listed (for DebugControl).
     func debugQuery(_ query: String) -> [String] {
         field.stringValue = query
+        completing = nil
         if outline == nil { onQueryChanged?(query, scope) }
         refreshNow()
         return shown.map { String(repeating: "  ", count: $0.level) + "\($0.title) — \($0.detail)" + ($0.note.isEmpty ? "" : " [\($0.note)]") + ($0.excerpt.map { " «\($0.prefix(80))»" } ?? "") }
@@ -487,7 +622,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func debugTime(_ query: String) -> String {
         let all = self.all
         let start = Date()
-        let n = FinderRanking.rank(query, all)?.count ?? 0
+        let n = FinderRanking.rank(query, all, only: only)?.rows.count ?? 0
         return String(format: "%d candidates (%d files) → %d rows in %.1f ms", all.count, fileCandidates.count, n, Date().timeIntervalSince(start) * 1000)
     }
 
@@ -497,7 +632,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         let all = FileFinder.list(root: root).map { FinderCandidate.file(root.appendingPathComponent($0)) }
         return queries.map { q -> String in
             let start = Date()
-            let n = FinderRanking.rank(q, all)?.count ?? 0
+            let n = FinderRanking.rank(q, all)?.rows.count ?? 0
             return String(format: "%@: %d of %d in %.1f ms", q, n, all.count, Date().timeIntervalSince(start) * 1000)
         }.joined(separator: "\n")
     }
@@ -513,7 +648,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     }
     func debugScope(_ n: Int) {
         scope = Scope(rawValue: n) ?? .names
-        scopes.selectedSegment = scope.rawValue
         queryChanged()
     }
     func debugMove(_ by: Int) { move(by) }
@@ -540,10 +674,13 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             hint.stringValue = what + (otherOutline != nil ? "    ⇥ \(otherOutline!.placeholder.hasPrefix("Go to a tile") ? "The space" : "This tile")" : "") + "    " + (outlineScope?.keys ?? "↩ Go    ⎋ Close")
             return
         }
-        hint.stringValue = switch scope {
-        case .names: "Blocks and spaces    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"
-        case .blocks: "Their texts, this space's first    ⇥ Scope    ↩ Go    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"
+        // With the counts at the foot, the keys alone.
+        let keys = Self.keys
+        let what = switch scope {
+        case .names: "Blocks and spaces by name    ⇧⌘O In them    "
+        case .blocks: "In blocks, this space's first    ⌘O By name    "
         }
+        hint.stringValue = (countRow.frame.width > 0 ? "" : what) + keys
     }
 
     /// Sizes the panel to its results, keeping its top where it is.
@@ -564,11 +701,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             frame.size.height = height
             panel.setFrame(frame, display: true)
         }
-        field.frame = NSRect(x: 52, y: height - Self.fieldHeight + 13, width: Self.width - 70, height: 30)
+        // The chips before the query, its first letter after them.
+        let chipsWidth = chipRow.frame.width
+        chipRow.frame.origin = NSPoint(x: 52, y: height - Self.fieldHeight + (Self.fieldHeight - KindToken.chipHeight) / 2)
+        field.frame = NSRect(x: 52 + chipsWidth, y: height - Self.fieldHeight + 13, width: Self.width - 70 - chipsWidth, height: 30)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
-        scopes.sizeToFit()
-        scopes.frame = NSRect(x: 10, y: 1, width: scopes.frame.width, height: 22)
-        hint.frame = NSRect(x: scopes.frame.maxX + 8, y: 4, width: Self.width - scopes.frame.maxX - 24, height: 16)
+        // The counts in what the keys leave them.
+        let keysWidth = ceil((Self.keys as NSString).size(withAttributes: [.font: UIType.footnote]).width)
+        layoutCounts(width: Self.width - keysWidth - 40)
+        countRow.frame.origin = NSPoint(x: 10, y: (hintHeight - KindToken.countHeight) / 2)
+        updateHint()
+        let hintX = countRow.frame.width > 0 ? countRow.frame.maxX + 12 : 10
+        hint.frame = NSRect(x: hintX, y: 4, width: Self.width - hintX - 16, height: 16)
         panel.contentView?.subviews.first { $0 is NSImageView }?.frame.origin.y = height - Self.fieldHeight
     }
 
@@ -579,15 +723,18 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// the other scopes and the outline at once, being small.
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
+        if let outline { return show(outline(query), query: query) }
+        guard scope == .names else { return showSearched(query) }
         let gen = generation.next()
         let all = self.all
+        let only = self.only
         let generation = self.generation
         ranking.async { [weak self] in
-            guard let ranked = FinderRanking.rank(query, all, current: { generation.isCurrent(gen) }) else { return }
+            guard let ranked = FinderRanking.rank(query, all, only: only, current: { generation.isCurrent(gen) }) else { return }
             DispatchQueue.main.async {
                 guard let self, generation.isCurrent(gen) else { return }
-                self.show(self.items(ranked, query: query), query: query)
+                self.counts = ranked.counts
+                self.show(self.items(ranked.rows, query: query), query: query)
             }
         }
     }
@@ -595,9 +742,23 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// The same, here and now (opening, and for DebugControl).
     private func refreshNow() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard outline == nil, scope == .names else { return show(outline.map { $0(query) } ?? search?(query, scope) ?? [], query: query) }
+        if let outline { return show(outline(query), query: query) }
+        guard scope == .names else { return showSearched(query) }
         _ = generation.next()
-        show(items(FinderRanking.rank(query, all) ?? [], query: query), query: query)
+        let ranked = FinderRanking.rank(query, all, only: only)
+        counts = ranked?.counts ?? [:]
+        show(items(ranked?.rows ?? [], query: query), query: query)
+    }
+
+    /// In Blocks: what the controller finds, counted by kind, then
+    /// narrowed to the chips'.
+    private func showSearched(_ query: String) {
+        let found = search?(query, scope) ?? []
+        var counts: [String: Int] = [:]
+        for item in found { for k in item.kinds { counts[k, default: 0] += 1 } }
+        self.counts = counts
+        let only = self.only
+        show(only.isEmpty ? found : found.filter { $0.kinds.contains(where: only.contains) }, query: query)
     }
 
     private func items(_ ranked: [FinderCandidate], query: String) -> [FinderItem] {
@@ -609,9 +770,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
             else if let path = c.path, c.action < 0 { drag = { Drags.path?(path, false, .local, Drags.modifiers) } }
             else { drag = nil }
-            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block)
+            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
         }
-        if let first = special?(query) { items.insert(first, at: 0) }
+        if only.isEmpty || only.contains("web"), let first = special?(query) { items.insert(first, at: 0) }
         return items
     }
 
@@ -638,14 +799,19 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         // ↩ goes; ⌥↩ (which the field calls this) puts it over.
         case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)): openSelected()
         case #selector(NSResponder.cancelOperation(_:)): close()
-        case #selector(NSResponder.insertTab(_:)) where outline == nil: cycleScope()
+        case #selector(NSResponder.insertTab(_:)) where outline == nil: completeKind()
         case #selector(NSResponder.insertTab(_:)) where otherOutline != nil: switchOutline()
+        // ⌫ with nothing before the cursor: the last chip.
+        case #selector(NSResponder.deleteBackward(_:)) where outline == nil && !chosen.isEmpty
+                && textView.selectedRange() == NSRange(location: 0, length: 0):
+            removeLastKind()
         default: return false
         }
         return true
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        completing = nil
         if outline == nil { onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope) }
         refresh()
     }
@@ -937,4 +1103,88 @@ final class PickerPanel: NSPanel {
         super.resignKey()
         onResign?()
     }
+}
+
+/// A kind, as the finder shows it: a chip before the query (its symbol and
+/// name, on the tint), or a count at the foot (its symbol and how many,
+/// in the accent once chosen). Clicked, toggled.
+final class KindToken: NSView {
+    enum Style: Equatable {
+        case chip
+        case count(Int, on: Bool)
+    }
+    static let chipHeight: CGFloat = 26
+    static let countHeight: CGFloat = 18
+    let kind: FindKinds.Kind
+    let style: Style
+    var onClick: (() -> Void)?
+    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    init(kind: FindKinds.Kind, style: Style) {
+        self.kind = kind
+        self.style = style
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var label: String {
+        switch style {
+        case .chip: kind.title
+        case let .count(n, _): "\(n)"
+        }
+    }
+    private var font: NSFont { style == .chip ? UIType.title : UIType.footnote }
+    private var symbolSize: CGFloat { style == .chip ? 13 : 11 }
+    private var color: NSColor {
+        switch style {
+        case .chip: Theme.text
+        case let .count(_, on): on ? Theme.accent : hovered ? Theme.secondaryText : Theme.tertiaryText
+        }
+    }
+
+    var wanted: NSSize {
+        let text = ceil((label as NSString).size(withAttributes: [.font: font]).width)
+        return style == .chip ? NSSize(width: 8 + 16 + 4 + text + 10, height: Self.chipHeight)
+            : NSSize(width: 5 + 14 + 3 + text + 6, height: Self.countHeight)
+    }
+
+    var said: String {
+        if case let .count(n, on) = style { return "\(kind.name)=\(n)\(on ? "*" : "")" }
+        return kind.name
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let h = bounds.height
+        switch style {
+        case .chip:
+            (hovered ? Theme.selection.blended(withFraction: 0.25, of: Theme.accent) ?? Theme.selection : Theme.selection).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        case let .count(_, on):
+            if on || hovered {
+                (on ? Theme.selection : Theme.hover).setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+            }
+        }
+        let iconX: CGFloat = style == .chip ? 8 : 5, iconWidth: CGFloat = style == .chip ? 16 : 14
+        if let image = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: symbolSize, weight: .medium).applying(.init(paletteColors: [color]))) {
+            let size = image.size
+            image.draw(in: NSRect(x: iconX + (iconWidth - size.width) / 2, y: ((h - size.height) / 2).rounded(), width: size.width, height: size.height))
+        }
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        let textHeight = (label as NSString).size(withAttributes: attrs).height
+        (label as NSString).draw(at: NSPoint(x: iconX + iconWidth + (style == .chip ? 4 : 3), y: ((h - textHeight) / 2).rounded()), withAttributes: attrs)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    // A click in the panel goes to it, not to moving the panel.
+    override var mouseDownCanMoveWindow: Bool { false }
 }

@@ -158,3 +158,22 @@ import Testing
     let help = Mani.help("new")
     for k in BlockKinds.all { #expect(help.contains("  " + k.name)) }
 }
+
+@Test func whatIsFoundIsNarrowedByKind() {
+    // ⇥ after a start: the kinds it begins, in the table's order.
+    #expect(FindKinds.starting("te").map(\.name) == ["terminal"])
+    #expect(FindKinds.starting("t").map(\.name) == ["terminal", "turn"])
+    #expect(FindKinds.starting("s").map(\.name) == ["space", "search", "smartlog", "terminal", "git"])  // then shell, source
+    #expect(FindKinds.starting("page").map(\.name) == ["web"])
+    #expect(FindKinds.starting("").isEmpty)
+    // A block is found as its kind; a text as a note or a file; a
+    // terminal an agent works in, as an agent's too.
+    #expect(FindKinds.of(.text, path: nil, agent: false) == ["note"])
+    #expect(FindKinds.of(.text, path: "/a/b.md", agent: false) == ["file"])
+    #expect(FindKinds.of(.terminal, path: nil, agent: true) == ["terminal", "agent"])
+    #expect(FindKinds.of(.arrangement, path: nil, agent: false) == ["space"])
+    #expect(FindKinds.of(.process, path: nil, agent: false).isEmpty)
+    // Every kind's name is one ⇥ can reach, and its own.
+    for k in FindKinds.all { #expect(FindKinds.starting(k.name).contains(k)) }
+    #expect(Set(FindKinds.all.map(\.name)).count == FindKinds.all.count)
+}

@@ -1084,9 +1084,19 @@ enum DebugControl {
         case "picker":
             // "picker" opens it; "picker <query>" says what it lists for one.
             // "picker go" chooses the selected row; "picker down"/"up" move it.
+            // "picker blocks" opens it in blocks (⇧⌘O); "picker kinds" says
+            // its chips and counts, "picker kinds tab|back|click <kind>"
+            // presses ⇥, ⌫ at the start, or clicks a count, first.
             if arg.isEmpty {
                 wc?.openDocument(nil)
                 return "ok"
+            }
+            if arg == "blocks" {
+                wc?.findInBlocks(nil)
+                return "ok"
+            }
+            if arg == "kinds" || arg.hasPrefix("kinds ") {
+                return wc?.debugFinderKinds(String(arg.dropFirst(5)).trimmingCharacters(in: .whitespaces)) ?? "no window"
             }
             if arg == "go" {
                 wc?.debugFinderChoose()

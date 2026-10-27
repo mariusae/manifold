@@ -81,3 +81,79 @@ public enum BlockKinds {
         return rows.map { "  " + $0.0.padding(toLength: width, withPad: " ", startingAt: 0) + $0.1 }.joined(separator: "\n")
     }
 }
+
+/// The kinds of thing Open Quickly (⌘O) and Find in Blocks (⇧⌘O) can be
+/// narrowed to (DESIGN §6): a kind's name, or its start, then ⇥, makes a
+/// chip of it; the line at the panel's foot counts what each kind found.
+/// More than BlockKinds' — what's made is fewer than what's kept: files,
+/// spaces, agents' turns.
+public enum FindKinds {
+    public struct Kind: Sendable, Equatable {
+        /// What it's typed as (lowercased), and other words for it.
+        public var name: String
+        public var aliases: [String] = []
+        /// As a chip says it.
+        public var title: String
+        public var symbol: String
+    }
+
+    /// In the order ⇥ offers them for a start more than one begins
+    /// ("t": terminal, then turn) and the counts list them.
+    public static let all: [Kind] = [
+        Kind(name: "terminal", aliases: ["shell"], title: "Terminal", symbol: "apple.terminal"),
+        Kind(name: "agent", title: "Agent", symbol: "sparkles"),
+        Kind(name: "note", title: "Note", symbol: "note.text"),
+        Kind(name: "file", title: "File", symbol: "doc.text"),
+        Kind(name: "folder", aliases: ["directory"], title: "Folder", symbol: "folder"),
+        Kind(name: "web", aliases: ["page"], title: "Web", symbol: "globe"),
+        Kind(name: "space", aliases: ["workspace", "arrangement"], title: "Space", symbol: "rectangle.3.group"),
+        Kind(name: "turn", title: "Turn", symbol: "text.bubble"),
+        Kind(name: "search", title: "Search", symbol: "magnifyingglass"),
+        Kind(name: "notebook", title: "Notebook", symbol: "text.and.command.macwindow"),
+        Kind(name: "git", aliases: ["source"], title: "Git", symbol: "arrow.triangle.branch"),
+        Kind(name: "smartlog", title: "Smartlog", symbol: "arrow.triangle.pull"),
+        Kind(name: "diff", title: "Diff", symbol: "arrow.left.arrow.right"),
+        Kind(name: "output", title: "Output", symbol: "text.alignleft"),
+        Kind(name: "image", title: "Image", symbol: "photo"),
+        Kind(name: "pdf", title: "PDF", symbol: "doc.richtext.fill"),
+        Kind(name: "panel", aliases: ["ui", "form"], title: "Panel", symbol: "slider.horizontal.3"),
+    ]
+
+    public static func named(_ name: String) -> Kind? { all.first { $0.name == name } }
+
+    /// The kinds a word is the start of, in the table's order — those by
+    /// name, then by another word for it ("s": space, search, smartlog,
+    /// then shell's terminal): ⇥ takes the first, and again the next.
+    public static func starting(_ word: String) -> [Kind] {
+        let w = word.lowercased()
+        guard !w.isEmpty else { return [] }
+        let byName = all.filter { $0.name.hasPrefix(w) }
+        return byName + all.filter { k in !byName.contains(k) && k.aliases.contains { $0.hasPrefix(w) } }
+    }
+
+    /// What a block is found as: its kind's name — a note or a file for a
+    /// text, as it has a path; a terminal an agent works in is an agent's
+    /// too.
+    public static func of(_ kind: BlockKind, path: String?, agent: Bool) -> [String] {
+        let name: String? = switch kind {
+        case .text: path == nil ? "note" : "file"
+        case .terminal: "terminal"
+        case .directory: "folder"
+        case .web: "web"
+        case .image: "image"
+        case .pdf: "pdf"
+        case .search: "search"
+        case .diff: "diff"
+        case .git: "git"
+        case .smartlog: "smartlog"
+        case .process: nil
+        case .agent: "agent"
+        case .output: "output"
+        case .notebook: "notebook"
+        case .arrangement: "space"
+        case .ui: "panel"
+        }
+        guard let name else { return [] }
+        return kind == .terminal && agent ? [name, "agent"] : [name]
+    }
+}

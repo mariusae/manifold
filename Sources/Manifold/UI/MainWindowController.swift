@@ -3852,6 +3852,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return finder.debugQuery(query).joined(separator: "\n")
     }
     func debugFinderScope(_ n: Int) { finder.debugScope(n) }
+    func debugFinderKinds(_ arg: String) -> String {
+        switch arg {
+        case "tab": finder.debugTab()
+        case "back": finder.debugBackspace()
+        case let a where a.hasPrefix("click "): finder.debugClickCount(String(a.dropFirst(6)))
+        default: break
+        }
+        return finder.debugKinds()
+    }
     func debugFinderMove(_ by: Int) { finder.debugMove(by) }
 
     private lazy var finder: Finder = {
@@ -3943,7 +3952,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                         self.warpPointerToFocus()
                                     },
                                     excerpt: Self.excerpt(matches), marked: query,
-                                    drag: { Drags.block?(block, Drags.modifiers) }, block: block))
+                                    drag: { Drags.block?(block, Drags.modifiers) }, block: block,
+                                    kinds: FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)))
             if items.count >= 100 { break }
         }
         // Agents' turns: what was asked and what each said.
@@ -3966,21 +3976,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                             }
                                             self.showTurn(turnID, of: agentID, place: place)
                                         },
-                                        excerpt: Self.excerpt(lines), marked: query))
+                                        excerpt: Self.excerpt(lines), marked: query, kinds: ["turn"]))
                 if items.count >= 150 { return items }
             }
         }
         return items
     }
 
-    /// ⌘O: the finder, over everything, and the files where the focused
-    /// placement is.
-    /// ⌘O, Open Quickly: every block and space, by name — or, In Blocks,
-    /// by the words in it. Files are found by Find in Files (⇧⌘F), a search
-    /// block of their own.
+    /// ⌘O, Open Quickly: every block and space, by name. Files are found
+    /// by Find in Files (⇧⌘F), a search block of their own.
     @objc func openDocument(_ sender: Any?) {
         let (corpus, actions) = finderCorpus()
-        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scopes: true, placeholder: "Open quickly…", over: window)
+        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scope: .names, placeholder: "Open quickly…", over: window)
+    }
+
+    /// ⇧⌘O, Find in Blocks: the same finder, by the words in the blocks.
+    @objc func findInBlocks(_ sender: Any?) {
+        let (corpus, actions) = finderCorpus()
+        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scope: .blocks, placeholder: "Find in blocks…", over: window)
     }
 
     /// What the finder finds by name (§3.5), taken once as it opens: every
@@ -4102,7 +4115,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note, age: age,
                                           name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
                                           summary: summary,
-                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id))
+                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id,
+                                          kinds: FindKinds.of(block.kind, path: block.path, agent: agent != nil)))
             actions.append { [weak self] in self?.recall(id) }
         }
         // Agents' turns (§3.8), by what was asked: found as the turn, which
@@ -4117,7 +4131,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                               detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
                                               note: "", age: Age.short(turn.began) == "now" ? nil : Age.short(turn.began), name: first + " turn " + turn.agent,
                                               around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
-                                              distance: 60, recency: turn.began.wall, action: actions.count))
+                                              distance: 60, recency: turn.began.wall, action: actions.count, kinds: ["turn"]))
                 actions.append { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) }
             }
         }

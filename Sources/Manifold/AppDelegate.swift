@@ -398,6 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Go: finding a place and getting there.
         let go = submenu(main, "Go")
         item(go, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
+        item(go, "Find in Blocks…", #selector(MainWindowController.findInBlocks(_:)), "o", [.command, .shift])
         item(go, "Outline…", #selector(MainWindowController.goToTile(_:)), "p")
         item(go, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
         go.addItem(.separator())

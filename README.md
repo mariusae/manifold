@@ -379,14 +379,25 @@ around it, and comes back with its history.
   Codex or another known agent answers to "claude", "codex" as surely
   as to its own title, and says so ("Terminal in ~/src · Claude Code").
   Choosing a block opens it by the one rule (below) — ↩ goes to it,
-  ⌘↩ beside, ⌥↩ over; choosing a space shows it. ⇥ goes to its other scope, **In Blocks**,
-  which looks in the texts of the blocks — the space's first, then every
+  ⌘↩ beside, ⌥↩ over; choosing a space shows it. **Find in Blocks** (⇧⌘O) is the same panel
+  over what blocks say rather than what they're called (⌘O and ⇧⌘O
+  switch between them while it's open, the query kept). It looks in the texts of the blocks — the space's first, then every
   note and file kept as a block — and lists what it finds as a site's
   search does: a row a block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them. It looks only at what's held as a block; Find in Files
   searches the files on disk.
   A typed URL opens as a web page.
+  Either narrows to **kinds**: type a kind's name or its start and ⇥ —
+  `te⇥` — and it becomes a chip before the query, *Terminal*; only
+  terminals are found. ⇥ again offers the next kind the word begins
+  (`t`: Terminal, then Turn), and ⌫ at the query's start takes the chip
+  away (the word back, if ⇥ only just made it). More chips find any of
+  their kinds. The kinds: terminal, agent (a terminal an agent works in
+  is one too), note, file, folder, web, space, turn, search, notebook,
+  git, smartlog, diff, output, image, pdf, panel. Once something's typed
+  or chosen, the panel's foot counts what each kind found — a symbol and
+  a number — and a click on one narrows to it, or no longer.
 - **⌘P goes through an outline**, as Prism's Move to Heading does —
   first the focused tile's own, where you are in it; **⇥** widens it to
   the whole space's (and back): its tiles by column, and under each its

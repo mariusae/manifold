@@ -672,8 +672,14 @@ one place. Finding and making stay apart: Open Quickly finds what
 exists; the picker makes.
 
 One box: **Open Quickly** (⌘O), over the graph — blocks by title, place
-and summary, each row the block's summary card; spaces by name. ⇥ turns
-it to the blocks' texts. Files are Find in Files' (⇧⌘F), not its; the
+and summary, each row the block's summary card; spaces by name. Find in
+Blocks (⇧⌘O) is the same box over the blocks' texts; each key switches
+the open box to its scope, the query kept. Both narrow to kinds
+(`FindKinds`, a table beside BlockKinds, of what's found rather than
+made: files, spaces, turns too): a kind's start then ⇥ is a chip, ⇥
+again the next kind it begins, ⌫ at the start takes it back; the foot
+counts each kind's matches before the chips narrow them, and a count
+clicked is a chip. Files are Find in Files' (⇧⌘F), not its; the
 verbs are the menus'. It ranks as §3.5 says, and shows each result's
 state, host, and where it is. A block an agent works in answers to the
 agent's names (its command, its product name, from the block's command,
@@ -1394,10 +1400,13 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **A tile's bar, its title, its links (faces, stacked), a summary
   card;** a block's link in a note's text is a capsule. Not
   title bar, header or chip. *Pill* is only for a count or an age.
+  A *chip* is a host's mark after a title, or a kind a find is narrowed
+  to, before its query.
 
 ### Keys
 
-- **⌘O is Open Quickly** — blocks and spaces, not files; Open Folder… is
+- **⌘O is Open Quickly** — blocks and spaces, not files; ⇧⌘O the same
+  over what's in them; Open Folder… is
   ⌥⌘O, and file contents are Find in Files (⇧⌘F), after Xcode and VS
   Code. There's no ⌘T.
 - **⌘P is the outline, not Print.** Scoped to the focused tile, ⇥ widens
