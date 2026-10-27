@@ -189,6 +189,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
         }
         hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.settingsWindow?.refresh() }
+        hosts.onFenced = { [weak self] client in
+            self?.sayWatching(client)
+            self?.refreshOrganization()
+        }
+        hosts.onRefused = { [weak self] client in self?.sayWatching(client, again: true) }
         hosts.onGutter = { [weak self] block in
             guard let self else { return }
             for case let e as EditorView in self.views.values where e.block == block { e.gutterChanged() }
@@ -915,6 +920,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var debugToast: String { toast.debugText ?? "none" }
+    func debugToastAct() -> String { toast.debugAct() }
+    var debugFencing: String {
+        hosts.all.map { c in
+            "\(hosts.label(of: c.host)): " + (c.watching ? "watching, taken by \(c.fencedBy ?? "?"): \(c.fenced.map(\.description).sorted().joined(separator: " "))" : "leading")
+        }.joined(separator: "\n")
+    }
+
+    // MARK: Watching (§8.2)
+
+    /// Another Manifold took the pen for this host's blocks: said, with
+    /// Take Over — never done for the user (two clients each taking it
+    /// back would trade it between them). Said again when something done
+    /// here didn't take (`again`), at most every few seconds.
+    private var saidWatching: [HostID: Date] = [:]
+
+    func sayWatching(_ client: HostClient, again: Bool = false) {
+        guard client.watching else { return }
+        if again, let said = saidWatching[client.host], Date().timeIntervalSince(said) < 4 { return }
+        saidWatching[client.host] = Date()
+        let who = client.fencedBy ?? "Another Manifold"
+        toast.show("\(who) took over \(hosts.label(of: client.host)): what you do here doesn't take", action: "Take Over", for: 20) { [weak self, weak client] in
+            guard let self, let client else { return }
+            self.takeOver(client)
+        }
+        layoutViews()
+    }
+
+    /// The pens back: what was taken, and what's focused here.
+    func takeOver(_ client: HostClient) {
+        var also: [ShardID] = []
+        if let b = focusedShown?.placement.block, b.host == client.host { also.append(.block(b)) }
+        if let w = selected, w.host == client.host { also.append(.block(w)) }
+        client.takeOver(also: also)
+        saidWatching[client.host] = nil
+        toast.hide()
+        refreshOrganization()
+    }
 
     /// A word at the window's foot, with a button.
     func notice(_ text: String, action: String, _ act: @escaping () -> Void) {
@@ -3467,6 +3509,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if c.isRemote { n.pings = { [weak c] in c?.pings ?? [] } }
         switch c.link {
         case .connected:
+            // Another Manifold leads it: said by its name, Take Over in its menu.
+            if c.watching {
+                n.detail = "watching"
+                n.tooltip = "\(c.fencedBy ?? "Another Manifold") took over this host: what you do here doesn't take. Take Over is in its menu."
+            }
             // Up, but quiet a while: a broken ring, and on hover, how long.
             guard c.silence != nil else { break }
             n.look = .quiet
@@ -7849,6 +7896,10 @@ extension MainWindowController: OrganizationViewDelegate {
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
+        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.watching {
+            menu.addItem(ClosureMenuItem("Take Over", symbol: "hand.raised") { [weak self] in self?.takeOver(c) })
+            menu.addItem(.separator())
+        }
         if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), !c.isRemote {
             for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
             return menu

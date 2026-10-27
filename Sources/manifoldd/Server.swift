@@ -43,6 +43,10 @@ final class Server {
     /// Which attachment holds the pen for each shard a client may lead
     /// (§8.2): the last to focus its block, or the first to append.
     private var owners: [ShardID: ObjectIdentifier] = [:]
+    /// What each app's attachment calls its machine, and which launch of
+    /// the app it is (`hello`).
+    private var machines: [ObjectIdentifier: String] = [:]
+    private var instances: [ObjectIdentifier: String] = [:]
     /// Connections that haven't said what they are yet.
     private var pending: [any Channel] = []
     private var attachments = 0
@@ -226,10 +230,20 @@ final class Server {
         pending.removeAll { $0 === conn }
         conn.onClose = nil
         switch frame.decode(ClientMessage.self) {
-        case let .hello(_, name)?:
+        case let .hello(_, name, machine, instance)?:
             clients.append(conn)
             attachments += 1
             clientIDs[ObjectIdentifier(conn)] = attachments
+            let me = ObjectIdentifier(conn)
+            machines[me] = machine
+            if let instance {
+                // The same app back (a link made again, the old one maybe
+                // not yet seen to close): the pens it held are its still.
+                for (other, i) in instances where i == instance && other != me {
+                    for (shard, holder) in owners where holder == other { owners[shard] = me }
+                }
+                instances[me] = instance
+            }
             if name == "Manifold" {
                 appClients.insert(ObjectIdentifier(conn))
                 indexAgents()
@@ -241,6 +255,8 @@ final class Server {
                 self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
                 self?.appClients.remove(ObjectIdentifier(conn))
                 self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
+                self?.machines.removeValue(forKey: ObjectIdentifier(conn))
+                self?.instances.removeValue(forKey: ObjectIdentifier(conn))
             }
             // `mani` needs none of it: only that the versions agree.
             let snapshots = name == Mani.name ? [] : node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
@@ -398,10 +414,16 @@ final class Server {
     /// it's fenced, and mirrors from here on.
     private func own(_ shard: ShardID, by conn: any Channel) {
         let me = ObjectIdentifier(conn)
-        if let holder = owners[shard], holder != me, let other = clients.first(where: { ObjectIdentifier($0) == holder }) {
-            other.send(.message(ServerMessage.fenced(shard: shard)))
+        if let holder = owners[shard], holder != me, !sameApp(holder, me), let other = clients.first(where: { ObjectIdentifier($0) == holder }) {
+            other.send(.message(ServerMessage.fenced(shard: shard, by: machines[me])))
         }
         owners[shard] = me
+    }
+
+    /// Two connections from one launch of the app (one made again).
+    private func sameApp(_ a: ObjectIdentifier, _ b: ObjectIdentifier) -> Bool {
+        guard let i = instances[a] else { return false }
+        return instances[b] == i
     }
 
     /// The client, owning a shard, appended to it: kept and passed on, if
@@ -411,9 +433,9 @@ final class Server {
     private func clientAppended(_ shard: ShardID, _ entries: [Entry], from conn: any Channel) {
         guard let first = entries.first else { return }
         let me = ObjectIdentifier(conn)
-        if let holder = owners[shard], holder != me, clients.contains(where: { ObjectIdentifier($0) == holder }) {
+        if let holder = owners[shard], holder != me, !sameApp(holder, me), clients.contains(where: { ObjectIdentifier($0) == holder }) {
             log("append to \(shard) refused: another attachment owns it")
-            conn.send(.message(ServerMessage.fenced(shard: shard)))
+            conn.send(.message(ServerMessage.fenced(shard: shard, by: machines[holder])))
             conn.send(.message(ServerMessage.rejected(shard: shard)))
             if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
             return

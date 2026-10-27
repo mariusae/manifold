@@ -853,7 +853,12 @@ enum DebugControl {
             wc?.reopenClosed(nil)
             return "ok"
         case "toast":
+            // "toast": what it says; "toast act", its button pressed.
+            if arg == "act" { return wc?.debugToastAct() ?? "none" }
             return wc?.debugToast ?? "none"
+        case "fencing":
+            // Each host: watching or not, who took over, what's fenced.
+            return wc?.debugFencing ?? "no window"
         case "attend":
             // As focusing the block with the window key does: dismisses
             // its done or failed status.

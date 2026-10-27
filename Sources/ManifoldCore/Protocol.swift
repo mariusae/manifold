@@ -332,7 +332,10 @@ public enum HostProposal: Codable, Sendable {
 }
 
 public enum ClientMessage: Codable, Sendable {
-    case hello(version: Int, name: String)
+    /// `instance`: the app's launch, the same across its reconnections (a
+    /// connection that comes back is the same attachment, not another
+    /// taking the pen from it); `machine`, what to call it to another.
+    case hello(version: Int, name: String, machine: String? = nil, instance: String? = nil)
     /// Is the host there? Answered with `pong` at once (§8): a client
     /// over a pipe that hangs learns so.
     case ping
@@ -527,9 +530,10 @@ public enum ServerMessage: Codable, Sendable {
     /// The client's append didn't continue the log, or it doesn't own the
     /// shard; a snapshot follows.
     case rejected(shard: ShardID)
-    /// Another attachment took the pen for a shard (§8.2): this client
-    /// stops appending to it and mirrors, until it focuses the block again.
-    case fenced(shard: ShardID)
+    /// Another attachment took the pen for a shard (§8.2) — `by`, the
+    /// machine it's on: this client stops appending to it and mirrors,
+    /// until the user takes it back.
+    case fenced(shard: ShardID, by: String? = nil)
     case propose(shard: ShardID, HostProposal)
     case done(id: Int, error: String?)
     /// A shard's history: the state its (compacted) log starts from, if

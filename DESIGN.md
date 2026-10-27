@@ -1002,10 +1002,24 @@ to one host see the same spaces and each its own selection. The blocks
 a client may lead — text, web, spaces — have **one owner
 at a time**, by focus: the host hands a block's pen to whichever
 attachment last focused it (`own`), tells the one that held it it is
-fenced (`fenced`), and refuses appends from any other, sending the shard
-back whole; a shard no one owns goes to the first to append. One user on
-two machines never contends; two people on one note get last-focus-wins,
-honest and visible. That is apex §4 cut down to the one event that
+fenced (`fenced`, with the taker's machine), and refuses appends from any
+other, sending the shard back whole; a shard no one owns goes to the
+first to append. A fenced client is **watching** that host, as apex's
+window does (apex §4, its standing banner): nothing it does to what was
+taken takes, and focusing no longer takes a pen there — two clients each
+taking it back by focus would trade it between them for as long as both
+were used. It says so in a toast naming the other machine, with **Take
+Over**, again (every few seconds at most) when something done there
+didn't take, and by "watching" on the host's row, whose menu has Take
+Over too. Only Take Over takes back: every shard taken, and the space
+and block focused, whose holder is fenced and asked in turn. Watching
+lasts through reconnections and whoever holds the pens now — the other
+client gone, a server restarted — and ends with the app (a launch starts
+leading). A connection is an attachment, but the app's `hello` names its
+launch (`instance`): a link made again — its old connection maybe not yet
+seen to close — keeps the pens the old one held, so a client is never
+fenced by its own ghost. Terminals aren't fenced: what's typed goes to
+the shell from any client. That is apex §4 cut down to the one event that
 matters; epochs and leases are not needed.
 
 Apex §4 as is: attachments are explicit and survive reconnects; leases are

@@ -77,4 +77,11 @@ final class ToastView: NSView {
 
     /// Debugging: what it says, if shown.
     var debugText: String? { isHidden ? nil : label.stringValue }
+
+    /// Debugging: its button pressed, if it's up.
+    func debugAct() -> String {
+        guard !isHidden, !button.isHidden else { return "no toast" }
+        act()
+        return "acted"
+    }
 }

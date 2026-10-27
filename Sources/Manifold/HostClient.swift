@@ -1,4 +1,5 @@
 import AppKit
+import SystemConfiguration
 import CPTY
 import ManifoldCore
 
@@ -225,8 +226,28 @@ final class HostClient {
     /// The first welcome arrived: the host's name is known.
     var onWelcome: (() -> Void)?
     /// Shards another attachment took the pen for (§8.2): mirrored, not
-    /// appended to, until the block is focused here again.
+    /// appended to, until the user takes them back (`takeOver`) — through
+    /// reconnections too, and whoever holds them now. While any is, this
+    /// client is watching the host: focusing a block here doesn't take its
+    /// pen, as two clients each taking it back by focus would trade it
+    /// between them; the user is told, and asked.
     private(set) var fenced: Set<ShardID> = []
+    /// What the attachment that took them calls its machine.
+    private(set) var fencedBy: String?
+    var watching: Bool { !fenced.isEmpty }
+    /// Another attachment took a shard's pen (newly watching, or one more).
+    var onFenced: ((ShardID) -> Void)?
+    /// Something here was to be appended to a shard this client is fenced
+    /// from, and wasn't: the user did something that didn't take.
+    var onRefused: ((ShardID) -> Void)?
+    /// This launch of the app, the same through every reconnection: the
+    /// host gives a connection made again the pens the old one held.
+    static let instance = ULID.make()
+    /// What another client is told this one's machine is called.
+    static let machine: String = {
+        let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
+        return name ?? ProcessInfo.processInfo.hostName
+    }()
 
     /// `known`: the host's id from the hosts file, for one remembered,
     /// so it stands in the app (unreachable, as last seen) before it says
@@ -300,7 +321,8 @@ final class HostClient {
     /// Appends events to a shard the app leads: applied here at once, and
     /// sent to the host to keep and pass on.
     func append(_ events: [Event], to shard: ShardID) {
-        guard !events.isEmpty, !fenced.contains(shard) else { return }
+        guard !events.isEmpty else { return }
+        guard !fenced.contains(shard) else { return onRefused?(shard) ?? () }
         var entries: [Entry] = []
         for e in events {
             if let entry = node.append(e, to: shard, at: clock.now()) { entries.append(entry) }
@@ -311,11 +333,25 @@ final class HostClient {
     func append(_ event: Event, to shard: ShardID) { append([event], to: shard) }
 
     /// Takes the pen for a shard this client may lead (§8.2): on focusing
-    /// its block. The host fences whoever held it.
+    /// its block. The host fences whoever held it. Not while watching:
+    /// only `takeOver` takes back.
     func own(_ shard: ShardID) {
-        guard node.leader(of: shard) == .client else { return }
-        fenced.remove(shard)
+        guard node.leader(of: shard) == .client, !watching else { return }
         conn?.send(.message(ClientMessage.own(shard: shard)))
+    }
+
+    /// The user takes the host back: every shard taken from this client,
+    /// and `also` (what's focused here), its pen again; whoever held them
+    /// is fenced in turn, and asked in turn.
+    func takeOver(also: [ShardID] = []) {
+        let shards = fenced.union(also.filter { node.leader(of: $0) == .client })
+        fenced = []
+        fencedBy = nil
+        for s in shards.sorted(by: { $0.description < $1.description }) {
+            conn?.send(.message(ClientMessage.own(shard: s)))
+            // What was refused meanwhile: the host's copy is the truth.
+            conn?.send(.message(ClientMessage.resync(shard: s)))
+        }
     }
 
     /// Asks the host to do something only it can.
@@ -928,7 +964,7 @@ final class HostClient {
             }
         }
         mux.start()
-        conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold")))
+        conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold", machine: Self.machine, instance: Self.instance)))
         self.conn = conn
         self.mux = mux
         isConnected = true
@@ -973,7 +1009,6 @@ final class HostClient {
             lastContact = nil
             connectedSince = Date()
             startPinging()
-            fenced = []
             clock = Clock(host: host)
             for s in snapshots { node.load(s) }
             // Shards we had that the host no longer has (a fresh host).
@@ -1025,11 +1060,13 @@ final class HostClient {
             if let id = snap.shard.block, wantedReads.contains(id) { requestRead(id) }
         case let .rejected(shard):
             NSLog("append to %@ was refused", shard.description)
-        case let .fenced(shard):
+        case let .fenced(shard, by):
             // Another attachment has the pen: what this one appended since
             // is gone; the snapshot that follows is the truth.
-            NSLog("fenced on %@: another attachment took the pen", shard.description)
+            NSLog("fenced on %@: %@ took the pen", shard.description, by ?? "another attachment")
             fenced.insert(shard)
+            if let by { fencedBy = by }
+            onFenced?(shard)
         case let .propose(shard, proposal):
             lower(proposal, into: shard)
         case let .done(id, error):
@@ -1106,7 +1143,10 @@ final class HostClient {
         case let .content(text, encoding, lineEnding, fingerprint):
             // A text not in yet is this client's to put in, fenced or
             // not: no one can have edited what isn't there.
-            if fenced.contains(shard), let id = shard.block, node.block(id)?.needsRead == true { own(shard) }
+            if fenced.contains(shard), let id = shard.block, node.block(id)?.needsRead == true {
+                fenced.remove(shard)
+                conn?.send(.message(ClientMessage.own(shard: shard)))
+            }
             append(.content(text, encoding: encoding, lineEnding: lineEnding, fingerprint: fingerprint), to: shard)
         case let .clean(version, fingerprint):
             append(.clean(version: version, fingerprint: fingerprint), to: shard)

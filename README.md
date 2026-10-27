@@ -1207,6 +1207,13 @@ is migrated into logs on first run.
   attached to the host sees: New Terminal in a New Space (⌥⌘T)
   makes it on the focused block's host, a host's row in the Spaces
   sidebar has New Space on *host* in its menu. What a Mac shows and settles on is its own.
+  Two Macs on one host take turns at what they edit — a space, a note,
+  a page: the one that last focused it holds it, and the other is told,
+  in a toast naming the Mac that took it, that what it does there won't
+  take, with **Take Over**. From then on it's watching: it doesn't take
+  anything back by being clicked in, only by Take Over (in the toast, or
+  the host's menu, its row saying "watching"), however long, and through
+  the link going and coming back. Terminals take typing from both.
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,

@@ -27,6 +27,10 @@ final class Hosts {
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
     var onNotebookLive: ((BlockID, String, String) -> Void)?
+    /// Another client took a pen from this one on a host (§8.2); something
+    /// done here didn't take, being fenced.
+    var onFenced: ((HostClient) -> Void)?
+    var onRefused: ((HostClient) -> Void)?
     var onLanguageServer: ((HostID, String, String, String) -> Void)?
     private var pushedLanguageServers: [HostID: [LanguageServerConfig]] = [:]
     private var editing: Set<BlockID> = []
@@ -168,6 +172,14 @@ final class Hosts {
         client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
         client.onGutter = { [weak self] block in self?.onGutter?(block) }
         client.onNotebookLive = { [weak self] block, cell, output in self?.onNotebookLive?(block, cell, output) }
+        client.onFenced = { [weak self, weak client] _ in
+            guard let self, let client else { return }
+            self.onFenced?(client)
+        }
+        client.onRefused = { [weak self, weak client] _ in
+            guard let self, let client else { return }
+            self.onRefused?(client)
+        }
         client.onLanguageServer = { [weak self, weak client] language, root, state in
             guard let self, let client else { return }
             self.onLanguageServer?(client.host, language, root, state)
