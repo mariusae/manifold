@@ -34,3 +34,16 @@ import Testing
     #expect(Block.oneLine("\u{1B}]133;C\u{07}\u{1B}[1;32mwait-test\u{1B}[0m \u{1B}]133;D;0\u{1B}\\") == "wait-test")
     #expect(Block.oneLine("a\tb\r\n c") == "a b c")
 }
+
+@Test func aCommandsOutputEndsBeforeTheNextPromptEvenChanged() {
+    let prompt = ShellCommand.prompt(onLine: "devvm41244 api-envelope[f]/brick› ls", command: "ls")
+    #expect(prompt == "devvm41244 api-envelope[f]/brick›")
+    let out = "brick*  build_defs/  client/\nBRICK.md  cli/\n"
+    // The same prompt after it; one whose status or directory changed;
+    // one with the next command typed at it.
+    #expect(ShellCommand.output(out + "devvm41244 api-envelope[f]/brick› ", prompt: prompt) == "brick*  build_defs/  client/\nBRICK.md  cli/")
+    #expect(ShellCommand.output(out + "devvm41244 api-envelope[f*]/brick› ", prompt: prompt) == "brick*  build_defs/  client/\nBRICK.md  cli/")
+    #expect(ShellCommand.output(out + "devvm41244 api-envelope[f]/brick/cli› git status", prompt: prompt) == "brick*  build_defs/  client/\nBRICK.md  cli/")
+    // Output that merely ends in the mark, not at the prompt's start, stays.
+    #expect(ShellCommand.output("total: 3›", prompt: prompt) == "total: 3›")
+}

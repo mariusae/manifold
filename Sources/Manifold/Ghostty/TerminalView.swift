@@ -340,8 +340,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let o = Outline()
         o.onPick = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return }
-            self.go(toCommand: self.outlined[i].id)
+            let c = self.outlined[i]
             self.commandsOutline.current = i
+            // An agent's turn: shown as itself (what was asked, what it
+            // said, what it changed) — its TUI has no row to scroll to.
+            if self.isAgent, self.turns.contains(c.id) {
+                return self.delegate?.terminal(self, show: c, output: "", beside: nil) ?? ()
+            }
+            self.go(toCommand: c.id)
         }
         // A command dragged out: its text (to type again, to keep in a note).
         o.writerFor = { [weak self] i in

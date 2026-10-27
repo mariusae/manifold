@@ -280,16 +280,23 @@ public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
     /// last word, ending in a prompt's mark: "›", "$", "❯") — the next
     /// command not typed yet, or the first lines of a prompt over several,
     /// a right prompt's host on them — and blank ones.
+    /// The prompt may have changed since (its directory after a `cd`, a
+    /// repository's status in it — `host repo[f]/dir›` then `host
+    /// repo[f*]/sub›`): a line that begins with its first word and has its
+    /// closing mark at its end, or before a command typed, is one too.
     public static func output(_ output: String, prompt: String?) -> String {
         var lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let mark = prompt?.split(separator: " ").last.map(String.init).flatMap { w in
             w.unicodeScalars.last.map { !CharacterSet.alphanumerics.contains($0) } == true ? w : nil
         }
+        let close = mark?.unicodeScalars.last.map { String($0) }
+        let first = prompt?.split(separator: " ").first.map(String.init)
         func isPrompt(_ line: String) -> Bool {
             let t = line.trimmingCharacters(in: .whitespaces)
             if t.isEmpty { return true }
             if let prompt, t.contains(prompt) { return true }
             if let mark, t.hasSuffix(mark) { return true }
+            if let first, let close, first != prompt, t.hasPrefix(first), t.hasSuffix(close) || t.contains(close + " ") { return true }
             return false
         }
         while let last = lines.last, isPrompt(last) { lines.removeLast() }
