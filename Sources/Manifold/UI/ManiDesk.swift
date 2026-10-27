@@ -775,60 +775,45 @@ final class ManiDesk {
         return nil
     }
 
+    /// `new <kind> [what]`: a kind from `BlockKinds` (the table File ▸ New
+    /// and the picker are made from), made as the app makes it, and placed
+    /// by the flags; or a space.
     private func make(_ r: ManiRequest, _ scope: Scope) throws -> String {
-        let kind = r.args[0]
-        let what = r.args.count > 1 ? r.args[1] : nil
         let on = scope.host
-        guard let client = hosts.client(on) else { throw Failure(message: "that host isn't attached") }
         let cwd = r.flags["cwd"].map { $0.hasPrefix("/") ? $0 : r.cwd.appendingPathComponent($0) } ?? r.cwd
-        if r.flags["run"] != nil, !["terminal", "agent", "space"].contains(kind) {
+        if r.args[0] == "space" { return try makeSpace(r, on: on, cwd: cwd, scope: scope) }
+        guard let kind = BlockKinds.named(r.args[0]) else {
+            let names = BlockKinds.all.map(\.name) + ["space"]
+            throw Failure(message: "no kind \(r.args[0]) to make: " + names.joined(separator: ", "), status: 2)
+        }
+        if r.flags["run"] != nil, !["terminal", "agent"].contains(kind.name) {
             throw Failure(message: "--run is for a terminal, an agent or a space's terminal", status: 2)
         }
-        let block: BlockID
-        var lens: Lens
-        switch kind {
-        case "note":
-            guard what == nil else { throw Failure(message: "a note's text comes from --text or the input", status: 2) }
-            block = client.newNote(home: cwd, text: r.flags["text"] ?? r.input ?? "")
-            lens = r.flags["preview"] != nil ? .preview : .editor
-        case "terminal":
-            block = hosts.newTerminal(on: on, cwd: cwd)
-            lens = .terminal
-        case "agent":
-            // Its first prompt, to its command, as `claude "…"` takes one.
-            let command = what ?? wc.host.desk.settings.agentCommand
-            block = client.newAgent(cwd: cwd, command: r.flags["run"].map { command + " " + Self.quoted($0) } ?? command)
-            lens = .agent
-        case "web":
-            guard let url = what else { throw Failure(message: "new web needs an address", status: 2) }
-            if case let .page(u) = WebAddress.parse(url) { block = wc.host.newWeb(url: u) } else { block = wc.host.newWeb(url: url) }
-            lens = .web
-        case "search":
-            guard let text = what else { throw Failure(message: "new search needs what to look for", status: 2) }
-            block = client.newSearch(SearchQuery(text: text, root: cwd))
-            lens = .search
-        case "git":
-            if on == wc.host.host, VCS.repository(of: cwd) == nil { throw Failure(message: "no repository at \(cwd.abbreviatingHome)") }
-            block = client.gitBlock(for: cwd)
-            lens = .git
-        case "smartlog":
-            block = client.smartlogBlock(for: cwd)
-            lens = .smartlog
-        case "process", "processes":
-            block = client.processBlock()
-            lens = .process
-        case "space":
-            return try makeSpace(r, on: on, cwd: cwd, scope: scope)
-        default:
-            throw Failure(message: "no kind \(kind) to make: note, terminal, agent, web, search, git, smartlog, process, space", status: 2)
+        // What it takes: the word after its kind, as the picker reads it;
+        // a note's text from --text or the input too; a terminal's command
+        // from --run; an agent's first prompt from --run, to its command.
+        var what = r.args.count > 1 ? r.args[1] : nil
+        if what != nil, kind.what == nil { throw Failure(message: "new \(kind.name) takes nothing after it", status: 2) }
+        switch kind.name {
+        case "note": what = what ?? r.flags["text"] ?? r.input ?? ""
+        case "terminal": what = r.flags["run"] ?? what
+        case "agent": if let prompt = r.flags["run"] { what = (what ?? wc.host.desk.settings.agentCommand) + " " + Self.quoted(prompt) }
+        default: break
         }
+        let made: (block: BlockID, lens: Lens, later: Bool)
+        do { made = try wc.makeBlock(kind, what: what, cwd: cwd, on: on) } catch let f as MainWindowController.MakeFailure { throw Failure(message: f.message) }
+        let block = made.block
+        let lens = kind.name == "note" && r.flags["preview"] != nil ? .preview : made.lens
         if let title = r.flags["title"] { hosts.append(.title(title), to: .block(block)) }
-        try place(block, lens: lens, r, scope, context: "mani new \(kind)")
-        last = block
-        if let run = r.flags["run"] {
-            // An agent's was given to its command, above.
-            if kind == "terminal" { type(run, into: block) }
+        if made.later {
+            // Placed once the host has made it (a notebook), as the menu's is.
+            wc.whenMade(block, what: "the " + kind.title.lowercased(), made: { [weak self] in self?.hosts.block(block) != nil }) { [weak self] in
+                try? self?.place(block, lens: lens, r, scope, context: "mani new \(kind.name)")
+            }
+        } else {
+            try place(block, lens: lens, r, scope, context: "mani new \(kind.name)")
         }
+        last = block
         shown(block, line: nil, scope: scope)
         return block.description
     }

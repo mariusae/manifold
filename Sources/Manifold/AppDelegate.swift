@@ -234,16 +234,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Quit Manifold", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = submenu(main, "File")
-        item(file, "New Terminal", #selector(MainWindowController.newTerminalBeside(_:)), "n")
+        // New ▸: every kind of block (BlockKinds, the one table `mani new`
+        // and the picker are made from too), the commonest on their keys.
+        let new = NSMenu(title: "New")
+        let keys: [String: (String, NSEvent.ModifierFlags)] = [
+            "terminal": ("n", [.command]), "note": ("n", [.command, .shift]), "agent": ("a", [.command, .option]),
+            "notebook": ("n", [.command, .control, .shift]),
+        ]
+        for kind in BlockKinds.all where kind.interactive {
+            guard let action = MainWindowController.newActions[kind.name] else { continue }
+            let key = keys[kind.name]
+            let it = item(new, kind.title, action, key?.0 ?? "", key?.1 ?? [.command])
+            it.image = Theme.symbol(kind.symbol, size: 13)
+        }
+        let newItem = NSMenuItem(title: "New", action: nil, keyEquivalent: "")
+        newItem.submenu = new
+        file.addItem(newItem)
+        // Any kind, by typing: its name, then what it takes.
+        item(file, "New Block…", #selector(MainWindowController.newBlockPicker(_:)), "n", [.command, .option])
+        file.addItem(.separator())
         item(file, "New Terminal in a New Column", #selector(MainWindowController.newTerminalInNewColumn(_:)), "n", [.command, .option, .shift])
         item(file, "New Terminal in a New Space", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
-        item(file, "New Note", #selector(MainWindowController.newNote(_:)), "n", [.command, .shift])
         item(file, "New Note from Selection", #selector(MainWindowController.newNoteFromSelection(_:)), "")
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")
-        item(file, "New Web Page", #selector(MainWindowController.newWebPage(_:)), "")
-        item(file, "New Shell Notebook", #selector(MainWindowController.newShellNotebook(_:)), "n", [.command, .control, .shift])
-        item(file, "New Processes", #selector(MainWindowController.showProcesses(_:)), "")
-        item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
         let agents = NSMenu(title: "Launch Agent Here")
         agents.delegate = agentMenu
         agentMenu.items = { [weak self] in self?.windowController?.agentMenuItems() ?? [] }

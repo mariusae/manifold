@@ -635,6 +635,15 @@ indexes of every host it is attached to, so backlinks cross hosts.
 
 ### 6.2 Recall
 
+**Making** is one table too (`BlockKinds`): each kind of block, its
+symbol, what it takes after its name (a command, an address, words, a
+path) and a line on it. File ▸ New's items, the New Block picker (⌥⌘N,
+the kind's name then what it takes, placed by the one rule's keys) and
+`mani new <kind> [what]` with its help are all made from it, and all go
+through one maker in the controller (`makeBlock`), so a kind is added in
+one place. Finding and making stay apart: Open Quickly finds what
+exists; the picker makes.
+
 One box: **Open Quickly** (⌘O), over the graph — blocks by title, place
 and summary, each row the block's summary card; spaces by name. ⇥ turns
 it to the blocks' texts. Files are Find in Files' (⇧⌘F), not its; the

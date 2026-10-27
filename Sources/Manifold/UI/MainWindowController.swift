@@ -1955,6 +1955,102 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         deleteBlock(block)
     }
 
+    // MARK: Making blocks (BlockKinds)
+
+    struct MakeFailure: Error { var message: String }
+
+    /// A block of a kind made (`BlockKinds`, one table for File ▸ New, the
+    /// picker and `mani new`), with what it takes if given, on a host,
+    /// from a folder — not yet placed. The lens it shows in, and whether
+    /// the host makes it later (a notebook: shown once it has).
+    func makeBlock(_ kind: BlockKinds.Kind, what: String?, cwd: String?, on h: HostID) throws -> (block: BlockID, lens: Lens, later: Bool) {
+        guard let client = hosts.client(h) else { throw MakeFailure(message: "that host isn't attached") }
+        let here = cwd ?? NSHomeDirectory()
+        switch kind.name {
+        case "terminal":
+            let t = hosts.newTerminal(on: h, cwd: cwd)
+            // Its command typed in once its shell is up.
+            if let what { hosts.propose(.input(block: t, text: what + "\r")) }
+            return (t, .terminal, false)
+        case "agent":
+            return (client.newAgent(cwd: cwd, command: what ?? desk.settings.agentCommand), .agent, false)
+        case "note":
+            return (client.newNote(home: cwd, text: what ?? ""), .editor, false)
+        case "web":
+            let address = what.map { if case let .page(u) = WebAddress.parse($0) { return u } else { return $0 } } ?? "https://duckduckgo.com"
+            return (host.newWeb(url: address), .web, false)
+        case "search":
+            return (client.newSearch(SearchQuery(text: what ?? "", root: here)), .search, false)
+        case "folder":
+            let path = what.map { ($0 as NSString).expandingTildeInPath }.map { $0.hasPrefix("/") ? $0 : (here as NSString).appendingPathComponent($0) } ?? here
+            return (hosts.directoryBlock(for: path, on: h), .directory, false)
+        case "notebook":
+            let id = BlockID(host: client.host)
+            client.propose(.newNotebook(block: id, cwd: cwd))
+            return (id, .notebook, true)
+        case "git":
+            if h == host.host, VCS.repository(of: here) == nil { throw MakeFailure(message: "no repository at \(here.abbreviatingHome)") }
+            return (client.gitBlock(for: here), .git, false)
+        case "smartlog":
+            return (client.smartlogBlock(for: here), .smartlog, false)
+        case "process":
+            return (client.processBlock(), .process, false)
+        default:
+            throw MakeFailure(message: "no kind \(kind.name) to make")
+        }
+    }
+
+    /// File ▸ New's items, by kind: each the action it always had, so a
+    /// menu's New Note is ⇧⌘N's note (linked from the focused block), a
+    /// search Find in Files', a repository's block as Source Control finds it.
+    static let newActions: [String: Selector] = [
+        "terminal": #selector(newTerminalBeside(_:)), "agent": #selector(newAgent(_:)), "note": #selector(newNote(_:)),
+        "web": #selector(newWebPage(_:)), "search": #selector(findInFiles(_:)), "folder": #selector(browseFocusedFolder(_:)),
+        "notebook": #selector(newShellNotebook(_:)), "git": #selector(showGit(_:)), "smartlog": #selector(showSmartlog(_:)),
+        "process": #selector(showProcesses(_:)),
+    ]
+
+    /// ⌥⌘N: the New Block picker — the kinds, narrowed as a kind's name is
+    /// typed, then what it takes after a space ("web example.com", "search
+    /// TODO", "terminal make test"), as `mani new` reads its words; ↩ makes
+    /// it in the active column, ⌘↩ beside the focused tile, ⌥↩ over it.
+    @objc func newBlockPicker(_ sender: Any?) {
+        let provider: (String) -> [FinderItem] = { [weak self] query in
+            let (word, what) = BlockKinds.parse(query)
+            return BlockKinds.matching(word).map { k in
+                let with = k.what == nil ? nil : what
+                return FinderItem(symbol: k.symbol, title: "New " + k.title + (with.map { " — " + $0 } ?? ""), detail: k.help,
+                                  note: k.what.map { with == nil ? "then: \($0)" : "" } ?? "",
+                                  run: { [weak self] in self?.makeFromPicker(k, with) })
+            }
+        }
+        finder.showOutline(Finder.OutlineScope(provider: provider, start: nil,
+                                               placeholder: "New block: a kind, then what it takes — web example.com",
+                                               hint: "Make a block", keys: "↩ Here    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"),
+                           over: window)
+    }
+
+    private func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?) {
+        let f = arrangement?.focused
+        let place: Where = switch Self.disposition ?? .goTo {
+        case .beside: f.map { .besideOpener($0) } ?? .here
+        case .over: f.map { .over($0) } ?? .here
+        default: .here
+        }
+        do {
+            let from = focusedShown?.block
+            // A search under the project, as Find in Files'; the rest where the focused block is.
+            let cwd = kind.name == "search" ? projectRoot(from: focusedCwd, on: focusedHost) : focusedCwd
+            let made = try makeBlock(kind, what: what, cwd: cwd, on: focusedHost)
+            // A note is about what was focused, as ⇧⌘N's is.
+            if kind.name == "note", let b = from, b.kind != .arrangement { hosts.link(from: b.id, to: made.block, kind: .linked, context: "new note") }
+            if made.later { showWhenMade(made.block, lens: made.lens, place: place, what: "the " + kind.title.lowercased()) }
+            else { show(made.block, lens: made.lens, place, context: "new " + kind.name) }
+        } catch let f as MakeFailure {
+            toast.show(f.message, action: "OK", for: 5) {}
+        } catch {}
+    }
+
     /// A block deleted (§4): every tile of it taken off, in every space;
     /// every link to it and from it broken, on every host, pins too; the
     /// block itself gone at once — its log, its session, its entry in the
@@ -3799,7 +3895,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The project the focused block is in: its repository's root (git
     /// or Sapling), else its own folder.
-    private func projectRoot(from cwd: String?, on: HostID) -> String {
+    func projectRoot(from cwd: String?, on: HostID) -> String {
         let root = cwd ?? NSHomeDirectory()
         guard on == host.host else { return root }
         return VCS.repository(of: root)?.root ?? root
@@ -7305,7 +7401,7 @@ extension MainWindowController: TerminalViewDelegate {
 
     /// A block the host is making, shown as soon as it exists here.
     /// `context`: the link the host made for it, said again (see showTurnWhenMade).
-    private func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
+    func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
         whenMade(id, what: what, made: { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
             self?.show(id, lens: lens, place, kind: .opened, context: context)
         }
@@ -7318,7 +7414,7 @@ extension MainWindowController: TerminalViewDelegate {
     /// `then` once `made` holds — looked at with each change that comes
     /// (the host's reply is one), not every 50 ms; past half a second it's
     /// said what's awaited, past 30 that it didn't come.
-    private func whenMade(_ id: BlockID, what: String, made: @escaping () -> Bool, then: @escaping () -> Void) {
+    func whenMade(_ id: BlockID, what: String, made: @escaping () -> Bool, then: @escaping () -> Void) {
         if made() { return then() }
         madeWaits.append(MadeWait(id: id, what: what, made: made, then: then, started: Date()))
         checkMadeWaits()

@@ -429,6 +429,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         var start: Int?
         var placeholder: String
         var hint: String
+        /// The keys it takes, at the hint's end, if not ↩'s going.
+        var keys: String? = nil
     }
     private var outlineScope: OutlineScope?
     private var otherOutline: OutlineScope?
@@ -535,7 +537,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func updateHint() {
         if outline != nil {
             let what = outlineScope?.hint ?? "The space, by column and tile, headings within"
-            hint.stringValue = what + (otherOutline != nil ? "    ⇥ \(otherOutline!.placeholder.hasPrefix("Go to a tile") ? "The space" : "This tile")" : "") + "    ↩ Go    ⎋ Close"
+            hint.stringValue = what + (otherOutline != nil ? "    ⇥ \(otherOutline!.placeholder.hasPrefix("Go to a tile") ? "The space" : "This tile")" : "") + "    " + (outlineScope?.keys ?? "↩ Go    ⎋ Close")
             return
         }
         hint.stringValue = switch scope {

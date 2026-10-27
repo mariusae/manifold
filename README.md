@@ -334,9 +334,19 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
+- **Making a block**, of any kind, three ways that agree: **File ▸
+  New ▸** lists every kind (terminal ⌘N, note ⇧⌘N, agent ⌥⌘A, web page,
+  search, folder, shell notebook ⌃⇧⌘N, source control, smartlog,
+  processes); **New Block…** (**⌥⌘N**) takes it typed — a kind's name
+  (or its start), then what it takes: `web example.com`, `search TODO`,
+  `terminal make test`, `note buy milk` — ↩ making it in the active
+  column, ⌘↩ beside the focused tile, ⌥↩ over it; and `mani new <kind>
+  [what]` reads the same words in a shell. One table of kinds makes all
+  three, so none is missing from one of them.
 - **The menus** go by what a command is about: **File** makes things
-  (terminals, notes, pages, agents) and holds Source Control (the
-  project's, its smartlog, the last commit, a file's history); **Edit**,
+  (New ▸, New Block…, a terminal in a new column or space, a note from
+  the selection) and holds Source Control (the project's, its smartlog,
+  the last commit, a file's history); **Edit**,
   text; **View**, how things look (and a tile's own Back and Forward, ⌘[
   ⌘]); **Go**, finding a place and getting there (Open Quickly, the
   outline, Back and Forward through the places you've been, the Inbox,

@@ -162,6 +162,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     <h3>The basics</h3>
     <ul class="toc">
       <li><a href="#blocks" data-open="blocks">Blocks and spaces</a></li>
+      <li><a href="#making" data-open="making">Making a block</a></li>
       <li><a href="#tiles" data-open="tiles">Tiles and the bar</a></li>
       <li><a href="#opening" data-open="opening">Opening things</a></li>
       <li><a href="#stacks" data-open="stacks">Stacks</a></li>
@@ -231,6 +232,19 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     preview on the right (<kbd>⌥⇧⌘P</kbd>), every keystroke showing in both.</p>
     <p>See also <a href="#tiles" data-open="tiles">Tiles and the bar</a> and
     <a href="#keeping" data-open="keeping">What stays, what goes</a>.</p>
+  </div>
+</template>
+
+<template data-block="making" data-kind="note" data-title="Making a block" data-place="Guide"
+          data-summary="File ▸ New, or ⌥⌘N and a kind's name | the same words as mani new">
+  <div class="doc">
+    <h1>Making a block</h1>
+    <p>Three ways, which agree — one table of kinds makes all three:</p>
+    <ul>
+      <li><b>File ▸ New ▸</b> lists every kind: terminal (<kbd>⌘N</kbd>), note (<kbd>⇧⌘N</kbd>), agent (<kbd>⌥⌘A</kbd>), web page, search, folder, shell notebook, source control, smartlog, processes.</li>
+      <li><b>New Block…</b> (<kbd>⌥⌘N</kbd>) takes it typed: a kind's name, or the start of one, then what it takes — <code>web example.com</code>, <code>search TODO</code>, <code>terminal make test</code>, <code>note buy milk</code>. <kbd>↩</kbd> makes it in the active column, <kbd>⌘↩</kbd> beside the focused tile, <kbd>⌥↩</kbd> over it.</li>
+      <li><a href="#mani" data-open="mani"><code>mani new &lt;kind&gt; [what]</code></a> reads the same words in a shell.</li>
+    </ul>
   </div>
 </template>
 
@@ -554,7 +568,7 @@ mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pr
     <h1>Keys</h1>
     <div class="key-grid">
       <section><h3>File</h3><dl>
-        <dt>⌘N</dt><dd>New Terminal</dd><dt>⌥⌘T</dt><dd>…in a New Space</dd><dt>⇧⌘N</dt><dd>New Note</dd>
+        <dt>⌘N</dt><dd>New Terminal</dd><dt>⌥⌘N</dt><dd>New Block…</dd><dt>⌥⌘T</dt><dd>…in a New Space</dd><dt>⇧⌘N</dt><dd>New Note</dd>
         <dt>⌥⌘A</dt><dd>New Agent</dd><dt>⌥⌘O</dt><dd>Open Folder…</dd><dt>⌃⌘O</dt><dd>Browse This Folder</dd>
         <dt>⌥⌘W</dt><dd>Save and Close</dd>
         <dt>⌥⌘G</dt><dd>Source Control</dd><dt>⌥⌘Y</dt><dd>History of This File</dd></dl></section>

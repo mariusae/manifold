@@ -140,3 +140,21 @@ import Testing
     try AgentSkill.uninstallSkillFile(at: skill)
     #expect(!FileManager.default.fileExists(atPath: skill.deletingLastPathComponent().path))
 }
+
+@Test func theKindsOfBlockAreOneTable() {
+    // What the picker reads, as `mani new` reads its words.
+    #expect(BlockKinds.parse("web example.com") == ("web", "example.com"))
+    #expect(BlockKinds.parse("  search  TODO later ") == ("search", "TODO later"))
+    #expect(BlockKinds.parse("term") == ("term", nil))
+    // A name, an alias, or the start of one.
+    #expect(BlockKinds.named("ps")?.name == "process")
+    #expect(BlockKinds.named("page")?.name == "web")
+    #expect(BlockKinds.named("term", exact: false)?.name == "terminal")
+    #expect(BlockKinds.named("s", exact: false) == nil)  // search, smartlog, shell notebook, source control
+    #expect(BlockKinds.matching("").count == BlockKinds.all.count)
+    #expect(BlockKinds.matching("s").map(\.name).contains("smartlog"))
+    #expect(BlockKinds.matching("notebook").map(\.name) == ["notebook"])
+    // Every kind in `mani new`'s help.
+    let help = Mani.help("new")
+    for k in BlockKinds.all { #expect(help.contains("  " + k.name)) }
+}
