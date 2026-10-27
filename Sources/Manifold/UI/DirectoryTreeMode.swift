@@ -184,14 +184,18 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
     /// itself); a file's, chosen — and previewed.
     @objc private func clicked() {
         let row = outline.clickedRow
+        // A double-click's second: it opens (below), not toggles again.
+        guard (NSApp.currentEvent?.clickCount ?? 1) < 2 else { return }
         guard row >= 0, let n = outline.item(atRow: row) as? BrowserNode, n.isDirectory, !model.filtering else { return }
         let p = outline.convert(NSApp.currentEvent?.locationInWindow ?? .zero, from: nil)
         if outline.frameOfOutlineCell(atRow: row).insetBy(dx: -4, dy: 0).contains(p) { return }
         toggle(n)
     }
 
+    /// Double-clicked, a file or a folder opens, as its menu's Open does
+    /// (a folder in this tile; ⌘ beside, ⌥ over).
     @objc private func doubleClicked() {
-        guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? BrowserNode, !n.isDirectory else { return }
+        guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? BrowserNode else { return }
         owner.open(n)
     }
 

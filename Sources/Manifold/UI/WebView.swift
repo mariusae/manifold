@@ -254,6 +254,8 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
     @objc func goBack(_ sender: Any?) { web.goBack() }
     @objc func goForward(_ sender: Any?) { web.goForward() }
     @objc func reloadPage(_ sender: Any?) { web.reload() }
+    /// Reload, from the server: nothing taken from the cache.
+    func reloadFromOrigin() { web.reloadFromOrigin() }
     @objc func stopLoading(_ sender: Any?) { web.stopLoading() }
 
     /// ⌘+, ⌘−, ⌘0: the page zoomed a step, as Safari steps it, or back.
@@ -265,13 +267,16 @@ final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
 
     private var watching: [NSKeyValueObservation] = []
 
-    /// Back, forward, and reload — stop, while it loads — on its bar.
+    /// Back, forward, and reload — stop, while it loads — on its bar; ⇧
+    /// held on reload, from the server, the cache passed over.
     var barButtons: [BarButton] {
         [BarButton(symbol: "chevron.left", tooltip: "Back (⌘[)", enabled: web.canGoBack) { [weak self] in self?.web.goBack() },
          BarButton(symbol: "chevron.right", tooltip: "Forward (⌘])", enabled: web.canGoForward) { [weak self] in self?.web.goForward() },
          web.isLoading
             ? BarButton(symbol: "xmark", tooltip: "Stop Loading", enabled: true) { [weak self] in self?.web.stopLoading() }
-            : BarButton(symbol: "arrow.clockwise", tooltip: "Reload", enabled: true) { [weak self] in self?.web.reload() }]
+            : BarButton(symbol: "arrow.clockwise", tooltip: "Reload (⇧-click: from the Server)", enabled: true) { [weak self] in
+                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { self?.web.reloadFromOrigin() } else { self?.web.reload() }
+            }]
     }
 
     /// "Version/26.1 Safari/605.1.15", from the Safari that's installed.

@@ -161,7 +161,8 @@ parts from the Mac's conventions on purpose.
   click the address in its bar (or ⌘L) and it becomes one, there, the
   title left as it is and the address selected to type over, or words
   to search for (the rest of the bar grows the tile, as any bar does); ⏎ goes, ⎋ leaves it. ⌘[ and ⌘]
-  go back and forward, ⌘R reloads. The bar's menu (its icon) carries
+  go back and forward, ⌘R reloads (⇧-click the bar's reload button to
+  reload from the server, the cache passed over). The bar's menu (its icon) carries
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
   The focused tile has a ring around it. **⌘Z undoes** the space's
@@ -619,7 +620,8 @@ around it, and comes back with its history.
   some words, then ⏎, searches inside the files instead, in a search
   beside. The arrow, or ⌘↑, goes up to the enclosing folder; ⌘↓ goes into
   the folder chosen, in the same tile. A double-click (or ⏎) opens a file
-  as a link does — gone to, else beside. Drag an entry out
+  as a link does — gone to, else beside; a double-click on a folder opens
+  it, as its menu's Open does — in this tile (⌘ beside, ⌥ over). Drag an entry out
   and it's its path — a terminal types it, an editor inserts it, the
   grid opens it where it lands (on its host, another's too), another
   app takes the file (one of this Mac's); ⇧-drag it
