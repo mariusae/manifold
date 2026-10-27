@@ -242,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")
         item(file, "New Web Page", #selector(MainWindowController.newWebPage(_:)), "")
         item(file, "New Shell Notebook", #selector(MainWindowController.newShellNotebook(_:)), "n", [.command, .control, .shift])
+        item(file, "New Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(file, "New Agent", #selector(MainWindowController.newAgent(_:)), "a", [.command, .option])
         let agents = NSMenu(title: "Launch Agent Here")
         agents.delegate = agentMenu
@@ -379,8 +380,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Show Hidden Files", #selector(DirectoryView.toggleHiddenFiles(_:)), ".", [.command, .shift])
-        view.addItem(.separator())
-        item(view, "Processes", #selector(MainWindowController.showProcesses(_:)), "")
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.

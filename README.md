@@ -1023,7 +1023,7 @@ around it, and comes back with its history.
   Installing again replaces Manifold's hooks and keeps the rest of each
   file (a copy of it as it was is left beside it, `.before-manifold`);
   `mani skill uninstall` takes them out.
-- **Processes** (View ▸ Processes) is a block per host listing what `ps`
+- **Processes** (File ▸ New Processes, or `mani new process`) is a block per host listing what `ps`
   sees, again every few seconds while shown, in tight rows by block:
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
   (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the

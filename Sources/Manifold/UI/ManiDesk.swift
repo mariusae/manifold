@@ -814,10 +814,13 @@ final class ManiDesk {
         case "smartlog":
             block = client.smartlogBlock(for: cwd)
             lens = .smartlog
+        case "process", "processes":
+            block = client.processBlock()
+            lens = .process
         case "space":
             return try makeSpace(r, on: on, cwd: cwd, scope: scope)
         default:
-            throw Failure(message: "no kind \(kind) to make: note, terminal, agent, web, search, git, smartlog, space", status: 2)
+            throw Failure(message: "no kind \(kind) to make: note, terminal, agent, web, search, git, smartlog, process, space", status: 2)
         }
         if let title = r.flags["title"] { hosts.append(.title(title), to: .block(block)) }
         try place(block, lens: lens, r, scope, context: "mani new \(kind)")

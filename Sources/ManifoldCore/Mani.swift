@@ -130,7 +130,7 @@ public enum Mani {
                      Flag(name: "cwd", value: "dir", help: "a terminal's, agent's or repository's directory (else this one)"),
                      Flag(name: "run", value: "command", help: "a terminal's command, typed in once it starts; an agent's first prompt"),
                      space] + placing,
-             summary: "Make a block or a space: note, terminal, agent, web, search, git, smartlog, space",
+             summary: "Make a block or a space: note, terminal, agent, web, search, git, smartlog, process, space",
              details: """
                  Makes a block and shows it, printing its id (and it's @last):
                    note           a note, its text from --text or the input
@@ -140,6 +140,7 @@ public enum Mani {
                    search <text>  a search of the files under --cwd or here
                    git            the repository's block (git or Sapling) at --cwd or here
                    smartlog       Sapling's interactive smartlog, for the repository
+                   process        the host's processes, as ps lists them
                    space          a space with a terminal in --cwd, named --title;
                                   it prints the space's id, @last is the terminal
 
