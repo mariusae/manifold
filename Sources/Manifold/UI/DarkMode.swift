@@ -69,22 +69,38 @@ extension NSObjectProtocol where Self: NSView {
 private final class ThemeHooks {
     var apply: [() -> Void] = []
     private var observer: NSObjectProtocol?
+    /// The view's own appearance watched: the app's notice comes a turn
+    /// after the app's appearance changes, and a window may not have taken
+    /// it on yet — the colors set then were the old appearance's (a bar
+    /// left dark in the light, after the system switched).
+    private var appearance: NSKeyValueObservation?
     private static var key = 0
 
     static func of(_ view: NSView) -> ThemeHooks {
         if let hooks = objc_getAssociatedObject(view, &key) as? ThemeHooks { return hooks }
         let hooks = ThemeHooks()
+        // The tint or the like changed (the notice), or the view's light
+        // or dark (its own appearance).
         hooks.observer = NotificationCenter.default.addObserver(
             forName: .manifoldAppearanceChanged, object: nil, queue: .main
         ) { [weak hooks, weak view] _ in
             guard let hooks, let view else { return }
-            view.effectiveAppearance.performAsCurrentDrawingAppearance { hooks.apply.forEach { $0() } }
+            hooks.reapply(view)
+        }
+        hooks.appearance = view.observe(\.effectiveAppearance) { [weak hooks] view, _ in
+            guard let hooks else { return }
+            if Thread.isMainThread { hooks.reapply(view) } else { DispatchQueue.main.async { hooks.reapply(view) } }
         }
         objc_setAssociatedObject(view, &key, hooks, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         return hooks
     }
 
+    private func reapply(_ view: NSView) {
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { apply.forEach { $0() } }
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        appearance?.invalidate()
     }
 }
