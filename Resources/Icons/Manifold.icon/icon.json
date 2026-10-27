@@ -1,0 +1,113 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:1.00000,1.00000,1.00000,1.00000",
+          "srgb:0.91373,0.92549,0.94510,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.20000,0.21176,0.23922,1.00000",
+          "srgb:0.09020,0.09804,0.11373,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "tile-1.svg",
+          "name": "Tile 1",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.89020,0.90196,0.92157,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "tile-2.svg",
+          "name": "Tile 2",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.60784,0.63137,0.67059,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "tile-3.svg",
+          "name": "Tile 3",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.76471,0.78431,0.81569,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "tile-4.svg",
+          "name": "Tile 4",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.43529,0.45490,0.49020,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "tile-5.svg",
+          "name": "Tile 5",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.92549,0.93333,0.94902,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "tile-6.svg",
+          "name": "Tile 6",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.53333,0.55686,0.59608,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "name": "Tiles",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

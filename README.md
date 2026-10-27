@@ -1454,6 +1454,15 @@ through swiftly (`SWIFT_LINUX`, 6.4.1 by default — installed, with its
 Static Linux SDK, if missing), since the SDK goes with the toolchain of
 its own version and not with Xcode's; `LINUX=0` skips them.
 
+The icon is the app's tiles. On macOS 26 and later it's an Icon Composer
+icon (`Resources/Icons/Manifold.icon`: each tile a layer, over a light
+background with a dark one for dark mode, and greys for the tinted
+style), which the system draws light, dark, clear or tinted as System
+Settings ▸ Appearance ▸ Icon & widget style says; Xcode's `actool`
+compiles it into the bundle. macOS 15, or a build without Xcode, has
+`AppIcon.icns`, drawn from `Resources/Icons/manifold-tiles.svg`. Icon
+Composer opens the `.icon` to adjust it by eye.
+
 `MANIFOLD_DIR` runs everything against another directory, for a second,
 throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one
 driven by a script); with `MANIFOLD_DEBUG` set too, the app listens on

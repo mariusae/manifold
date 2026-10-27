@@ -53,6 +53,21 @@ if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.ic
   iconutil -c icns "$iconset" -o build/AppIcon.icns
 fi
 cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# From macOS 26 the icon is Icon Composer's (Resources/Icons/Manifold.icon):
+# the tiles as layers on a background, which the system draws light, dark,
+# clear or tinted as Appearance ▸ Icon & widget style asks — compiled by
+# Xcode's actool into Assets.car, the bundle naming it (CFBundleIconName).
+# macOS 15 keeps AppIcon.icns (actool's own .icns isn't wanted); so does a
+# build without Xcode.
+rm -f "$app/Contents/Resources/Assets.car"
+/usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$app/Contents/Info.plist" >/dev/null 2>&1 || true
+# (absolute paths: actool's helper may not run where we are)
+if xcrun actool "$PWD/Resources/Icons/Manifold.icon" --compile "$(cd "$app/Contents/Resources" && pwd)" --app-icon Manifold \
+     --platform macosx --minimum-deployment-target 15.0 --output-partial-info-plist "$PWD/build/icon-partial.plist" >/dev/null 2>&1 \
+   && [ -f "$app/Contents/Resources/Assets.car" ]; then
+  rm -f "$app/Contents/Resources/Manifold.icns"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string Manifold" "$app/Contents/Info.plist"
+fi
 # The Finder and the Dock cache a bundle's icon by its path: the bundle
 # is touched and registered again so a new icon shows at the next launch.
 touch "$app"
