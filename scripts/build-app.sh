@@ -40,7 +40,8 @@ cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/C
 # No fonts are shipped: the themes are of those macOS has, or installed.
 
 # The icon is drawn from its SVG by a script, and only redrawn when either changes.
-icon=Resources/Icons/manifold-m.svg
+# (manifold-tiles-mono.svg is its grey version, for where one color is wanted.)
+icon=Resources/Icons/manifold-tiles.svg
 if [ ! -f build/AppIcon.icns ] || [ scripts/make-icon.swift -nt build/AppIcon.icns ] || [ "$icon" -nt build/AppIcon.icns ]; then
   iconset=build/AppIcon.iconset
   rm -rf "$iconset" && mkdir -p "$iconset"

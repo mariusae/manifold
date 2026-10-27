@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 460" width="1024" height="1024" role="img" aria-label="Manifold: three columns of tiles in color">
+  <!-- The app's tiles: three columns of them, as it lays out blocks, each a
+       color of the M's gradient (or, the monochrome one, a grey as light). -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="0.82" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#ffffff"/><stop offset=".45" stop-color="#fafbfc"/><stop offset=".85" stop-color="#eff1f5"/><stop offset="1" stop-color="#e9ecf1"/>
+    </linearGradient>
+    <radialGradient id="topLight" cx=".31" cy=".01" r=".95">
+      <stop stop-color="#ffffff" stop-opacity=".9"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".25"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="underLight" cx=".48" cy=".83" r=".66">
+      <stop stop-color="#dfe3ec" stop-opacity=".55"/><stop offset="1" stop-color="#e8ebf1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1=".12" y1="0" x2=".84" y2="1">
+      <stop stop-color="#ffffff" stop-opacity=".9"/><stop offset=".35" stop-color="#d9dce3" stop-opacity=".55"/><stop offset=".75" stop-color="#c4c9d3" stop-opacity=".45"/><stop offset="1" stop-color="#b8bdc8" stop-opacity=".6"/>
+    </linearGradient>
+    <filter id="outerShadow" x="-35%" y="-35%" width="170%" height="180%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="9"/></filter>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1b2233" flood-opacity=".16"/></filter>
+    <linearGradient id="t0" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#69cdff"/><stop offset="1" stop-color="#47b8f0"/></linearGradient>
+    <linearGradient id="t1" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4c9eff"/><stop offset="1" stop-color="#2784f0"/></linearGradient>
+    <linearGradient id="t2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8fabff"/><stop offset="1" stop-color="#7392f0"/></linearGradient>
+    <linearGradient id="t3" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#7e5ffc"/><stop offset="1" stop-color="#5f3cec"/></linearGradient>
+    <linearGradient id="t4" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffaa9d"/><stop offset="1" stop-color="#f09182"/></linearGradient>
+    <linearGradient id="t5" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f5628f"/><stop offset="1" stop-color="#e44073"/></linearGradient>
+  </defs>
+  <rect x="11" y="24" width="436" height="425" rx="102" fill="#1b2233" opacity=".16" filter="url(#outerShadow)"/>
+  <rect x="10.4" y="17.5" width="435.5" height="426.5" rx="103.5" fill="url(#base)"/>
+  <rect x="10.4" y="17.5" width="435.5" height="426.5" rx="103.5" fill="url(#topLight)"/>
+  <rect x="10.4" y="17.5" width="435.5" height="426.5" rx="103.5" fill="url(#underLight)"/>
+  <rect x="11.5" y="18.6" width="433.3" height="424.3" rx="102.5" fill="none" stroke="url(#edge)" stroke-width="1.25"/>
+  <g filter="url(#lift)">
+    <rect x="104" y="106" width="74" height="146" rx="18" fill="url(#t0)"/>
+    <rect x="104.75" y="106.75" width="72.5" height="144.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+    <rect x="104" y="264" width="74" height="90" rx="18" fill="url(#t1)"/>
+    <rect x="104.75" y="264.75" width="72.5" height="88.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+    <rect x="192" y="106" width="74" height="82" rx="18" fill="url(#t2)"/>
+    <rect x="192.75" y="106.75" width="72.5" height="80.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+    <rect x="192" y="200" width="74" height="154" rx="18" fill="url(#t3)"/>
+    <rect x="192.75" y="200.75" width="72.5" height="152.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+    <rect x="280" y="106" width="74" height="112" rx="18" fill="url(#t4)"/>
+    <rect x="280.75" y="106.75" width="72.5" height="110.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+    <rect x="280" y="230" width="74" height="124" rx="18" fill="url(#t5)"/>
+    <rect x="280.75" y="230.75" width="72.5" height="122.5" rx="17.25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.5"/>
+  </g>
+</svg>
