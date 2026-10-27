@@ -6,7 +6,8 @@ import ManifoldCore
 /// program says how far, as OSC 9;4 or 7501 progress does), an amber ring
 /// with a dot for a block that needs you, a filled disc with a check for
 /// done and not yet read (red for failed), a plain grey check once read,
-/// and a moon for a terminal gone inactive.
+/// and a moon for a terminal gone inactive. A host's: being reached,
+/// offline, quiet, or watched — an eye: another Manifold took it over.
 final class StatusGlyph: NSView {
     enum Look: Equatable {
         case working(progress: Int?)
@@ -21,6 +22,9 @@ final class StatusGlyph: NSView {
         /// A host whose link is up but hasn't been heard from for a while
         /// (a ping unanswered): a broken ring.
         case quiet
+        /// A host another Manifold took over (§8.2): this one watches,
+        /// what's done here not taking until Take Over. An eye.
+        case watching
     }
 
     var look: Look? {
@@ -77,6 +81,7 @@ final class StatusGlyph: NSView {
         case .connecting: words = ["Connecting to its host"]
         case .offline: words = ["Its host can't be reached: as last seen"]
         case .quiet: words = ["Its host has been quiet a while"]
+        case .watching: words = ["Another Manifold took over its host: watching"]
         case .needsYou:
             switch r?.kind {
             case .permission?: words = ["Needs you: permission"]
@@ -329,6 +334,21 @@ final class StatusGlyph: NSView {
             slash.move(to: NSPoint(x: center.x - radius * 0.6, y: center.y - radius * 0.6))
             slash.line(to: NSPoint(x: center.x + radius * 0.6, y: center.y + radius * 0.6))
             slash.stroke()
+        case .watching:
+            // An eye, in the tint: looking on, not leading.
+            let w = radius * 1.05, h = radius * 0.72
+            let eye = NSBezierPath()
+            eye.move(to: NSPoint(x: center.x - w, y: center.y))
+            eye.curve(to: NSPoint(x: center.x + w, y: center.y), controlPoint1: NSPoint(x: center.x - w * 0.45, y: center.y + h * 1.35), controlPoint2: NSPoint(x: center.x + w * 0.45, y: center.y + h * 1.35))
+            eye.curve(to: NSPoint(x: center.x - w, y: center.y), controlPoint1: NSPoint(x: center.x + w * 0.45, y: center.y - h * 1.35), controlPoint2: NSPoint(x: center.x - w * 0.45, y: center.y - h * 1.35))
+            eye.close()
+            eye.lineWidth = 1.4
+            eye.lineJoinStyle = .round
+            Theme.accent.setStroke()
+            eye.stroke()
+            Theme.accent.setFill()
+            let r = radius * 0.36
+            NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
         case .quiet:
             // A broken ring, in amber: the signal faltering, not yet gone.
             let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))

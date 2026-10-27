@@ -3509,9 +3509,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if c.isRemote { n.pings = { [weak c] in c?.pings ?? [] } }
         switch c.link {
         case .connected:
-            // Another Manifold leads it: said by its name, Take Over in its menu.
+            // Another Manifold leads it: an eye (the word would crowd out
+            // its ping times), and who in its tooltip and card, Take Over in
+            // its menu. (Quiet as well, the broken ring says that first.)
             if c.watching {
-                n.detail = "watching"
+                n.look = .watching
                 n.tooltip = "\(c.fencedBy ?? "Another Manifold") took over this host: what you do here doesn't take. Take Over is in its menu."
             }
             // Up, but quiet a while: a broken ring, and on hover, how long.
@@ -7798,7 +7800,8 @@ extension MainWindowController: OrganizationViewDelegate {
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
         // A host's row: its machine, and a remote's link, live.
         if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), let window {
-            let detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
+            var detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
+            if c.watching, !c.isRemote { detail = "Watching: \(c.fencedBy ?? "another Manifold") took over · " + detail }
             HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: detail, body: "", font: nil,
                                   lend: {
                                       let d = HostDashboard(client: c)
@@ -8091,7 +8094,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: self = .done
         case .failed: self = .failed
         case .working: self = .working
-        case .inactive, .connecting, .offline, .quiet: self = .inactive
+        case .inactive, .connecting, .offline, .quiet, .watching: self = .inactive
         }
     }
 

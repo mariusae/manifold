@@ -1010,8 +1010,9 @@ taken takes, and focusing no longer takes a pen there — two clients each
 taking it back by focus would trade it between them for as long as both
 were used. It says so in a toast naming the other machine, with **Take
 Over**, again (every few seconds at most) when something done there
-didn't take, and by "watching" on the host's row, whose menu has Take
-Over too. Only Take Over takes back: every shard taken, and the space
+didn't take, and by an eye on the host's row (in the tint: looking on,
+not a fault), whose card says who took it and whose menu has Take Over
+too. Only Take Over takes back: every shard taken, and the space
 and block focused, whose holder is fenced and asked in turn. Watching
 lasts through reconnections and whoever holds the pens now — the other
 client gone, a server restarted — and ends with the app (a launch starts

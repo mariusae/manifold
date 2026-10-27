@@ -110,6 +110,8 @@ final class HostDashboard: NSView {
         switch c.link {
         case .connected:
             if let s = c.silenceDescription, c.silence != nil { return "Quiet: " + s }
+            // Another Manifold leads it (§8.2): said first.
+            if c.watching { return "Watching: \(c.fencedBy ?? "another Manifold") took over · Take Over in its menu" }
             let since = c.connectedSince.map { "Connected \(duration(Date().timeIntervalSince($0))) (since \(clock.string(from: $0)))" } ?? "Connected"
             let last = c.pings.last?.rtt.map { " · \(ms($0))" } ?? ""
             return since + last
