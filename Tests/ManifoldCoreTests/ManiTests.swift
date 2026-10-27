@@ -177,3 +177,44 @@ import Testing
     for k in FindKinds.all { #expect(FindKinds.starting(k.name).contains(k)) }
     #expect(Set(FindKinds.all.map(\.name)).count == FindKinds.all.count)
 }
+
+@Test func pathsAreFoundNearestFirstAndOnlyAsWanted() {
+    // A tree: each folder's entries, by absolute path.
+    func e(_ name: String, _ dir: Bool) -> DirectoryEntry { DirectoryEntry(name: name, isDirectory: dir, size: 0, modified: 0, isHidden: name.hasPrefix(".")) }
+    let tree: [String: [DirectoryEntry]] = [
+        "/h": [e("a", true), e("b", true), e("top.txt", false), e(".hidden", true), e("node_modules", true), e("X.app", true), e("Library", true)],
+        "/h/a": [e("a1.txt", false), e("deep", true)],
+        "/h/a/deep": [e("d.txt", false)],
+        "/h/b": [e("c", true), e("b1.txt", false)],
+        "/h/b/c": [e("c1.txt", false)],
+        "/h/.hidden": [e("no.txt", false)], "/h/node_modules": [e("no.txt", false)], "/h/X.app": [e("no", false)], "/h/Library": [e("no", false)],
+    ]
+    var asked: [String] = []
+    func lister(_ path: String, _ done: @escaping ([DirectoryEntry]?) -> Void) { asked.append(path); done(tree[path]) }
+
+    // The root's own entries only, until it's asked to go on.
+    let crawl = PathCrawl(root: "/h", home: "/h", concurrency: 1, list: lister)
+    #expect(asked == ["/h"])
+    #expect(crawl.found.map(\.path).contains("top.txt") && crawl.found.allSatisfy { $0.depth == 1 })
+    crawl.going = true
+    #expect(crawl.finished)
+    // Nearest first: a level at a time; hidden, dependency, package and a
+    // home's Library folders listed as entries but never gone into.
+    #expect(asked == ["/h", "/h/a", "/h/b", "/h/a/deep", "/h/b/c"])
+    let depths = crawl.found.map(\.depth)
+    #expect(depths == depths.sorted())
+    #expect(crawl.children["b"].map { $0.map { crawl.found[$0].path } } == ["b/b1.txt", "b/c"])
+
+    // A folder looked for is listed before the rest.
+    asked = []
+    let toward = PathCrawl(root: "/h", home: nil, concurrency: 1, list: lister)
+    toward.toward = "b/c"
+    toward.going = true
+    #expect(Array(asked.prefix(3)) == ["/h", "/h/b", "/h/b/c"])
+    #expect(asked.contains("/h/Library"))  // not this host's home: gone into
+
+    // As far as it's let go.
+    let little = PathCrawl(root: "/h", home: "/h", maxFound: 9, concurrency: 1, list: lister)
+    little.going = true
+    #expect(little.found.count == 9 && little.finished)
+}

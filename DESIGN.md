@@ -455,10 +455,14 @@ there ⌘⌥ is over and ⌘ alone beside).
 ### 3.8 A terminal's outline
 
 (Insert Path, ⌃⌘I, is a terminal's too: a menu over its cursor of the
-paths under where its shell is — the host's tree there (`listTree`),
-so a remote's are the remote's — the last three put in on the host at
-its foot (kept per host), a field that ranks the whole tree as Open
-Quickly ranks names. The one chosen is typed as the shell would have
+paths under where its shell is — listed on its host, a folder at a
+time (`listFolder`), so a remote's are the remote's — the last three
+put in on the host at its foot (kept per host), a field that ranks
+what's found as Open Quickly ranks names. It never waits: `PathCrawl`
+lists the folder, and only once something's typed goes on, a level at
+a time, several folders in flight, a folder gone into first; the
+ranking is off the main thread, again as more comes. Crawls are kept
+two minutes by host and folder. The one chosen is typed as the shell would have
 it, relative where it can be. Styled as a menu, not the finder: the
 system's frosted ground, the Finder's icons, the accent under the
 chosen row.)

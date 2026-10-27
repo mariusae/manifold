@@ -579,7 +579,15 @@ around it, and comes back with its history.
   the folder's own folders and files, and under them, nearest the field
   at its foot, the last three put in on that host (a clock at their
   right). Type to find any file or folder under the folder, however deep
-  — the best nearest the field; ↑↓ choose, ⇥ goes into a folder, ↩ types
+  — the best nearest the field. Nothing waits for anything: the
+  folder's own entries show as they come (a moment, even on a slow
+  remote), and what's under them is looked for only once you type,
+  nearest folders first, eight at a time, the rows ranked again (off
+  the main thread) as more is found, a spinner and how many folders so
+  far at the field's right; a folder you go into is listed first. What's
+  been found is kept a couple of minutes, so it's there at once next
+  time. Hidden folders, what the repository ignores, dependencies,
+  packages and a home's Library are listed but not gone into. ↑↓ choose, ⇥ goes into a folder, ↩ types
   the path at the cursor, ⎋ leaves. It's typed as the shell would have
   it: relative to the folder when it's under it, else from `~`, quoted
   where it must be (a `~/` left outside the quotes); a folder with its

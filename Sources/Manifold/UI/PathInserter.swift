@@ -5,7 +5,10 @@ import UniformTypeIdentifiers
 /// Insert Path (⌃⌘I, §3.8): over a terminal's cursor, a menu of the paths
 /// where its shell is — the folder's own entries, and the last three put
 /// in on that host, nearest the field — and a field at its foot that
-/// finds any file or folder under it as you type. Chosen, the path is
+/// finds any file or folder under it as you type. Nothing waits: the
+/// folder's entries show as they come, and what's under them is looked
+/// for only once something's typed, nearest first (`PathCrawl`), the
+/// rows ranked again off the main thread as more is found. Chosen, the path is
 /// typed at the cursor as the shell would have it: relative to the
 /// folder when it's under it, else from `~`, quoted where it needs to be;
 /// a folder with its slash, a file with a space after.
@@ -13,12 +16,13 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     static let shared = PathInserter()
 
     /// What a terminal gives it: where its shell is, on which host, the
-    /// host's home, its tree there, and how to type at the cursor.
+    /// host's home, how to list a folder there, and how to type at the
+    /// cursor.
     struct Source {
         var host: HostID
         var directory: String
         var home: String?
-        var listTree: (String, @escaping ([DirectoryEntry]?, Bool) -> Void) -> Void
+        var listFolder: (String, @escaping ([DirectoryEntry]?) -> Void) -> Void
         var type: (String) -> Void
     }
 
@@ -37,11 +41,26 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     private let field = NSTextField()
     private let glass = NSImageView()
     private var source: Source?
-    /// The folder's tree, named relative to it; nil until it's come.
-    private var tree: [DirectoryEntry]?
+    /// What's found under the folder, as it's found.
+    private var crawl: PathCrawl?
+    /// Crawls lately made, by host and folder: opened there again, what
+    /// was found shows at once (and it goes on from there).
+    private static var crawls: [String: (at: Date, crawl: PathCrawl)] = [:]
     /// Shown bottom up: the last row is nearest the field, and the best.
     private var rows: [Row] = []
-    private var listing = 0
+    /// The ranking, off the main thread: the candidates it has (made there,
+    /// as the crawl finds more), and which crawl's they are.
+    private let ranker = PathRanker()
+    private let ranking = DispatchQueue(label: "insertpath.ranking", qos: .userInteractive)
+    private let generation = FinderGeneration()
+    private var rankedFor: ObjectIdentifier?
+    private var sent = 0
+    /// More found while a query's up: ranked again a moment later, once
+    /// for however much came.
+    private var again: DispatchWorkItem?
+    /// At the field's right: what's being looked through, or that nothing matched.
+    private let status = NSTextField(labelWithString: "")
+    private let spinner = NSProgressIndicator()
 
     private static let width: CGFloat = 320
     private static let rowHeight: CGFloat = 24
@@ -122,6 +141,14 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         field.cell?.usesSingleLineMode = true
         field.cell?.lineBreakMode = .byTruncatingHead
         ground.addSubview(field)
+        status.font = .systemFont(ofSize: 11)
+        status.textColor = Theme.tertiaryText
+        status.alignment = .right
+        ground.addSubview(status)
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        ground.addSubview(spinner)
     }
 
     var isShowing: Bool { panel.isVisible }
@@ -130,20 +157,23 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     func show(_ source: Source, over caret: NSRect, in window: NSWindow) {
         close(typing: nil)
         self.source = source
-        tree = nil
         field.stringValue = ""
         let shown = Self.shown(source.directory, home: source.home)
         field.placeholderString = shown.hasSuffix("/") ? shown : shown + "/"
-        refresh()
-        listing += 1
-        let token = listing
-        source.listTree(source.directory) { [weak self] entries, _ in
-            DispatchQueue.main.async {
-                guard let self, self.listing == token else { return }
-                self.tree = entries ?? []
-                self.refresh()
+        let key = "\(source.host.raw):\(source.directory)"
+        if let kept = Self.crawls[key], Date().timeIntervalSince(kept.at) < 120 {
+            crawl = kept.crawl
+        } else {
+            let list = source.listFolder
+            let made = PathCrawl(root: source.directory, home: source.home) { path, done in
+                list(path) { entries in DispatchQueue.main.async { done(entries) } }
             }
+            Self.crawls[key] = (Date(), made)
+            if Self.crawls.count > 6, let oldest = Self.crawls.min(by: { $0.value.at < $1.value.at })?.key { Self.crawls.removeValue(forKey: oldest) }
+            crawl = made
         }
+        crawl?.onChange = { [weak self] in self?.found() }
+        refresh(keepingChoice: false)
         place(over: caret, in: window)
         if panel.parent !== window {
             panel.parent?.removeChildWindow(panel)
@@ -156,7 +186,14 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     /// Gone; with `typing`, that typed at the terminal's cursor first.
     private func close(typing text: String?) {
         guard panel.isVisible || text != nil else { return }
-        listing += 1
+        // What's found is kept a while; looking further waits for a query.
+        crawl?.going = false
+        crawl?.onChange = nil
+        crawl = nil
+        again?.cancel()
+        again = nil
+        _ = generation.next()
+        awaiting = false
         let source = self.source
         self.source = nil
         panel.parent?.removeChildWindow(panel)
@@ -166,43 +203,138 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
 
     // MARK: Rows
 
+    /// More found: the folder's own entries, or a folder gone into, shown
+    /// as they come; for a query, ranked again a moment later — once for
+    /// however much came meanwhile.
+    private func found() {
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty, !query.hasSuffix("/") else { return refresh(keepingChoice: true) }
+        // Done looking: ranked now, the last time.
+        if crawl?.finished == true {
+            again?.cancel()
+            again = nil
+            return refresh(keepingChoice: true)
+        }
+        updateStatus()
+        guard again == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.again = nil
+            self?.refresh(keepingChoice: true)
+        }
+        again = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+    }
+
     /// The rows for what's typed: nothing, the folder's own entries (its
     /// folders first) and then what was put in lately, nearest the field;
-    /// a query, the best of everything under the folder (and the recent),
-    /// the best nearest the field.
-    private func refresh() {
-        guard let source else { return }
+    /// a folder's path and a slash (⇥), that folder's; anything else, the
+    /// best of what's found under the folder so far (and the recent), the
+    /// best nearest the field — looking further while it's typed.
+    /// `keepingChoice`: more came, not a key — the row chosen stays chosen.
+    private func refresh(keepingChoice: Bool) {
+        guard let source, let crawl else { return }
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
         let recent = Self.recents(on: source.host).suffix(Self.recentCount).map { Row(path: $0.path, isFolder: $0.isFolder, recent: true) }
-        let entries = tree ?? []
         if query.isEmpty {
-            let own = entries.filter { !$0.name.contains("/") && !$0.isHidden }
-                .sorted { $0.isDirectory != $1.isDirectory ? $0.isDirectory : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                .map { Row(path: $0.name, isFolder: $0.isDirectory, recent: false) }
-            // Under the folder's own, read top down; the recent at the foot.
-            rows = Array(own.reversed().prefix(200).reversed()) + recent
+            crawl.going = false
+            crawl.toward = nil
+            _ = generation.next()
+            awaiting = false
+            return show(own(crawl, "") + recent, keepingChoice: keepingChoice)
+        }
+        crawl.going = true
+        if query.hasSuffix("/"), case let folder = String(query.dropLast()), isFolder(folder, in: crawl) {
+            crawl.toward = folder
+            _ = generation.next()
+            awaiting = false
+            return show(own(crawl, folder), keepingChoice: keepingChoice)
+        }
+        crawl.toward = query.contains("/") ? query.deletingLastPathComponent : nil
+        rank(query, recent: recent, in: crawl, keepingChoice: keepingChoice)
+    }
+
+    /// A folder's entries as rows: its folders, then its files, by name —
+    /// none hidden.
+    private func own(_ crawl: PathCrawl, _ folder: String) -> [Row] {
+        let entries = (crawl.children[folder] ?? []).map { crawl.found[$0] }.filter { !$0.path.lastPathComponent.hasPrefix(".") }
+        let folders = entries.filter(\.isFolder), files = entries.filter { !$0.isFolder }
+        return Array((folders + files).prefix(400)).map { Row(path: $0.path, isFolder: $0.isFolder, recent: false) }
+    }
+
+    private func isFolder(_ path: String, in crawl: PathCrawl) -> Bool {
+        if crawl.children[path] != nil { return true }
+        let parent = path.contains("/") ? path.deletingLastPathComponent : ""
+        return crawl.children[parent]?.contains { crawl.found[$0].path == path && crawl.found[$0].isFolder } ?? false
+    }
+
+    /// The best for a query, off the main thread: what the crawl found
+    /// since the last ranking made candidates there, then all of them
+    /// ranked — given up on if another query, or more found, comes first.
+    private func rank(_ query: String, recent: [Row], in crawl: PathCrawl, keepingChoice: Bool) {
+        let id = ObjectIdentifier(crawl)
+        let fresh = rankedFor != id
+        if fresh { sent = 0; rankedFor = id }
+        let start = sent
+        let new = Array(crawl.found[start...])
+        sent = crawl.found.count
+        let recentCandidates = recent.enumerated().map { i, r in
+            FinderCandidate(symbol: "", title: r.path, detail: "", note: "", name: r.path.lastPathComponent, around: r.path,
+                            distance: 0, recency: 0, action: -1 - i)
+        }
+        let gen = generation.next()
+        awaiting = true
+        let ranker = self.ranker, generation = self.generation
+        ranking.async { [weak self] in
+            ranker.add(new, from: start, fresh: fresh)
+            guard let ranked = FinderRanking.rank(query, recentCandidates + ranker.candidates, limit: 60, current: { generation.isCurrent(gen) }) else { return }
+            let picks = ranked.rows.map(\.action)
+            DispatchQueue.main.async {
+                guard let self, generation.isCurrent(gen), let crawl = self.crawl else { return }
+                let rows = picks.reversed().compactMap { a -> Row? in
+                    if a < 0 { return recent.indices.contains(-1 - a) ? recent[-1 - a] : nil }
+                    return crawl.found.indices.contains(a) ? Row(path: crawl.found[a].path, isFolder: crawl.found[a].isFolder, recent: false) : nil
+                }
+                self.awaiting = false
+                self.show(rows, keepingChoice: keepingChoice)
+            }
+        }
+    }
+
+    /// A ranking's under way: "No match" waits for it.
+    private var awaiting = false
+
+    /// The rows shown: the best (the last) chosen — or, as more comes in
+    /// under a choice made, that one still.
+    private func show(_ fresh: [Row], keepingChoice: Bool) {
+        let chosen = keepingChoice && table.selectedRow >= 0 && table.selectedRow < rows.count && table.selectedRow != rows.count - 1 ? rows[table.selectedRow] : nil
+        if fresh != rows {
+            rows = fresh
+            table.reloadData()
+            layout()
+        }
+        updateStatus()
+        guard !rows.isEmpty else { return }
+        let row = chosen.flatMap { c in rows.firstIndex(of: c) } ?? rows.count - 1
+        if table.selectedRow != row { table.selectRowIndexes([row], byExtendingSelection: false) }
+        table.scrollRowToVisible(row)
+    }
+
+    /// At the field's right: the folder being listed, or how many have
+    /// been looked through while it looks further; that nothing matched,
+    /// when it's done looking.
+    private func updateStatus() {
+        guard let crawl else { return }
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let looking = crawl.children[""] == nil || (crawl.going && !crawl.finished)
+        if crawl.children[""] == nil {
+            status.stringValue = "Listing…"
+        } else if looking {
+            status.stringValue = "\(crawl.foldersListed.formatted()) folders"
         } else {
-            var candidates: [FinderCandidate] = []
-            var all: [Row] = []
-            for r in recent {
-                candidates.append(FinderCandidate(symbol: "", title: r.path, detail: "", note: "", name: r.path.lastPathComponent, around: r.path,
-                                                  distance: 0, recency: 0, action: all.count))
-                all.append(r)
-            }
-            for e in entries {
-                candidates.append(FinderCandidate(symbol: "", title: e.name, detail: "", note: "", name: e.name.lastPathComponent, around: e.name,
-                                                  distance: e.name.split(separator: "/").count, recency: Int64(e.modified), action: all.count))
-                all.append(Row(path: e.name, isFolder: e.isDirectory, recent: false))
-            }
-            let ranked = FinderRanking.rank(query, candidates, limit: 60)?.rows ?? []
-            rows = ranked.map { all[$0.action] }.reversed()
+            status.stringValue = !query.isEmpty && rows.isEmpty && !awaiting ? "No match" : ""
         }
-        table.reloadData()
-        layout()
-        if !rows.isEmpty {
-            table.selectRowIndexes([rows.count - 1], byExtendingSelection: false)
-            table.scrollRowToVisible(rows.count - 1)
-        }
+        if looking { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        layoutField()
     }
 
     /// Sized to the rows, its foot (the field) where it was put.
@@ -222,8 +354,21 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         let well = NSRect(x: Self.pad, y: Self.pad, width: Self.width - 2 * Self.pad, height: Self.fieldHeight)
         ground.subviews.first { $0.identifier?.rawValue == "well" }?.frame = well
         glass.frame = NSRect(x: well.minX + 8, y: well.minY + (well.height - 16) / 2, width: 16, height: 16)
-        field.frame = NSRect(x: glass.frame.maxX + 6, y: well.minY + (well.height - 18) / 2, width: well.maxX - glass.frame.maxX - 14, height: 18)
+        layoutField()
     }
+
+    /// The field, and at its right what it's doing.
+    private func layoutField() {
+        let well = NSRect(x: Self.pad, y: Self.pad, width: Self.width - 2 * Self.pad, height: Self.fieldHeight)
+        let said = status.stringValue.isEmpty ? 0 : ceil(status.attributedStringValue.size().width) + 4
+        let busy: CGFloat = spinner.isHidden || !spinnerShown ? 0 : 20
+        status.frame = NSRect(x: well.maxX - 8 - said, y: well.minY + (well.height - 14) / 2, width: said, height: 14)
+        spinner.frame = NSRect(x: status.frame.minX - (said > 0 ? 4 : 0) - 16, y: well.minY + (well.height - 16) / 2, width: 16, height: 16)
+        let right = status.frame.minX - busy - (said > 0 || busy > 0 ? 6 : 0)
+        field.frame = NSRect(x: glass.frame.maxX + 6, y: well.minY + (well.height - 18) / 2, width: max(40, right - glass.frame.maxX - 6), height: 18)
+    }
+
+    private var spinnerShown: Bool { status.stringValue != "" && status.stringValue != "No match" }
 
     /// Opened under the cursor, for want of room over it: it grows down.
     private var growsDown = false
@@ -257,7 +402,11 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         return true
     }
 
-    func controlTextDidChange(_ obj: Notification) { refresh() }
+    func controlTextDidChange(_ obj: Notification) {
+        again?.cancel()
+        again = nil
+        refresh(keepingChoice: false)
+    }
 
     private func move(_ by: Int) {
         guard !rows.isEmpty else { return }
@@ -269,7 +418,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     private func descend() {
         guard table.selectedRow >= 0, rows[table.selectedRow].isFolder, !rows[table.selectedRow].recent else { return NSSound.beep() }
         field.stringValue = rows[table.selectedRow].path + "/"
-        refresh()
+        refresh(keepingChoice: false)
     }
 
     @objc private func clicked() {
@@ -362,7 +511,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     func debug(_ arg: String) -> String {
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch words.first ?? "rows" {
-        case "type": field.stringValue = words.count > 1 ? words[1] : ""; refresh()
+        case "type": field.stringValue = words.count > 1 ? words[1] : ""; refresh(keepingChoice: false)
         case "down": move(1)
         case "up": move(-1)
         case "tab": descend()
@@ -377,7 +526,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         default: break
         }
         guard panel.isVisible else { return "not shown" }
-        return "\(field.placeholderString ?? "") [\(field.stringValue)] \(tree == nil ? "listing…" : "\(tree!.count) under")\n"
+        return "\(field.placeholderString ?? "") [\(field.stringValue)] \(crawl.map { "\($0.found.count) found in \($0.foldersListed) folders\($0.finished ? ", done" : "")" } ?? "-") · \(status.stringValue)\n"
             + rows.enumerated().map { i, r in (i == table.selectedRow ? "> " : "  ") + r.path + (r.isFolder ? "/" : "") + (r.recent ? " (recent)" : "") }.joined(separator: "\n")
     }
 }
@@ -448,4 +597,21 @@ private final class MenuRowView: NSTableRowView {
     }
     // Chosen, its cell's text is white (`.emphasized`), whatever has the keyboard.
     override var isEmphasized: Bool { get { true } set {} }
+}
+
+/// The candidates a ranking is over, made on the ranking's own queue as
+/// the crawl finds more — never on the main thread.
+private final class PathRanker: @unchecked Sendable {
+    var candidates: [FinderCandidate] = []
+
+    /// What was found from `start` on (its index there its action); a
+    /// crawl's first, the last one's thrown away.
+    func add(_ found: [PathCrawl.Found], from start: Int, fresh: Bool) {
+        if fresh { candidates = [] }
+        candidates.reserveCapacity(start + found.count)
+        for (i, f) in found.enumerated() {
+            candidates.append(FinderCandidate(symbol: "", title: f.path, detail: "", note: "", name: f.path.lastPathComponent, around: f.path,
+                                              distance: f.depth, recency: Int64(f.modified), action: start + i))
+        }
+    }
 }
