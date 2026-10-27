@@ -2968,7 +2968,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.age = nil
                     return n
                 }
-                let s = OrgNode(id: sid, block: w, title: title, symbol: "rectangle.3.group", count: rows.count, isGroup: true, children: rows)
+                let s = OrgNode(id: sid, block: w, title: title, symbol: Theme.spaceSymbol, count: rows.count, isGroup: true, children: rows)
                 s.style = .section
                 s.arrangement = w
                 open.insert(sid)
@@ -3221,7 +3221,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return hostedRows({ c in
             closedItems(on: c, reachable: reachable).filter { matches(filter, [$0.kind == .arrangement ? title(of: $0.arrangement!) : $0.displayTitle, $0.path]) }.prefix(100).map { b -> OrgNode in
                 let n = b.kind == .arrangement
-                    ? OrgNode(id: "closed/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: "rectangle.3.group", count: b.arrangement!.placements.count)
+                    ? OrgNode(id: "closed/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: Theme.spaceSymbol, count: b.arrangement!.placements.count)
                     : node(for: b, id: "closed/\(b.id)", detail: b.place?.abbreviatingHome ?? "")
                 n.dimmed = true
                 n.trailing = c.node.graph.seen(b.id).map(Age.short)
@@ -3336,7 +3336,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
             let n = OrgNode(id: aid, block: id, title: title(of: a),
-                            symbol: a.placements.count > 1 ? "rectangle.split.2x1" : focused.map { Theme.symbolName(for: $0) } ?? "rectangle.3.group",
+                            symbol: a.placements.count > 1 ? Theme.spaceSymbol : focused.map { Theme.symbolName(for: $0) } ?? Theme.spaceSymbol,
                             detail: "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
             n.arrangement = id
             n.style = .section
@@ -4754,7 +4754,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             none.isEnabled = false
             return [none]
         }
-        return agents.map { a in ClosureMenuItem(a.name, symbol: "sparkles") { [weak self] in self?.launchAgent(a.command) } }
+        return agents.map { a in ClosureMenuItem(a.name, symbol: "sparkle") { [weak self] in self?.launchAgent(a.command) } }
     }
 
     /// Processes: the focused block's host's process list, beside it.
@@ -6321,7 +6321,7 @@ extension MainWindowController: GridDelegate {
         let agents = NSMenu()
         for item in agentMenuItems() { agents.addItem(item) }
         let launch = NSMenuItem(title: "Launch Agent Here", action: nil, keyEquivalent: "")
-        launch.setSymbol("sparkles", size: 12)
+        launch.setSymbol("sparkle", size: 12)
         launch.submenu = agents
         menu.addItem(launch)
         menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in

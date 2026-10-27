@@ -20,7 +20,7 @@ enum Organization: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .desk: "rectangle.3.group"
+        case .desk: Theme.spaceSymbol
         case .files: "folder"
         case .closed: "clock.arrow.circlepath"
         }

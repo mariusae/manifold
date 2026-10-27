@@ -64,28 +64,34 @@ enum Theme {
                  NSColor(white: 0.36 - CGFloat(level) * 0.05, alpha: 1))
     }
 
+    /// Each as plain as it can be and still say what it is: read at a
+    /// bar's 10 points, where a symbol's small parts (a window round a
+    /// prompt, a page's lines, a chip's pins) run together.
     static func symbolName(for lens: Lens) -> String {
         switch lens {
         case .terminal: Marks.terminal
-        case .preview: "doc.richtext"
-        case .editor: "doc.text"
+        case .preview: "doc.plaintext"
+        case .editor: "doc"
         case .directory: "folder"
         case .web: "globe"
         case .image: "photo"
-        case .pdf: "doc.richtext.fill"
+        case .pdf: "doc.richtext"
         case .search: "magnifyingglass"
-        case .diff: "arrow.left.arrow.right"
+        case .diff: "plus.forwardslash.minus"
         case .git: "arrow.triangle.branch"
         case .smartlog: "arrow.triangle.pull"
-        case .process: "cpu"
-        case .agent: "sparkles"
-        case .card: "rectangle.3.group"
+        case .process: "gauge.medium"
+        case .agent: "sparkle"
+        case .card: spaceSymbol
         case .output: "text.alignleft"
-        case .notebook: "text.and.command.macwindow"
+        case .notebook: "text.line.first.and.arrowtriangle.forward"
         case .outline: "list.bullet.rectangle"
         case .ui: "slider.horizontal.3"
         }
     }
+
+    /// A space's: two panes side by side.
+    static let spaceSymbol = "square.split.2x1"
 
     static func symbolName(for kind: BlockKind, path: String? = nil) -> String {
         kind == .text && path == nil ? noteSymbol : symbolName(for: Lens.default(for: kind, path: path), path: path)
@@ -98,8 +104,9 @@ enum Theme {
         return symbolName(for: block.kind, path: block.path)
     }
 
-    /// A note's: a text not saved anywhere yet, unlike a file's page.
-    static let noteSymbol = "note.text"
+    /// A note's: a text not saved anywhere yet, unlike a file's page — a
+    /// sticky note, its corner turned up (`Marks`).
+    static let noteSymbol = Marks.note
 
     /// A lens's symbol for a text at `path`: viewed, Markdown is rich
     /// text and anything else still a page of text.
@@ -116,11 +123,13 @@ enum Theme {
         "tray.and.arrow.down": ["tray", "square.and.arrow.down"],
         "arrow.up.left.and.arrow.down.right": ["arrow.up.left.and.down.right.magnifyingglass", "arrow.up.and.down"],
         "arrow.down.right.and.arrow.up.left": ["arrow.down.right.and.arrow.up.left.circle", "arrow.up.and.down"],
-        "cpu": ["cpu.fill", "memorychip"],
+        "gauge.medium": ["gauge", "speedometer"],
+        "text.line.first.and.arrowtriangle.forward": ["list.bullet.indent", "terminal"],
+        "plus.forwardslash.minus": ["plusminus", "arrow.left.arrow.right"],
+        "doc.plaintext": ["doc.text"],
+        "sparkle": ["sparkles"],
         "arrow.triangle.pull": ["arrow.triangle.branch"],
         "number": ["number.square", "textformat"],
-        "text.and.command.macwindow": ["apple.terminal.on.rectangle", "terminal"],
-        "arrow.left.arrow.right": ["arrow.right.arrow.left", "arrow.left.and.right"],
     ]
 
     /// A symbol at a size and weight. Made once and kept: an image made
@@ -167,6 +176,8 @@ enum Marks {
     static let prefix = "manifold."
     /// A terminal: a prompt, `>_` — no window around it.
     static let terminal = prefix + "terminal"
+    /// A note: a square, its lower right corner turned up.
+    static let note = prefix + "note"
 
     private static var made: [String: NSImage] = [:]
 
@@ -191,6 +202,30 @@ enum Marks {
                 underscore.line(to: NSPoint(x: min(r.maxX - inset, inset + 13.2 * u), y: midY - 4 * u))
                 NSColor.black.setStroke()
                 for p in [chevron, underscore] {
+                    p.lineWidth = stroke
+                    p.lineCapStyle = .round
+                    p.lineJoinStyle = .round
+                    p.stroke()
+                }
+                return true
+            }
+        case note:
+            image = NSImage(size: box, flipped: false) { r in
+                let u = size / 13, side = 11.6 * u, fold = 3.6 * u
+                let s = NSRect(x: (r.midX - side / 2).rounded(), y: r.midY - side / 2, width: side, height: side).insetBy(dx: stroke / 2, dy: stroke / 2)
+                let page = NSBezierPath()
+                page.move(to: NSPoint(x: s.minX, y: s.maxY))
+                page.line(to: NSPoint(x: s.maxX, y: s.maxY))
+                page.line(to: NSPoint(x: s.maxX, y: s.minY + fold))
+                page.line(to: NSPoint(x: s.maxX - fold, y: s.minY))
+                page.line(to: NSPoint(x: s.minX, y: s.minY))
+                page.close()
+                let corner = NSBezierPath()
+                corner.move(to: NSPoint(x: s.maxX, y: s.minY + fold))
+                corner.line(to: NSPoint(x: s.maxX - fold, y: s.minY + fold))
+                corner.line(to: NSPoint(x: s.maxX - fold, y: s.minY))
+                NSColor.black.setStroke()
+                for p in [page, corner] {
                     p.lineWidth = stroke
                     p.lineCapStyle = .round
                     p.lineJoinStyle = .round
