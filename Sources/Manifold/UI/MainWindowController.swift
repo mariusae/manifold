@@ -3916,14 +3916,122 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         lines.prefix(6).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: "  ·  ")
     }
 
-    /// "In Blocks": the texts of the blocks — the selected workspace's
-    /// first, then every other note and file kept as a block — a row each,
-    /// its name, where it is, the lines that hold the query marked, going
-    /// to the first of them.
+    /// A place in a block's outline (§7.5) as Find in Blocks finds it,
+    /// read from the block itself, so every terminal and note is found,
+    /// shown or not: a command a terminal ran, a Markdown heading.
+    private struct OutlinePlace {
+        var title: String
+        var lower: String
+        /// Where in the block: "command=7", "line=12".
+        var fragment: String
+        var detail: String
+        var note: String
+        var at: Stamp?
+    }
+    /// Each block's places, kept while it's as it was.
+    private var outlinePlaces: [BlockID: (key: String, places: [OutlinePlace])] = [:]
+
+    /// A block's outline, as its tile's would be, without its tile: a
+    /// terminal's commands (an agent's outline is its turns, found as
+    /// turns), a note's or Markdown file's headings. Nil for a block whose
+    /// outline only its tile knows (a source file's symbols, a PDF's
+    /// contents, a page's headings).
+    private func outlinePlaces(of b: Block) -> [OutlinePlace]? {
+        let key: String
+        switch b.kind {
+        case .terminal:
+            guard let t = b.terminal, b.agent == nil || (t.turns ?? []).isEmpty else { return nil }
+            key = "c\(t.commands?.count ?? 0)/\(t.commands?.last?.ended != nil)"
+        case .text:
+            guard let t = b.text, b.path.map(Lens.isMarkdown) ?? true else { return nil }
+            key = "t\(t.version)"
+        default:
+            return nil
+        }
+        if let known = outlinePlaces[b.id], known.key == key { return known.places }
+        var places: [OutlinePlace] = []
+        if let t = b.terminal {
+            // The latest first; a command run again, once (its latest).
+            var seen = Set<String>()
+            for c in (t.commands ?? []).reversed() {
+                let text = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty, seen.insert(text).inserted else { continue }
+                let ran = (c.cwd ?? t.cwd)?.abbreviatingHome ?? "~"
+                let how = c.ended == nil ? "" : c.status.map { $0 == 0 ? "" : "exit \($0)" } ?? ""
+                places.append(OutlinePlace(title: text, lower: text.lowercased(), fragment: "command=\(c.id)",
+                                           detail: "\(b.displayTitle) · \(ran)", note: how, at: c.at))
+            }
+        } else if let t = b.text {
+            let place = b.path.map { $0.deletingLastPathComponent.abbreviatingHome } ?? "Note"
+            for h in MarkdownOutline.headings(in: t.text.string) {
+                places.append(OutlinePlace(title: h.text, lower: h.text.lowercased(), fragment: "line=\(h.line + 1)",
+                                           detail: "\(b.displayTitle) · \(place)", note: "heading", at: nil))
+            }
+        }
+        if outlinePlaces.count > 4 * max(hosts.blocks.count, 64) { outlinePlaces = outlinePlaces.filter { hosts.block($0.key) != nil } }
+        outlinePlaces[b.id] = (key, places)
+        return places
+    }
+
+    /// Find in Blocks' outline rows: every place in an outline whose title
+    /// holds the query — this space's blocks first, then the rest; then
+    /// the outlines only a tile knows, the desk's — each going to the
+    /// place itself, as its tile's outline would.
+    private func finderOutlineItems(_ q: String) -> [FinderItem] {
+        var items: [FinderItem] = []
+        var seen = Set<BlockID>()
+        let here = arrangement?.placements.map(\.block) ?? []
+        for id in here + hosts.blocks.map(\.id) where seen.insert(id).inserted {
+            guard let b = hosts.block(id), let places = outlinePlaces(of: b) else { continue }
+            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
+            for p in places where p.lower.contains(q) {
+                let link = "manifold:\(id.description)#\(p.fragment)", fragment = p.fragment, title = p.title
+                items.append(FinderItem(symbol: symbol, title: p.title, detail: p.detail, note: p.note,
+                                        age: p.at.map { Age.short($0) }.flatMap { $0 == "now" ? nil : $0 },
+                                        run: { [weak self] in self?.open(link, from: self?.arrangement?.focused) },
+                                        drag: { Drags.place?(id, fragment, title, Drags.modifiers) }, kinds: kinds))
+                if items.count >= 100 { return items }
+            }
+        }
+        // A tile's own outline, for what only it knows: gone to through a
+        // link where an item has a place (a symbol's line, a PDF's page),
+        // else picked in its tile, this space's.
+        let shown = (arrangement?.placements.map(\.id) ?? []) + views.keys.sorted { $0.description < $1.description }
+        var tiles = Set<PlacementID>(), outlined = Set<BlockID>()
+        for pid in shown where tiles.insert(pid).inserted {
+            guard let view = views[pid], !(view is TerminalView), let o = view.outline, !o.items.isEmpty,
+                  let b = hosts.block(view.block), outlinePlaces(of: b) == nil, outlined.insert(b.id).inserted else { continue }
+            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
+            let inThisSpace = arrangement?.placement(pid) != nil
+            for (i, item) in o.items.enumerated() where item.title.lowercased().contains(q) {
+                let fragment = o.placeFor?(i)
+                guard fragment != nil || inThisSpace else { continue }
+                let id = b.id, title = item.title
+                items.append(FinderItem(symbol: symbol, title: item.title, detail: b.displayTitle + (item.detail.isEmpty ? "" : " · " + item.detail),
+                                        note: item.code ? "symbol" : "heading",
+                                        run: { [weak self, weak o] in
+                                            guard let self else { return }
+                                            if let fragment { return self.open("manifold:\(id.description)#\(fragment)", from: self.arrangement?.focused) }
+                                            self.arrive(atTile: pid)
+                                            o?.pick(i)
+                                        },
+                                        drag: { Drags.place?(id, fragment, title, Drags.modifiers) }, kinds: kinds))
+                if items.count >= 150 { return items }
+            }
+        }
+        return items
+    }
+
+    /// "In Blocks" (⇧⌘O): the places in the blocks' outlines that hold the
+    /// query (finderOutlineItems); then the texts of the blocks — the
+    /// selected workspace's first, then every other note and file kept as
+    /// a block — a row each, its name, where it is, the lines that hold
+    /// the query marked, going to the first of them; then agents' turns.
     private func finderBlockItems(_ query: String) -> [FinderItem] {
         guard !query.isEmpty else { return [] }
         let q = query.lowercased()
         let needle = Array(q.utf8)
+        let places = finderOutlineItems(q)
         var items: [FinderItem] = []
         var seen = Set<BlockID>()
         let here = arrangement.map { a in a.placements.map { ($0.block, Optional($0.id)) } } ?? []
@@ -3977,10 +4085,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                             self.showTurn(turnID, of: agentID, place: place)
                                         },
                                         excerpt: Self.excerpt(lines), marked: query, kinds: ["turn"]))
-                if items.count >= 150 { return items }
+                if items.count >= 150 { return places + items }
             }
         }
-        return items
+        return places + items
     }
 
     /// ⌘O, Open Quickly: every block and space, by name. Files are found

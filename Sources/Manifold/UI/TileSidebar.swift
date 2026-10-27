@@ -6,7 +6,7 @@ import AppKit
 /// marked; and, for a PDF, its pages as thumbnails, the other page of the
 /// sidebar. What it lists, what a click does, an entry's menu and what it
 /// carries dragged out are all the outline's. A field at its top filters
-/// it (⇧⌘O goes there): the entries with every word typed, flat.
+/// it (⇧⌘P goes there): the entries with every word typed, flat.
 final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, NSSearchFieldDelegate {
     typealias Entry = Outline.Item
 
@@ -31,7 +31,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     private(set) var entries: [Entry] = []
     private var rows: [Int] = []
     private let search = NSSearchField()
-    /// Searching from ⇧⌘O: told when it's over (an entry gone to, or
+    /// Searching from ⇧⌘P: told when it's over (an entry gone to, or
     /// Escape), for the tile to take the keyboard back.
     private var onSearchEnd: (() -> Void)?
     private var filtering: Bool { !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }

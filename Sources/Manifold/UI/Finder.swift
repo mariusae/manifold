@@ -678,7 +678,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         let keys = Self.keys
         let what = switch scope {
         case .names: "Blocks and spaces by name    ⇧⌘O In them    "
-        case .blocks: "In blocks, this space's first    ⌘O By name    "
+        case .blocks: "Outlines and texts, this space's first    ⌘O By name    "
         }
         hint.stringValue = (countRow.frame.width > 0 ? "" : what) + keys
     }

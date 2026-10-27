@@ -673,7 +673,13 @@ exists; the picker makes.
 
 One box: **Open Quickly** (⌘O), over the graph — blocks by title, place
 and summary, each row the block's summary card; spaces by name. Find in
-Blocks (⇧⌘O) is the same box over the blocks' texts; each key switches
+Blocks (⇧⌘O) is the same box over what's in the blocks: every outline
+first (§7.5) — a terminal's commands and a Markdown text's headings read
+from the block itself, so every one is found, shown or not; a tile's
+own for what only it knows (symbols, a PDF's contents) — each row going
+to the place, through a link to it (`#command=`, `#line=`, `#page=`)
+or, without one, by picking it in its tile; then the blocks' texts,
+line by line; then agents' turns. Each key switches
 the open box to its scope, the query kept. Both narrow to kinds
 (`FindKinds`, a table beside BlockKinds, of what's found rather than
 made: files, spaces, turns too): a kind's start then ⇥ is a chip, ⇥

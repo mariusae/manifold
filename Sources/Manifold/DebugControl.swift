@@ -339,7 +339,7 @@ enum DebugControl {
             pb.releaseGlobally()
             return "pasted (image preferred: \(preferred))"
         case "outlinesearch":
-            // "outlinesearch open": ⇧⌘O on the focused tile; "outlinesearch
+            // "outlinesearch open": ⇧⌘P on the focused tile; "outlinesearch
             // <words>|down|up|return|escape": typed or keyed in its field.
             return wc?.debugOutlineSearch(arg) ?? "no window"
         case "quickwalk":
@@ -401,7 +401,7 @@ enum DebugControl {
             }
             return list(menu, 0).joined(separator: "\n")
         case "outline":
-            // "outline [query]": the focused tile's outline searched (⇧⌘O),
+            // "outline [query]": the focused tile's outline searched (⇧⌘P),
             // what it lists; "picker go" chooses the selected row.
             guard let wc else { return "no window" }
             return wc.debugSearchOutline(arg)

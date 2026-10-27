@@ -381,8 +381,17 @@ around it, and comes back with its history.
   Choosing a block opens it by the one rule (below) — ↩ goes to it,
   ⌘↩ beside, ⌥↩ over; choosing a space shows it. **Find in Blocks** (⇧⌘O) is the same panel
   over what blocks say rather than what they're called (⌘O and ⇧⌘O
-  switch between them while it's open, the query kept). It looks in the texts of the blocks — the space's first, then every
-  note and file kept as a block — and lists what it finds as a site's
+  switch between them while it's open, the query kept). First it looks
+  through every outline (as ⌘P shows one, below): each command every
+  terminal ran (a command run again, once, its latest), each heading of
+  every note and Markdown file — shown or not, in any space — and what
+  only a tile knows, a source file's symbols from its language server, a
+  PDF's contents, a page's headings, in the tiles on the desk. A row is
+  the place, its block and where it is beside it, how a command ended
+  and when; ↩ goes to the place itself — the terminal scrolled to the
+  command, the text at the heading, the caret on the symbol — ⌘↩ beside,
+  ⌥↩ over, as its tile's outline would. Then the texts of the blocks — the space's first, then every
+  note and file kept as a block — listed as a site's
   search does: a row a block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them. It looks only at what's held as a block; Find in Files
