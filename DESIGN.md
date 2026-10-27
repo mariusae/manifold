@@ -1374,6 +1374,8 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⇧⌘W deletes a block,** where the Mac closes a window: Manifold's
   windows are its spaces, removed with ⌥⇧⌘W, and ⌘W on Settings
   closes it.
+- **⌥⌘W saves and closes** an editor (vim's `:wq`, an `$EDITOR`'s done),
+  where the Mac closes all windows.
 - **⌃⌘T pins,** the Finder's Add to Sidebar: a pin keeps a block in its
   space's part of the sidebar, with a tile or without.
 - **⌘` walks spaces,** the app's windows; with one space it walks

@@ -1839,6 +1839,49 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
     /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
     /// collected said, with Restore, if it had edits or a job running.
+    /// ⌥⌘W: the focused editor (or a menu's) saved, then its tile closed —
+    /// once the file is written, not before: an `$EDITOR`'s command, which
+    /// reads it, ends as the tile goes. A file with nothing unsaved just
+    /// closes; a note with no file is saved as one first (⌘S's panel);
+    /// a save that fails leaves the tile, and says so.
+    @objc func saveAndClose(_ sender: Any?) {
+        guard let p = ((sender as? NSMenuItem)?.representedObject as? PlacementID) ?? arrangement?.focused else { return NSSound.beep() }
+        saveAndClose(tile: p)
+    }
+
+    func saveAndClose(tile p: PlacementID) {
+        guard let ws = selected, let shown = arrangement?.placement(p), let b = hosts.block(shown.block),
+              b.kind == .text, b.text != nil else { return NSSound.beep() }
+        if b.path != nil, b.text?.isDirty != true { return closeTile(p, in: ws) }
+        if let e = views[p] as? EditorView { e.saveDocument(nil) } else { save(b.id, from: p) }
+        savingToClose[p] = (b.id, ws, Date().addingTimeInterval(b.path == nil ? 600 : 15))
+        closeOnceSaved()
+    }
+
+    /// Tiles waiting on their saves to close (⌥⌘W): the block, its space,
+    /// and when to give up (a note's save panel may be open a while).
+    private var savingToClose: [PlacementID: (block: BlockID, space: BlockID, until: Date)] = [:]
+
+    private func closeOnceSaved() {
+        for (p, w) in savingToClose {
+            guard let b = hosts.block(w.block), hosts.arrangement(w.space)?.placement(p) != nil else {
+                savingToClose.removeValue(forKey: p)
+                continue
+            }
+            if b.statusRecord?.state == .error {
+                savingToClose.removeValue(forKey: p)
+                toast.show("Couldn't save “\(b.displayTitle)”: its tile stays", action: "OK", for: 6) {}
+            } else if b.path != nil, b.text?.isDirty == false {
+                savingToClose.removeValue(forKey: p)
+                closeTile(p, in: w.space)
+            } else if Date() > w.until {
+                savingToClose.removeValue(forKey: p)
+            }
+        }
+        guard !savingToClose.isEmpty else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.closeOnceSaved() }
+    }
+
     func closeTile(_ placement: PlacementID, in id: BlockID) {
         guard let a = hosts.arrangement(id), a.placement(placement) != nil else { return }
         let before = hosts.reachable()
@@ -2251,6 +2294,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.title = isSummarized(f) ? "Show Content" : "Shrink to Summary"
         case #selector(growTile(_:)), #selector(fillColumn(_:)):
             return arrangement?.focused != nil
+        case #selector(saveAndClose(_:)):
+            return focusedShown.map { $0.block?.kind == .text } ?? false
         case #selector(deleteFocusedBlock(_:)):
             return focusedShown.map { $0.block?.kind != .arrangement } ?? false
         case #selector(stashTile(_:)):
@@ -6048,6 +6093,11 @@ extension MainWindowController: GridDelegate {
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(block.host))
         menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark", key: "w") { [weak self] in self?.closeTile(placement, in: id) })
+        if hosts.block(block)?.kind == .text {
+            let saveClose = ClosureMenuItem("Save and Close", symbol: "square.and.arrow.down", key: "w") { [weak self] in self?.saveAndClose(tile: placement) }
+            saveClose.keyEquivalentModifierMask = [.command, .option]
+            menu.addItem(saveClose)
+        }
         let delete = ClosureMenuItem("Delete Block", symbol: "trash", key: "w") { [weak self] in self?.deleteBlock(block) }
         delete.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(delete)

@@ -264,6 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(sourceItem)
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
+        // Saved, then closed once it's written: vim's :wq, an $EDITOR's done.
+        item(file, "Save and Close", #selector(MainWindowController.saveAndClose(_:)), "w", [.command, .option])
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
         // From the menu alone: ⌘P is the outline.

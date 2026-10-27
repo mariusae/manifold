@@ -1176,7 +1176,10 @@ is migrated into logs on first run.
   host, `manifoldd mani open --wait`): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
-  comes back. The block it edited in is ephemeral: once the command
+  comes back — **⌥⌘W** (File ▸ Save and Close, in any editor) saves and
+  then closes, once the file is written, so the command reads what you
+  wrote. A file already a block when `$EDITOR` opens it is the same
+  block, in a second tile over the terminal, unsaved edits and all. The block it edited in is ephemeral: once the command
   returns it is discarded, unless the file was a block already or the
   editor was moved somewhere else, so a commit message or an agent's
   prompt leaves nothing behind in the graph.

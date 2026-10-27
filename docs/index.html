@@ -397,7 +397,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     <ul>
       <li><b><kbd>⌘</kbd>-click</b> a file's name, a <code>path:line</code>, or an address to open it below; <kbd>⌥⌘</kbd>-click to stack it over.</li>
       <li>Each command is a <b>dot</b> beside its prompt — red if it failed — and a tick in the scroll bar: the terminal's <b>outline</b>. Open one's output as a block of its own.</li>
-      <li><code>$EDITOR</code> opens files in Manifold, over the terminal, and waits for you to close them.</li>
+      <li><code>$EDITOR</code> opens files in Manifold, over the terminal, and waits for you to close them — <kbd>⌥⌘W</kbd> saves and closes in one.</li>
       <li>Another host's <code>localhost:3000</code>, clicked, opens here, its port forwarded.</li>
       <li>Typing echoes as you type, even to a far server, and is corrected when the server answers.</li>
     </ul>
@@ -556,6 +556,7 @@ mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pr
       <section><h3>File</h3><dl>
         <dt>⌘N</dt><dd>New Terminal</dd><dt>⌥⌘T</dt><dd>…in a New Space</dd><dt>⇧⌘N</dt><dd>New Note</dd>
         <dt>⌥⌘A</dt><dd>New Agent</dd><dt>⌥⌘O</dt><dd>Open Folder…</dd><dt>⌃⌘O</dt><dd>Browse This Folder</dd>
+        <dt>⌥⌘W</dt><dd>Save and Close</dd>
         <dt>⌥⌘G</dt><dd>Source Control</dd><dt>⌥⌘Y</dt><dd>History of This File</dd></dl></section>
       <section><h3>Go</h3><dl>
         <dt>⌘O</dt><dd>Open Quickly</dd><dt>⌘P</dt><dd>Outline</dd><dt>⇧⌘P</dt><dd>Filter Outline</dd>
