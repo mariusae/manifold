@@ -385,7 +385,7 @@ around it, and comes back with its history.
   search does: a row a block, its name, where it is, and the lines that
   hold the words, two lines' worth, each match marked; ↩ goes to the
   first of them. It looks only at what's held as a block; Find in Files
-  searches a project's files on disk.
+  searches the files on disk.
   A typed URL opens as a web page.
 - **⌘P goes through an outline**, as Prism's Move to Heading does —
   first the focused tile's own, where you are in it; **⇥** widens it to
@@ -754,7 +754,12 @@ around it, and comes back with its history.
   from it.
 - **Searches** are blocks too: Find in Files… (⇧⌘F, from the editor's
   selection if there is one) makes one on the focused block's host under
-  its project (the nearest folder up with `.git`), placed beside it; the
+  where it is — a terminal's directory, a file's folder — placed beside
+  it. The folder is a field under the query: edit it (`~`, or a path
+  from where it was) and ⏎ searches there; **Expand to Project** beside
+  it, shown when the folder is inside a repository (git or Sapling) it
+  isn't the root of, widens the search to the repository — the host
+  finding it, on a remote host too. The
   host runs `rg` (or `grep`) and the hits arrive grouped by file as they're
   found, matches marked, each file's name staying at the top while its
   hits scroll under it until the next file's takes over. ⏎ in the field asks again (Aa for case, .* for a

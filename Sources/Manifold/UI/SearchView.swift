@@ -14,7 +14,9 @@ protocol SearchViewDelegate: AnyObject {
 }
 
 /// The search lens (DESIGN.md §7.5): the query along the top (text, Aa
-/// for case, .* for a regular expression, the root it's under), the hits
+/// for case, .* for a regular expression), the folder it's under beneath
+/// it — a path to edit, and Expand to Project when it's inside a
+/// repository it isn't the root of — the hits
 /// beneath grouped by file as the host finds them, and a line saying how
 /// many. ⏎ in the field asks again; ⏎ or a double-click on a hit opens
 /// the file there, beside the results.
@@ -29,7 +31,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private var field: FlatField { fieldBox.field }
     private let caseButton = FlatButton("Aa", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
     private let regexButton = FlatButton(".*", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
-    private let rootLabel = NSTextField(labelWithString: "")
+    /// The folder searched under: typed (↩ searches there), or widened.
+    private let pathBox = FlatFieldBox(symbol: "folder", clears: false, fontSize: 12)
+    private var pathField: FlatField { pathBox.field }
+    private let projectButton = FlatButton("Expand to Project", symbol: "arrow.up.left.and.arrow.down.right", font: UIType.detail)
     private let status = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
     private let table = NSTableView()
@@ -73,14 +78,20 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         }
         caseButton.toolTip = "Match case"
         regexButton.toolTip = "Regular expression"
-        rootLabel.font = UIType.detail
-        rootLabel.textColor = Theme.secondaryText
-        rootLabel.lineBreakMode = .byTruncatingMiddle
-        rootLabel.alignment = .right
+        pathField.placeholderString = "Under this folder"
+        pathField.font = UIType.detail
+        pathField.lineBreakMode = .byTruncatingHead
+        pathField.cell?.sendsActionOnEndEditing = false
+        pathField.target = self
+        pathField.action = #selector(pathEntered)
+        pathField.toolTip = "The folder searched under: edit it and press Return"
+        projectButton.target = self
+        projectButton.action = #selector(expandToProject)
+        projectButton.isHidden = true
         status.font = UIType.detail
         status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingTail
-        for v in [fieldBox, caseButton, regexButton, rootLabel, status] { addSubview(v) }
+        for v in [fieldBox, caseButton, regexButton, pathBox, projectButton, status] { addSubview(v) }
 
         let column = NSTableColumn(identifier: .init("hit"))
         column.resizingMask = .autoresizingMask
@@ -156,11 +167,17 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         caseButton.frame = NSRect(x: w - 12 - 32, y: midY - Flat.buttonHeight / 2, width: 32, height: Flat.buttonHeight)
         regexButton.frame = NSRect(x: caseButton.frame.minX - 4 - 32, y: caseButton.frame.minY, width: 32, height: Flat.buttonHeight)
         fieldBox.frame = NSRect(x: 12, y: midY - Flat.fieldHeight / 2, width: regexButton.frame.minX - 8 - 12, height: Flat.fieldHeight)
-        rootLabel.frame = NSRect(x: w / 2, y: top - 46, width: w / 2 - 12, height: 16)
-        status.frame = NSRect(x: 12, y: top - 46, width: w / 2 - 16, height: 16)
+        // The folder, under the query: its field, and the button to widen it.
+        let pathY = midY - Flat.fieldHeight - 6
+        projectButton.sizeToFit()
+        let pw = projectButton.isHidden ? 0 : projectButton.frame.width + 6
+        projectButton.frame = NSRect(x: w - 12 - projectButton.frame.width, y: pathY - Flat.buttonHeight / 2,
+                                     width: projectButton.frame.width, height: Flat.buttonHeight)
+        pathBox.frame = NSRect(x: 12, y: pathY - Flat.fieldHeight / 2, width: max(60, w - 24 - pw), height: Flat.fieldHeight)
+        status.frame = NSRect(x: 12, y: pathBox.frame.minY - 22, width: w - 24, height: 16)
         // The preview beside the hits when there's width for both, else
         // beneath them when there's height, else not at all.
-        let area = NSRect(x: 0, y: 0, width: w, height: max(0, top - 54))
+        let area = NSRect(x: 0, y: 0, width: w, height: max(0, status.frame.minY - 6))
         let wasHidden = preview.isHidden
         if w >= 620 {
             let left = max(260, (w * 0.42).rounded())
@@ -189,12 +206,21 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         if s.query != query || s.ranAt != ranAt {
             query = s.query
             ranAt = s.ranAt
-            if let q = s.query, field.currentEditor() == nil {
+            // Into the field unless something's being typed in it (a new
+            // search, the field given the keyboard as it opens, empty).
+            if let q = s.query, field.currentEditor() == nil || field.stringValue.isEmpty {
                 fieldBox.stringValue = q.text
                 caseButton.state = q.caseSensitive ? .on : .off
                 regexButton.state = q.regex ? .on : .off
             }
-            rootLabel.stringValue = s.query?.root.abbreviatingHome ?? ""
+            if pathField.currentEditor() == nil { pathBox.stringValue = s.query?.root.abbreviatingHome ?? "" }
+            // Widened already, or in no repository: nothing to expand to.
+            let canExpand = s.query.map { q in q.project.map { $0 != q.root } ?? false } ?? false
+            if projectButton.isHidden == canExpand {
+                projectButton.isHidden = !canExpand
+                needsLayout = true
+            }
+            projectButton.toolTip = s.query?.project.map { "Search the whole repository, \($0.abbreviatingHome)" }
             rows = []
             hitCount = 0
             fileCount = 0
@@ -254,6 +280,29 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private var currentQuery: SearchQuery {
         SearchQuery(text: field.stringValue, regex: regexButton.state == .on, caseSensitive: caseButton.state == .on,
                     root: query?.root ?? "", glob: query?.glob)
+    }
+
+    /// A folder typed: the search asked again under it (`~` as home, a
+    /// relative path from the folder it was under).
+    @objc private func pathEntered() {
+        let typed = pathField.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !typed.isEmpty else { return }
+        var root = (typed as NSString).expandingTildeInPath
+        if !root.hasPrefix("/"), let old = query?.root { root = (old as NSString).appendingPathComponent(root) }
+        search(under: root)
+        window?.makeFirstResponder(field)
+    }
+
+    /// Expand to Project: the search under the repository's root.
+    @objc private func expandToProject() {
+        guard let project = query?.project else { return }
+        search(under: project)
+    }
+
+    private func search(under root: String) {
+        var q = currentQuery
+        q.root = root
+        delegate?.searchView(self, run: q)
     }
 
     @objc private func fieldEntered() {

@@ -384,6 +384,10 @@ public struct SearchQuery: Codable, Equatable, Sendable {
     public var caseSensitive: Bool
     public var root: String
     public var glob: String?
+    /// The repository the root is in (git or Sapling), its root: what
+    /// Expand to Project widens to. The host says it, as it runs the
+    /// search — only it can look, the files being its own.
+    public var project: String?
 
     public init(text: String, regex: Bool = false, caseSensitive: Bool = false, root: String, glob: String? = nil) {
         self.text = text

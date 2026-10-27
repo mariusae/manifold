@@ -2039,9 +2039,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         do {
             let from = focusedShown?.block
-            // A search under the project, as Find in Files'; the rest where the focused block is.
-            let cwd = kind.name == "search" ? projectRoot(from: focusedCwd, on: focusedHost) : focusedCwd
-            let made = try makeBlock(kind, what: what, cwd: cwd, on: focusedHost)
+            let made = try makeBlock(kind, what: what, cwd: focusedCwd, on: focusedHost)
             // A note is about what was focused, as ⇧⌘N's is.
             if kind.name == "note", let b = from, b.kind != .arrangement { hosts.link(from: b.id, to: made.block, kind: .linked, context: "new note") }
             if made.later { showWhenMade(made.block, lens: made.lens, place: place, what: "the " + kind.title.lowercased()) }
@@ -4558,11 +4556,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Find in Files…: a search block on the focused block's host, under
-    /// its project (the nearest folder up with `.git`, else where it is),
-    /// starting from the editor's selection; placed beside what's focused.
+    /// where it is (a terminal's directory, a file's folder) — its tile's
+    /// path field to change, and Expand to Project to widen it to the
+    /// repository — starting from the editor's selection; placed beside
+    /// what's focused.
     @objc func findInFiles(_ sender: Any?) {
         let on = focusedHost
-        let root = projectRoot(from: focusedCwd, on: on)
+        let root = focusedCwd ?? NSHomeDirectory()
         var text = ""
         if let tv = window?.firstResponder as? TextView {
             let selected = tv.selectedText

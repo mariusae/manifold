@@ -19,7 +19,7 @@ public enum BlockKinds {
         public var what: String?
         /// A line on what it makes, for help and the picker. "Here" is
         /// the directory a shell's `mani` runs in, or the focused tile's
-        /// folder (a search: its project's).
+        /// folder.
         public var help: String
         /// Made from a menu or the picker, not only from a shell.
         public var interactive = true

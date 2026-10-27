@@ -889,6 +889,7 @@ final class Server {
         case let .search(block, query):
             var q = query
             q.root = URL(fileURLWithPath: q.root.expandingTildeInPath).standardizedFileURL.path
+            q.project = VCS.repository(of: q.root)?.root
             if node.block(block) == nil {
                 append(.create(kind: .search, title: nil, path: nil), to: .block(block))
             }
