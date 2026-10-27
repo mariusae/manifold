@@ -1047,7 +1047,9 @@ around it, and comes back with its history.
   its maker's mark wherever the block's symbol shows (Claude Code, Codex,
   Gemini CLI, Cursor, Goose, opencode, Amp, Pi; Meta AI's for Muse), from
   [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and pi.dev, in
-  Resources/AgentIcons; the marks are their makers' trademarks. An agent
+  Resources/AgentIcons, each in one color, tinted as the symbols beside
+  it are (a colored tile or gradient lost at a bar's size); the marks are
+  their makers' trademarks. An agent
   started in a git repository has the working tree noted as it starts
   — all of it, untracked files too, without touching the index — and
   **Changes Since It Started** in its tile's menu shows everything it
