@@ -25,10 +25,16 @@ public final class PathCrawl {
     /// Each folder's entries (indices into `found`), by its relative path
     /// ("" for the root), once listed.
     public private(set) var children: [String: [Int]] = [:]
-    /// Whether to go on past the root's own entries.
+    /// Whether to go on past the root's own entries, a level at a time.
     public var going = false { didSet { if going != oldValue { pump() } } }
-    /// A folder (relative) to list before the rest, and what's under it.
+    /// A folder (relative) wanted: it, and the folders on the way to it,
+    /// listed — going or not — and, going, what's under it before the rest.
     public var toward: String? { didSet { if toward != oldValue { pump() } } }
+    /// How many more folders it may list going on, past the root (and
+    /// those toward a folder wanted): spent as it goes, and once spent it
+    /// waits to be given more — so a listing as fast as the host can
+    /// answer doesn't run past what's wanted before it can be told so.
+    public var allowance = Int.max { didSet { if allowance > oldValue { pump() } } }
     /// Told as anything is found, and as it stops.
     public var onChange: (() -> Void)?
 
@@ -36,6 +42,8 @@ public final class PathCrawl {
     public var foldersListed: Int { children.count }
     /// Everything there is to find is found (or as much as it will find).
     public var finished: Bool { (head >= pending.count || stopped) && inFlight == 0 && children[""] != nil }
+    /// Listing now, or about to: going on, or toward a folder not yet listed.
+    public var busy: Bool { inFlight > 0 || ((going && allowance > 0 || wantsToward) && !finished) }
 
     private let list: (String, @escaping ([DirectoryEntry]?) -> Void) -> Void
     private let skipLibrary: Bool
@@ -80,24 +88,35 @@ public final class PathCrawl {
         defer { pumping = false }
         while inFlight < concurrency, !stopped {
             let rootListed = children[""] != nil
-            guard rootListed ? going : inFlight == 0 && asked.isEmpty, let next = takeNext() else { break }
+            guard rootListed ? going || wantsToward : inFlight == 0 && asked.isEmpty, let next = takeNext() else { break }
             asked.insert(next.path)
             inFlight += 1
             list(absolute(next.path)) { [weak self] entries in self?.listed(next.path, depth: next.depth, entries) }
         }
     }
 
+    /// The folder wanted isn't listed yet.
+    private var wantsToward: Bool { toward.map { !$0.isEmpty && children[$0] == nil } ?? false }
+
     private func takeNext() -> (path: String, depth: Int)? {
+        // Toward the folder wanted: it and those on the way; going, what's
+        // under it too.
         if let toward, !toward.isEmpty,
-           let i = pending[head...].firstIndex(where: { toward == $0.path || toward.hasPrefix($0.path + "/") || $0.path.hasPrefix(toward + "/") }) {
+           let i = pending[head...].firstIndex(where: { toward == $0.path || toward.hasPrefix($0.path + "/") || (going && $0.path.hasPrefix(toward + "/")) }) {
             let next = pending[i]
             pending.remove(at: i)
             return next
         }
+        // Past the root, a level at a time only going on, as allowed.
+        let rootListed = children[""] != nil
+        guard !rootListed || (going && allowance > 0) else { return nil }
         while head < pending.count {
             let next = pending[head]
             head += 1
-            if !asked.contains(next.path) { return next }
+            if !asked.contains(next.path) {
+                if rootListed { allowance -= 1 }
+                return next
+            }
         }
         // (Compacted now and then: what's been taken from the front.)
         if head > 4096 { pending.removeFirst(head); head = 0 }

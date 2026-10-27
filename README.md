@@ -584,7 +584,12 @@ around it, and comes back with its history.
   remote), and what's under them is looked for only once you type,
   nearest folders first, eight at a time, the rows ranked again (off
   the main thread) as more is found, a spinner and how many folders so
-  far at the field's right; a folder you go into is listed first. What's
+  far at the field's right — and only as far as it helps: once there's
+  a screenful of strong matches (a name that is, or starts with, what's
+  typed, or a word of it that does) it stops, nothing further away
+  being able to come before them; ↑ past the top looks for another
+  screenful. A folder you go into (⇥) is listed, alone. Closed, or
+  emptied, it stops. What's
   been found is kept a couple of minutes, so it's there at once next
   time. Hidden folders, what the repository ignores, dependencies,
   packages and a home's Library are listed but not gone into. ↑↓ choose, ⇥ goes into a folder, ↩ types

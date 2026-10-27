@@ -168,6 +168,8 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
             let made = PathCrawl(root: source.directory, home: source.home) { path, done in
                 list(path) { entries in DispatchQueue.main.async { done(entries) } }
             }
+            // Going on only as far as a ranking says it's wanted.
+            made.allowance = 0
             Self.crawls[key] = (Date(), made)
             if Self.crawls.count > 6, let oldest = Self.crawls.min(by: { $0.value.at < $1.value.at })?.key { Self.crawls.removeValue(forKey: oldest) }
             crawl = made
@@ -188,6 +190,8 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         guard panel.isVisible || text != nil else { return }
         // What's found is kept a while; looking further waits for a query.
         crawl?.going = false
+        crawl?.toward = nil
+        wanted = Self.visibleRows
         crawl?.onChange = nil
         crawl = nil
         again?.cancel()
@@ -209,8 +213,8 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     private func found() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty, !query.hasSuffix("/") else { return refresh(keepingChoice: true) }
-        // Done looking: ranked now, the last time.
-        if crawl?.finished == true {
+        // Done looking, or done with what it was allowed: ranked now.
+        if crawl?.busy == false {
             again?.cancel()
             again = nil
             return refresh(keepingChoice: true)
@@ -242,13 +246,15 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
             awaiting = false
             return show(own(crawl, "") + recent, keepingChoice: keepingChoice)
         }
-        crawl.going = true
+        // A folder gone into: it alone listed (and those on the way).
         if query.hasSuffix("/"), case let folder = String(query.dropLast()), isFolder(folder, in: crawl) {
+            crawl.going = false
             crawl.toward = folder
             _ = generation.next()
             awaiting = false
             return show(own(crawl, folder), keepingChoice: keepingChoice)
         }
+        // Else ranked; and whether to look further is the ranking's to say.
         crawl.toward = query.contains("/") ? query.deletingLastPathComponent : nil
         rank(query, recent: recent, in: crawl, keepingChoice: keepingChoice)
     }
@@ -287,9 +293,20 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         ranking.async { [weak self] in
             ranker.add(new, from: start, fresh: fresh)
             guard let ranked = FinderRanking.rank(query, recentCandidates + ranker.candidates, limit: 60, current: { generation.isCurrent(gen) }) else { return }
-            let picks = ranked.rows.map(\.action)
+            let picks = ranked.rows.map(\.action), strong = ranked.strong
             DispatchQueue.main.async {
                 guard let self, generation.isCurrent(gen), let crawl = self.crawl else { return }
+                // Looked further only while it could help: until there are
+                // as many strong matches as are wanted — a screenful, and
+                // another for each ↑ past the top; anything further away
+                // comes after those.
+                if strong < self.wanted, !crawl.finished {
+                    // A while more: as many folders again as it's listed.
+                    if !crawl.busy { crawl.allowance = max(32, crawl.foldersListed) }
+                    crawl.going = true
+                } else {
+                    crawl.going = false
+                }
                 let rows = picks.reversed().compactMap { a -> Row? in
                     if a < 0 { return recent.indices.contains(-1 - a) ? recent[-1 - a] : nil }
                     return crawl.found.indices.contains(a) ? Row(path: crawl.found[a].path, isFolder: crawl.found[a].isFolder, recent: false) : nil
@@ -302,6 +319,9 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
 
     /// A ranking's under way: "No match" waits for it.
     private var awaiting = false
+    /// How many strong matches to look for before it stops looking: a
+    /// screenful, and another for each ↑ past the top, until the query changes.
+    private var wanted = PathInserter.visibleRows
 
     /// The rows shown: the best (the last) chosen — or, as more comes in
     /// under a choice made, that one still.
@@ -325,11 +345,14 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     private func updateStatus() {
         guard let crawl else { return }
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        let looking = crawl.children[""] == nil || (crawl.going && !crawl.finished)
+        let looking = crawl.children[""] == nil || crawl.busy
         if crawl.children[""] == nil {
             status.stringValue = "Listing…"
         } else if looking {
             status.stringValue = "\(crawl.foldersListed.formatted()) folders"
+        } else if !query.isEmpty, !query.hasSuffix("/"), !crawl.finished, !awaiting {
+            // Paused, with enough: more is a key away.
+            status.stringValue = "↑ for more"
         } else {
             status.stringValue = !query.isEmpty && rows.isEmpty && !awaiting ? "No match" : ""
         }
@@ -368,7 +391,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         field.frame = NSRect(x: glass.frame.maxX + 6, y: well.minY + (well.height - 18) / 2, width: max(40, right - glass.frame.maxX - 6), height: 18)
     }
 
-    private var spinnerShown: Bool { status.stringValue != "" && status.stringValue != "No match" }
+    private var spinnerShown: Bool { !["", "No match", "↑ for more"].contains(status.stringValue) }
 
     /// Opened under the cursor, for want of room over it: it grows down.
     private var growsDown = false
@@ -403,12 +426,20 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        wanted = Self.visibleRows
         again?.cancel()
         again = nil
         refresh(keepingChoice: false)
     }
 
     private func move(_ by: Int) {
+        // Up past the top of what's found: look further.
+        if by < 0, table.selectedRow == 0, let crawl, !crawl.finished, !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
+            wanted = min(wanted + Self.visibleRows, 60)
+            if !crawl.busy { crawl.allowance = max(32, crawl.foldersListed) }
+            crawl.going = true
+            updateStatus()
+        }
         guard !rows.isEmpty else { return }
         let row = min(max(table.selectedRow + by, 0), rows.count - 1)
         table.selectRowIndexes([row], byExtendingSelection: false)

@@ -105,6 +105,10 @@ enum FinderRanking {
     struct Ranked {
         var rows: [FinderCandidate]
         var counts: [String: Int]
+        /// How many matched strongly — the whole name, its start, a word's
+        /// start — of the kinds wanted: what's further away can't come
+        /// before as many as there are of these, but only after.
+        var strong = 0
     }
 
     /// The best `limit` of the candidates for a query (§3.5), of the kinds
@@ -118,6 +122,7 @@ enum FinderRanking {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
         func wanted(_ c: FinderCandidate) -> Bool { only.isEmpty || c.kinds.contains(where: only.contains) }
         var counts: [String: Int] = [:]
+        var strong = 0
         if q.isEmpty {
             for c in candidates { for k in c.kinds { counts[k, default: 0] += 1 } }
             let blocks = candidates.filter { $0.action >= 0 && wanted($0) }.sorted { $0.distance != $1.distance ? $0.distance < $1.distance : $0.recency > $1.recency }
@@ -140,6 +145,7 @@ enum FinderRanking {
             guard m > 0 else { continue }
             for k in c.kinds { counts[k, default: 0] += 1 }
             guard wanted(c) else { continue }
+            if m >= 500 { strong += 1 }
             let band = m >= 600 ? 6 : m >= 520 ? 5 : m >= 500 ? 4 : m >= 480 ? 3 : m >= 400 ? 2 : m >= 200 ? 1 : 0
             let s = Scored(band: band, distance: c.distance, match: m, recency: c.recency, i: i)
             if best.count == limit, let last = best.last, !s.beats(last) { continue }
@@ -152,7 +158,7 @@ enum FinderRanking {
             if best.count > limit { best.removeLast() }
         }
         guard current() else { return nil }
-        return Ranked(rows: best.map { candidates[$0.i] }, counts: counts)
+        return Ranked(rows: best.map { candidates[$0.i] }, counts: counts, strong: strong)
     }
 
     /// A match, by what it's ranked on: what the query names best, then

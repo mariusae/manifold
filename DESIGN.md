@@ -460,8 +460,12 @@ time (`listFolder`), so a remote's are the remote's — the last three
 put in on the host at its foot (kept per host), a field that ranks
 what's found as Open Quickly ranks names. It never waits: `PathCrawl`
 lists the folder, and only once something's typed goes on, a level at
-a time, several folders in flight, a folder gone into first; the
-ranking is off the main thread, again as more comes. Crawls are kept
+a time, several folders in flight — as far as a ranking says it helps
+(a screenful of strong matches, which nothing further can come before;
+another for each ↑ past the top), in allowances it spends and waits to
+be given again, so a fast host can't outrun being told to stop; a
+folder gone into, alone. The ranking is off the main thread, again as
+more comes. Crawls are kept
 two minutes by host and folder. The one chosen is typed as the shell would have
 it, relative where it can be. Styled as a menu, not the finder: the
 system's frosted ground, the Finder's icons, the accent under the

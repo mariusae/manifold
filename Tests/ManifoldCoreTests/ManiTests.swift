@@ -205,13 +205,39 @@ import Testing
     #expect(depths == depths.sorted())
     #expect(crawl.children["b"].map { $0.map { crawl.found[$0].path } } == ["b/b1.txt", "b/c"])
 
-    // A folder looked for is listed before the rest.
+    // A folder wanted, not going on: it and those on the way, nothing more.
     asked = []
     let toward = PathCrawl(root: "/h", home: nil, concurrency: 1, list: lister)
     toward.toward = "b/c"
+    #expect(asked == ["/h", "/h/b", "/h/b/c"])
+    #expect(!toward.busy)
+    // Going on, from there: before the rest, what's under it.
     toward.going = true
     #expect(Array(asked.prefix(3)) == ["/h", "/h/b", "/h/b/c"])
     #expect(asked.contains("/h/Library"))  // not this host's home: gone into
+
+    // Stopped, it asks for nothing more; going again, it goes on from where it was.
+    asked = []
+    var held: [(String, ([DirectoryEntry]?) -> Void)] = []
+    let paused = PathCrawl(root: "/h", home: "/h", concurrency: 2) { path, done in asked.append(path); held.append((path, done)) }
+    held.removeFirst().1(tree["/h"])
+    paused.going = true
+    #expect(asked == ["/h", "/h/a", "/h/b"])
+    paused.going = false
+    for (p, done) in held { done(tree[p]) }
+    held = []
+    #expect(asked.count == 3 && paused.busy == false && !paused.finished)
+    paused.going = true
+    #expect(asked.count == 5)
+
+    // As many folders as it's allowed, then it waits to be given more.
+    asked = []
+    let allowed = PathCrawl(root: "/h", home: "/h", concurrency: 1, list: lister)
+    allowed.allowance = 1
+    allowed.going = true
+    #expect(asked == ["/h", "/h/a"] && !allowed.busy && !allowed.finished)
+    allowed.allowance = 2
+    #expect(asked == ["/h", "/h/a", "/h/b", "/h/a/deep"])
 
     // As far as it's let go.
     let little = PathCrawl(root: "/h", home: "/h", maxFound: 9, concurrency: 1, list: lister)
