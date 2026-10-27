@@ -62,7 +62,10 @@ final class ToastView: NSView {
     }
 
     var wantedSize: NSSize {
-        let lw = min(ceil(label.intrinsicContentSize.width), 520)
+        // The text measured as drawn, and the field's own inset: its
+        // intrinsic size can lag what it was just given.
+        let text = NSAttributedString(string: label.stringValue, attributes: [.font: label.font ?? .systemFont(ofSize: 12.5)])
+        let lw = min(ceil(text.size().width) + 6, 560)
         let bw = button.isHidden ? -12 : ceil(button.intrinsicContentSize.width)
         return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
     }
