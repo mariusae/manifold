@@ -66,7 +66,7 @@ enum Theme {
 
     static func symbolName(for lens: Lens) -> String {
         switch lens {
-        case .terminal: "apple.terminal"
+        case .terminal: Marks.terminal
         case .preview: "doc.richtext"
         case .editor: "doc.text"
         case .directory: "folder"
@@ -119,7 +119,6 @@ enum Theme {
         "cpu": ["cpu.fill", "memorychip"],
         "arrow.triangle.pull": ["arrow.triangle.branch"],
         "number": ["number.square", "textformat"],
-        "apple.terminal": ["terminal"],
         "text.and.command.macwindow": ["apple.terminal.on.rectangle", "terminal"],
         "arrow.left.arrow.right": ["arrow.right.arrow.left", "arrow.left.and.right"],
     ]
@@ -130,8 +129,12 @@ enum Theme {
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
         let key = "\(name)/\(size)/\(weight.rawValue)"
         if let image = symbols[key] { return image }
-        // A coding agent's mark, drawn to the size a symbol would be.
+        // A coding agent's mark, drawn to the size a symbol would be; one of our own.
         if name.hasPrefix(AgentIcons.prefix), let image = AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: size) {
+            symbols[key] = image
+            return image
+        }
+        if let image = Marks.image(name, size: size, weight: weight) {
             symbols[key] = image
             return image
         }
@@ -145,6 +148,63 @@ enum Theme {
     }
 
     private static var symbols: [String: NSImage] = [:]
+
+    /// A symbol drawn in a colour, at a size and weight — the system's, one
+    /// of our own (`Marks`), or an agent's mark (in its own colours).
+    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
+        if name.hasPrefix(AgentIcons.prefix) { return symbol(name, size: size, weight: weight) }
+        if let mark = Marks.image(name, size: size, weight: weight) { return mark.tinted(color) }
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: size, weight: weight).applying(.init(paletteColors: [color])))
+            ?? symbol(name, size: size, weight: weight)
+    }
+}
+
+/// Marks of our own, where the system's symbol is too busy to read at a
+/// row's size: drawn as templates, a stroke as heavy as the weight asked
+/// for, in a box a symbol of that size would take.
+enum Marks {
+    static let prefix = "manifold."
+    /// A terminal: a prompt, `>_` — no window around it.
+    static let terminal = prefix + "terminal"
+
+    private static var made: [String: NSImage] = [:]
+
+    static func image(_ name: String, size: CGFloat, weight: NSFont.Weight) -> NSImage? {
+        guard name.hasPrefix(prefix) else { return nil }
+        let key = "\(name)/\(size)/\(weight.rawValue)"
+        if let i = made[key] { return i }
+        // A stroke as a symbol's at that weight: about a tenth of its size.
+        let stroke = size * (weight >= .bold ? 0.15 : weight >= .semibold ? 0.135 : weight >= .medium ? 0.12 : 0.105)
+        let box = NSSize(width: (size * 1.25).rounded(), height: (size * 1.1).rounded())
+        let image: NSImage
+        switch name {
+        case terminal:
+            image = NSImage(size: box, flipped: false) { r in
+                let u = size / 13, midY = r.midY, inset = stroke / 2 + 1 * u
+                let chevron = NSBezierPath()
+                chevron.move(to: NSPoint(x: inset + 1 * u, y: midY + 4 * u))
+                chevron.line(to: NSPoint(x: inset + 5.2 * u, y: midY))
+                chevron.line(to: NSPoint(x: inset + 1 * u, y: midY - 4 * u))
+                let underscore = NSBezierPath()
+                underscore.move(to: NSPoint(x: inset + 7.4 * u, y: midY - 4 * u))
+                underscore.line(to: NSPoint(x: min(r.maxX - inset, inset + 13.2 * u), y: midY - 4 * u))
+                NSColor.black.setStroke()
+                for p in [chevron, underscore] {
+                    p.lineWidth = stroke
+                    p.lineCapStyle = .round
+                    p.lineJoinStyle = .round
+                    p.stroke()
+                }
+                return true
+            }
+        default:
+            return nil
+        }
+        image.isTemplate = true
+        made[key] = image
+        return image
+    }
 }
 
 extension NSMutableAttributedString {

@@ -139,9 +139,7 @@ final class SummaryCard: NSView {
             return
         }
         // The symbol, the title, where it is; the note at the right.
-        let config = NSImage.SymbolConfiguration(pointSize: UIType.symbolSize, weight: .medium)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.secondaryText]))
-        if let image = NSImage(systemSymbolName: content.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(content.symbol, size: UIType.symbolSize) {
+        if let image = Theme.symbol(content.symbol, size: UIType.symbolSize, weight: .medium, color: Theme.secondaryText) {
             let size = image.size
             image.draw(in: NSRect(x: x, y: top + 9 - size.height / 2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             x += 22

@@ -65,7 +65,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         status.lineBreakMode = .byTruncatingMiddle
-        shellIcon.image = Theme.symbol("apple.terminal", size: 12)
+        shellIcon.image = Theme.symbol(Marks.terminal, size: 12)
         shellIcon.contentTintColor = Theme.secondaryText
         for v in [glyph, shellIcon, status] as [NSView] { header.addSubview(v) }
         runs.actions = [

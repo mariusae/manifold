@@ -2690,7 +2690,7 @@ enum BlockDragImage {
             Theme.sheetEdge(hovered: true).setStroke()
             path.lineWidth = 1
             path.stroke()
-            if let icon = Theme.symbol(pane?.symbol ?? "apple.terminal", size: 13) {
+            if let icon = Theme.symbol(pane?.symbol ?? Marks.terminal, size: 13) {
                 icon.tinted(Theme.secondaryText).draw(in: icon.centered(in: NSRect(x: 12, y: (rect.height - 16) / 2, width: 16, height: 16)))
             }
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
@@ -2851,10 +2851,8 @@ final class StackPeek: NSView {
             path.stroke()
             var x = r.minX + 10
             // The symbol in the secondary text's color, as the bar's own is.
-            let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.secondaryText]))
             // An agent's mark is an image of its own, drawn as it is.
-            if let image = NSImage(systemSymbolName: t.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) ?? Theme.symbol(t.symbol, size: 10) {
+            if let image = Theme.symbol(t.symbol, size: 10, weight: .medium, color: Theme.secondaryText) {
                 let size = image.size
                 image.draw(in: NSRect(x: x, y: r.midY - size.height / 2, width: size.width, height: size.height))
                 x += size.width + 6

@@ -26,7 +26,7 @@ public enum BlockKinds {
     }
 
     public static let all: [Kind] = [
-        Kind(name: "terminal", title: "Terminal", symbol: "apple.terminal", what: "command",
+        Kind(name: "terminal", title: "Terminal", symbol: "manifold.terminal", what: "command",
              help: "a terminal here, running the command if given"),
         Kind(name: "agent", title: "Agent", symbol: "sparkles", what: "command",
              help: "a coding agent here: the one Settings name, else the command"),
@@ -100,7 +100,7 @@ public enum FindKinds {
     /// In the order ⇥ offers them for a start more than one begins
     /// ("t": terminal, then turn) and the counts list them.
     public static let all: [Kind] = [
-        Kind(name: "terminal", aliases: ["shell"], title: "Terminal", symbol: "apple.terminal"),
+        Kind(name: "terminal", aliases: ["shell"], title: "Terminal", symbol: "manifold.terminal"),
         Kind(name: "agent", title: "Agent", symbol: "sparkles"),
         Kind(name: "note", title: "Note", symbol: "note.text"),
         Kind(name: "file", title: "File", symbol: "doc.text"),

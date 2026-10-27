@@ -9,7 +9,7 @@ final class EmptyStateView: NSView {
 
     init(target: AnyObject) {
         buttons = [
-            FlatButton("New Terminal", symbol: "apple.terminal", style: .primary, target: target, action: #selector(MainWindowController.newTerminal(_:))),
+            FlatButton("New Terminal", symbol: Marks.terminal, style: .primary, target: target, action: #selector(MainWindowController.newTerminal(_:))),
             FlatButton("Open Folder…", symbol: "folder", target: target, action: #selector(MainWindowController.openFolder(_:))),
             FlatButton("Open Quickly…", symbol: "magnifyingglass", target: target, action: #selector(MainWindowController.openDocument(_:))),
         ]

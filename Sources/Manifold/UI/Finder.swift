@@ -917,6 +917,7 @@ final class FileCell: NSTableCellView {
         if let i = images[name] { return i }
         // A coding agent's mark, at the size the row's symbols are.
         let i = (name.hasPrefix(AgentIcons.prefix) ? AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: 15) : nil)
+            ?? Marks.image(name, size: UIType.symbolSize, weight: .medium)
             ?? NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
         images[name] = i
         return i
@@ -1167,8 +1168,7 @@ final class KindToken: NSView {
             }
         }
         let iconX: CGFloat = style == .chip ? 8 : 5, iconWidth: CGFloat = style == .chip ? 16 : 14
-        if let image = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: symbolSize, weight: .medium).applying(.init(paletteColors: [color]))) {
+        if let image = Theme.symbol(kind.symbol, size: symbolSize, weight: .medium, color: color) {
             let size = image.size
             image.draw(in: NSRect(x: iconX + (iconWidth - size.width) / 2, y: ((h - size.height) / 2).rounded(), width: size.width, height: size.height))
         }
