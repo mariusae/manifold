@@ -412,7 +412,7 @@ final class Hosts {
             done?(nil)
         case let .history(shard):
             (client(shard.host) ?? local).propose(proposal, done: done)
-        case .openDone, .commandReply, .editFile, .signal:
+        case .openDone, .commandReply, .editFile, .signal, .machine:
             local.propose(proposal, done: done)
         case let .editing(ids):
             for c in all { c.propose(.editing(ids.filter { $0.host == c.host })) }

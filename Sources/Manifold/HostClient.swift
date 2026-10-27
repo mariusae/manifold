@@ -194,6 +194,13 @@ final class HostClient {
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
     private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
     private var pendingLookUps: [Int: ([PathKind?]?) -> Void] = [:]
+    private var pendingMachine: [Int: (MachineSample?) -> Void] = [:]
+    /// What the host's server can do beyond its protocol (`welcome`).
+    private(set) var features: Set<String> = []
+    /// The machine's history, as the host has sent it (§7.5): five minutes
+    /// of it, the latest last, and the last reading whole.
+    private(set) var machineHistory: [MachinePoint] = []
+    private(set) var machineLatest: MachineSample?
     /// What the host's language servers say about its text blocks.
     private(set) var diagnostics: [BlockID: [Diagnostic]] = [:]
     /// How each text block stands against what's committed.
@@ -344,6 +351,22 @@ final class HostClient {
         nextProposal += 1
         pendingLookUps[id] = done
         conn?.send(.message(ClientMessage.propose(id: id, .lookUpPaths(paths: paths))))
+    }
+
+    /// Whether the host's server can read its machine (one from before can't).
+    var readsMachine: Bool { features.contains("machine") }
+
+    /// The machine as asked (§7.5): the history since what's kept here
+    /// asked for with it, and added to `machineHistory`. Nil: not attached,
+    /// a server from before, or the host couldn't read it.
+    func machine(_ query: MachineQuery, done: @escaping (MachineSample?) -> Void) {
+        guard conn != nil, readsMachine else { return done(nil) }
+        var q = query
+        q.since = machineHistory.last?.at
+        let id = nextProposal
+        nextProposal += 1
+        pendingMachine[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .machine(q))))
     }
 
     /// The tree under a folder, less what's ignored, named relative to it.
@@ -918,6 +941,7 @@ final class HostClient {
             // Streams opened compressed from now on, where they ask to be:
             // over a link to another machine, to a server that takes them.
             mux?.compression = isRemote && features?.contains("zstd") == true
+            self.features = Set(features ?? [])
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 if isRemote {
@@ -1041,6 +1065,18 @@ final class HostClient {
             pendingListings.removeValue(forKey: id)?(entries, complete)
         case let .pathKinds(id, kinds):
             pendingLookUps.removeValue(forKey: id)?(kinds)
+        case let .machine(id, sample):
+            if let sample {
+                // The history, what's new added on, five minutes kept.
+                let last = machineHistory.last?.at ?? 0
+                machineHistory += sample.history.filter { $0.at > last }
+                let cutoff = sample.at - 300
+                if let i = machineHistory.firstIndex(where: { $0.at >= cutoff }), i > 0 { machineHistory.removeFirst(i) }
+                var kept = sample
+                kept.history = []
+                machineLatest = kept
+            }
+            pendingMachine.removeValue(forKey: id)?(sample)
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
             onLanguageServer?(language, root, state)

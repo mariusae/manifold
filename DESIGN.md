@@ -839,6 +839,33 @@ diffs and files; search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.
 
+The process lens has two modes. **Blocks** lists the trees under the
+host's terminals and agents (`ps`, from their shells). **Machine** is the
+whole machine, as btop shows it but drawn: CPU (busy and the kernel's
+part over five minutes, each core a cell deeper the busier, load, the
+processor and uptime), memory (used, cached and free as one bar, swap,
+its history), network (in above the middle, out below, on one scale) and
+disks (each filesystem's fullness, reading above and writing below),
+over every process on the host, the busiest first or as a header sorts
+them, those under one of the host's blocks marked and gone to by a
+double-click. The pointer reads a graph at its moment, or a core. The
+panels flow into as many columns as fit, shrink to a band of small ones
+in a short tile and go in a shorter one. The server reads the cheap part
+(`MachinePoint`: cores, memory, network and disk counters) every two
+seconds whether or not anyone is looking — a few small reads, under a
+millisecond — and keeps five minutes of it, so a graph shows its past as
+soon as it's opened; the processes are read only when asked (`machine`,
+with a sort, a filter, how many and which to keep), their CPU over the
+time since the last reading, every two seconds while shown. macOS's
+readings are the kernel's (`host_processor_info`, `host_statistics64`,
+the interfaces' 64-bit counters, IOKit's block-storage statistics,
+`libproc`, with `ps` for other users' processes, which `libproc` won't
+time for a user); Linux's are /proc's, parsed in ManifoldCore
+(`LinuxProc`) and tested there. A host's card in the sidebar (§3.1) shows
+the same panels, its five busiest processes among them, under a remote's
+link (its ping times over the same five minutes): the whole host at a
+glance, live while it's shown.
+
 A search's hit is previewed beside the results (beneath them on a tall,
 narrow tile), as the column browser previews a file (§7.4): the file read
 from the search's host (`readPath`, 4 MB at most, not a binary one),

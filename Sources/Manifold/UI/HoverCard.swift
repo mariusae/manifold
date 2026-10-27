@@ -27,6 +27,9 @@ final class HoverCard: NSObject {
         let view: NSView
         /// Its own size, kept: the card draws it scaled.
         let size: NSSize
+        /// The card's width for it, all of it shown (a host's dashboard):
+        /// else the card's own, the view no taller than most of that.
+        var width: CGFloat? = nil
         let giveBack: (NSView) -> Void
     }
     private var loan: LiveLoan?
@@ -186,13 +189,20 @@ final class HoverCard: NSObject {
         body.font = c.font ?? UIType.body
         body.isHidden = c.body.isEmpty || image != nil || loan != nil
         // Wide with a picture or the block itself, as Safari's preview of a tab is.
-        let width: CGFloat = image == nil && loan == nil ? 320 : 480, pad: CGFloat = 12
+        var width: CGFloat = loan?.width ?? (image == nil && loan == nil ? 320 : 480)
+        let pad: CGFloat = 12
+        // Shown whole, but no taller than the window: smaller, if it must be.
+        if let l = loan, l.width != nil, l.size.width > 0 {
+            let room = root.bounds.height - 16 - (pad + 17 + 2 + 16 + pad)
+            let tall = width * l.size.height / l.size.width
+            if tall > room, room > 100 { width = (width * room / tall).rounded() }
+        }
         body.preferredMaxLayoutWidth = width - 2 * pad
         let bodyHeight = body.isHidden ? 0 : ceil(body.sizeThatFits(NSSize(width: width - 2 * pad, height: 240)).height)
         // Across the top, as wide as the card, no taller than most of its width.
         var topHeight: CGFloat = 0
         if let l = loan, l.size.width > 0 {
-            topHeight = min(width * 0.72, (width * l.size.height / l.size.width).rounded())
+            topHeight = l.width != nil ? (width * l.size.height / l.size.width).rounded() : min(width * 0.72, (width * l.size.height / l.size.width).rounded())
         } else if let image, image.size.width > 0 {
             topHeight = min(width * 0.7, (width * image.size.height / image.size.width).rounded())
             picture.image = image

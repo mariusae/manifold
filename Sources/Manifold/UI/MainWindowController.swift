@@ -631,6 +631,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.delegate = self
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
+            pv.client = { [weak self] in self?.hosts.client(p.block.host) }
             v = pv
         case .outline:
             // (Shown as the block's own view, above.)
@@ -4924,6 +4925,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         (view as? TileSidebar) ?? view.subviews.lazy.compactMap { tileSidebar(in: $0) }.first
     }
 
+    /// Debugging: the first process tile.
+    var debugProcessView: ProcessView? { views.values.lazy.compactMap { $0 as? ProcessView }.first }
+
     /// Debugging: ⇧⌘P's field in the focused tile's sidebar, typed into or keyed.
     func debugOutlineSearch(_ what: String) -> String {
         guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
@@ -7745,10 +7749,14 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
-        // A remote host's row: its link's dashboard, live.
-        if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote, let window {
-            HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: HostDashboard.standing(c), body: "", font: nil,
-                                  lend: { HoverCard.LiveLoan(view: HostDashboard(client: c), size: HostDashboard.size) { $0.removeFromSuperview() } },
+        // A host's row: its machine, and a remote's link, live.
+        if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), let window {
+            let detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
+            HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: detail, body: "", font: nil,
+                                  lend: {
+                                      let d = HostDashboard(client: c)
+                                      return HoverCard.LiveLoan(view: d, size: d.size, width: HostDashboard.width) { $0.removeFromSuperview() }
+                                  },
                                   beside: rect, in: window)
             return
         }

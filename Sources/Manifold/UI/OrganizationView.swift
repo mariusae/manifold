@@ -798,8 +798,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard row != trackedRow else { return }
         trackedRow = row
         hoverReveal(row: row)
-        // A block's row has its card; a remote host's, its link's dashboard.
-        if row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.block != nil || node.pings != nil {
+        // A block's row has its card; a host's, its machine and its link.
+        if row >= 0, let node = outline.item(atRow: row) as? OrgNode, node.block != nil || node.pings != nil || node.id.hasPrefix("host:") {
             delegate?.organizationHover(node, at: outline.convert(outline.rect(ofRow: row), to: nil), in: self)
         } else {
             delegate?.organizationHover(nil, at: .zero, in: self)

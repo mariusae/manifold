@@ -7,13 +7,16 @@ protocol ProcessViewDelegate: AnyObject {
     func processView(_ view: ProcessView, goTo block: BlockID)
 }
 
-/// The process lens (DESIGN.md §7.5): the trees of processes under the
-/// host's terminals and agents, by block, each with its executable's
-/// path, listed again every few seconds while shown. A field narrows
-/// them; any number selected (⇧, ⌘, ⌘A) are ended (SIGTERM, End or ⌫)
-/// or killed (SIGKILL, Force End or ⌥⌫, after asking) together, from
-/// the buttons or a row's menu; a double-click (or ↩) goes to the block
-/// a process runs under.
+/// The process lens (DESIGN.md §7.5), in two modes. Blocks: the trees of
+/// processes under the host's terminals and agents, by block, each with
+/// its executable's path, listed again every few seconds while shown.
+/// Machine: the whole machine — its cores, memory, network and disks, the
+/// last five minutes of each (`MachinePanels`) — over every process on it,
+/// the busiest first (or as a column's header sorts them), read every two
+/// seconds while shown. A field narrows them; any number selected (⇧, ⌘,
+/// ⌘A) are ended (SIGTERM, End or ⌫) or killed (SIGKILL, Force End or
+/// ⌥⌫, after asking) together, from the buttons or a row's menu; a
+/// double-click (or ↩) goes to the block a process runs under.
 final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSMenuDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
@@ -21,6 +24,15 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     weak var delegate: ProcessViewDelegate?
     var source: () -> Block? = { nil }
 
+    enum Mode: String { case blocks, machine }
+    private(set) var mode = Mode.blocks
+    private let modes = FlatSegments(titles: ["Blocks", "Machine"], font: UIType.body)
+    private let panels = MachinePanels()
+    /// The host's client, for the machine (it keeps the history).
+    var client: () -> HostClient? = { nil }
+    private var machineQuery = MachineQuery(limit: 150)
+    private var machine: MachineSample?
+    private var asked: Date?
     private let fieldBox = FlatFieldBox(fontSize: 12)
     private var field: FlatField { fieldBox.field }
     private let status = NSTextField(labelWithString: "")
@@ -30,8 +42,9 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private let table = NSTableView()
     private let rowMenu = NSMenu()
     private var all: [ProcessEntry] = []
-    /// A block's heading, or a process at a depth under it.
-    enum Row { case group(BlockID), process(ProcessEntry, depth: Int) }
+    /// A block's heading, or a process at a depth under it; or, the
+    /// machine's, a process.
+    enum Row { case group(BlockID), process(ProcessEntry, depth: Int), machine(MachineProcess) }
     private var shown: [Row] = []
     private var listedAt: Stamp?
     /// "Reading…" until the host first lists them.
@@ -62,8 +75,14 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             b.action = action
             b.isEnabled = false
         }
-        for v in [fieldBox, status, end, kill] { addSubview(v) }
-        for (id, title, width) in [("command", "Command", 300.0), ("pid", "PID", 56.0), ("cpu", "CPU", 48.0), ("memory", "Memory", 64.0), ("path", "Path", 300.0)] {
+        for v in [modes, fieldBox, status, end, kill] { addSubview(v) }
+        modes.setToolTip("The processes under the host's terminals and agents", forSegment: 0)
+        modes.setToolTip("The whole machine: its cores, memory, network, disks and every process", forSegment: 1)
+        modes.onChange = { [weak self] i in self?.setMode(i == 1 ? .machine : .blocks) }
+        panels.isHidden = true
+        addSubview(panels)
+        for (id, title, width) in [("command", "Command", 300.0), ("pid", "PID", 56.0), ("user", "User", 72.0), ("threads", "Threads", 52.0),
+                                   ("cpu", "CPU", 64.0), ("memory", "Memory", 64.0), ("path", "Path", 300.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
             c.width = width
@@ -82,6 +101,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         rowMenu.delegate = self
         table.menu = rowMenu
         Flat.headers(table)
+        showColumns()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -100,7 +120,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     private func restoreState() {
-        guard !keeper.restored, !all.isEmpty else { return }
+        guard !keeper.restored, !all.isEmpty || machine != nil else { return }
         keeper.restored = true
         if let f = keeper.value("filter"), f != field.stringValue {
             fieldBox.stringValue = f
@@ -121,10 +141,12 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         super.layout()
         let w = bounds.width, top = bounds.height - GridView.band - 2
         let buttons: CGFloat = 84 + 6 + 56
-        let wide = w >= 12 + 140 + 12 + buttons + 12
-        let fieldWidth = wide ? min(220, w - buttons - 36) : w - 24
+        let segments = modes.intrinsicContentSize.width + 8
+        let wide = w >= 12 + segments + 140 + 12 + buttons + 12
+        let fieldWidth = wide ? min(220, w - buttons - segments - 36) : w - 24 - segments
         let fh = Flat.fieldHeight, bh = Flat.buttonHeight
-        fieldBox.frame = NSRect(x: 12, y: top - fh, width: max(fieldWidth, 60), height: fh)
+        modes.frame = NSRect(x: 12, y: top - fh + (fh - bh) / 2, width: segments - 8, height: bh)
+        fieldBox.frame = NSRect(x: 12 + segments, y: top - fh, width: max(fieldWidth, 60), height: fh)
         let buttonY = wide ? top - fh + (fh - bh) / 2 : top - fh - 6 - bh
         kill.frame = NSRect(x: max(w - 12 - 84, 12), y: buttonY, width: 84, height: bh)
         if wide || w >= 12 + 56 + 6 + 84 + 12 {
@@ -136,9 +158,33 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         let statusWidth = wide ? end.frame.minX - fieldBox.frame.maxX - 24 : 0
         status.isHidden = statusWidth < 80
         status.frame = NSRect(x: fieldBox.frame.maxX + 12, y: top - fh / 2 - 8, width: max(0, statusWidth), height: 15)
-        let bottom = (wide ? fieldBox.frame.minY : end.frame.minY) - 6
+        var bottom = (wide ? fieldBox.frame.minY : end.frame.minY) - 6
+        // The machine's panels over its processes: whole where there's room
+        // for them and a good many rows, a band of small ones where there's
+        // less, none in a tile too short for either.
+        panels.isHidden = mode != .machine
+        if mode == .machine {
+            let inner = w - 24
+            panels.compact = false
+            var h = panels.height(for: inner)
+            if bottom - h < 200 {
+                panels.compact = true
+                h = panels.height(for: inner)
+            }
+            if bottom - h < 120 {
+                panels.isHidden = true
+            } else {
+                panels.frame = NSRect(x: 12, y: bottom - 2 - h, width: inner, height: h)
+                bottom = panels.frame.minY - 6
+            }
+        }
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
-        note.frame = scroll.frame
+        // The machine's command takes what the numbers leave.
+        if mode == .machine, let command = table.tableColumns.first(where: { $0.identifier.rawValue == "command" }) {
+            let others = table.tableColumns.filter { !$0.isHidden && $0 !== command }.reduce(CGFloat(0)) { $0 + $1.width + table.intercellSpacing.width }
+            command.width = max(160, w - others - 20)
+        }
+        note.frame = mode == .machine && !panels.isHidden ? panels.frame : scroll.frame
     }
 
     override func viewDidMoveToWindow() {
@@ -146,11 +192,118 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         timer?.invalidate()
         timer = nil
         guard window != nil else { return }
-        delegate?.processViewRefresh(self)
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            guard let self, self.window != nil else { return }
-            self.delegate?.processViewRefresh(self)
+        if !keeper.restored, keeper.value("mode") == Mode.machine.rawValue, mode != .machine { setMode(.machine, noting: false) }
+        refresh()
+        startTimer()
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: mode == .machine ? 2 : 5, repeats: true) { [weak self] _ in
+            guard let self, self.window != nil, !self.isHiddenOrHasHiddenAncestor else { return }
+            self.refresh()
         }
+    }
+
+    /// Listed again: the blocks' processes, or the machine as it stands.
+    func refresh() {
+        guard mode == .machine else { return delegate?.processViewRefresh(self) ?? () }
+        guard let c = client() else { return }
+        guard c.readsMachine else {
+            note.set(.idle)
+            panels.waiting = c.isConnected ? "This host's server is from before the machine view: restart it to see the machine." : "Not connected"
+            return
+        }
+        // One at a time; one unanswered for long is given up on.
+        if let asked, Date().timeIntervalSince(asked) < 6 { return }
+        asked = Date()
+        var q = machineQuery
+        q.filter = field.stringValue
+        q.keep = selectedPIDs
+        c.machine(q) { [weak self] sample in
+            guard let self else { return }
+            self.asked = nil
+            guard let sample, self.mode == .machine else { return }
+            self.show(sample, history: c.machineHistory)
+        }
+    }
+
+    private func show(_ sample: MachineSample, history: [MachinePoint]) {
+        machine = sample
+        panels.sample = sample
+        panels.history = history
+        note.set(.idle)
+        refilter()
+    }
+
+    /// Blocks or the machine: the other's columns, its timer's pace.
+    func setMode(_ m: Mode, noting: Bool = true) {
+        guard m != mode else { return }
+        mode = m
+        modes.selectedSegment = m == .machine ? 1 : 0
+        if noting { keeper.note(["mode": m.rawValue]) }
+        showColumns()
+        if m == .machine, let c = client(), let latest = c.machineLatest {
+            machine = latest
+            panels.sample = latest
+            panels.history = c.machineHistory
+        }
+        note.set(m == .machine ? (machine == nil ? .busy("Reading the machine…") : .idle) : (source()?.processes?.listedAt == nil ? .busy("Reading…") : .idle))
+        refilter()
+        needsLayout = true
+        if window != nil {
+            refresh()
+            startTimer()
+        }
+    }
+
+    private static let widths: [String: CGFloat] = ["command": 300, "pid": 56, "user": 72, "threads": 52, "cpu": 64, "memory": 64, "path": 300]
+
+    private func showColumns() {
+        let machine = mode == .machine
+        // The machine's command takes what's left (layout); the blocks'
+        // path, last, does.
+        table.columnAutoresizingStyle = machine ? .noColumnAutoresizing : .lastColumnOnlyAutoresizingStyle
+        for c in table.tableColumns {
+            let id = c.identifier.rawValue
+            switch id {
+            case "user", "threads": c.isHidden = !machine
+            case "path": c.isHidden = machine
+            default: break
+            }
+            if id != "command", id != "path", let w = Self.widths[id] { c.width = w }
+        }
+        sortChanged()
+    }
+
+    /// The sorted column's title marked, the way it goes.
+    private func sortChanged() {
+        let key: [MachineQuery.Sort: String] = [.name: "command", .pid: "pid", .user: "user", .threads: "threads", .cpu: "cpu", .memory: "memory"]
+        let titles = ["command": "Command", "pid": "PID", "user": "User", "threads": "Threads", "cpu": "CPU", "memory": "Memory", "path": "Path"]
+        for c in table.tableColumns {
+            let id = c.identifier.rawValue
+            var t = titles[id] ?? id
+            if mode == .machine, key[machineQuery.sort] == id { t += machineQuery.ascending ? " ▴" : " ▾" }
+            c.headerCell.stringValue = t
+        }
+        table.headerView?.needsDisplay = true
+    }
+
+    /// A header clicked, the machine's: sorted by it, the busiest (or the
+    /// first by name) first; again, the other way.
+    func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
+        guard mode == .machine else { return }
+        let sorts: [String: MachineQuery.Sort] = ["command": .name, "pid": .pid, "user": .user, "threads": .threads, "cpu": .cpu, "memory": .memory]
+        guard let s = sorts[tableColumn.identifier.rawValue] else { return }
+        if machineQuery.sort == s {
+            machineQuery.ascending.toggle()
+        } else {
+            machineQuery.sort = s
+            machineQuery.ascending = s == .name || s == .user
+        }
+        sortChanged()
+        asked = nil
+        refresh()
     }
 
     /// While the filter is being typed, the pill is out of its way.
@@ -160,9 +313,13 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     var pillItems: [NSMenuItem] {
-        [ClosureMenuItem("Refresh Now", symbol: "arrow.clockwise") { [weak self] in
+        [ClosureMenuItem(mode == .machine ? "Show Blocks' Processes" : "Show the Machine", symbol: mode == .machine ? Theme.symbolName(for: .terminal) : "gauge.medium") { [weak self] in
             guard let self else { return }
-            self.delegate?.processViewRefresh(self)
+            self.setMode(self.mode == .machine ? .blocks : .machine)
+        }, ClosureMenuItem("Refresh Now", symbol: "arrow.clockwise") { [weak self] in
+            guard let self else { return }
+            self.asked = nil
+            self.refresh()
         }, ClosureMenuItem("Filter…", symbol: "line.3.horizontal.decrease.circle") { [weak self] in
             guard let self else { return }
             self.window?.makeFirstResponder(self.field)
@@ -170,6 +327,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     func documentChanged() {
+        guard mode == .blocks else { return }
         note.set(source()?.processes?.listedAt == nil ? .busy("Reading…") : .idle)
         guard let b = source(), let p = b.processes else { return }
         guard p.listedAt != listedAt else { return }
@@ -182,6 +340,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// children, children set in; with a filter, only the processes that
     /// match, under their blocks.
     private func refilter() {
+        if mode == .machine { return refilterMachine() }
         let q = field.stringValue.lowercased()
         let matching = q.isEmpty ? all : all.filter { $0.command.lowercased().contains(q) || ($0.path?.lowercased().contains(q) ?? false) || String($0.pid) == q }
         var rows: [Row] = []
@@ -216,11 +375,30 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         restoreState()
     }
 
+    /// The machine's processes as the host sorted and narrowed them.
+    private func refilterMachine() {
+        let keep = selectedPIDs
+        shown = (machine?.processes ?? []).map { .machine($0) }
+        table.reloadData()
+        select(Set(keep))
+        if let m = machine {
+            let q = field.stringValue.trimmingCharacters(in: .whitespaces)
+            status.stringValue = q.isEmpty ? "\(m.processCount) processes · \(m.hostname)" : "\(m.matching) of \(m.processCount)"
+        } else {
+            status.stringValue = ""
+        }
+        selectionChanged()
+        restoreState()
+    }
+
     /// Selects the rows of these processes, those still listed.
     private func select(_ pids: Set<Int32>) {
         guard !pids.isEmpty else { return }
         var indexes = IndexSet()
-        for (i, r) in shown.enumerated() { if case let .process(e, _) = r, pids.contains(e.pid) { indexes.insert(i) } }
+        for (i, r) in shown.enumerated() {
+            if case let .process(e, _) = r, pids.contains(e.pid) { indexes.insert(i) }
+            if case let .machine(p) = r, pids.contains(p.pid) { indexes.insert(i) }
+        }
         table.selectRowIndexes(indexes, byExtendingSelection: false)
     }
 
@@ -231,6 +409,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         switch shown[row] {
         case let .group(b): delegate?.processView(self, goTo: b)
         case let .process(e, _): if let b = e.block { delegate?.processView(self, goTo: b) }
+        case let .machine(p): if let b = p.block { delegate?.processView(self, goTo: b) }
         }
     }
 
@@ -245,14 +424,19 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     private func filterChanged() {
-        refilter()
+        if mode == .machine {
+            asked = nil
+            refresh()
+        } else {
+            refilter()
+        }
         keeper.note(["filter": field.stringValue])
     }
 
     /// Only processes select; a heading is for going to its block.
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if case .process = shown[row] { return true }
-        return false
+        if case .group = shown[row] { return false }
+        return true
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -272,8 +456,12 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
 
     private var selectedPIDs: [Int32] {
         table.selectedRowIndexes.compactMap { i in
-            guard i < shown.count, case let .process(e, _) = shown[i] else { return nil }
-            return e.pid
+            guard i < shown.count else { return nil }
+            switch shown[i] {
+            case .group: return nil
+            case let .process(e, _): return e.pid
+            case let .machine(p): return p.pid
+            }
         }
     }
 
@@ -303,7 +491,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         menu.removeAllItems()
         let row = table.clickedRow
         guard row >= 0, row < shown.count else { return }
-        if case .process = shown[row], !table.selectedRowIndexes.contains(row) {
+        if !(shown[row].isGroup), !table.selectedRowIndexes.contains(row) {
             table.selectRowIndexes([row], byExtendingSelection: false)
         }
         let n = selectedPIDs.count
@@ -312,7 +500,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             menu.addItem(ClosureMenuItem(n > 1 ? "Force End \(n) Processes" : "Force End Process", symbol: "xmark.octagon") { [weak self] in self?.killClicked() })
             menu.addItem(.separator())
         }
-        let block: BlockID? = switch shown[row] { case let .group(b): b; case let .process(e, _): e.block }
+        let block: BlockID? = switch shown[row] { case let .group(b): b; case let .process(e, _): e.block; case let .machine(p): p.block }
         if let block {
             menu.addItem(ClosureMenuItem("Go to \(blockTitle(block) ?? "Block")", symbol: "arrow.right.circle") { [weak self] in
                 guard let self else { return }
@@ -322,12 +510,62 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+
+    func debugSort(_ column: String) {
+        if let c = table.tableColumns.first(where: { $0.identifier.rawValue == column }) { tableView(table, didClick: c) }
+    }
+
+    func debugFilter(_ q: String) {
+        fieldBox.stringValue = q
+        filterChanged()
+    }
+
+    func debugHover(_ p: NSPoint) { panels.debugHover(p) }
+
+    func debugPicture(_ path: String) -> String {
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return "no picture" }
+        cacheDisplay(in: bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return "no png" }
+        do { try data.write(to: URL(fileURLWithPath: path)) } catch { return error.localizedDescription }
+        return "wrote \(path)"
+    }
+
+    /// What a process was started with, after its name: its arguments,
+    /// not the executable's path again (that's in its tooltip).
+    static func arguments(_ p: MachineProcess) -> String {
+        guard p.command != p.name else { return "" }
+        // A path to it, spaces in it or not, then what follows.
+        if p.command.hasPrefix("/"), let r = p.command.range(of: "/" + p.name + " ") ?? (p.command.hasSuffix("/" + p.name) ? p.command.range(of: "/" + p.name, options: .backwards) : nil) {
+            let after = p.command[r.upperBound...].trimmingCharacters(in: .whitespaces)
+            return after.isEmpty ? "" : "  " + after
+        }
+        let words = p.command.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard let first = words.first else { return "" }
+        let program = (String(first) as NSString).lastPathComponent
+        if program == p.name || p.name.hasPrefix(program) || program.hasPrefix(p.name) {
+            return words.count > 1 ? "  " + words[1] : ""
+        }
+        return "  " + p.command
+    }
+
+    /// Debugging: the mode, what's shown, the panels' state.
+    var debugDescription_: String {
+        let rows = shown.prefix(8).map { r -> String in
+            switch r {
+            case let .group(b): "[\(blockTitle(b) ?? "?")]"
+            case let .process(e, d): String(repeating: " ", count: d) + e.command
+            case let .machine(p): "\(p.pid) \(p.name) \(MachineWords.cpu(p.cpu)) \(MachineWords.memory(p.memory))"
+            }
+        }
+        let m = machine.map { "cores=\($0.cores.count) cpu=\(MachineWords.percent($0.now.cpu)) mem=\(MachineWords.percent($0.memory.usedFraction)) disks=\($0.disks.map(\.mount)) procs=\($0.processCount) history=\(panels.history.count)" } ?? "no sample"
+        return "mode=\(mode.rawValue) \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height))\n" + rows.joined(separator: "\n")
+    }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = tableColumn?.identifier.rawValue ?? "command"
-        let cell = tableView.makeView(withIdentifier: .init("cell-" + id), owner: nil) as? NSTableCellView ?? {
-            let c = NSTableCellView()
+        let cell = tableView.makeView(withIdentifier: .init("cell-" + id), owner: nil) as? MeterCell ?? {
+            let c = MeterCell()
             c.identifier = .init("cell-" + id)
             let f = NSTextField(labelWithString: "")
             f.alignment = id == "command" || id == "path" ? .left : .right
@@ -342,10 +580,37 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             ])
             return c
         }()
-        let numeric = id == "pid" || id == "cpu" || id == "memory"
+        let numeric = id == "pid" || id == "cpu" || id == "memory" || id == "threads"
         cell.textField?.font = numeric ? .monospacedDigitSystemFont(ofSize: 11, weight: .regular) : UIType.footnote
         cell.textField?.textColor = Theme.text
+        cell.fraction = nil
+        cell.textField?.toolTip = nil
         switch shown[row] {
+        case let .machine(p):
+            switch id {
+            case "pid": cell.textField?.stringValue = "\(p.pid)"
+            case "user":
+                cell.textField?.stringValue = p.user
+                cell.textField?.textColor = Theme.secondaryText
+            case "threads": cell.textField?.stringValue = p.threads.map(String.init) ?? "–"
+            case "cpu":
+                cell.textField?.stringValue = MachineWords.cpu(p.cpu)
+                // A core's worth fills it; more, it's full.
+                cell.fraction = min(1, p.cpu / 100)
+            case "memory":
+                cell.textField?.stringValue = MachineWords.memory(p.memory)
+                cell.fraction = machine.map { m in m.memory.total > 0 ? Double(p.memory) / Double(m.memory.total) : 0 }
+            default:
+                // Its name, then what it was started with; a block's mark
+                // when it runs under one of the host's terminals.
+                let rest = Self.arguments(p)
+                let one = NSMutableParagraphStyle()
+                one.lineBreakMode = .byTruncatingTail
+                let text = NSMutableAttributedString(string: (p.block != nil ? "▸ " : "") + p.name, attributes: [.font: UIType.footnote, .foregroundColor: Theme.text, .paragraphStyle: one])
+                text.append(NSAttributedString(string: rest, attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText, .paragraphStyle: one]))
+                cell.textField?.attributedStringValue = text
+                cell.textField?.toolTip = p.block.flatMap { blockTitle($0) }.map { "\(p.command)\nIn \($0)" } ?? p.command
+            }
         case let .group(b):
             cell.textField?.stringValue = id == "command" ? (blockTitle(b) ?? b.description) : ""
             cell.textField?.font = .systemFont(ofSize: 11, weight: .semibold)
@@ -362,5 +627,23 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             }
         }
         return cell
+    }
+}
+
+private extension ProcessView.Row {
+    var isGroup: Bool { if case .group = self { true } else { false } }
+}
+
+/// A table cell with, where it's set, a bar behind its number: how much of
+/// a core, of the memory.
+final class MeterCell: NSTableCellView {
+    var fraction: Double? { didSet { if fraction != oldValue { needsDisplay = true } } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let f = fraction, f > 0.001 else { return }
+        let r = bounds.insetBy(dx: 3, dy: 3)
+        let w = max(2, r.width * CGFloat(min(f, 1)))
+        MachineInk.one.withAlphaComponent(0.22).setFill()
+        NSBezierPath(roundedRect: NSRect(x: r.maxX - w, y: r.minY, width: w, height: r.height), xRadius: 3, yRadius: 3).fill()
     }
 }

@@ -67,6 +67,8 @@ final class Server {
     private let searches: Searches
     private let mentions: Mentions
     private let git: Git
+    /// The machine's readings, kept as history (§7.5).
+    private let machine = MachineSampler()
     /// Gutter marks pending for text blocks, a moment after their last change.
     private var gutterWork: [BlockID: DispatchWorkItem] = [:]
     /// Repositories watched (their index) for git blocks and gutters.
@@ -160,6 +162,7 @@ final class Server {
     func run() throws {
         load()
         pruneHistory()
+        machine.start()
         // Its language servers as its own settings say, from the start.
         languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
         let fd = try UnixSocket.listen(path: Paths.socket)
@@ -697,6 +700,11 @@ final class Server {
             }
             listProcesses(block)
             done()
+        case let .machine(query):
+            let shells = sessions.map { ($0.key, $0.value.pid) }
+            machine.sample(query, shells: shells) { [weak self] sample in
+                self?.queue.async { conn.send(.message(ServerMessage.machine(id: id, sample))) }
+            }
         case let .signal(pid, sig):
             if kill(pid, sig) != 0 { return done(String(cString: strerror(errno))) }
             done()

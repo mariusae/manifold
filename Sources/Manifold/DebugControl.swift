@@ -825,6 +825,23 @@ enum DebugControl {
             return wc?.debugTicks(arg) ?? "no window"
         case "outputs":
             return wc?.debugOutputs(arg) ?? "no window"
+        case "procview":
+            // "procview": the first process tile's mode and what it shows;
+            // "procview machine|blocks" switches it; "procview sort <column>"
+            // clicks a header; "procview filter <q>"; "procview hover x y",
+            // the pointer over its panels (from their top-left).
+            guard let pv = wc?.debugProcessView else { return "no process tile" }
+            let a = arg.split(separator: " ").map(String.init)
+            switch a.first {
+            case "machine": pv.setMode(.machine)
+            case "blocks": pv.setMode(.blocks)
+            case "sort": if a.count > 1 { pv.debugSort(a[1]) }
+            case "filter": pv.debugFilter(a.dropFirst().joined(separator: " "))
+            case "hover": if a.count == 3, let x = Double(a[1]), let y = Double(a[2]) { pv.debugHover(NSPoint(x: x, y: y)) }
+            case "picture": if a.count > 1 { return pv.debugPicture(a[1]) }
+            default: break
+            }
+            return pv.debugDescription_
         case "card":
             if arg.hasPrefix("/") { return HoverCard.shared.debugWritePicture(to: arg) }
             if arg == "hide" { HoverCard.shared.hide(); return "hidden" }

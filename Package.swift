@@ -10,7 +10,13 @@ let package = Package(
     targets: [
         // Built by scripts/build-ghostty.sh.
         .binaryTarget(name: "GhosttyKit", path: "Frameworks/GhosttyKit.xcframework"),
-        .target(name: "CPTY"),
+        .target(
+            name: "CPTY",
+            linkerSettings: [
+                .linkedFramework("IOKit", .when(platforms: [.macOS])),
+                .linkedFramework("CoreFoundation", .when(platforms: [.macOS])),
+            ]
+        ),
         // The host's terminal emulator (Ghostty's, built by
         // scripts/build-manifold-vt.sh), for manifoldd.
         .target(

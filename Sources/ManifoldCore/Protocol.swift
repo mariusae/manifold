@@ -4,11 +4,11 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 58
+public let protocolVersion = 59
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
-public let serverFeatures = ["zstd"]
+public let serverFeatures = ["zstd", "machine"]
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -210,6 +210,9 @@ public enum Proposal: Codable, Sendable {
     case processes(block: BlockID)
     /// Send a signal to a process on the host.
     case signal(pid: Int32, signal: Int32)
+    /// The whole machine (§7.5): its cores, memory, network, disks and
+    /// processes, with its recent history; answered with `machine`.
+    case machine(MachineQuery)
     /// A folder's entries, ignored ones marked (§7.4), answered with `listing`.
     case listFolder(path: String)
     /// What each path is on the host — a file, a folder, or nothing —
@@ -562,6 +565,8 @@ public enum ServerMessage: Codable, Sendable {
     /// What `lookUpPaths` asked, path by path, in order (nil: nothing
     /// there); fewer than asked when the host ran out of time looking.
     case pathKinds(id: Int, [PathKind?])
+    /// What `machine` asked; nil if the host couldn't read it.
+    case machine(id: Int, MachineSample?)
     /// What a notebook's running cell has printed so far (its end, if
     /// long): sent as it comes, not kept; the cell's output is written
     /// when it ends (§7.7).

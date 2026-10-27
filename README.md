@@ -447,7 +447,9 @@ around it, and comes back with its history.
   host goes away keeps what it showed and picks up where it was when the
   host is back, what was typed meanwhile not lost. By each remote host's
   name in the sidebar, a sparkline of its ping times over the last five
-  minutes (resting the pointer on the host shows its link's dashboard);
+  minutes (resting the pointer on any host shows it at a glance: a
+  remote's link, its ping times plotted, over the machine — CPU, memory,
+  network, disks and its busiest processes, the last five minutes of each);
   a host gone quiet wears a broken amber ring there, and its link is made
   again by itself. On a slow link what's typed shows at once, as mosh's
   does, before the host echoes it. A terminal's menu (right-click) has,
@@ -1106,7 +1108,15 @@ around it, and comes back with its history.
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
   (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the
   buttons or a row's menu, which also goes to the row's block. Its
-  controls sit under the bar, and stack as the tile narrows.
+  controls sit under the bar, and stack as the tile narrows. **Machine**
+  (beside **Blocks** at its top, or its pill's Show the Machine) shows the
+  whole host, macOS or Linux, as btop does but drawn: CPU over the last
+  five minutes with each core a cell, memory, network and disks, each
+  with its history, over every process on it — the busiest first, or by
+  any column's header; its user, threads, CPU and memory; a process
+  under one of your terminals marked, a double-click going there. Point
+  at a graph to read it at that moment, or at a core. The host keeps the
+  last five minutes, so the graphs are full as soon as they're shown.
 
 ## Look
 
