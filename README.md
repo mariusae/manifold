@@ -1167,9 +1167,11 @@ aside, one closed fades where it was as they take its room, one gone to
 has its focus ring swell and glow a moment; one too short for its
 content crosses over to its summary card, and back; Maximize grows the
 tile from its place over the rest, Restore shrinks it back; with ⌃⇥ the
-tile becomes its card and each tile in its stack is pulled out of its
-sheet into its own, and the one chosen becomes its tile again as the
-rest go back into the sheets (a quick ⌃⇥, let go at once, just swaps);
+stack spreads out as the pile it is: the tile becomes its card,
+uncovering the tiles behind it as big as it (all that showed of each
+was its sheet), and each becomes its own card in turn, the nearer over
+the farther; the one chosen becomes its tile again as the rest grow
+back into their places behind it (a quick ⌃⇥, let go at once, just swaps);
 Overview turns each tile into its card where the card is, as Mission
 Control sends windows, those in stacks pulled out of their sheets, and
 back; a toast rises from the window's foot (and shakes

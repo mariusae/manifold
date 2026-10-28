@@ -1578,7 +1578,10 @@ purpose — set down so a later audit reads them as choices, not slips.
   card (⌃⇥, Overview) is one shape going from the one's place and size
   to the other's, what it shows scaled to its width from its top (cut,
   never stretched) and changing on the way, and a tile in a stack comes
-  out of its sheet and goes back into it — nothing just fades in; the
+  out of its sheet and goes back into it — ⌃⇥ spreading the stack as a
+  pile, each tile behind as big as the top and becoming its card as the
+  one in front uncovers it (its last picture, or its card where it's had
+  none since the app began) — nothing just fades in; the
   next ⌃⇥ puts away whatever's still on its way. Layout is done once, where things end, and only layers travel —
   a terminal resized once, not at every step. Focus, typing, a divider
   dragged and the palettes don't move at all.
