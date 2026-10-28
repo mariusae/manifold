@@ -73,6 +73,16 @@ fi
 touch "$app"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
 
+# SwiftPM marks what it links as built with the SDK of its deployment
+# target (15.0), whichever it was built with, and macOS takes an app so
+# marked as one from before 26: its Dock tile the plain AppIcon.icns,
+# never the dark or tinted icon. The app is marked with the SDK it was
+# built with.
+sdk=$(xcrun --show-sdk-version 2>/dev/null || true)
+if [ -n "$sdk" ] && xcrun vtool -set-build-version macos 15.0 "$sdk" -replace -output build/Manifold.stamped "$app/Contents/MacOS/Manifold" >/dev/null 2>&1; then
+  mv build/Manifold.stamped "$app/Contents/MacOS/Manifold"
+fi
+
 codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/mani" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/manifoldd-darwin-aarch64" >/dev/null 2>&1
