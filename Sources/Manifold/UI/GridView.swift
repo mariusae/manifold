@@ -256,7 +256,10 @@ final class GridView: NSView, NSDraggingSource {
             }
         }
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
-        for v in views where !incoming.contains(v.placement) && v.superview === self { v.removeFromSuperview() }
+        for v in views where !incoming.contains(v.placement) && v.superview === self {
+            fadeAway(v)
+            v.removeFromSuperview()
+        }
         for (id, p) in pills where !incoming.contains(id) {
             p.isHidden = true
             pills.removeValue(forKey: id)
@@ -921,6 +924,19 @@ final class GridView: NSView, NSDraggingSource {
             }
             _ = top
         }
+        // Tiles placed since the last layout come in where they land; one
+        // gone to or from its summary card crosses over to it.
+        if gliding, !lastFrames.isEmpty {
+            for t in columns.flatMap({ $0 }) where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !held(t.shown.id) {
+                comeIn([t.view, pills[t.shown.id], tileSummaries[t.shown.id]].compactMap { $0 }.filter { !$0.isHidden })
+            }
+            for id in summarizedNow.subtracting(self.summarized) where lastFrames[id] != nil {
+                if let c = tileSummaries[id] { fadeIn(c) }
+            }
+            for id in self.summarized.subtracting(summarizedNow) where lastFrames[id] != nil && !collapsedNow.contains(id) {
+                if let v = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view { fadeIn(v) }
+            }
+        }
         lastFrames = frameNow
         self.collapsed = collapsedNow
         self.summarized = summarizedNow
@@ -946,6 +962,150 @@ final class GridView: NSView, NSDraggingSource {
         layoutSheets()
         layoutShadows(Array(frameNow.values))
         warpIfGrown()
+    }
+
+    // MARK: Coming and going
+
+    /// A tile placed comes in where it lands — fading in, from a little
+    /// smaller — as its neighbours glide aside for it (only fading, with
+    /// Reduce motion).
+    private func comeIn(_ parts: [NSView]) {
+        guard let card = parts.map(\.frame).reduce(nil, { (r: NSRect?, f: NSRect) in r.map { $0.union(f) } ?? f }) else { return }
+        let c = CGPoint(x: card.midX, y: card.midY), k = Motion.reduced ? 1 : 0.94
+        for v in parts {
+            guard let l = v.layer else { continue }
+            let o = v.frame.origin
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            let grow = CABasicAnimation(keyPath: "transform")
+            grow.fromValue = CATransform3DScale(CATransform3DMakeTranslation(c.x - o.x - (c.x - o.x) * k, c.y - o.y - (c.y - o.y) * k, 0), k, k, 1)
+            grow.toValue = CATransform3DIdentity
+            let g = CAAnimationGroup()
+            g.animations = [fade, grow]
+            g.duration = Motion.spatial
+            g.timingFunction = Motion.appear
+            l.add(g, forKey: "comeIn")
+        }
+    }
+
+    /// Crossing over to it: fading in over what it takes the place of.
+    private func fadeIn(_ v: NSView) {
+        guard let l = v.layer else { return }
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = 0
+        a.toValue = 1
+        a.duration = Motion.base
+        a.timingFunction = Motion.appear
+        l.add(a, forKey: "fadeIn")
+    }
+
+    /// A tile closed (or moved away): a picture of it where it was, fading
+    /// and shrinking a little, as its neighbours glide into the room it
+    /// leaves — what went, seen going. Its view goes at once, as before.
+    func fadeAway(_ v: PaneContent) {
+        let bar = pills[v.placement]
+        guard window != nil, !isHiddenOrHasHiddenAncestor, !isSwitching, !v.isHidden, let host = layer else { return }
+        var ghosts: [CALayer] = []
+        for part in [v as NSView, bar].compactMap({ $0 }) where !part.isHidden && part.bounds.width > 20 {
+            guard let image = Self.ghostPicture(of: part) else { continue }
+            let g = CALayer()
+            g.contents = image
+            g.contentsGravity = .resize
+            // Its ground is its layer's, which a drawing of it leaves out
+            // (a body's, else the window's it's set on) —
+            // Whole, as the tile was over what's behind it now.
+            if let own = part.layer?.backgroundColor, own.alpha > 0 { g.backgroundColor = own.copy(alpha: 1) } else {
+                part.effectiveAppearance.performAsCurrentDrawingAppearance { g.backgroundColor = Theme.windowBackground.withAlphaComponent(1).cgColor }
+            }
+            g.frame = part.frame
+            g.cornerRadius = part.layer?.cornerRadius ?? 0
+            g.maskedCorners = part.layer?.maskedCorners ?? []
+            g.masksToBounds = true
+            g.zPosition = 30
+            ghosts.append(g)
+        }
+        guard !ghosts.isEmpty else { return }
+        let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
+        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = Motion.reduced ? 1 : 0.96
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { ghosts.forEach { $0.removeFromSuperlayer() } }
+        for g in ghosts {
+            host.addSublayer(g)
+            g.opacity = 0
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            // Shrunk about the tile's middle, its parts with it.
+            let o = g.position
+            let shrink = CABasicAnimation(keyPath: "transform")
+            shrink.fromValue = CATransform3DIdentity
+            shrink.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
+            let grp = CAAnimationGroup()
+            grp.animations = [fade, shrink]
+            grp.duration = Motion.base
+            grp.timingFunction = Motion.disappear
+            g.add(grp, forKey: "fadeAway")
+        }
+        CATransaction.commit()
+    }
+
+    /// A tile's picture, for its ghost: a terminal's surface as it is,
+    /// anything else drawn at the screen's scale.
+    private static func ghostPicture(of v: NSView) -> Any? {
+        if let surface = v.layer?.contents, CFGetTypeID(surface as CFTypeRef) == IOSurfaceGetTypeID() { return surface }
+        if v is TerminalView, let image = HoverCard.surfacePicture(of: v) { return image.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        let scale = v.window?.backingScaleFactor ?? 2
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(v.bounds.width * scale), pixelsHigh: Int(v.bounds.height * scale),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = v.bounds.size
+        v.cacheDisplay(in: v.bounds, to: rep)
+        return rep.cgImage
+    }
+
+    // MARK: Arriving
+
+    /// Arrived at a tile (a link followed, a block gone to): a ring in the
+    /// tint closes in on it from a little outside and fades, the eye led
+    /// to where it's gone (only fading, with Reduce motion).
+    func markArrival(_ id: PlacementID) {
+        guard id == focused, window != nil, !isHiddenOrHasHiddenAncestor, let host = layer else { return }
+        let ring: NSRect
+        if full == id {
+            ring = bounds.insetBy(dx: Self.inset, dy: Self.inset)
+        } else if !focusRing.isHidden {
+            ring = focusRing.frame
+        } else { return }
+        let shape = CAShapeLayer()
+        shape.frame = host.bounds
+        shape.fillColor = nil
+        shape.strokeColor = EdgeColor.accentStrong.cgColor
+        shape.lineWidth = 2
+        shape.zPosition = 50
+        shape.opacity = 0
+        let end = CGPath(roundedRect: ring, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
+        let reach = Motion.distance(12)
+        let start = CGPath(roundedRect: ring.insetBy(dx: -reach, dy: -reach), cornerWidth: Radius.surface + reach, cornerHeight: Radius.surface + reach, transform: nil)
+        shape.path = end
+        host.addSublayer(shape)
+        let path = CABasicAnimation(keyPath: "path")
+        path.fromValue = start
+        path.toValue = end
+        path.timingFunction = Motion.travel
+        let width = CABasicAnimation(keyPath: "lineWidth")
+        width.fromValue = 4
+        width.toValue = 1.5
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0.9, 0.9, 0]
+        fade.keyTimes = [0, 0.55, 1]
+        let g = CAAnimationGroup()
+        g.animations = [path, width, fade]
+        g.duration = 0.55 * Motion.slowdown
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { shape.removeFromSuperlayer() }
+        shape.add(g, forKey: "arrive")
+        CATransaction.commit()
     }
 
     // MARK: Maximizing

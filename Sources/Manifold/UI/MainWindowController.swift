@@ -323,6 +323,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
         onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
+            // Seen going, where it was, as its neighbours take its room.
+            if view.superview === content { content.fadeAway(view) }
             view.removeFromSuperview()
             view.destroy()
             views.removeValue(forKey: id)
@@ -922,6 +924,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugToast: String { toast.debugText ?? "none" }
     func debugToastAct() -> String { toast.debugAct() }
     func debugToastNudge() { toast.nudge() }
+    func debugMarkArrival() -> String {
+        guard let f = arrangement?.focused else { return "nothing focused" }
+        content.markArrival(f)
+        return "marked"
+    }
     var debugFencing: String {
         hosts.all.map { c in
             "\(hosts.label(of: c.host)): " + (c.watching ? "watching, taken by \(c.fencedBy ?? "?"): \(c.fenced.map(\.description).sorted().joined(separator: " "))" : "leading")
@@ -4366,6 +4373,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, let a = self.arrangement, let f = a.focused, let view = self.views[f] else { return }
                 self.warpPointer(to: view)
+                // Arrived: the tile marked, once.
+                if delay < 0.1 { self.content.markArrival(f) }
             }
         }
     }

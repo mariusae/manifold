@@ -103,6 +103,9 @@ enum DebugControl {
         case "settled":
             // How many status glyphs have settled (a block just finished).
             return "\(StatusGlyph.settled)"
+        case "arrival":
+            // The focused tile marked as arrived at.
+            return wc?.debugMarkArrival() ?? "no window"
         case "travel":
             // The sidebar's band going from space to space, if it is.
             return wc?.debugOrganization.debugTraveller ?? "no window"
@@ -1219,6 +1222,26 @@ enum DebugControl {
             let sx = model.width > 0 ? now.width / model.width : 1, sy = model.height > 0 ? now.height / model.height : 1
             return (NSRect(x: r.minX + now.minX - model.minX, y: r.minY + now.minY - model.minY, width: r.width * sx, height: r.height * sy), CGFloat(lp.opacity))
         }
+        // Live, a view's own layers that aren't its subviews' (a ring, a
+        // sheet's edge, a picture fading where a tile was), as they are
+        // this moment: behind its subviews (below zero) or over them.
+        func drawLoose(_ v: NSView, in r: NSRect, alpha: CGFloat, above: Bool) {
+            guard live, let l = v.layer, let subs = l.sublayers else { return }
+            let owned = Set(v.subviews.compactMap { $0.layer.map(ObjectIdentifier.init) })
+            for sl in subs where !owned.contains(ObjectIdentifier(sl)) && (sl.zPosition >= 0) == above && !sl.isHidden {
+                let p = sl.presentation() ?? sl
+                guard p.opacity > 0.01, p.bounds.width > 0, p.bounds.height > 0 else { continue }
+                let f = p.frame
+                ctx.saveGState()
+                ctx.translateBy(x: r.minX, y: r.minY)
+                if v.isFlipped { ctx.translateBy(x: 0, y: r.height); ctx.scaleBy(x: 1, y: -1) }
+                ctx.translateBy(x: f.minX, y: f.minY)
+                ctx.scaleBy(x: f.width / p.bounds.width, y: f.height / p.bounds.height)
+                ctx.setAlpha(alpha * CGFloat(p.opacity))
+                p.render(in: ctx)
+                ctx.restoreGState()
+            }
+        }
         func draw(_ v: NSView, clip: NSRect, alpha: CGFloat = 1) {
             let (r, own) = onScreen(v)
             let alpha = alpha * own
@@ -1254,7 +1277,9 @@ enum DebugControl {
                 ctx.draw(cg, in: r)
                 ctx.restoreGState()
             }
+            drawLoose(v, in: r, alpha: alpha, above: false)
             for sub in v.subviews { draw(sub, clip: inside, alpha: alpha) }
+            drawLoose(v, in: r, alpha: alpha, above: true)
         }
         draw(root, clip: root.bounds)
         // Child windows (popups) over it, where they are on screen.
