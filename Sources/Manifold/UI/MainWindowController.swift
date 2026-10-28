@@ -2754,7 +2754,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 content.becomeTile(c.id, from: card, picture: c.picture, at: c.frame, in: root)
             } else if let tile = tiles[c.id] {
                 // Back into its tile, here.
-                items.append(GridView.Morph(from: c.frame, to: tile.whole, leaving: card))
+                items.append(GridView.Morph(from: c.frame, to: tile.whole, leaving: card, fit: true))
             } else if let sheet = sheets[c.id] {
                 // Back into its sheet, here.
                 items.append(GridView.Morph(from: c.frame, to: sheet, leaving: card))
@@ -2864,7 +2864,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for (i, c) in cards.enumerated() where c.frame != .zero {
             let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if let tile = tiles[c.id] {
-                items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card))
+                items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, fit: true))
             } else if let sheet = sheets[c.id] {
                 // Pulled out of its stack's sheet.
                 items.append(GridView.Morph(from: sheet, to: c.frame, coming: card, delay: Double(i) * 0.03))

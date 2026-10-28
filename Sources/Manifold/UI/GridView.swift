@@ -1283,6 +1283,10 @@ final class GridView: NSView, NSDraggingSource {
         var delay: Double = 0
         /// Over (positive) or under the rest: a pile's order.
         var z: CGFloat = 0
+        /// What it shows fitted whole into the shape, not to its width: a
+        /// tile becoming a card about as wide as it (⌃⇥'s, ⌥⇥'s) is seen
+        /// to shrink into it, rather than be cut off from below.
+        var fit = false
     }
 
     /// Morphs over `host` (its terms, y up), the pictures taken away once
@@ -1346,8 +1350,10 @@ final class GridView: NSView, NSDraggingSource {
                     g.addSublayer(l)
                 }
                 c.addSublayer(g)
+                func scale(_ shape: NSRect) -> CGFloat { m.fit ? min(shape.width / r.width, shape.height / r.height) : shape.width / r.width }
+                g.transform = CATransform3DMakeScale(scale(m.to), scale(m.to), 1)
                 animate(g, "position.y", from.height, m.to.height, delay: m.delay)
-                animate(g, "transform.scale", from.width / r.width, m.to.width / r.width, delay: m.delay)
+                animate(g, "transform.scale", scale(from), scale(m.to), delay: m.delay)
                 return g
             }
             let leaving = m.leaving.map(hang)
@@ -1900,6 +1906,13 @@ final class GridView: NSView, NSDraggingSource {
             guard let self, let s, self.switcher === s, !s.isClosing else { return }
             s.alphaValue = 1
             self.opened = tile
+            // The tile itself out of sight under the column: its picture
+            // is what's seen going (it was seen fading under the column's
+            // ground coming in).
+            for v in [shownBody(stack.top), stack.top.view, self.pills[top], top == self.focused ? self.focusRing : nil].compactMap({ $0 }) where v.alphaValue > 0 {
+                v.alphaValue = 0
+                self.unseen.append(v)
+            }
             let pile = stack.behind.enumerated().map { self.behind($1, level: $0 + 1, top: tile.whole) }
             self.unfold(s, tile: tile, pile: pile)
         }
@@ -1957,25 +1970,17 @@ final class GridView: NSView, NSDraggingSource {
         for (i, c) in s.cardPictures(in: self).enumerated() where c.frame != .zero {
             let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if i == 0 {
-                items.append(Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, z: 10))
+                items.append(Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, z: 10, fit: true))
             } else if pile.indices.contains(i - 1) {
+                // Each a little after the one in front of it has uncovered it.
                 let under = pile[i - 1]
-                items.append(Morph(from: under.rect, to: c.frame, leaving: under.picture, coming: card, delay: Double(i) * 0.04, z: -CGFloat(i)))
+                items.append(Morph(from: under.rect, to: c.frame, leaving: under.picture, coming: card, delay: Double(i) * 0.07, z: -CGFloat(i), fit: true))
             }
         }
         guard !items.isEmpty else { return }
         s.cardsShown = false
         let d = Motion.spatial * 1.5
         flying += Self.morph(items, in: host, over: d) { [weak s] in s?.cardsShown = true }
-        // Its ground comes in under them, not at once.
-        if let l = s.layer, let ground = l.backgroundColor {
-            let a = CABasicAnimation(keyPath: "backgroundColor")
-            a.fromValue = ground.copy(alpha: 0)
-            a.toValue = ground
-            a.duration = d
-            a.timingFunction = Motion.appear
-            l.add(a, forKey: "ground")
-        }
     }
 
     /// A tile chosen in the switcher, waiting to be laid out where it goes,
@@ -2001,7 +2006,7 @@ final class GridView: NSView, NSDraggingSource {
             self.debugArrival = shown.parts.first?.1.map { $0 as AnyObject }
             let to = over.map { self.convert(shown.whole, to: $0) } ?? shown.whole
             let held = self.flying.filter { $0.name == "waiting" || $0.name == "plate" }
-            self.flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
+            self.flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown, fit: true)], in: host, over: Motion.spatial * 1.5) { [weak self] in
                 guard let self, self.landingAt == landing else { return }
                 self.unseen.forEach { $0.alphaValue = 1 }
                 self.unseen = []
@@ -2100,7 +2105,7 @@ final class GridView: NSView, NSDraggingSource {
                 under.picture = Pictured(parts: [(under.rect, nil)] + wasOpened.parts.prefix(1).map { (NSRect(x: under.rect.minX, y: under.rect.minY, width: under.rect.width, height: under.rect.height - Self.barHeight), $0.1) },
                                          ground: wasOpened.ground)
             }
-            items.append(Morph(from: c.frame, to: under.rect, leaving: card, coming: under.picture, delay: Double(level - 1) * 0.02, z: -CGFloat(level)))
+            items.append(Morph(from: c.frame, to: under.rect, leaving: card, coming: under.picture, delay: Double(level - 1) * 0.04, z: -CGFloat(level), fit: true))
         }
         if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5) }
         for id in Set([chosen, top]) {
