@@ -5000,7 +5000,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Debugging: the first process tile.
-    var debugProcessView: ProcessView? { views.values.lazy.compactMap { $0 as? ProcessView }.first }
+    /// Debugging: a process tile, the one in view if there is one.
+    var debugProcessView: ProcessView? {
+        let all = views.values.compactMap { $0 as? ProcessView }
+        return all.first { $0.window != nil && !$0.isHiddenOrHasHiddenAncestor } ?? all.first
+    }
 
     /// Debugging: ⇧⌘P's field in the focused tile's sidebar, typed into or keyed.
     func debugOutlineSearch(_ what: String) -> String {

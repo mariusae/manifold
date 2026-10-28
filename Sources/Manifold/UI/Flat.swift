@@ -316,7 +316,34 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
     private let items: [Item]
     private var tips: [Int: String] = [:]
     private let font: NSFont
-    var selectedSegment = 0 { didSet { if selectedSegment != oldValue { needsDisplay = true } } }
+    var selectedSegment = 0 {
+        didSet {
+            guard selectedSegment != oldValue else { return }
+            if window != nil, !Motion.reduced, items.indices.contains(oldValue) { glide(from: band(to: oldValue)) }
+            needsDisplay = true
+        }
+    }
+    /// The chosen band on its way from where it was, as a slider's knob goes.
+    private var gliding: (from: NSRect, start: CFTimeInterval)?
+    private var glideTimer: Timer?
+    private func glide(from r: NSRect) {
+        gliding = (r, CACurrentMediaTime())
+        glideTimer?.invalidate()
+        glideTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] t in
+            guard let self, let g = self.gliding else { return t.invalidate() }
+            if CACurrentMediaTime() - g.start >= Motion.base { self.gliding = nil; t.invalidate() }
+            self.needsDisplay = true
+        }
+    }
+    /// Where the chosen band is drawn: its segment's, or on its way there.
+    private func band(to i: Int) -> NSRect {
+        let to = rect(i)
+        guard let g = gliding else { return to }
+        let t = min(1, (CACurrentMediaTime() - g.start) / max(Motion.base, 0.001))
+        let e = 1 - pow(1 - t, 3)
+        return NSRect(x: g.from.minX + (to.minX - g.from.minX) * e, y: to.minY,
+                      width: g.from.width + (to.width - g.from.width) * e, height: to.height)
+    }
     /// Chosen by a click (not when set).
     var onChange: ((Int) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
@@ -391,13 +418,17 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if let h = hovered, h != selectedSegment, items.indices.contains(h) {
+            Flat.hovered.setFill()
+            NSBezierPath(roundedRect: rect(h), xRadius: Radius.control, yRadius: Radius.control).fill()
+        }
+        if items.indices.contains(selectedSegment) {
+            Flat.chosen().setFill()
+            NSBezierPath(roundedRect: band(to: selectedSegment), xRadius: Radius.control, yRadius: Radius.control).fill()
+        }
         for (i, item) in items.enumerated() {
             let r = rect(i)
             let chosen = i == selectedSegment
-            if chosen || hovered == i {
-                (chosen ? Flat.chosen() : Flat.hovered).setFill()
-                NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
-            }
             let ink = chosen ? Theme.text : Theme.secondaryText
             switch item {
             case .title(let t):

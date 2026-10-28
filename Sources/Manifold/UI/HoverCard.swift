@@ -21,6 +21,12 @@ final class HoverCard: NSObject {
     /// detail and text.
     private var summaryCard: SummaryCard?
     private var pendingShow: DispatchWorkItem?
+    /// When a card was last put away: one asked for soon after — the
+    /// pointer going down a list — comes at once and without fading in, as
+    /// tooltips do; the first fades in after its wait.
+    private var hiddenAt = Date.distantPast
+    private var warm: Bool { !box.isHidden || Date().timeIntervalSince(hiddenAt) < 0.4 }
+    private var fadeIn = true
 
     /// A view lent to the card while it shows, given back when it goes.
     struct LiveLoan {
@@ -33,6 +39,7 @@ final class HoverCard: NSObject {
         let giveBack: (NSView) -> Void
     }
     private var loan: LiveLoan?
+    private var loanKey: String?
 
     private override init() {
         super.init()
@@ -139,12 +146,14 @@ final class HoverCard: NSObject {
             card?.rect = rect
             return
         }
-        giveBack()
-        box.isHidden = true
+        let quick = warm
+        fadeIn = !quick
+        // One up already stays up until the next takes its place.
+        if box.isHidden { giveBack() }
         card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, window: window)
         let work = DispatchWorkItem { [weak self] in self?.present() }
         pendingShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (quick ? min(delay, 0.08) : delay), execute: work)
     }
 
     /// A picture that arrived after the card was asked for: laid in, if
@@ -158,9 +167,12 @@ final class HoverCard: NSObject {
 
     private func present() {
         guard let c = card, let window = c.window, let root = window.contentView else { return }
+        // The last card's lent view home, if this one's another's.
+        if loanKey != c.key { giveBack() }
         // The block itself, live, if it lends its view.
         if loan == nil, let l = c.lend?() {
             loan = l
+            loanKey = c.key
             l.view.removeFromSuperview()
             l.view.frame = NSRect(origin: .zero, size: l.size)
             l.view.isHidden = false
@@ -234,13 +246,25 @@ final class HoverCard: NSObject {
         if origin.x + width > root.bounds.width - 8 { origin.x = max(8, rect.minX - width - 8) }
         if box.superview !== root || root.subviews.last !== box { root.addSubview(box, positioned: .above, relativeTo: nil) }
         box.frame = NSRect(origin: origin, size: NSSize(width: width, height: height))
-        box.isHidden = false
+        if box.isHidden, fadeIn {
+            box.alphaValue = 0
+            box.isHidden = false
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                ctx.timingFunction = Motion.appear
+                box.animator().alphaValue = 1
+            }
+        } else {
+            box.alphaValue = 1
+            box.isHidden = false
+        }
     }
 
     /// The lent view home, as it was.
     private func giveBack() {
         guard let l = loan else { return }
         loan = nil
+        loanKey = nil
         if l.view.superview === scaler { l.view.removeFromSuperview() }
         l.giveBack(l.view)
     }
@@ -277,6 +301,7 @@ final class HoverCard: NSObject {
         pendingShow?.cancel()
         pendingShow = nil
         card = nil
+        if !box.isHidden { hiddenAt = Date() }
         box.isHidden = true
         giveBack()
     }
