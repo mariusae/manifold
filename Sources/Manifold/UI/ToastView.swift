@@ -28,6 +28,7 @@ final class ToastView: NSView {
     /// Says something, offering an action, for a few seconds (an empty
     /// name: no action, only the word — something under way).
     func show(_ text: String, action name: String = "Restore", for seconds: Double = 8, _ action: @escaping () -> Void) {
+        let arriving = isHidden
         label.stringValue = text
         button.title = name
         button.isHidden = name.isEmpty
@@ -37,9 +38,38 @@ final class ToastView: NSView {
         alphaValue = 1
         needsLayout = true
         superview?.needsLayout = true
+        if arriving { rise() }
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Coming up from the window's foot as it fades in, as a stack's tabs
+    /// rise (only fading, with less motion asked for).
+    private func rise() {
+        guard let l = layer else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        let up = CABasicAnimation(keyPath: "transform.translation.y")
+        up.fromValue = Motion.distance(superview?.isFlipped == true ? 8 : -8)
+        up.toValue = 0
+        let g = CAAnimationGroup()
+        g.animations = [fade, up]
+        g.duration = Motion.base
+        g.timingFunction = Motion.appear
+        l.add(g, forKey: "rise")
+    }
+
+    /// Said again while it's up — what you did didn't take: a shake, as a
+    /// refused password's field gives (a blink, with less motion asked for).
+    func nudge() {
+        guard !isHidden, let l = layer else { return }
+        let a = CAKeyframeAnimation(keyPath: Motion.reduced ? "opacity" : "transform.translation.x")
+        a.values = Motion.reduced ? [1, 0.5, 1] : [0, -7, 7, -5, 5, -2, 0]
+        a.duration = 0.32 * Motion.slowdown
+        a.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        l.add(a, forKey: "nudge")
     }
 
     func hide() {

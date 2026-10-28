@@ -868,6 +868,9 @@ enum DebugControl {
         case "toast":
             // "toast": what it says; "toast act", its button pressed.
             if arg == "act" { return wc?.debugToastAct() ?? "none" }
+            // "toast say <text>": said, with an OK; "toast nudge": shaken.
+            if arg.hasPrefix("say ") { wc?.notice(String(arg.dropFirst(4)), action: "OK") {}; return "said" }
+            if arg == "nudge" { wc?.debugToastNudge(); return "nudged" }
             return wc?.debugToast ?? "none"
         case "fencing":
             // Each host: watching or not, who took over, what's fenced.

@@ -921,6 +921,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var debugToast: String { toast.debugText ?? "none" }
     func debugToastAct() -> String { toast.debugAct() }
+    func debugToastNudge() { toast.nudge() }
     var debugFencing: String {
         hosts.all.map { c in
             "\(hosts.label(of: c.host)): " + (c.watching ? "watching, taken by \(c.fencedBy ?? "?"): \(c.fenced.map(\.description).sorted().joined(separator: " "))" : "leading")
@@ -935,9 +936,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// here didn't take (`again`), at most every few seconds.
     private var saidWatching: [HostID: Date] = [:]
 
+    private var nudgedWatching = Date.distantPast
     func sayWatching(_ client: HostClient, again: Bool = false) {
         guard client.watching else { return }
-        if again, let said = saidWatching[client.host], Date().timeIntervalSince(said) < 4 { return }
+        // Said lately and still up: shaken, not said again (a quarter of a
+        // second apart at most, as keys repeat).
+        if again, let said = saidWatching[client.host], Date().timeIntervalSince(said) < 4 {
+            if toast.debugText?.contains(hosts.label(of: client.host)) == true, Date().timeIntervalSince(nudgedWatching) > 0.25 {
+                nudgedWatching = Date()
+                toast.nudge()
+            }
+            return
+        }
         saidWatching[client.host] = Date()
         let who = client.fencedBy ?? "Another Manifold"
         toast.show("\(who) took over \(hosts.label(of: client.host)): what you do here doesn't take", action: "Take Over", for: 20) { [weak self, weak client] in
