@@ -654,7 +654,7 @@ around it, and comes back with its history.
   and date, as the Finder's columns do (the divider dragged as you like;
   a narrow tile shows the tree alone). What the folder's repository
   ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
-  (View ▸ Show Hidden Files) shows them, dimmed. The **filter** at the top (⌘F) looks through the
+  (View ▸ Show Hidden Files) shows them, dimmed. The **filter** at the top (⌘F, or / from the list) looks through the
   whole tree beneath as it's typed, less what's ignored, and lists the
   files that match — their letters in order, as Open Quickly matches —
   best first, the letters matched in bold and the folder each is in

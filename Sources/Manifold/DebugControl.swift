@@ -292,6 +292,21 @@ enum DebugControl {
             func find(_ v: NSView) -> NSTableView? { (v as? NSTableView) ?? v.subviews.lazy.compactMap(find).first }
             guard let t = find(v) else { return "no table" }
             return "row \(t.selectedRow) of \(t.numberOfRows)"
+        case "press":
+            // "press <char>": the key typed, through the window as typing is;
+            // "press" alone: what has the keyboard.
+            guard let window = wc?.window else { return "no window" }
+            func holder() -> String {
+                var r: NSResponder? = window.firstResponder
+                if let t = r as? NSTextView, t.isFieldEditor { r = t.delegate as? NSResponder ?? r }
+                return r.map { "\(type(of: $0))" + (($0 as? NSTextField).map { " \"\($0.placeholderString ?? "")\"" } ?? "") } ?? "nothing"
+            }
+            if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: window.windowNumber, context: nil, characters: arg, charactersIgnoringModifiers: arg,
+                                                    isARepeat: false, keyCode: 0) {
+                window.sendEvent(e)
+            }
+            return holder()
         case "mdeval":
             // "mdeval <js>": run in the focused preview; returns what the
             // previous run gave (the page answers later).

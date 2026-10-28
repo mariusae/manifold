@@ -38,6 +38,7 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
         self.model = model
         expanded = Set((owner.keeper.value("expanded") ?? "").split(separator: "\n").map(String.init))
         super.init(frame: .zero)
+        outline.onSlash = { [unowned owner] in owner.focusFilter() }
         let column = NSTableColumn(identifier: .init("name"))
         outline.addTableColumn(column)
         outline.outlineTableColumn = column
@@ -349,6 +350,14 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
 final class TreeOutline: NSOutlineView {
     /// How wide a folder's chevron is, as measured from one.
     private(set) var chevronWidth: CGFloat = 16
+    /// /, typed in the list: to the filter (before select-by-typing takes it).
+    var onSlash: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let mods = event.modifierFlags.intersection([.command, .control, .option])
+        if mods.isEmpty, event.charactersIgnoringModifiers == "/", let onSlash { return onSlash() }
+        super.keyDown(with: event)
+    }
 
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         var f = super.frameOfCell(atColumn: column, row: row)

@@ -382,6 +382,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case 36, 76: openSelected()  // ⏎
         case 126 where cmd: goUp()  // ⌘↑
         case 125 where cmd: openSelected(into: true)  // ⌘↓
+        // /, as less and vim search: to the filter, from anywhere else here.
+        case _ where event.charactersIgnoringModifiers == "/" && event.modifierFlags.intersection([.command, .control, .option]).isEmpty:
+            focusFilter()
         default: super.keyDown(with: event)
         }
     }
@@ -423,6 +426,11 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     @objc override func performTextFinderAction(_ sender: Any?) {
         let tag = (sender as? NSMenuItem)?.tag ?? NSTextFinder.Action.showFindInterface.rawValue
         guard tag == NSTextFinder.Action.showFindInterface.rawValue else { return }
+        focusFilter()
+    }
+
+    /// To the filter, what's in it selected to be typed over (⌘F, /).
+    func focusFilter() {
         window?.makeFirstResponder(search)
         search.currentEditor()?.selectAll(nil)
     }
