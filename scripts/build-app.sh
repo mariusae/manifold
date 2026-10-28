@@ -77,11 +77,14 @@ cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 rm -f "$app/Contents/Resources/Assets.car"
 /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$app/Contents/Info.plist" >/dev/null 2>&1 || true
 # actool is Xcode's: when the tools chosen (xcode-select) are only the
-# command-line ones, Xcode's own, if it's there.
+# command-line ones, an installed Xcode's (Xcode.app, or Xcode-beta.app
+# and the like), as Prism's build does.
 actool() {
-  if xcrun --find actool >/dev/null 2>&1; then xcrun actool "$@"
-  elif [ -d /Applications/Xcode.app ]; then DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun actool "$@"
-  else return 1; fi
+  if xcrun --find actool >/dev/null 2>&1; then xcrun actool "$@"; return; fi
+  for x in /Applications/Xcode.app /Applications/Xcode*.app; do
+    [ -x "$x/Contents/Developer/usr/bin/actool" ] && { DEVELOPER_DIR="$x/Contents/Developer" xcrun actool "$@"; return; }
+  done
+  return 1
 }
 # (absolute paths: actool's helper may not run where we are)
 if actool "$PWD/Resources/Icons/Manifold.icon" --compile "$(cd "$app/Contents/Resources" && pwd)" --app-icon Manifold \
