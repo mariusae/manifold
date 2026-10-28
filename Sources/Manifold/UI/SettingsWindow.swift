@@ -380,12 +380,19 @@ final class FontThemeList: NSView {
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])
             // Editing, then reading if it's another face, then monospaced.
             let names = [t.proportionalName] + (t.readingName != t.proportionalName ? [t.readingName] : []) + [t.monospacedName]
+            // At the right, in what room the name leaves: cut short, not
+            // over it (Custom's faces can be long).
+            let style = NSMutableParagraphStyle()
+            style.alignment = .right
+            style.lineBreakMode = .byTruncatingTail
             let fonts = NSAttributedString(string: names.joined(separator: " · "), attributes: [
-                .font: UIType.detail, .foregroundColor: Theme.secondaryText,
+                .font: UIType.detail, .foregroundColor: Theme.secondaryText, .paragraphStyle: style,
             ])
             let ns = name.size(), fs = fonts.size()
             name.draw(at: NSPoint(x: r.minX + 10, y: r.midY - ns.height / 2))
-            fonts.draw(at: NSPoint(x: r.maxX - 10 - fs.width, y: r.midY - fs.height / 2))
+            let left = r.minX + 10 + ns.width + 16
+            fonts.draw(with: NSRect(x: left, y: r.midY - fs.height / 2, width: max(0, r.maxX - 10 - left), height: fs.height),
+                       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }
 
