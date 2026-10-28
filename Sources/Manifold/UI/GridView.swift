@@ -1060,7 +1060,7 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile's picture, for its ghost: a terminal's surface as it is,
     /// anything else drawn at the screen's scale.
-    private static func ghostPicture(of v: NSView) -> Any? {
+    static func ghostPicture(of v: NSView) -> Any? {
         if let surface = v.layer?.contents, CFGetTypeID(surface as CFTypeRef) == IOSurfaceGetTypeID() { return surface }
         if v is TerminalView, let image = HoverCard.surfacePicture(of: v) { return image.cgImage(forProposedRect: nil, context: nil, hints: nil) }
         let scale = v.window?.backingScaleFactor ?? 2
@@ -1070,6 +1070,30 @@ final class GridView: NSView, NSDraggingSource {
         rep.size = v.bounds.size
         v.cacheDisplay(in: v.bounds, to: rep)
         return rep.cgImage
+    }
+
+    /// Each tile in view, by its block (a block's first), its body then its
+    /// bar, where they are (the grid's terms) with pictures of them: for
+    /// Overview's cards to be seen coming from them, and going back.
+    func tileParts() -> [BlockID: [(NSRect, Any?)]] {
+        var out: [BlockID: [(NSRect, Any?)]] = [:]
+        for t in columns.flatMap({ $0 }) where !isStashed(t.shown.id) && !t.view.isHidden && t.view.frame.height > 0 {
+            guard let b = t.shown.block?.id, out[b] == nil else { continue }
+            var parts: [(NSRect, Any?)] = [(t.view.frame, Self.ghostPicture(of: t.view))]
+            if let p = pills[t.shown.id], !p.isHidden { parts.append((p.frame, Self.ghostPicture(of: p))) }
+            out[b] = parts
+        }
+        return out
+    }
+
+    /// Where each tile in view is, by its block: its body, then its bar.
+    func tilePlaces() -> [BlockID: [NSRect]] {
+        var out: [BlockID: [NSRect]] = [:]
+        for t in columns.flatMap({ $0 }) where !isStashed(t.shown.id) && !t.view.isHidden && t.view.frame.height > 0 {
+            guard let b = t.shown.block?.id, out[b] == nil else { continue }
+            out[b] = [t.view.frame] + (pills[t.shown.id].map { [$0.frame] } ?? [])
+        }
+        return out
     }
 
     // MARK: Arriving
@@ -1679,13 +1703,16 @@ final class GridView: NSView, NSDraggingSource {
     /// opacity from one to another — or, `clip`, kept where it is and cut
     /// from one part of it to another (its own terms): what shows of it
     /// grows or shrinks, nothing stretched.
-    private struct Carried {
+    struct Carried {
         var picture: Any?
         var from: NSRect, to: NSRect
         var opacity: (Float, Float)
         var corner: CGFloat = Radius.surface
         var delay: Double = 0
         var clip: (NSRect, NSRect)? = nil
+        /// How the picture fills its place as that changes shape: as it
+        /// is, or (`.resizeAspectFill`) cut, never stretched.
+        var gravity: CALayerContentsGravity = .resize
     }
 
     /// `r` given `like`'s proportions, as wide as it, its top where r's is.
@@ -1697,6 +1724,11 @@ final class GridView: NSView, NSDraggingSource {
     /// Pictures carried, over everything, and taken away once there.
     private func carry(_ items: [Carried], done: @escaping () -> Void = {}) {
         guard let host = layer else { return done() }
+        Self.carry(items, in: host, done: done)
+    }
+
+    /// Pictures carried over `host`'s layers (in its terms).
+    static func carry(_ items: [Carried], in host: CALayer, done: @escaping () -> Void = {}) {
         var made: [CALayer] = []
         CATransaction.begin()
         CATransaction.setCompletionBlock {
@@ -1707,7 +1739,7 @@ final class GridView: NSView, NSDraggingSource {
             let from = Motion.reduced ? c.to : c.from
             let g = CALayer()
             g.contents = c.picture
-            g.contentsGravity = .resize
+            g.contentsGravity = c.gravity
             g.cornerRadius = c.corner
             g.cornerCurve = .continuous
             g.masksToBounds = true

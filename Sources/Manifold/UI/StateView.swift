@@ -230,6 +230,31 @@ final class StateView: NSView {
         return (columns, NSSize(width: ((room.width - CGFloat(columns + 1) * m) / CGFloat(columns)).rounded(.down), height: least.height))
     }
 
+    // MARK: As Mission Control does
+
+    /// Each card in view, by its block: its body then its bar, where they
+    /// are (this view's terms) with pictures of them — Overview's cards
+    /// seen coming from their tiles, and going back to them.
+    func cellParts() -> [BlockID: [(NSRect, Any?)]] {
+        guard mode == .overview else { return [:] }
+        layoutSubtreeIfNeeded()
+        let seen = scroll.convert(scroll.bounds, to: self)
+        var out: [BlockID: [(NSRect, Any?)]] = [:]
+        for item in items {
+            let block = item.shown.placement.block
+            guard let view = item.view, view.superview === document else { continue }
+            let body = view.convert(view.bounds, to: self)
+            guard body.intersects(seen) else { continue }
+            var parts: [(NSRect, Any?)] = [(body, GridView.ghostPicture(of: view))]
+            if let p = pills[block] { parts.append((p.convert(p.bounds, to: self), GridView.ghostPicture(of: p))) }
+            out[block] = parts
+        }
+        return out
+    }
+
+    /// The cards themselves out of sight, their pictures on their way.
+    var cardsShown = true { didSet { document.alphaValue = cardsShown ? 1 : 0 } }
+
     @objc private func modeChosen() {
         mode = Mode(rawValue: modes.selectedSegment) ?? .list
         needsLayout = true

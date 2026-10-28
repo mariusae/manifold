@@ -3137,6 +3137,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func presentStateView() {
+        // Opening on the space shown: its tiles, as they are, to be seen
+        // going to their places in it.
+        let fromTiles = stateView == nil && !content.isHidden ? partsInRoot(content.tileParts(), from: content) : [:]
         if stateView == nil {
             let v = StateView()
             v.onOpen = { [weak self] b, mods in
@@ -3165,10 +3168,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         layoutViews()
         render()
         window?.makeFirstResponder(stateView)
+        if let v = stateView, !fromTiles.isEmpty { flyIn(v, from: fromTiles) }
     }
 
     func hideStateView() {
         guard let v = stateView else { return }
+        // Its cards, as they are, to be seen going back to their tiles.
+        let fromCards = partsInRoot(v.cellParts(), from: v)
         v.clear()
         v.removeFromSuperview()
         stateView = nil
@@ -3178,6 +3184,83 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stateModeChosen = nil
         content.isHidden = false
         render()
+        if !fromCards.isEmpty { flyOut(from: fromCards) }
+    }
+
+    // MARK: Overview, as Mission Control does
+
+    /// Only fading in (with Reduce motion).
+    private func fadeIn(_ v: NSView) {
+        guard let l = v.layer else { return }
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = 0
+        a.toValue = 1
+        a.duration = Motion.base
+        l.add(a, forKey: "fadeIn")
+    }
+
+    private func partsInRoot(_ parts: [BlockID: [(NSRect, Any?)]], from view: NSView) -> [BlockID: [(NSRect, Any?)]] {
+        parts.mapValues { $0.map { (root.convert($0.0, from: view), $0.1) } }
+    }
+
+    /// Overview opening: each tile's picture flies from where it is in the
+    /// space to its card's place — its body to the card's, its bar to the
+    /// card's — as Mission Control sends windows to theirs, cut to fit,
+    /// never stretched; the cards show once theirs are there, and the
+    /// rest fade in.
+    private func flyIn(_ v: StateView, from tiles: [BlockID: [(NSRect, Any?)]]) {
+        guard let host = root.layer else { return }
+        if Motion.reduced { return fadeIn(v) }
+        let cards = partsInRoot(v.cellParts(), from: v)
+        var items: [GridView.Carried] = []
+        for (block, to) in cards {
+            guard let from = tiles[block] else { continue }
+            for (f, t) in zip(from, to) {
+                items.append(GridView.Carried(picture: f.1, from: f.0, to: t.0, opacity: (1, 1), gravity: .resizeAspectFill))
+            }
+        }
+        guard !items.isEmpty else { return }
+        v.cardsShown = false
+        GridView.carry(items, in: host) { [weak v] in
+            guard let v else { return }
+            v.cardsShown = true
+            if let l = v.layer {
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 0.6
+                a.toValue = 1
+                a.duration = Motion.fast
+                l.add(a, forKey: "landed")
+            }
+        }
+    }
+
+    /// Overview closing: each card's picture flies back to its tile's place
+    /// in the space, the space showing as they land.
+    private func flyOut(from cards: [BlockID: [(NSRect, Any?)]]) {
+        guard let host = root.layer, !content.isHidden else { return }
+        if Motion.reduced { return fadeIn(content) }
+        content.layoutSubtreeIfNeeded()
+        let tiles = content.tilePlaces()
+        var items: [GridView.Carried] = []
+        for (block, from) in cards {
+            guard let to = tiles[block] else { continue }
+            for (f, t) in zip(from, to) {
+                items.append(GridView.Carried(picture: f.1, from: f.0, to: root.convert(t, from: content), opacity: (1, 1), gravity: .resizeAspectFill))
+            }
+        }
+        guard !items.isEmpty else { return }
+        content.alphaValue = 0
+        GridView.carry(items, in: host) { [weak self] in
+            guard let self else { return }
+            self.content.alphaValue = 1
+            if let l = self.content.layer {
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 0.4
+                a.toValue = 1
+                a.duration = Motion.fast
+                l.add(a, forKey: "landed")
+            }
+        }
     }
 
     /// The blocks the state view shows, in order, while it's up.
