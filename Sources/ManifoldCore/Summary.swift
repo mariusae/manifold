@@ -172,7 +172,7 @@ extension Block {
 
     /// A text's first lines worth showing: not blank, the title's own line
     /// left out, Markdown's marks taken off.
-    static func firstLines(_ text: String, skipping title: String, count: Int) -> [String] {
+    public static func firstLines(_ text: String, skipping title: String, count: Int) -> [String] {
         var out: [String] = []
         var inFence = false
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {

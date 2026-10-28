@@ -720,9 +720,16 @@ final class GridView: NSView, NSDraggingSource {
     /// re-adding a layer-backed view at every layout flashes it.
     /// A tile's summary card, as its delegate makes it (a terminal's
     /// screen, a page's picture) or, failing that, from its block alone.
+    /// Under its bar, so without its title — unless the bar names it
+    /// otherwise (an untitled note, which the card calls by its first
+    /// line): then that line comes first, as what it holds.
     private func summaryContent(_ tile: Tile) -> SummaryCardContent? {
-        delegate?.gridSummary(tile.shown.id)
-            ?? tile.shown.block.map { SummaryCardContent(id: tile.shown.id, symbol: tile.shown.symbol, summary: $0.summary()) }
+        guard var c = delegate?.gridSummary(tile.shown.id)
+            ?? tile.shown.block.map({ SummaryCardContent(id: tile.shown.id, symbol: tile.shown.symbol, summary: $0.summary()) }) else { return nil }
+        if let b = tile.shown.block, b.kind == .text, let t = b.text, c.summary.title != tile.shown.title {
+            c.summary.lines = Block.firstLines(t.text.string, skipping: "", count: 3)
+        }
+        return c
     }
 
     private func keep(_ v: NSView, above other: NSView) {
