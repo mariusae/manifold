@@ -1176,7 +1176,8 @@ enum DebugControl {
             return (wc?.debugFinder(arg == "-" ? "" : arg) ?? []).prefix(12).joined(separator: " | ")
         case "dump":
             guard let v = wc?.window?.contentView else { return "no window" }
-            return describe(v, 0) + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"
+            // "dump deep": past four levels down too.
+            return describe(v, 0, deep: arg == "deep") + "\nfirstResponder: \(String(describing: wc?.window?.firstResponder))"
         default:
             return "unknown command"
         }
@@ -1187,13 +1188,19 @@ enum DebugControl {
         return v.subviews + v.subviews.flatMap { allSubviews($0) }
     }
 
-    private static func describe(_ v: NSView, _ depth: Int) -> String {
+    private static func describe(_ v: NSView, _ depth: Int, deep: Bool = false) -> String {
         var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")\(v.alphaValue < 1 ? " alpha \(v.alphaValue)" : "")"
         if let t = v as? TerminalView { s += " block=\(t.block) surface=\(t.surface != nil)" }
-        if let keys = v.layer?.animationKeys(), !keys.isEmpty { s += " animating=\(keys)" }
-        if let m = v.layer?.mask { s += " masked=\(m.frame)" }
+        if let keys = v.layer?.animationKeys(), !keys.isEmpty {
+            s += " animating=\(keys)"
+            // Where it is this moment: moved by (up, on screen, when y grows up).
+            if let l = v.layer, let p = l.presentation(), let w = v.window?.contentView?.layer?.presentation() {
+                s += " now=\(p.convert(p.bounds, to: w).integral) opacityNow=\(p.opacity)"
+            }
+        }
+        if let m = v.layer?.mask { s += " masked=\(m.frame) maskNow=\((m.presentation() ?? m).frame.integral)" }
         if let l = v.layer, l.opacity < 1 { s += " opacity=\(l.opacity)" }
-        for sub in v.subviews where depth < 4 { s += "\n" + describe(sub, depth + 1) }
+        for sub in v.subviews where depth < (deep ? 12 : 4) { s += "\n" + describe(sub, depth + 1, deep: deep) }
         return s
     }
 

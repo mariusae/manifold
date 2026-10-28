@@ -3122,6 +3122,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stateGroup = nil
         stateWorkspace = id
         stateMode = .overview
+        stateModeChosen = Self.overviewMode
         presentStateView()
     }
 
@@ -3139,6 +3140,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var stateAgents = false
     /// The view's mode as chosen while it's up (else it goes by how many).
     private var stateModeChosen: StateView.Mode?
+    /// Overview's mode as last chosen, kept for the next time (and the
+    /// next launch): it opens as it was left.
+    private static var overviewMode: StateView.Mode? {
+        get { UserDefaults.standard.object(forKey: "OverviewMode").flatMap { ($0 as? Int).flatMap(StateView.Mode.init(rawValue:)) } }
+        set { UserDefaults.standard.set(newValue?.rawValue, forKey: "OverviewMode") }
+    }
 
     /// Window ▸ Agents (⌃⌘A): Overview, filtered to every agent on every
     /// host — those that need you first — each saying what it's on, for
@@ -3150,6 +3157,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stateWorkspace = nil
         stateAgents = true
         stateMode = .overview
+        stateModeChosen = Self.overviewMode
         presentStateView()
     }
 
@@ -3196,6 +3204,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             v.onLeave = { [weak self] in self?.hideStateView() }
             v.onModeChanged = { [weak self] m in
+                if self?.stateWorkspace != nil || self?.stateAgents == true { Self.overviewMode = m }
                 self?.stateModeChosen = m
                 if m != .summaries { self?.stateMode = m }
                 self?.render()
@@ -3252,63 +3261,122 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Overview opening: each tile's picture flies from where it is in the
-    /// space to its card's place — its body to the card's, its bar to the
-    /// card's — as Mission Control sends windows to theirs, cut to fit,
-    /// never stretched; the cards show once theirs are there, and the
-    /// rest fade in.
+    /// space to its card's place, scaled evenly to fit it (never cut, never
+    /// stretched), as Mission Control sends windows to theirs, and gives
+    /// way to the card as it lands; the rest of Overview fades in.
     private func flyIn(_ v: StateView, from tiles: [BlockID: [(NSRect, Any?)]]) {
-        guard let host = root.layer else { return }
         if Motion.reduced { return fadeIn(v) }
         let cards = partsInRoot(v.cellParts(), from: v)
-        var items: [GridView.Carried] = []
-        for (block, to) in cards {
-            guard let from = tiles[block] else { continue }
-            for (f, t) in zip(from, to) {
-                items.append(GridView.Carried(picture: f.1, from: f.0, to: t.0, opacity: (1, 1), gravity: .resizeAspectFill))
-            }
-        }
-        guard !items.isEmpty else { return }
-        v.cardsShown = false
-        GridView.carry(items, in: host) { [weak v] in
-            guard let v else { return }
-            v.cardsShown = true
-            if let l = v.layer {
-                let a = CABasicAnimation(keyPath: "opacity")
-                a.fromValue = 0.6
-                a.toValue = 1
-                a.duration = Motion.fast
-                l.add(a, forKey: "landed")
-            }
+        let flights = cards.compactMap { block, card in tiles[block].map { (block, $0, card) } }
+        guard !flights.isEmpty else { return fadeIn(v) }
+        let d = Motion.spatial * 1.5
+        fly(flights.map { ($0.1, $0.2) }, back: false, over: d)
+        fade(v, over: d)
+        // Each card there as its tile's picture lands on it.
+        for (block, _, _) in flights {
+            for part in v.cellViews(of: block) { show(part, from: 0.7, over: d) }
         }
     }
 
-    /// Overview closing: each card's picture flies back to its tile's place
-    /// in the space, the space showing as they land.
+    /// Overview closing: each tile's picture (as the space has it now)
+    /// flies back from its card to its place, the card giving way to it as
+    /// it leaves; the rest of the space fades in.
     private func flyOut(from cards: [BlockID: [(NSRect, Any?)]]) {
-        guard let host = root.layer, !content.isHidden else { return }
+        guard !content.isHidden else { return }
         if Motion.reduced { return fadeIn(content) }
         content.layoutSubtreeIfNeeded()
-        let tiles = content.tilePlaces()
-        var items: [GridView.Carried] = []
-        for (block, from) in cards {
-            guard let to = tiles[block] else { continue }
-            for (f, t) in zip(from, to) {
-                items.append(GridView.Carried(picture: f.1, from: f.0, to: root.convert(t, from: content), opacity: (1, 1), gravity: .resizeAspectFill))
+        let tiles = partsInRoot(content.tileParts(), from: content)
+        let flights = tiles.compactMap { block, parts in cards[block].map { (block, parts, $0) } }
+        guard !flights.isEmpty else { return fadeIn(content) }
+        let d = Motion.spatial * 1.5
+        fly(flights.map { ($0.1, $0.2) }, back: true, over: d)
+        fade(content, over: d)
+        for (block, _, _) in flights {
+            for part in content.tileViews(of: block) { show(part, from: 1, over: d) }
+        }
+    }
+
+    /// `r`, a part of `whole`, where it is once `whole` is scaled evenly to
+    /// fit `box`, in its middle: as a layer at `r` is moved there.
+    private static func fitting(_ r: NSRect, of whole: NSRect, into box: NSRect) -> CATransform3D {
+        let s = min(box.width / whole.width, box.height / whole.height)
+        let q = CGPoint(x: box.midX + (r.midX - whole.midX) * s, y: box.midY + (r.midY - whole.midY) * s)
+        return CATransform3DScale(CATransform3DMakeTranslation(q.x - r.midX, q.y - r.midY, 0), s, s, 1)
+    }
+
+    /// Tiles' pictures flown over the window between their places and their
+    /// cards' (`back`, from the cards), each tile's parts as one; going
+    /// back, the cards' pictures fade where they were as they leave.
+    private func fly(_ flights: [(tile: [(NSRect, Any?)], card: [(NSRect, Any?)])], back: Bool, over d: Double) {
+        guard let host = root.layer else { return }
+        func union(_ rs: [NSRect]) -> NSRect { rs.dropFirst().reduce(rs.first ?? .zero) { $0.union($1) } }
+        var made: [CALayer] = []
+        func layer(_ picture: Any?, at r: NSRect, opacity: [Float], times: [NSNumber], transform: (CATransform3D, CATransform3D)? = nil) {
+            let g = CALayer()
+            g.contents = picture
+            g.contentsGravity = .resize
+            g.frame = r
+            g.cornerRadius = Radius.surface
+            g.cornerCurve = .continuous
+            g.masksToBounds = true
+            g.zPosition = 40
+            g.opacity = opacity.last ?? 1
+            if let transform { g.transform = transform.1 }
+            host.addSublayer(g)
+            made.append(g)
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = opacity
+            fade.keyTimes = times
+            var animations: [CAAnimation] = [fade]
+            if let transform {
+                let move = CABasicAnimation(keyPath: "transform")
+                move.fromValue = transform.0
+                move.toValue = transform.1
+                move.timingFunction = Motion.travel
+                animations.append(move)
+            }
+            let grp = CAAnimationGroup()
+            grp.animations = animations
+            grp.duration = d
+            g.add(grp, forKey: "fly")
+        }
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { made.forEach { $0.removeFromSuperlayer() } }
+        for f in flights {
+            let whole = union(f.tile.map(\.0)), box = union(f.card.map(\.0))
+            guard whole.width > 1, whole.height > 1, box.width > 1, box.height > 1 else { continue }
+            if back {
+                for (r, picture) in f.card where picture != nil { layer(picture, at: r, opacity: [1, 0, 0], times: [0, 0.3, 1]) }
+            }
+            for (r, picture) in f.tile where picture != nil {
+                let there = Self.fitting(r, of: whole, into: box)
+                layer(picture, at: r, opacity: back ? [0, 1, 1] : [1, 1, 0], times: back ? [0, 0.3, 1] : [0, 0.75, 1],
+                      transform: back ? (there, CATransform3DIdentity) : (CATransform3DIdentity, there))
             }
         }
-        guard !items.isEmpty else { return }
-        content.alphaValue = 0
-        GridView.carry(items, in: host) { [weak self] in
-            guard let self else { return }
-            self.content.alphaValue = 1
-            if let l = self.content.layer {
-                let a = CABasicAnimation(keyPath: "opacity")
-                a.fromValue = 0.4
-                a.toValue = 1
-                a.duration = Motion.fast
-                l.add(a, forKey: "landed")
-            }
-        }
+        CATransaction.commit()
+    }
+
+    /// A view faded in over a flight.
+    private func fade(_ v: NSView, over d: Double) {
+        guard let l = v.layer else { return }
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = 0
+        a.toValue = 1
+        a.duration = d
+        a.timingFunction = Motion.appear
+        l.add(a, forKey: "fadeIn")
+    }
+
+    /// A view out of sight till `from` of the way through a flight, then
+    /// fading in by its end (at once, at its end).
+    private func show(_ v: NSView, from: Double, over d: Double) {
+        guard let l = v.layer else { return }
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = from >= 1 ? [0, 0] : [0, 0, 1]
+        a.keyTimes = from >= 1 ? [0, 1] : [0, NSNumber(value: from), 1]
+        a.duration = d
+        l.add(a, forKey: "landing")
     }
 
     /// The blocks the state view shows, in order, while it's up.
@@ -3317,8 +3385,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var diffReloaded: [BlockID: Date] = [:]
 
     func debugStateView(mode: StateView.Mode) {
-        stateModeChosen = mode
-        render()
+        guard let stateView else { return }
+        stateView.debugChoose(mode)
     }
 
     /// The state view's placement ids: a block's, not an arrangement's.

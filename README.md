@@ -987,7 +987,7 @@ around it, and comes back with its history.
   room (from about square to twice as wide as tall); or **summaries**, a
   summary card each, in columns — what it shows by itself past ten
   blocks, live views of so many being small (the buttons at its top
-  right choose). Nothing is placed: click a card or a bar to go to the
+  right choose, and it opens next time as it was left). Nothing is placed: click a card or a bar to go to the
   block, ⌘-click to open it beside the tile you were on, ⌥-click over
   it, ⎋ (or ×) to go back.
   **Clear Status**, in a block's row menu in the sidebar or the tile's bar menu,
@@ -1147,10 +1147,13 @@ named measures (DESIGN.md §11). The system's own alerts are left as they are.
 Things move where moving says something, briefly, and never what you
 type into: a tile placed comes in where it lands as the others glide
 aside, one closed fades where it was as they take its room, one gone to
-has a ring close in on it; Maximize grows the tile from its place over
-the rest, Restore shrinks it back; ⌃⇥ turns the tiles into their cards
-and back; Overview sends each tile to its card as Mission Control sends
-windows, and back; a toast rises from the window's foot (and shakes
+has its focus ring swell and glow a moment; one too short for its
+content crosses over to its summary card, and back; Maximize grows the
+tile from its place over the rest, Restore shrinks it back; ⌃⇥'s cards
+fan out from under the top as the tile steps back, and the one chosen
+grows into its tile as the rest fade (a quick ⌃⇥, let go at once,
+just swaps); Overview sends each tile, scaled down whole, to its card as
+Mission Control sends windows, and back; a toast rises from the window's foot (and shakes
 when it's said again to what didn't take); a block just finished has
 its glyph land and settle; hover cards fade in; segments slide their
 band; Machine's meters ease between readings. With Reduce motion on

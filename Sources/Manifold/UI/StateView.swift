@@ -232,28 +232,35 @@ final class StateView: NSView {
 
     // MARK: As Mission Control does
 
-    /// Each card in view, by its block: its body then its bar, where they
-    /// are (this view's terms) with pictures of them — Overview's cards
-    /// seen coming from their tiles, and going back to them.
+    /// Each card in view, by its block — its body then its bar, or its
+    /// summary card — where they are (this view's terms) with pictures of
+    /// them: Overview's cards seen coming from their tiles, and going back.
     func cellParts() -> [BlockID: [(NSRect, Any?)]] {
-        guard mode == .overview else { return [:] }
+        guard mode != .list else { return [:] }
         layoutSubtreeIfNeeded()
         let seen = scroll.convert(scroll.bounds, to: self)
         var out: [BlockID: [(NSRect, Any?)]] = [:]
         for item in items {
             let block = item.shown.placement.block
-            guard let view = item.view, view.superview === document else { continue }
-            let body = view.convert(view.bounds, to: self)
-            guard body.intersects(seen) else { continue }
-            var parts: [(NSRect, Any?)] = [(body, GridView.ghostPicture(of: view))]
-            if let p = pills[block] { parts.append((p.convert(p.bounds, to: self), GridView.ghostPicture(of: p))) }
-            out[block] = parts
+            let parts = cellViews(of: block)
+            guard let body = parts.first, body.convert(body.bounds, to: self).intersects(seen) else { continue }
+            out[block] = parts.map { ($0.convert($0.bounds, to: self), GridView.ghostPicture(of: $0)) }
         }
         return out
     }
 
-    /// The cards themselves out of sight, their pictures on their way.
-    var cardsShown = true { didSet { document.alphaValue = cardsShown ? 1 : 0 } }
+    /// A block's card: its live view and bar, or its summary card.
+    func cellViews(of block: BlockID) -> [NSView] {
+        if mode == .summaries { return cards[block].map { [$0] } ?? [] }
+        guard let view = items.first(where: { $0.shown.placement.block == block })?.view, view.superview === document else { return [] }
+        return [view] + (pills[block].map { [$0] } ?? [])
+    }
+
+    /// Debugging: a mode chosen, as its button is.
+    func debugChoose(_ m: Mode) {
+        modes.selectedSegment = m.rawValue
+        modeChosen()
+    }
 
     @objc private func modeChosen() {
         mode = Mode(rawValue: modes.selectedSegment) ?? .list

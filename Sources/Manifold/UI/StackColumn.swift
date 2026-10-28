@@ -259,30 +259,8 @@ final class StackColumnView: NSView {
 
     // MARK: Showing
 
-    /// Each card where it is in `view`'s terms, with a picture of it as
-    /// it's drawn: for the cards to be seen coming from their tiles, and
-    /// going back to them.
-    func cardPictures(in view: NSView) -> [(id: PlacementID, frame: NSRect, picture: CGImage?)] {
-        layoutSubtreeIfNeeded()
-        let shown = convert(bounds, to: view)
-        return cards.map { c in
-            var picture: CGImage?
-            let scale = window?.backingScaleFactor ?? 2
-            if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(c.bounds.width * scale), pixelsHigh: Int(c.bounds.height * scale),
-                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                          bytesPerRow: 0, bitsPerPixel: 0) {
-                rep.size = c.bounds.size
-                c.cacheDisplay(in: c.bounds, to: rep)
-                picture = rep.cgImage
-            }
-            // Cut where the column cuts it: below its fold it's out of sight.
-            let f = c.convert(c.bounds, to: view)
-            return (c.content.id, f.intersects(shown) ? f : .zero, picture)
-        }
-    }
-
-    /// Opens: the cards dealt down from the top, one after another — or,
-    /// `dealt` false, shown as they are (seen coming from their tiles).
+    /// Opens: the cards fanned out from under the top, one after another —
+    /// or, `dealt` false, shown as they are.
     func present(dealt: Bool = true) {
         layoutSubtreeIfNeeded()
         guard dealt else { return reveal(selection) }
@@ -291,18 +269,21 @@ final class StackColumnView: NSView {
             ctx.duration = Motion.fast
             animator().alphaValue = 1
         }
+        // Fanned out from under the top card, each from where the one
+        // before it is, the nearest first.
         for (i, c) in cards.enumerated() {
             guard let l = c.layer else { continue }
+            l.zPosition = -CGFloat(i)
             let deal = CABasicAnimation(keyPath: "transform.translation.y")
-            deal.fromValue = Motion.distance(-CGFloat(i) * (SummaryCard.height + Self.gap) * 0.6)
+            deal.fromValue = Motion.distance(-CGFloat(i) * (c.frame.height + Self.gap))
             deal.toValue = 0
             let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = i == 0 ? 1 : 0
+            fade.fromValue = i == 0 ? 0.6 : 0
             fade.toValue = 1
             let g = CAAnimationGroup()
             g.animations = [deal, fade]
-            g.duration = Motion.spatial
-            g.beginTime = CACurrentMediaTime() + Double(i) * 0.025 * Motion.slowdown
+            g.duration = Motion.spatial * 1.25
+            g.beginTime = CACurrentMediaTime() + Double(i) * 0.03 * Motion.slowdown
             g.fillMode = .backwards
             g.timingFunction = Motion.travel
             l.add(g, forKey: "deal")
@@ -330,9 +311,6 @@ final class StackColumnView: NSView {
         document.scrollToVisible(cards[i].frame.insetBy(dx: 0, dy: -Self.margin))
     }
 
-    /// The cards themselves out of sight (their pictures on their way in).
-    var cardsShown = true { didSet { document.isHidden = !cardsShown } }
-
     /// Closes on `id` (the chosen card) at once: the grid carries pictures
     /// of the cards back to their tiles.
     func close(on id: PlacementID) {
@@ -342,6 +320,23 @@ final class StackColumnView: NSView {
             selection = i
             cards[i].chosen = true
         }
+    }
+
+    /// Closing: the cards not chosen fade, the chosen one staying for its
+    /// tile to come out of.
+    func fold() {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.base
+            ctx.timingFunction = Motion.disappear
+            for (i, c) in cards.enumerated() where i != selection { c.animator().alphaValue = 0 }
+        }
+    }
+
+    /// Where a card is, in `view`'s terms (what shows of it).
+    func cardFrame(_ id: PlacementID, in view: NSView) -> NSRect? {
+        guard let c = cards.first(where: { $0.content.id == id }) else { return nil }
+        let r = c.convert(c.bounds, to: view).intersection(convert(bounds, to: view))
+        return r.isEmpty ? nil : r
     }
 
     /// No views are held: nothing to give back.
