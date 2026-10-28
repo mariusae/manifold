@@ -175,12 +175,13 @@ final class MachinePanels: NSView {
     /// A panel's head: its name, a line under it, and its number at the right.
     /// Returns where what's under it begins.
     private func head(_ title: String, _ hero: String, detail: String?, in r: NSRect) -> CGFloat {
-        say(title.uppercased(), NSPoint(x: r.minX, y: r.minY + 1), font: .systemFont(ofSize: 10, weight: .semibold), color: Theme.secondaryText)
         let heroFont = NSFont.monospacedDigitSystemFont(ofSize: compact ? 13 : 16, weight: .medium)
+        let heroWidth = NSAttributedString(string: hero, attributes: [.font: heroFont]).size().width
+        // The name cut short before the number, in a narrow panel.
+        say(title.uppercased(), NSPoint(x: r.minX, y: r.minY + 1), font: .systemFont(ofSize: 10, weight: .semibold), color: Theme.secondaryText, width: max(0, r.width - heroWidth - 8))
         say(hero, NSPoint(x: r.maxX, y: r.minY - (compact ? 1 : 3)), font: heroFont, color: Theme.text, right: true)
         guard let detail, !compact else { return r.minY + (compact ? 18 : 20) }
-        let heroWidth = NSAttributedString(string: hero, attributes: [.font: heroFont]).size().width
-        say(detail, NSPoint(x: r.minX, y: r.minY + 15), font: .systemFont(ofSize: 10.5), color: Theme.tertiaryText, width: max(0, r.width - (heroWidth > r.width / 2 ? 0 : 0)))
+        say(detail, NSPoint(x: r.minX, y: r.minY + 15), font: .systemFont(ofSize: 10.5), color: Theme.tertiaryText, width: r.width)
         return r.minY + 34
     }
 
@@ -442,7 +443,7 @@ final class MachinePanels: NSView {
             let ring = NSBezierPath(roundedRect: c.rect.insetBy(dx: -1, dy: -1), xRadius: 3, yRadius: 3)
             ring.lineWidth = 1
             ring.stroke()
-            tip(["core \(c.core) · \(MachineWords.percent(s.cores[c.core]))"], at: NSPoint(x: c.rect.midX, y: c.rect.minY - 4))
+            tip(["core \(c.core) · \(MachineWords.percent(s.cores[c.core]))"], over: c.rect)
             return
         }
         guard let r = readables.first(where: { $0.rect.contains(h) }) else { return }
@@ -464,17 +465,23 @@ final class MachinePanels: NSView {
         guard let x else { return }
         Theme.secondaryText.withAlphaComponent(0.35).setFill()
         NSRect(x: x - 0.25, y: r.rect.minY, width: 0.5, height: r.rect.height).fill()
-        tip([MachineWords.ago(now - at)] + lines, at: NSPoint(x: x, y: r.rect.minY - 4))
+        tip([MachineWords.ago(now - at)] + lines, over: NSRect(x: x, y: r.rect.minY, width: 0, height: r.rect.height))
     }
 
-    /// A small label above a point, kept inside the view.
-    private func tip(_ lines: [String], at p: NSPoint) {
+    /// A small label above what it reads, else below it, else beside it
+    /// (a short chart has no room over or under), kept inside the view.
+    private func tip(_ lines: [String], over a: NSRect) {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
         let text = NSAttributedString(string: lines.joined(separator: "\n"), attributes: [.font: font, .foregroundColor: Theme.text])
         let size = text.size()
-        var box = NSRect(x: p.x - size.width / 2 - 7, y: p.y - size.height - 8, width: size.width + 14, height: size.height + 8)
+        var box = NSRect(x: a.midX - size.width / 2 - 7, y: a.minY - 4 - size.height - 8, width: size.width + 14, height: size.height + 8)
+        if box.minY < 2 { box.origin.y = a.maxY + 4 }
+        if box.maxY > bounds.height - 2 {
+            box.origin.x = a.maxX + 8 + box.width <= bounds.width - 2 ? a.maxX + 8 : a.minX - 8 - box.width
+            box.origin.y = a.minY
+        }
         box.origin.x = min(max(box.minX, 2), bounds.width - box.width - 2)
-        if box.minY < 2 { box.origin.y = p.y + 24 }
+        box.origin.y = min(max(box.minY, 2), bounds.height - box.height - 2)
         Theme.panel.setFill()
         let path = NSBezierPath(roundedRect: box, xRadius: Radius.control, yRadius: Radius.control)
         path.fill()
