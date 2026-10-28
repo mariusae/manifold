@@ -33,6 +33,10 @@ for t in x86_64 aarch64; do
   [ -f ".build/$t-swift-linux-musl/release/manifoldd" ] && cp ".build/$t-swift-linux-musl/release/manifoldd" "$app/Contents/Resources/servers/manifoldd-linux-$t"
 done
 cp Resources/Info.plist "$app/Contents/Info.plist"
+# The oldest macOS it says it runs on: 15.0, or MACOS_MIN's (26.0 as the
+# Dock may want, to draw its icon dark or tinted).
+min=${MACOS_MIN:-15.0}
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $min" "$app/Contents/Info.plist"
 mkdir -p "$app/Contents/Resources/AgentIcons"
 cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Resources/AgentIcons/"
 # Ghostty looks for terminfo next to its resources directory.
@@ -63,23 +67,18 @@ rm -f "$app/Contents/Resources/Assets.car"
 /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$app/Contents/Info.plist" >/dev/null 2>&1 || true
 # (absolute paths: actool's helper may not run where we are)
 if xcrun actool "$PWD/Resources/Icons/Manifold.icon" --compile "$(cd "$app/Contents/Resources" && pwd)" --app-icon Manifold \
-     --platform macosx --minimum-deployment-target 15.0 --output-partial-info-plist "$PWD/build/icon-partial.plist" >/dev/null 2>&1 \
+     --platform macosx --minimum-deployment-target "$min" --output-partial-info-plist "$PWD/build/icon-partial.plist" >/dev/null 2>&1 \
    && [ -f "$app/Contents/Resources/Assets.car" ]; then
   rm -f "$app/Contents/Resources/Manifold.icns"
   /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string Manifold" "$app/Contents/Info.plist"
 fi
-# The Finder and the Dock cache a bundle's icon by its path: the bundle
-# is touched and registered again so a new icon shows at the next launch.
-touch "$app"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
-
 # SwiftPM marks what it links as built with the SDK of its deployment
 # target (15.0), whichever it was built with, and macOS takes an app so
 # marked as one from before 26: its Dock tile the plain AppIcon.icns,
 # never the dark or tinted icon. The app is marked with the SDK it was
-# built with.
+# built with (and MACOS_MIN's oldest macOS, if that's set).
 sdk=$(xcrun --show-sdk-version 2>/dev/null || true)
-if [ -n "$sdk" ] && xcrun vtool -set-build-version macos 15.0 "$sdk" -replace -output build/Manifold.stamped "$app/Contents/MacOS/Manifold" >/dev/null 2>&1; then
+if [ -n "$sdk" ] && xcrun vtool -set-build-version macos "$min" "$sdk" -replace -output build/Manifold.stamped "$app/Contents/MacOS/Manifold" >/dev/null 2>&1; then
   mv build/Manifold.stamped "$app/Contents/MacOS/Manifold"
 fi
 
@@ -87,6 +86,11 @@ codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/mani" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/manifoldd-darwin-aarch64" >/dev/null 2>&1
 codesign --force --sign - "$app" >/dev/null 2>&1
+# The Finder and the Dock cache a bundle's icon by its path: the bundle,
+# finished, is touched and registered again so a new icon shows at the
+# next launch.
+touch "$app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
 echo "built $app"
 
 if [ "$1" = run ]; then

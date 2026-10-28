@@ -1467,7 +1467,8 @@ compiles it into the bundle. macOS 15, or a build without Xcode, has
 Composer opens the `.icon` to adjust it by eye. The app is marked as
 built with the SDK it was built with (SwiftPM marks it 15.0, its
 deployment target): an app marked older keeps its plain icon in the
-Dock, and AppKit's controls their pre-26 look.
+Dock, and AppKit's controls their pre-26 look. `MACOS_MIN=26.0` builds
+one that says it needs macOS 26 (its default, 15.0).
 
 `MANIFOLD_DIR` runs everything against another directory, for a second,
 throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one
