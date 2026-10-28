@@ -339,6 +339,12 @@ final class SelectionRowView: NSTableRowView {
     /// bottom on the last.
     struct Grouped: Equatable { var first: Bool; var last: Bool }
     var grouped: Grouped? { didSet { if grouped != oldValue { needsDisplay = true } } }
+    /// One of a run of rows on a panel of their own (a block and its
+    /// processes): a card's fill as wide as what's in view, its top
+    /// rounded on the first row, after `lead` of air, and its foot on the
+    /// last. `quiet`: a row there to be read, not chosen (no hover).
+    struct Panel: Equatable { var first = false; var last = false; var lead: CGFloat = 0; var quiet = false }
+    var panel: Panel? { didSet { if panel != oldValue { needsDisplay = true } } }
     private static let outlineColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28))
     /// Told as the pointer comes and goes (a row with a twin lights it).
     var onHover: ((Bool) -> Void)?
@@ -427,9 +433,10 @@ final class SelectionRowView: NSTableRowView {
             path.stroke()
             NSGraphicsContext.restoreGraphicsState()
         }
-        if hovered || echo, !isSelected, !isGroupRowStyle {
+        if let p = panel { drawPanel(p) }
+        if hovered || echo, !isSelected, !isGroupRowStyle, panel?.quiet != true {
             Flat.hovered.setFill()
-            Flat.rowBand(bounds).fill()
+            Flat.rowBand(band).fill()
         }
         guard marked else { return }
         Flat.mark.setFill()
@@ -439,6 +446,36 @@ final class SelectionRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
         Flat.chosen(emphasized: isEmphasized).setFill()
-        Flat.rowBand(bounds).fill()
+        Flat.rowBand(band).fill()
+    }
+
+    /// What's in view of it, across: a panel's rows are as wide as that,
+    /// whatever their columns run on to.
+    private var seen: NSRect {
+        guard panel != nil, let clip = enclosingScrollView?.contentView else { return bounds }
+        let r = convert(clip.bounds, from: clip)
+        return NSRect(x: max(bounds.minX, r.minX), y: bounds.minY, width: min(bounds.maxX, r.maxX) - max(bounds.minX, r.minX), height: bounds.height)
+    }
+
+    /// Where its hover and selection go: on a panel, inside it.
+    private var band: NSRect { panel == nil ? bounds : seen.insetBy(dx: 6, dy: 0) }
+
+    private func drawPanel(_ p: Panel) {
+        // Carried past the edges it runs on over, and cut there.
+        let reach = Radius.surface * 2
+        let (low, high) = isFlipped ? (p.first, p.last) : (p.last, p.first)
+        let minY = low ? bounds.minY + (isFlipped ? p.lead : 0) : bounds.minY - reach
+        let maxY = high ? bounds.maxY - (isFlipped ? 0 : p.lead) : bounds.maxY + reach
+        let s = seen
+        let r = NSRect(x: s.minX + 6, y: minY, width: max(0, s.width - 12), height: maxY - minY)
+        NSGraphicsContext.saveGraphicsState()
+        bounds.clip()
+        let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.25, dy: 0.25), xRadius: Radius.surface, yRadius: Radius.surface)
+        SummaryCard.fill.setFill()
+        path.fill()
+        EdgeColor.subtle.setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }

@@ -840,8 +840,10 @@ running; a process list (sort, filter, select many, signal); an agent's transcri
 its tool calls folded.
 
 The process lens has two modes. **Blocks** lists the trees under the
-host's terminals and agents (`ps`, from their shells), each under its
-block's summary card (§3.1), what it's doing beside what runs. **Machine** is the
+host's terminals and agents (`ps`, from their shells), each block on a
+panel of its own, air between them: its summary card (§3.1) at the top,
+what it's doing beside what runs, and its processes on it, set in under
+the card's words. **Machine** is the
 whole machine, as btop shows it but drawn: CPU (busy and the kernel's
 part over five minutes, each core a cell deeper the busier, load, the
 processor and uptime), memory (used, cached and free as one bar, swap,
