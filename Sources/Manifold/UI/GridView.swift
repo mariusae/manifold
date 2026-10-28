@@ -2281,6 +2281,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private func showRest(_ shown: Shown, stashed: Bool, focused: Bool) {
         if close.isHidden != stashed { close.isHidden = stashed }
         let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
+        if glyph.block != shown.block?.id { glyph.block = shown.block?.id }
         if glyph.look != look { glyph.look = look }
         if glyph.isHidden != (look == nil) { glyph.isHidden = look == nil }
         let tip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)

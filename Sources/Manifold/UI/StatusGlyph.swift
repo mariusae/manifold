@@ -25,13 +25,65 @@ final class StatusGlyph: NSView {
         /// A host another Manifold took over (§8.2): this one watches,
         /// what's done here not taking until Take Over. An eye.
         case watching
+
+        var isFinished: Bool { switch self { case .done, .failed: true; default: false } }
     }
 
     var look: Look? {
         didSet {
             if look != oldValue { needsDisplay = true }
             updateTurning()
+            settleIfJustFinished()
         }
+    }
+
+    /// Just finished — running, then done or failed (not a glyph made
+    /// afresh as done): it lands, a little larger, then its size, as a
+    /// thing put down settles (it only fades in, with Reduce motion).
+    /// The block it shows, where it's one's: a glyph is made afresh as
+    /// often as it's kept (a row reloaded), so what just finished is
+    /// known by the block, not by the glyph's last look.
+    var block: BlockID? { didSet { if block != oldValue { settleIfJustFinished() } } }
+    /// When each block was last seen to finish: running, then done or failed.
+    private static var finishedAt: [BlockID: Date] = [:]
+    private static var lastLook: [BlockID: Look] = [:]
+    private var settledFor: Date?
+    private func settleIfJustFinished() {
+        guard look?.isFinished == true, let b = block, let at = Self.finishedAt[b], Date().timeIntervalSince(at) < 1.5, settledFor != at else { return }
+        settledFor = at
+        settle()
+    }
+    /// A block's look, seen: noted if it's just finished.
+    private static func seen(_ look: Look?, of b: BlockID) -> Look? {
+        if look?.isFinished == true, case .working = lastLook[b] { finishedAt[b] = Date() }
+        lastLook[b] = look
+        return look
+    }
+
+    /// Debugging: how many have settled.
+    static var settled = 0
+    private func settle() {
+        Self.settled += 1
+        wantsLayer = true
+        guard let l = layer, window != nil else { return }
+        if Motion.reduced {
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0.2
+            a.toValue = 1
+            a.duration = Motion.base
+            l.add(a, forKey: "settle")
+            return
+        }
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        var big = CATransform3DMakeTranslation(c.x, c.y, 0)
+        big = CATransform3DScale(big, 1.45, 1.45, 1)
+        big = CATransform3DTranslate(big, -c.x, -c.y, 0)
+        let a = CABasicAnimation(keyPath: "transform")
+        a.fromValue = big
+        a.toValue = CATransform3DIdentity
+        a.duration = Motion.spatial * 1.5
+        a.timingFunction = Motion.settle
+        l.add(a, forKey: "settle")
     }
 
     static let size: CGFloat = 13
@@ -46,6 +98,9 @@ final class StatusGlyph: NSView {
     /// ended for idleness, inactive; else nothing.
     static func look(of block: Block?) -> Look? {
         guard let block else { return nil }
+        return seen(plainLook(of: block), of: block.id)
+    }
+    private static func plainLook(of block: Block) -> Look? {
         if let r = block.statusRecord {
             switch r.state {
             case .idle: break

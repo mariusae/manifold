@@ -944,6 +944,7 @@ final class OrgRowView: NSTableCellView {
         }
         icon.isHidden = false
         name.isHidden = false
+        glyph.block = node.block
         glyph.look = node.look
         glyph.isHidden = node.look == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil

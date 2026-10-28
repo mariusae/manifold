@@ -100,6 +100,9 @@ enum DebugControl {
             if w.count == 2, w[0] == "slow", let n = Double(w[1]) { Motion.slowdown = max(0.01, n) }
             if w.count == 2, w[0] == "reduced" { Motion.forceReduced = w[1] == "on" }
             return "slowdown=\(Motion.slowdown) reduced=\(Motion.reduced)"
+        case "settled":
+            // How many status glyphs have settled (a block just finished).
+            return "\(StatusGlyph.settled)"
         case "travel":
             // The sidebar's band going from space to space, if it is.
             return wc?.debugOrganization.debugTraveller ?? "no window"
