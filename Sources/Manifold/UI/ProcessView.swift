@@ -57,6 +57,10 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     var blockCard: (BlockID) -> SummaryCardContent? = { _ in nil }
     /// Each heading's card, as read at the last listing.
     private var cards: [BlockID: SummaryCardContent] = [:]
+    /// How many of its lines each card shows: all it has (three at most)
+    /// where every block and its processes fit in view, fewer where they
+    /// wouldn't, down to its title alone.
+    private var cardLines = 3
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -190,6 +194,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         }
         let wider = scroll.frame.width != w
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
+        if fitCards() { reloadKeeping() }
         // The panels and cards are as wide as what's in view, not the
         // table: redrawn as that changes.
         if wider {
@@ -386,10 +391,9 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             }
             rows.append(.foot(b))
         }
-        let keep = selectedPIDs
         shown = rows
-        table.reloadData()
-        select(Set(keep))
+        fitCards()
+        reloadKeeping()
         let listed = q.isEmpty ? "\(all.count) processes under \(seen.count) block\(seen.count == 1 ? "" : "s")" : "\(count) of \(all.count)"
         status.stringValue = listed
         selectionChanged()
@@ -580,7 +584,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             }
         }
         let m = machine.map { "cores=\($0.cores.count) cpu=\(MachineWords.percent($0.now.cpu)) mem=\(MachineWords.percent($0.memory.usedFraction)) disks=\($0.disks.map(\.mount)) procs=\($0.processCount) history=\(panels.history.count)" } ?? "no sample"
-        return "mode=\(mode.rawValue) \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height))\n" + rows.joined(separator: "\n")
+        return "mode=\(mode.rawValue) \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height)) card-lines=\(cardLines)\n" + rows.joined(separator: "\n")
     }
     /// Each block on a panel of its own: its card at the top, its
     /// processes on it, a foot closing it.
@@ -598,19 +602,48 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// A heading spans the row: its block's card.
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { shown[row].isGroup }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { height(of: row, lines: cardLines) }
+
+    private func height(of row: Int, lines: Int) -> CGFloat {
         let lead = row == 0 ? Self.firstGap : Self.gap
         switch shown[row] {
-        case let .group(b): return lead + (cards[b].map { SummaryCard.height(for: $0) } ?? Self.blockRowHeight + 6)
+        case let .group(b): return lead + (card(b, lines: lines).map { SummaryCard.height(for: $0) } ?? Self.blockRowHeight + 6)
         case .process: return Self.blockRowHeight
         case .foot: return Self.foot
         case .machine: return Self.rowHeight
         }
     }
 
+    /// A block's card, showing `lines` of its lines at most.
+    private func card(_ b: BlockID, lines: Int) -> SummaryCardContent? {
+        guard var c = cards[b] else { return nil }
+        c.summary.lines = Array(c.summary.lines.prefix(lines))
+        return c
+    }
+
+    /// The cards as full as lets everything fit in view (or as short as
+    /// they go); whether that changed.
+    @discardableResult
+    private func fitCards() -> Bool {
+        guard mode == .blocks, !shown.isEmpty else { return false }
+        let room = scroll.frame.height - (table.headerView?.frame.height ?? 0)
+        guard room > 0 else { return false }
+        let fit = (0...3).reversed().first { n in shown.indices.reduce(0) { $0 + height(of: $1, lines: n) } <= room } ?? 0
+        guard fit != cardLines else { return false }
+        cardLines = fit
+        return true
+    }
+
+    /// The rows again, what was selected still.
+    private func reloadKeeping() {
+        let keep = selectedPIDs
+        table.reloadData()
+        select(Set(keep))
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if case .foot = shown[row] { return nil }
-        if case let .group(b) = shown[row], let content = cards[b] {
+        if case let .group(b) = shown[row], let content = card(b, lines: cardLines) {
             let v = tableView.makeView(withIdentifier: .init("card"), owner: nil) as? SummaryCardRow ?? SummaryCardRow(content)
             v.identifier = .init("card")
             v.card.content = content

@@ -1107,8 +1107,9 @@ around it, and comes back with its history.
   `mani skill uninstall` takes them out.
 - **Processes** (File ▸ New Processes, or `mani new process`) is a block per host listing what `ps`
   sees, again every few seconds while shown, each block on a panel of
-  its own: its summary card (a click on it goes there), its processes
-  under it as a tree:
+  its own: its summary card (a click on it goes there; its lines cut to
+  one, or its title alone, where they wouldn't all fit in the tile), its
+  processes under it as a tree:
   filter, sort by column, select any number (⇧, ⌘, ⌘A) and End them
   (SIGTERM; ⌫) or Force End them (SIGKILL; ⌥⌫, after asking), from the
   buttons or a row's menu, which also goes to the row's block. Its
