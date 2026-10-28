@@ -260,7 +260,7 @@ are in the data now and only want indexing:
 | **placed in** (spatial, present) | space → block | the space's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
-| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each space seen (not those ⌘` only passes, whose order is the window's own spaces settled on first, then the trail's) — the one history, which back and forward walk and ⌃⇥ orders by |
+| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each space seen (not those a switcher only passes, whose order is the window's own places settled on first, then the trail's) — the one history, which back and forward walk and each switcher walks at its own scale (below) |
 | **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 
@@ -288,14 +288,25 @@ destination:
    across tiles and spaces — derived from the log, so it survives
    restarts and crosses hosts; ⌘[ ⌘] walk a tile's own, where it goes on
    in place (a page, a preview, a listing).
-3. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
+3. **The switchers are the trail at three scales**, as ⌘⇥ and ⌘` are
+   the Mac's at two: ⌘` walks its spaces, ⌥⇥ its tiles in every space,
+   ⌃⇥ one stack's (whose order is the trail's already, the tile settled
+   on brought to its top). Each walks while its modifier is held and
+   settles where it's let go, so a tap goes back and forth between two;
+   only what's settled on goes on the trail, and settling on a tile
+   settles its space. Back and forward are the other reading of the same
+   history: a stack of every place, within blocks too, walked a step at
+   a time, a tap going further back rather than back and forth. What
+   the window settled on comes first, ahead of the hosts' trail, so a
+   switch doesn't wait on a host to hear of it.
+4. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
    is found. With nothing typed, the focused block's neighborhood,
    nearest first; typed, what the query names best first — its title,
    its place, its summary — and among equals the nearest to where you
    are over the graph's edges, strong and weak alike. What was closed
    and not yet collected comes last, marked *recent*: choosing it brings
    it back.
-4. **Summaries** are how a node renders small: a few lines saying what's
+5. **Summaries** are how a node renders small: a few lines saying what's
    worth knowing of it at a glance — a terminal its last command and how
    it ended, a note its first lines, a diff its files and lines changed
    (`BlockSummary`, from its state alone, so a block off screen or on
@@ -304,15 +315,15 @@ destination:
    rested on, Overview past ten blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
    never the live view. With a stamp, a summary could show the node *as
    it was then*, which Prism cannot.
-5. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
+6. **Time is a dimension of every query.** `neighbors(of:kinds:at:)`
    takes a stamp — who opened it *then*. A map lens of nodes and edges
    is possible and comes last.
-6. **Slices edited where they are.** A search hit's line, a link's
+7. **Slices edited where they are.** A search hit's line, a link's
    context line, the new side of a diff: each a byte range of a text
    block, each an editor whose typing is an `.edit` entry on the block
    (Prism's `TaskEditor` writing a task back to its note). Same undo,
    same history.
-7. **Pictures.** A snapshot of each placement when it goes behind
+8. **Pictures.** A snapshot of each placement when it goes behind
    another, cached by placement id outside the logs (as Prism keeps them
    in app state, never in the notes): what the hover cards show.
 
@@ -1509,6 +1520,10 @@ purpose — set down so a later audit reads them as choices, not slips.
   windows.
 - **⌃⇥ walks a stack** as a browser's tabs, in every view, a terminal's
   too; a quick release switches without showing cards, as ⌘⇥ does.
+- **⌥⇥ walks the trail's tiles,** across spaces, as ⌘` walks its
+  spaces: free on the Mac, and taken from a terminal as ⌃⇥ is (Meta-Tab,
+  with Option as Meta). ⌃\` was the other choice, but a terminal's ⌃\` is
+  NUL (Emacs's set-mark), and ⌥\` is the grave accent's dead key.
 - **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-
   stays readline's and Emacs's undo; the mouse's back and forward buttons
   work there. **⌘[ ⌘]** are a tile's own history.

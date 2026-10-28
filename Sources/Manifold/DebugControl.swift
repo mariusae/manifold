@@ -372,6 +372,9 @@ enum DebugControl {
             return wc?.debugFlights ?? "no window"
         case "walk":
             return wc?.debugWalk(arg) ?? "no window"
+        case "tilewalk":
+            // ⌥⇥: "tilewalk step|back|show|end|escape|pick <n>|order".
+            return wc?.debugTileWalk(arg) ?? "no window"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"

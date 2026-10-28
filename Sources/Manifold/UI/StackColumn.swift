@@ -246,6 +246,9 @@ final class StackColumnView: NSView {
     /// The tile that was the stack's top: the first card.
     var topID: PlacementID { cards[0].content.id }
 
+    /// As tall as `count` cards in a column want.
+    static func height(for count: Int) -> CGFloat { margin * 2 + CGFloat(count) * (SummaryCard.height + gap) - gap }
+
     override func layout() {
         super.layout()
         scroll.frame = bounds

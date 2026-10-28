@@ -238,6 +238,23 @@ parts from the Mac's conventions on purpose.
   gone to, and fades there. A file or
   folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
+- **⌥⇥** walks the same trail tile by tile, in every space: the
+  tiles most recently settled on first. Let go quickly and it goes to
+  the one before, so a tap goes back and forth between two (⌥⇧⇥, the
+  farthest); held a moment, the tiles come as a column of their summary
+  cards over the space — the focused tile becoming the first, the rest
+  coming out of their tiles here, their stacks' sheets, or from under
+  it, each one elsewhere naming its space — each ⇥ a card further, and
+  letting go goes to the one chosen: its space comes in if it's another,
+  its card becomes its tile there, and the rest go back to their tiles
+  and sheets (Escape, or a click away, leaves things be; a card clicked
+  goes there). Tiles only passed on the way don't count as gone to, and
+  one settled on settles its space for ⌘\` too: the switchers are one
+  trail at three scales — ⌘\` its spaces, ⌥⇥ its tiles, ⌃⇥ a stack's
+  (whose order is the trail's, the tile settled on brought to its top).
+  Back (⌃-) is the other way over it: a stack of every place, within
+  blocks too, walked one step at a time. ⌥⇥ is taken from a terminal
+  too, as ⌃⇥ is (Meta-Tab, with Option as Meta).
 - Drag a tile by its bar: between two tiles to put it there, near a
   column's side for a new column there, onto a space in the
   sidebar for its active column, or between spaces for one of

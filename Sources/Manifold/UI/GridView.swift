@@ -968,7 +968,7 @@ final class GridView: NSView, NSDraggingSource {
         if let m = pendingArrival {
             if Date().timeIntervalSince(m.at) > 1 { land() } else if frameNow[m.id].map({ $0.height > 0 }) == true, !isStashed(m.id) {
                 pendingArrival = nil
-                arrive(m.id, card: m.card, from: m.from)
+                arrive(m.id, card: m.card, from: m.from, in: m.host)
             }
         }
     }
@@ -1132,6 +1132,16 @@ final class GridView: NSView, NSDraggingSource {
         for t in columns.flatMap({ $0 }) {
             guard let b = t.shown.block?.id, out[b] == nil, let body = shownBody(t) else { continue }
             out[b] = pictured(body, pills[t.shown.id])
+        }
+        return out
+    }
+
+    /// Each tile in view, by its placement, as `tileParts` has them.
+    func placedParts() -> [PlacementID: Pictured] {
+        var out: [PlacementID: Pictured] = [:]
+        for t in columns.flatMap({ $0 }) {
+            guard let body = shownBody(t) else { continue }
+            out[t.shown.id] = pictured(body, pills[t.shown.id])
         }
         return out
     }
@@ -1827,7 +1837,9 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: each picture on its way, where it is this moment, and
     /// what it holds (each's scale and opacity).
-    var debugFlights: String {
+    var debugFlights: String { Self.describe(flying) }
+
+    static func describe(_ flying: [CALayer]) -> String {
         flying.compactMap { l in
             guard l.superlayer != nil else { return nil }
             let p = l.presentation() ?? l
@@ -1870,19 +1882,22 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile chosen in the switcher, waiting to be laid out where it goes,
     /// and its card as it was, where it was: it becomes its tile from there.
-    private var pendingArrival: (id: PlacementID, card: Pictured?, from: NSRect, at: Date)?
+    /// `host`: where the card is and becomes it (its terms), if not here —
+    /// over a space sliding in, the place it slides to.
+    private var pendingArrival: (id: PlacementID, card: Pictured?, from: NSRect, at: Date, host: NSView?)?
 
     /// The tile chosen is laid out: its card becomes it, and the stack's
     /// tiles show again once it's there.
-    private func arrive(_ id: PlacementID, card: Pictured?, from r: NSRect) {
-        guard let t = tile(id), let host = layer else { return land() }
+    private func arrive(_ id: PlacementID, card: Pictured?, from r: NSRect, in over: NSView? = nil) {
+        guard let t = tile(id), let host = (over ?? self).layer else { return land() }
         // Drawn as it'll be first: it was out of sight till now.
         let body = shownBody(t) ?? t.view
         body.layoutSubtreeIfNeeded()
         body.displayIfNeeded()
         let shown = pictured(body, pills[id])
+        let to = over.map { convert(shown.whole, to: $0) } ?? shown.whole
         let held = flying.filter { $0.name == "waiting" }
-        flying += Self.morph([Morph(from: r, to: shown.whole, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
+        flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
             guard let self else { return }
             self.unseen.forEach { $0.alphaValue = 1 }
             self.unseen = []
@@ -1938,24 +1953,12 @@ final class GridView: NSView, NSDraggingSource {
         var items: [Morph] = []
         var level = 0
         let at = Date()
-        pendingArrival = (chosen, nil, tileRect, at)
+        pendingArrival = (chosen, nil, tileRect, at, nil)
         for c in cards where c.frame != .zero {
             let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if c.id == chosen {
-                pendingArrival = (chosen, card, c.frame, at)
-                if let host = layer {
-                    let w = CALayer()
-                    w.name = "waiting"
-                    w.contents = c.picture
-                    w.backgroundColor = c.ground
-                    w.frame = c.frame
-                    w.cornerRadius = Radius.surface
-                    w.cornerCurve = .continuous
-                    w.masksToBounds = true
-                    w.zPosition = 40
-                    host.addSublayer(w)
-                    flying.append(w)
-                }
+                pendingArrival = (chosen, card, c.frame, at, nil)
+                hold(c.picture, ground: c.ground, at: c.frame, in: self)
             } else {
                 level += 1
                 items.append(Morph(from: c.frame, to: Self.sheetRect(above: bar, level: level), leaving: card, delay: Double(level - 1) * 0.02))
@@ -1983,6 +1986,42 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
         if chosen != top { delegate?.gridSwap(chosen) }
         if let out, out != top { delegate?.gridUnstash(out) }
+    }
+
+    /// A card held where it is till its tile is laid out.
+    private func hold(_ picture: CGImage?, ground: CGColor, at r: NSRect, in view: NSView) {
+        guard let host = view.layer else { return }
+        let w = CALayer()
+        w.name = "waiting"
+        w.contents = picture
+        w.backgroundColor = ground
+        w.frame = r
+        w.cornerRadius = Radius.surface
+        w.cornerCurve = .continuous
+        w.masksToBounds = true
+        w.zPosition = 40
+        host.addSublayer(w)
+        flying.append(w)
+    }
+
+    /// A card chosen elsewhere (⌥⇥'s), where it is in `view`'s terms,
+    /// becoming tile `id` once the tile's laid out where it goes — the tile
+    /// out of sight till then (a second at most).
+    func becomeTile(_ id: PlacementID, from card: GridView.Pictured, picture: CGImage?, at r: NSRect, in view: NSView) {
+        land()
+        let at = Date()
+        hold(picture, ground: card.ground ?? .clear, at: r, in: view)
+        pendingArrival = (id, card, r, at, view)
+        // Its focus ring with it: waiting for its tile.
+        for v in [tile(id)?.view, pills[id], tileSummaries[id], id == focused ? focusRing : nil].compactMap({ $0 }) {
+            v.alphaValue = 0
+            unseen.append(v)
+        }
+        needsLayout = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.pendingArrival?.at == at else { return }
+            self.land()
+        }
     }
 
     private func tile(_ id: PlacementID) -> Tile? { columns.flatMap { $0 }.first { $0.shown.id == id } }

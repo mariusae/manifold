@@ -416,6 +416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // with one, the windows).
         item(go, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
         item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
+        // ⌥⇥: the same trail, tile by tile, in every space.
+        item(go, "Switch to Recent Tile", #selector(MainWindowController.walkTiles(_:)), "\t", [.option])
+        item(go, "Switch to Recent Tile, Backward", #selector(MainWindowController.walkTilesBack(_:)), "\t", [.option, .shift])
         for n in 1...9 {
             item(go, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
