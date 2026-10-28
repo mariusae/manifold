@@ -1342,10 +1342,23 @@ final class GridView: NSView, NSDraggingSource {
             let leaving = m.leaving.map(hang)
             // What it becomes over what it was, coming in on the way; what
             // it was going once that's there.
-            if let coming = m.coming.map(hang), leaving != nil {
+            let coming = m.coming.map(hang)
+            if let coming, let leaving {
                 fade(coming, [0, 0, 1], [0, 0.2, 0.75], delay: m.delay)
-                fade(leaving!, [1, 1, 0], [0, 0.75, 1], delay: m.delay)
-                leaving!.opacity = 0
+                fade(leaving, [1, 1, 0], [0, 0.75, 1], delay: m.delay)
+                leaving.opacity = 0
+            } else if let coming, from.height < 30 {
+                // Out of a sheet's edge: what it says only once there's
+                // room for it, not cut to a sliver of its top line.
+                fade(coming, [0, 0, 1], [0, 0.1, 0.35], delay: m.delay)
+                // Its ground over the sheet only as it leaves it.
+                fade(c, [0, 1], [0, 0.12], delay: m.delay)
+            } else if let leaving, m.to.height < 30 {
+                // Into one: gone before it's a sliver, the real sheet left.
+                fade(leaving, [1, 1, 0], [0, 0.6, 0.85], delay: m.delay)
+                leaving.opacity = 0
+                fade(c, [1, 1, 0], [0, 0.8, 1], delay: m.delay)
+                c.opacity = 0
             }
         }
         CATransaction.commit()
@@ -1954,7 +1967,8 @@ final class GridView: NSView, NSDraggingSource {
             if i == 0 {
                 items.append(Morph(from: whole, to: c.frame, leaving: tile, coming: card, z: 10, shrink: Self.cardShrink))
             } else {
-                items.append(Morph(from: Self.sheetRect(above: bar, level: i), to: c.frame, coming: card, delay: 0.1 + Double(i - 1) * 0.04, z: -CGFloat(i)))
+                // Over the first, so it's seen coming out all the way.
+                items.append(Morph(from: Self.sheetRect(above: bar, level: i), to: c.frame, coming: card, delay: 0.14 + Double(i - 1) * 0.04, z: 20 - CGFloat(i)))
             }
         }
         guard !items.isEmpty else { return }
@@ -2079,7 +2093,7 @@ final class GridView: NSView, NSDraggingSource {
             }
             level += 1
             guard c.frame != .zero else { continue }
-            items.append(Morph(from: c.frame, to: Self.sheetRect(above: bar, level: level), leaving: card, delay: Double(level - 1) * 0.03, z: -CGFloat(level)))
+            items.append(Morph(from: c.frame, to: Self.sheetRect(above: bar, level: level), leaving: card, delay: Double(level - 1) * 0.03, z: 20 - CGFloat(level)))
         }
         // Kept where they end till the chosen tile's landed over them.
         if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5, keeping: true) }
