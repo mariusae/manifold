@@ -1577,13 +1577,11 @@ purpose — set down so a later audit reads them as choices, not slips.
   place, one summarized crosses over to its card; a tile becoming its
   card (⌃⇥, Overview) is one shape going from the one's place and size
   to the other's, what it shows scaled to its width from its top (cut,
-  never stretched) and changing on the way — fitted whole instead, for
-  a card about as wide as its tile (⌃⇥'s, ⌥⇥'s), so the tile is seen to
-  shrink into it rather than be cut off from below, and a tile in a stack comes
-  out of its sheet and goes back into it — ⌃⇥ spreading the stack as a
-  pile, each tile behind as big as the top and becoming its card as the
-  one in front uncovers it (its last picture, or its card where it's had
-  none since the app began) — nothing just fades in; the
+  never stretched) and changing on the way — shrinking to some 60% of
+  that, for a card about as wide as its tile (⌃⇥'s, ⌥⇥'s), so the tile
+  is seen to shrink into it rather than only be cut off from below, and a tile in a stack comes
+  out of its sheet and goes back into it — ⌃⇥'s once the top has become
+  its card and the way is clear, one after another — nothing just fades in; the
   next ⌃⇥ puts away whatever's still on its way. Layout is done once, where things end, and only layers travel —
   a terminal resized once, not at every step. Focus, typing, a divider
   dragged and the palettes don't move at all.
