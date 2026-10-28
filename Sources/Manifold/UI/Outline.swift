@@ -22,7 +22,7 @@ final class Outline {
 
     private(set) var items: [Item] = []
     /// The item you're at: the last that begins at or above the top of
-    /// what shows.
+    /// what shows (a terminal's, the last command whose output shows).
     var current: Int? {
         didSet { if current != oldValue { changed() } }
     }

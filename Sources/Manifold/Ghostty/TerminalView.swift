@@ -443,17 +443,18 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         markCurrentCommand()
     }
 
-    /// The last command at or above the top of what shows — an agent's,
-    /// its last turn: its TUI is always there (its turns have no rows to
-    /// be above or below).
+    /// The last command whose output shows: the last whose line is above
+    /// the bottom row of what shows (a command on the bottom row alone has
+    /// none showing yet) — an agent's, its last turn: its TUI is always
+    /// there (its turns have no rows to be above or below).
     private func markCurrentCommand() {
-        let top = scrollbar.offset + 1
+        let bottom = scrollbar.offset + max(scrollbar.len, 1) - 1
         let commands = outlined
         if isAgent, !turns.isEmpty {
             commandsOutline.current = commands.isEmpty ? nil : commands.count - 1
             return
         }
-        commandsOutline.current = commands.lastIndex { (located[$0.id] ?? Int.max) <= top } ?? (commands.isEmpty ? nil : 0)
+        commandsOutline.current = commands.lastIndex { (located[$0.id] ?? Int.max) < bottom } ?? (commands.isEmpty ? nil : 0)
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }

@@ -755,7 +755,8 @@ around it, and comes back with its history.
   agent's turns —
   shows it as a few short ticks at its content's upper right (five at
   most, however long the outline), the one nearest where you are longer
-  and darker; they take no room of their own. Rest the pointer on them
+  and darker (in a terminal, the last command whose output shows, so it
+  follows the scrolling); they take no room of their own. Rest the pointer on them
   and the whole outline opens over them, indented by level, where you are
   marked: click an item to go there, or its ⋯ (or right-click it) for what
   else it can do — copy a link to a heading or a page, a turn's changes,
