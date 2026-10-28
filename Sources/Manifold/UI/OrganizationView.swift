@@ -456,6 +456,21 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return nil
     }
 
+    /// A tile's row (its space's, the space folded), in `view`'s terms —
+    /// if it's in sight: the sidebar shown and the row not scrolled away.
+    func row(of placement: PlacementID, in space: BlockID, in view: NSView) -> NSRect? {
+        guard window != nil, !isHiddenOrHasHiddenAncestor else { return nil }
+        var found: NSRect?
+        for r in 0..<outline.numberOfRows {
+            guard let n = outline.item(atRow: r) as? OrgNode else { continue }
+            if n.placement == placement, n.arrangement == nil || n.arrangement == space { found = outline.rect(ofRow: r); break }
+            if found == nil, n.style == .section, n.arrangement == space { found = outline.rect(ofRow: r) }
+        }
+        guard let r = found, scroll.contentView.documentVisibleRect.intersects(r) else { return nil }
+        let shown = view.convert(r, from: outline)
+        return view.bounds.intersects(shown) ? shown : nil
+    }
+
     /// Going from one space to another: a band in the tint glides from the
     /// one's row to the other's, as the window's grids slide past, and
     /// fades there — where you've gone, in the list you went by. With less

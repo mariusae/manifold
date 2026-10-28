@@ -84,8 +84,8 @@ parts from the Mac's conventions on purpose.
   chosen is ringed. With ⌃⇥, each ⇥ moves the choice a card down (⌃⇧⇥
   back up), and letting go of control brings it to the top (Escape leaves
   things be; ⌃⇥ is the stack's in every tile, a terminal's too, so
-  tmux and Emacs don't get it) — and as with ⌘⇥, a ⌃⇥ let go quickly (within a fifth of a
-  second, about when macOS's switcher would appear) goes to the tile
+  tmux and Emacs don't get it) — and as with ⌘⇥, a ⌃⇥ let go quickly (within some 150 ms,
+  a touch before macOS's switcher would appear; ⌥⇥ the same) goes to the tile
   behind with no cards shown at all (⌃⇧⇥, the farthest), the cards
   coming only for a ⌃⇥ held; move the pointer over the cards and the card under it is
   chosen from then on, a click bringing it to the top and a ⌘-click
@@ -243,11 +243,11 @@ parts from the Mac's conventions on purpose.
   the one before, so a tap goes back and forth between two (⌥⇧⇥, the
   farthest); held a moment, the tiles come as a column of their summary
   cards over the space — the focused tile becoming the first, the rest
-  coming out of their tiles here, their stacks' sheets, or from under
-  it, each one elsewhere naming its space — each ⇥ a card further, and
-  letting go goes to the one chosen: its space comes in if it's another,
-  its card becomes its tile there, and the rest go back to their tiles
-  and sheets (Escape, or a click away, leaves things be; a card clicked
+  coming out of their tiles here, their stacks' sheets, or — in another
+  space — their rows in the sidebar, each one elsewhere naming its
+  space — each ⇥ a card further, and letting go goes to the one chosen:
+  its space comes in if it's another, its card becomes its tile there,
+  and the rest go back to their tiles, sheets and rows (Escape, or a click away, leaves things be; a card clicked
   goes there). Tiles only passed on the way don't count as gone to, and
   one settled on settles its space for ⌘\` too: the switchers are one
   trail at three scales — ⌘\` its spaces, ⌥⇥ its tiles, ⌃⇥ a stack's

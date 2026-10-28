@@ -2758,6 +2758,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if let sheet = sheets[c.id] {
                 // Back into its sheet, here.
                 items.append(GridView.Morph(from: c.frame, to: sheet, leaving: card))
+            } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
+                      let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
+                // In another space: back into its row in the sidebar.
+                items.append(GridView.Morph(from: c.frame, to: row, leaving: card))
             } else {
                 // Its tile's in another space: gone, sinking a little.
                 let l = CALayer()
@@ -2868,6 +2872,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if let sheet = sheets[c.id] {
                 // Pulled out of its stack's sheet.
                 items.append(GridView.Morph(from: sheet, to: c.frame, coming: card, delay: Double(i) * 0.03))
+            } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
+                      let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
+                // In another space: out of its row in the sidebar.
+                items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: Double(i) * 0.03))
             } else {
                 // Elsewhere: out from under the first.
                 items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: Double(i) * 0.03))
@@ -2985,7 +2993,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem)?
     /// How long ⌃⇥ is held before the cards show — as ⌘⇥'s switcher waits
     /// before it appears (some 200 ms; Apple doesn't say).
-    static let switcherDelay: TimeInterval = 0.2
+    static let switcherDelay: TimeInterval = 0.15
 
     /// Held past the wait: the cards, at the step reached.
     private func showQuickWalk() {

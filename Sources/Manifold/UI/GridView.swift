@@ -1347,7 +1347,7 @@ final class GridView: NSView, NSDraggingSource {
                 fade(coming, [0, 0, 1], [0, 0.2, 0.75], delay: m.delay)
                 fade(leaving, [1, 1, 0], [0, 0.75, 1], delay: m.delay)
                 leaving.opacity = 0
-            } else if let coming, from.height < 30 {
+            } else if let coming, from.height < 22 {
                 // Out of a sheet's edge: what it says only once there's
                 // room for it, not cut to a sliver of its top line.
                 fade(coming, [0, 0, 1], [0, 0.1, 0.35], delay: m.delay)
