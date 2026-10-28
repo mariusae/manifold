@@ -1292,11 +1292,13 @@ final class GridView: NSView, NSDraggingSource {
     /// Morphs over `host` (its terms, y up), the pictures taken away once
     /// they're there. Only cross-fading where they end, with Reduce motion.
     @discardableResult
-    static func morph(_ items: [Morph], in host: CALayer, over d: Double, done: @escaping () -> Void = {}) -> [CALayer] {
+    /// `keeping`: left where they end, for the caller to take away (what
+    /// waits on something else to land over it).
+    static func morph(_ items: [Morph], in host: CALayer, over d: Double, keeping: Bool = false, done: @escaping () -> Void = {}) -> [CALayer] {
         var made: [CALayer] = []
         CATransaction.begin()
         CATransaction.setCompletionBlock {
-            made.forEach { $0.removeFromSuperlayer() }
+            if !keeping { made.forEach { $0.removeFromSuperlayer() } }
             done()
         }
         let now = CACurrentMediaTime()
@@ -1333,6 +1335,11 @@ final class GridView: NSView, NSDraggingSource {
             made.append(c)
             animate(c, "position", CGPoint(x: from.midX, y: from.midY), CGPoint(x: m.to.midX, y: m.to.midY), delay: m.delay)
             animate(c, "bounds.size", from.size, m.to.size, delay: m.delay)
+            // Opaque all over, what it shows not reaching every edge (a
+            // tile fitted into its card): nothing behind seen through it.
+            let grounds = [m.leaving?.ground, m.coming?.ground].compactMap { $0 }
+            c.backgroundColor = grounds.last
+            if grounds.count == 2 { animate(c, "backgroundColor", grounds[0], grounds[1], delay: m.delay) }
             // Each picture hung from the shape's top left, as wide as it.
             func hang(_ p: Pictured) -> CALayer {
                 let r = p.whole
@@ -1972,9 +1979,8 @@ final class GridView: NSView, NSDraggingSource {
             if i == 0 {
                 items.append(Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, z: 10, fit: true))
             } else if pile.indices.contains(i - 1) {
-                // Each a little after the one in front of it has uncovered it.
                 let under = pile[i - 1]
-                items.append(Morph(from: under.rect, to: c.frame, leaving: under.picture, coming: card, delay: Double(i) * 0.07, z: -CGFloat(i), fit: true))
+                items.append(Morph(from: under.rect, to: c.frame, leaving: under.picture, coming: card, z: -CGFloat(i), fit: true))
             }
         }
         guard !items.isEmpty else { return }
@@ -2010,7 +2016,11 @@ final class GridView: NSView, NSDraggingSource {
                 guard let self, self.landingAt == landing else { return }
                 self.unseen.forEach { $0.alphaValue = 1 }
                 self.unseen = []
+                // Landed: the rest put by with it, so none is drawn over
+                // the tile once it's there (they're where the sheets are).
                 held.forEach { $0.removeFromSuperlayer() }
+                self.flying.forEach { $0.removeFromSuperlayer() }
+                self.flying = []
             }
             held.filter { $0.name == "waiting" }.forEach { $0.removeFromSuperlayer() }
         }
@@ -2105,9 +2115,10 @@ final class GridView: NSView, NSDraggingSource {
                 under.picture = Pictured(parts: [(under.rect, nil)] + wasOpened.parts.prefix(1).map { (NSRect(x: under.rect.minX, y: under.rect.minY, width: under.rect.width, height: under.rect.height - Self.barHeight), $0.1) },
                                          ground: wasOpened.ground)
             }
-            items.append(Morph(from: c.frame, to: under.rect, leaving: card, coming: under.picture, delay: Double(level - 1) * 0.04, z: -CGFloat(level), fit: true))
+            items.append(Morph(from: c.frame, to: under.rect, leaving: card, coming: under.picture, z: -CGFloat(level), fit: true))
         }
-        if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5) }
+        // Kept where they end till the chosen tile's landed over them.
+        if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5, keeping: true) }
         for id in Set([chosen, top]) {
             for v in [tile(id)?.view, pills[id]].compactMap({ $0 }) {
                 v.alphaValue = 0
