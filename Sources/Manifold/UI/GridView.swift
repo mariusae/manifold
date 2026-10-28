@@ -1841,7 +1841,9 @@ final class GridView: NSView, NSDraggingSource {
     /// card clicked comes to the top, and one dragged comes out of the stack
     /// as a block dragged does (the fan closing, the rest as they were).
     @discardableResult
-    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false) -> Bool {
+    /// `steps`: the choice that far down the column (up, negative) from
+    /// the first, as it opens — pictured so, not moved after.
+    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false, steps: Int = 0) -> Bool {
         guard switcher == nil, !fanWaiting else { return true }
         guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
               let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
@@ -1854,8 +1856,7 @@ final class GridView: NSView, NSDraggingSource {
                 self.fanWaiting = false
                 let steps = self.fanSteps
                 self.fanSteps = 0
-                guard self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true) else { return }
-                if steps != 0 { self.switcher?.move(steps) }
+                _ = self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true, steps: steps)
             }
             return true
         }
@@ -1869,7 +1870,7 @@ final class GridView: NSView, NSDraggingSource {
             delegate?.gridSummary(t.shown.id) ?? SummaryCardContent(id: t.shown.id, symbol: t.shown.symbol,
                                                                      summary: t.shown.block?.summary() ?? BlockSummary(title: t.shown.title))
         }
-        let s = StackColumnView(entries: entries)
+        let s = StackColumnView(entries: entries, selection: ((steps % entries.count) + entries.count) % entries.count)
         s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
         s.layer?.zPosition = 20
         s.followsPointer = followingPointer
@@ -1953,22 +1954,26 @@ final class GridView: NSView, NSDraggingSource {
     static let cardShrink: CGFloat = 0.6
 
     /// The switcher opening, as Overview opens: the tile becomes its card,
-    /// its picture shrinking as it goes; then, the way clear, each tile in
-    /// its sheets is pulled out of its sheet and down into its own card,
-    /// one after another (only cross-fading where they end, with Reduce
+    /// its picture shrinking as it goes, and the rest of its stack slide
+    /// out from under it, each a whole card showing what it is all the way,
+    /// down to its place (only cross-fading where they end, with Reduce
     /// motion). The cards themselves show once theirs are there.
     private func unfold(_ s: StackColumnView, tile: Pictured) {
         guard let host = layer else { return }
         let whole = tile.whole
-        let bar = NSRect(x: whole.minX, y: whole.maxY - Self.barHeight, width: whole.width, height: Self.barHeight)
+        let cards = s.cardPictures(in: self)
+        // Where the first card is: the stack's top, which the rest come
+        // out from under.
+        let first = cards.first.map(\.frame).flatMap { $0 == .zero ? nil : $0 } ?? whole
         var items: [Morph] = []
-        for (i, c) in s.cardPictures(in: self).enumerated() where c.frame != .zero {
+        for (i, c) in cards.enumerated() where c.frame != .zero {
             let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if i == 0 {
                 items.append(Morph(from: whole, to: c.frame, leaving: tile, coming: card, z: 10, shrink: Self.cardShrink))
             } else {
-                // Over the first, so it's seen coming out all the way.
-                items.append(Morph(from: Self.sheetRect(above: bar, level: i), to: c.frame, coming: card, delay: 0.14 + Double(i - 1) * 0.04, z: 20 - CGFloat(i)))
+                // Whole, from under the first, where the stack's top is.
+                let under = NSRect(x: c.frame.minX, y: first.maxY - c.frame.height, width: c.frame.width, height: c.frame.height)
+                items.append(Morph(from: under, to: c.frame, coming: card, delay: Double(i - 1) * 0.02, z: -CGFloat(i)))
             }
         }
         guard !items.isEmpty else { return }
@@ -2039,9 +2044,10 @@ final class GridView: NSView, NSDraggingSource {
     /// isn't, and the choice moved a step down (back: up). False when the
     /// tile has no stack.
     func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
-        guard openStackSwitcher(top, followingPointer: false) else { return false }
-        if fanWaiting { fanSteps += back ? -1 : 1 } else { switcher?.move(back ? -1 : 1) }
-        return true
+        let step = back ? -1 : 1
+        if fanWaiting { fanSteps += step; return true }
+        if let s = switcher { s.move(step); return true }
+        return openStackSwitcher(top, followingPointer: false, steps: step)
     }
 
     /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
@@ -2082,7 +2088,9 @@ final class GridView: NSView, NSDraggingSource {
             host.addSublayer(plate)
             flying.append(plate)
         }
-        // The rest go back up into the sheets above it, the nearer first.
+        // The rest slide back up under the stack's top, whole, as the one
+        // chosen grows over them.
+        let head = cards.first.map(\.frame).flatMap { $0 == .zero ? nil : $0 }
         for c in cards {
             let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if c.id == chosen {
@@ -2093,7 +2101,8 @@ final class GridView: NSView, NSDraggingSource {
             }
             level += 1
             guard c.frame != .zero else { continue }
-            items.append(Morph(from: c.frame, to: Self.sheetRect(above: bar, level: level), leaving: card, delay: Double(level - 1) * 0.03, z: 20 - CGFloat(level)))
+            let under = head.map { NSRect(x: c.frame.minX, y: $0.maxY - c.frame.height, width: c.frame.width, height: c.frame.height) } ?? Self.sheetRect(above: bar, level: level)
+            items.append(Morph(from: c.frame, to: under, leaving: card, z: -CGFloat(level)))
         }
         // Kept where they end till the chosen tile's landed over them.
         if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5, keeping: true) }

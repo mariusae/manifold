@@ -1580,8 +1580,8 @@ purpose — set down so a later audit reads them as choices, not slips.
   never stretched) and changing on the way — shrinking to some 60% of
   that, for a card about as wide as its tile (⌃⇥'s, ⌥⇥'s), so the tile
   is seen to shrink into it rather than only be cut off from below, and a tile in a stack comes
-  out of its sheet and goes back into it — ⌃⇥'s once the top has become
-  its card and the way is clear, one after another — nothing just fades in; the
+  out of its sheet and goes back into it (⌃⇥'s rest slide out from under
+  its top, whole cards, and back) — nothing just fades in; the
   next ⌃⇥ puts away whatever's still on its way. Layout is done once, where things end, and only layers travel —
   a terminal resized once, not at every step. Focus, typing, a divider
   dragged and the palettes don't move at all.
