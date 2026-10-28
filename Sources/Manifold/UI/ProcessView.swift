@@ -50,8 +50,12 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// "Reading…" until the host first lists them.
     private let note = BusyNote()
     private var timer: Timer?
-    /// What to call a block (the host's blocks are the controller's to know).
+    /// What to call a block, and its summary card (the host's blocks are
+    /// the controller's to know).
     var blockTitle: (BlockID) -> String? = { _ in nil }
+    var blockCard: (BlockID) -> SummaryCardContent? = { _ in nil }
+    /// Each heading's card, as read at the last listing.
+    private var cards: [BlockID: SummaryCardContent] = [:]
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -96,6 +100,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         table.rowHeight = Self.rowHeight
         table.intercellSpacing = NSSize(width: 4, height: 0)
         table.style = .plain
+        table.floatsGroupRows = false
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
         rowMenu.delegate = self
@@ -336,9 +341,9 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         refilter()
     }
 
-    /// The rows: each block's heading, then its tree, parents before
-    /// children, children set in; with a filter, only the processes that
-    /// match, under their blocks.
+    /// The rows: each block's heading (its summary card), then its tree,
+    /// parents before children, children set in; with a filter, only the
+    /// processes that match, under their blocks.
     private func refilter() {
         if mode == .machine { return refilterMachine() }
         let q = field.stringValue.lowercased()
@@ -351,6 +356,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             let mine = matching.filter { $0.block == b }
             guard !mine.isEmpty else { continue }
             rows.append(.group(b))
+            cards[b] = blockCard(b)
             if q.isEmpty {
                 let pids = Set(mine.map(\.pid))
                 func walk(_ parent: Int32?, depth: Int) {
@@ -560,9 +566,29 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         let m = machine.map { "cores=\($0.cores.count) cpu=\(MachineWords.percent($0.now.cpu)) mem=\(MachineWords.percent($0.memory.usedFraction)) disks=\($0.disks.map(\.mount)) procs=\($0.processCount) history=\(panels.history.count)" } ?? "no sample"
         return "mode=\(mode.rawValue) \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height))\n" + rows.joined(separator: "\n")
     }
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        shown[row].isGroup ? NSTableRowView() : SelectionRowView()
+    }
+
+    /// A heading spans the row: its block's card.
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { shown[row].isGroup }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        guard case let .group(b) = shown[row] else { return Self.rowHeight }
+        return cards[b].map { SummaryCardRow.height(for: $0) } ?? Self.rowHeight + 6
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if case let .group(b) = shown[row], let content = cards[b] {
+            let v = tableView.makeView(withIdentifier: .init("card"), owner: nil) as? SummaryCardRow ?? SummaryCardRow(content)
+            v.identifier = .init("card")
+            v.card.content = content
+            v.card.onClick = { [weak self] in
+                guard let self else { return }
+                delegate?.processView(self, goTo: b)
+            }
+            return v
+        }
         let id = tableColumn?.identifier.rawValue ?? "command"
         let cell = tableView.makeView(withIdentifier: .init("cell-" + id), owner: nil) as? MeterCell ?? {
             let c = MeterCell()
@@ -632,6 +658,32 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
 
 private extension ProcessView.Row {
     var isGroup: Bool { if case .group = self { true } else { false } }
+}
+
+/// A block's heading in the list: its summary card, as wide as what's in
+/// view (the table's columns can run on past it), a little air above.
+final class SummaryCardRow: NSView {
+    let card: SummaryCard
+    private static let inset = NSEdgeInsets(top: 8, left: 6, bottom: 3, right: 6)
+
+    static func height(for content: SummaryCardContent) -> CGFloat {
+        SummaryCard.height(for: content) + inset.top + inset.bottom
+    }
+
+    init(_ content: SummaryCardContent) {
+        card = SummaryCard(content)
+        super.init(frame: .zero)
+        addSubview(card)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let seen = enclosingScrollView?.contentView.bounds.width ?? bounds.width
+        let i = Self.inset
+        card.frame = NSRect(x: i.left, y: i.bottom, width: max(0, min(bounds.width, seen) - i.left - i.right), height: max(0, bounds.height - i.top - i.bottom))
+    }
 }
 
 /// A table cell with, where it's set, a bar behind its number: how much of

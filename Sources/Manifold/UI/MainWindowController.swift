@@ -636,6 +636,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.delegate = self
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
+            pv.blockCard = { [weak self] in self?.cardContent(for: $0) }
             pv.client = { [weak self] in self?.hosts.client(p.block.host) }
             v = pv
         case .outline:
