@@ -68,6 +68,7 @@ final class NotebookShell {
         let editor = Session.editorCommand
         env["EDITOR"] = editor
         env["VISUAL"] = editor
+        env["MANIFOLD_EDITOR"] = editor
         let name = shell.lastPathComponent
         var args = ["-" + name]
         if name == "bash", let rc = Session.bashLayer() { args = [name, "--rcfile", rc] }

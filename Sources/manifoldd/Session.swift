@@ -107,6 +107,10 @@ final class Session {
         let editor = Session.editorCommand
         environment["EDITOR"] = editor
         environment["VISUAL"] = editor
+        // Set again once your rc files have run (they often set EDITOR,
+        // for other terminals): Manifold's startup for each shell does,
+        // unless MANIFOLD_KEEP_EDITOR says to leave yours.
+        environment["MANIFOLD_EDITOR"] = editor
         let argv0 = "-" + shell.lastPathComponent
         let dir = cwd.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -756,6 +760,15 @@ final class Session {
                 }
                 add-zsh-hook precmd __manifold_path
             fi
+            # $EDITOR Manifold's again, once your rc files have set theirs.
+            if [[ -n "$MANIFOLD_EDITOR" && -z "${MANIFOLD_KEEP_EDITOR+X}" ]]; then
+                __manifold_editor() {
+                    'builtin' 'export' EDITOR="$MANIFOLD_EDITOR" VISUAL="$MANIFOLD_EDITOR"
+                    precmd_functions=(${precmd_functions:#__manifold_editor})
+                    'builtin' 'unfunction' '--' __manifold_editor
+                }
+                add-zsh-hook precmd __manifold_editor
+            fi
         fi
 
         """
@@ -769,8 +782,9 @@ final class Session {
     }
 
     /// What fish runs after its configuration: $MANIFOLD_BIN's folders
-    /// first on the PATH, in their order.
+    /// first on the PATH, in their order, and $EDITOR Manifold's again.
     static let fishStartup = "for d in (string split : \"$MANIFOLD_BIN\")[-1..1]; test -d $d; and fish_add_path --global --prepend --move $d; end; "
+        + "if set -q MANIFOLD_EDITOR; and not set -q MANIFOLD_KEEP_EDITOR; set -gx EDITOR \"$MANIFOLD_EDITOR\"; set -gx VISUAL \"$MANIFOLD_EDITOR\"; end; "
         + "function __manifold_cmd --on-event fish_preexec; printf '\\e]7502;%s\\a' (string replace -ra '[\\x00-\\x1f\\x7f]' ' ' -- \"$argv\"); end; "
         // Without Ghostty's integration: each command's end, with its
         // status, and the prompt (OSC 133;D, 133;A).
@@ -797,8 +811,18 @@ final class Session {
         elif [ -r "$HOME/.profile" ]; then . "$HOME/.profile"
         fi
         [ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+        # $EDITOR Manifold's again, once your rc files have set theirs.
+        if [ -n "$MANIFOLD_EDITOR" ] && [ -z "${MANIFOLD_KEEP_EDITOR+X}" ]; then
+            export EDITOR="$MANIFOLD_EDITOR" VISUAL="$MANIFOLD_EDITOR"
+        fi
+        if [ -n "$MANIFOLD_BIN" ]; then
+            __manifold_rest=$(printf '%s' "$PATH" | tr ':' '\\n' | grep -vxF -e "$(printf '%s' "$MANIFOLD_BIN" | tr ':' '\\n')" | paste -sd: -)
+            export PATH="$MANIFOLD_BIN${__manifold_rest:+:$__manifold_rest}"
+            unset __manifold_rest
+        fi
         # Prompt marks (OSC 133) and each command run (OSC 7502), for the
-        # terminal's status and scrubber.
+        # terminal's status and scrubber — last, so nothing above is taken
+        # for a command of yours.
         __manifold_precmd() {
             local status=$?
             [ -n "$__manifold_ran" ] && printf '\\033]133;D;%s\\a' "$status"
@@ -820,11 +844,6 @@ final class Session {
         }
         PROMPT_COMMAND="__manifold_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
         trap '__manifold_preexec' DEBUG
-        if [ -n "$MANIFOLD_BIN" ]; then
-            __manifold_rest=$(printf '%s' "$PATH" | tr ':' '\\n' | grep -vxF -e "$(printf '%s' "$MANIFOLD_BIN" | tr ':' '\\n')" | paste -sd: -)
-            export PATH="$MANIFOLD_BIN${__manifold_rest:+:$__manifold_rest}"
-            unset __manifold_rest
-        fi
 
         """
         do {

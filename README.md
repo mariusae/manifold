@@ -1315,7 +1315,10 @@ is migrated into logs on first run.
   other mirrors until it focuses the block again. Linux servers (x86_64
   and aarch64, static) are bundled with the app (Building, below).
 - **`$EDITOR`** in Manifold's shells is `mani open --wait` (on a remote
-  host, `manifoldd mani open --wait`): `git commit` and friends edit in an
+  host, `manifoldd mani open --wait`), and `$VISUAL` with it — set again
+  once your rc files have run, in fish, zsh and bash, so one that sets
+  `EDITOR` for other terminals doesn't take it (set `MANIFOLD_KEEP_EDITOR`
+  in your environment to keep yours): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
   comes back — **⌥⌘W** (File ▸ Save and Close, in any editor) saves and
