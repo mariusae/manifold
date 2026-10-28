@@ -50,6 +50,9 @@ id=com.manifold.app
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $id" "$app/Contents/Info.plist"
 mkdir -p "$app/Contents/Resources/AgentIcons"
 cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Resources/AgentIcons/"
+# Mermaid, for diagrams in Markdown previews (MIT; its licence beside it).
+mkdir -p "$app/Contents/Resources/Mermaid"
+cp Resources/Mermaid/mermaid.min.js Resources/Mermaid/LICENSE "$app/Contents/Resources/Mermaid/"
 # Ghostty looks for terminfo next to its resources directory.
 cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/Contents/Resources/"
 # No fonts are shipped: the themes are of those macOS has, or installed.

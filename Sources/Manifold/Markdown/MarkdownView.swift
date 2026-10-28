@@ -101,6 +101,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     private var renderWork: DispatchWorkItem?
     /// The page's script, sent once a load (not with every render).
     private var scriptSent = false
+    /// Mermaid given to the page (once a page has a diagram; again after a load).
+    private var mermaidSent = false
     /// Renders asked for: one made on another thread is shown only if
     /// none has been asked for since.
     private var renderGeneration = 0
@@ -175,6 +177,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
             return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
         }
         scriptSent = false
+        mermaidSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -321,6 +324,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         renderedVersion = -1
         restorePending = true
         scriptSent = false
+        mermaidSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -329,6 +333,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         renderedVersion = -1
         restorePending = true
         scriptSent = false
+        mermaidSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
     }
 
@@ -380,8 +385,22 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         }
         let script = scriptSent ? "" : MarkdownPage.script
         scriptSent = true
-        web.evaluateJavaScript(script + MarkdownPage.themeScript(theme) + js) { [weak self] _, _ in self?.scheduleOutline() }
+        js += " window.manifoldPendingDiagrams || 0;"
+        web.evaluateJavaScript(script + MarkdownPage.themeScript(theme) + js) { [weak self] result, _ in
+            self?.scheduleOutline()
+            // Diagrams waiting on Mermaid: given it (the page's scripts are
+            // off; this is ours), then drawn.
+            guard let self, (result as? Int ?? 0) > 0, !self.mermaidSent, let mermaid = Self.mermaid else { return }
+            self.mermaidSent = true
+            self.web.evaluateJavaScript(mermaid + ";0") { [weak self] _, _ in
+                self?.web.evaluateJavaScript("manifoldDiagrams();") { [weak self] _, _ in self?.scheduleOutline() }
+            }
+        }
     }
+
+    /// Mermaid, from the app's resources, read once (some 2.5 MB).
+    private static let mermaid: String? = Bundle.main.url(forResource: "mermaid.min", withExtension: "js", subdirectory: "Mermaid")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
 
     /// Where a block's image is, for the page: this Mac's file, or another
     /// host's bytes once fetched (nil until then; `imagesArrived` after).
@@ -422,6 +441,14 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
         render(scrollToTop: true)
+    }
+
+    /// Debugging: `js` run in the page; what the last such run gave.
+    private var debugAnswer = "-"
+    func debugEval(_ js: String) -> String {
+        let last = debugAnswer
+        web.evaluateJavaScript(js) { [weak self] r, e in self?.debugAnswer = e.map { "error: \($0)" } ?? "\(r ?? "nil")" }
+        return last
     }
 
     /// Clicks the nth link on the page (for DebugControl).

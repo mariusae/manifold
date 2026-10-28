@@ -521,7 +521,12 @@ around it, and comes back with its history.
   heading sizes and spacing, its links, and its code blocks, each with a
   copy button at its corner on hover — in the theme's fonts, code in its
   fixed-width one (as are a terminal's commands in its outline, and a
-  commit's hash). Code (by its extension) is set in
+  commit's hash). A **Mermaid** diagram (a ```` ```mermaid ```` block, or
+  one that starts with a diagram's kind, as `flowchart LR`) is drawn in
+  its place, light or dark as the page is — tried again with plain
+  quotes and dashes if smart ones kept it from parsing, else left as
+  code with why. (Mermaid 11.4.1 is bundled, MIT; the page's own
+  scripts still don't run.) Code (by its extension) is set in
   the fixed-width font when edited too, unless the tile's menu says
   otherwise. ⌥⇧⌘P puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a

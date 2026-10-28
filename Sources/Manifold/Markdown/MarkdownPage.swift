@@ -58,7 +58,69 @@ enum MarkdownPage {
             });
             wrap.appendChild(b);
           });
+          window.manifoldPendingDiagrams = window.manifoldDiagrams();
           window.scrollTo(0, toTop ? 0 : y);
+        };
+        // Mermaid's diagrams (```mermaid, or a block that starts with a
+        // diagram's kind, as `flowchart LR`) drawn in place of their code,
+        // once Mermaid's here: how many wait on it, else 0. Each drawing
+        // kept by its source, so typing elsewhere doesn't draw it again.
+        var manifoldDiagramKinds = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'stateDiagram-v2',
+          'erDiagram', 'journey', 'gantt', 'pie', 'quadrantChart', 'requirementDiagram', 'gitGraph', 'mindmap', 'timeline',
+          'sankey-beta', 'xychart-beta', 'block-beta', 'packet-beta', 'kanban', 'architecture-beta',
+          'C4Context', 'C4Container', 'C4Component', 'C4Dynamic', 'C4Deployment'];
+        function manifoldDiagramSource(code) {
+          var cls = code.className || '', text = code.textContent;
+          if (cls.indexOf('language-mermaid') >= 0) return text;
+          if (cls) return null;
+          var first = text.trim().split(/\\s/)[0];
+          return manifoldDiagramKinds.indexOf(first) >= 0 ? text : null;
+        }
+        window.manifoldDiagrams = function () {
+          var found = [];
+          document.querySelectorAll('#content .codeblock').forEach(function (wrap) {
+            var pre = wrap.querySelector('pre'), code = pre && pre.querySelector('code');
+            var src = code && manifoldDiagramSource(code);
+            if (src) found.push([wrap, pre, src]);
+          });
+          if (!found.length) return 0;
+          if (!window.mermaid) return found.length;
+          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (window.manifoldMermaidDark !== dark) {
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'neutral',
+              fontFamily: getComputedStyle(document.body).fontFamily });
+            window.manifoldMermaidDark = dark;
+            window.manifoldDiagramCache = {};
+          }
+          var cache = window.manifoldDiagramCache;
+          found.forEach(function (f) {
+            var wrap = f[0], pre = f[1], src = f[2];
+            var div = document.createElement('div');
+            div.className = 'diagram';
+            var pos = pre.getAttribute('data-sourcepos');
+            if (pos) div.setAttribute('data-sourcepos', pos);
+            function place(svg) { div.innerHTML = svg; if (wrap.parentNode) wrap.parentNode.replaceChild(div, wrap); }
+            if (cache[src]) return place(cache[src]);
+            var id = 'manifold-diagram-' + (window.manifoldDiagramCount = (window.manifoldDiagramCount || 0) + 1);
+            // Typed with smart punctuation (curly quotes, a dash for an
+            // arrow's shaft), it's tried again as plain, if it didn't parse.
+            var plain = src.replace(/[\\u201C\\u201D]/g, '"').replace(/[\\u2018\\u2019]/g, "'").replace(/[\\u2014\\u2013]/g, '--');
+            mermaid.render(id, src).catch(function (err) {
+              if (plain === src) throw err;
+              var stray = document.getElementById('d' + id);
+              if (stray) stray.remove();
+              return mermaid.render(id + '-plain', plain).catch(function () { throw err; });
+            }).then(function (r) { cache[src] = r.svg; place(r.svg); }, function (err) {
+              // Left as code, with why it couldn't be drawn.
+              var stray = document.getElementById('d' + id);
+              if (stray) stray.remove();
+              var note = document.createElement('div');
+              note.className = 'diagram-error';
+              note.textContent = 'Not drawn: ' + String((err && err.message) || err).split('\\n')[0];
+              wrap.appendChild(note);
+            });
+          });
+          return 0;
         };
         window.manifoldScrollTo = function (id) {
           var e = document.getElementById(id) || document.getElementsByName(id)[0];
@@ -244,6 +306,9 @@ enum MarkdownPage {
           cursor: pointer; opacity: 0; transition: opacity 0.12s; user-select: none; -webkit-user-select: none; padding: 0;
         }
         .codeblock:hover .copy, .copy.done { opacity: 1; }
+        .diagram { margin: var(--read-gap, 1rem) 0; text-align: center; overflow-x: auto; }
+        .diagram svg { max-width: 100%; height: auto; }
+        .diagram-error { margin-top: 0.4em; font-size: 0.85em; color: #a40e26; }
         .copy:hover { color: #202224; border-color: #c8ccd1; }
         .copy.done { color: #1a7f37; }
         blockquote { margin-left: 0; padding: 0 1em; color: #57606a; border-left: 3px solid #d8dbe0; }

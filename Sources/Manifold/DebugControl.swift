@@ -292,6 +292,11 @@ enum DebugControl {
             func find(_ v: NSView) -> NSTableView? { (v as? NSTableView) ?? v.subviews.lazy.compactMap(find).first }
             guard let t = find(v) else { return "no table" }
             return "row \(t.selectedRow) of \(t.numberOfRows)"
+        case "mdeval":
+            // "mdeval <js>": run in the focused preview; returns what the
+            // previous run gave (the page answers later).
+            guard let wc, let m = wc.debugFocusedMarkdown else { return "no preview focused" }
+            return m.debugEval(arg)
         case "mdlink":
             // "mdlink <n>": clicks the nth link in the focused preview, as a reader would.
             guard let wc, let m = wc.debugFocusedMarkdown else { return "no preview focused" }
