@@ -238,6 +238,23 @@ final class GridView: NSView, NSDraggingSource {
     private var dropFiles = false
 
     func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?, full: PlacementID? = nil) {
+        // Maximized or restored: where the tile was, to grow or shrink from.
+        var zoomFrom: (PlacementID, NSRect)?
+        if full != self.full, window != nil, !isHiddenOrHasHiddenAncestor {
+            if let f = full, let body = lastFrames[f], body.height > 0 {
+                zoomFrom = (f, NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight))
+            } else if let w = self.full, let v = views.first(where: { $0.placement == w }), !v.isHidden {
+                zoomFrom = (w, NSRect(x: v.frame.minX, y: v.frame.minY, width: v.frame.width, height: v.frame.height + Self.barHeight))
+            }
+        }
+        // Known before the layout, which leaves the rest shown under it.
+        zooming = zoomFrom?.0
+        defer {
+            if let (id, from) = zoomFrom {
+                layoutSubtreeIfNeeded()
+                zoom(id, from: from)
+            }
+        }
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
         for v in views where !incoming.contains(v.placement) && v.superview === self { v.removeFromSuperview() }
         for (id, p) in pills where !incoming.contains(id) {
@@ -757,14 +774,17 @@ final class GridView: NSView, NSDraggingSource {
         Self.layouts += 1
         super.layout()
         if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
-            // One tile over everything; the rest wait behind it.
-            for t in columns.flatMap({ $0 }) where t.shown.id != full {
-                setHidden(t.view, true)
-                pills[t.shown.id]?.isHidden = true
-                badges[t.shown.id]?.isHidden = true
-                ticks[t.shown.id]?.available = false
+            // One tile over everything; the rest wait behind it — once it's
+            // grown over them.
+            if zooming != full {
+                for t in columns.flatMap({ $0 }) where t.shown.id != full {
+                    setHidden(t.view, true)
+                    pills[t.shown.id]?.isHidden = true
+                    badges[t.shown.id]?.isHidden = true
+                    ticks[t.shown.id]?.available = false
+                }
+                for d in columnDividers + rowDividers { d.isHidden = true }
             }
-            for d in columnDividers + rowDividers { d.isHidden = true }
             tile.view.isHidden = false
             let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
             tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - Self.barHeight)
@@ -906,8 +926,9 @@ final class GridView: NSView, NSDraggingSource {
         self.summarized = summarizedNow
         for (id, c) in tileSummaries where !summarizedNow.contains(id) || held(id) { c.isHidden = true }
         if dragging { dragCatcher.frame = bounds }
-        // The focus ring: around the focused tile, over everything.
-        if let focused, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
+        // The focus ring: around the focused tile, over everything (once a
+        // tile shrinking back to its place is there).
+        if let focused, zooming == nil, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
             focusRing.isHidden = false
             let body = frameNow[focused] ?? t.view.frame
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
@@ -925,6 +946,61 @@ final class GridView: NSView, NSDraggingSource {
         layoutSheets()
         layoutShadows(Array(frameNow.values))
         warpIfGrown()
+    }
+
+    // MARK: Maximizing
+
+    /// A tile maximized grows from its place to the whole grid, the rest
+    /// staying under it till it's there; restored, it shrinks back to its
+    /// place over them. Laid out where it ends at once (a terminal resized
+    /// once, not at every step) and its layers carried from where it was:
+    /// Core Animation's, so nothing is laid out on the way. With Reduce
+    /// motion, it fades in where it ends.
+    private var zooming: PlacementID?
+    private func zoom(_ id: PlacementID, from source: NSRect) {
+        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }) else {
+            zooming = nil
+            return needsLayout = true
+        }
+        let body = tile.view.frame
+        let dest = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+        guard source.width > 1, source.height > 1, dest.width > 1, dest.height > 1, source != dest else {
+            zooming = nil
+            needsLayout = true
+            return
+        }
+        let parts: [(NSView, CALayer)] = ([tile.view, pills[id], badges[id]] as [NSView?]).compactMap { v in v.flatMap { v in v.layer.map { (v, $0) } } }
+        zooming = id
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            for (_, l) in parts { l.zPosition = 0 }
+            guard let self, self.zooming == id else { return }
+            self.zooming = nil
+            self.needsLayout = true
+        }
+        let k = CGSize(width: source.width / dest.width, height: source.height / dest.height)
+        for (i, (v, l)) in parts.enumerated() {
+            l.zPosition = 20 + CGFloat(i)
+            let a: CABasicAnimation
+            if Motion.reduced {
+                a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 0
+                a.toValue = 1
+                a.duration = Motion.base
+            } else {
+                // Each part's own corner is where the layer's drawn from:
+                // carried to where it was, as a part of the tile was.
+                let o = v.frame.origin
+                let t = CGPoint(x: source.minX + (o.x - dest.minX) * k.width - o.x, y: source.minY + (o.y - dest.minY) * k.height - o.y)
+                a = CABasicAnimation(keyPath: "transform")
+                a.fromValue = CATransform3DScale(CATransform3DMakeTranslation(t.x, t.y, 0), k.width, k.height, 1)
+                a.toValue = CATransform3DIdentity
+                a.duration = Motion.spatial * 1.25
+                a.timingFunction = Motion.travel
+            }
+            l.add(a, forKey: "zoom")
+        }
+        CATransaction.commit()
     }
 
     /// A soft shadow under each card in the light, none in the dark
