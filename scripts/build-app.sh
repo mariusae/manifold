@@ -76,12 +76,21 @@ cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 # build without Xcode.
 rm -f "$app/Contents/Resources/Assets.car"
 /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$app/Contents/Info.plist" >/dev/null 2>&1 || true
+# actool is Xcode's: when the tools chosen (xcode-select) are only the
+# command-line ones, Xcode's own, if it's there.
+actool() {
+  if xcrun --find actool >/dev/null 2>&1; then xcrun actool "$@"
+  elif [ -d /Applications/Xcode.app ]; then DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun actool "$@"
+  else return 1; fi
+}
 # (absolute paths: actool's helper may not run where we are)
-if xcrun actool "$PWD/Resources/Icons/Manifold.icon" --compile "$(cd "$app/Contents/Resources" && pwd)" --app-icon Manifold \
-     --platform macosx --minimum-deployment-target "$min" --output-partial-info-plist "$PWD/build/icon-partial.plist" >/dev/null 2>&1 \
+if actool "$PWD/Resources/Icons/Manifold.icon" --compile "$(cd "$app/Contents/Resources" && pwd)" --app-icon Manifold \
+     --platform macosx --minimum-deployment-target "$min" --output-partial-info-plist "$PWD/build/icon-partial.plist" >build/actool.log 2>&1 \
    && [ -f "$app/Contents/Resources/Assets.car" ]; then
   rm -f "$app/Contents/Resources/Manifold.icns"
   /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string Manifold" "$app/Contents/Info.plist"
+else
+  echo "warning: the icon wasn't compiled (no Xcode's actool, or it failed: build/actool.log); the app has AppIcon.icns alone, light whatever Icon & widget style says" >&2
 fi
 # SwiftPM marks what it links as built with the SDK of its deployment
 # target (15.0), whichever it was built with, and macOS takes an app so
