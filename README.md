@@ -1468,7 +1468,11 @@ Composer opens the `.icon` to adjust it by eye. The app is marked as
 built with the SDK it was built with (SwiftPM marks it 15.0, its
 deployment target): an app marked older keeps its plain icon in the
 Dock, and AppKit's controls their pre-26 look. `MACOS_MIN=26.0` builds
-one that says it needs macOS 26 (its default, 15.0).
+one that says it needs macOS 26 (its default, 15.0). Each build's
+version is when it was built, and a bundle built anywhere but this
+checkout's `build/Manifold.app` (`APP`'s, a worktree's) has an
+identifier of its own, so macOS never takes an old or throwaway copy for
+the app.
 
 `MANIFOLD_DIR` runs everything against another directory, for a second,
 throwaway instance (`MANIFOLD_NO_WARP` leaves the pointer alone, for one

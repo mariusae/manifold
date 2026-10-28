@@ -37,6 +37,17 @@ cp Resources/Info.plist "$app/Contents/Info.plist"
 # Dock may want, to draw its icon dark or tinted).
 min=${MACOS_MIN:-15.0}
 /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $min" "$app/Contents/Info.plist"
+# macOS knows an app by its identifier, and of the copies it's seen (old
+# builds, a worktree's, a throwaway) takes the latest version as the app:
+# the one whose icon the Dock shows, that `manifold:` links open. Each
+# build is a version later than the last (when it was built), and one
+# built elsewhere than this checkout's build/Manifold.app — APP's, a
+# worktree's — is an app of its own, never taken for this one.
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%s)" "$app/Contents/Info.plist"
+id=com.manifold.app
+[ "$app" = build/Manifold.app ] || id="$id.$(basename "$app" .app | tr -cd 'A-Za-z0-9-')"
+[ "$(git rev-parse --git-dir 2>/dev/null)" = "$(git rev-parse --git-common-dir 2>/dev/null)" ] || id="$id.$(basename "$PWD" | tr -cd 'A-Za-z0-9-')"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $id" "$app/Contents/Info.plist"
 mkdir -p "$app/Contents/Resources/AgentIcons"
 cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Resources/AgentIcons/"
 # Ghostty looks for terminfo next to its resources directory.
