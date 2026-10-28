@@ -29,7 +29,7 @@ protocol WebViewDelegate: AnyObject {
 /// The web lens: an embedded browser on a web block, with an address bar,
 /// back and forward, and find. Where it is goes in the block's log, so its
 /// history is the pages it showed.
-final class WebView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
+final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNavigationDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID

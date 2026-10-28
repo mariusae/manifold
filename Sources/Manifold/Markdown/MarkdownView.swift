@@ -28,7 +28,7 @@ private final class PreviewWebView: WKWebView {
 /// a web view, and rendered again as the text changes (edits in an editor
 /// on the same block, or the file saved by another program), keeping the
 /// scroll position.
-final class MarkdownView: NSView, PaneContent, KeepsViewState, WKNavigationDelegate {
+final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNavigationDelegate {
     let placement: PlacementID
     let keeper = ViewStateKeeper()
     /// The page was (re)loaded: its scroll and selection go back after

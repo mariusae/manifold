@@ -16,7 +16,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The grid of the workspace shown. Each workspace used lately keeps its
     /// own (`grids`), hidden while another shows: going back to it shows it
     /// again as it was, nothing laid out or drawn afresh.
-    private var content = GridView()
+    private(set) var content = GridView()
     /// Each tile shrunk to its summary, with its height before, to go back to.
     private var unshrunk: [PlacementID: Double] = [:]
     /// The grid for no workspace (none selected).
@@ -6423,6 +6423,10 @@ extension MainWindowController: GridDelegate {
     }
 
     func gridFocus(_ placement: PlacementID) { focus(placement) }
+
+    func gridKeptPicture(_ block: BlockID) -> NSImage? { tilePictures[block] }
+
+    func gridKeep(_ picture: NSImage, of block: BlockID) { tilePictures[block] = picture }
 
     func gridArrive(_ placement: PlacementID) { arrive(atTile: placement) }
 

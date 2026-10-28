@@ -1,8 +1,18 @@
 import AppKit
 import ManifoldCore
 
+/// A view only it can draw (a page, in its own process): a picture of it
+/// comes a moment later, from it.
+protocol Snapshotting: AnyObject {
+    func snapshot(_ done: @escaping (NSImage?) -> Void)
+}
+
 protocol GridDelegate: AnyObject {
     func gridFocus(_ placement: PlacementID)
+    /// A block's last picture, kept (a page's, which can't be drawn at once).
+    func gridKeptPicture(_ block: BlockID) -> NSImage?
+    /// A block's picture, to keep.
+    func gridKeep(_ picture: NSImage, of block: BlockID)
     /// A stack about to fan out: its tile grown to hold the fan, if it's
     /// short of it. True when it was (the fan waits for the tile to settle).
     func gridRoomForFan(_ top: PlacementID) -> Bool
@@ -1146,7 +1156,9 @@ final class GridView: NSView, NSDraggingSource {
         return out
     }
 
-    private func pictured(_ body: NSView, _ bar: NSView?) -> Pictured {
+    /// `page`: a page's picture, from it; else, for a page, its last kept
+    /// (if it was the same shape), which a drawing of it would leave blank.
+    private func pictured(_ body: NSView, _ bar: NSView?, page: CGImage? = nil) -> Pictured {
         // As it'll show, though it's out of sight meanwhile (a drawing of a
         // view takes its opacity).
         func picture(_ v: NSView) -> Any? {
@@ -1155,9 +1167,36 @@ final class GridView: NSView, NSDraggingSource {
             defer { v.alphaValue = alpha }
             return Self.ghostPicture(of: v)
         }
-        var parts: [(NSRect, Any?)] = [(body.frame, picture(body))]
+        var shown: Any? = page
+        if shown == nil, body is Snapshotting {
+            if let b = (body as? PaneContent)?.block, let kept = delegate?.gridKeptPicture(b), kept.size.width > 0, body.bounds.height > 0,
+               abs(kept.size.height / kept.size.width - body.bounds.height / body.bounds.width) < 0.03 {
+                shown = kept.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            }
+        } else if shown == nil {
+            shown = picture(body)
+        }
+        var parts: [(NSRect, Any?)] = [(body.frame, shown)]
         if let bar, !bar.isHidden { parts.append((bar.frame, picture(bar))) }
         return Pictured(parts: parts, ground: Self.ground(of: body))
+    }
+
+    /// `pictured`, a page's from the page itself — `done` once it's come,
+    /// or after `wait` at most (then as `pictured` has it), kept for later.
+    private func picturing(_ body: NSView, _ bar: NSView?, wait: Double = 0.25, _ done: @escaping (Pictured) -> Void) {
+        guard let page = body as? Snapshotting else { return done(pictured(body, bar)) }
+        var called = false
+        page.snapshot { [weak self, weak body, weak bar] image in
+            guard let self, let body, !called else { return }
+            called = true
+            if let image, let b = (body as? PaneContent)?.block { self.delegate?.gridKeep(image, of: b) }
+            done(self.pictured(body, bar, page: image?.cgImage(forProposedRect: nil, context: nil, hints: nil)))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self, weak body, weak bar] in
+            guard let self, let body, !called else { return }
+            called = true
+            done(self.pictured(body, bar))
+        }
     }
 
     /// The sheet `level` deep (1–3) above a bar, as the sheets are drawn.
@@ -1815,14 +1854,19 @@ final class GridView: NSView, NSDraggingSource {
             self.watchSwitcherClicks()
             self.delegate?.gridSwitcherFollowsPointer()
         }
-        // The tile as it is, and its sheets, to be seen becoming the cards.
-        let tile = pictured(shownBody(stack.top) ?? stack.top.view, pills[top])
+        // The tile as it is, and its sheets, to be seen becoming the cards
+        // (a page's picture a moment coming: the column out of sight till then).
         let bar = pills[top].flatMap { $0.isHidden ? nil : $0.frame }
         addSubview(s)
         switcher = s
         needsLayout = true
         s.present(dealt: false)
-        unfold(s, tile: tile, bar: bar)
+        s.alphaValue = 0
+        picturing(shownBody(stack.top) ?? stack.top.view, pills[top], wait: 0.12) { [weak self, weak s] tile in
+            guard let self, let s, self.switcher === s, !s.isClosing else { return }
+            s.alphaValue = 1
+            self.unfold(s, tile: tile, bar: bar)
+        }
         if followingPointer { watchSwitcherClicks() }
         return true
     }
@@ -1845,13 +1889,15 @@ final class GridView: NSView, NSDraggingSource {
             let p = l.presentation() ?? l
             let inner = (l.sublayers ?? []).map { g in
                 let q = g.presentation() ?? g
-                return "scale=\(String(format: "%.2f", q.transform.m11)) opacity=\(String(format: "%.2f", q.opacity))"
+                let pictures = (g.sublayers ?? []).filter { $0.contents != nil }.count
+                return "scale=\(String(format: "%.2f", q.transform.m11)) opacity=\(String(format: "%.2f", q.opacity)) pictures=\(pictures)"
             }
             return "\(l.name ?? "morph") \(p.frame.integral) [\(inner.joined(separator: "; "))]"
         }.joined(separator: "\n")
     }
 
     private func land() {
+        landingAt = nil
         flying.forEach { $0.removeFromSuperlayer() }
         flying = []
         unseen.forEach { $0.alphaValue = 1 }
@@ -1877,7 +1923,17 @@ final class GridView: NSView, NSDraggingSource {
         }
         guard !items.isEmpty else { return }
         s.cardsShown = false
-        flying += Self.morph(items, in: host, over: Motion.spatial * 1.5) { [weak s] in s?.cardsShown = true }
+        let d = Motion.spatial * 1.5
+        flying += Self.morph(items, in: host, over: d) { [weak s] in s?.cardsShown = true }
+        // Its ground comes in under them, not at once.
+        if let l = s.layer, let ground = l.backgroundColor {
+            let a = CABasicAnimation(keyPath: "backgroundColor")
+            a.fromValue = ground.copy(alpha: 0)
+            a.toValue = ground
+            a.duration = d
+            a.timingFunction = Motion.appear
+            l.add(a, forKey: "ground")
+        }
     }
 
     /// A tile chosen in the switcher, waiting to be laid out where it goes,
@@ -1894,16 +1950,30 @@ final class GridView: NSView, NSDraggingSource {
         let body = shownBody(t) ?? t.view
         body.layoutSubtreeIfNeeded()
         body.displayIfNeeded()
-        let shown = pictured(body, pills[id])
-        let to = over.map { convert(shown.whole, to: $0) } ?? shown.whole
-        let held = flying.filter { $0.name == "waiting" }
-        flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
-            guard let self else { return }
-            self.unseen.forEach { $0.alphaValue = 1 }
-            self.unseen = []
+        // A page's picture comes from the page, a moment later: the card
+        // held where it is meanwhile.
+        let landing = Date()
+        landingAt = landing
+        picturing(body, pills[id]) { [weak self] shown in
+            guard let self, self.landingAt == landing else { return }
+            self.debugArrival = shown.parts.first?.1.map { $0 as AnyObject }
+            let to = over.map { self.convert(shown.whole, to: $0) } ?? shown.whole
+            let held = self.flying.filter { $0.name == "waiting" || $0.name == "plate" }
+            self.flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
+                guard let self, self.landingAt == landing else { return }
+                self.unseen.forEach { $0.alphaValue = 1 }
+                self.unseen = []
+                held.forEach { $0.removeFromSuperlayer() }
+            }
+            held.filter { $0.name == "waiting" }.forEach { $0.removeFromSuperlayer() }
         }
-        held.forEach { $0.removeFromSuperlayer() }
     }
+
+    /// Debugging: the last tile arrived at's picture.
+    var debugArrival: AnyObject?
+
+    /// The arrival under way: a later one (or `land`) puts it by.
+    private var landingAt: Date?
 
     /// Escape, or a click away from the cards, lets the stack be.
     private func watchSwitcherClicks() {
@@ -1954,6 +2024,19 @@ final class GridView: NSView, NSDraggingSource {
         var level = 0
         let at = Date()
         pendingArrival = (chosen, nil, tileRect, at, nil)
+        // The column's ground stays under the cards till the tile's there,
+        // not the backdrop through a tile out of sight.
+        if let host = layer, let ground = s.layer?.backgroundColor {
+            let plate = CALayer()
+            plate.name = "plate"
+            plate.backgroundColor = ground
+            plate.frame = tileRect
+            plate.cornerRadius = Radius.surface
+            plate.cornerCurve = .continuous
+            plate.zPosition = 39
+            host.addSublayer(plate)
+            flying.append(plate)
+        }
         for c in cards where c.frame != .zero {
             let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if c.id == chosen {
@@ -2468,7 +2551,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// With tiles behind it: the stack fanned out.
     private let fanButton = IconButton(symbol: "square.stack", size: 10, weight: .medium, target: nil, action: nil)
     /// How many are behind, on the stack button's corner, as a badge on an icon.
-    private let fanCount = NSTextField(labelWithString: "")
+    private let fanCount = CountBadge()
     var onFan: (() -> Void)?
     /// The pointer come over the stack button (true) or gone.
     var onFanHover: ((Bool) -> Void)?
@@ -2565,17 +2648,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         fanButton.action = #selector(fanClicked)
         fanButton.onHover = { [weak self] inside in self?.onFanHover?(inside) }
         fanButton.isHidden = true
-        fanCount.font = .monospacedDigitSystemFont(ofSize: 8, weight: .bold)
-        fanCount.alignment = .center
-        fanCount.wantsLayer = true
-        fanCount.layer?.cornerRadius = 5
         fanCount.isHidden = true
-        themed {
-            $0.fanCount.textColor = Theme.text
-            $0.fanCount.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
-            $0.fanCount.layer?.borderColor = EdgeColor.control.cgColor
-        }
-        fanCount.layer?.borderWidth = 0.5
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
@@ -3488,5 +3561,33 @@ final class StackPeek: NSView {
         guard i < min(tiles.count, Self.shown) else { onMore?(); return "more" }
         onPick?(tiles[i].id, [])
         return "picked \(tiles[i].title)"
+    }
+}
+
+/// A count in a lozenge (a stack's, on its bar's fan button): the figures
+/// centred in it both ways, by their own height, not the line's.
+final class CountBadge: NSView {
+    var stringValue = "" { didSet { if stringValue != oldValue { needsDisplay = true } } }
+    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        layer?.borderWidth = 0.5
+        themed {
+            $0.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
+            $0.layer?.borderColor = EdgeColor.control.cgColor
+            $0.needsDisplay = true
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let text = NSAttributedString(string: stringValue, attributes: [.font: Self.font, .foregroundColor: Theme.text])
+        // The figures' own box (cap height, baseline up), set in the middle.
+        let baseline = (bounds.height - Self.font.capHeight) / 2
+        text.draw(at: NSPoint(x: (bounds.width - text.size().width) / 2, y: baseline + Self.font.descender))
     }
 }

@@ -367,6 +367,13 @@ enum DebugControl {
             let w = arg.split(separator: " ").compactMap { Double($0) }
             guard w.count == 2 else { return "usage: quickwalk <steps> <hold>" }
             return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1]) ?? "no window"
+        case "arrivalpicture":
+            // "arrivalpicture <path.png>": the last tile arrived at's picture, as it flew.
+            guard let any = wc?.content.debugArrival else { return "none" }
+            let cg: CGImage? = CFGetTypeID(any) == CGImage.typeID ? (any as! CGImage) : nil
+            guard let cg, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return "not an image (a surface?)" }
+            try? data.write(to: URL(fileURLWithPath: arg))
+            return "wrote \(cg.width)x\(cg.height)"
         case "flights":
             // ⌃⇥'s pictures on their way, this moment.
             return wc?.debugFlights ?? "no window"
