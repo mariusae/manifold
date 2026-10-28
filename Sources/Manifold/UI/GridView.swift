@@ -962,6 +962,14 @@ final class GridView: NSView, NSDraggingSource {
         layoutSheets()
         layoutShadows(Array(frameNow.values))
         warpIfGrown()
+        // A tile chosen in the switcher, once it's the top again: grown
+        // from its card into its place.
+        if let m = pendingArrival {
+            if Date().timeIntervalSince(m.at) > 1 { pendingArrival = nil } else if frameNow[m.id].map({ $0.height > 0 }) == true, !isStashed(m.id) {
+                pendingArrival = nil
+                uncover(m.id, from: m.from)
+            }
+        }
     }
 
     // MARK: Coming and going
@@ -1106,6 +1114,37 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.setCompletionBlock { shape.removeFromSuperlayer() }
         shape.add(g, forKey: "arrive")
         CATransaction.commit()
+    }
+
+    /// A tile chosen from its card: shown from the card's place outward,
+    /// at its own size, its mask growing to the whole of it (fading in,
+    /// with Reduce motion).
+    private func uncover(_ id: PlacementID, from r: NSRect) {
+        guard let t = tile(id) else { return }
+        for v in [t.view, pills[id]].compactMap({ $0 }) where !v.isHidden {
+            guard let l = v.layer else { continue }
+            if Motion.reduced { fadeIn(v); continue }
+            let local = v.convert(r, from: self).intersection(v.bounds)
+            let start = local.isEmpty ? NSRect(x: v.bounds.midX, y: v.bounds.midY, width: 0, height: 0) : local
+            let m = CALayer()
+            m.backgroundColor = NSColor.black.cgColor
+            m.frame = v.bounds
+            l.mask = m
+            let position = CABasicAnimation(keyPath: "position")
+            position.fromValue = CGPoint(x: start.midX, y: start.midY)
+            position.toValue = CGPoint(x: v.bounds.midX, y: v.bounds.midY)
+            let size = CABasicAnimation(keyPath: "bounds.size")
+            size.fromValue = start.size
+            size.toValue = v.bounds.size
+            let g = CAAnimationGroup()
+            g.animations = [position, size]
+            g.duration = Motion.spatial * 1.25
+            g.timingFunction = Motion.travel
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { [weak l, weak m] in if l?.mask === m { l?.mask = nil } }
+            m.add(g, forKey: "uncover")
+            CATransaction.commit()
+        }
     }
 
     // MARK: Maximizing
@@ -1614,13 +1653,141 @@ final class GridView: NSView, NSDraggingSource {
             self.watchSwitcherClicks()
             self.delegate?.gridSwitcherFollowsPointer()
         }
+        // The tile as it is, to be seen turning into its card.
+        let tileRect = s.frame
+        let bar = pills[top]?.frame ?? NSRect(x: tileRect.minX, y: tileRect.maxY - Self.barHeight, width: tileRect.width, height: Self.barHeight)
+        let tileParts = ([stack.top.view, pills[top]] as [NSView?]).compactMap { $0 }.filter { !$0.isHidden }.map { ($0.frame, Self.ghostPicture(of: $0)) }
         addSubview(s)
         switcher = s
         needsLayout = true
-        s.present()
+        s.present(dealt: false)
+        unfold(s, from: tileRect, bar: bar, tileParts: tileParts)
         if followingPointer { watchSwitcherClicks() }
         return true
     }
+
+    // MARK: ⌃⇥, seen
+
+    /// The sheet `level` deep above a tile's bar, as the sheets are drawn.
+    private func sheetRect(above bar: NSRect, level: Int) -> NSRect {
+        let level = CGFloat(min(max(level, 1), 3))
+        let inset = level * Self.sheetStep.inset, rise = level * Self.sheetStep.rise
+        return NSRect(x: bar.minX + inset, y: bar.maxY - Radius.surface, width: bar.width - 2 * inset, height: Radius.surface + rise)
+    }
+
+    /// A picture carried across the grid from one place to another, its
+    /// opacity from one to another — or, `clip`, kept where it is and cut
+    /// from one part of it to another (its own terms): what shows of it
+    /// grows or shrinks, nothing stretched.
+    private struct Carried {
+        var picture: Any?
+        var from: NSRect, to: NSRect
+        var opacity: (Float, Float)
+        var corner: CGFloat = Radius.surface
+        var delay: Double = 0
+        var clip: (NSRect, NSRect)? = nil
+    }
+
+    /// `r` given `like`'s proportions, as wide as it, its top where r's is.
+    private static func shaped(_ r: NSRect, like: NSRect) -> NSRect {
+        let h = like.width > 0 ? r.width * like.height / like.width : r.height
+        return NSRect(x: r.minX, y: r.maxY - h, width: r.width, height: h)
+    }
+
+    /// Pictures carried, over everything, and taken away once there.
+    private func carry(_ items: [Carried], done: @escaping () -> Void = {}) {
+        guard let host = layer else { return done() }
+        var made: [CALayer] = []
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            made.forEach { $0.removeFromSuperlayer() }
+            done()
+        }
+        for c in items where c.picture != nil && c.to.width > 0 && c.to.height > 0 {
+            let from = Motion.reduced ? c.to : c.from
+            let g = CALayer()
+            g.contents = c.picture
+            g.contentsGravity = .resize
+            g.cornerRadius = c.corner
+            g.cornerCurve = .continuous
+            g.masksToBounds = true
+            g.zPosition = 40
+            g.frame = c.to
+            g.opacity = c.opacity.1
+            host.addSublayer(g)
+            made.append(g)
+            let position = CABasicAnimation(keyPath: "position")
+            position.fromValue = CGPoint(x: from.midX, y: from.midY)
+            position.toValue = CGPoint(x: c.to.midX, y: c.to.midY)
+            let size = CABasicAnimation(keyPath: "bounds.size")
+            size.fromValue = from.size
+            size.toValue = c.to.size
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = c.opacity.0
+            fade.toValue = c.opacity.1
+            let grp = CAAnimationGroup()
+            grp.animations = [position, size, fade]
+            if let (a, b) = c.clip, !Motion.reduced {
+                // Still, and cut: its mask goes from the one part to the other.
+                grp.animations = [fade]
+                let m = CALayer()
+                m.backgroundColor = NSColor.black.cgColor
+                m.cornerRadius = c.corner
+                m.frame = b
+                g.mask = m
+                let mp = CABasicAnimation(keyPath: "position")
+                mp.fromValue = CGPoint(x: a.midX, y: a.midY)
+                mp.toValue = CGPoint(x: b.midX, y: b.midY)
+                let ms = CABasicAnimation(keyPath: "bounds.size")
+                ms.fromValue = a.size
+                ms.toValue = b.size
+                let mg = CAAnimationGroup()
+                mg.animations = [mp, ms]
+                mg.duration = Motion.spatial * 1.25
+                mg.timingFunction = Motion.travel
+                mg.beginTime = CACurrentMediaTime() + c.delay * Motion.slowdown
+                mg.fillMode = .backwards
+                m.add(mg, forKey: "carry")
+            }
+            grp.duration = Motion.spatial * 1.25
+            grp.timingFunction = Motion.travel
+            grp.beginTime = CACurrentMediaTime() + c.delay * Motion.slowdown
+            grp.fillMode = .backwards
+            g.add(grp, forKey: "carry")
+        }
+        CATransaction.commit()
+    }
+
+    /// The switcher opening: the tile turns into its card — its picture
+    /// shrinking into the first card's place as the card comes out of it —
+    /// and the tiles behind come out of their sheets above it into theirs.
+    /// The cards themselves show once theirs are there.
+    private func unfold(_ s: StackColumnView, from tileRect: NSRect, bar: NSRect, tileParts: [(NSRect, Any?)]) {
+        let cards = s.cardPictures(in: self)
+        guard let first = cards.first, first.frame != .zero else { return }
+        s.cardsShown = false
+        s.alphaValue = 0
+        // The tile cut down to its card's place as the card comes up there.
+        var items = tileParts.map { part -> Carried in
+            let (frame, picture) = part
+            let into = first.frame.intersection(frame)
+            let local = into.isEmpty ? NSRect(x: frame.width / 2, y: frame.height / 2, width: 0, height: 0) : into.offsetBy(dx: -frame.minX, dy: -frame.minY)
+            return Carried(picture: picture, from: frame, to: frame, opacity: (1, 0), clip: (NSRect(origin: .zero, size: frame.size), local))
+        }
+        for (i, c) in cards.enumerated() where c.frame != .zero {
+            let from = i == 0 ? c.frame : Self.shaped(sheetRect(above: bar, level: i), like: c.frame)
+            items.append(Carried(picture: c.picture, from: from, to: c.frame, opacity: (0, 1), delay: Double(i) * 0.02))
+        }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.spatial
+            s.animator().alphaValue = 1
+        }
+        carry(items) { [weak s] in s?.cardsShown = true }
+    }
+
+    /// A tile chosen in the switcher grows from its card into its place
+    /// once it's laid out there: the switcher's gone by then.
+    private var pendingArrival: (id: PlacementID, from: NSRect, at: Date)?
 
     /// Escape, or a click away from the cards, lets the stack be.
     private func watchSwitcherClicks() {
@@ -1655,23 +1822,41 @@ final class GridView: NSView, NSDraggingSource {
         switcherMonitor = nil
         let top = s.topID
         let chosen = cancel || out != nil ? top : (id ?? s.selectedID)
-        s.dismiss(to: chosen) { [weak self, weak s] in
-            guard let self, let s else { return }
-            s.tearDown(keeping: chosen, in: self)
-            s.removeFromSuperview()
-            if self.switcher === s { self.switcher = nil }
-            // The views back in the grid, as they'll be once the stack has
-            // its new top: the chosen one showing, the rest behind it.
-            for id in self.switching {
-                guard let t = self.tile(id) else { continue }
-                if t.view.superview !== self { self.addSubview(t.view) }
-                t.view.isHidden = id != chosen
+        // The cards back to their tiles: the chosen one's picture growing
+        // into the tile as the tile does from it; the others into the
+        // sheets above it as they fade.
+        let cards = s.cardPictures(in: self)
+        let tileRect = s.frame
+        let bar = NSRect(x: tileRect.minX, y: tileRect.maxY - Self.barHeight, width: tileRect.width, height: Self.barHeight)
+        s.close(on: chosen)
+        var items: [Carried] = []
+        var level = 0
+        for c in cards where c.frame != .zero {
+            if c.id == chosen {
+                // To the tile's top, as its bar and first lines are.
+                items.append(Carried(picture: c.picture, from: c.frame, to: Self.shaped(tileRect, like: c.frame), opacity: (1, 0)))
+                pendingArrival = (chosen, c.frame, Date())
+            } else {
+                level += 1
+                items.append(Carried(picture: c.picture, from: c.frame, to: Self.shaped(sheetRect(above: bar, level: level), like: c.frame),
+                                     opacity: (1, 0), delay: Double(level) * 0.015))
             }
-            self.switching = []
-            self.needsLayout = true
-            if chosen != top { self.delegate?.gridSwap(chosen) }
-            if let out, out != top { self.delegate?.gridUnstash(out) }
         }
+        carry(items)
+        s.tearDown(keeping: chosen, in: self)
+        s.removeFromSuperview()
+        if switcher === s { switcher = nil }
+        // The views back in the grid, as they'll be once the stack has its
+        // new top: the chosen one showing, the rest behind it.
+        for id in switching {
+            guard let t = tile(id) else { continue }
+            if t.view.superview !== self { addSubview(t.view) }
+            t.view.isHidden = id != chosen
+        }
+        switching = []
+        needsLayout = true
+        if chosen != top { delegate?.gridSwap(chosen) }
+        if let out, out != top { delegate?.gridUnstash(out) }
     }
 
     private func tile(_ id: PlacementID) -> Tile? { columns.flatMap { $0 }.first { $0.shown.id == id } }

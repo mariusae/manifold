@@ -1189,6 +1189,8 @@ enum DebugControl {
         var s = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)\(v.isHidden ? " hidden" : "")\(v.alphaValue < 1 ? " alpha \(v.alphaValue)" : "")"
         if let t = v as? TerminalView { s += " block=\(t.block) surface=\(t.surface != nil)" }
         if let keys = v.layer?.animationKeys(), !keys.isEmpty { s += " animating=\(keys)" }
+        if let m = v.layer?.mask { s += " masked=\(m.frame)" }
+        if let l = v.layer, l.opacity < 1 { s += " opacity=\(l.opacity)" }
         for sub in v.subviews where depth < 4 { s += "\n" + describe(sub, depth + 1) }
         return s
     }

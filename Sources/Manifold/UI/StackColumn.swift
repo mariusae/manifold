@@ -259,9 +259,33 @@ final class StackColumnView: NSView {
 
     // MARK: Showing
 
-    /// Opens: the cards dealt down from the top, one after another.
-    func present() {
+    /// Each card where it is in `view`'s terms, with a picture of it as
+    /// it's drawn: for the cards to be seen coming from their tiles, and
+    /// going back to them.
+    func cardPictures(in view: NSView) -> [(id: PlacementID, frame: NSRect, picture: CGImage?)] {
         layoutSubtreeIfNeeded()
+        let shown = convert(bounds, to: view)
+        return cards.map { c in
+            var picture: CGImage?
+            let scale = window?.backingScaleFactor ?? 2
+            if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(c.bounds.width * scale), pixelsHigh: Int(c.bounds.height * scale),
+                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                          bytesPerRow: 0, bitsPerPixel: 0) {
+                rep.size = c.bounds.size
+                c.cacheDisplay(in: c.bounds, to: rep)
+                picture = rep.cgImage
+            }
+            // Cut where the column cuts it: below its fold it's out of sight.
+            let f = c.convert(c.bounds, to: view)
+            return (c.content.id, f.intersects(shown) ? f : .zero, picture)
+        }
+    }
+
+    /// Opens: the cards dealt down from the top, one after another — or,
+    /// `dealt` false, shown as they are (seen coming from their tiles).
+    func present(dealt: Bool = true) {
+        layoutSubtreeIfNeeded()
+        guard dealt else { return reveal(selection) }
         alphaValue = 0
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.fast
@@ -306,18 +330,18 @@ final class StackColumnView: NSView {
         document.scrollToVisible(cards[i].frame.insetBy(dx: 0, dy: -Self.margin))
     }
 
-    /// Closes on `id` (the chosen card), then calls `done`.
-    func dismiss(to id: PlacementID, done: @escaping () -> Void) {
+    /// The cards themselves out of sight (their pictures on their way in).
+    var cardsShown = true { didSet { document.isHidden = !cardsShown } }
+
+    /// Closes on `id` (the chosen card) at once: the grid carries pictures
+    /// of the cards back to their tiles.
+    func close(on id: PlacementID) {
         isClosing = true
         if let i = cards.firstIndex(where: { $0.content.id == id }) {
             cards[selection].chosen = false
             selection = i
             cards[i].chosen = true
         }
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Motion.fast
-            animator().alphaValue = 0
-        }, completionHandler: done)
     }
 
     /// No views are held: nothing to give back.
