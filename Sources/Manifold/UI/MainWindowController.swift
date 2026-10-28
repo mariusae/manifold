@@ -46,10 +46,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var madeWaits: [MadeWait] = []
     private var madeWaitTimer: Timer?
-    /// The arrangement `content` shows, and which way the next one to be
-    /// shown slides in (1 from the right, -1 from the left), if it does.
+    /// The arrangement `content` shows.
     private var shownArrangement: BlockID?
-    private var pendingSlide: CGFloat?
     private var sliding = false
     /// ⌘`'s walk, while ⌘ is held: the arrangements in the order it
     /// began with, and how far along it is.
@@ -344,8 +342,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.frame = stage.bounds
             content.isHidden = stateView != nil
             if old !== content {
-                if let dir = pendingSlide, shownArrangement != nil, selected != nil {
-                    slide(from: dir, leaving: old)
+                if let from = shownArrangement, let to = selected {
+                    slide(slideDirection(from: from, to: to), leaving: old)
+                    // After the sidebar's had the change.
+                    DispatchQueue.main.async { [weak self] in self?.sidebar.organizationView.travel(from: from, to: to) }
                 } else {
                     old.isHidden = true
                 }
@@ -356,7 +356,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             picture(leaving)
             shownArrangement = selected
         }
-        pendingSlide = nil
 
         if let a = arrangement {
             // The grid (§3.1): every tile, in its column, top to bottom.
@@ -1118,7 +1117,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let target = NSRect(x: Theme.sidebarInset, y: Theme.sidebarInset, width: sidebarWidth,
                             height: root.bounds.height - 2 * Theme.sidebarInset)
         if animated {
-            sidebar.frame = target.offsetBy(dx: -24, dy: 0)
+            sidebar.frame = target.offsetBy(dx: Motion.distance(-24), dy: 0)
             sidebar.alphaValue = 0
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Motion.base
@@ -1153,7 +1152,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 && NSEvent.pressedMouseButtons == 0 && root.bounds.contains(p) { return }
         }
         sidebarShown = false
-        let target = sidebar.frame.offsetBy(dx: -24, dy: 0)
+        let target = sidebar.frame.offsetBy(dx: Motion.distance(-24), dy: 0)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.fast
             ctx.timingFunction = Motion.disappear
@@ -2494,14 +2493,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let order = allWorkspaces
         guard !order.isEmpty else { return }
         let i = selected.flatMap { order.firstIndex(of: $0) } ?? 0
-        show(arrangement: order[(i + d + order.count) % order.count], slidingFrom: CGFloat(d))
+        show(arrangement: order[(i + d + order.count) % order.count])
     }
 
-    /// Selects an arrangement, which slides in from `dir`'s side over the
-    /// one shown.
-    private func show(arrangement id: BlockID, slidingFrom dir: CGFloat) {
+    /// Selects an arrangement, which slides in over the one shown.
+    private func show(arrangement id: BlockID) {
         guard id != selected else { return }
-        pendingSlide = dir
         hosts.select(id)
     }
 
@@ -2531,7 +2528,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let n = w.ids.count
         w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
         walk = w
-        show(arrangement: w.ids[w.index], slidingFrom: back ? -1 : 1)
+        show(arrangement: w.ids[w.index])
         // From the menu, without ⌘ held, it's one step and settled.
         if walkMonitors.isEmpty { endWalk(settling: true) }
     }
@@ -2554,7 +2551,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let w = walk else { return }
         walk = nil
         if !settling, let home = w.ids.first {
-            show(arrangement: home, slidingFrom: -1)
+            show(arrangement: home)
         }
     }
 
@@ -2675,11 +2672,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         next.makeKeyAndOrderFront(nil)
     }
 
+    /// Which way a space comes in: as the sidebar has them, one below the
+    /// space left comes up from below (1), one above down from above (-1);
+    /// by the desk's order where either row doesn't show.
+    private func slideDirection(from a: BlockID, to b: BlockID) -> CGFloat {
+        let org = sidebar.organizationView
+        if let ra = org.spaceRow(a), let rb = org.spaceRow(b), ra.midY != rb.midY { return rb.midY > ra.midY ? 1 : -1 }
+        let order = allWorkspaces
+        guard let i = order.firstIndex(of: a), let j = order.firstIndex(of: b) else { return 1 }
+        return j >= i ? 1 : -1
+    }
+
     /// The arrangement about to be shown (`content`, its grid shown) slides
-    /// in from `dir`'s side over the one shown, whose grid slides out the
-    /// other way, both live. Only their layers move, so nothing is laid out
-    /// again on the way.
-    private func slide(from dir: CGFloat, leaving old: GridView) {
+    /// in over the one shown — from below for `dir` 1, from above for -1 —
+    /// whose grid slides out the other way, both live. Only their layers
+    /// move, so nothing is laid out again on the way. With less motion
+    /// asked for, the one fades in over the other.
+    private func slide(_ dir: CGFloat, leaving old: GridView) {
         finishSlide()
         let frame = content.frame
         content.layer?.zPosition = 1
@@ -2689,19 +2698,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         sliding = true
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in self?.finishSlide() }
-        let ease = Motion.travel
-        let move = { (layer: CALayer, from: CGFloat, to: CGFloat) in
-            let a = CABasicAnimation(keyPath: "transform")
-            a.fromValue = CATransform3DMakeTranslation(from, 0, 0)
-            a.toValue = CATransform3DMakeTranslation(to, 0, 0)
-            a.duration = Motion.spatial
+        func animate(_ layer: CALayer, _ keyPath: String, _ from: Any, _ to: Any, _ duration: TimeInterval, _ ease: CAMediaTimingFunction) {
+            let a = CABasicAnimation(keyPath: keyPath)
+            a.fromValue = from
+            a.toValue = to
+            a.duration = duration
             a.timingFunction = ease
             a.fillMode = .forwards
             a.isRemovedOnCompletion = false
             layer.add(a, forKey: "manifold.slide")
         }
-        move(incoming, dir * frame.width, 0)
-        move(leaving, 0, -dir * frame.width)
+        if Motion.reduced {
+            animate(incoming, "opacity", 0, 1, Motion.base, Motion.appear)
+        } else {
+            // The stage's layers have y up: below is negative.
+            let h = frame.height
+            animate(incoming, "transform", CATransform3DMakeTranslation(0, -dir * h, 0), CATransform3DIdentity, Motion.spatial, Motion.travel)
+            animate(leaving, "transform", CATransform3DIdentity, CATransform3DMakeTranslation(0, dir * h, 0), Motion.spatial, Motion.travel)
+        }
         CATransaction.commit()
     }
 
@@ -5844,7 +5858,7 @@ extension MainWindowController: SidebarDelegate {
             hideSidebar(force: true)
         }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.base
+            ctx.duration = Motion.reduced ? 0 : Motion.base
             ctx.allowsImplicitAnimation = true
             layoutViews()
             root.layoutSubtreeIfNeeded()

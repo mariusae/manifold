@@ -202,7 +202,7 @@ final class LinkBadge: NSView {
     private func move(_ c: Chip, to target: NSRect) {
         guard c.frame != target else { return }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.base
+            ctx.duration = Motion.reduced ? 0 : Motion.base
             ctx.timingFunction = fanned ? Motion.appear : Motion.disappear
             ctx.allowsImplicitAnimation = true
             c.frame = target

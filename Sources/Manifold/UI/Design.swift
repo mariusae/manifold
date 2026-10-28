@@ -80,10 +80,23 @@ enum Elevation {
 /// How long things take to move: a fade or a reveal on hover, a thing
 /// appearing (easing out) or going (easing in), and a thing travelling
 /// across the window (one curve, and one that overshoots a little).
+///
+/// With Reduce motion on (Accessibility ▸ Display) nothing travels, grows or
+/// shrinks: a thing that would slide or grow only fades, or is there at
+/// once; fades stay, as the system's do, and so does what says something
+/// by moving (the status spinner).
 enum Motion {
-    static let fast: TimeInterval = 0.12
-    static let base: TimeInterval = 0.16
-    static let spatial: TimeInterval = 0.24
+    static var fast: TimeInterval { 0.12 * slowdown }
+    static var base: TimeInterval { 0.16 * slowdown }
+    static var spatial: TimeInterval { 0.24 * slowdown }
+    /// Reduce motion asked for (or, debugging, as if it were).
+    static var reduced: Bool { forceReduced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static var forceReduced = false
+    /// Debugging: every transition this many times slower, to be watched,
+    /// or pictured, on its way.
+    static var slowdown: Double = 1
+    /// How far a thing travels: `d`, or nowhere with less motion asked for.
+    static func distance(_ d: CGFloat) -> CGFloat { reduced ? 0 : d }
     static var appear: CAMediaTimingFunction { CAMediaTimingFunction(name: .easeOut) }
     static var disappear: CAMediaTimingFunction { CAMediaTimingFunction(name: .easeIn) }
     static var travel: CAMediaTimingFunction { CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1) }

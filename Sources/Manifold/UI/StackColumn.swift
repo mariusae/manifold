@@ -270,7 +270,7 @@ final class StackColumnView: NSView {
         for (i, c) in cards.enumerated() {
             guard let l = c.layer else { continue }
             let deal = CABasicAnimation(keyPath: "transform.translation.y")
-            deal.fromValue = -CGFloat(i) * (SummaryCard.height + Self.gap) * 0.6
+            deal.fromValue = Motion.distance(-CGFloat(i) * (SummaryCard.height + Self.gap) * 0.6)
             deal.toValue = 0
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = i == 0 ? 1 : 0
@@ -278,7 +278,7 @@ final class StackColumnView: NSView {
             let g = CAAnimationGroup()
             g.animations = [deal, fade]
             g.duration = Motion.spatial
-            g.beginTime = CACurrentMediaTime() + Double(i) * 0.025
+            g.beginTime = CACurrentMediaTime() + Double(i) * 0.025 * Motion.slowdown
             g.fillMode = .backwards
             g.timingFunction = Motion.travel
             l.add(g, forKey: "deal")

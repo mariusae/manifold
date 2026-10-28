@@ -118,7 +118,7 @@ final class GridView: NSView, NSDraggingSource {
     /// pill costs more to make than to show again.
     private var sparePills: [PlacementID: TilePill] = [:]
     /// How long a tile takes to glide to a new place or size.
-    static let glide: TimeInterval = Motion.base
+    static var glide: TimeInterval { Motion.base }
     /// Debugging: grid layouts so far (the debug "layouts").
     static var layouts = 0
     private var columnDividers: [DividerView] = []
@@ -801,7 +801,7 @@ final class GridView: NSView, NSDraggingSource {
         // Tiles glide to new places when the grid itself didn't change
         // size (a tile placed, closed, grown or stashed); a resize or a
         // divider dragged lays out at once.
-        let gliding = bounds == lastLayoutBounds && !dragging && !dividerDragging && !isSwitching
+        let gliding = bounds == lastLayoutBounds && !dragging && !dividerDragging && !isSwitching && !Motion.reduced
         lastLayoutBounds = bounds
         var frameNow: [PlacementID: NSRect] = [:]
         var collapsedNow: Set<PlacementID> = []
@@ -1286,7 +1286,7 @@ final class GridView: NSView, NSDraggingSource {
     private func showDrop(_ rect: NSRect) {
         if drop?.rect != rect || dropOverlay.isHidden {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = dropOverlay.isHidden ? 0 : Motion.fast
+                ctx.duration = dropOverlay.isHidden || Motion.reduced ? 0 : Motion.fast
                 dropOverlay.animator().frame = rect
             }
             dropOverlay.isHidden = false
@@ -1651,7 +1651,7 @@ final class GridView: NSView, NSDraggingSource {
         // deepest last, so it's seen being made.
         for (l, (_, level, id)) in zip(sheetLayers, wanted) where grown.contains(id) {
             let drop = CABasicAnimation(keyPath: "transform.translation.y")
-            drop.fromValue = 10
+            drop.fromValue = Motion.distance(10)
             drop.toValue = 0
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
@@ -1659,7 +1659,7 @@ final class GridView: NSView, NSDraggingSource {
             let group = CAAnimationGroup()
             group.animations = [drop, fade]
             group.duration = Motion.spatial
-            group.beginTime = CACurrentMediaTime() + Double(level - 1) * 0.05
+            group.beginTime = CACurrentMediaTime() + Double(level - 1) * 0.05 * Motion.slowdown
             group.fillMode = .backwards
             group.timingFunction = Motion.settle
             l.add(group, forKey: "drop")
@@ -2766,7 +2766,7 @@ final class StackPeek: NSView {
 
     func rise() {
         let end = frame
-        setFrameOrigin(NSPoint(x: end.minX, y: end.minY + (below ? 6 : -6)))
+        setFrameOrigin(NSPoint(x: end.minX, y: end.minY + Motion.distance(below ? 6 : -6)))
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.base
             ctx.timingFunction = Motion.appear

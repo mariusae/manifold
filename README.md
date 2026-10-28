@@ -225,12 +225,15 @@ parts from the Mac's conventions on purpose.
   and a folder tile's (the folders it showed, as a Finder window's Back
   goes); the mouse's buttons go there first in such a tile. A web page
   zooms with ⌘+ and ⌘− in Safari's steps (50% to 300%), ⌘0 back.
-- **⌘\`** walks the spaces most recently gone to first, each
-  sliding in from the right (⇧⌘\` from the left), for as long as ⌘ is
-  held; letting go settles on the one come to (with one space, it
-  goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ / ⇧⌘] switch
-  spaces too, as does the Dock icon's menu: every space, under
-  its host when there are several, the one shown checked. A file or
+- **⌘\`** walks the spaces most recently gone to first, for as long
+  as ⌘ is held; letting go settles on the one come to (with one space,
+  it goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ /
+  ⇧⌘] switch spaces too, as does the Dock icon's menu: every space,
+  under its host when there are several, the one shown checked. However
+  you go, the space comes in as the sidebar has them — up from below
+  for one lower in the list, down from above for one higher — and a band
+  in the tint glides down the sidebar from the space left to the one
+  gone to, and fades there. A file or
   folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
 - Drag a tile by its bar: between two tiles to put it there, near a

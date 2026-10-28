@@ -1427,6 +1427,9 @@ resting (a sheet, a tab, a card: 0.18, blur 3, a point below), tile (in
 the light: 0.10, 10, four below), float (a panel: Flat.shadow);
 **Motion** — fast 0.12 s, base 0.16, spatial 0.24, easing out to appear
 and in to go, one curve to travel and one that overshoots to settle;
+with Reduce motion on (Accessibility ▸ Display) nothing travels, grows
+or shrinks — it fades, or is there at once — and fades stay, as the
+system's do;
 **EdgeColor** — hairline, subtle, strong, control (a checkbox, a
 knob, a badge, a sheet or tab behind a tile, darker hovered), and the
 tint strong (what has the keyboard, is chosen or targeted) and soft

@@ -88,8 +88,21 @@ enum DebugControl {
             }
             // Laid out first, as a display would be (with the display asleep,
             // none comes, and what's drawn is from before the last change).
+            // "snapshot <path> live": where things are on screen this
+            // moment, part way through a transition (not laid out first).
+            if arg.hasSuffix(" live") { return snapshot(window, to: String(arg.dropLast(5)), live: true) }
             window.contentView?.layoutSubtreeIfNeeded()
             return snapshot(window, to: arg.isEmpty ? "/tmp/manifold.png" : arg)
+        case "motion":
+            // "motion slow <n>": every transition n times slower; "motion
+            // reduced on|off": as if Reduce motion were on; "motion": both.
+            let w = arg.split(separator: " ").map(String.init)
+            if w.count == 2, w[0] == "slow", let n = Double(w[1]) { Motion.slowdown = max(0.01, n) }
+            if w.count == 2, w[0] == "reduced" { Motion.forceReduced = w[1] == "on" }
+            return "slowdown=\(Motion.slowdown) reduced=\(Motion.reduced)"
+        case "travel":
+            // The sidebar's band going from space to space, if it is.
+            return wc?.debugOrganization.debugTraveller ?? "no window"
         case "action":
             let sel = Selector(arg)
             let start: NSResponder? = wc?.window?.firstResponder ?? wc?.window
@@ -1173,7 +1186,9 @@ enum DebugControl {
 
     /// Draws the window's views, then the terminals' rendered frames (which
     /// live in IOSurfaces AppKit can't draw), then the overlays on top.
-    private static func snapshot(_ window: NSWindow, to path: String) -> String {
+    /// `live`: each view where its layer is on screen at this moment, at
+    /// its opacity there — part way through a transition.
+    private static func snapshot(_ window: NSWindow, to path: String, live: Bool = false) -> String {
         // The frame view, so the title bar's buttons are drawn too.
         guard let root = window.contentView?.superview else { return "no content" }
         let scale = window.backingScaleFactor
@@ -1189,9 +1204,19 @@ enum DebugControl {
         // Clipped only where the screen clips: by a view or layer that clips
         // to its bounds (not, any more, by a scroll view's clip view, which
         // on the screen lets its rows run on past it).
-        func draw(_ v: NSView, clip: NSRect) {
-            guard !v.isHidden, v.alphaValue > 0 else { return }
+        // On screen, live: the view's place moved by as much as its layer's
+        // is from where it's going, through every layer above it.
+        func onScreen(_ v: NSView) -> (NSRect, CGFloat) {
             let r = v.convert(v.bounds, to: root)
+            guard live, let l = v.layer, let lp = l.presentation(), let rl = root.layer, let rp = rl.presentation() else { return (r, v.alphaValue) }
+            let model = l.convert(l.bounds, to: rl), now = lp.convert(lp.bounds, to: rp)
+            let sx = model.width > 0 ? now.width / model.width : 1, sy = model.height > 0 ? now.height / model.height : 1
+            return (NSRect(x: r.minX + now.minX - model.minX, y: r.minY + now.minY - model.minY, width: r.width * sx, height: r.height * sy), CGFloat(lp.opacity))
+        }
+        func draw(_ v: NSView, clip: NSRect, alpha: CGFloat = 1) {
+            let (r, own) = onScreen(v)
+            let alpha = alpha * own
+            guard !v.isHidden, alpha > 0.01 else { return }
             let clips = v.clipsToBounds || v.layer?.masksToBounds == true
             let inside = clips ? clip.intersection(r) : clip
             guard !inside.isEmpty else { return }
@@ -1219,11 +1244,11 @@ enum DebugControl {
             for (s, a) in zip(v.subviews, alphas) { s.alphaValue = a }
             if let cg = img.cgImage {
                 ctx.saveGState()
-                ctx.setAlpha(v.alphaValue)
+                ctx.setAlpha(live ? alpha : v.alphaValue)
                 ctx.draw(cg, in: r)
                 ctx.restoreGState()
             }
-            for sub in v.subviews { draw(sub, clip: inside) }
+            for sub in v.subviews { draw(sub, clip: inside, alpha: alpha) }
         }
         draw(root, clip: root.bounds)
         // Child windows (popups) over it, where they are on screen.
