@@ -53,7 +53,51 @@ final class MachinePanels: NSView {
     enum Panel { case cpu, memory, network, disks, top }
     var panels: [Panel] = [.cpu, .memory, .network, .disks] { didSet { needsDisplay = true } }
     var compact = false { didSet { if compact != oldValue { needsDisplay = true } } }
-    var sample: MachineSample? { didSet { needsDisplay = true } }
+    var sample: MachineSample? {
+        didSet {
+            ease(to: sample.map(Self.meters) ?? [])
+            needsDisplay = true
+        }
+    }
+
+    // MARK: Easing
+
+    /// The meters — each core's cell, memory's used, cached and swap — as
+    /// one list, eased from the last reading to this one, not jumping
+    /// every two seconds; the figures and the graphs are as they are.
+    private static func meters(_ s: MachineSample) -> [Double] {
+        let total = Double(max(s.memory.total, 1))
+        return s.cores + [Double(s.memory.used) / total, Double(s.memory.cached) / total,
+                          s.memory.swapTotal > 0 ? Double(s.memory.swapUsed) / Double(s.memory.swapTotal) : 0]
+    }
+    private var easeFrom: [Double] = [], easeTo: [Double] = []
+    private var easeStart: CFTimeInterval = 0
+    private var easeTimer: Timer?
+    private var easeDuration: TimeInterval { 2.5 * Motion.spatial }
+    private func ease(to target: [Double]) {
+        let now = shown
+        guard now.count == target.count, window != nil, !Motion.reduced else {
+            easeFrom = target
+            easeTo = target
+            return
+        }
+        easeFrom = now
+        easeTo = target
+        easeStart = CACurrentMediaTime()
+        easeTimer?.invalidate()
+        easeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] t in
+            guard let self else { return t.invalidate() }
+            if CACurrentMediaTime() - self.easeStart >= self.easeDuration { t.invalidate() }
+            self.needsDisplay = true
+        }
+    }
+    /// The meters as they're drawn this moment.
+    private var shown: [Double] {
+        let t = min(1, (CACurrentMediaTime() - easeStart) / max(easeDuration, 0.001))
+        let e = 1 - pow(1 - t, 3)
+        guard easeFrom.count == easeTo.count else { return easeTo }
+        return zip(easeFrom, easeTo).map { $0 + ($1 - $0) * e }
+    }
     var history: [MachinePoint] = [] { didSet { needsDisplay = true } }
     /// Said where there's nothing to show yet.
     var waiting = "Reading the machine…" { didSet { needsDisplay = true } }
@@ -300,7 +344,8 @@ final class MachinePanels: NSView {
         var x = key(nil, "load " + loads, at: NSPoint(x: chart.minX, y: chart.maxY + 4))
         x = key(MachineInk.one, "busy", at: NSPoint(x: x, y: chart.maxY + 4))
         key(MachineInk.one.withAlphaComponent(0.4), "kernel", at: NSPoint(x: x, y: chart.maxY + 4))
-        drawCores(s.cores, in: gridRect)
+        let m = shown
+        drawCores(m.count == s.cores.count + 3 ? Array(m.prefix(s.cores.count)) : s.cores, in: gridRect)
     }
 
     /// Each core a cell, deeper the busier, in as square a grid as fits.
@@ -347,15 +392,18 @@ final class MachinePanels: NSView {
         let m = s.memory
         let top = head("Memory", MachineWords.percent(m.usedFraction), detail: "\(MachineWords.memory(m.used)) of \(MachineWords.memory(m.total))", in: r)
         let total = Double(max(m.total, 1))
+        let eased = shown.suffix(3).map { $0 }
+        let (used, cached, swap) = eased.count == 3 && shown.count == s.cores.count + 3 ? (eased[0], eased[1], eased[2])
+            : (Double(m.used) / total, Double(m.cached) / total, m.swapTotal > 0 ? Double(m.swapUsed) / Double(m.swapTotal) : 0)
         if compact {
-            bar(NSRect(x: r.minX, y: r.maxY - 8, width: r.width, height: 6), [(Double(m.used) / total, MachineInk.one), (Double(m.cached) / total, MachineInk.three)])
+            bar(NSRect(x: r.minX, y: r.maxY - 8, width: r.width, height: 6), [(used, MachineInk.one), (cached, MachineInk.three)])
             let chart = NSRect(x: r.minX, y: top + 2, width: r.width, height: r.maxY - 8 - 6 - top - 2)
             var e = area(history.map { ($0.at, $0.memory) }, in: chart, top: 1, color: MachineInk.one)
             e.say = { "used " + MachineWords.percent($0) }
             readable(chart, [e])
             return
         }
-        bar(NSRect(x: r.minX, y: top, width: r.width, height: 9), [(Double(m.used) / total, MachineInk.one), (Double(m.cached) / total, MachineInk.three)])
+        bar(NSRect(x: r.minX, y: top, width: r.width, height: 9), [(used, MachineInk.one), (cached, MachineInk.three)])
         var x = key(MachineInk.one, "used \(MachineWords.memory(m.used))", at: NSPoint(x: r.minX, y: top + 14))
         x = key(MachineInk.three, "cached \(MachineWords.memory(m.cached))", at: NSPoint(x: x, y: top + 14))
         if x + 60 < r.maxX { key(nil, "free \(MachineWords.memory(m.available))", at: NSPoint(x: x - 2, y: top + 14)) }
@@ -365,7 +413,7 @@ final class MachinePanels: NSView {
             let label = "\(MachineWords.memory(m.swapUsed)) of \(MachineWords.memory(m.swapTotal))"
             let lw = NSAttributedString(string: label, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)]).size().width
             say(label, NSPoint(x: r.maxX, y: y - 2), font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), right: true)
-            bar(NSRect(x: r.minX + 34, y: y + 3, width: max(10, r.width - 34 - lw - 8), height: 5), [(Double(m.swapUsed) / Double(m.swapTotal), MachineInk.one.withAlphaComponent(0.6))])
+            bar(NSRect(x: r.minX + 34, y: y + 3, width: max(10, r.width - 34 - lw - 8), height: 5), [(swap, MachineInk.one.withAlphaComponent(0.6))])
             y += 16
         }
         let chart = NSRect(x: r.minX, y: y + 4, width: r.width, height: r.maxY - y - 4)
