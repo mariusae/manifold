@@ -2593,6 +2593,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteSeen(force: true)
     }
 
+    var debugFlights: String { content.debugFlights }
+
     /// Debugging: ⌘ taken as held, for "walk".
     private var debugHeld = false
 
@@ -3196,6 +3198,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Opening on the space shown: its tiles, as they are, to be seen
         // going to their places in it.
         let fromTiles = stateView == nil && !content.isHidden ? partsInRoot(content.tileParts(), from: content) : [:]
+        let fromSheets = stateView == nil && !content.isHidden ? content.sheetPlaces().mapValues { root.convert($0, from: content) } : [:]
         if stateView == nil {
             let v = StateView()
             v.onOpen = { [weak self] b, mods in
@@ -3225,7 +3228,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         layoutViews()
         render()
         window?.makeFirstResponder(stateView)
-        if let v = stateView, !fromTiles.isEmpty { flyIn(v, from: fromTiles) }
+        if let v = stateView, !fromTiles.isEmpty || !fromSheets.isEmpty { flyIn(v, from: fromTiles, sheets: fromSheets) }
     }
 
     func hideStateView() {
@@ -3256,105 +3259,62 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         l.add(a, forKey: "fadeIn")
     }
 
-    private func partsInRoot(_ parts: [BlockID: [(NSRect, Any?)]], from view: NSView) -> [BlockID: [(NSRect, Any?)]] {
-        parts.mapValues { $0.map { (root.convert($0.0, from: view), $0.1) } }
+    private func partsInRoot(_ parts: [BlockID: GridView.Pictured], from view: NSView) -> [BlockID: GridView.Pictured] {
+        parts.mapValues { p in GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: view), $0.1) }, ground: p.ground) }
     }
 
-    /// Overview opening: each tile's picture flies from where it is in the
-    /// space to its card's place, scaled evenly to fit it (never cut, never
-    /// stretched), as Mission Control sends windows to theirs, and gives
-    /// way to the card as it lands; the rest of Overview fades in.
-    private func flyIn(_ v: StateView, from tiles: [BlockID: [(NSRect, Any?)]]) {
-        if Motion.reduced { return fadeIn(v) }
-        let cards = partsInRoot(v.cellParts(), from: v)
-        let flights = cards.compactMap { block, card in tiles[block].map { (block, $0, card) } }
-        guard !flights.isEmpty else { return fadeIn(v) }
+    /// Overview opening, as Mission Control does: each tile in the space
+    /// becomes its card where the card is — its outline going there, what
+    /// it shows scaled to its width, the card coming in on the way — and
+    /// each tile in a stack is pulled out of its sheet into its card; the
+    /// rest of Overview fades in.
+    private func flyIn(_ v: StateView, from tiles: [BlockID: GridView.Pictured], sheets: [BlockID: NSRect]) {
+        guard !Motion.reduced, let host = root.layer else { return fadeIn(v) }
+        var items: [GridView.Morph] = []
+        var flown: [BlockID] = []
+        for (block, card) in partsInRoot(v.cellParts(), from: v) {
+            if let tile = tiles[block] {
+                items.append(GridView.Morph(from: tile.whole, to: card.whole, leaving: tile, coming: card))
+            } else if let sheet = sheets[block] {
+                items.append(GridView.Morph(from: sheet, to: card.whole, coming: card))
+            } else { continue }
+            flown.append(block)
+        }
+        guard !items.isEmpty else { return fadeIn(v) }
         let d = Motion.spatial * 1.5
-        fly(flights.map { ($0.1, $0.2) }, back: false, over: d)
+        GridView.morph(items, in: host, over: d)
         fade(v, over: d)
-        // Each card there as its tile's picture lands on it.
-        for (block, _, _) in flights {
-            for part in v.cellViews(of: block) { show(part, from: 0.7, over: d) }
+        for block in flown {
+            for part in v.cellViews(of: block) { show(part, from: 1, over: d) }
         }
     }
 
-    /// Overview closing: each tile's picture (as the space has it now)
-    /// flies back from its card to its place, the card giving way to it as
-    /// it leaves; the rest of the space fades in.
-    private func flyOut(from cards: [BlockID: [(NSRect, Any?)]]) {
+    /// Overview closing: each card becomes its tile again, where the tile
+    /// is (as the space has it now), or goes back into its sheet; the rest
+    /// of the space fades in.
+    private func flyOut(from cards: [BlockID: GridView.Pictured]) {
         guard !content.isHidden else { return }
-        if Motion.reduced { return fadeIn(content) }
+        guard !Motion.reduced, let host = root.layer else { return fadeIn(content) }
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.tileParts(), from: content)
-        let flights = tiles.compactMap { block, parts in cards[block].map { (block, parts, $0) } }
-        guard !flights.isEmpty else { return fadeIn(content) }
+        let sheets = content.sheetPlaces().mapValues { root.convert($0, from: content) }
+        var items: [GridView.Morph] = []
+        var flown: [BlockID] = []
+        for (block, card) in cards {
+            if let tile = tiles[block] {
+                items.append(GridView.Morph(from: card.whole, to: tile.whole, leaving: card, coming: tile))
+                flown.append(block)
+            } else if let sheet = sheets[block] {
+                items.append(GridView.Morph(from: card.whole, to: sheet, leaving: card))
+            }
+        }
+        guard !items.isEmpty else { return fadeIn(content) }
         let d = Motion.spatial * 1.5
-        fly(flights.map { ($0.1, $0.2) }, back: true, over: d)
+        GridView.morph(items, in: host, over: d)
         fade(content, over: d)
-        for (block, _, _) in flights {
+        for block in flown {
             for part in content.tileViews(of: block) { show(part, from: 1, over: d) }
         }
-    }
-
-    /// `r`, a part of `whole`, where it is once `whole` is scaled evenly to
-    /// fit `box`, in its middle: as a layer at `r` is moved there.
-    private static func fitting(_ r: NSRect, of whole: NSRect, into box: NSRect) -> CATransform3D {
-        let s = min(box.width / whole.width, box.height / whole.height)
-        let q = CGPoint(x: box.midX + (r.midX - whole.midX) * s, y: box.midY + (r.midY - whole.midY) * s)
-        return CATransform3DScale(CATransform3DMakeTranslation(q.x - r.midX, q.y - r.midY, 0), s, s, 1)
-    }
-
-    /// Tiles' pictures flown over the window between their places and their
-    /// cards' (`back`, from the cards), each tile's parts as one; going
-    /// back, the cards' pictures fade where they were as they leave.
-    private func fly(_ flights: [(tile: [(NSRect, Any?)], card: [(NSRect, Any?)])], back: Bool, over d: Double) {
-        guard let host = root.layer else { return }
-        func union(_ rs: [NSRect]) -> NSRect { rs.dropFirst().reduce(rs.first ?? .zero) { $0.union($1) } }
-        var made: [CALayer] = []
-        func layer(_ picture: Any?, at r: NSRect, opacity: [Float], times: [NSNumber], transform: (CATransform3D, CATransform3D)? = nil) {
-            let g = CALayer()
-            g.contents = picture
-            g.contentsGravity = .resize
-            g.frame = r
-            g.cornerRadius = Radius.surface
-            g.cornerCurve = .continuous
-            g.masksToBounds = true
-            g.zPosition = 40
-            g.opacity = opacity.last ?? 1
-            if let transform { g.transform = transform.1 }
-            host.addSublayer(g)
-            made.append(g)
-            let fade = CAKeyframeAnimation(keyPath: "opacity")
-            fade.values = opacity
-            fade.keyTimes = times
-            var animations: [CAAnimation] = [fade]
-            if let transform {
-                let move = CABasicAnimation(keyPath: "transform")
-                move.fromValue = transform.0
-                move.toValue = transform.1
-                move.timingFunction = Motion.travel
-                animations.append(move)
-            }
-            let grp = CAAnimationGroup()
-            grp.animations = animations
-            grp.duration = d
-            g.add(grp, forKey: "fly")
-        }
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { made.forEach { $0.removeFromSuperlayer() } }
-        for f in flights {
-            let whole = union(f.tile.map(\.0)), box = union(f.card.map(\.0))
-            guard whole.width > 1, whole.height > 1, box.width > 1, box.height > 1 else { continue }
-            if back {
-                for (r, picture) in f.card where picture != nil { layer(picture, at: r, opacity: [1, 0, 0], times: [0, 0.3, 1]) }
-            }
-            for (r, picture) in f.tile where picture != nil {
-                let there = Self.fitting(r, of: whole, into: box)
-                layer(picture, at: r, opacity: back ? [0, 1, 1] : [1, 1, 0], times: back ? [0, 0.3, 1] : [0, 0.75, 1],
-                      transform: back ? (there, CATransform3DIdentity) : (CATransform3DIdentity, there))
-            }
-        }
-        CATransaction.commit()
     }
 
     /// A view faded in over a flight.

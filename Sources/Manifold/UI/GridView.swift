@@ -968,7 +968,7 @@ final class GridView: NSView, NSDraggingSource {
         if let m = pendingArrival {
             if Date().timeIntervalSince(m.at) > 1 { land() } else if frameNow[m.id].map({ $0.height > 0 }) == true, !isStashed(m.id) {
                 pendingArrival = nil
-                arrive(m.id, from: m.from)
+                arrive(m.id, card: m.card, from: m.from)
             }
         }
     }
@@ -1107,16 +1107,68 @@ final class GridView: NSView, NSDraggingSource {
         return rep.cgImage
     }
 
+    /// Pictures of a thing as it shows — a tile's body and bar, a card —
+    /// where each is, on its ground (what's behind its drawing: its
+    /// layer's colour, else the window's).
+    struct Pictured {
+        var parts: [(NSRect, Any?)]
+        var ground: CGColor?
+        var whole: NSRect { parts.dropFirst().reduce(parts.first?.0 ?? .zero) { $0.union($1.0) } }
+    }
+
+    /// What's behind a view's drawing, opaque.
+    static func ground(of v: NSView) -> CGColor {
+        if let own = v.layer?.backgroundColor, own.alpha > 0 { return own.copy(alpha: 1) ?? own }
+        var c = NSColor.windowBackgroundColor.cgColor
+        v.effectiveAppearance.performAsCurrentDrawingAppearance { c = Theme.windowBackground.withAlphaComponent(1).cgColor }
+        return c
+    }
+
     /// Each tile in view, by its block (a block's first), its body then its
     /// bar, where they are (the grid's terms) with pictures of them: for
     /// Overview's cards to be seen coming from them, and going back.
-    func tileParts() -> [BlockID: [(NSRect, Any?)]] {
-        var out: [BlockID: [(NSRect, Any?)]] = [:]
+    func tileParts() -> [BlockID: Pictured] {
+        var out: [BlockID: Pictured] = [:]
         for t in columns.flatMap({ $0 }) {
             guard let b = t.shown.block?.id, out[b] == nil, let body = shownBody(t) else { continue }
-            var parts: [(NSRect, Any?)] = [(body.frame, Self.ghostPicture(of: body))]
-            if let p = pills[t.shown.id], !p.isHidden { parts.append((p.frame, Self.ghostPicture(of: p))) }
-            out[b] = parts
+            out[b] = pictured(body, pills[t.shown.id])
+        }
+        return out
+    }
+
+    private func pictured(_ body: NSView, _ bar: NSView?) -> Pictured {
+        // As it'll show, though it's out of sight meanwhile (a drawing of a
+        // view takes its opacity).
+        func picture(_ v: NSView) -> Any? {
+            let alpha = v.alphaValue
+            v.alphaValue = 1
+            defer { v.alphaValue = alpha }
+            return Self.ghostPicture(of: v)
+        }
+        var parts: [(NSRect, Any?)] = [(body.frame, picture(body))]
+        if let bar, !bar.isHidden { parts.append((bar.frame, picture(bar))) }
+        return Pictured(parts: parts, ground: Self.ground(of: body))
+    }
+
+    /// The sheet `level` deep (1–3) above a bar, as the sheets are drawn.
+    private static func sheetRect(above bar: NSRect, level: Int) -> NSRect {
+        let level = CGFloat(min(max(level, 1), 3))
+        let inset = level * sheetStep.inset, rise = level * sheetStep.rise
+        return NSRect(x: bar.minX + inset, y: bar.maxY - Radius.surface, width: bar.width - 2 * inset, height: Radius.surface + rise)
+    }
+
+    /// Each tile in a stack in view, by its block, and the sheet above its
+    /// stack's top it's in (the nearest the first, the deepest past three).
+    func sheetPlaces() -> [BlockID: NSRect] {
+        var out: [BlockID: NSRect] = [:]
+        for c in columns.indices {
+            for stack in stacks(c) {
+                guard let bar = pills[stack.top.shown.id], !bar.isHidden, shownBody(stack.top) != nil else { continue }
+                for (i, t) in stack.behind.enumerated() {
+                    guard let b = t.shown.block?.id, out[b] == nil else { continue }
+                    out[b] = Self.sheetRect(above: bar.frame, level: i + 1)
+                }
+            }
         }
         return out
     }
@@ -1136,6 +1188,98 @@ final class GridView: NSView, NSDraggingSource {
         return [body] + (pills[t.shown.id].map { [$0] } ?? []) + (t.shown.id == focused && !focusRing.isHidden ? [focusRing] : [])
     }
 
+    // MARK: Morphing
+
+    /// One thing becoming another where it goes — a tile its card, a card
+    /// its tile, a sheet pulled out into its card: its outline travels and
+    /// changes shape, and what it shows is scaled to its width, from its
+    /// top (cut below, never stretched), what it was giving way to what it
+    /// becomes on the way.
+    struct Morph {
+        var from: NSRect, to: NSRect
+        var leaving: Pictured? = nil
+        var coming: Pictured? = nil
+        var delay: Double = 0
+    }
+
+    /// Morphs over `host` (its terms, y up), the pictures taken away once
+    /// they're there. Only cross-fading where they end, with Reduce motion.
+    @discardableResult
+    static func morph(_ items: [Morph], in host: CALayer, over d: Double, done: @escaping () -> Void = {}) -> [CALayer] {
+        var made: [CALayer] = []
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            made.forEach { $0.removeFromSuperlayer() }
+            done()
+        }
+        let now = CACurrentMediaTime()
+        // Those pulled out of a stack go under the one in front of them.
+        let items = items.filter { $0.leaving == nil } + items.filter { $0.leaving != nil }
+        func animate(_ l: CALayer, _ key: String, _ a: Any, _ b: Any, delay: Double) {
+            let x = CABasicAnimation(keyPath: key)
+            x.fromValue = a
+            x.toValue = b
+            x.duration = d
+            x.timingFunction = Motion.travel
+            x.beginTime = now + delay * Motion.slowdown
+            x.fillMode = .backwards
+            l.add(x, forKey: "morph." + key)
+        }
+        func fade(_ l: CALayer, _ values: [Float], _ times: [NSNumber], delay: Double) {
+            let x = CAKeyframeAnimation(keyPath: "opacity")
+            x.values = values
+            x.keyTimes = times
+            x.duration = d
+            x.beginTime = now + delay * Motion.slowdown
+            x.fillMode = .backwards
+            l.add(x, forKey: "morph.opacity")
+        }
+        for m in items where m.to.width > 1 && m.to.height > 1 && m.from.width > 1 && m.from.height > 1 {
+            let from = Motion.reduced ? m.to : m.from
+            let c = CALayer()
+            c.frame = m.to
+            c.masksToBounds = true
+            c.cornerRadius = Radius.surface
+            c.cornerCurve = .continuous
+            c.zPosition = 40
+            host.addSublayer(c)
+            made.append(c)
+            animate(c, "position", CGPoint(x: from.midX, y: from.midY), CGPoint(x: m.to.midX, y: m.to.midY), delay: m.delay)
+            animate(c, "bounds.size", from.size, m.to.size, delay: m.delay)
+            // Each picture hung from the shape's top left, as wide as it.
+            func hang(_ p: Pictured) -> CALayer {
+                let r = p.whole
+                let g = CALayer()
+                g.anchorPoint = CGPoint(x: 0, y: 1)
+                g.bounds = CGRect(origin: .zero, size: r.size)
+                g.position = CGPoint(x: 0, y: m.to.height)
+                g.backgroundColor = p.ground
+                g.transform = CATransform3DMakeScale(m.to.width / r.width, m.to.width / r.width, 1)
+                for (f, picture) in p.parts where picture != nil {
+                    let l = CALayer()
+                    l.contents = picture
+                    l.contentsGravity = .resize
+                    l.frame = f.offsetBy(dx: -r.minX, dy: -r.minY)
+                    g.addSublayer(l)
+                }
+                c.addSublayer(g)
+                animate(g, "position.y", from.height, m.to.height, delay: m.delay)
+                animate(g, "transform.scale", from.width / r.width, m.to.width / r.width, delay: m.delay)
+                return g
+            }
+            let leaving = m.leaving.map(hang)
+            // What it becomes over what it was, coming in on the way; what
+            // it was going once that's there.
+            if let coming = m.coming.map(hang), leaving != nil {
+                fade(coming, [0, 0, 1], [0, 0.2, 0.75], delay: m.delay)
+                fade(leaving!, [1, 1, 0], [0, 0.75, 1], delay: m.delay)
+                leaving!.opacity = 0
+            }
+        }
+        CATransaction.commit()
+        return made
+    }
+
     // MARK: Arriving
 
     /// Arrived at a tile (a link followed, a block gone to): its focus
@@ -1151,42 +1295,6 @@ final class GridView: NSView, NSDraggingSource {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 * Motion.slowdown) { r.removeFromSuperview() }
         } else if !focusRing.isHidden {
             focusRing.pulse()
-        }
-    }
-
-    /// A tile chosen from its card: shown from the card's place outward,
-    /// at its own size, its mask growing to the whole of it (fading in,
-    /// with Reduce motion).
-    private func uncover(_ id: PlacementID, from r: NSRect) {
-        guard let t = tile(id) else { return }
-        for v in [t.view, pills[id]].compactMap({ $0 }) where !v.isHidden {
-            guard let l = v.layer else { continue }
-            if Motion.reduced { fadeIn(v); continue }
-            let local = v.convert(r, from: self).intersection(v.bounds)
-            let start = local.isEmpty ? NSRect(x: v.bounds.midX, y: v.bounds.midY, width: 0, height: 0) : local
-            let m = CALayer()
-            m.backgroundColor = NSColor.black.cgColor
-            m.frame = v.bounds
-            l.mask = m
-            uncovering.append(l)
-            let position = CABasicAnimation(keyPath: "position")
-            position.fromValue = CGPoint(x: start.midX, y: start.midY)
-            position.toValue = CGPoint(x: v.bounds.midX, y: v.bounds.midY)
-            let size = CABasicAnimation(keyPath: "bounds.size")
-            size.fromValue = start.size
-            size.toValue = v.bounds.size
-            let g = CAAnimationGroup()
-            g.animations = [position, size]
-            g.duration = Motion.spatial * 1.25
-            g.timingFunction = Motion.travel
-            CATransaction.begin()
-            CATransaction.setCompletionBlock { [weak self, weak l, weak m] in
-                guard let l, l.mask === m else { return }
-                l.mask = nil
-                self?.uncovering.removeAll { $0 === l }
-            }
-            m.add(g, forKey: "uncover")
-            CATransaction.commit()
         }
     }
 
@@ -1697,98 +1805,89 @@ final class GridView: NSView, NSDraggingSource {
             self.watchSwitcherClicks()
             self.delegate?.gridSwitcherFollowsPointer()
         }
-        // The tile as it is, to be seen stepping back as its cards come.
-        let tileParts = ([stack.top.view, pills[top]] as [NSView?]).compactMap { $0 }.filter { !$0.isHidden }.map { ($0.frame, Self.ghostPicture(of: $0)) }
+        // The tile as it is, and its sheets, to be seen becoming the cards.
+        let tile = pictured(shownBody(stack.top) ?? stack.top.view, pills[top])
+        let bar = pills[top].flatMap { $0.isHidden ? nil : $0.frame }
         addSubview(s)
         switcher = s
         needsLayout = true
-        s.present(dealt: true)
-        recede(tileParts)
+        s.present(dealt: false)
+        unfold(s, tile: tile, bar: bar)
         if followingPointer { watchSwitcherClicks() }
         return true
     }
 
     // MARK: ⌃⇥, seen
 
-    /// Pictures over the grid on their way (the tile stepping back), and
-    /// the switcher just closed, kept over the tile till the one chosen is
-    /// there to come out of its card: all put away at once when the next
-    /// ⌃⇥ comes before they're done, never one under another.
+    /// Pictures on their way, and the tiles kept out of sight meanwhile:
+    /// all put back at once when the next ⌃⇥ comes before they're done,
+    /// never one flight under another.
     private var flying: [CALayer] = []
-    private var closing: [NSView] = []
-    private var uncovering: [CALayer] = []
+    private var unseen: [NSView] = []
+
+    /// Debugging: each picture on its way, where it is this moment, and
+    /// what it holds (each's scale and opacity).
+    var debugFlights: String {
+        flying.compactMap { l in
+            guard l.superlayer != nil else { return nil }
+            let p = l.presentation() ?? l
+            let inner = (l.sublayers ?? []).map { g in
+                let q = g.presentation() ?? g
+                return "scale=\(String(format: "%.2f", q.transform.m11)) opacity=\(String(format: "%.2f", q.opacity))"
+            }
+            return "\(l.name ?? "morph") \(p.frame.integral) [\(inner.joined(separator: "; "))]"
+        }.joined(separator: "\n")
+    }
 
     private func land() {
         flying.forEach { $0.removeFromSuperlayer() }
         flying = []
-        closing.forEach { $0.removeFromSuperview() }
-        closing = []
-        for l in uncovering {
-            l.mask?.removeAllAnimations()
-            l.mask = nil
-        }
-        uncovering = []
+        unseen.forEach { $0.alphaValue = 1 }
+        unseen = []
         pendingArrival = nil
+        switcher?.cardsShown = true
     }
 
-    /// The switcher opening: the tile, as it was, steps back and fades
-    /// over the cards as they come (only fading, with Reduce motion).
-    private func recede(_ parts: [(NSRect, Any?)]) {
-        guard let host = layer, let whole = parts.map(\.0).reduce(nil, { (r: NSRect?, f: NSRect) in r.map { $0.union(f) } ?? f }) else { return }
-        let c = CGPoint(x: whole.midX, y: whole.midY), k: CGFloat = Motion.reduced ? 1 : 0.94
-        var made: [CALayer] = []
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak self] in
-            made.forEach { $0.removeFromSuperlayer() }
-            self?.flying.removeAll { l in made.contains { $0 === l } }
+    /// The switcher opening: the tile becomes its card, and each tile in
+    /// its sheets is pulled out of its sheet into its own (only cross-fading
+    /// where they end, with Reduce motion). The cards themselves show once
+    /// theirs are there.
+    private func unfold(_ s: StackColumnView, tile: Pictured, bar: NSRect?) {
+        guard let host = layer else { return }
+        var items: [Morph] = []
+        for (i, c) in s.cardPictures(in: self).enumerated() where c.frame != .zero {
+            let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
+            if i == 0 {
+                items.append(Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card))
+            } else if let bar {
+                items.append(Morph(from: Self.sheetRect(above: bar, level: i), to: c.frame, coming: card, delay: Double(i - 1) * 0.03))
+            }
         }
-        for (frame, picture) in parts where picture != nil {
-            let g = CALayer()
-            g.contents = picture
-            g.contentsGravity = .resize
-            g.frame = frame
-            g.cornerRadius = Radius.surface
-            g.cornerCurve = .continuous
-            g.masksToBounds = true
-            g.zPosition = 30
-            g.opacity = 0
-            host.addSublayer(g)
-            made.append(g)
-            let o = g.position
-            let shrink = CABasicAnimation(keyPath: "transform")
-            shrink.fromValue = CATransform3DIdentity
-            shrink.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
-            fade.toValue = 0
-            let grp = CAAnimationGroup()
-            grp.animations = [shrink, fade]
-            grp.duration = Motion.spatial
-            grp.timingFunction = Motion.disappear
-            g.add(grp, forKey: "recede")
-        }
-        flying += made
-        CATransaction.commit()
+        guard !items.isEmpty else { return }
+        s.cardsShown = false
+        flying += Self.morph(items, in: host, over: Motion.spatial * 1.5) { [weak s] in s?.cardsShown = true }
     }
 
-    /// A tile chosen in the switcher grows from its card into its place
-    /// once it's laid out there, the switcher fading over it.
-    private var pendingArrival: (id: PlacementID, from: NSRect, at: Date)?
+    /// A tile chosen in the switcher, waiting to be laid out where it goes,
+    /// and its card as it was, where it was: it becomes its tile from there.
+    private var pendingArrival: (id: PlacementID, card: Pictured?, from: NSRect, at: Date)?
 
-    /// The tile chosen is laid out: it comes out of its card, and the
-    /// switcher kept over it goes.
-    private func arrive(_ id: PlacementID, from r: NSRect) {
-        uncover(id, from: r)
-        // Still the closing ones while they fade: the next ⌃⇥ puts them away.
-        let leaving = closing
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Motion.spatial
-            ctx.timingFunction = Motion.disappear
-            for v in leaving { v.animator().alphaValue = 0 }
-        }, completionHandler: { [weak self] in
-            leaving.forEach { $0.removeFromSuperview() }
-            self?.closing.removeAll { v in leaving.contains { $0 === v } }
-        })
+    /// The tile chosen is laid out: its card becomes it, and the stack's
+    /// tiles show again once it's there.
+    private func arrive(_ id: PlacementID, card: Pictured?, from r: NSRect) {
+        guard let t = tile(id), let host = layer else { return land() }
+        // Drawn as it'll be first: it was out of sight till now.
+        let body = shownBody(t) ?? t.view
+        body.layoutSubtreeIfNeeded()
+        body.displayIfNeeded()
+        let shown = pictured(body, pills[id])
+        let held = flying.filter { $0.name == "waiting" }
+        flying += Self.morph([Morph(from: r, to: shown.whole, leaving: card, coming: shown)], in: host, over: Motion.spatial * 1.5) { [weak self] in
+            guard let self else { return }
+            self.unseen.forEach { $0.alphaValue = 1 }
+            self.unseen = []
+        }
+        held.forEach { $0.removeFromSuperlayer() }
     }
 
     /// Escape, or a click away from the cards, lets the stack be.
@@ -1824,18 +1923,53 @@ final class GridView: NSView, NSDraggingSource {
         switcherMonitor = nil
         let top = s.topID
         let chosen = cancel || out != nil ? top : (id ?? s.selectedID)
-        // The others fade, the chosen card staying; the switcher is kept
-        // over the tile till the one chosen is laid out there, to come out
-        // of its card (a second at most).
+        // The cards back where they go: the others into the sheets above
+        // the tile, the chosen one held where it is till its tile is laid
+        // out, then becoming it; the stack's tiles out of sight meanwhile
+        // (a second at most).
         land()
+        let cards = s.cardPictures(in: self)
         s.close(on: chosen)
-        s.fold()
-        pendingArrival = (chosen, s.cardFrame(chosen, in: self) ?? s.frame, Date())
-        closing = [s]
         s.tearDown(keeping: chosen, in: self)
+        s.removeFromSuperview()
         if switcher === s { switcher = nil }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, weak s] in
-            guard let self, let s, self.pendingArrival != nil, self.closing.contains(where: { $0 === s }) else { return }
+        let tileRect = s.frame
+        let bar = NSRect(x: tileRect.minX, y: tileRect.maxY - Self.barHeight, width: tileRect.width, height: Self.barHeight)
+        var items: [Morph] = []
+        var level = 0
+        let at = Date()
+        pendingArrival = (chosen, nil, tileRect, at)
+        for c in cards where c.frame != .zero {
+            let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
+            if c.id == chosen {
+                pendingArrival = (chosen, card, c.frame, at)
+                if let host = layer {
+                    let w = CALayer()
+                    w.name = "waiting"
+                    w.contents = c.picture
+                    w.backgroundColor = c.ground
+                    w.frame = c.frame
+                    w.cornerRadius = Radius.surface
+                    w.cornerCurve = .continuous
+                    w.masksToBounds = true
+                    w.zPosition = 40
+                    host.addSublayer(w)
+                    flying.append(w)
+                }
+            } else {
+                level += 1
+                items.append(Morph(from: c.frame, to: Self.sheetRect(above: bar, level: level), leaving: card, delay: Double(level - 1) * 0.02))
+            }
+        }
+        if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5) }
+        for id in Set([chosen, top]) {
+            for v in [tile(id)?.view, pills[id]].compactMap({ $0 }) {
+                v.alphaValue = 0
+                unseen.append(v)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.pendingArrival?.at == at else { return }
             self.land()
         }
         // The views back in the grid, as they'll be once the stack has its

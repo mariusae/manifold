@@ -1559,10 +1559,12 @@ purpose — set down so a later audit reads them as choices, not slips.
   higher), a band gliding down the sidebar with it; a tile placed comes
   in where it lands, one closed fades where it was, one arrived at has
   its focus ring swell (the one ring), one maximized grows from its
-  place, one summarized crosses over to its card; ⌃⇥'s cards fan out
-  from under the top and the one chosen grows out of its card, the next
-  ⌃⇥ putting away whatever's still on its way; Overview flies each tile,
-  scaled evenly, never cut or stretched, to its card and back. Layout is done once, where things end, and only layers travel —
+  place, one summarized crosses over to its card; a tile becoming its
+  card (⌃⇥, Overview) is one shape going from the one's place and size
+  to the other's, what it shows scaled to its width from its top (cut,
+  never stretched) and changing on the way, and a tile in a stack comes
+  out of its sheet and goes back into it — nothing just fades in; the
+  next ⌃⇥ puts away whatever's still on its way. Layout is done once, where things end, and only layers travel —
   a terminal resized once, not at every step. Focus, typing, a divider
   dragged and the palettes don't move at all.
 - **Printing is black on white;** a system alert's accessory takes the

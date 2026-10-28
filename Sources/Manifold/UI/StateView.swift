@@ -235,16 +235,16 @@ final class StateView: NSView {
     /// Each card in view, by its block — its body then its bar, or its
     /// summary card — where they are (this view's terms) with pictures of
     /// them: Overview's cards seen coming from their tiles, and going back.
-    func cellParts() -> [BlockID: [(NSRect, Any?)]] {
+    func cellParts() -> [BlockID: GridView.Pictured] {
         guard mode != .list else { return [:] }
         layoutSubtreeIfNeeded()
         let seen = scroll.convert(scroll.bounds, to: self)
-        var out: [BlockID: [(NSRect, Any?)]] = [:]
+        var out: [BlockID: GridView.Pictured] = [:]
         for item in items {
             let block = item.shown.placement.block
             let parts = cellViews(of: block)
             guard let body = parts.first, body.convert(body.bounds, to: self).intersects(seen) else { continue }
-            out[block] = parts.map { ($0.convert($0.bounds, to: self), GridView.ghostPicture(of: $0)) }
+            out[block] = GridView.Pictured(parts: parts.map { ($0.convert($0.bounds, to: self), GridView.ghostPicture(of: $0)) }, ground: GridView.ground(of: body))
         }
         return out
     }

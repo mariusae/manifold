@@ -367,6 +367,9 @@ enum DebugControl {
             let w = arg.split(separator: " ").compactMap { Double($0) }
             guard w.count == 2 else { return "usage: quickwalk <steps> <hold>" }
             return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1]) ?? "no window"
+        case "flights":
+            // ⌃⇥'s pictures on their way, this moment.
+            return wc?.debugFlights ?? "no window"
         case "walk":
             return wc?.debugWalk(arg) ?? "no window"
         case "tiles":
