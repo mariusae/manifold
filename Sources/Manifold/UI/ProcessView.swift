@@ -194,7 +194,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         }
         let wider = scroll.frame.width != w
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, bottom))
-        if fitCards() { reloadKeeping() }
+        if fitCards() { refit() }
         // The panels and cards are as wide as what's in view, not the
         // table: redrawn as that changes.
         if wider {
@@ -491,7 +491,35 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     }
 
     @objc private func endClicked() {
-        for pid in selectedPIDs { delegate?.processView(self, signal: pid, SIGTERM) }
+        let pids = selectedPIDs
+        for pid in pids { delegate?.processView(self, signal: pid, SIGTERM) }
+        markEnding(pids)
+    }
+
+    /// Processes asked to end: their rows dimmed at once, not left as they
+    /// were until the next listing says they've gone; lit again if they're
+    /// still there a few seconds on (they didn't end).
+    private var ending: [Int32: Date] = [:]
+    private func markEnding(_ pids: [Int32]) {
+        let now = Date()
+        for pid in pids { ending[pid] = now }
+        dimRows()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in
+            guard let self else { return }
+            self.ending = self.ending.filter { Date().timeIntervalSince($0.value) < 3 }
+            self.dimRows()
+        }
+    }
+    private func isEnding(_ pid: Int32) -> Bool { ending[pid].map { Date().timeIntervalSince($0) < 3 } ?? false }
+    private func dimRows() {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.fast
+            table.enumerateAvailableRowViews { rv, row in
+                guard row < shown.count else { return }
+                let pid: Int32? = switch shown[row] { case let .process(e, _): e.pid; case let .machine(p): p.pid; default: nil }
+                rv.animator().alphaValue = pid.map(isEnding) == true ? 0.4 : 1
+            }
+        }
     }
 
     @objc private func killClicked() {
@@ -505,6 +533,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         alert.beginSheetModal(for: window) { [weak self] r in
             guard r == .alertFirstButtonReturn, let self else { return }
             for pid in pids { self.delegate?.processView(self, signal: pid, SIGKILL) }
+            self.markEnding(pids)
         }
     }
 
@@ -590,6 +619,8 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// processes on it, a foot closing it.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = SelectionRowView()
+        let pid: Int32? = switch shown[row] { case let .process(e, _): e.pid; case let .machine(p): p.pid; default: nil }
+        v.alphaValue = pid.map(isEnding) == true ? 0.4 : 1
         switch shown[row] {
         case .group: v.panel = .init(first: true, lead: row == 0 ? Self.firstGap : Self.gap, quiet: true)
         case .process: v.panel = .init()
@@ -632,6 +663,22 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         guard fit != cardLines else { return false }
         cardLines = fit
         return true
+    }
+
+    /// The cards made fuller or shorter in place, their rows growing or
+    /// shrinking to them as the tile does.
+    private func refit() {
+        let groups = IndexSet(shown.indices.filter { shown[$0].isGroup })
+        for i in groups {
+            guard case let .group(b) = shown[i], let c = card(b, lines: cardLines),
+                  let v = table.rowView(atRow: i, makeIfNecessary: false)?.view(atColumn: 0) as? SummaryCardRow else { continue }
+            v.card.content = c
+        }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.reduced ? 0 : Motion.base
+            ctx.timingFunction = Motion.travel
+            table.noteHeightOfRows(withIndexesChanged: groups)
+        }
     }
 
     /// The rows again, what was selected still.
