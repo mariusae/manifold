@@ -260,7 +260,7 @@ are in the data now and only want indexing:
 | **placed in** (spatial, present) | space → block | the space's log, `place` to `remove`: an interval, so "where was this last week" is the same query at another stamp |
 | **opened** (spatial, causal) | block → block | the links shard (§6.1), with a `context`: the terminal line a path was ⌘-clicked on, the editor line that named it, the search hit |
 | **derived from** (provenance) | block → block | a diff from the file it compares, a search from the files it found, a git block from the files in its changes, a versions diff from its block; written by whoever makes the block |
-| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each space seen — the one history, which back and forward walk and ⌃⇥ orders by |
+| **before / after** (temporal, across blocks) | block → block | the registry's *trail*, bounded, per host: each focus of a tile, each space seen (not those ⌘` only passes, whose order is the window's own spaces settled on first, then the trail's) — the one history, which back and forward walk and ⌃⇥ orders by |
 | **version** (temporal, within a block) | (block, t₁) → (block, t₂) | the log |
 | **same as** | block ↔ block | a note that became a file (`path`), the same path on two hosts |
 

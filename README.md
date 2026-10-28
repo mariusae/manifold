@@ -226,7 +226,9 @@ parts from the Mac's conventions on purpose.
   goes); the mouse's buttons go there first in such a tile. A web page
   zooms with ⌘+ and ⌘− in Safari's steps (50% to 300%), ⌘0 back.
 - **⌘\`** walks the spaces most recently gone to first, for as long
-  as ⌘ is held; letting go settles on the one come to (with one space,
+  as ⌘ is held; letting go settles on the one come to, as ⌘⇥ does
+  apps: the next ⌘\` goes back to where you were, and spaces only
+  passed on the way don't count as gone to (with one space,
   it goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ /
   ⇧⌘] switch spaces too, as does the Dock icon's menu: every space,
   under its host when there are several, the one shown checked. However

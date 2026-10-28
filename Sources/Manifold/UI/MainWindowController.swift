@@ -53,6 +53,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// began with, and how far along it is.
     private var walk: (ids: [BlockID], index: Int)?
     private var walkMonitors: [Any] = []
+    /// The app left mid-walk: ⌘'s letting go won't be heard.
+    private var walkLeaving: NSObjectProtocol?
+    /// The workspaces settled on in this window, the latest first: ⌘`'s
+    /// order, as ⌘⇥'s is the apps'. Those only passed on a walk aren't in
+    /// it, and it doesn't wait on a host to hear of a switch (the trail,
+    /// which comes after, fills in the rest).
+    private var settled: [BlockID] = []
     /// ⌃⇥'s switcher, while control is held: what ends it.
     private var stackMonitors: [Any] = []
     private let sidebar = SidebarView()
@@ -357,6 +364,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // waiting, and no one turn takes them all.
             picture(leaving)
             shownArrangement = selected
+            if walk == nil { settle(selected) }
         }
 
         if let a = arrangement {
@@ -1054,7 +1062,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func noteSeen(force: Bool) {
-        guard window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
+        // A workspace seen is a step of the trail (⌘`'s order, back and
+        // forward): not one only passed on ⌘`'s walk.
+        guard walk == nil, window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
         var seen = Set(a.visible.map(\.block))
         seen.insert(id)
         if seen != lastSeenSet || force || Date().timeIntervalSince(lastSeenSent) > 14 {
@@ -2532,12 +2542,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func walkTabs(back: Bool) {
         let live = Set(allWorkspaces)
+        // A walk whose ⌘ was let go unheard (the app left meanwhile) is over.
+        if walk != nil, !walkMonitors.isEmpty, !NSEvent.modifierFlags.contains(.command), !debugHeld { endWalk(settling: true) }
         if walk == nil {
             guard let current = selected, allWorkspaces.count > 1 else { return cycleWindows(back: back) }
             var order = [current]
-            for id in hosts.recentWorkspaces() + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
+            for id in settled + hosts.recentWorkspaces() + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
             walk = (order, 0)
-            if NSEvent.modifierFlags.contains(.command) { watchWalk() }
+            if NSEvent.modifierFlags.contains(.command) || debugHeld { watchWalk() }
         }
         guard var w = walk else { return }
         w.ids = w.ids.filter { live.contains($0) }
@@ -2551,6 +2563,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func watchWalk() {
+        walkLeaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.endWalk(settling: true) }
+        }
         walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             if !event.modifierFlags.contains(.command) { self?.endWalk(settling: true) }
             return event
@@ -2565,11 +2580,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func endWalk(settling: Bool) {
         walkMonitors.forEach(NSEvent.removeMonitor)
         walkMonitors = []
+        if let o = walkLeaving { NotificationCenter.default.removeObserver(o) }
+        walkLeaving = nil
         guard let w = walk else { return }
         walk = nil
         if !settling, let home = w.ids.first {
             show(arrangement: home)
+        } else {
+            settle(selected)
         }
+        // Seen now, settled on: what was passed on the way wasn't.
+        noteSeen(force: true)
+    }
+
+    /// Debugging: ⌘ taken as held, for "walk".
+    private var debugHeld = false
+
+    /// "walk step|back|end|escape|unheard|order": ⌘` pressed with ⌘ held,
+    /// ⌘ let go, Escape, ⌘ let go unheard; or the walk and ⌘`'s order.
+    func debugWalk(_ arg: String) -> String {
+        switch arg {
+        case "step", "back":
+            debugHeld = true
+            walkTabs(back: arg == "back")
+        case "end": endWalk(settling: true)
+        case "escape": endWalk(settling: false)
+        case "unheard": debugHeld = false
+        default: break
+        }
+        if walk == nil { debugHeld = false }
+        func name(_ id: BlockID) -> String { hosts.block(id)?.title ?? id.ulid.description }
+        return "cmd=\(NSEvent.modifierFlags.contains(.command)) selected=\(selected.map(name) ?? "-") walk=\(walk.map { "\($0.index):" + $0.ids.map(name).joined(separator: ",") } ?? "-") settled=\(settled.prefix(6).map(name).joined(separator: ",")) trail=\(hosts.recentWorkspaces().prefix(6).map(name).joined(separator: ","))"
+    }
+
+    private func settle(_ id: BlockID?) {
+        guard let id else { return }
+        settled.removeAll { $0 == id }
+        settled.insert(id, at: 0)
+        if settled.count > 100 { settled.removeLast() }
     }
 
     // MARK: ⌃⇥
