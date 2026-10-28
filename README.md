@@ -1142,6 +1142,19 @@ sidebar sliding out) are rounded alike with one soft shadow; Open Quickly
 is plain, not glass. The sizes, radii, shadows and motion are a few
 named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
+Things move where moving says something, briefly, and never what you
+type into: a tile placed comes in where it lands as the others glide
+aside, one closed fades where it was as they take its room, one gone to
+has a ring close in on it; Maximize grows the tile from its place over
+the rest, Restore shrinks it back; ⌃⇥ turns the tiles into their cards
+and back; Overview sends each tile to its card as Mission Control sends
+windows, and back; a toast rises from the window's foot (and shakes
+when it's said again to what didn't take); a block just finished has
+its glyph land and settle; hover cards fade in; segments slide their
+band; Machine's meters ease between readings. With Reduce motion on
+(System Settings ▸ Accessibility ▸ Display) nothing travels or grows:
+it fades, or is there at once.
+
 The window sits on a wash of soft colour — a few pools of pastel light,
 deep tints in the dark — placed afresh each day, with what's behind the
 window blurred beneath it, and lit by the hour: the sun's height where

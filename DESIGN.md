@@ -1554,6 +1554,15 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **Motion that isn't a transition** keeps its own time: the status
   spinner's 2 s loop, the backdrop's 0.6 s wash, the scroller's fade
   after a second (as the system's), predicted echo's glow.
+- **What moves, moves where it goes, and says so:** a space comes in
+  as the sidebar has it (from below for one lower, from above for one
+  higher), a band gliding down the sidebar with it; a tile placed comes
+  in where it lands, one closed fades where it was, one arrived at is
+  ringed, one maximized grows from its place; ⌃⇥ turns tiles into cards
+  and back, cut rather than stretched; Overview flies each tile to its
+  card. Layout is done once, where things end, and only layers travel —
+  a terminal resized once, not at every step. Focus, typing, a divider
+  dragged and the palettes don't move at all.
 - **Printing is black on white;** a system alert's accessory takes the
   system's label colours; content — editor, terminal, diff, notebook —
   takes the font themes, not the chrome's UIType.
