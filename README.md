@@ -362,6 +362,20 @@ parts from the Mac's conventions on purpose.
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
   foot of the window names each, with Restore.
+- **The Inspector** (View ▸ Inspector, **⇧⌘I**, again to go back) shows
+  the focused block's properties in the sidebar, and follows the focus,
+  as Star's property sheets did for whatever was selected: what it is and
+  where (its host, its path, a page's address, a terminal's folder, a
+  click copying it; when it was made and last seen; its status); what
+  only its kind has (a text's lines, words, encoding and line endings,
+  unsaved; a terminal's process, running command and commands; a
+  search's query and hits; a notebook's cells; a repository's branch and
+  changes); **where** it is — each space it's placed or pinned in, a
+  click going there; what **keeps** it, or that nothing does and it will
+  be collected; its **links**, either way, the latest first, each opened
+  by the one rule; its **history** (how often it's been gone to, and
+  when last); and what can be done with it (Copy Contents, Copy Link,
+  Copy Path, Reveal in Finder, the Neighborhood Map, Pin in This Space).
 - **⇧⌘W deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu): every tile of it taken off, in every space, every
   link to and from it broken, on every host, and the block itself gone

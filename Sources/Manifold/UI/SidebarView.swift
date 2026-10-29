@@ -73,7 +73,7 @@ final class SidebarView: NSView {
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
-    private var pushed: Bool { organization == .closed }
+    private var pushed: Bool { organization == .closed || organization == .inspector }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -193,6 +193,13 @@ final class SidebarView: NSView {
     }
 
     @objc private func backClicked() { chooseOrganization(.desk) }
+
+    /// The Inspector's header: the block's name, and what and where it is.
+    func setInspected(title: String, subtitle: String) {
+        guard organization == .inspector else { return }
+        pushedTitle.stringValue = title
+        pushedSubtitle.stringValue = subtitle
+    }
 
     /// How many are closed awaiting collection: the foot row, hidden at zero.
     func setFoot(closed n: Int) {
@@ -360,6 +367,9 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError() }
 
     @objc private func run() { handler() }
+
+    /// As choosing the item (a row that offers it, the Inspector's).
+    func perform() { handler() }
 
     /// Debugging: as choosing the item.
     func debugRun() { handler() }

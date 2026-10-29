@@ -9,12 +9,16 @@ enum Organization: String, CaseIterable {
     /// The list at the sidebar's foot (§4): what's closed and not yet
     /// collected.
     case closed
+    /// The focused block's properties (⇧⌘I): what it is, where it is,
+    /// what keeps it, its links and history, and what can be done with it.
+    case inspector
 
     var title: String {
         switch self {
         case .desk: "Spaces"
         case .files: "Files"
         case .closed: "Recently Closed"
+        case .inspector: "Inspector"
         }
     }
 
@@ -23,6 +27,7 @@ enum Organization: String, CaseIterable {
         case .desk: Theme.spaceSymbol
         case .files: "folder"
         case .closed: "clock.arrow.circlepath"
+        case .inspector: "info.circle"
         }
     }
 }

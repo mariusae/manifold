@@ -378,6 +378,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
         organizeItem.submenu = organize
         view.addItem(organizeItem)
+        // The focused block's properties, in the sidebar (Star's SHOW PROPERTIES).
+        item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .shift])
         // The sidebar narrowed, whichever way it's organized (§3.6).
         item(view, "Show Only Blocks with a Status", #selector(MainWindowController.toggleSidebarFilter(_:)), ".")
         view.addItem(.separator())
