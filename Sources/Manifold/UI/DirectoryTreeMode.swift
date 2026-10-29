@@ -350,12 +350,15 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
 final class TreeOutline: NSOutlineView {
     /// How wide a folder's chevron is, as measured from one.
     private(set) var chevronWidth: CGFloat = 16
-    /// /, typed in the list: to the filter (before select-by-typing takes it).
+    /// /, typed in the list (or ⇥): to the filter (before select-by-typing
+    /// takes it).
     var onSlash: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         let mods = event.modifierFlags.intersection([.command, .control, .option])
         if mods.isEmpty, event.charactersIgnoringModifiers == "/", let onSlash { return onSlash() }
+        // ⇥ (⇧⇥): to the filter, as ⇥ there comes here.
+        if mods.isEmpty, event.keyCode == 48, let onSlash { return onSlash() }
         super.keyDown(with: event)
     }
 

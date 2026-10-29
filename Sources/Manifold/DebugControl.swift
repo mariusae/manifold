@@ -305,7 +305,7 @@ enum DebugControl {
             // "press opt-esc": with ⌥ held, as during ⌥⇥.
             let opt = arg.hasPrefix("opt-")
             let key = opt ? String(arg.dropFirst(4)) : arg
-            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : (key, 0)
+            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : key == "tab" ? ("\t", 48) : (key, 0)
             if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: opt ? [.option] : [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
                                                     isARepeat: false, keyCode: code) {

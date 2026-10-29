@@ -471,13 +471,22 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             content?.selectFirst()
             openSelected()
             return true
-        case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertNewline(_:)):
-            window?.makeFirstResponder(focusView)
-            if model?.filtering == true { content?.selectFirst() } else if content?.selectedPath == nil, let first = firstShown() { content?.select(first) }
+        case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertNewline(_:)),
+             #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            // ↓, ⏎ or ⇥ (⇧⇥): to the files, the first chosen if none is
+            // (⇥ there comes back).
+            focusFiles()
             return true
         default:
             return false
         }
+    }
+
+    /// To the files, the first (the best match, filtering) chosen if
+    /// none is.
+    func focusFiles() {
+        window?.makeFirstResponder(focusView)
+        if model?.filtering == true { content?.selectFirst() } else if content?.selectedPath == nil, let first = firstShown() { content?.select(first) }
     }
 
     /// The first entry.
