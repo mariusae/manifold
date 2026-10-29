@@ -78,7 +78,7 @@ case "state":
         guard n > 0 else { exit(1) }
         decoder.append(Data(buf[0..<n]))
         while let frame = try decoder.next() {
-            if case let .welcome(_, _, host, _, _, _, snapshots, _)? = frame.decode(ServerMessage.self) {
+            if case let .welcome(_, _, host, _, _, _, snapshots, _, _)? = frame.decode(ServerMessage.self) {
                 let node = Node()
                 for s in snapshots { node.load(s) }
                 if args.count > 1, args[args.startIndex + 1] == "--json" {

@@ -170,6 +170,9 @@ final class HostClient {
     private(set) var drops: [(at: Date, why: String)] = []
     /// Since when its link has been up (answered), if it is.
     private(set) var connectedSince: Date?
+    /// When the host's server started (as it said on welcoming us), by this
+    /// Mac's clock; nil from a server from before it said.
+    private(set) var serverStarted: Date?
 
     private func recordPing(_ rtt: TimeInterval?) {
         let now = Date()
@@ -1022,7 +1025,9 @@ final class HostClient {
 
     private func handle(_ message: ServerMessage) {
         switch message {
-        case let .welcome(version, _, host, label, _, home, snapshots, features):
+        case let .welcome(version, _, host, label, _, home, snapshots, features, up):
+            // When its server started, by this Mac's clock.
+            serverStarted = up.map { Date().addingTimeInterval(-$0) }
             // Streams opened compressed from now on, where they ask to be:
             // over a link to another machine, to a server that takes them.
             mux?.compression = isRemote && features?.contains("zstd") == true

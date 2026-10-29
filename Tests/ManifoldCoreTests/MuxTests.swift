@@ -346,14 +346,16 @@ private final class Inbox: @unchecked Sendable {
     let host = HostID("h4z3gpme3et")
     // An app from before reads a welcome with features as it did.
     enum Before: Codable { case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot]) }
-    let now = Frame.message(ServerMessage.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: [], features: ["zstd"]))
+    let now = Frame.message(ServerMessage.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: [], features: ["zstd"], up: 90))
     guard case .welcome(51, 1, host, nil, 0, "/", _)? = now.decode(Before.self) else { Issue.record("not read as before"); return }
-    guard case let .welcome(_, _, _, _, _, _, _, features)? = now.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    guard case let .welcome(_, _, _, _, _, _, _, features, up)? = now.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
     #expect(features == ["zstd"])
+    #expect(up == 90)
     // A server from before: none.
     let then = Frame.message(Before.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: []))
-    guard case let .welcome(_, _, _, _, _, _, _, none)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    guard case let .welcome(_, _, _, _, _, _, _, none, noUp)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
     #expect(none == nil)
+    #expect(noUp == nil)
 }
 
 @Test func aTTYModeGoesAsAByteAndOnlyToAnAppThatAsks() throws {

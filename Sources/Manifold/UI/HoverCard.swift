@@ -294,7 +294,7 @@ final class HoverCard: NSObject {
         guard let c = card else { return "hidden" }
         let what = loan.map { "live \(String(describing: type(of: $0.view))) \(Int($0.size.width))x\(Int($0.size.height))" }
             ?? "picture=" + (c.picture.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none")
-        return (box.isHidden ? "held, not shown" : "shown \(Int(box.frame.width))x\(Int(box.frame.height))") + " \(what) title=\(c.title) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
+        return (box.isHidden ? "held, not shown" : "shown \(Int(box.frame.width))x\(Int(box.frame.height))") + " \(what) title=\(c.title) detail=\(c.detail) body=\(c.body.prefix(60).replacingOccurrences(of: "\n", with: "⏎"))"
     }
 
     func hide() {

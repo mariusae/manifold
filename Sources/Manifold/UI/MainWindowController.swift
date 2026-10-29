@@ -8670,6 +8670,8 @@ extension MainWindowController: OrganizationViewDelegate {
         if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), let window {
             var detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
             if c.watching, !c.isRemote { detail = "Watching: \(c.fencedBy ?? "another Manifold") took over · " + detail }
+            // How long its server has been running.
+            if c.isConnected, let started = c.serverStarted { detail += " · server up " + HostDashboard.duration(Date().timeIntervalSince(started)) }
             HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: detail, body: "", font: nil,
                                   lend: {
                                       let d = HostDashboard(client: c)

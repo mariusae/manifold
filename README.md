@@ -503,7 +503,8 @@ around it, and comes back with its history.
   host goes away keeps what it showed and picks up where it was when the
   host is back, what was typed meanwhile not lost. By each remote host's
   name in the sidebar, a sparkline of its ping times over the last five
-  minutes (resting the pointer on any host shows it at a glance: a
+  minutes (resting the pointer on any host shows it at a glance: how
+  long its Manifold server has been up, a
   remote's link, its ping times plotted, over the machine — CPU, memory,
   network, disks and its busiest processes, the last five minutes of each);
   a host gone quiet wears a broken amber ring there, and its link is made

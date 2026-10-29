@@ -58,7 +58,7 @@ public enum OpenCommand {
             decoder.append(Data(buf[0..<n]))
             while let frame = try? decoder.next() {
                 switch frame.decode(ServerMessage.self) {
-                case let .welcome(version, _, _, _, _, _, _, _)?:
+                case let .welcome(version, _, _, _, _, _, _, _, _)?:
                     if version != protocolVersion {
                         return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
                     }
@@ -151,7 +151,7 @@ public enum ManiClient {
             decoder.append(Data(buf[0..<n]))
             while let frame = try? decoder.next() {
                 switch frame.decode(ServerMessage.self) {
-                case let .welcome(version, _, _, _, _, _, _, _)?:
+                case let .welcome(version, _, _, _, _, _, _, _, _)?:
                     if version != protocolVersion {
                         return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
                     }

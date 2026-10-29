@@ -96,7 +96,8 @@ final class HostDashboard: NSView {
         let s = Int(t)
         if s < 60 { return "\(s) s" }
         if s < 3600 { return "\(s / 60) min" }
-        return "\(s / 3600) h \(s % 3600 / 60) min"
+        if s < 86400 { return "\(s / 3600) h \(s % 3600 / 60) min" }
+        return "\(s / 86400) d \(s % 86400 / 3600) h"
     }
 
     private static let clock: DateFormatter = {

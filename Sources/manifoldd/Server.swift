@@ -106,6 +106,9 @@ final class Server {
         log("data format \(found.map(String.init) ?? "none") → \(dataFormat): logs set aside, starting afresh")
     }
 
+    /// When this server started: how long it's been up, in the app's host card.
+    private let started = Date()
+
     init() throws {
         Paths.ensureDirectory()
         // One server per directory: a second one exits quietly. Taken
@@ -262,7 +265,7 @@ final class Server {
             let snapshots = name == Mani.name ? [] : node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots,
-                                                     features: serverFeatures)))
+                                                     features: serverFeatures, up: Date().timeIntervalSince(started))))
         case .attach(let req)?:
             attach(conn, req)
         case .backfill(let req)?:

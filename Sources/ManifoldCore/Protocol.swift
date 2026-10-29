@@ -522,8 +522,12 @@ public enum ServerMessage: Codable, Sendable {
     /// `host` is the session id (§8); `label` what the host calls itself;
     /// `home` the user's folder there; `features` what it can do that a
     /// server of the same protocol from before couldn't (`zstd`: streams
-    /// opened compressed, `Mux`) — none, from one before them.
-    case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot], features: [String]? = nil)
+    /// opened compressed, `Mux`) — none, from one before them; `up` how
+    /// long the server has been running, in seconds (a duration, not a
+    /// time: the host's clock needn't agree with the app's) — none, from
+    /// one before.
+    case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot], features: [String]? = nil,
+                 up: Double? = nil)
     case pong
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)
