@@ -254,6 +254,21 @@ final class FindHost {
         self.target = target
     }
 
+    /// The views finding now: their outline's ticks stand aside while the
+    /// pill's there, two tools for one job, the pill over the ticks.
+    private static let finding = NSHashTable<NSView>.weakObjects()
+
+    static func isFinding(_ view: NSView) -> Bool { finding.contains(view) }
+
+    /// The grid the view's in, laid out again: its ticks shown or not.
+    private func finding(_ on: Bool) {
+        guard let view else { return }
+        if on { Self.finding.add(view) } else { Self.finding.remove(view) }
+        var v = view.superview
+        while let s = v, !(s is GridView) { v = s.superview }
+        v?.needsLayout = true
+    }
+
     /// The Find menu's action, by its NSTextFinder tag: ⌘F shows the pill
     /// (with the selection as the query), ⌥⌘F with replace, ⌘E with the
     /// selection or the word at hand and goes to it, ⇧⌘E puts it in
@@ -295,6 +310,7 @@ final class FindHost {
             p.onClose = { [weak self] in self?.hide() }
             (inSuperview ? view.superview ?? view : view).addSubview(p)
             pill = p
+            finding(true)
         }
         pill?.showsReplace = replace
         if let query {
@@ -315,6 +331,7 @@ final class FindHost {
         let focused = pill.window?.firstResponder as? NSView
         pill.removeFromSuperview()
         self.pill = nil
+        finding(false)
         target?.endSearch()
         if let focused, focused.isDescendant(of: pill), let view { view.window?.makeFirstResponder(view) }
     }

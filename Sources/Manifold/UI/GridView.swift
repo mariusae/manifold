@@ -1629,7 +1629,8 @@ final class GridView: NSView, NSDraggingSource {
         let size = OutlineTicks.size
         t.frame = NSRect(x: body.maxX - ScrubberView.width - size.width - 2, y: body.maxY - tile.view.outlineInset - size.height - 6,
                          width: size.width, height: size.height)
-        t.available = shown && body.height >= 3 * size.height
+        // Not while finding: the find pill's there, doing the same job.
+        t.available = shown && body.height >= 3 * size.height && !FindHost.isFinding(tile.view)
         keep(t, above: tile.view)
     }
 

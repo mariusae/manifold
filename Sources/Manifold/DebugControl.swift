@@ -301,9 +301,11 @@ enum DebugControl {
                 if let t = r as? NSTextView, t.isFieldEditor { r = t.delegate as? NSResponder ?? r }
                 return r.map { "\(type(of: $0))" + (($0 as? NSTextField).map { " \"\($0.placeholderString ?? "")\"" } ?? "") } ?? "nothing"
             }
+            // "press esc": Escape, by its key code.
+            let (chars, code): (String, UInt16) = arg == "esc" ? ("\u{1B}", 53) : (arg, 0)
             if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                    windowNumber: window.windowNumber, context: nil, characters: arg, charactersIgnoringModifiers: arg,
-                                                    isARepeat: false, keyCode: 0) {
+                                                    windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                                    isARepeat: false, keyCode: code) {
                 window.sendEvent(e)
             }
             return holder()
