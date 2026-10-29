@@ -341,6 +341,16 @@ enum DebugControl {
         case "type":
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
+        case "drophint":
+            // "drophint <text>": the drop's hint, at the window's middle, as
+            // a ⇧-drag over a target shows it (gone a moment later).
+            guard let window = wc?.window, let content = window.contentView else { return "no window" }
+            DropHint.say(arg, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
+            return "said"
+        case "contents":
+            // "contents [block]": what Copy Contents (⇧⌘C) would copy — the
+            // previous ask's answer (it comes a moment later).
+            return wc?.debugContents(arg) ?? "no window"
         case "drop":
             // "drop <block>": a block ⇧-dragged into the focused editor;
             // "drop row N": the shown outline's item N, ⇧-dragged there.

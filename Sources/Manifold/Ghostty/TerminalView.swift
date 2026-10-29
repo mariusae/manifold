@@ -23,6 +23,10 @@ protocol TerminalViewDelegate: AnyObject {
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
     /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID)
+    /// A block ⇧-dragged onto an agent that a path doesn't stand for (a
+    /// terminal, a search, a note with no file): its content, to be put
+    /// in as a paste. Nil: the path is typed, as for a shell.
+    func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)?
     /// What runs under the terminal's shell, as last listed: the tree its
     /// menu shows. `refresh`: a fresh listing is asked for too.
     func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry]
@@ -1718,8 +1722,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// Files or text dropped on the terminal are typed into it, paths
     /// quoted for the shell, as a terminal takes them.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        Self.dropText(sender.draggingPasteboard) == nil ? [] : .copy
+        let pb = sender.draggingPasteboard
+        guard Self.dropText(pb) != nil else { return [] }
+        if DropHint.isBlockLink(pb) {
+            let gives = isAgent && TextView.blockID(inLink: pb.string(forType: .manifoldBlockLink) ?? "").flatMap { delegate?.terminal(self, contentsFor: $0) } != nil
+            DropHint.say(isAgent ? (gives ? "Give the agent its contents" : "Give the agent its path") : "Type its path", at: sender.draggingLocation, in: window)
+        }
+        return .copy
     }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { DropHint.hush() }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
 
@@ -1729,7 +1741,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     var uploadDrop: (([URL], @escaping ([String]) -> Void) -> Void)?
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let pb = sender.draggingPasteboard
+        DropHint.hush()
+        return take(sender.draggingPasteboard)
+    }
+
+    /// What's dropped, taken: typed, given (an agent's), or sent and typed.
+    func take(_ pb: NSPasteboard) -> Bool {
         if let uploadDrop, pb.types?.contains(.manifoldPath) != true,
            let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             window?.makeFirstResponder(self)
@@ -1738,6 +1755,18 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 let text = paths.map(Self.shellQuoted).joined(separator: " ")
                 text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
             }
+            return true
+        }
+        // An agent given a block that isn't a file: what it holds, pasted
+        // (as one paste, so its lines don't send the prompt).
+        if isAgent, pb.string(forType: .manifoldPlacement) == nil, let link = pb.string(forType: .manifoldBlockLink),
+           let block = TextView.blockID(inLink: link), let fetch = delegate?.terminal(self, contentsFor: block) {
+            window?.makeFirstResponder(self)
+            fetch { [weak self] text in
+                guard let self, let surface = self.surface, let text, !text.isEmpty else { return }
+                text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+            }
+            delegate?.terminal(self, linkedFrom: block)
             return true
         }
         guard let surface, let text = Self.dropText(pb) else { return false }

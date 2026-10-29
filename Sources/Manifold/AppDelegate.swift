@@ -291,6 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(.separator())
         item(edit, "Cut", #selector(NSText.cut(_:)), "x")
         item(edit, "Copy", #selector(TerminalView.copy(_:)), "c")
+        // The focused block's content as text, whatever it is (§3.5).
+        item(edit, "Copy Contents", #selector(MainWindowController.copyContents(_:)), "c", [.command, .shift])
         item(edit, "Paste", #selector(TerminalView.paste(_:)), "v")
         item(edit, "Select All", #selector(NSResponder.selectAll(_:)), "a")
         // A terminal's (an agent's): a path from where its shell is, typed at the cursor.
@@ -357,7 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(format, "Bold", #selector(TextView.formatBold(_:)), "b")
         item(format, "Italic", #selector(TextView.formatItalic(_:)), "i")
         item(format, "Strikethrough", #selector(TextView.formatStrikethrough(_:)), "x", [.command, .shift])
-        item(format, "Code", #selector(TextView.formatCode(_:)), "c", [.command, .shift])
+        item(format, "Code", #selector(TextView.formatCode(_:)), "c", [.command, .option])
         let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
         formatItem.submenu = format
         edit.addItem(formatItem)

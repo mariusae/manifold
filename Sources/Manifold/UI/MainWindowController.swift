@@ -1864,13 +1864,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Debugging: a block ⇧-dragged into the focused editor, dropped at its caret.
+    /// Debugging: a block ⇧-dragged onto the focused tile — an editor, a
+    /// terminal (or agent), a notebook (outside its cells).
     func debugDrop(_ block: BlockID) -> String {
-        guard let e = debugFocusedEditor, let b = hosts.block(block) else { return "no editor focused, or no such block" }
+        guard let b = hosts.block(block) else { return "no such block" }
         let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
         pb.clearContents()
         pb.setString("[\(b.displayTitle)](manifold:\(block.description))", forType: .manifoldBlockLink)
         pb.setString(b.path ?? b.terminal?.cwd ?? "", forType: .string)
-        return e.debugDrop(pb) ? "dropped" : "refused"
+        if let e = debugFocusedEditor { return e.debugDrop(pb) ? "dropped" : "refused" }
+        guard let f = focusedShown, let v = views[f.placement.id] else { return "nothing focused" }
+        if let t = v as? TerminalView { return t.take(pb) ? "dropped" : "refused" }
+        if let n = v as? NotebookView { return n.take(pb) ? "dropped" : "refused" }
+        return "the focused tile takes no drops"
+    }
+
+    /// Debugging: what Copy Contents would copy, from the focused tile (or
+    /// the block named) — not put on the pasteboard; the previous ask's.
+    private var debugContentsAnswer = "-"
+    func debugContents(_ name: String) -> String {
+        let last = debugContentsAnswer
+        let b: Block? = BlockID(string: name).flatMap { hosts.block($0) } ?? focusedShown?.block
+        guard let b else { return "nothing focused" }
+        let view = views.first { $0.value.block == b.id }?.value
+        Task { @MainActor [weak self] in
+            do { self?.debugContentsAnswer = try await self?.maniDesk.contents(of: b, view: view, all: true) ?? "" } catch let e as ManiDesk.Failure { self?.debugContentsAnswer = "failure: " + e.message } catch {}
+        }
+        return last
     }
 
     func debugDropRow(_ i: Int) -> String {
@@ -6434,6 +6454,30 @@ extension MainWindowController: GridDelegate {
 
     func gridKeptPicture(_ block: BlockID) -> NSImage? { tilePictures[block] }
 
+    /// Edit ▸ Copy Contents (⇧⌘C): the focused block's content as text —
+    /// what `mani read` gives: a file's text, a terminal's history, a
+    /// page's, a listing, a search's hits — on the pasteboard, whatever
+    /// the block is, and said so (or why not).
+    @objc func copyContents(_ sender: Any?) {
+        guard let f = focusedShown, let b = f.block else { return toast.show("Nothing focused to copy", action: "OK", for: 4) {} }
+        let view = views[f.placement.id]
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let text = try await self.maniDesk.contents(of: b, view: view, all: true)
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(text, forType: .string)
+                let n = text.split(separator: "\n", omittingEmptySubsequences: false).count
+                self.toast.show("Copied “\(b.displayTitle)”: \(n) line\(n == 1 ? "" : "s")", action: "OK", for: 3) {}
+            } catch let e as ManiDesk.Failure {
+                self.toast.show("Couldn't copy: \(e.message)", action: "OK", for: 5) {}
+            } catch {
+                self.toast.show("Couldn't copy “\(b.displayTitle)”", action: "OK", for: 5) {}
+            }
+        }
+    }
+
     func gridKeep(_ picture: NSImage, of block: BlockID) { tilePictures[block] = picture }
 
     func gridArrive(_ placement: PlacementID) { arrive(atTile: placement) }
@@ -7176,6 +7220,31 @@ extension MainWindowController: EditorViewDelegate {
 
     /// A block ⇧-dragged onto a terminal: its path typed, and linked.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }
+
+    /// For an agent, what stands for a block it's given: its path where
+    /// it's a file (or a folder, or a page's address) the agent can read;
+    /// else what it holds, which only Manifold has to give.
+    func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)? {
+        guard let b = hosts.block(block) else { return nil }
+        switch b.kind {
+        case .terminal, .agent, .output, .search, .diff, .notebook, .git, .process: break
+        case .text where b.path == nil: break
+        default: return nil
+        }
+        let shown = views.first { $0.value.block == block }?.value
+        return { [weak self] done in
+            guard let self else { return done(nil) }
+            Task { @MainActor in
+                do {
+                    let text = try await self.maniDesk.contents(of: b, view: shown, all: true)
+                    done(text)
+                } catch let e as ManiDesk.Failure {
+                    self.toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
+                    done(nil)
+                } catch { done(nil) }
+            }
+        }
+    }
 
     /// The host's last process listing, those under this terminal's shell;
     /// and a fresh listing asked for, so the next menu is current.

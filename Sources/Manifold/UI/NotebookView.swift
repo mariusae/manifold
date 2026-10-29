@@ -64,6 +64,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        registerDrops()
         status.lineBreakMode = .byTruncatingMiddle
         shellIcon.image = Theme.symbol(Marks.terminal, size: 12)
         shellIcon.contentTintColor = Theme.secondaryText
@@ -335,6 +336,50 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     func interrupt() { delegate?.notebookInterrupt(self) }
 
     func restart() { delegate?.notebookRestart(self) }
+
+    // MARK: Drops
+
+    /// A block ⇧-dragged (or a file, a folder's entries) onto the notebook
+    /// outside its cells: a new cell at the end with its path, the caret
+    /// before it for the command (a cell under the drop takes it itself).
+    private func registerDrops() {
+        registerForDraggedTypes([.manifoldBlockLink, .fileURL, .manifoldPath])
+    }
+
+    private func dropTakes(_ pb: NSPasteboard) -> Bool {
+        pb.string(forType: .manifoldPlacement) == nil && TerminalView.dropText(pb) != nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard dropTakes(sender.draggingPasteboard) else { return [] }
+        DropHint.say("A new cell with its path", at: sender.draggingLocation, in: window)
+        return .copy
+    }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { DropHint.hush() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        DropHint.hush()
+        return take(sender.draggingPasteboard)
+    }
+
+    /// What's dropped outside the cells: a new cell with it.
+    func take(_ pb: NSPasteboard) -> Bool {
+        guard dropTakes(pb), let text = TerminalView.dropText(pb) else { return false }
+        if let last = order.last, let v = cells[last], v.editor.isEditable,
+           v.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // The last cell's empty (a new notebook's): it, not another.
+            window?.makeFirstResponder(v.editor)
+            v.editor.insertText(" " + text, replacementRange: NSRange(location: 0, length: (v.editor.string as NSString).length))
+            focus(last, atEnd: false)
+        } else {
+            insert(at: order.count, source: " " + text)
+        }
+        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
+            delegate?.notebook(self, linkedFrom: block)
+        }
+        return true
+    }
 
     func addCell() {
         let i = focusedCell.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? order.count
@@ -806,7 +851,20 @@ final class CellEditor: NSTextView {
     /// Dropped on a cell, as on a terminal: files and folders by their
     /// paths, quoted for the shell; a ⇧-dragged block, its path (and the
     /// link to it noted).
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if isEditable, DropHint.isBlockLink(sender.draggingPasteboard) {
+            DropHint.say("Put its path in this cell", at: sender.draggingLocation, in: window)
+        }
+        return super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        DropHint.hush()
+        super.draggingExited(sender)
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        DropHint.hush()
         let pb = sender.draggingPasteboard
         guard isEditable, let text = TerminalView.dropText(pb) else { return super.performDragOperation(sender) }
         let at = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))

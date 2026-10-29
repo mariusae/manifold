@@ -508,46 +508,55 @@ final class ManiDesk {
             }.joined(separator: "\n")
         }
         let pages = try r.flags["pages"].map { try range($0, what: "pages") }
+        if b.kind == .terminal || b.kind == .agent, let n = r.flags["command"] {
+            guard let k = Int(n), let commands = b.terminal?.commands, !commands.isEmpty else { throw Failure(message: "no command \(n) in \(b.displayTitle)") }
+            let i = k < 0 ? commands.count + k : k - 1
+            guard i >= 0, i < commands.count else { throw Failure(message: "\(b.displayTitle) has \(commands.count) commands") }
+            return lines(try await output(of: commands[i], in: b.id, view: view), r.flags["lines"])
+        }
+        if b.kind == .arrangement { return try ls(ManiRequest(verb: "ls", flags: [:], args: [], cwd: r.cwd, here: r.here), scope) }
+        return lines(try await contents(of: b, view: view, pages: pages, all: r.flags["all"] != nil), r.flags["lines"])
+    }
+
+    /// A block's content as text, whatever it is — a file's or note's
+    /// text, a terminal's transcript, a page's or a PDF's text, a diff's
+    /// patch, a listing, a search's hits, a command's output, a notebook's
+    /// cells: what `mani read` prints, and Copy Contents (⇧⌘C) copies.
+    /// `view`: its tile's, where only what's shown has it (a terminal's
+    /// screen, a page). `all`: a terminal's whole history, not its screen.
+    func contents(of b: Block, view: PaneContent?, pages: ClosedRange<Int>? = nil, all: Bool = false) async throws -> String {
         switch b.kind {
         case .text:
             guard let text = b.text, !b.needsRead else { throw Failure(message: "\(b.displayTitle) hasn't been read from disk yet") }
-            return lines(text.text.string, r.flags["lines"])
+            return text.text.string
         case .terminal, .agent:
-            if let n = r.flags["command"] {
-                guard let k = Int(n), let commands = b.terminal?.commands, !commands.isEmpty else { throw Failure(message: "no command \(n) in \(b.displayTitle)") }
-                let i = k < 0 ? commands.count + k : k - 1
-                guard i >= 0, i < commands.count else { throw Failure(message: "\(b.displayTitle) has \(commands.count) commands") }
-                return lines(try await output(of: commands[i], in: b.id, view: view), r.flags["lines"])
+            guard let view, let s = await view.maniText(ManiReadOptions(all: all)) else {
+                throw Failure(message: "\(b.displayTitle) isn't shown, so its screen can't be read")
             }
-            guard let view, let s = await view.maniText(ManiReadOptions(all: r.flags["all"] != nil)) else {
-                throw Failure(message: "\(b.displayTitle) isn't shown, so its screen can't be read; --command n reads a command's output")
-            }
-            return lines(s, r.flags["lines"])
+            return s
         case .pdf:
-            if let view, let s = await view.maniText(ManiReadOptions(pages: pages)) { return lines(s, r.flags["lines"]) }
+            if let view, let s = await view.maniText(ManiReadOptions(pages: pages)) { return s }
             guard b.id.host == wc.host.host, let path = b.path, let doc = PDFDocument(url: URL(fileURLWithPath: path)) else {
                 throw Failure(message: "\(b.displayTitle) can't be read here")
             }
-            return lines(MediaView.text(of: doc, pages: pages), r.flags["lines"])
+            return MediaView.text(of: doc, pages: pages)
         case .web:
             guard let view, let s = await view.maniText(ManiReadOptions()) else { throw Failure(message: "\(b.displayTitle) isn't shown, so its page can't be read") }
-            return lines(s, r.flags["lines"])
+            return s
         case .diff:
             guard let d = b.diff else { throw Failure(message: "\(b.displayTitle) has nothing yet") }
-            if let patch = d.patch { return lines(patch, r.flags["lines"]) }
-            if let old = d.oldText, let new = d.newText {
-                return lines(UnifiedDiff.make(old: old, new: new, path: b.path ?? b.displayTitle), r.flags["lines"])
-            }
+            if let patch = d.patch { return patch }
+            if let old = d.oldText, let new = d.newText { return UnifiedDiff.make(old: old, new: new, path: b.path ?? b.displayTitle) }
             throw Failure(message: d.error ?? "\(b.displayTitle) hasn't loaded")
         case .directory:
             let entries = b.directory?.entries ?? []
             return entries.map { $0.name + ($0.isDirectory ? "/" : "") }.joined(separator: "\n")
         case .search:
             guard let s = b.search else { return "" }
-            return lines(s.hits.map { "\($0.path):\($0.line):\($0.column): \($0.text)" }.joined(separator: "\n"), r.flags["lines"])
+            return s.hits.map { "\($0.path):\($0.line):\($0.column): \($0.text)" }.joined(separator: "\n")
         case .output:
             guard let o = b.output else { return "" }
-            return lines("$ " + o.line + "\n" + (o.plain ? o.output : Self.plain(o.output)), r.flags["lines"])
+            return "$ " + o.line + "\n" + (o.plain ? o.output : Self.plain(o.output))
         case .notebook:
             let cells = b.notebook?.cells ?? []
             return cells.enumerated().map { i, c in
@@ -563,7 +572,9 @@ final class ManiDesk {
             let head = (g.branch.map { "on \($0)" } ?? "") + (g.ahead > 0 ? ", \(g.ahead) ahead" : "") + (g.behind > 0 ? ", \(g.behind) behind" : "")
             return ([head] + g.status.map { "\($0.index)\($0.workTree) \($0.path)" }).joined(separator: "\n")
         case .arrangement:
-            return try ls(ManiRequest(verb: "ls", flags: [:], args: [], cwd: r.cwd, here: r.here), scope)
+            // A space: its tiles, a line each.
+            guard let a = hosts.arrangement(b.id) else { return "" }
+            return a.placements.compactMap { hosts.block($0.block) }.map { $0.displayTitle + ($0.path.map { "\t" + $0 } ?? "") }.joined(separator: "\n")
         case .ui:
             return json(panelValues(b))
         default:

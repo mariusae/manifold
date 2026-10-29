@@ -1771,6 +1771,7 @@ final class GridView: NSView, NSDraggingSource {
             // (one that types or inserts it takes it first): linked to the
             // tile's block, its whole shape the sign.
             guard let t = tile(at: point), t.shown.block?.id != block else { hideDrop(); return [] }
+            DropHint.say("Link to “\(t.shown.title)”", at: sender.draggingLocation, in: window)
             showDrop(t.view.frame)
             drop = (0, 0, t.view.frame, false, t.shown.id)
             dropLinks = true
@@ -2178,6 +2179,7 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        DropHint.hush()
         defer { hideDrop() }
         guard let target = drop else { return false }
         let pb = sender.draggingPasteboard

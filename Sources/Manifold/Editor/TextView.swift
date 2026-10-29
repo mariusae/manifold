@@ -1768,6 +1768,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
+        DropHint.hush()
         if let grid = linkOnlyGrid(sender) { grid.draggingExited(sender) }
     }
 
@@ -1776,6 +1777,9 @@ final class TextView: NSView, NSTextInputClient {
         // A picture from Photos (promised, not yet a file): into a note.
         if isEditable, onImage != nil, Self.droppedText(sender.draggingPasteboard) == nil, !Promises.receivers(sender.draggingPasteboard).isEmpty { return .copy }
         guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
+        if DropHint.isBlockLink(sender.draggingPasteboard) {
+            DropHint.say(acceptsBlockLinks ? "Put a link to it here" : "Put its path here", at: sender.draggingLocation, in: window)
+        }
         let p = convert(sender.draggingLocation, from: nil)
         let at = offset(at: p)
         // The caret follows the pointer; only moved when it would move.
@@ -1790,6 +1794,7 @@ final class TextView: NSView, NSTextInputClient {
     var acceptsBlockLinks = false
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        DropHint.hush()
         if let grid = linkOnlyGrid(sender) { return grid.performDragOperation(sender) }
         return drop(sender.draggingPasteboard, at: convert(sender.draggingLocation, from: nil))
     }

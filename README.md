@@ -136,12 +136,23 @@ parts from the Mac's conventions on purpose.
   the target (and whatever was behind it) stashed behind — the outline
   while you drag is the target tile's shape, to say so; ⇧-drag a bar
   and it's not the tile you
-  carry but its path (a terminal's folder, a page's address): dropped on
-  a terminal it's typed there, quoted for the shell; on an editor,
-  inserted where the pointer is; on another app, as a file or text.
-  It carries the block too, linking it to where it lands (below);
+  carry but what it stands for, and where it lands decides what's done
+  with it, as Star's printer took a document: on a terminal its path (a
+  terminal's folder, a page's address) is typed, quoted for the shell;
+  on an agent, its path if it's a file, else what it holds (a terminal's
+  history, a search's hits, a note never saved) is pasted in, so the
+  agent has it; on a shell notebook, its path goes in the cell under
+  it, or outside the cells a cell is made for it, the caret before it
+  for the command; on an editor, its path where the pointer is (in a
+  note, a link to it); on another app, as a file or text. While you
+  drag, a word beside the pointer says what dropping does there. It
+  carries the block too, linking it to where it lands (below);
   ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
-  note) is linked to it, nothing typed or put in.
+  note) is linked to it, nothing typed or put in. **⇧⌘C (Edit ▸ Copy
+  Contents)** copies the focused block's content as text, whatever it
+  is — a file's or note's text, a terminal's whole history, a page's
+  or PDF's text, a diff's patch, a listing, a search's hits, a
+  notebook's cells — as `mani read` prints it.
   Stash (⌘M, or Stash in a bar's menu) puts the
   focused tile behind its nearest tile — the one above it, else the
   column's first — and focuses that one. Dragging the line between two tiles past one's least
@@ -312,7 +323,7 @@ parts from the Mac's conventions on purpose.
   hand), an address pasted over words making a link of them; a block's link shows as it,
   live. Every character stays where it is — the line the caret is on
   shows as written, markers dimmed — and the file is plain Markdown; a
-  note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌘⇧C wrap the selection
+  note shows no line numbers. ⌘B, ⌘I, ⌘⇧X and ⌥⌘C wrap the selection
   in bold, italic, strikethrough and code marks, or take them off
   (Edit ▸ Format).
   Return in a list carries it on — the next marker or number, an empty
