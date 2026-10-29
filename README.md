@@ -676,7 +676,11 @@ around it, and comes back with its history.
   goes down: what looks like a path shows at once, without the glow,
   until the host says it's there (it glows) or not (it goes), and a bare
   name shows once it's found — usually before anything shows at all. A
-  click on one not answered for yet waits a moment for the answer. **`mani open`** (see **The `mani` command**) does the same from a
+  click on one not answered for yet waits a moment for the answer.
+  Holding ⌘ for shortcuts shows nothing: links wait a moment after ⌘
+  goes down, and once a key goes down with it (⌘G and ⇧⌘G through a
+  search, ⌘C) they're put away, in a terminal or an editor, until ⌘ is
+  let go. **`mani open`** (see **The `mani` command**) does the same from a
   shell: `mani open README.md src/`.
 - **Folders** open as one tree, as Claude Code's file panel shows one:
   flat, in the system font, each folder opening in place (a click on its

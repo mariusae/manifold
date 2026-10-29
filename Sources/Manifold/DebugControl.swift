@@ -313,6 +313,23 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "cmdlinks":
+            // "cmdlinks down|g|shift|up": ⌘ pressed, ⌘G typed, ⇧ added, ⌘ let go —
+            // through the app, as typed; "cmdlinks": whether links may show.
+            guard let window = wc?.window else { return "no window" }
+            func post(_ type: NSEvent.EventType, _ flags: NSEvent.ModifierFlags, _ chars: String, _ code: UInt16) {
+                if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                            isARepeat: false, keyCode: code) { NSApp.postEvent(e, atStart: false) }
+            }
+            switch arg {
+            case "down": post(.flagsChanged, [.command], "", 0x37)
+            case "g": post(.keyDown, [.command], "g", 5)
+            case "shift": post(.flagsChanged, [.command, .shift], "", 0x38)
+            case "up": post(.flagsChanged, [], "", 0x37)
+            default: break
+            }
+            return CommandLinks.shortcutting ? "put away (a shortcut)" : "may show"
         case "mdeval":
             // "mdeval <js>": run in the focused preview; returns what the
             // previous run gave (the page answers later).

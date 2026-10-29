@@ -1180,13 +1180,20 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
-            // A key with ⌘ (⌘C, ⌘T): a shortcut, not links looked for.
+            let allowed = CommandLinks.note(event)
+            // A key with ⌘ (⌘C, ⌘G): a shortcut, not links looked for — those
+            // shown put away, until ⌘ is let go (`CommandLinks`).
             if event.type == .keyDown {
                 self.pendingMark?.cancel()
                 self.pendingMark = nil
+                if event.modifierFlags.contains(.command), self.markedRuns != nil {
+                    self.markedRuns = nil
+                    self.clearLinks()
+                    self.cursor.set()
+                }
                 return event
             }
-            let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer
+            let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer && allowed
             if down {
                 if event.type == .flagsChanged, self.markedRuns == nil {
                     // The screen read a moment after ⌘ goes down, if no key
@@ -1197,11 +1204,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                     let work = DispatchWorkItem { [weak self] in
                         guard let self else { return }
                         self.pendingMark = nil
-                        guard NSEvent.modifierFlags.contains(.command), self.isUnderPointer else { return }
+                        guard NSEvent.modifierFlags.contains(.command), !CommandLinks.shortcutting, self.isUnderPointer else { return }
                         self.markLinks()
                     }
                     self.pendingMark = work
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + CommandLinks.delay, execute: work)
                 } else if self.markedRuns != nil {
                     // The pointer moving moves the band; ⌘ again, read again.
                     self.markLinks(reading: event.type == .flagsChanged)

@@ -181,24 +181,57 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// a moment later, not at every ⌘.
     private var navigableFailedAt: Date?
 
+    /// Links shown a moment after ⌘ goes down (`CommandLinks.delay`).
+    private var pendingLinks: DispatchWorkItem?
+
     /// While ⌘ is held over the editor, the names there's somewhere to go
     /// to (as the language server says) show as links, as go.dev's docs
-    /// set them; the one under the pointer underlined. ⌘-click goes.
+    /// set them; the one under the pointer underlined. ⌘-click goes. A
+    /// moment after ⌘ goes down, and not once a key goes down with it (a
+    /// shortcut: ⌘G through a search), until ⌘ is let go (`CommandLinks`).
     private func watchCommandKey(_ on: Bool) {
         if let commandMonitor { NSEvent.removeMonitor(commandMonitor) }
         commandMonitor = nil
         guard on else { return }
-        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved]) { [weak self] event in
+        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
-            let down = event.modifierFlags.contains(.command) && self.pointerInside
+            let allowed = CommandLinks.note(event)
+            if event.type == .keyDown {
+                if event.modifierFlags.contains(.command), self.commandDown { self.hideLinks() }
+                return event
+            }
+            let down = event.modifierFlags.contains(.command) && self.pointerInside && allowed
             if down != self.commandDown {
-                self.commandDown = down
-                if down { self.showLinks() } else { self.textView.linkRanges = []; self.textView.hoveredLink = nil }
-            } else if down {
+                if down {
+                    self.commandDown = true
+                    if event.type == .mouseMoved {
+                        // ⌘ held, the pointer brought in: at once.
+                        self.showLinks()
+                    } else {
+                        let work = DispatchWorkItem { [weak self] in
+                            guard let self, self.pendingLinks != nil else { return }
+                            self.pendingLinks = nil
+                            if self.commandDown { self.showLinks() }
+                        }
+                        self.pendingLinks = work
+                        DispatchQueue.main.asyncAfter(deadline: .now() + CommandLinks.delay, execute: work)
+                    }
+                } else {
+                    self.hideLinks()
+                }
+            } else if down, self.pendingLinks == nil {
                 self.updateHoveredLink()
             }
             return event
         }
+    }
+
+    private func hideLinks() {
+        commandDown = false
+        pendingLinks?.cancel()
+        pendingLinks = nil
+        textView.linkRanges = []
+        textView.hoveredLink = nil
     }
 
     /// Debugging: ⌘ held over the editor (without the pointer), and the
