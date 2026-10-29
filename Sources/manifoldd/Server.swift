@@ -537,6 +537,24 @@ final class Server {
         }
     }
 
+    /// The titles notes were given from their first lines, as last given.
+    private var firstLineTitles: [BlockID: String] = [:]
+
+    /// An untitled note is called by its first line, as its title — kept
+    /// so as that line changes, from whichever client — until it's named
+    /// otherwise (Name Note…), which it's then left with; the name emptied,
+    /// it's called by its first line again. One whose title is its first line's words already
+    /// (given before this server started) goes on being kept.
+    private func titleFromFirstLine(_ block: Block) {
+        guard let text = block.text else { return }
+        let title = block.title ?? ""
+        let derived = Block.noteTitle(from: text.text) ?? ""
+        let given = firstLineTitles[block.id]
+        guard title.isEmpty || title == given || (given == nil && title == derived) else { return }
+        firstLineTitles[block.id] = derived
+        if derived != title { append(.title(derived.isEmpty ? nil : derived), to: .block(block.id)) }
+    }
+
     /// Keeps the registry in step with a block's log, whoever appended.
     private func shardChanged(_ shard: ShardID, entries: [Entry] = []) {
         guard let id = shard.block, let block = node.block(id) else { return }
@@ -545,6 +563,8 @@ final class Server {
             if block.path != nil {
                 languageServers.textChanged(id)
                 scheduleGutter(id)
+            } else {
+                titleFromFirstLine(block)
             }
             mentions.textChanged(id)
         }

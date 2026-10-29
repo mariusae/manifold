@@ -1043,6 +1043,28 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     /// A text with nowhere on disk yet: a note.
     public var isNote: Bool { kind == .text && path == nil }
 
+    /// What an untitled note is called: its first line that says
+    /// something, read as words — images left out, a link by its words, no
+    /// emphasis, heading, quote or bullet marks — at most 60 characters;
+    /// nil while it says nothing. Only the text's beginning is read.
+    public static func noteTitle(from text: Rope) -> String? {
+        let head = text[TextRange(0, text.floorBoundary(min(text.count, 16 << 10)))]
+        for line in head.split(separator: "\n").prefix(40) {
+            let words = plainWords(String(line))
+            if !words.isEmpty { return String(words.prefix(60)) }
+        }
+        return nil
+    }
+
+    /// A line of Markdown as its words.
+    public static func plainWords(_ line: String) -> String {
+        var s = line.replacingOccurrences(of: #"!\[[^\]]*\]\([^)]*\)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"^\s*(#+|>|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
     /// A file whose text has never come in from disk: nothing to show or
     /// edit yet, only to read (a block made for a file before anyone
     /// opened it, a read that went astray).

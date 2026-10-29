@@ -315,6 +315,11 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "notename":
+            // "notename <name>": the focused note named, as Name Note… does ("" unnames it).
+            guard let wc, let b = wc.focusedShown?.block, b.isNote else { return "no note focused" }
+            wc.hosts.append(.title(arg.isEmpty ? nil : arg), to: .block(b.id))
+            return "ok"
         case "optpage":
             // "optpage": what the last ⌥↑ or ⌥↓ did.
             return OptionKeysPage.last

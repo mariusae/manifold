@@ -1923,25 +1923,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return e.debugDrop(pb) ? "dropped" : "refused"
     }
 
-    /// What to call a note: its title, else its first line, else "Note".
+    /// What to call a note: its title, else its first line (`Block.noteTitle`), else "Note".
     static func noteTitle(_ b: Block) -> String {
         if let t = b.title, !t.isEmpty { return t }
-        // The first line that says something, read as text: images left
-        // out, a link by its words, no emphasis, heading, quote or bullet marks.
-        for line in (b.text?.text.string ?? "").split(separator: "\n").prefix(40) {
-            let words = plainWords(String(line))
-            if !words.isEmpty { return String(words.prefix(60)) }
-        }
-        return b.displayTitle
-    }
-
-    /// A line of Markdown as its words.
-    static func plainWords(_ line: String) -> String {
-        var s = line.replacingOccurrences(of: #"!\[[^\]]*\]\([^)]*\)"#, with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"^\s*(#+|>|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
-        return s.trimmingCharacters(in: .whitespaces)
+        return b.text.flatMap { Block.noteTitle(from: $0.text) } ?? b.displayTitle
     }
 
     /// A linked block from a tile's badge: gone to where it is; placed
@@ -2418,7 +2403,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A note named in its tile's pill, as it is — nothing saved: the
     /// name is the block's title, kept in its log, until a file's name
-    /// takes over. Emptied, it's Untitled again.
+    /// takes over. Emptied, it's called by its first line again (as the
+    /// host titles an unnamed note).
     func nameNote(_ placement: PlacementID) {
         guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block), b.isNote else { return }
         focus(placement)

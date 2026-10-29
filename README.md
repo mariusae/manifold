@@ -515,10 +515,12 @@ around it, and comes back with its history.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
-  Name… in its bar's menu or Tile ▸ Name Note… turns its
-  bar's title into a field (⏎ names it, emptied it's Untitled again);
-  saved, it's offered under that name, and its file's name names it
-  from then on. A file's text is the file's: one shown whose text hasn't
+  its first line's words, kept as that line changes (heading and list
+  marks, emphasis and images left out); or one of your own — Name… in
+  its bar's menu or Tile ▸ Name Note… turns its
+  bar's title into a field (⏎ names it, and it keeps that name; emptied,
+  it's called by its first line again); saved, it's offered under its
+  name, and its file's name names it from then on. A file's text is the file's: one shown whose text hasn't
   come in is asked for until it does (whatever went astray on the way),
   says "Reading the file…" and can't be typed into or saved meanwhile,
   and a file opened again is looked at on disk again. The **editor** lens is Manifold's own
