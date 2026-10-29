@@ -302,11 +302,15 @@ enum DebugControl {
                 return r.map { "\(type(of: $0))" + (($0 as? NSTextField).map { " \"\($0.placeholderString ?? "")\"" } ?? "") } ?? "nothing"
             }
             // "press esc": Escape, by its key code.
-            let (chars, code): (String, UInt16) = arg == "esc" ? ("\u{1B}", 53) : (arg, 0)
-            if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            // "press opt-esc": with ⌥ held, as during ⌥⇥.
+            let opt = arg.hasPrefix("opt-")
+            let key = opt ? String(arg.dropFirst(4)) : arg
+            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : (key, 0)
+            if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: opt ? [.option] : [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
                                                     isARepeat: false, keyCode: code) {
-                window.sendEvent(e)
+                // Through the app, as typing comes: its monitors see it first.
+                NSApp.postEvent(e, atStart: false)
             }
             return holder()
         case "mdeval":
