@@ -286,13 +286,54 @@ final class HostClient {
     /// landed at the end, a tile dropped between workspaces nowhere).
     var desk: DeskState {
         var d = node.desk(host)
-        if let p = proposedOrder {
-            // Not heard of in 10 s (sent while the link was down): the host's.
-            if d.order != p.over || Date().timeIntervalSince(p.at) > 10 { proposedOrder = nil } else { d.order = p.order }
-        }
+        if let p = pendingOrder { d.order = Self.order(d.order, with: p) }
         return d
     }
-    private var proposedOrder: (order: [BlockID], over: [BlockID], at: Date)?
+
+    /// A change to the desk's order the host hasn't yet: the order wanted,
+    /// and what it adds and removes. Kept until the host's order has it —
+    /// sent again when the link comes back, and every few seconds unheard
+    /// (a proposal sent on a link gone, or going, is lost) — not let go
+    /// after a while: a space removed while a host's link faltered came
+    /// back once the host's order was shown again.
+    private struct PendingOrder {
+        var order: [BlockID]
+        var added: Set<BlockID>
+        var removed: Set<BlockID>
+        var sent: Date
+    }
+    private var pendingOrder: PendingOrder?
+
+    /// The order wanted, over the host's as it is: what's on it that the
+    /// wanted order doesn't have (another's, added since) kept, at the end;
+    /// what it lacks that wasn't added here (another's, removed since) left
+    /// out; what was removed here kept out.
+    private static func order(_ host: [BlockID], with p: PendingOrder) -> [BlockID] {
+        let hostSet = Set(host), wanted = Set(p.order)
+        return p.order.filter { (hostSet.contains($0) || p.added.contains($0)) && !p.removed.contains($0) }
+            + host.filter { !wanted.contains($0) && !p.removed.contains($0) }
+    }
+
+    /// The host's order has the change: done. Else, on a link that's up,
+    /// sent again if it went a while ago unheard (`now`: at once).
+    private func reconcileOrder(now: Bool = false) {
+        guard let p = pendingOrder else { return }
+        let host = node.desk(host).order
+        let want = Self.order(host, with: p)
+        if want == host { pendingOrder = nil; return }
+        guard conn != nil, link == .connected, now || Date().timeIntervalSince(p.sent) > 3 else { return }
+        pendingOrder?.sent = Date()
+        propose(.workspaces(order: want))
+    }
+
+    /// While a change is pending: looked at again in a while, heard or not.
+    private func watchPendingOrder() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self] in
+            guard let self, self.pendingOrder != nil else { return }
+            self.reconcileOrder()
+            if self.pendingOrder != nil { self.watchPendingOrder() }
+        }
+    }
     var registry: Registry { node.registry(host) }
     var links: Links { node.links(host) }
     func block(_ id: BlockID) -> Block? { node.block(id) }
@@ -435,9 +476,17 @@ final class HostClient {
     }
 
     func setWorkspaceOrder(_ order: [BlockID]) {
-        guard order != desk.order else { return }
-        proposedOrder = (order, node.desk(host).order, Date())
+        let shown = desk.order
+        guard order != shown else { return }
+        // What this change adds and removes, with what's pending still.
+        let added = Set(order).subtracting(shown), removed = Set(shown).subtracting(order)
+        let wasPending = pendingOrder != nil
+        pendingOrder = PendingOrder(order: order,
+                                    added: (pendingOrder?.added ?? []).union(added).subtracting(removed),
+                                    removed: (pendingOrder?.removed ?? []).union(removed).subtracting(added),
+                                    sent: Date())
         propose(.workspaces(order: order))
+        if !wasPending { watchPendingOrder() }
         scheduleChange()
     }
 
@@ -1020,6 +1069,8 @@ final class HostClient {
             hasState = true
             if first { onWelcome?() }
             onConnected?()
+            // What the desk's order was to be, while the link was down.
+            reconcileOrder(now: true)
             scheduleChange()
         case .pong:
             if let sent = pingSent {

@@ -500,10 +500,15 @@ final class Server {
     /// nothing is lost: such a workspace back among them; a kept block
     /// nothing else reaches pinned in a "Kept" workspace; its Keep let go.
     private func settleRoots() {
+        // Once: after it, a space off the desk is one removed by hand —
+        // named or not, it stays removed (it came back at every collection).
+        guard !node.desk(host).settings.rootsSettled else { return }
         let events = node.settlingRoots(on: host, at: clock.now(), newID: { BlockID(host: host) })
-        guard !events.isEmpty else { return }
         for (event, shard) in events { append(event, to: shard) }
-        log("roots settled: \(events.count) change(s) bring what was kept outside the spaces into them")
+        if !events.isEmpty { log("roots settled: \(events.count) change(s) bring what was kept outside the spaces into them") }
+        var s = node.desk(host).settings
+        s.rootsSettled = true
+        append(.settings(s), to: .desk(host))
     }
 
     /// The collector (§4): what no root reaches over strong edges — the

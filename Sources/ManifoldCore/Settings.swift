@@ -107,6 +107,10 @@ public struct Settings: Codable, Equatable, Sendable {
     /// A terminal's selection goes to the clipboard as it's made (not
     /// in full screen).
     public var copyOnSelect: Bool = true
+    /// What kept things before the spaces were the only roots has been
+    /// brought into them (§4): done once, not at every collection — a
+    /// named space removed by hand was put back on the desk each time.
+    public var rootsSettled: Bool = false
 
     public init() {}
 
@@ -117,6 +121,7 @@ public struct Settings: Codable, Equatable, Sendable {
         textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
         terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30
         undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0
+        rootsSettled = (try? c.decodeIfPresent(Bool.self, forKey: .rootsSettled)) ?? false
         languageServers = (try? c.decodeIfPresent([LanguageServerConfig].self, forKey: .languageServers)) ?? LanguageServerConfig.defaults
         agentCommand = (try? c.decodeIfPresent(String.self, forKey: .agentCommand)) ?? "claude"
         copyOnSelect = (try? c.decodeIfPresent(Bool.self, forKey: .copyOnSelect)) ?? true
