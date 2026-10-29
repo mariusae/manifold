@@ -234,7 +234,7 @@ enum FinderRanking {
 /// start, then ⇥, is a chip before the query (⌫ at the start takes it
 /// back), and the foot counts what each kind found, a click narrowing to
 /// it. ↩ goes there.
-final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, OptionPaging {
     enum Scope: Int, CaseIterable {
         case names, blocks
     }
@@ -656,6 +656,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 
     /// Chooses the selected row, or moves the selection (for DebugControl).
     func debugChoose() { openSelected() }
+    /// The chosen row, and how many show at once.
+    var debugSelected: String {
+        "row \(table.selectedRow) of \(shown.count), \(table.rows(in: table.visibleRect).length) in sight"
+    }
     /// Debugging: the panel as it looks, to a PNG.
     func debugPicture(_ path: String) -> String {
         guard let view = panel.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return "no panel" }
@@ -831,6 +835,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         completing = nil
         if outline == nil { onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope) }
         refresh()
+    }
+
+    /// ⌥↑ and ⌥↓ in the field: the selection a page up or down (as many
+    /// rows as show, less one, so the last stays in sight).
+    func page(_ direction: Int) -> Bool {
+        guard panel.isVisible, !shown.isEmpty else { return false }
+        let rows = max(1, table.rows(in: table.visibleRect).length - 1)
+        move(direction * rows)
+        return true
     }
 
     private func move(_ by: Int) {

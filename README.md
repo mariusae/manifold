@@ -476,7 +476,10 @@ around it, and comes back with its history.
   contents, a diff's files; type words to narrow them, ↩ to focus the
   tile or go to the place in it, as a click in its own outline goes. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
-  finds the terminal running it. It's instant however long the outlines
+  finds the terminal running it. ⌥↑ and ⌥↓ move a page up or down
+  through its list (as in ⌘O's), as they page anything that scrolls
+  outside text — a folder's list, the sidebar, a PDF — the Mac's way;
+  in text they move by paragraph, in a terminal they're the shell's. It's instant however long the outlines
   are: each space keeps an index of them, updated as they change, so a
   word is found among tens of thousands of symbols in about a
   millisecond — and all of a terminal's commands, not only its last 500.

@@ -4675,6 +4675,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugWorkspaceOutline(_ query: String) -> String {
         if query.isEmpty { goToTile(nil); return "opened" }
         if query == "tab" { finder.debugSwitchOutline(); return "switched" }
+        if query == "selected" { return finder.debugSelected }
         if query.hasPrefix("find "), let a = arrangement, let index = syncOutlineIndex() {
             // The index's part alone: looked up, and the rows made.
             let q = String(query.dropFirst(5))

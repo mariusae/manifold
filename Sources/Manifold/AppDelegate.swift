@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CrashGuard.start()
         safeMode = CrashGuard.unfinished >= 2 && askSafeMode()
         MemoryWatch.start()
+        OptionKeysPage.start()
         _ = GhosttyRuntime.shared
         // After Ghostty's, so ours writes the report and then hands on to it.
         CrashGuard.armHandler()

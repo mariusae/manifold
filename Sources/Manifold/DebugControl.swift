@@ -306,7 +306,7 @@ enum DebugControl {
             // "press ctrl-g": with ⌃ held.
             let opt = arg.hasPrefix("opt-"), ctrl = arg.hasPrefix("ctrl-")
             let key = opt ? String(arg.dropFirst(4)) : ctrl ? String(arg.dropFirst(5)) : arg
-            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : key == "tab" ? ("\t", 48) : key == "g" ? ("g", 5) : (key, 0)
+            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : key == "tab" ? ("\t", 48) : key == "g" ? ("g", 5) : key == "up" ? ("\u{F700}", 126) : key == "down" ? ("\u{F701}", 125) : (key, 0)
             let flags: NSEvent.ModifierFlags = opt ? [.option] : ctrl ? [.control] : []
             if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
@@ -315,6 +315,9 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "optpage":
+            // "optpage": what the last ⌥↑ or ⌥↓ did.
+            return OptionKeysPage.last
         case "cmdlinks":
             // "cmdlinks down|g|shift|up": ⌘ pressed, ⌘G typed, ⇧ added, ⌘ let go —
             // through the app, as typed; "cmdlinks": whether links may show.
@@ -1043,9 +1046,10 @@ enum DebugControl {
             guard let editor = v as? EditorView else { return "no editor" }
             editor.rename(at: tv.primarySelection.head, to: arg)
             return "ok"
-        case "press":
-            // "press return|tab|escape|up|down|<char>": a key event through
-            // the window, as typed (so popups see it).
+        case "keys":
+            // "keys return|tab|escape|up|down|<char>": a key event through
+            // the window, as typed (so popups see it). (Was a second "press",
+            // which the first one shadowed.)
             // "panel <key>": to ⌘O's panel, open, instead of the window.
             let toPanel = arg.hasPrefix("panel ")
             let arg = toPanel ? String(arg.dropFirst(6)) : arg
