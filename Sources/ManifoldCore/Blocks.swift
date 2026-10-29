@@ -314,12 +314,17 @@ public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
         }
         let close = mark?.unicodeScalars.last.map { String($0) }
         let first = prompt?.split(separator: " ").first.map(String.init)
+        // Its first word less the mark that closes it: a status put in
+        // before the mark after a failure (fish's `s/manifold[127]›` for
+        // `s/manifold›`) leaves the start and the mark as they were.
+        let stem = first.map { w in String(w.reversed().drop { !$0.isLetter && !$0.isNumber }.reversed()) }
         func isPrompt(_ line: String) -> Bool {
             let t = line.trimmingCharacters(in: .whitespaces)
             if t.isEmpty { return true }
             if let prompt, t.contains(prompt) { return true }
             if let mark, t.hasSuffix(mark) { return true }
             if let first, let close, first != prompt, t.hasPrefix(first), t.hasSuffix(close) || t.contains(close + " ") { return true }
+            if let stem, !stem.isEmpty, let close, t.hasPrefix(stem), t.hasSuffix(close) || t.contains(close + " ") { return true }
             return false
         }
         while let last = lines.last, isPrompt(last) { lines.removeLast() }

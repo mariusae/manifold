@@ -806,6 +806,9 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     // Output ending in a word (not a mark) stays; so does output in the middle.
     #expect(ShellCommand.output("a ›\nb\n~ $", prompt: "~ $") == "a ›\nb")
     #expect(ShellCommand.output("done", prompt: nil) == "done")
+    // After a failure, fish's prompt has the status before its mark.
+    #expect(ShellCommand.output("fish: Unknown command: 'x'\ns/manifold[127]› ", prompt: "s/manifold›") == "fish: Unknown command: 'x'")
+    #expect(ShellCommand.output("fish: Unknown command: 'x'\ns/manifold[127]› ls", prompt: "s/manifold›") == "fish: Unknown command: 'x'")
 }
 
 @Test func aTileMovedUnderAStackDoesntTakeIt() {
@@ -1153,8 +1156,9 @@ private func scratchDestination(_ name: String, filter: String? = nil) throws ->
         #expect(try Bootstrap.probe(dest).hash == Bootstrap.sha256(binary))
     }
     let left = try FileManager.default.contentsOfDirectory(atPath: bin.path).sorted()
-    #expect(left == ["mani", "manifoldd"])
+    #expect(left == ["mani", "mani-edit", "manifoldd"])
     #expect(FileManager.default.isExecutableFile(atPath: bin.appendingPathComponent("mani").path))
+    #expect(FileManager.default.isExecutableFile(atPath: bin.appendingPathComponent("mani-edit").path))
 }
 
 private final class Seen: @unchecked Sendable {

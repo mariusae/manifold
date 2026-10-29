@@ -887,16 +887,32 @@ final class Session {
         return env
     }
 
-    /// `mani open --wait`, as a shell's `$EDITOR`: the `mani` beside this
-    /// server in the app bundle, else the server itself on a remote host
-    /// (`manifoldd mani`).
+    /// `mani open --wait`, as a shell's `$EDITOR`: one program — `mani-edit`,
+    /// beside `mani` in the app bundle, or beside this server on another
+    /// host (written there if an older install has none) — as fish takes a
+    /// variable as one word, never split; else the command with its words.
     static var editorCommand: String {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let helper = exe.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Helpers/mani")
+        let own = exe.deletingLastPathComponent()
+        let helpers = own.deletingLastPathComponent().appendingPathComponent("Helpers")
+        let fm = FileManager.default
         // Quoted only when it must be: a shell expands `$EDITOR` without
         // parsing quotes, and most paths have no spaces.
         func quote(_ s: String) -> String { s.contains(" ") ? "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" : s }
-        if FileManager.default.isExecutableFile(atPath: helper.path) { return quote(helper.path) + " open --wait" }
+        for dir in [helpers, own] {
+            let wrapper = dir.appendingPathComponent("mani-edit")
+            if fm.isExecutableFile(atPath: wrapper.path) { return quote(wrapper.path) }
+        }
+        // Another host's install from before: its folder is ours to write.
+        if !exe.path.contains(".app/"), fm.isExecutableFile(atPath: own.appendingPathComponent("mani").path) {
+            let wrapper = own.appendingPathComponent("mani-edit")
+            let script = "#!/bin/sh\nexec \"$(dirname \"$0\")/manifoldd\" mani open --wait \"$@\"\n"
+            if (try? script.write(to: wrapper, atomically: true, encoding: .utf8)) != nil,
+               (try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)) != nil {
+                return quote(wrapper.path)
+            }
+        }
+        if fm.isExecutableFile(atPath: helpers.appendingPathComponent("mani").path) { return quote(helpers.appendingPathComponent("mani").path) + " open --wait" }
         return quote(exe.path) + " mani open --wait"
     }
 

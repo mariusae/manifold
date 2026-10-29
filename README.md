@@ -1331,8 +1331,10 @@ is migrated into logs on first run.
   space) has one owner at a time, whichever focused it last; the
   other mirrors until it focuses the block again. Linux servers (x86_64
   and aarch64, static) are bundled with the app (Building, below).
-- **`$EDITOR`** in Manifold's shells is `mani open --wait` (on a remote
-  host, `manifoldd mani open --wait`), and `$VISUAL` with it — set again
+- **`$EDITOR`** in Manifold's shells is `mani-edit`, beside `mani`,
+  which runs `mani open --wait` (on a remote host, `manifoldd mani open
+  --wait`) — one program, as fish takes a variable as one word — and
+  `$VISUAL` with it — set again
   once your rc files have run, in fish, zsh and bash, so one that sets
   `EDITOR` for other terminals doesn't take it (set `MANIFOLD_KEEP_EDITOR`
   in your environment to keep yours): `git commit` and friends edit in an

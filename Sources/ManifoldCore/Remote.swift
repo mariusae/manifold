@@ -319,6 +319,7 @@ public enum Bootstrap {
             if [ "$got" != \(sha256(binary)) ]; then size=$(wc -c < "$new"); rm -f "$new"; echo "what arrived isn't what was sent ($size of \(binary.count) bytes)"; exit 1; fi
             chmod +x "$new" && mv "$new" manifoldd || exit 1
             printf '%s\\n' '#!/bin/sh' 'exec "$(dirname "$0")/manifoldd" mani "$@"' > mani && chmod +x mani && rm -f manifold
+            printf '%s\\n' '#!/bin/sh' 'exec "$(dirname "$0")/manifoldd" mani open --wait "$@"' > mani-edit && chmod +x mani-edit
             """
         var argv = dest.invocation(posix(script))
         // Compressed here as it goes: gzip takes the binary, the provider

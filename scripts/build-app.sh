@@ -23,6 +23,10 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/Manifold" "$bin/manifoldd" "$app/Contents/MacOS/"
 # The `mani` command, in Helpers/ with the servers carried for other hosts.
 cp "$bin/ManifoldCLI" "$app/Contents/Helpers/mani"
+# $EDITOR in Manifold's shells: one program, not a command with words (fish
+# doesn't split a variable into words, so `mani open --wait` won't do).
+printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/mani" open --wait "$@"' > "$app/Contents/Helpers/mani-edit"
+chmod +x "$app/Contents/Helpers/mani-edit"
 # The servers carried for other hosts (DESIGN.md §8): this machine's, and
 # Linux ones when scripts/build-linux.sh has made them. The Linux ones go
 # under Resources: codesign won't seal a bundle with ELF files among its
@@ -110,6 +114,7 @@ fi
 
 codesign --force --sign - "$app/Contents/MacOS/manifoldd" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/mani" >/dev/null 2>&1
+codesign --force --sign - "$app/Contents/Helpers/mani-edit" >/dev/null 2>&1
 codesign --force --sign - "$app/Contents/Helpers/manifoldd-darwin-aarch64" >/dev/null 2>&1
 codesign --force --sign - "$app" >/dev/null 2>&1
 # The Finder and the Dock cache a bundle's icon by its path: the bundle,
