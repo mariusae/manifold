@@ -294,10 +294,44 @@ final class IconButton: NSButton {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
+        recheckHover()
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true; onHover?(true) }
     override func mouseExited(with event: NSEvent) { hovering = false; onHover?(false) }
+
+    // Moved out from under a still pointer (its tile maximized and back,
+    // clicked: the button somewhere else) there's no exit to say so; what
+    // it thinks is checked against where the pointer is.
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        recheckHover()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        recheckHover()
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        recheckHover()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        recheckHover()
+    }
+
+    private func recheckHover() {
+        guard hovering else { return }
+        guard let window, !isHiddenOrHasHiddenAncestor else { hovering = false; onHover?(false); return }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if !bounds.contains(p) {
+            hovering = false
+            onHover?(false)
+        }
+    }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     // Set here, not passed on (see SidebarView's).
     override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
