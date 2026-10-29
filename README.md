@@ -525,7 +525,8 @@ around it, and comes back with its history.
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
-  (⌘L), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
+  (⌘L, or ⌃G as code editors have it, editing or viewing; a line, or
+  `line:column`), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
   comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection —
   Edit ▸ Lines and Edit ▸ Selection list them),
   brackets and quotes paired, new lines indented like the last, undo as

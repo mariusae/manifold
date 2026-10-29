@@ -258,7 +258,17 @@ extension EditorView {
 }
 
 extension EditorView {
-    func textView(_ view: TextView, handle event: NSEvent) -> Bool { handleCompletionKey(event) }
+    func textView(_ view: TextView, handle event: NSEvent) -> Bool {
+        if handleCompletionKey(event) { return true }
+        // ⌃G: Go to Line, as code editors have it (⌘L too) — editing or
+        // viewing. Here, not the menu's: a terminal keeps its ⌃G.
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .control,
+           event.charactersIgnoringModifiers == "g" {
+            goToLine(nil)
+            return true
+        }
+        return false
+    }
     func textView(_ view: TextView, mentioned block: BlockID) { delegate?.editor(self, linkedFrom: block) }
     func textView(_ view: TextView, follow target: String, over: Bool) { delegate?.editor(self, follow: target, over: over) }
 

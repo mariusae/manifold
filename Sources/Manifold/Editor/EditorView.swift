@@ -849,16 +849,25 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let alert = NSAlert()
         alert.messageText = "Go to Line"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-        field.placeholderString = "Line"
+        field.placeholderString = "Line, or line:column"
         alert.accessoryView = field
         alert.addButton(withTitle: "Go")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self,
-                  let line = Int(field.stringValue.trimmingCharacters(in: .whitespaces)), line > 0 else { return }
-            self.select(line: line)
+            guard response == .alertFirstButtonReturn, let self, let (line, column) = Self.lineAndColumn(field.stringValue) else { return }
+            self.select(line: line, column: column)
         }
+    }
+
+    /// "12", or "12:5" (a compiler's way of saying where): a line from 1,
+    /// and a column from 1 if given.
+    static func lineAndColumn(_ text: String) -> (Int, Int?)? {
+        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
+        guard (1...2).contains(parts.count), let line = Int(parts[0]), line > 0 else { return nil }
+        guard parts.count == 2 else { return (line, nil) }
+        guard let column = Int(parts[1]), column > 0 else { return parts[1].isEmpty ? (line, nil) : nil }
+        return (line, column)
     }
 
     /// Goes to a line (from 1): selects it, or, given a column (from 1),
