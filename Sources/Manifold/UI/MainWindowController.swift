@@ -2238,13 +2238,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Every workspace on every host, in the sidebar's order.
     var allWorkspaces: [BlockID] { hosts.all.flatMap { $0.desk.order } }
 
-    func removeFromDesk(_ id: BlockID) {
+    /// `remember`: for ⇧⌘T — every space removed is, empty or not, but
+    /// one whose tiles went to another (dropped on it).
+    func removeFromDesk(_ id: BlockID, remember: Bool = true) {
         let all = allWorkspaces
         guard let i = all.firstIndex(of: id) else { return }
-        // Remembered for ⇧⌘T: the workspace, if it holds anything; else
-        // its own blocks were noted as they went.
-        if let client = hosts.client(of: id), let a = client.arrangement(id), !a.isEmpty,
-           let j = client.desk.order.firstIndex(of: id) {
+        if remember, let client = hosts.client(of: id), let j = client.desk.order.firstIndex(of: id) {
             closedStack.append(.workspace(id, index: j))
         }
         hosts.client(of: id)?.removeWorkspace(id)
@@ -3761,7 +3760,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// and nothing reaches — the last seen first.
     private func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
         let far = Stamp(wall: 0, logical: 0, host: c.host)
-        return c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && !($0.kind == .arrangement && $0.arrangement!.isEmpty) }
+        return c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host }
             .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
     }
 
@@ -4942,7 +4941,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             switch block.kind {
             case .arrangement:
                 // A workspace by its name; what it holds is found as itself.
-                guard let a = block.arrangement, a.isNamed || !a.isEmpty else { continue }
+                guard let a = block.arrangement else { continue }
                 title = self.title(of: a)
                 secondary = ""
                 detail = a.isNamed ? "Space · \(a.placements.count) blocks" : "Space, unnamed · \(a.placements.count) blocks"
@@ -6780,7 +6779,7 @@ extension MainWindowController: GridDelegate {
         guard let id = selected, let source = hosts.arrangement(arrangement) else { return hosts.select(arrangement) }
         hosts.append(source.placements.map { .remove($0.id) }, to: .block(arrangement))
         hosts.append(.adopt(columns: source.columns, at: column), to: .block(id))
-        removeFromDesk(arrangement)
+        removeFromDesk(arrangement, remember: false)
         hosts.select(id)
     }
 

@@ -359,7 +359,8 @@ parts from the Mac's conventions on purpose.
   link by hand — and once none does it waits half an hour in
   **Recently Closed**, the list at the foot of the sidebar (and in
   ⌘O, marked *recent*), then is collected: gone, with its history. A
-  space removed goes the same way, and what only it kept with it.
+  space removed goes the same way — any space, named or not, empty or
+  not — and what only it kept (its tiles' blocks, its pins) with it.
   **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits or a job running, a toast at the
