@@ -729,6 +729,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     // MARK: Debugging
 
+    /// Debugging: what the outline's item `i` carries ⇧-dragged.
+    func debugOutlineDrag(_ i: Int) -> NSPasteboardItem? {
+        fillOutline()
+        return commandsOutline.dragItem(i, modifiers: [.shift]) as? NSPasteboardItem
+    }
+
     var debugScrubber: String {
         "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor)\n" + dots.debugDots
     }
@@ -1721,11 +1727,20 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// Files or text dropped on the terminal are typed into it, paths
     /// quoted for the shell, as a terminal takes them.
+    /// Whether a drag is taken, and if so whether an agent is given what
+    /// the block holds: an agent takes a block with no path (a command's
+    /// output, a search) for that; anything else, for text to type.
+    func accepts(_ pb: NSPasteboard) -> (taken: Bool, gives: Bool) {
+        let gives = isAgent && pb.string(forType: .manifoldLinkOnly) == nil
+            && TextView.blockID(inLink: pb.string(forType: .manifoldBlockLink) ?? "").flatMap { delegate?.terminal(self, contentsFor: $0) } != nil
+        return (gives || Self.dropText(pb) != nil, gives)
+    }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let pb = sender.draggingPasteboard
-        guard Self.dropText(pb) != nil else { return [] }
+        let (taken, gives) = accepts(pb)
+        guard taken else { return [] }
         if DropHint.isBlockLink(pb) {
-            let gives = isAgent && TextView.blockID(inLink: pb.string(forType: .manifoldBlockLink) ?? "").flatMap { delegate?.terminal(self, contentsFor: $0) } != nil
             DropHint.say(isAgent ? (gives ? "Give the agent its contents" : "Give the agent its path") : "Type its path", at: sender.draggingLocation, in: window)
         }
         return .copy
@@ -1759,14 +1774,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         // An agent given a block that isn't a file: what it holds, pasted
         // (as one paste, so its lines don't send the prompt).
-        if isAgent, pb.string(forType: .manifoldPlacement) == nil, let link = pb.string(forType: .manifoldBlockLink),
+        if isAgent, pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldLinkOnly) == nil,
+           let link = pb.string(forType: .manifoldBlockLink),
            let block = TextView.blockID(inLink: link), let fetch = delegate?.terminal(self, contentsFor: block) {
             window?.makeFirstResponder(self)
             fetch { [weak self] text in
                 guard let self, let surface = self.surface, let text, !text.isEmpty else { return }
                 text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+                // Linked once it's given (a block still being made, once here).
+                self.delegate?.terminal(self, linkedFrom: block)
             }
-            delegate?.terminal(self, linkedFrom: block)
             return true
         }
         guard let surface, let text = Self.dropText(pb) else { return false }

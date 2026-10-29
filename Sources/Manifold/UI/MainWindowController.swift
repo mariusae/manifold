@@ -1868,13 +1868,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// terminal (or agent), a notebook (outside its cells).
     func debugDrop(_ block: BlockID) -> String {
         guard let b = hosts.block(block) else { return "no such block" }
+        // As a ⇧-drag writes it (a block with no path, its link alone).
         let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
         pb.clearContents()
-        pb.setString("[\(b.displayTitle)](manifold:\(block.description))", forType: .manifoldBlockLink)
-        pb.setString(b.path ?? b.terminal?.cwd ?? "", forType: .string)
+        guard let item = pathDragItem(for: block, linkOnly: false) else { return "no drag for \(b.displayTitle)" }
+        for t in item.types { if let s = item.string(forType: t) { pb.setString(s, forType: t) } }
         if let e = debugFocusedEditor { return e.debugDrop(pb) ? "dropped" : "refused" }
         guard let f = focusedShown, let v = views[f.placement.id] else { return "nothing focused" }
-        if let t = v as? TerminalView { return t.take(pb) ? "dropped" : "refused" }
+        if let t = v as? TerminalView {
+            let (taken, gives) = t.accepts(pb)
+            guard taken else { return "refused as it's dragged over" }
+            return (t.take(pb) ? "dropped" : "refused") + (gives ? ", its contents given" : ", typed")
+        }
         if let n = v as? NotebookView { return n.take(pb) ? "dropped" : "refused" }
         return "the focused tile takes no drops"
     }
@@ -1891,6 +1896,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             do { self?.debugContentsAnswer = try await self?.maniDesk.contents(of: b, view: view, all: true) ?? "" } catch let e as ManiDesk.Failure { self?.debugContentsAnswer = "failure: " + e.message } catch {}
         }
         return last
+    }
+
+    /// Debugging: a terminal's outline item ⇧-dragged onto the focused
+    /// terminal, as a drag would land: refused as it's over it, or taken.
+    func debugDropCommand(from terminal: BlockID, _ i: Int) -> String {
+        guard let source = views.values.first(where: { $0.block == terminal }) as? TerminalView,
+              let item = source.debugOutlineDrag(i) else { return "no outline item \(i) there" }
+        guard let f = focusedShown, let t = views[f.placement.id] as? TerminalView else { return "no terminal focused" }
+        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
+        pb.clearContents()
+        for type in item.types { if let s = item.string(forType: type) { pb.setString(s, forType: type) } }
+        let carried = item.types.map(\.rawValue).joined(separator: ", ")
+        let (taken, gives) = t.accepts(pb)
+        guard taken else { return "refused as it's dragged over (\(carried))" }
+        return (t.take(pb) ? "dropped" : "refused") + (gives ? ", its contents given" : ", typed") + " (\(carried))"
     }
 
     func debugDropRow(_ i: Int) -> String {
@@ -7436,24 +7456,42 @@ extension MainWindowController: EditorViewDelegate {
     /// it's a file (or a folder, or a page's address) the agent can read;
     /// else what it holds, which only Manifold has to give.
     func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)? {
-        guard let b = hosts.block(block) else { return nil }
-        switch b.kind {
-        case .terminal, .agent, .output, .search, .diff, .notebook, .git, .process: break
-        case .text where b.path == nil: break
-        default: return nil
-        }
-        let shown = views.first { $0.value.block == block }?.value
-        return { [weak self] done in
-            guard let self else { return done(nil) }
-            Task { @MainActor in
-                do {
-                    let text = try await self.maniDesk.contents(of: b, view: shown, all: true)
-                    done(text)
-                } catch let e as ManiDesk.Failure {
-                    self.toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
-                    done(nil)
-                } catch { done(nil) }
+        guard let b = hosts.block(block) else {
+            // Not here yet: a command ⇧-dragged from an outline, its block
+            // asked for as the drag began. Given once it comes (a few
+            // seconds at most), if it's one whose contents go.
+            return { [weak self] done in
+                Task { @MainActor in
+                    for _ in 0..<40 where self?.hosts.block(block) == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                    guard let self, let b = self.hosts.block(block), Self.givesContents(b) else { return done(nil) }
+                    self.give(b, done)
+                }
             }
+        }
+        guard Self.givesContents(b) else { return nil }
+        return { [weak self] done in self?.give(b, done) ?? done(nil) }
+    }
+
+    /// Whether an agent is given a block's contents rather than its path:
+    /// one with no file (a terminal, a command's output, a search, a note).
+    static func givesContents(_ b: Block) -> Bool {
+        switch b.kind {
+        case .terminal, .agent, .output, .search, .diff, .notebook, .git, .process: true
+        case .text: b.path == nil
+        default: false
+        }
+    }
+
+    /// A block's contents as text, for an agent.
+    private func give(_ b: Block, _ done: @escaping (String?) -> Void) {
+        let shown = views.first { $0.value.block == b.id }?.value
+        Task { @MainActor in
+            do {
+                done(try await maniDesk.contents(of: b, view: shown, all: true))
+            } catch let e as ManiDesk.Failure {
+                toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
+                done(nil)
+            } catch { done(nil) }
         }
     }
 

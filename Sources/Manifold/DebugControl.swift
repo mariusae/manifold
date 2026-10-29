@@ -361,6 +361,12 @@ enum DebugControl {
             // "drop <block>": a block ⇧-dragged into the focused editor;
             // "drop row N": the shown outline's item N, ⇧-dragged there.
             if arg.hasPrefix("row "), let i = Int(arg.dropFirst(4)) { return wc?.debugDropRow(i) ?? "no window" }
+            // "drop from <terminal> <i>": that terminal's outline item ⇧-dragged
+            // onto the focused terminal.
+            let w = arg.split(separator: " ").map(String.init)
+            if w.first == "from", w.count == 3, let t = BlockID(string: w[1]), let i = Int(w[2]) {
+                return wc?.debugDropCommand(from: t, i) ?? "no window"
+            }
             guard let id = BlockID(string: arg) else { return "usage: drop <host/ulid>" }
             return wc?.debugDrop(id) ?? "no window"
         case "pills":

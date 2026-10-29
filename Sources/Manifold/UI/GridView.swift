@@ -1586,8 +1586,11 @@ final class GridView: NSView, NSDraggingSource {
             // With ⌥ too, the link alone: nothing typed or put in.
             let linkOnly = event.modifierFlags.contains(.option)
             guard let block = shown?.block else { return }
-            if !linkOnly {
-                guard let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place else { return }
+            if linkOnly {
+                item.setString("1", forType: .manifoldLinkOnly)
+            } else if let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place {
+                // (A block with none — a command's output, a search — goes
+                // as its link alone: an agent takes what it holds.)
                 item.setString(text, forType: .string)
                 // A file's URL too — not a folder's: a web view in the drag's
                 // way takes a dragged folder for a file list and reads it.
@@ -1595,8 +1598,6 @@ final class GridView: NSView, NSDraggingSource {
                 if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
                     item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
                 }
-            } else {
-                item.setString("1", forType: .manifoldLinkOnly)
             }
             // And the block as a link a note takes: [title](manifold:id).
             // Not as a block: the grid takes no ⇧-drag, the views under it do.
