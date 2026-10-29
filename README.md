@@ -682,8 +682,17 @@ around it, and comes back with its history.
   and date, as the Finder's columns do (the divider dragged as you like;
   a narrow tile shows the tree alone). What the folder's repository
   ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
-  (View ▸ Show Hidden Files) shows them, dimmed. The **filter** at the top (⌘F, or / from the list; ⇥ goes between
-  it and the list) looks through the
+  (View ▸ Show Hidden Files) shows them, dimmed. Or in **columns**, as
+  the Finder's (the switch at the field's right; the tile keeps it, and
+  a folder gone into or a new tile takes the one chosen last): each
+  folder chosen opens in the next column, the file chosen is previewed
+  after the last, in the tree's rows — a folder's chevron at its row's
+  end — and ← → go between columns, ⏎ into the folder chosen. The field
+  at the top (⌘F, or / from the list; ⇥ goes between
+  it and the list) is a search in the tree and a filter in columns:
+  there each column keeps only the files that match and the folders on
+  the way to them, in its own order, the first match chosen if what was
+  chosen is gone (⏎ opens it). In the tree it looks through the
   whole tree beneath as it's typed, less what's ignored, and lists the
   files that match — their letters in order, as Open Quickly matches —
   best first, the letters matched in bold and the folder each is in

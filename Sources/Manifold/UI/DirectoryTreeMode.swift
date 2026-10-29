@@ -8,7 +8,7 @@ import ManifoldCore
 /// folder each is in beside it. The file chosen is previewed at the right,
 /// as the Finder's columns do, when the tile is wide enough for both.
 /// Which folders are open, and where the divider is, are kept with the tile.
-final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSSplitViewDelegate {
+final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSSplitViewDelegate {
     private unowned let owner: DirectoryView
     private let model: DirectoryModel
     private let split = NSSplitView()
@@ -29,6 +29,9 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
     private var scrollRestored = false
 
     var focusView: NSView { outline }
+    /// Under the filter, its matches are files alone, ranked: a folder there
+    /// is gone into.
+    var opensFoldersHere: Bool { !model.filtering }
 
     /// Narrower than this, no preview: the tree alone.
     static let previewFrom: CGFloat = 520
@@ -299,7 +302,7 @@ final class DirectoryTreeMode: NSView, DebugDescribing, NSOutlineViewDataSource,
     func reloadAll() {
         let keep = pendingSelect ?? selectedPath
         cache.removeAll()
-        matched = model.filtering ? model.matchedFiles() : []
+        matched = model.filtering ? model.matchedNodes() : []
         restoring = true
         outline.reloadData()
         if !model.filtering { openAsKept() }

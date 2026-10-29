@@ -2,6 +2,28 @@ import AppKit
 import ManifoldCore
 import UniformTypeIdentifiers
 
+/// What a folder's tile shows its files with (§7.4): a tree, or columns.
+protocol DirectoryMode: NSView, DebugDescribing {
+    var focusView: NSView { get }
+    var selectedPath: String? { get }
+    var selectedNode: BrowserNode? { get }
+    /// The folders shown, below the root: those kept current.
+    var shownFolders: [String] { get }
+    /// ⏎ on a folder opens it here (in place, or in the next column),
+    /// rather than going into it in the tile.
+    var opensFoldersHere: Bool { get }
+    func destroy()
+    func folderChanged(_ folder: String)
+    func reloadAll()
+    func select(_ path: String?)
+    /// The first entry (under the filter, the first match), chosen.
+    func selectFirst()
+    /// A folder opened here: in place, or in the next column.
+    func toggle(_ n: BrowserNode)
+    /// The folder a drop at a point goes into, if any is under it.
+    func folder(at point: NSPoint) -> String?
+}
+
 protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool)
     func directoryViewRefresh(_ view: DirectoryView)
@@ -43,10 +65,13 @@ enum DroppedItem {
 
 /// The directory lens (§7.4): a folder as one tree, as Claude Code's file
 /// panel has it — folders opening in place, the file chosen previewed at
-/// the right (`DirectoryTreeMode`) — under the way up and a filter over the
-/// whole tree beneath (⌘F), which lists the files matching it as it's
-/// typed; "?text" searches inside them instead. What a repository ignores
-/// and hidden files are left out (⇧⌘. shows them).
+/// the right (`DirectoryTreeMode`) — or in columns, as the Finder's
+/// (`DirectoryColumnsMode`), under the way up and a field over the whole
+/// tree beneath (⌘F): in the tree a search, listing the files matching it
+/// best first as it's typed; in columns a filter, each column keeping what
+/// matches and the folders on the way to it, in its own order. "?text"
+/// searches inside the files instead. What a repository ignores and hidden
+/// files are left out (⇧⌘. shows them).
 final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
@@ -57,6 +82,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     private(set) var model: DirectoryModel?
     private let header = NSView()
     private let up = IconButton(symbol: "arrow.turn.left.up", size: 13, weight: .medium, target: nil, action: nil)
+    /// Tree or columns, at the header's right.
+    private let modes = FlatSegments(symbols: ["list.bullet.indent", "rectangle.split.3x1"])
+    enum Mode: String { case tree, columns }
+    private(set) var mode = Mode.tree
+    /// The mode chosen last, in any folder's tile: one with none of its own
+    /// (a folder gone into, a new tile) takes it, as a Finder window does.
+    static var lastMode: Mode {
+        get { UserDefaults.standard.string(forKey: "folderMode").flatMap(Mode.init) ?? .tree }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "folderMode") }
+    }
     /// The filter, in its box: flat, as Claude Code's (`FlatFieldBox`).
     private let searchBox = FlatFieldBox()
     private var search: FlatField { searchBox.field }
@@ -65,7 +100,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// can't be, or that there's nothing in it.
     private let note = BusyNote()
     private var footerWork: DispatchWorkItem?
-    private var content: DirectoryTreeMode?
+    private var content: DirectoryMode?
     private var listedAt: Stamp?
     /// The selection, relative to the root, as all modes share it.
     private var selected: String?
@@ -84,10 +119,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         up.toolTip = "Enclosing Folder (⌘↑)"
         up.target = self
         up.action = #selector(goUp)
-        search.placeholderString = "Filter, or ? to search in files"
         search.delegate = self
         searchBox.onChange = { [weak self] in self?.filterTyped() }
-        for v in [up, searchBox] as [NSView] { header.addSubview(v) }
+        modes.setToolTip("As a Tree", forSegment: 0)
+        modes.setToolTip("As Columns", forSegment: 1)
+        modes.onChange = { [weak self] i in self?.setMode(i == 1 ? .columns : .tree) }
+        for v in [up, searchBox, modes] as [NSView] { header.addSubview(v) }
         addSubview(header)
         footer.font = UIType.footnote
         footer.textColor = Theme.secondaryText
@@ -176,6 +213,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             m.ascending = s[1] == "1"
         }
         model = m
+        mode = keeper.value("mode").flatMap(Mode.init) ?? Self.lastMode
         selected = keeper.value("selected").flatMap { $0.isEmpty ? nil : $0 }
         if let f = keeper.value("filter"), !f.isEmpty {
             searchBox.stringValue = f
@@ -192,11 +230,29 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         keepCurrent(window != nil)
     }
 
-    // MARK: The tree
+    // MARK: The tree, or columns
+
+    /// Shown as a tree or in columns, kept with the tile; the selection
+    /// and the filter carry over.
+    func setMode(_ m: Mode) {
+        guard m != mode, model != nil else { return }
+        let focused = (window?.firstResponder as? NSView).map { $0.isDescendant(of: self) && !$0.isDescendant(of: header) } ?? false
+        mode = m
+        keeper.note(["mode": m.rawValue])
+        Self.lastMode = m
+        content?.destroy()
+        content?.removeFromSuperview()
+        content = nil
+        install()
+        if focused { window?.makeFirstResponder(focusView) }
+    }
 
     private func install() {
         guard let model else { return }
-        let v = DirectoryTreeMode(owner: self, model: model)
+        modes.selectedSegment = mode == .columns ? 1 : 0
+        // A search in the tree (ranked), a filter in columns (their order kept).
+        search.placeholderString = mode == .columns ? "Filter, or ? to search in files" : "Find a file, or ? to search in files"
+        let v: DirectoryMode = mode == .columns ? DirectoryColumnsMode(owner: self, model: model) : DirectoryTreeMode(owner: self, model: model)
         v.clipsToBounds = true
         addSubview(v, positioned: .below, relativeTo: header)
         content = v
@@ -372,7 +428,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// (`into`, ⌘↓: gone into, in this tile).
     private func openSelected(into: Bool = false) {
         guard let model, let n = content?.selectedNode else { return }
-        if n.isDirectory, !into, !model.filtering { return content?.toggle(n) ?? () }
+        if n.isDirectory, !into, content?.opensFoldersHere == true { return content?.toggle(n) ?? () }
         open(n)
     }
 
@@ -548,7 +604,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         let midY = Self.headerHeight / 2
         up.frame = NSRect(x: 8, y: midY - 12, width: 26, height: 24)
-        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, w - up.frame.maxX - 6 - 12), height: Flat.fieldHeight)
+        modes.sizeToFit()
+        modes.frame.origin = NSPoint(x: w - 12 - modes.frame.width, y: (midY - modes.frame.height / 2).rounded())
+        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, modes.frame.minX - 8 - up.frame.maxX - 6), height: Flat.fieldHeight)
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
         footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
         content?.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
@@ -570,6 +628,17 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "tree": setMode(.tree)
+        case "columns": setMode(.columns)
+        case "key":
+            // "key left|right|up|down|enter": as pressed in the files.
+            let codes: [String: (UInt16, String)] = ["left": (123, "\u{F702}"), "right": (124, "\u{F703}"), "down": (125, "\u{F701}"), "up": (126, "\u{F700}"), "enter": (36, "\r")]
+            if words.count > 1, let (code, chars) = codes[words[1]], let window,
+               let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                        context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                window.makeFirstResponder(focusView)
+                focusView.keyDown(with: e)
+            }
         case "refresh":
             // As the timer does while the app's in use: listed again.
             delegate?.directoryViewRefresh(self)
@@ -592,9 +661,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             _ = control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
         default: break
         }
-        var lines = ["root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
+        var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
         lines.append("note \(note.debugState)")
+        if let a = model?.debugAsking, !a.isEmpty { lines.append("listing \(a)") }
         if let d = content { lines.append(d.debugRows) }
         return lines.joined(separator: "\n")
     }

@@ -120,10 +120,30 @@ final class DirectoryModel {
             // (The root comes with its block's listing, `setRootEntries`:
             // not asked for again, twice over a slow link.)
             load(folder)
+            // Under a filter, the tree has it meanwhile: columns down to a
+            // match at once, not a folder at a time.
+            if filtering, let t = treeChildren(folder) { return sorted(t.filter(shown)).map { node(folder.appendingPathComponent($0.name), $0) } }
             return nil
         }
         return sorted(l.filter(shown)).map { node(folder.appendingPathComponent($0.name), $0) }
     }
+
+    /// A folder's entries as the tree has them (named by their own names),
+    /// the tree gone through once per listing of it.
+    private func treeChildren(_ folder: String) -> [DirectoryEntry]? {
+        guard let tree else { return nil }
+        if treeByFolder?.at != treeAt {
+            var byFolder: [String: [DirectoryEntry]] = [:]
+            for e in tree {
+                var own = e
+                own.name = e.name.lastPathComponent
+                byFolder[e.name.deletingLastPathComponent, default: []].append(own)
+            }
+            treeByFolder = (treeAt, byFolder)
+        }
+        return treeByFolder?.entries[relative(folder)]
+    }
+    private var treeByFolder: (at: Date?, entries: [String: [DirectoryEntry]])?
 
     func shown(_ e: DirectoryEntry) -> Bool { showHidden || (!e.isHidden && e.isIgnored != true) }
 
@@ -144,6 +164,9 @@ final class DirectoryModel {
             if first { self.readingChanged() }
         }
     }
+
+    /// Debugging: the folders being listed, those the first time marked.
+    var debugAsking: String { asking.map { relative($0) + (listed[$0] == nil ? "*" : "") }.sorted().joined(separator: " ") }
 
     /// Folders asked for ahead of being opened (all at once, not each after the one above).
     func prefetch(_ folders: [String]) {
@@ -184,6 +207,10 @@ final class DirectoryModel {
     /// where its letters fell in each.
     private(set) var matches: [String] = []
     private(set) var matchedAt: [String: [Int]] = [:]
+    /// Every file matching it (relative), not only those listed, and the
+    /// folders they're in, every one on the way: what columns keep.
+    private(set) var matchedFiles: Set<String> = []
+    private var onTheWay: Set<String> = []
     var isLoadingTree: Bool { filtering && tree == nil }
     /// The most matches shown.
     static let matchLimit = 1000
@@ -222,6 +249,8 @@ final class DirectoryModel {
         guard filtering, let tree else {
             matches = []
             matchedAt = [:]
+            matchedFiles = []
+            onTheWay = []
             ranked = nil
             return
         }
@@ -243,10 +272,18 @@ final class DirectoryModel {
             let shown = Array(all.prefix(Self.matchLimit))
             var at: [String: [Int]] = [:]
             for m in shown { at[m] = FileFinder.positions(filter, m) }
+            let files = Set(all)
+            var folders = Set<String>()
+            for m in all {
+                var d = m.deletingLastPathComponent
+                while !d.isEmpty, folders.insert(d).inserted { d = d.deletingLastPathComponent }
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.rankGeneration == generation else { return }
                 self.matches = shown
                 self.matchedAt = at
+                self.matchedFiles = files
+                self.onTheWay = folders
                 self.ranked = (filter, showHidden, all, true, treeAt)
                 self.filterChanged()
             }
@@ -257,8 +294,16 @@ final class DirectoryModel {
     /// filter to narrow from), and the tree it went through.
     private var ranked: (filter: String, showHidden: Bool, all: [String], complete: Bool, tree: Date?)?
 
+    /// Whether an entry stays under the filter, in columns: a file matching
+    /// it, or a folder with one somewhere under it.
+    func keeps(_ path: String) -> Bool {
+        guard filtering else { return true }
+        let rel = relative(path)
+        return matchedFiles.contains(rel) || onTheWay.contains(rel)
+    }
+
     /// The files that matched, as nodes, best first.
-    func matchedFiles() -> [BrowserNode] {
+    func matchedNodes() -> [BrowserNode] {
         guard let tree else { return [] }
         if treeByName?.at != treeAt {
             treeByName = (treeAt, Dictionary(tree.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a }))

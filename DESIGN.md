@@ -818,6 +818,16 @@ the tree's files matching it, ranked as Open Quickly ranks (`FileFinder`),
 the letters matched shown; "?" and words search the files' contents, in a
 search block (§7.5) beside.
 
+Or in columns, as the Finder's (`DirectoryColumnsMode`), drawn with the
+tree's parts — its rows, symbols and bands, a column a list each, the
+preview after the last — the mode kept with the tile, and the one chosen
+last taken by a tile without one. There the field filters rather than
+searches: each column keeps, in its own order, the files matching it and
+the folders on the way to them (from the same ranking, every match, not
+the best thousand), the selection moving to the first match in that order
+if it's gone; folders not listed yet are taken from the tree meanwhile,
+so the columns reach a match at once.
+
 The host lists (§4): a folder's entries come with `isIgnored` set from
 the repository it's in (`git check-ignore`, or for Sapling whatever isn't
 in `sl files` or `sl status -u`), and the tree under a folder (`listTree`,
