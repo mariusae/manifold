@@ -121,7 +121,9 @@ parts from the Mac's conventions on purpose.
   it); going to one that is — a link, the sidebar, Open Quickly, ⌘J,
   ⌘P, Back, a found line, opening it again — goes there: a tile on its
   own is focused, one in a stack comes to the top of it (the rest
-  behind it, as they were), and the pointer follows. Going to a tile
+  behind it, as they were), and the pointer follows (only while
+  Manifold is the app in front: in the background, or switched away
+  from before it moves, the pointer is left alone). Going to a tile
   squeezed down to its bar — by a link, the sidebar, Open Quickly, ⌘J,
   Back, or opening what's already there (Browse This Folder on a
   folder shown), or down to its summary — grows it a little, to show some of what's in it (160

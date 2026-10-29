@@ -3326,6 +3326,10 @@ enum Pointer {
     static func warp(to screen: NSPoint) {
         lastWarp = screen
         guard !held else { return }
+        // Only Manifold's to move while it's the app in front: a warp
+        // asked for a moment before (once a tile's laid out), or by `mani`
+        // from elsewhere, isn't taken from whatever's in front now.
+        guard Thread.isMainThread, MainActor.assumeIsolated({ NSApp.isActive }) else { return }
         guard let main = NSScreen.screens.first else { return }
         CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: main.frame.maxY - screen.y))
         CGAssociateMouseAndMouseCursorPosition(1)
