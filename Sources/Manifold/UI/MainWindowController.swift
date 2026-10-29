@@ -7008,6 +7008,8 @@ extension MainWindowController: GridDelegate {
     }
 
     func gridResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
+    /// Debugging: the columns' widths set, as a divider dragged sets them.
+    func debugSetFractions(_ f: [Double]) { gridResized(fractions: f) }
     func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)]) {
         appendToSelected(stashed.map { Event.stash($0.0, behind: $0.1) } + [.heights(heights)])
     }

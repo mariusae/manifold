@@ -160,7 +160,9 @@ parts from the Mac's conventions on purpose.
   column's first — and focuses that one. Dragging the line between two tiles past one's least
   height stashes it, in the direction it was pushed (pushed up, behind
   the tile above it; pushed down, behind the tile below it), and goes
-  on against the next, until all above or below are put away. Maximize (⇧⌘↩, or the ⤢ at the right of a
+  on against the next, until all above or below are put away.
+  Double-click the line between two tiles, or two columns, and the two
+  share their room evenly. Maximize (⇧⌘↩, or the ⤢ at the right of a
   bar) puts a tile over the whole space until it is restored, or
   until you go to another tile. A bar's title is as wide as it needs
   and never more than half its tile, so what's under the band stays

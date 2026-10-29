@@ -315,6 +315,10 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "fractions":
+            // "fractions 0.7 0.3": the columns' widths, as dividers dragged set them.
+            wc?.debugSetFractions(arg.split(separator: " ").compactMap { Double($0) })
+            return "ok"
         case "notename":
             // "notename <name>": the focused note named, as Name Note… does ("" unnames it).
             guard let wc, let b = wc.focusedShown?.block, b.isNote else { return "no note focused" }

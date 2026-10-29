@@ -470,6 +470,8 @@ final class GridView: NSView, NSDraggingSource {
         for (i, d) in columnDividers.enumerated() {
             d.onDrag = { [weak self] x in self?.dividerDragging = true; self?.dragColumnDivider(i, to: x) }
             d.onEnd = { [weak self] in self?.dividerDragging = false; self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
+            // (Kept when the click's up comes, as a drag's end is.)
+            d.onDoubleClick = { [weak self] in self?.evenColumns(i) }
         }
         var rows: [(Int, PlacementID, PlacementID)] = []
         for c in columns.indices where shownTiles(c).count > 1 {
@@ -492,6 +494,7 @@ final class GridView: NSView, NSDraggingSource {
                 self.dividerBelow = [:]
                 self.delegate?.gridResized(heights: self.heights, stashed: stashed)
             }
+            d.onDoubleClick = { [weak self] in self?.evenRows(column: c, above: above, below: below) }
         }
         if subviews.last !== dropOverlay && !dragging { addSubview(dropOverlay) }
         if dragging { addSubview(dropOverlay); addSubview(dragCatcher) }
@@ -1472,6 +1475,27 @@ final class GridView: NSView, NSDraggingSource {
         let pair = fractions[i] + fractions[i + 1]
         fractions[i] = (split - left) / usable
         fractions[i + 1] = pair - fractions[i]
+        needsLayout = true
+    }
+
+    /// The line between two columns double-clicked: the two share their
+    /// width evenly (gliding there).
+    private func evenColumns(_ i: Int) {
+        guard i + 1 < fractions.count else { return }
+        let pair = fractions[i] + fractions[i + 1]
+        fractions[i] = pair / 2
+        fractions[i + 1] = pair / 2
+        needsLayout = true
+    }
+
+    /// The line between two tiles in a column double-clicked: the two
+    /// share their height evenly.
+    func evenRows(column c: Int, above a: PlacementID, below b: PlacementID) {
+        guard c < columns.count else { return }
+        let n = Double(max(shownTiles(c).count, 1))
+        let pair = (heights[a] ?? 1 / n) + (heights[b] ?? 1 / n)
+        heights[a] = pair / 2
+        heights[b] = pair / 2
         needsLayout = true
     }
 
@@ -3282,13 +3306,15 @@ final class SheetsTarget: NSView {
     }
 }
 
-/// The grab area over the line between two tiles in a column.
+/// The grab area over the line between two tiles in a column: dragged,
+/// it moves; double-clicked, the two share their room evenly.
 final class RowDividerView: NSView {
     var onDrag: ((CGFloat) -> Void)?
     var onEnd: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeUpDown) }
-    override func mouseDown(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
 
     override func mouseDragged(with event: NSEvent) {
         guard let superview else { return }
@@ -3428,13 +3454,16 @@ final class DropOverlayView: NSView {
     }
 }
 
+/// The grab area between two columns: dragged, it moves; double-clicked,
+/// the two share their width evenly.
 final class DividerView: NSView {
     var onDrag: ((CGFloat) -> Void)?
     var onEnd: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
 
-    override func mouseDown(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
 
     override func mouseDragged(with event: NSEvent) {
         guard let superview else { return }
