@@ -414,13 +414,25 @@ final class StatusGlyph: NSView {
             amber.setStroke()
             ring.stroke()
         case .inactive:
-            // A crescent: the disc less a disc shifted up and right.
-            let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-            let bite = NSBezierPath(ovalIn: NSRect(x: center.x - radius + 3.2, y: center.y - radius + 2.6, width: 2 * radius, height: 2 * radius))
-            disc.append(bite.reversed)
-            disc.windingRule = .nonZero
-            Theme.secondaryText.withAlphaComponent(0.75).setFill()
-            disc.fill()
+            // A crescent, lit at the left (☾): the disc less a disc shifted
+            // right and a little up, only the disc's part filled (filled
+            // together, the bite's part outside it drew a second crescent).
+            // Set so the crescent itself — the disc's left edge to its
+            // further horn, where the circles cross — is in the middle.
+            let shift = radius * 0.62, rise = radius * 0.22
+            let d = (shift * shift + rise * rise).squareRoot()
+            let horn = shift / 2 + (radius * radius - d * d / 4).squareRoot() * rise / d
+            let c = NSPoint(x: center.x - (horn - radius) / 2, y: center.y)
+            let disc = NSBezierPath(ovalIn: NSRect(x: c.x - radius, y: c.y - radius, width: 2 * radius, height: 2 * radius))
+            let bite = NSBezierPath(ovalIn: NSRect(x: c.x - radius + shift, y: c.y - radius + rise, width: 2 * radius, height: 2 * radius))
+            NSGraphicsContext.saveGraphicsState()
+            disc.addClip()
+            let lit = NSBezierPath(rect: disc.bounds.insetBy(dx: -1, dy: -1))
+            lit.append(bite)
+            lit.windingRule = .evenOdd
+            Theme.secondaryText.withAlphaComponent(0.85).setFill()
+            lit.fill()
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 }
