@@ -40,9 +40,22 @@ final class Outline {
     /// agent's turn, a command's output): what it carries ⇧-dragged.
     var blockFor: ((Int) -> BlockID?)?
 
+    /// Counts up each time its items change (not the current one): what
+    /// a space's index (`OutlineIndex`) goes by, with which outline it is
+    /// (`serial`, never another's, as an address could be).
+    private(set) var generation = 0
+    let serial: Int = {
+        Outline.made += 1
+        return Outline.made
+    }()
+    private static var made = 0
+    /// Its space's index watches it (once).
+    var indexed = false
+
     func set(_ fresh: [Item]) {
         guard fresh != items else { return }
         items = fresh
+        generation += 1
         if let c = current, c >= items.count { current = nil }
         changed()
     }

@@ -730,6 +730,20 @@ its status hooks, or a command running in it) as surely as to its
 title. ⌘P is its sibling over the focused tile's outline, ⇥ widening
 it to the space's.
 
+⌘P looks nothing over as it's typed: each space keeps an index of its
+tiles' outlines (`OutlineIndex`), every row's text cut into trigrams,
+each trigram's rows a sorted posting list. An outline tells it when its
+items change, and only the rows between the unchanged head and tail go
+out and come in (an edit costs what it changed); rows taken out are
+marked, a list compacted once half of it is gone, the index numbered
+again once half of its rows are. A query's word of three letters or more
+is found on its trigrams' lists, intersected shortest first by
+exponential search and confirmed with `memmem`; a shorter one in every
+row, at memory speed; the word with the fewest rows leads and the others
+are checked in what it found; a tile's name counts for each of its rows.
+About a millisecond for a word in 48,000 headings, and a dozen to list
+them all.
+
 It must never stutter. What can be found is taken once as it opens (a
 snapshot of the blocks, a millisecond or so), and every keystroke ranks
 the snapshot off the main thread, giving up on the keystroke before;

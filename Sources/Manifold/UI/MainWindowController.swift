@@ -4670,8 +4670,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌘P's list: opened afresh with no query (shown once a preview
     /// focused says where it's at, a moment later); else, the list as it's
     /// filtered by one.
+    /// "wsoutline [query]": ⌘P typed in; "wsoutline tab": its other scope;
+    /// "wsoutline time <query>": how long the query took, and how many rows.
     func debugWorkspaceOutline(_ query: String) -> String {
         if query.isEmpty { goToTile(nil); return "opened" }
+        if query == "tab" { finder.debugSwitchOutline(); return "switched" }
+        if query.hasPrefix("find "), let a = arrangement, let index = syncOutlineIndex() {
+            // The index's part alone: looked up, and the rows made.
+            let q = String(query.dropFirst(5))
+            let order = a.columns.joined().map(\.id)
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            let hits = index.find(q, in: order).reduce(0) { $0 + $1.items.count }
+            let t1 = DispatchTime.now().uptimeNanoseconds
+            let rows = spaceOutlineRows(a, query: q).count
+            let t2 = DispatchTime.now().uptimeNanoseconds
+            return String(format: "index %.2f ms (%d), rows %.2f ms (%d), %d rows indexed", Double(t1 - t0) / 1e6, hits, Double(t2 - t1) / 1e6, rows, index.count)
+        }
+        if query.hasPrefix("time ") {
+            let q = String(query.dropFirst(5))
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            let rows = finder.debugQueryCount(q)
+            let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            return String(format: "%.2f ms, %d rows", ms, rows)
+        }
         return finder.debugQuery(query).joined(separator: "\n")
     }
     func debugFinderScope(_ n: Int) { finder.debugScope(n) }
@@ -5710,13 +5731,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A tile's outline as rows for ⌘P: nested as it is while all of it
-    /// shows; found, flat.
-    private func tileOutlineItems(_ view: PaneContent, _ outline: Outline, _ query: String) -> [FinderItem] {
-        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-        return outline.items.enumerated().compactMap { i, item -> FinderItem? in
-            guard words.isEmpty || words.allSatisfy({ (item.title + " " + item.detail).lowercased().contains($0) }) else { return nil }
+    /// shows; found (by the space's index), flat.
+    private func tileOutlineItems(_ placement: PlacementID, _ view: PaneContent, _ outline: Outline, _ query: String) -> [FinderItem] {
+        guard let index = syncOutlineIndex() else { return [] }
+        let rows = index.rows(of: placement)
+        // (Not by its title: the tile's own outline is found by its own words.)
+        let found = query.isEmpty ? Array(rows.indices) : index.find(query, in: [placement], titles: false).first?.items ?? []
+        let words = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        return found.compactMap { i -> FinderItem? in
+            guard rows.indices.contains(i) else { return nil }
+            let item = rows[i]
             return FinderItem(symbol: view is TerminalView ? "chevron.right" : item.code ? "curlybraces" : "number", title: item.title, detail: item.detail, note: "",
-                              level: words.isEmpty ? item.level : 0, run: { outline.pick(i) })
+                              level: words ? 0 : item.level, run: { outline.pick(i) })
         }
     }
 
@@ -5752,31 +5778,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         // The focused tile's own outline first, if it has one; ⇥ widens it
         // to the whole space's (and back).
-        let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f] }.flatMap { view in
+        let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f].map { (f, $0) } }.flatMap { f, view in
             guard let outline = view.outline, !outline.items.isEmpty else { return nil }
-            return Finder.OutlineScope(provider: { query in self.tileOutlineItems(view, outline, query) }, start: outline.current,
+            return Finder.OutlineScope(provider: { query in self.tileOutlineItems(f, view, outline, query) }, start: outline.current,
                                        placeholder: "Go to a place in this tile…", hint: "This tile's outline")
         }
-        let show = { [weak self] (line: Int?) in
-            guard let self else { return }
-            let (_, start) = self.workspaceOutline(a, currentLine: line)
-            let space = Finder.OutlineScope(provider: { [weak self] query in
-                guard let self else { return [] }
-                let (outline, _) = self.workspaceOutline(a, currentLine: line)
-                let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-                return outline.filter { item in
-                    words.isEmpty || words.allSatisfy { (item.title + " " + item.detail).lowercased().contains($0) }
-                }
-            }, start: start, placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within")
-            if let tile { self.finder.showOutline(tile, wider: space, over: self.window) } else { self.finder.showOutline(space, over: self.window) }
-        }
-        if let f = a.focused, let m = views[f] as? MarkdownView {
-            m.headingAtTop { index in show(index.map { -($0 + 1) }) }
-        } else if let f = a.focused, let e = views[f] as? EditorView {
-            show(e.caretLine)
-        } else {
-            show(nil)
-        }
+        // Each query looked up in the space's index (kept as outlines
+        // change), not the outlines gone through again.
+        let space = Finder.OutlineScope(provider: { [weak self] query in
+            guard let self, let a = self.arrangement else { return [] }
+            return self.spaceOutlineRows(a, query: query)
+        }, start: spaceOutlineStart(a), placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within")
+        if let tile { finder.showOutline(tile, wider: space, over: window) } else { finder.showOutline(space, over: window) }
     }
 
     /// The outline, and the row to begin at: the focused tile's, or under
@@ -5800,20 +5813,91 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return running
     }
 
-    private func workspaceOutline(_ a: ArrangementState, currentLine: Int?) -> ([FinderItem], Int?) {
-        var items: [FinderItem] = []
-        var start: Int?
+    // MARK: The space's outline, indexed (⌘P)
+
+    /// Each space's index of its tiles' outlines (`OutlineIndex`): kept as
+    /// they change — an outline tells its index when its items do — and as
+    /// tiles come and go, so a query in ⌘P only looks up. The selected
+    /// space's, and a few others' as they were left.
+    private var outlineIndexes: [BlockID: OutlineIndex<PlacementID, Outline.Item>] = [:]
+    private var outlineSyncPending = false
+
+    /// The selected space's index, brought up to date: a tile's rows taken
+    /// again only if its outline changed since (its items, or which outline
+    /// it is), and then only those that changed; each tile's title as it is.
+    @discardableResult
+    private func syncOutlineIndex() -> OutlineIndex<PlacementID, Outline.Item>? {
+        guard let space = selected, let a = hosts.arrangement(space) else { return nil }
+        let index = outlineIndexes[space] ?? OutlineIndex()
+        outlineIndexes[space] = index
+        if outlineIndexes.count > 4 {
+            for k in outlineIndexes.keys where k != space && !allWorkspaces.contains(k) { outlineIndexes[k] = nil }
+        }
+        var present = Set<PlacementID>()
+        for p in a.placements {
+            present.insert(p.id)
+            let title = hosts.block(p.block)?.displayTitle ?? ""
+            let outline = views[p.id]?.outline
+            let signature = outline.map { "\($0.serial).\($0.generation)" } ?? "-"
+            guard index.signature(of: p.id) as? String != signature else {
+                index.setTitle(p.id, title)
+                continue
+            }
+            index.update(p.id, title: title, rows: outline?.items ?? [], signature: signature) {
+                $0.detail.isEmpty ? $0.title : $0.title + " " + $0.detail
+            }
+            if let outline, !outline.indexed {
+                // Its changes to the index as they come (a burst, once).
+                outline.indexed = true
+                outline.watch(self) { [weak self, weak outline] in
+                    guard let self, let outline, !self.outlineSyncPending,
+                          self.outlineIndexes[space]?.signature(of: p.id) as? String != "\(outline.serial).\(outline.generation)" else { return }
+                    self.outlineSyncPending = true
+                    DispatchQueue.main.async { [weak self] in
+                        self?.outlineSyncPending = false
+                        self?.syncOutlineIndex()
+                    }
+                }
+            }
+        }
+        index.retain(present)
+        return index
+    }
+
+    /// Where ⌘P begins in the space's rows: at the focused tile, or under
+    /// it the item you're at in its outline — counted, not made.
+    private func spaceOutlineStart(_ a: ArrangementState) -> Int? {
+        guard let index = syncOutlineIndex(), let focused = a.focused else { return nil }
+        var row = 0
+        for p in a.columns.joined() where hosts.block(p.block) != nil {
+            if p.id == focused { return row + (views[p.id]?.outline?.current.map { $0 + 1 } ?? 0) }
+            row += 1 + index.rows(of: p.id).count
+        }
+        return nil
+    }
+
+    /// ⌘P's rows for a query: the space's tiles by column, each with those
+    /// of its outline's items holding every word of it (in the item, or the
+    /// tile's name) — a text's headings, a source file's symbols, a
+    /// terminal's commands, an agent's turns, a PDF's contents, a diff's
+    /// files — found in the index; and the tile itself, if its name, its
+    /// place, what runs in it or what that reports holds them.
+    private func spaceOutlineRows(_ a: ArrangementState, query: String) -> [FinderItem] {
+        guard let index = syncOutlineIndex() else { return [] }
+        let order = a.columns.joined().map(\.id)
+        var found: [PlacementID: [Int]] = [:]
+        for hit in index.find(query, in: order) { found[hit.tile] = hit.items }
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         let running = runningPrograms()
+        var items: [FinderItem] = []
         for (c, column) in a.columns.enumerated() {
             for p in column {
                 guard let b = hosts.block(p.block) else { continue }
-                let focused = p.id == a.focused
-                if focused { start = items.count }
+                let id = p.id
                 var notes: [String] = []
                 if a.columns.count > 1 { notes.append("column \(c + 1)") }
                 if a.isStashed(p.id) { notes.append("stashed") }
                 if p.id == a.focused { notes.append("focused") }
-                let id = p.id
                 // Where it is; and for a terminal, what runs in it and what
                 // that reports — searched by too.
                 var detail = [b.place?.abbreviatingHome ?? ""]
@@ -5822,66 +5906,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     if let app = r.app { detail.append(app) }
                     if let msg = r.msg, !msg.isEmpty { detail.append(msg) }
                 }
-                items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle,
-                                        detail: detail.filter { !$0.isEmpty }.joined(separator: " · "), note: notes.joined(separator: " · "),
-                                        run: { [weak self] in self?.arrive(atTile: id) }))
-                // A text's headings, as Markdown has them, each gone to in
-                // its editor by line, in its preview by index; any other
-                // block's outline as its view keeps it (§7.5): a terminal's
-                // commands, an agent's turns, a source file's symbols, a
-                // PDF's contents, a diff's files.
-                guard b.kind == .text, let text = b.text?.text.string, Lens.viewRendering(for: b.path) == .markdown else {
-                    items += outlineItems(of: p, block: b, focused: focused, from: items.count, start: &start)
-                    continue
+                let tileDetail = detail.filter { !$0.isEmpty }.joined(separator: " · ")
+                let haystack = (b.displayTitle + " " + tileDetail).lowercased()
+                if words.allSatisfy({ haystack.contains($0) }) {
+                    items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle, detail: tileDetail,
+                                            note: notes.joined(separator: " · "), run: { [weak self] in self?.arrive(atTile: id) }))
                 }
-                var index = 0
-                var line = 0
-                var inFence = false
-                for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                    line += 1
-                    if raw.hasPrefix("```") { inFence.toggle() }
-                    guard !inFence, raw.hasPrefix("#") else { continue }
-                    let level = raw.prefix { $0 == "#" }.count
-                    guard level <= 6, raw.dropFirst(level).first == " " else { continue }
-                    let heading = raw.dropFirst(level).trimmingCharacters(in: .whitespaces)
-                    let at = line, nth = index
-                    if focused, let current = currentLine, current >= 0 ? at <= current : nth <= -current - 1 { start = items.count }
-                    items.append(FinderItem(symbol: "number", title: heading, detail: b.displayTitle, note: "", level: level,
+                let rows = index.rows(of: id)
+                let name = b.displayTitle
+                guard let hits = found[id] else { continue }
+                items.reserveCapacity(items.count + hits.count)
+                for i in hits where rows.indices.contains(i) {
+                    let item = rows[i]
+                    items.append(FinderItem(symbol: item.code ? "chevron.forward" : "number", title: item.title,
+                                            detail: item.detail.isEmpty ? name : name.isEmpty ? item.detail : name + " · " + item.detail,
+                                            note: item.running ? "running" : item.failed ? "failed" : "", level: item.level + 1,
                                             run: { [weak self] in
                         guard let self else { return }
                         self.arrive(atTile: id)
-                        if let e = self.views[id] as? EditorView { e.select(line: at) }
-                        else if let m = self.views[id] as? MarkdownView { m.scroll(toHeading: nth) }
+                        self.views[id]?.outline?.pick(i)
                     }))
-                    index += 1
                 }
             }
         }
-        return (items, start)
-    }
-
-    /// A tile's outline as its view has it, for ⌘P: each item under the
-    /// tile, gone to as a click in the tile's own outline goes; the item
-    /// you're at where to begin, in the focused tile. The last 500 at most
-    /// (a terminal's long history of commands).
-    private func outlineItems(of p: Placement, block b: Block, focused: Bool, from base: Int, start: inout Int?) -> [FinderItem] {
-        guard let outline = views[p.id]?.outline, !outline.items.isEmpty else { return [] }
-        let id = p.id
-        let first = max(0, outline.items.count - 500)
-        var out: [FinderItem] = []
-        for i in first..<outline.items.count {
-            let item = outline.items[i]
-            if focused, outline.current == i { start = base + out.count }
-            out.append(FinderItem(symbol: item.code ? "chevron.forward" : "number", title: item.title,
-                                  detail: [b.displayTitle, item.detail].filter { !$0.isEmpty }.joined(separator: " · "),
-                                  note: item.running ? "running" : item.failed ? "failed" : "", level: item.level + 1,
-                                  run: { [weak self] in
-                guard let self else { return }
-                self.arrive(atTile: id)
-                self.views[id]?.outline?.pick(i)
-            }))
-        }
-        return out
+        return items
     }
 
     /// ⌘↩: the focused text between being edited and viewed — Markdown

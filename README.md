@@ -476,7 +476,10 @@ around it, and comes back with its history.
   contents, a diff's files; type words to narrow them, ↩ to focus the
   tile or go to the place in it, as a click in its own outline goes. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
-  finds the terminal running it.
+  finds the terminal running it. It's instant however long the outlines
+  are: each space keeps an index of them, updated as they change, so a
+  word is found among tens of thousands of symbols in about a
+  millisecond — and all of a terminal's commands, not only its last 500.
 - **Naming** a space (⇧⌘R, or double-click it in the sidebar)
   calls it that in place of what it holds; it keeps nothing more than
   any space does. Named spaces wear a bookmark in the sidebar.

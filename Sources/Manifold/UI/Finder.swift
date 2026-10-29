@@ -495,6 +495,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         return "chips: [\(chosen.map(\.name).joined(separator: ", "))] field: \"\(field.stringValue)\" counts: \(shownCounts.joined(separator: " "))"
     }
     func debugTab() { completeKind() }
+    /// ⇥ in an outline: the other scope (the tile's, the space's).
+    func debugSwitchOutline() { switchOutline() }
     func debugBackspace() {
         if field.stringValue.isEmpty || field.currentEditor()?.selectedRange.location == 0 { removeLastKind() }
     }
@@ -613,6 +615,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         refresh()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
+    }
+
+    /// Types a query and says how many rows are listed (for timing).
+    func debugQueryCount(_ query: String) -> Int {
+        field.stringValue = query
+        completing = nil
+        if outline == nil { onQueryChanged?(query, scope) }
+        refreshNow()
+        return shown.count
     }
 
     /// Types a query and says what's listed (for DebugControl).
