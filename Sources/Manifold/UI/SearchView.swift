@@ -222,6 +222,9 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             }
             projectButton.toolTip = s.query?.project.map { "Search the whole repository, \($0.abbreviatingHome)" }
             rows = []
+            // The table told too: a new search with no hits yet doesn't
+            // rebuild, and the table asked for its old rows (scrolled).
+            table.reloadData()
             hitCount = 0
             fileCount = 0
             shownHits = 0
@@ -396,23 +399,25 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         case let .hit(hit): return Drags.path?(hit.path, false, block.host, Drags.modifiers)
         }
     }
+    // Each row looked up only where it is: asked for one the table still
+    // thinks it has, nothing.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        if case .file = rows[row] { return FileHeaderRowView() }
+        if rows.indices.contains(row), case .file = rows[row] { return FileHeaderRowView() }
         return SelectionRowView()
     }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-        if case .file = rows[row] { return true }
+        if rows.indices.contains(row), case .file = rows[row] { return true }
         return false
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if case .hit = rows[row] { return true }
+        if rows.indices.contains(row), case .hit = rows[row] { return true }
         return false
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if case .file = rows[row] { return 24 }
+        if rows.indices.contains(row), case .file = rows[row] { return 24 }
         return 20
     }
 
@@ -433,7 +438,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             ])
             return c
         }()
-        guard let f = cell.textField else { return cell }
+        guard let f = cell.textField, rows.indices.contains(row) else { return cell }
         switch rows[row] {
         case let .file(path, count):
             var shown = path
