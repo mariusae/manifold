@@ -217,7 +217,8 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     /// The cells down the column, each as tall as it needs.
     func layoutCells() {
         let w = scroll.contentSize.width
-        guard w > 0 else { return }
+        // Not laid out yet: done when it is (not skipped for good).
+        guard w > 0 else { needsLayout = true; return }
         var y: CGFloat = 6
         for id in order {
             guard let v = cells[id] else { continue }
@@ -245,6 +246,19 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     }
 
     func cellResized() { layoutCells() }
+
+    /// A cell laid out taller or shorter than it was given (its output or
+    /// its footer come since it was measured): the cells stacked again,
+    /// once, after this pass — else its output ran on over those below.
+    private var restackPending = false
+    func cellOutgrew() {
+        guard !restackPending else { return }
+        restackPending = true
+        DispatchQueue.main.async { [weak self] in
+            self?.restackPending = false
+            self?.layoutCells()
+        }
+    }
 
     enum After { case stay, next, insert }
 
@@ -762,6 +776,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
         let textX = x + Self.textInset + 5
         glyph.frame = NSRect(x: textX - 1, y: fy + 2, width: 14, height: 14)
         footer.frame = NSRect(x: glyph.isHidden ? textX : textX + 19, y: fy + 1, width: inner - 30, height: 16)
+        if abs(height(forWidth: bounds.width) - bounds.height) > 1 { owner?.cellOutgrew() }
     }
 
     // MARK: Editing
@@ -834,7 +849,8 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
 
     var debugSummary: String {
         let state = running ? "running" : queued ? "queued" : ""
-        return "[\(count.stringValue)] \(state) $ \(editor.string.replacingOccurrences(of: "\n", with: "⏎")) | \(footer.stringValue)\n    "
+        return "[\(count.stringValue)] \(state) $ \(editor.string.replacingOccurrences(of: "\n", with: "⏎")) | \(footer.stringValue)"
+            + " | y \(Int(frame.minY)) h \(Int(frame.height)) needs \(Int(height(forWidth: frame.width)))\n    "
             + output.string.replacingOccurrences(of: "\n", with: "\n    ").prefix(600)
     }
 }
