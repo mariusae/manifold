@@ -615,10 +615,10 @@ index e7cf860..5ee7919 100644
              .expect = "~/Documents/notes.md",
 diff --git a/src/manifold_vt.zig b/src/manifold_vt.zig
 new file mode 100644
-index 0000000..428148f
+index 0000000..1dbac95
 --- /dev/null
 +++ b/src/manifold_vt.zig
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,227 @@
 +//! Manifold: a terminal kept on the host for each shell (in manifoldd), by
 +//! the same emulator the app draws with. It's fed the shell's output as it
 +//! comes and resized with the shell's pty, and is written out on asking as
@@ -674,9 +674,10 @@ index 0000000..428148f
 +/// terminal of the same size: the primary screen's last `history` rows of
 +/// history (all of it, if negative) and its screen, then (if a full-screen
 +/// program shows) the alternate screen; the modes, scrolling region, tab
-+/// stops, working directory, keyboard modes, cursor and its style. Not the
-+/// palette: the app's own colors stay. The bytes are freed with
-+/// `mvt_free_bytes`; null if it couldn't be made.
++/// stops, working directory, keyboard modes, cursor and its style, and
++/// whether it's at a prompt (OSC 133). Not the palette: the app's own
++/// colors stay. The bytes are freed with `mvt_free_bytes`; null if it
++/// couldn't be made.
 +export fn mvt_snapshot(h: *Handle, history: isize, out_len: *usize) ?[*]u8 {
 +    var w: std.Io.Writer.Allocating = .init(alloc);
 +    errdefer w.deinit();
@@ -726,6 +727,7 @@ index 0000000..428148f
 +            pf.opts.unwrap = true;
 +            try pf.format(writer);
 +            try writer.writeAll("\x1b[0m");
++            try semantic(primary, writer);
 +        }
 +    }
 +
@@ -745,6 +747,22 @@ index 0000000..428148f
 +        x -|= t.scrolling_region.left;
 +    }
 +    try writer.print("\x1b[{d};{d}H", .{ y + 1, x + 1 });
++    try semantic(t.screens.active, writer);
++}
++
++/// Whether the cursor is at a prompt, at what's typed after it, or in a
++/// command's output (OSC 133), as the shell last said: a terminal keeps
++/// what it was last told, and one told nothing since it was at the prompt
++/// (the mark that output began skipped, by a break or a flood) takes what
++/// comes after for the line typed — every line of it, which a resize clears
++/// for the shell to draw again.
++fn semantic(screen: *const vt.Screen, writer: *std.Io.Writer) !void {
++    const c = &screen.cursor;
++    try writer.writeAll(switch (c.semantic_content) {
++        .output => "\x1b]133;C\x07",
++        .input => if (c.semantic_content_clear_eol) "\x1b]133;I\x07" else "\x1b]133;B\x07",
++        .prompt => "\x1b]133;P\x07",
++    });
 +}
 +
 +export fn mvt_free_bytes(bytes: [*]u8, len: usize) void {

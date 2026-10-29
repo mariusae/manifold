@@ -1375,7 +1375,9 @@ What the README said once of how things work under what you see, kept here.
   behind little of it, on a slow link or a fast one. A terminal's small
   frames (a keystroke, its echo) go as soon as it's their turn, held for
   nothing else; and its output waits to go no more than the link holds
-  before it's behind, and skips to the screen as it is. To and from
+  before it's behind, and skips to the screen as it is — and whether
+  the shell is at its prompt or in a command's output, which a resize
+  goes by (the prompt is cleared, for the shell to draw again). To and from
   another host a copy goes compressed, as terminals do (one that doesn't
   get smaller — an image, an archive — soon goes as it is), but not on a
   link fast enough not to gain. The host reads
