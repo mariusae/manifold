@@ -299,6 +299,8 @@ final class IconButton: NSButton {
     override func mouseEntered(with event: NSEvent) { hovering = true; onHover?(true) }
     override func mouseExited(with event: NSEvent) { hovering = false; onHover?(false) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    // Set here, not passed on (see SidebarView's).
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     override func draw(_ dirtyRect: NSRect) {
         if hovering {

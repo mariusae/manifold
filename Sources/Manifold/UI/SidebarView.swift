@@ -32,6 +32,10 @@ final class SidebarView: NSView {
     /// Over the sidebar the pointer is the arrow, whatever is beneath it
     /// when it floats out.
     override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+    // Set here, not passed on: under the title bar, a cursor update passed
+    // on went to the title bar, which gave it back to the view under the
+    // pointer, round until the stack ran out.
+    override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
 
     weak var delegate: SidebarDelegate?
     /// Clear over the window's wash when pinned, as Kero's is; a pale sheet when floating over the cards.
@@ -288,6 +292,7 @@ final class ResizeHandleView: NSView {
     }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
@@ -411,6 +416,7 @@ final class FootRowView: NSView {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
@@ -469,6 +475,7 @@ final class StatusCountsView: NSView {
     }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }

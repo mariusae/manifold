@@ -3180,11 +3180,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The open hand over the bar, which drags; the pointing hand over
     /// what's clicked on it — the symbol (the menu), maximize and close;
     /// the I-beam over an address to edit.
-    override func resetCursorRects() {
+    private var cursorSpots: [(NSRect, NSCursor)] {
         var spots: [(NSRect, NSCursor)] = [(icon.frame.insetBy(dx: -8, dy: -6), .pointingHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         if let r = placeRect { spots.append((r, .iBeam)) }
-        spots.sort { $0.0.minX < $1.0.minX }
+        return spots.sorted { $0.0.minX < $1.0.minX }
+    }
+
+    override func resetCursorRects() {
+        let spots = cursorSpots
         var x: CGFloat = 0
         for (r, cursor) in spots {
             if r.minX > x { addCursorRect(NSRect(x: x, y: 0, width: r.minX - x, height: bounds.height), cursor: .openHand) }
@@ -3192,6 +3196,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
             x = max(x, r.maxX)
         }
         if x < bounds.width { addCursorRect(NSRect(x: x, y: 0, width: bounds.width - x, height: bounds.height), cursor: .openHand) }
+    }
+
+    // Set here, by where the pointer is, not passed on: a bar at the
+    // window's top is under the title bar, which gave an update passed on
+    // back to the bar, round until the stack ran out.
+    override func cursorUpdate(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        (cursorSpots.first { $0.0.contains(p) }?.1 ?? .openHand).set()
     }
 
     override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }

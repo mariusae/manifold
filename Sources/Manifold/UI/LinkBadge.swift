@@ -506,6 +506,8 @@ final class LinkBadge: NSView {
         }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+        // Set here, not passed on (see SidebarView's).
+        override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
         /// A click in a window not yet active goes to the link too.
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }

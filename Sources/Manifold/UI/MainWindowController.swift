@@ -8329,6 +8329,13 @@ final class RootView: NSView {
         onMouseMoved?(convert(event.locationInWindow, from: nil))
     }
 
+    /// A cursor update no view under the pointer took (one with a cursor
+    /// rect, where the pointer's at its edge) stops here, the arrow: passed
+    /// on, it went to the title bar over the window's top, which hands it
+    /// to the view under the pointer again, and round — under the title
+    /// bar (the sidebar's edge, a tile's bar), until the stack ran out.
+    override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
+
     override func mouseExited(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         // Leaving through the left edge is how you reach the sidebar when the
