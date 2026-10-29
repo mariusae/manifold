@@ -73,7 +73,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         link = TerminalLink(block: block, client: client)
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
-        registerForDraggedTypes([.fileURL, .string])
+        // A block's link too: one with no path, ⇧-dragged, carries nothing
+        // else, and an agent takes it for what the block holds.
+        registerForDraggedTypes([.fileURL, .string, .manifoldBlockLink])
 
         var config = ghostty_surface_config_new()
         config.platform_tag = GHOSTTY_PLATFORM_MACOS
