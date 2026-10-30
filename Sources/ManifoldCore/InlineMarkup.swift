@@ -120,8 +120,9 @@ public enum InlineMarkup {
         let string = text as String
 
         func add(_ pattern: NSRegularExpression, _ make: (NSTextCheckingResult) -> InlineSpan?) {
-            pattern.enumerateMatches(in: string, range: range) { match, _, _ in
-                guard let match, let span = make(match), fits(span, among: spans) else { return }
+            // (Not enumerateMatches: its closure escapes on Linux.)
+            for match in pattern.matches(in: string, range: range) {
+                guard let span = make(match), fits(span, among: spans) else { continue }
                 spans.append(span)
             }
         }
