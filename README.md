@@ -157,8 +157,8 @@ parts from the Mac's conventions on purpose.
   tile, the tile linked to it (below); on another app, as a file or
   text. What you drag shows as a pill — its icon and name — and
   beside the pointer a badge with the symbol of what dropping does
-  there, and words saying it, changing as you go (⃠ where nothing can
-  be done); a quick drop does it. Only what works is offered: a file
+  there (the palette's), changing as you go (⃠ where nothing can be
+  done); a quick drop does it. Only what works is offered: a file
   Manifold doesn't open (a film) goes into a note as its path, and on
   the grid opens in its own app. Rest the pointer a moment (or
   hold **⌃**) and a palette opens there of what else it can be — the

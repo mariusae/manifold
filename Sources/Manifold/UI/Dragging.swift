@@ -98,7 +98,7 @@ struct DragThing: Codable, Equatable {
 }
 
 /// What a dropped thing is put in as. Each target takes some, the one it
-/// suits first (what a plain drop does, the hint says); the pointer
+/// suits first (what a plain drop does, the badge shows); the pointer
 /// resting, the palette offers the rest (`DropPalette`).
 enum DropForm: String, CaseIterable {
     case link, reference, path, text, contents, inline, open, linkTile, copy, move
@@ -251,8 +251,6 @@ struct Dragged {
     /// The forms it takes `d` as at `p` (its terms), the one a plain drop
     /// does first; none, to hand it on.
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm]
-    /// What the hint beside the pointer says a form does here.
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String
     /// What the menu calls a form here (nil: as everywhere).
     func dropLabel(_ form: DropForm, _ d: Dragged) -> String?
     /// The drag over it at `p`: where it would land shown (a caret following).
@@ -262,12 +260,11 @@ struct Dragged {
 }
 
 extension DropTaking {
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String { Dropping.hint(form, d) }
     func dropLabel(_ form: DropForm, _ d: Dragged) -> String? { nil }
     func dropTrack(_ d: Dragged, at p: NSPoint) {}
 }
 
-/// Dropping things, the same everywhere: the hint, the palette of what
+/// Dropping things, the same everywhere: the badge, the palette of what
 /// else a thing can be there, and what a view doesn't take handed on to
 /// the grid.
 @MainActor enum Dropping {
@@ -281,23 +278,6 @@ extension DropTaking {
     /// Where the pointer last came to rest, and since when; the timer that
     /// opens the palette if it stays.
     private static var rest: (point: NSPoint, view: Weak<NSView>, timer: Timer)?
-
-    /// What a form does, said in general.
-    static func hint(_ form: DropForm, _ d: Dragged) -> String {
-        let many = d.things.count > 1
-        switch form {
-        case .link: return many ? "Put links to them here" : "Put a link to it here"
-        case .reference: return many ? "Put their references here" : "Put its reference here"
-        case .path: return many ? "Put their paths here" : "Put its path here"
-        case .text: return "Put it in here"
-        case .contents: return "Put in what it holds"
-        case .inline: return d.pictures ? (many ? "Put the pictures here" : "Put the picture here") : "Show its card here"
-        case .open: return "Open it here"
-        case .linkTile: return "Link the tile to it"
-        case .copy: return "Copy here"
-        case .move: return "Move here"
-        }
-    }
 
     static func label(_ form: DropForm) -> (String, String) {
         switch form {
@@ -326,22 +306,21 @@ extension DropTaking {
         let forms = view.dropForms(d, at: p)
         guard let first = forms.first else {
             if let grid = grid(of: view) { return grid.draggingUpdated(sender) }
-            // Nothing it can be here, nor behind: said so, not left blank.
-            DropHint.say(refusal, symbol: refused, at: sender.draggingLocation, in: view.window)
+            // Nothing it can be here, nor behind: shown so, not left blank.
+            DropBadge.show(refused, at: sender.draggingLocation, in: view.window)
             return []
         }
         grid(of: view)?.draggingExited(sender)
         view.dropTrack(d, at: p)
-        DropHint.say(view.dropHint(first, d), symbol: label(first).1, at: sender.draggingLocation, in: view.window)
+        DropBadge.show(label(first).1, at: sender.draggingLocation, in: view.window)
         if forms.count > 1 { resting(view, sender, at: sender.draggingLocation) }
         return op(sender)
     }
 
-    static let refusal = "Can't be dropped here"
     static let refused = "nosign"
 
     /// The operation a drop answers: one that shows no badge of the
-    /// system's (a +, a curved arrow) beside the pointer — the hint's own
+    /// system's (a +, a curved arrow) beside the pointer — the badge
     /// shows what it does — of those the drag's source allows.
     static func op(_ sender: NSDraggingInfo) -> NSDragOperation {
         let allowed = sender.draggingSourceOperationMask
@@ -373,13 +352,13 @@ extension DropTaking {
     }
 
     static func exited(_ view: DropTaking, _ sender: NSDraggingInfo?) {
-        DropHint.hush()
+        DropBadge.hush()
         if rest?.view.value === view { stopResting() }
         grid(of: view)?.draggingExited(sender)
     }
 
     static func perform(_ view: DropTaking, _ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
+        DropBadge.hush()
         stopResting()
         guard let d = Dragged(sender.draggingPasteboard) else { return grid(of: view)?.performDragOperation(sender) ?? false }
         let p = view.convert(sender.draggingLocation, from: nil)
@@ -397,14 +376,14 @@ extension DropTaking {
     }
 
     /// Debugging: what dropping `pb` on `view` does (at `p`; nil, its
-    /// caret or middle): the form taken, those offered, the hint.
+    /// caret or middle): the form taken, those offered, the badge.
     static func debugDrop(_ pb: NSPasteboard, on view: DropTaking, at p: NSPoint?) -> String {
         guard let d = Dragged(pb) else { return "not a thing" }
         let forms = view.dropForms(d, at: p ?? NSPoint(x: view.bounds.midX, y: view.bounds.midY))
-        guard let first = forms.first else { return grid(of: view) == nil ? "refused: “\(refusal)”" : "handed on to the grid" }
+        guard let first = forms.first else { return grid(of: view) == nil ? "refused [\(refused)]" : "handed on to the grid" }
         let taken = debugChoice.flatMap { forms.contains($0) ? $0 : nil } ?? first
         take(d, forms, by: view, at: p)
-        return "dropped as \(taken.rawValue) · offered \(forms.map(\.rawValue).joined(separator: ", ")) · [\(label(first).1)] “\(view.dropHint(first, d))”"
+        return "dropped as \(taken.rawValue) · offered \(forms.map(\.rawValue).joined(separator: ", ")) · [\(label(first).1)]"
     }
 
     /// A link, a reference, a path put in among words: a space before
@@ -488,7 +467,7 @@ final class DropPalette: NSView {
         let local = view.convert(point, from: nil)
         let forms = view.dropForms(d, at: local)
         guard forms.count > 1 else { return }
-        DropHint.hush()
+        DropBadge.hush()
         Dropping.stopResting()
         let palette = DropPalette(target: view, anchor: local, forms: forms, labels: forms.map { f in
             let (general, symbol) = Dropping.label(f)
@@ -569,9 +548,9 @@ final class DropPalette: NSView {
         let p = convert(sender.draggingLocation, from: nil)
         guard bounds.contains(p) else { return [] }
         highlighted = row(at: sender) ?? (box.contains(p) ? highlighted : nil)
-        // The row lit is what a drop does now: the hint's badge, its own
-        // symbol, would only cover it.
-        DropHint.hush()
+        // The row lit is what a drop does now: the badge, its own symbol,
+        // would only cover it.
+        DropBadge.hush()
         return Dropping.op(sender)
     }
 

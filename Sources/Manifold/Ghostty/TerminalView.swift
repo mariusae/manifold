@@ -1943,17 +1943,6 @@ extension TerminalView: DropTaking {
         return forms
     }
 
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
-        switch form {
-        case .path: isAgent ? "Give the agent its path" : uploads(d) != nil ? "Send it there and type its path" : "Type its path"
-        case .text: isAgent ? "Give the agent its words" : "Type it"
-        case .reference: isAgent ? "Give the agent its reference" : "Type its reference"
-        case .contents: isAgent ? "Give the agent what it holds" : "Paste what it holds"
-        case .link: isAgent ? "Give the agent its link" : "Type its link"
-        default: Dropping.hint(form, d)
-        }
-    }
-
     /// Typed: paths and references quoted for the shell, a space between;
     /// words, contents as they are (one paste); the terminal linked to
     /// each block named.

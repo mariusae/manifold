@@ -626,8 +626,6 @@ extension MarkdownView: DropTaking {
 
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] { takesDrops ? Dropping.noteForms(d) : [] }
 
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String { Dropping.hint(form, d).replacingOccurrences(of: " here", with: " at the end") }
-
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
         var named: [BlockID] = []
         Dropping.noteText(d, as: form, keep: { [weak self] data, kind in

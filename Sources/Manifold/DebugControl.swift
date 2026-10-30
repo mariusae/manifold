@@ -392,14 +392,12 @@ enum DebugControl {
         case "type":
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
-        case "drophint":
-            // "drophint [:symbol] <text>": the drop's hint, at the window's
-            // middle, as a drag over a target shows it (gone a moment later).
-            guard let window = wc?.window, let content = window.contentView else { return "no window" }
-            var words = arg.split(separator: " ", maxSplits: 1).map(String.init)
-            let symbol = words.first?.hasPrefix(":") == true ? String(words.removeFirst().dropFirst()) : nil
-            DropHint.say(words.first, symbol: symbol, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
-            return "said"
+        case "dropbadge":
+            // "dropbadge <symbol>": the drop's badge, at the window's middle,
+            // as a drag over a target shows it (gone a moment later).
+            guard let window = wc?.window, let content = window.contentView, !arg.isEmpty else { return "dropbadge <symbol>" }
+            DropBadge.show(arg, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
+            return "shown"
         case "dragpill":
             // "dragpill <out.png> <path>…": the pills dragging those files
             // (this Mac's) would show, one under another, written out.

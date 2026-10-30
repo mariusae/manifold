@@ -134,7 +134,7 @@ final class GridView: NSView, NSDraggingSource {
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
     /// The drop under way covers the tile it's on (⌥-drag).
     private var dropCovers = false
-    /// The tile a thing dropped would link, by its title, for the hint.
+    /// The tile a thing dropped would link, by its title, for the palette.
     private var lastLinkTitle: String?
     /// The drag is a block's link (⇧): dropped, it links to the tile's block.
     /// While a block is dragged anywhere: a catcher over every tile takes
@@ -2195,7 +2195,7 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
+        DropBadge.hush()
         defer { hideDrop() }
         let pb = sender.draggingPasteboard
         if Dragged(pb) != nil { return Dropping.perform(self, sender) }
@@ -3682,25 +3682,6 @@ extension GridView: DropTaking {
         let slot = dropTarget(at: p, dragged: nil)
         if onto != nil, d.things.allSatisfy({ $0.block != nil }) { return [.linkTile] + (slot != nil ? [.open] : []) }
         return (slot != nil ? [.open] : []) + (onto != nil ? [.linkTile] : [])
-    }
-
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
-        switch form {
-        case .linkTile: return lastLinkTitle.map { "Link “\($0)” to it" } ?? "Link the tile to it"
-        case .open:
-            if d.pictures { return d.things.count > 1 ? "New images here" : "A new image here" }
-            if d.things.allSatisfy({ $0.block != nil }) { return "Put a tile of it here" }
-            if d.things.allSatisfy({ $0.url != nil && $0.file == nil }) { return "Open the page here" }
-            // A file Manifold doesn't open (a film, an archive): its own app opens it.
-            if d.things.allSatisfy({ $0.file != nil && !$0.nameable }) {
-                guard d.things.count == 1, let f = d.things[0].file,
-                      let app = NSWorkspace.shared.urlForApplication(toOpen: URL(fileURLWithPath: f.path)) else { return "Open them in their apps" }
-                return "Open it in " + FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
-            }
-            if d.things.allSatisfy({ !$0.nameable && $0.url == nil }) { return "A new note of it here" }
-            return "Open it here"
-        default: return Dropping.hint(form, d)
-        }
     }
 
     func dropLabel(_ form: DropForm, _ d: Dragged) -> String? {

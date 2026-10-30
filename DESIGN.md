@@ -635,13 +635,12 @@ its icon, its name, on a raised ground with an edge and a shadow — a
 few one under another, then "and N more"), wherever it's dragged from,
 so it reads over anything it passes; rows dragged by their bullets go
 on a card the same way. Beside the pointer, where the system's + would
-be, a **badge** shows the symbol of what a drop does there — the
-palette's for that form — with the **hint** after it in words
-(`DropHint`); a drop answers an operation that shows no badge of the
-system's. Both are said again as the drag moves (a modifier pressed,
-another target, the palette's rows), so they're always what dropping
-right then would do; where nothing can be done, a grey ⃠ says so. A
-quick drop does what they say;
+be, a **badge** (`DropBadge`) shows the symbol of what a drop does
+there — the palette's for that form, and only that: no words; a drop
+answers an operation that shows no badge of the system's. It's shown
+again as the drag moves (a modifier pressed, another target, the
+palette's rows), so it's always what dropping right then would do;
+where nothing can be done, a grey ⃠. A quick drop does what it shows;
 the pointer resting a moment (`Dropping.restDelay`, 0.6 s, as a folder
 in the Finder springs open) — or ⌃ held — opens a palette there
 (`DropPalette`, after Dropzone): a row for each form the target takes,

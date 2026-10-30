@@ -1248,17 +1248,6 @@ extension NotebookView: DropTaking {
         Dropping.shellForms(d).filter { $0 != .path || d.things.allSatisfy { $0.place?.host == block.host } }
     }
 
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
-        switch form {
-        case .path: "A new cell with its path"
-        case .reference: "A new cell with its reference"
-        case .text: "A new cell with it"
-        case .contents: "A new cell with what it holds"
-        case .link: "A new cell with its link"
-        default: Dropping.hint(form, d)
-        }
-    }
-
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
         d.text(form, separator: " ", quote: TerminalView.shellQuoted) { [weak self] text, blocks in
             guard let self, let text, !text.isEmpty else { return NSSound.beep() }
@@ -1271,10 +1260,6 @@ extension CellEditor: DropTaking {
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
         guard isEditable else { return [] }
         return Dropping.shellForms(d)
-    }
-
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
-        form == .path ? "Put its path in this cell" : Dropping.hint(form, d)
     }
 
     func dropTrack(_ d: Dragged, at p: NSPoint) {

@@ -308,8 +308,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     // MARK: Drops on the folder
 
     /// The folder taking a drop: outlined in the accent, as the Finder does.
-    /// The folder a drop over it would go into, as the hint names it.
-    private var dropFolderShown: String?
     private var dropping = false {
         didSet {
             guard dropping != oldValue else { return }
@@ -713,15 +711,8 @@ extension DirectoryView: DropTaking {
         return NSEvent.modifierFlags.contains(.option) ? [.copy, .move] : [.move, .copy]
     }
 
-    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
-        let name = (dropFolderShown ?? "").lastPathComponent
-        let into = name.isEmpty ? " here" : " into “\(name)”"
-        return (form == .move ? "Move" : "Copy") + into
-    }
-
     func dropTrack(_ d: Dragged, at p: NSPoint) {
         dropping = true
-        dropFolderShown = dropFolder(at: p)
     }
 
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
