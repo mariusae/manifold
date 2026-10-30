@@ -1899,3 +1899,19 @@ private final class Seen: @unchecked Sendable {
     #expect(BlockID.reference(id) == nil)
     #expect(BlockID.reference("README.md") == nil)
 }
+
+@Test func aNoteTitleFromItsFirstLineIsToldFromAName() {
+    var b = Block(id: BlockID(), kind: .text, created: Stamp(wall: 1), title: nil, path: nil)
+    b.apply(.firstLineTitle("shopping"), at: Stamp(wall: 2))
+    #expect(b.title == "shopping")
+    #expect(b.titleIsFirstLine == true)
+    // Named by hand: a name, no longer its first line's.
+    b.apply(.title("Groceries"), at: Stamp(wall: 3))
+    #expect(b.title == "Groceries")
+    #expect(b.titleIsFirstLine == nil)
+    // The name emptied, then its first line's again.
+    b.apply(.title(nil), at: Stamp(wall: 4))
+    b.apply(.firstLineTitle(nil), at: Stamp(wall: 5))
+    #expect(b.title == nil)
+    #expect(b.titleIsFirstLine == nil)
+}

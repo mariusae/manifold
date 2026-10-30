@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 59
+public let protocolVersion = 60
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).

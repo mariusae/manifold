@@ -969,6 +969,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "closed:\n" + stack.joined(separator: "\n") + "\nroots \(hosts.roots().count) reachable \(reachable.count) blocks \(hosts.blocks.count)\nunreached:\n" + unreached.joined(separator: "\n")
     }
 
+    /// Debugging: what reaches a block (its id ending in `suffix`): the
+    /// strong edges from a root to it, each with its kind.
+    func debugWhyReached(_ suffix: String) -> String {
+        guard let target = hosts.blocks.first(where: { $0.id.description.hasSuffix(suffix) })?.id else { return "no block" }
+        let roots = hosts.roots()
+        var parent: [BlockID: (BlockID, String)] = [:]
+        var seen = roots, frontier = Array(roots)
+        while let b = frontier.popLast() {
+            for e in hosts.client(of: b)?.node.graph.strongEdges(from: b) ?? [] where seen.insert(e.to).inserted {
+                parent[e.to] = (b, "\(e.kind)")
+                frontier.append(e.to)
+            }
+        }
+        guard seen.contains(target) else { return "unreached" }
+        var lines: [String] = [], b = target
+        while let (from, kind) = parent[b] {
+            lines.append("\(hosts.block(from)?.displayTitle ?? "?") \(from) —\(kind)→ \(hosts.block(b)?.displayTitle ?? "?")")
+            b = from
+        }
+        return (roots.contains(b) ? "root \(hosts.block(b)?.displayTitle ?? "?") \(b)\n" : "") + lines.reversed().joined(separator: "\n")
+    }
+
     var debugToast: String { toast.debugText ?? "none" }
     func debugToastAct() -> String { toast.debugAct() }
     func debugToastNudge() { toast.nudge() }
@@ -2467,13 +2489,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A note named in its tile's pill, as it is — nothing saved: the
     /// name is the block's title, kept in its log, until a file's name
-    /// takes over. Emptied, it's called by its first line again (as the
-    /// host titles an unnamed note).
+    /// takes over, no longer following its first line. Emptied, it's
+    /// called by its first line again (as the host titles an unnamed note).
     func nameNote(_ placement: PlacementID) {
         guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block), b.isNote else { return }
         focus(placement)
         let block = p.block
+        let firstLine = b.titleIsFirstLine == true ? b.title : nil
         content.editPill(placement, PillEdit(text: b.title ?? "", placeholder: "Name this note", overName: true) { [weak self] name in
+            // Left as its first line says: still its first line's, not a name.
+            guard name != firstLine else { return }
             self?.hosts.append(.title(name.isEmpty ? nil : name), to: .block(block))
         })
     }

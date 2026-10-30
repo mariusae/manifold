@@ -984,6 +984,9 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var kind: BlockKind
     public var created: Stamp
     public var title: String?
+    /// Its title is an unsaved note's first line, as its host gave it
+    /// (`firstLineTitle`), not a name given it.
+    public var titleIsFirstLine: Bool?
     /// For a file, folder or image: its path on its host.
     public var path: String?
     /// For a block with no file (a note): the folder it was made in, where

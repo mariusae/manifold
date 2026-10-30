@@ -998,7 +998,9 @@ enum DebugControl {
             if arg == "hide" { HoverCard.shared.hide(); return "hidden" }
             return HoverCard.shared.debugState
         case "closed":
-            // The closed stack, and what nothing reaches.
+            // The closed stack, and what nothing reaches; "closed why <id
+            // suffix>": what reaches that block.
+            if arg.hasPrefix("why ") { return wc?.debugWhyReached(String(arg.dropFirst(4))) ?? "no window" }
             return wc?.debugClosed ?? "no window"
         case "reopen":
             wc?.reopenClosed(nil)

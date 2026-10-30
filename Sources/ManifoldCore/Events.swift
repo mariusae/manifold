@@ -226,6 +226,9 @@ public enum Event: Codable, Equatable, Sendable {
     // Any block: its first entry, and its title.
     case create(kind: BlockKind, title: String?, path: String?)
     case title(String?)
+    /// An unsaved note's title as its host gives it, from its first line —
+    /// kept so as that line changes, unlike one given by hand (`title`).
+    case firstLineTitle(String?)
     case path(String?)
     /// A placement's lens state: keys set (an empty value takes one away).
     case view(placement: PlacementID, [String: String])
@@ -396,6 +399,10 @@ extension Block {
         case let .title(t):
             title = t?.trimmingCharacters(in: .whitespacesAndNewlines)
             if title?.isEmpty == true { title = nil }
+            titleIsFirstLine = nil
+        case let .firstLineTitle(t):
+            apply(.title(t), at: at)
+            titleIsFirstLine = title != nil ? true : nil
         case let .path(p):
             path = p
         case let .cwd(c) where terminal == nil:

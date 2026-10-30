@@ -168,7 +168,7 @@ final class Server {
 
     func run() throws {
         load()
-        rememberFirstLineTitles()
+        settleFirstLineTitles()
         pruneHistory()
         machine.start()
         // Its language servers as its own settings say, from the start.
@@ -541,33 +541,49 @@ final class Server {
         }
     }
 
-    /// The titles notes were given from their first lines, as last given.
-    private var firstLineTitles: [BlockID: String] = [:]
-
-    /// Notes whose title is their first line, as loaded: so (not named by
-    /// hand), kept so as their first line changes — what a server before
-    /// this one noted goes with it.
-    private func rememberFirstLineTitles() {
-        for b in node.blocks where b.id.host == host && b.isNote {
-            guard let t = b.text, let title = b.title, !title.isEmpty, Block.noteTitle(from: t.text) == title else { continue }
-            firstLineTitles[b.id] = title
+    /// Notes titled by their first line before titles said so
+    /// (`firstLineTitle`): marked, and brought up to their first line as it
+    /// is now. A title is taken for one when the first line says it, or,
+    /// as the note's log has it, said it when it was last given (the line
+    /// changed while no server was there to follow it). Any other title
+    /// was given it, and stays. Once, for the notes from before: since,
+    /// a name given that happens to be the first line is still a name.
+    private func settleFirstLineTitles() {
+        let marker = Paths.directory.appendingPathComponent("first-line-titles")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        var settled = 0
+        for b in node.blocks where b.id.host == host && b.isNote && b.titleIsFirstLine != true {
+            guard let t = b.text, let title = b.title, !title.isEmpty else { continue }
+            let derived = Block.noteTitle(from: t.text)
+            guard derived == title || wasFirstLine(b.id, title) else { continue }
+            append(.firstLineTitle(derived), to: .block(b.id))
+            settled += 1
         }
+        try? "1\n".write(to: marker, atomically: true, encoding: .utf8)
+        log("notes titled by their first lines: \(settled)")
     }
 
-    /// An untitled note is called by its first line, as its title — kept
-    /// so as that line changes, from whichever client — until it's named
-    /// otherwise (Name Note…), which it's then left with; the name emptied,
-    /// it's called by its first line again. One whose title was its first
-    /// line's words when this server started goes on being kept
-    /// (`rememberFirstLineTitles`).
+    /// Whether a note's title, as its log has it, was its first line's
+    /// words when it was last given.
+    private func wasFirstLine(_ id: BlockID, _ title: String) -> Bool {
+        let shard = ShardID.block(id)
+        let (base, entries) = store.history(shard)
+        guard let last = entries.lastIndex(where: { if case .title = $0.event { true } else { false } }) else { return false }
+        let replay = Node()
+        if let base { replay.load(base) }
+        for e in entries[..<last] { _ = replay.apply(e, to: shard) }
+        guard let text = replay.block(id)?.text else { return false }
+        return Block.noteTitle(from: text.text) == title
+    }
+
+    /// An unsaved note is called by its first line, as its title — kept so
+    /// as that line changes, from whichever client — until it's given a
+    /// name (Name Note…, or one it was made with), which it keeps; the name
+    /// emptied, it's called by its first line again.
     private func titleFromFirstLine(_ block: Block) {
-        guard let text = block.text else { return }
-        let title = block.title ?? ""
-        let derived = Block.noteTitle(from: text.text) ?? ""
-        let given = firstLineTitles[block.id]
-        guard title.isEmpty || title == given || (given == nil && title == derived) else { return }
-        firstLineTitles[block.id] = derived
-        if derived != title { append(.title(derived.isEmpty ? nil : derived), to: .block(block.id)) }
+        guard let text = block.text, block.title == nil || block.titleIsFirstLine == true else { return }
+        let derived = Block.noteTitle(from: text.text)
+        if derived != block.title { append(.firstLineTitle(derived), to: .block(block.id)) }
     }
 
     /// Keeps the registry in step with a block's log, whoever appended.
@@ -582,6 +598,9 @@ final class Server {
                 titleFromFirstLine(block)
             }
             mentions.textChanged(id)
+        } else if block.isNote, block.title == nil, entries.contains(where: { if case .title(nil) = $0.event { true } else { false } }) {
+            // Its name emptied: called by its first line again, now.
+            titleFromFirstLine(block)
         }
         let registry = node.registry(host)
         let current = registry.blocks[id]

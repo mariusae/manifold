@@ -557,8 +557,9 @@ around it, and comes back with its history.
 - **Text** blocks are files on the host, or notes (text with no file; ⌘S
   on one asks where to save it). A note has its own symbol (a note, not
   a file's page) wherever it's listed, and a name without being saved:
-  its first line's words, kept as that line changes (heading and list
-  marks, emphasis and images left out); or one of your own — Name… in
+  its first line's words, kept as that line changes, whoever changes it
+  and across restarts (heading and list marks, emphasis and images left
+  out); or one of your own — Name… in
   its bar's menu or Tile ▸ Name Note… turns its
   bar's title into a field (⏎ names it, and it keeps that name; emptied,
   it's called by its first line again); saved, it's offered under its
