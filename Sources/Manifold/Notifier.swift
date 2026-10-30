@@ -72,9 +72,29 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// What a notification sounds like: a knock on wood. Done, two, the
     /// second a touch higher; needs you, three, quicker, the last firmest;
     /// failed, two, slower, the second lower and duller. (Resources/Sounds,
-    /// copied to the top of the bundle's Resources, where the Mac looks.)
+    /// copied to the top of the bundle's Resources.)
     enum Sound: String {
         case done = "knock-done.caf", needsYou = "knock-needs-you.caf", failed = "knock-failed.caf"
+
+        var url: URL? { Bundle.main.url(forResource: rawValue, withExtension: nil) }
+    }
+
+    /// The knock sounding, kept until it's done.
+    private var playing: NSSound?
+
+    /// The Mac plays a notification's named sound only if it's one of its
+    /// own tones — it doesn't look in the bundle (ToneLibrary: "neither in
+    /// of the collections for system or iTunes tones"), so the knock is
+    /// played here, as the notification goes, when Manifold's may sound.
+    private func play(_ sound: Sound) {
+        guard let url = sound.url else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.soundSetting == .enabled else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.playing = NSSound(contentsOf: url, byReference: true)
+                self?.playing?.play()
+            }
+        }
     }
 
     static func duration(_ ms: Int64) -> String {
@@ -90,13 +110,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.sound = Bundle.main.url(forResource: sound.rawValue, withExtension: nil) != nil
-                ? UNNotificationSound(named: UNNotificationSoundName(sound.rawValue)) : .default
+            // The knock's played by Manifold; the Mac's own sound only if it's missing (as under swift build).
+            content.sound = sound.url == nil ? .default : nil
             content.threadIdentifier = block.description
             var info: [String: Any] = ["block": block.description]
             if let command { info["command"] = command }
             content.userInfo = info
             center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+            self.play(sound)
         }
         posted.append(title + " — " + body.replacingOccurrences(of: "\n", with: " · "))
         // A test instance (it shares the app's identity) says nothing to the Mac.

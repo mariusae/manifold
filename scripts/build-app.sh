@@ -57,7 +57,7 @@ cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Reso
 # Mermaid, for diagrams in Markdown previews (MIT; its licence beside it).
 mkdir -p "$app/Contents/Resources/Mermaid"
 cp Resources/Mermaid/mermaid.min.js Resources/Mermaid/LICENSE "$app/Contents/Resources/Mermaid/"
-# Notification sounds: UNNotificationSound(named:) looks at the top of Resources.
+# Notification sounds: Notifier plays them from the top of Resources.
 cp Resources/Sounds/*.caf "$app/Contents/Resources/"
 # Ghostty looks for terminfo next to its resources directory.
 cp -R Frameworks/ghostty-share/ghostty Frameworks/ghostty-share/terminfo "$app/Contents/Resources/"
