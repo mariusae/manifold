@@ -203,6 +203,90 @@ final class FindPill: NSView, NSTextFieldDelegate {
     }
 }
 
+/// Go to Line (⌃G, ⌘L), inline as the find pill is: a capsule at the
+/// tile's upper right — a line, or line:column, and how many there are.
+/// The text goes there as it's typed; ↩ keeps it, ⎋ goes back to where
+/// it was.
+final class LinePill: NSView, NSTextFieldDelegate {
+    var onPreview: ((String) -> Void)?
+    var onGo: ((String) -> Void)?
+    var onCancel: (() -> Void)?
+
+    static let width: CGFloat = 230
+    private let field = NSTextField()
+    private let count = NSTextField(labelWithString: "")
+    private let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
+
+    init(lines: Int) {
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: FindPill.rowHeight))
+        wantsLayer = true
+        layer?.cornerRadius = FindPill.rowHeight / 2
+        layer?.masksToBounds = true
+        layer?.zPosition = 10
+        field.delegate = self
+        field.font = .systemFont(ofSize: 12.5)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.cell?.usesSingleLineMode = true
+        field.placeholderString = "Line, or line:column"
+        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        count.textColor = Theme.secondaryText
+        count.alignment = .right
+        count.stringValue = "of \(lines.formatted())"
+        close.target = self
+        close.action = #selector(closeClicked)
+        close.toolTip = "Back (⎋)"
+        for v in [field, count, close] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func focus() {
+        window?.makeFirstResponder(field)
+        field.selectText(nil)
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        close.frame = NSRect(x: bounds.width - 26, y: (h - 20) / 2, width: 20, height: 20)
+        let w = ceil(count.intrinsicContentSize.width)
+        count.frame = NSRect(x: close.frame.minX - 4 - w, y: (h - 14) / 2, width: w, height: 14)
+        field.frame = NSRect(x: 14, y: (h - 17) / 2, width: count.frame.minX - 20, height: 17)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        Theme.windowBackground.setFill()
+        path.fill()
+        Theme.sheetEdge(hovered: false).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    func controlTextDidChange(_ obj: Notification) { onPreview?(field.stringValue) }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)): onGo?(field.stringValue)
+        case #selector(NSResponder.cancelOperation(_:)): onCancel?()
+        default: return false
+        }
+        return true
+    }
+
+    @objc private func closeClicked() { onCancel?() }
+
+    /// Debugging: typed, then ↩ (or ⎋).
+    func debugType(_ text: String, then key: String) {
+        field.stringValue = text
+        onPreview?(text)
+        if key == "escape" { onCancel?() } else if key == "return" { onGo?(text) }
+    }
+}
+
 /// Finding in a web page, by script: counted over the page's text,
 /// stepped through with the browser's own find (which selects and
 /// scrolls), so a preview and a web page are searched as an editor is.
@@ -263,7 +347,13 @@ final class FindHost {
     /// The grid the view's in, laid out again: its ticks shown or not.
     private func finding(_ on: Bool) {
         guard let view else { return }
-        if on { Self.finding.add(view) } else { Self.finding.remove(view) }
+        Self.standAside(for: view, on)
+    }
+
+    /// A pill over a view's upper right (find's, Go to Line's): its
+    /// outline's ticks stand aside while it's there.
+    static func standAside(for view: NSView, _ on: Bool) {
+        if on { finding.add(view) } else { finding.remove(view) }
         var v = view.superview
         while let s = v, !(s is GridView) { v = s.superview }
         v?.needsLayout = true

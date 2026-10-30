@@ -315,8 +315,17 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "gotoline":
+            // "gotoline <text> [return|escape]": Go to Line in the focused editor, typed and keyed.
+            let w = arg.split(separator: " ").map(String.init)
+            guard let e = wc?.debugFocusedEditor, let text = w.first else { return "usage: gotoline <text> [return|escape]" }
+            return e.debugGoToLine(text, then: w.count > 1 ? w[1] : "")
         case "fractions":
-            // "fractions 0.7 0.3": the columns' widths, as dividers dragged set them.
+            // "fractions 0.7 0.3": the columns' widths, as dividers dragged set them;
+            // "fractions even <i>": the line after column i double-clicked;
+            // "fractions now": the widths as laid out.
+            if arg.hasPrefix("even "), let i = Int(arg.dropFirst(5)) { return wc?.content.debugEvenColumns(i) ?? "no window" }
+            if arg == "now" { return wc?.content.debugFractions ?? "no window" }
             wc?.debugSetFractions(arg.split(separator: " ").compactMap { Double($0) })
             return "ok"
         case "notename":

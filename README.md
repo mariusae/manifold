@@ -181,7 +181,8 @@ parts from the Mac's conventions on purpose.
   the tile above it; pushed down, behind the tile below it), and goes
   on against the next, until all above or below are put away.
   Double-click the line between two tiles, or two columns, and the two
-  share their room evenly. Maximize (⇧⌘↩, or the ⤢ at the right of a
+  share their room evenly, the line gliding there with the pointer on
+  it. Maximize (⇧⌘↩, or the ⤢ at the right of a
   bar) puts a tile over the whole space until it is restored, or
   until you go to another tile. A bar's title is as wide as it needs
   and never more than half its tile, so what's under the band stays
@@ -584,8 +585,9 @@ around it, and comes back with its history.
   cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
-  (⌘L, or ⌃G as code editors have it, editing or viewing; a line, or
-  `line:column`), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
+  (⌘L, or ⌃G as code editors have it, editing or viewing: a capsule
+  where find's is, a line or `line:column` and how many there are, the
+  text going there as it's typed, ↩ to stay, ⎋ to go back), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
   comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection —
   Edit ▸ Lines and Edit ▸ Selection list them),
   brackets and quotes paired, new lines indented like the last, undo as

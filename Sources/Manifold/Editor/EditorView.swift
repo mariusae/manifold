@@ -337,6 +337,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
         updateScrubber()
         finder.layout(in: bounds)
+        layoutLinePill()
         if let reveal = pendingReveal, window != nil, scroll.contentSize.height >= 1 {
             pendingReveal = nil
             DispatchQueue.main.async { [weak self] in self?.select(line: reveal.line, column: reveal.column) }
@@ -848,20 +849,65 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: Go to line
 
+    /// Go to Line, inline (§7): the capsule where find's is; the text
+    /// goes to the line as it's typed, ↩ keeps it, ⎋ goes back.
     @objc func goToLine(_ sender: Any?) {
-        guard let window else { return }
-        let alert = NSAlert()
-        alert.messageText = "Go to Line"
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-        field.placeholderString = "Line, or line:column"
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Go")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self, let (line, column) = Self.lineAndColumn(field.stringValue) else { return }
-            self.select(line: line, column: column)
+        if let linePill { return linePill.focus() }
+        hideFind()
+        let lines = textView.text.lineCount
+        let before = textView.selections, top = topLine
+        NavJumps.willJump?(self)
+        let p = LinePill(lines: lines)
+        p.onPreview = { [weak self] typed in
+            guard let self, let (asked, column) = Self.lineAndColumn(typed) else { return }
+            let line = min(asked, lines)
+            let r = self.textView.offset(line: line, column: column)
+            self.textView.setSelections([Selection(r.start, r.end)])
+            self.textView.highlightedLine = line - 1
         }
+        p.onGo = { [weak self] typed in
+            guard let self else { return }
+            guard Self.lineAndColumn(typed) != nil else { return NSSound.beep() }
+            self.closeLinePill()
+            self.window?.makeFirstResponder(self.textView)
+            self.delegate?.editorDidReveal(self)
+        }
+        p.onCancel = { [weak self] in
+            guard let self else { return }
+            self.textView.setSelections(before, scroll: false)
+            self.textView.highlightedLine = nil
+            self.scroll(toTopLine: top)
+            self.closeLinePill()
+            self.window?.makeFirstResponder(self.textView)
+        }
+        addSubview(p)
+        linePill = p
+        FindHost.standAside(for: self, true)
+        layoutLinePill()
+        p.focus()
+    }
+
+    private var linePill: LinePill?
+
+    private func closeLinePill() {
+        linePill?.removeFromSuperview()
+        linePill = nil
+        FindHost.standAside(for: self, false)
+    }
+
+    /// Where find's pill would be: the upper right, a band down.
+    private func layoutLinePill() {
+        guard let linePill else { return }
+        let w = min(LinePill.width, bounds.width - 20), h = FindPill.rowHeight
+        let y = bounds.maxY - (bounds.width >= 860 ? 4 : GridView.band + 6) - h
+        linePill.frame = NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
+    }
+
+    /// Debugging: Go to Line, typed into and ↩ (or ⎋); where the caret is.
+    func debugGoToLine(_ text: String, then key: String) -> String {
+        goToLine(nil)
+        linePill?.debugType(text, then: key)
+        return "line \(textView.caretLine + 1) col \(textView.caretColumn)\(linePill != nil ? " (open)" : "")"
     }
 
     /// "12", or "12:5" (a compiler's way of saying where): a line from 1,

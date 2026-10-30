@@ -422,9 +422,13 @@ final class GridView: NSView, NSDraggingSource {
         }
         for (i, d) in columnDividers.enumerated() {
             d.onDrag = { [weak self] x in self?.dividerDragging = true; self?.dragColumnDivider(i, to: x) }
-            d.onEnd = { [weak self] in self?.dividerDragging = false; self?.delegate?.gridResized(fractions: self?.fractions ?? []) }
-            // (Kept when the click's up comes, as a drag's end is.)
-            d.onDoubleClick = { [weak self] in self?.evenColumns(i) }
+            d.onEnd = { [weak self] in
+                // (A double-click's up: what it evens is kept once it's there.)
+                guard let self, self.evening == nil else { return }
+                self.dividerDragging = false
+                self.delegate?.gridResized(fractions: self.fractions)
+            }
+            d.onDoubleClick = { [weak self, weak d] in self?.evenColumns(i, line: d) }
         }
         var rows: [(Int, PlacementID, PlacementID)] = []
         for c in columns.indices where shownTiles(c).count > 1 {
@@ -440,14 +444,14 @@ final class GridView: NSView, NSDraggingSource {
         for (d, (c, above, below)) in zip(rowDividers, rows) {
             d.onDrag = { [weak self] y in self?.dividerDragging = true; self?.dragRowDivider(column: c, above: above, below: below, to: y) }
             d.onEnd = { [weak self] in
-                guard let self else { return }
+                guard let self, self.evening == nil else { return }
                 self.dividerDragging = false
                 let stashed = self.stashedDown
                 self.stashedDown = []
                 self.dividerBelow = [:]
                 self.delegate?.gridResized(heights: self.heights, stashed: stashed)
             }
-            d.onDoubleClick = { [weak self] in self?.evenRows(column: c, above: above, below: below) }
+            d.onDoubleClick = { [weak self, weak d] in self?.evenRows(column: c, above: above, below: below, line: d) }
         }
         if subviews.last !== dropOverlay && !dragging { addSubview(dropOverlay) }
         if dragging { addSubview(dropOverlay); addSubview(dragCatcher) }
@@ -1433,23 +1437,87 @@ final class GridView: NSView, NSDraggingSource {
 
     /// The line between two columns double-clicked: the two share their
     /// width evenly (gliding there).
-    private func evenColumns(_ i: Int) {
-        guard i + 1 < fractions.count else { return }
-        let pair = fractions[i] + fractions[i + 1]
-        fractions[i] = pair / 2
-        fractions[i + 1] = pair / 2
-        needsLayout = true
+    private func evenColumns(_ i: Int, line: NSView? = nil) {
+        guard i + 1 < fractions.count, evening == nil else { return }
+        let pair = fractions[i] + fractions[i + 1], from = fractions[i]
+        glideLine(line, vertical: true, step: { [weak self] t in
+            guard let self, i + 1 < self.fractions.count else { return }
+            self.fractions[i] = from + (pair / 2 - from) * t
+            self.fractions[i + 1] = pair - self.fractions[i]
+        }, done: { [weak self] in
+            guard let self else { return }
+            self.delegate?.gridResized(fractions: self.fractions)
+        })
     }
 
     /// The line between two tiles in a column double-clicked: the two
     /// share their height evenly.
-    func evenRows(column c: Int, above a: PlacementID, below b: PlacementID) {
-        guard c < columns.count else { return }
+    func evenRows(column c: Int, above a: PlacementID, below b: PlacementID, line: NSView? = nil) {
+        guard c < columns.count, evening == nil else { return }
         let n = Double(max(shownTiles(c).count, 1))
-        let pair = (heights[a] ?? 1 / n) + (heights[b] ?? 1 / n)
-        heights[a] = pair / 2
-        heights[b] = pair / 2
-        needsLayout = true
+        let from = heights[a] ?? 1 / n
+        let pair = from + (heights[b] ?? 1 / n)
+        glideLine(line, vertical: false, step: { [weak self] t in
+            guard let self else { return }
+            self.heights[a] = from + (pair / 2 - from) * t
+            self.heights[b] = pair - self.heights[a]!
+        }, done: { [weak self] in
+            guard let self else { return }
+            self.delegate?.gridResized(heights: self.heights, stashed: [])
+        })
+    }
+
+    /// Debugging: the line after column `i` double-clicked.
+    func debugEvenColumns(_ i: Int) -> String {
+        guard columnDividers.indices.contains(i) else { return "no line \(i)" }
+        evenColumns(i, line: columnDividers[i])
+        return "evening"
+    }
+    var debugFractions: String { fractions.map { String(format: "%.3f", $0) }.joined(separator: " ") + (evening != nil ? " (evening)" : "") }
+
+    /// Evening two tiles' room, under way: stepped as a drag would move the
+    /// line, the pointer riding on it.
+    private var evening: Timer?
+
+    /// A line moved to where `step` takes it (given 0…1, eased), over a
+    /// glide, laid out at each step as a drag lays out (the tiles sized
+    /// as it goes, not jumping and sliding); the pointer, on the line,
+    /// carried with it across (`vertical`: a line between columns); then
+    /// `done`, to keep where it ended.
+    private func glideLine(_ line: NSView?, vertical: Bool, step: @escaping (Double) -> Void, done: @escaping () -> Void) {
+        let carry = { [weak self, weak line] in
+            guard let self, let line, let window = self.window, !line.isHidden else { return }
+            let mid = window.convertToScreen(line.convert(line.bounds, to: nil))
+            let now = NSEvent.mouseLocation
+            Pointer.warp(to: vertical ? NSPoint(x: mid.midX, y: now.y) : NSPoint(x: now.x, y: mid.midY))
+        }
+        guard !Motion.reduced else {
+            step(1)
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+            carry()
+            return done()
+        }
+        let start = CACurrentMediaTime(), duration = max(Self.glide, 0.18)
+        dividerDragging = true
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { return timer.invalidate() }
+                let x = min((CACurrentMediaTime() - start) / duration, 1)
+                // Eased out: quick, then settling.
+                step(1 - pow(1 - x, 3))
+                self.needsLayout = true
+                self.layoutSubtreeIfNeeded()
+                carry()
+                guard x >= 1 else { return }
+                timer.invalidate()
+                self.evening = nil
+                self.dividerDragging = false
+                done()
+            }
+        }
+        evening = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     /// Tiles a line's drag pushed down into the stack of the tile below,
