@@ -309,7 +309,32 @@ public enum Mani {
             ## Naming
             \(namesHelp.split(separator: "\n").map { "    " + $0 }.joined(separator: "\n"))
 
+            ## References
+            A block's reference is `manifold:<host>/<id>`, with a place in it after `#`
+            (`#line=12`, `#page=3`, `#command=7`); in Markdown it's a link,
+            `[Its name](manifold:…)`, which a note shows as the block's name. You'll find them
+            where the user put them: ⇧-dragged into your prompt (a block dropped on you comes
+            as its reference, its link, its path or what it holds — they chose which, ⌃ as
+            they dropped it), in a note's text, from Copy Link. Treat one as "that block":
+            - Any mani command takes one as a name, either form: `mani read manifold:…`
+              (at `#command=7`, that command's output; at `#page=3`, that page),
+              `mani info manifold:…` (what and where it is, its links),
+              `mani show manifold:…#line=12` (brought to view, at that line).
+            - To change what it holds: `mani write manifold:… < new-text` (a note's or a
+              file's whole text; `--append` adds; `--save` saves a file),
+              `mani rename manifold:… "Name"`, `mani pin manifold:…`,
+              `mani link manifold:A manifold:B` (A links to B, as the user's links do),
+              `mani run --wait manifold:… "cmd"` for a terminal.
+            - To give one back: `mani info <name>` has `ref` and `link`; `mani ls --json`
+              has each tile's `ref`. Write the link into a note (`[name](manifold:…)`)
+              and it shows as the block, a click away; print a reference in your reply and
+              the user ⌘-clicks it to go there.
+            - A reference to a block that's gone (deleted) or on a host that isn't connected
+              says so; don't guess its contents.
+
             ## What the user says, and what to run
+            - "this" with a `manifold:` reference in their message: `mani read <it>` (and
+              `mani info <it>` for where it is); "fix that note": read it, then `mani write` it.
             - "the code I highlighted", "this selection": `mani read @selection`;
               where it is (file, lines): `mani info @selection`.
             - "the diff on my right": `mani read @right:diff` (or `@right` if it's the only one).
@@ -348,7 +373,8 @@ public enum Mani {
 
     /// How blocks are named, for the overview (and agents).
     public static let namesHelp = """
-        Blocks are named by id (as ls prints it), path, title, or position:
+        Blocks are named by reference (manifold:host/id), id (as ls prints it), path,
+        title, or position:
           @here        the terminal mani runs in       @focused   the focused tile
           @selection   the last text selected outside @here (read it; info says where)
           @last        the block mani last made         @space     the space shown

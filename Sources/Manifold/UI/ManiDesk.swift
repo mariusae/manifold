@@ -186,6 +186,8 @@ final class ManiDesk {
         var tile: PlacementID?
         var workspace: BlockID?
         var selection: ManiSelected?
+        /// A place in it, as a reference names one (`line=12`, `page=3`, `command=7`).
+        var fragment: String?
     }
 
     /// The words a tile's kind answers to (`@:pdf`, `@right:diff`).
@@ -279,8 +281,17 @@ final class ManiDesk {
         return Target(block: block)
     }
 
-    /// An id, a path, a title.
+    /// A reference, an id, a path, a title.
     private func other(_ s: String, _ scope: Scope) throws -> Target {
+        // A reference — `manifold:host/id`, a place in it after `#` — as a
+        // link, a ⇧-drop or Copy Link gives one; or a Markdown link to one,
+        // as notes hold them.
+        if let (id, fragment) = BlockID.reference(s) {
+            guard hosts.block(id) != nil else { throw Failure(message: "\(s): no such block here (deleted, or on a host that isn't connected)") }
+            var t = located(id, scope)
+            t.fragment = fragment
+            return t
+        }
         // A tile's id.
         for ws in [scope.workspace].compactMap({ $0 }) + wc.allWorkspaces {
             if let p = hosts.arrangement(ws)?.placement(s) { return Target(block: p.block, tile: p.id, workspace: ws) }
@@ -342,7 +353,7 @@ final class ManiDesk {
     /// A tile as `ls --json` has it.
     private func tile(_ p: Placement, layout: ManiLayout, scope: Scope, deep: Bool = true) -> [String: Any] {
         let b = hosts.block(p.block)
-        var out: [String: Any] = ["tile": p.id, "block": p.block.description, "kind": kindName(b, lens: p.lens),
+        var out: [String: Any] = ["tile": p.id, "block": p.block.description, "ref": "manifold:" + p.block.description, "kind": kindName(b, lens: p.lens),
                                   "lens": p.lens.rawValue, "title": b?.displayTitle ?? ""]
         if let path = b?.path { out["path"] = path }
         if let cwd = b?.terminal?.cwd ?? b?.home { out["cwd"] = cwd }
@@ -443,6 +454,11 @@ final class ManiDesk {
             out["shown"] = false
         }
         if out["summary"] == nil, let summary = summaryJSON(b.id, view: nil) { out["summary"] = summary }
+        // How to name it to the user and to mani: its reference (a place in
+        // it, if one was named), and as a link a note shows.
+        let ref = "manifold:" + b.id.description + (t.fragment.map { "#" + $0 } ?? "")
+        out["ref"] = ref
+        out["link"] = "[\(b.displayTitle.replacingOccurrences(of: "]", with: "\\]"))](\(ref))"
         if let s = t.selection {
             var sel: [String: Any] = ["text": s.text]
             if let l = s.lines { sel["lines"] = [l.lowerBound, l.upperBound] }
@@ -507,7 +523,14 @@ final class ManiDesk {
                 String(repeating: "  ", count: outline.items[i].level) + outline.items[i].title + (outline.placeFor?(i).map { "\t" + $0 } ?? "")
             }.joined(separator: "\n")
         }
-        let pages = try r.flags["pages"].map { try range($0, what: "pages") }
+        // A reference to a place: that command's output; that page.
+        if r.flags["command"] == nil, let f = t.fragment, f.hasPrefix("command="), let id = Int(f.dropFirst(8)),
+           let c = b.terminal?.commands?.first(where: { $0.id == id }) {
+            return lines(try await output(of: c, in: b.id, view: view), r.flags["lines"])
+        }
+        var pageFlag = r.flags["pages"]
+        if pageFlag == nil, let f = t.fragment, f.hasPrefix("page=") { pageFlag = String(f.dropFirst(5)) }
+        let pages = try pageFlag.map { try range($0, what: "pages") }
         if b.kind == .terminal || b.kind == .agent, let n = r.flags["command"] {
             guard let k = Int(n), let commands = b.terminal?.commands, !commands.isEmpty else { throw Failure(message: "no command \(n) in \(b.displayTitle)") }
             let i = k < 0 ? commands.count + k : k - 1
@@ -877,6 +900,8 @@ final class ManiDesk {
             try place(b.id, lens: Lens.default(for: b.kind, path: b.path), r, scope, context: "mani show")
         }
         shown(t.block, line: r.flags["line"], scope: scope)
+        // A reference's place in it: gone to.
+        if r.flags["line"] == nil, let f = t.fragment { wc.goTo(f, in: t.block) }
         return ""
     }
 

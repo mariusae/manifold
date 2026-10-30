@@ -1873,6 +1873,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Debugging: a block ⇧-dragged into the focused editor, dropped at its caret.
     /// Debugging: a block ⇧-dragged onto the focused tile — an editor, a
     /// terminal (or agent), a notebook (outside its cells).
+    /// Debugging: as `debugDrop`, ⌃ held and `form` chosen from the menu;
+    /// what the menu offered.
+    func debugDrop(_ block: BlockID, as form: BlockDrop.Form) -> String {
+        BlockDrop.debugChoice = form
+        defer { BlockDrop.debugChoice = nil }
+        let r = debugDrop(block)
+        return r + " · offered " + BlockDrop.lastOffered.map { "\($0)" }.joined(separator: ", ")
+    }
+
     func debugDrop(_ block: BlockID) -> String {
         guard let b = hosts.block(block) else { return "no such block" }
         // As a ⇧-drag writes it (a block with no path, its link alone).
@@ -4571,6 +4580,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if mods.contains(.option) { item.setString("1", forType: .manifoldLinkOnly) }
             return item
         }
+        Drags.contents = { [weak self] id, done in
+            guard let self else { return done(nil) }
+            self.fetchContents(id, done)
+        }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
             if mods.contains(.shift) { return self.pathDragItem(for: id, linkOnly: mods.contains(.option)) }
@@ -6008,10 +6021,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             follow(b, from: placement, d, context: "followed")
             if d == .system { return }
             linkFollowed(from: placement, to: b)
-            if let fragment, fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
-            // A place in it: a line (a heading's), a PDF's page.
-            if let fragment, fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
-            if let fragment, fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
+            if let fragment { goTo(fragment, in: b) }
             return
         }
         // An address: a scheme and "//" (or one that goes without, as
@@ -7340,6 +7350,14 @@ extension MainWindowController: GridDelegate {
 
     /// A `manifold:` address opened from another app (or the command
     /// line): the block gone to, as a link in a note goes.
+    /// A place in a block, as a link names it: a command (`command=7`), a
+    /// line (`line=12`, a heading's), a PDF's page (`page=3`).
+    func goTo(_ fragment: String, in b: BlockID) {
+        if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
+        if fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
+        if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
+    }
+
     func openLink(_ address: String) {
         guard BlockID.link(address) != nil else { return NSSound.beep() }
         open(address, from: arrangement?.focused)
@@ -7504,20 +7522,22 @@ extension MainWindowController: EditorViewDelegate {
     /// it's a file (or a folder, or a page's address) the agent can read;
     /// else what it holds, which only Manifold has to give.
     func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)? {
-        guard let b = hosts.block(block) else {
-            // Not here yet: a command ⇧-dragged from an outline, its block
-            // asked for as the drag began. Given once it comes (a few
-            // seconds at most), if it's one whose contents go.
-            return { [weak self] done in
-                Task { @MainActor in
-                    for _ in 0..<40 where self?.hosts.block(block) == nil { try? await Task.sleep(for: .milliseconds(100)) }
-                    guard let self, let b = self.hosts.block(block), Self.givesContents(b) else { return done(nil) }
-                    self.give(b, done)
-                }
-            }
+        // Not here yet (a command ⇧-dragged from an outline, its block asked
+        // for as the drag began): given once it comes, if it's one whose
+        // contents go.
+        if let b = hosts.block(block), !Self.givesContents(b) { return nil }
+        return { [weak self] done in self?.fetchContents(block, only: Self.givesContents, done) ?? done(nil) }
+    }
+
+    /// What a block holds, as text (a ⇧-drop's Contents, an agent's): a
+    /// block still being made waited for (a few seconds at most); nil if
+    /// it doesn't come, isn't one `only` takes, or can't be read.
+    func fetchContents(_ block: BlockID, only: @escaping (Block) -> Bool = { _ in true }, _ done: @escaping (String?) -> Void) {
+        Task { @MainActor [weak self] in
+            for _ in 0..<40 where self?.hosts.block(block) == nil { try? await Task.sleep(for: .milliseconds(100)) }
+            guard let self, let b = self.hosts.block(block), only(b) else { return done(nil) }
+            self.give(b, done)
         }
-        guard Self.givesContents(b) else { return nil }
-        return { [weak self] done in self?.give(b, done) ?? done(nil) }
     }
 
     /// Whether an agent is given a block's contents rather than its path:

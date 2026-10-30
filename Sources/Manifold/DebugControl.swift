@@ -398,7 +398,14 @@ enum DebugControl {
             if w.first == "from", w.count == 3, let t = BlockID(string: w[1]), let i = Int(w[2]) {
                 return wc?.debugDropCommand(from: t, i) ?? "no window"
             }
-            guard let id = BlockID(string: arg) else { return "usage: drop <host/ulid>" }
+            // "drop <block> link|reference|path|contents": ⌃ held, that chosen from the menu.
+            let parts = arg.split(separator: " ").map(String.init)
+            guard let first = parts.first, let id = BlockID(string: first) else { return "usage: drop <host/ulid> [link|reference|path|contents]" }
+            if parts.count > 1 {
+                let forms: [String: BlockDrop.Form] = ["link": .link, "reference": .reference, "path": .path, "contents": .contents]
+                guard let form = forms[parts[1]] else { return "no form \(parts[1])" }
+                return wc?.debugDrop(id, as: form) ?? "no window"
+            }
             return wc?.debugDrop(id) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"

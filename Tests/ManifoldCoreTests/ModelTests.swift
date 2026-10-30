@@ -1709,6 +1709,9 @@ private final class Seen: @unchecked Sendable {
     // Not paths: a word and a number, prose with a slash; an address is one.
     #expect(TerminalLinks.links(in: "error:12: expected ';' and/or more").isEmpty)
     #expect(TerminalLinks.links(in: "see https://example.com/a, then (src/main.swift:9).").map(\.target) == ["https://example.com/a", "src/main.swift:9"])
+    // A block's reference, as an agent prints one: alone, with a place, in a Markdown link.
+    let refs = TerminalLinks.links(in: "read manifold:h4z3gpme3et/01M64ZM5YBM5N0TANK7EW39X2Z#line=40, then [Plans](manifold:h4z3gpme3et/01M650G48A2HTSSD1TZMD7C5RR).")
+    #expect(refs.map(\.target) == ["manifold:h4z3gpme3et/01M64ZM5YBM5N0TANK7EW39X2Z#line=40", "manifold:h4z3gpme3et/01M650G48A2HTSSD1TZMD7C5RR"])
     // A bare name: only when it's there.
     #expect(TerminalLinks.links(in: "Package.swift  Sources").isEmpty)
     #expect(TerminalLinks.links(in: "Package.swift  Sources", exists: { $0 == "Package.swift" }).map(\.target) == ["Package.swift"])
@@ -1885,4 +1888,14 @@ private final class Seen: @unchecked Sendable {
     #expect(node.graph.edges(from: made[0], kind: .link(.pinned)).map(\.to) == [keptAlone])
     // Settled: nothing more to do.
     #expect(node.settlingRoots(on: host, at: stamp(20)) { BlockID(host: host) }.isEmpty)
+}
+
+@Test func referencesNameBlocksAndPlaces() {
+    let id = "h4z3gpme3et/01M64ZM5YBM5N0TANK7EW39X2Z"
+    #expect(BlockID.reference("manifold:\(id)")?.block.description == id)
+    #expect(BlockID.reference("manifold:\(id)#line=40")?.fragment == "line=40")
+    #expect(BlockID.reference("[A note](manifold:\(id)#page=3)")?.fragment == "page=3")
+    #expect(BlockID.reference("[A note](manifold:\(id))")?.block.description == id)
+    #expect(BlockID.reference(id) == nil)
+    #expect(BlockID.reference("README.md") == nil)
 }

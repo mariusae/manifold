@@ -58,8 +58,12 @@ public enum TerminalLinks {
     }
 
     static func isAddress(_ s: String) -> Bool {
-        s.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) != nil
+        s.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) != nil || s.hasPrefix("manifold:")
     }
+
+    /// A block's reference (`manifold:host/id`, a place after `#`), as an
+    /// agent prints one: an address, opening the block.
+    static let reference = "manifold:[A-Za-z0-9]+/[0-9A-Za-z]+(#[A-Za-z0-9=._-]+)?"
 
     private static let opening = Set("([{<\"'`".unicodeScalars)
     private static let closing = Set(")]}>\"'`,;.".unicodeScalars)
@@ -105,6 +109,12 @@ public enum TerminalLinks {
             var w = word[r]
             while w.hasSuffix(":") { w.removeLast() }
             return Link(range: a..<(a + w.unicodeScalars.count), target: String(w))
+        }
+        // A block's reference, alone or in a Markdown link (`[name](manifold:…)`).
+        if let r = word.range(of: reference, options: .regularExpression),
+           r.lowerBound == word.startIndex || word[..<r.lowerBound].hasSuffix("(") {
+            let from = a + word[..<r.lowerBound].unicodeScalars.count
+            return Link(range: from..<(from + word[r].unicodeScalars.count), target: String(word[r]))
         }
         // A path, as far as it goes as one.
         var p = a

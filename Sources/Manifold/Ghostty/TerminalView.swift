@@ -1742,17 +1742,44 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func accepts(_ pb: NSPasteboard) -> (taken: Bool, gives: Bool) {
         let gives = isAgent && pb.string(forType: .manifoldLinkOnly) == nil
             && TextView.blockID(inLink: pb.string(forType: .manifoldBlockLink) ?? "").flatMap { delegate?.terminal(self, contentsFor: $0) } != nil
-        return (gives || Self.dropText(pb) != nil, gives)
+        return (gives || BlockDrop(pb) != nil || Self.dropText(pb) != nil, gives)
+    }
+
+    /// What a ⇧-dragged block can be put in as here: a shell types its
+    /// path, its reference or what it holds; an agent takes its link too.
+    private var blockForms: [BlockDrop.Form] { isAgent ? [.contents, .path, .reference, .link] : [.path, .reference, .contents] }
+
+    /// What a plain ⇧-drop puts in: an agent, what a block with no file
+    /// holds (`gives`); else its path, or its reference if it has none.
+    private func blockForm(_ block: BlockDrop, gives: Bool) -> BlockDrop.Form {
+        gives ? .contents : block.path != nil ? .path : .reference
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let pb = sender.draggingPasteboard
         let (taken, gives) = accepts(pb)
         guard taken else { return [] }
-        if DropHint.isBlockLink(pb) {
-            DropHint.say(isAgent ? (gives ? "Give the agent its contents" : "Give the agent its path") : "Type its path", at: sender.draggingLocation, in: window)
+        if let block = BlockDrop(pb) {
+            let plain: String = switch blockForm(block, gives: gives) {
+            case .contents: "Give the agent its contents"
+            case .path: isAgent ? "Give the agent its path" : "Type its path"
+            default: isAgent ? "Give the agent its reference" : "Type its reference"
+            }
+            DropHint.say(BlockDrop.hint(plain, choices: block.forms(blockForms).count), at: sender.draggingLocation, in: window)
         }
         return .copy
+    }
+
+    /// A ⇧-dragged block put in as `form`: typed (a path or a reference
+    /// quoted for the shell), or what it holds given as one paste; and the
+    /// terminal linked to it.
+    private func put(_ block: BlockDrop, as form: BlockDrop.Form) {
+        block.text(form) { [weak self] text in
+            guard let self, let surface = self.surface, let text, !text.isEmpty else { return NSSound.beep() }
+            let typed = form == .path || form == .reference ? Self.shellQuoted(text) : text
+            typed.withCString { ghostty_surface_text(surface, $0, UInt(typed.utf8.count)) }
+            self.delegate?.terminal(self, linkedFrom: block.block)
+        }
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { DropHint.hush() }
@@ -1781,17 +1808,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             }
             return true
         }
-        // An agent given a block that isn't a file: what it holds, pasted
-        // (as one paste, so its lines don't send the prompt).
-        if isAgent, pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldLinkOnly) == nil,
-           let link = pb.string(forType: .manifoldBlockLink),
-           let block = TextView.blockID(inLink: link), let fetch = delegate?.terminal(self, contentsFor: block) {
+        // A ⇧-dragged block: as suits here (an agent given what a block
+        // that isn't a file holds, as one paste, so its lines don't send
+        // the prompt), or (⌃) as chosen.
+        if let block = BlockDrop(pb) {
             window?.makeFirstResponder(self)
-            fetch { [weak self] text in
-                guard let self, let surface = self.surface, let text, !text.isEmpty else { return }
-                text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
-                // Linked once it's given (a block still being made, once here).
-                self.delegate?.terminal(self, linkedFrom: block)
+            let forms = block.forms(blockForms)
+            if BlockDrop.choosing, forms.count > 1, let window {
+                let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+                block.choose(forms, at: p, in: self) { [weak self] form in self?.put(block, as: form) }
+            } else {
+                put(block, as: blockForm(block, gives: accepts(pb).gives))
             }
             return true
         }

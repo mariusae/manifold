@@ -299,6 +299,9 @@ typealias TextRange = ManifoldCore.TextRange
 enum Drags {
     static var path: ((_ path: String, _ isDirectory: Bool, _ host: HostID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem)?
     static var block: ((_ block: BlockID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
+    /// What a block holds, as text (a ⇧-drop's Contents): fetched, a block
+    /// still being made waited for; nil if it can't be.
+    static var contents: ((_ block: BlockID, _ done: @escaping (String?) -> Void) -> Void)?
     /// A place in a block ⇧-dragged (an outline's item): what the block
     /// carries ⇧-dragged, its link to the place ("line=12"; nil, the block).
     static var place: ((_ block: BlockID, _ fragment: String?, _ title: String, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?

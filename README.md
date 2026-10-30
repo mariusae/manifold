@@ -147,7 +147,13 @@ parts from the Mac's conventions on purpose.
   it, or outside the cells a cell is made for it, the caret before it
   for the command; on an editor, its path where the pointer is (in a
   note, a link to it); on another app, as a file or text. While you
-  drag, a word beside the pointer says what dropping does there. It
+  drag, a word beside the pointer says what dropping does there. Hold
+  **⌃** as you drop for a menu of what else it can be there: its
+  **link** (`[name](manifold:…)`, as a note shows it), its **reference**
+  (`manifold:host/id`, what an agent and `mani` take as its name — drop a
+  block on an agent as its reference and the agent can read it, change
+  it and point back to it), its **path**, or its **contents** (what it
+  holds, as text) — a path onto a note, say, where a link is the usual. It
   carries the block too, linking it to where it lands (below);
   ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
   note) is linked to it, nothing typed or put in. **⇧⌘C (Edit ▸ Copy
@@ -1428,7 +1434,14 @@ is migrated into logs on first run.
     its last command's output), a page's or PDF's text (`--pages`), a
     diff, a listing, search results, a notebook — with `--lines a-b`.
     `mani context` says it all at once: the layout, the selection, the
-    terminals' last commands and how they ended, unsaved files.
+    terminals' last commands and how they ended, unsaved files. Any
+    command takes a block's **reference** as its name — `manifold:host/id`,
+    or a note's `[name](manifold:…)` link — and a place in it after `#`:
+    `mani read manifold:…#command=7` reads that command's output,
+    `mani show manifold:…#line=12` goes to the line; `mani info` and
+    `mani ls --json` give each block's `ref` and `link`, to hand back. A
+    reference printed in a terminal is ⌘-clicked as a link is. The skill
+    (`mani skill install`) teaches agents all of it.
   - **Doing.** `mani open` (files, folders, addresses), `mani new note |
     terminal | agent | web | search | git | smartlog` (a note's text from
     its input: `… | mani new note --preview` renders it; `--run` a

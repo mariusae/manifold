@@ -1776,9 +1776,11 @@ final class TextView: NSView, NSTextInputClient {
         if let grid = linkOnlyGrid(sender) { return grid.draggingUpdated(sender) }
         // A picture from Photos (promised, not yet a file): into a note.
         if isEditable, onImage != nil, Self.droppedText(sender.draggingPasteboard) == nil, !Promises.receivers(sender.draggingPasteboard).isEmpty { return .copy }
-        guard isEditable, Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
-        if DropHint.isBlockLink(sender.draggingPasteboard) {
-            DropHint.say(acceptsBlockLinks ? "Put a link to it here" : "Put its path here", at: sender.draggingLocation, in: window)
+        let block = BlockDrop(sender.draggingPasteboard)
+        guard isEditable, block != nil || Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
+        if let block {
+            let plain = blockForm(block) == .link ? "Put a link to it here" : blockForm(block) == .path ? "Put its path here" : "Put its reference here"
+            DropHint.say(BlockDrop.hint(plain, choices: block.forms(Self.blockForms).count), at: sender.draggingLocation, in: window)
         }
         let p = convert(sender.draggingLocation, from: nil)
         let at = offset(at: p)
@@ -1792,6 +1794,25 @@ final class TextView: NSView, NSTextInputClient {
     /// Whether a ⇧-dragged block lands as a link to it (a note, a
     /// Markdown text) rather than as its path.
     var acceptsBlockLinks = false
+
+    /// What a ⇧-dragged block can be put in as here (⌃ held: a menu of them).
+    static let blockForms: [BlockDrop.Form] = [.link, .reference, .path, .contents]
+
+    /// What a plain ⇧-drop puts in: a link in a note or Markdown; else its
+    /// path, or its reference if it has none.
+    private func blockForm(_ block: BlockDrop) -> BlockDrop.Form {
+        acceptsBlockLinks ? .link : block.path != nil ? .path : .reference
+    }
+
+    /// A ⇧-dragged block put in where the caret is, as `form`; a link or a
+    /// reference noted as a mention.
+    private func put(_ block: BlockDrop, as form: BlockDrop.Form) {
+        block.text(form) { [weak self] text in
+            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            self.insert(text)
+            if form == .link || form == .reference { self.delegate?.textView(self, mentioned: block.block) }
+        }
+    }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         DropHint.hush()
@@ -1815,6 +1836,18 @@ final class TextView: NSView, NSTextInputClient {
             window?.makeFirstResponder(self)
             setSelections([Selection(at: offset(at: p))], scroll: false)
             images.forEach(onImage)
+            return true
+        }
+        // A ⇧-dragged block: as suits here, or (⌃) as chosen.
+        if isEditable, let block = BlockDrop(pb) {
+            window?.makeFirstResponder(self)
+            setSelections([Selection(at: offset(at: p))], scroll: false)
+            let forms = block.forms(Self.blockForms)
+            if BlockDrop.choosing, forms.count > 1 {
+                block.choose(forms, at: p, in: self) { [weak self] form in self?.put(block, as: form) }
+            } else {
+                put(block, as: blockForm(block))
+            }
             return true
         }
         guard isEditable, let text = Self.droppedText(pb, links: acceptsBlockLinks) else { return false }

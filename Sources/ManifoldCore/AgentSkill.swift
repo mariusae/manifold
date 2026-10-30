@@ -356,7 +356,7 @@ public enum AgentSkill {
         """
         ---
         name: manifold
-        description: Use when running in a Manifold terminal (MANIFOLD_BLOCK is set) and the user refers to what's on their screen — "the code I highlighted", "the diff on my right", "this PDF", "the page I have open", "the tests in the other terminal" — or asks to show, render or open something beside you, run something in another terminal, or make a small UI (a form, a choice, progress). The mani command reads and drives Manifold.
+        description: Use when running in a Manifold terminal (MANIFOLD_BLOCK is set) and the user refers to what's on their screen — "the code I highlighted", "the diff on my right", "this PDF", "the page I have open", "the tests in the other terminal" — or their message holds a Manifold reference (manifold:host/id, or a [name](manifold:…) link) to read, change or point back to, or asks to show, render or open something beside you, run something in another terminal, or make a small UI (a form, a choice, progress). The mani command reads and drives Manifold.
         ---
 
         \(Mani.guide)
@@ -374,7 +374,9 @@ public enum AgentSkill {
         ## Manifold
 
         In a Manifold terminal (MANIFOLD_BLOCK is set), the `mani` command reads and drives
-        what's on the user's screen: `mani read @selection` is the text they highlighted,
+        what's on the user's screen, and the blocks their `manifold:host/id` references name
+        (`mani read manifold:…`, `mani write manifold:… < text`, `mani info manifold:…`):
+        `mani read @selection` is the text they highlighted,
         `mani read @right:diff` the diff to the right of this terminal, `mani context` all of
         it at once; `… | mani new note --preview` shows a result beside you; `mani run <terminal>
         --wait <command>` runs a command in another terminal; `mani ui new` makes a small UI.

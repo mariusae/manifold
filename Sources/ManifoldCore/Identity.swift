@@ -41,6 +41,18 @@ public struct BlockID: Hashable, Codable, Sendable, CustomStringConvertible, Com
 
     /// A `manifold:` link's address split: the block, and what follows a
     /// `#` (a place in it — `command=7`, a terminal's command), if any.
+    /// The block (and place) a reference names: `manifold:host/id#place`,
+    /// or a Markdown link to one, `[title](manifold:…)`, as notes hold them;
+    /// nil for anything else.
+    public static func reference(_ s: String) -> (block: BlockID, fragment: String?)? {
+        var r = s.trimmingCharacters(in: .whitespaces)
+        if r.hasPrefix("["), r.hasSuffix(")"), let open = r.range(of: "](manifold:") {
+            r = "manifold:" + r[open.upperBound..<r.index(before: r.endIndex)]
+        }
+        guard r.hasPrefix("manifold:") else { return nil }
+        return link(r)
+    }
+
     public static func link(_ address: String) -> (block: BlockID, fragment: String?)? {
         var s = address.hasPrefix("manifold:") ? String(address.dropFirst(9)) : address
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

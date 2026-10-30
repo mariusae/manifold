@@ -361,12 +361,20 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     }
 
     private func dropTakes(_ pb: NSPasteboard) -> Bool {
-        pb.string(forType: .manifoldPlacement) == nil && TerminalView.dropText(pb) != nil
+        pb.string(forType: .manifoldPlacement) == nil && (BlockDrop(pb) != nil || TerminalView.dropText(pb) != nil)
     }
+
+    /// What a ⇧-dragged block can be put in a new cell as.
+    private static let blockForms: [BlockDrop.Form] = [.path, .reference, .contents]
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard dropTakes(sender.draggingPasteboard) else { return [] }
-        DropHint.say("A new cell with its path", at: sender.draggingLocation, in: window)
+        if let block = BlockDrop(sender.draggingPasteboard) {
+            let plain = block.path != nil ? "A new cell with its path" : "A new cell with its reference"
+            DropHint.say(BlockDrop.hint(plain, choices: block.forms(Self.blockForms).count), at: sender.draggingLocation, in: window)
+        } else {
+            DropHint.say("A new cell with its path", at: sender.draggingLocation, in: window)
+        }
         return .copy
     }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
@@ -379,7 +387,30 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     /// What's dropped outside the cells: a new cell with it.
     func take(_ pb: NSPasteboard) -> Bool {
+        // A ⇧-dragged block: its path (or reference), or (⌃) as chosen.
+        if let block = BlockDrop(pb) {
+            let forms = block.forms(Self.blockForms)
+            let put = { [weak self] (form: BlockDrop.Form) in
+                block.text(form) { text in
+                    guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+                    self.newCell(form == .contents ? text : TerminalView.shellQuoted(text), from: block.block)
+                }
+            }
+            if BlockDrop.choosing, forms.count > 1, let window {
+                block.choose(forms, at: convert(window.mouseLocationOutsideOfEventStream, from: nil), in: self, put)
+            } else {
+                put(block.path != nil ? .path : .reference)
+            }
+            return true
+        }
         guard dropTakes(pb), let text = TerminalView.dropText(pb) else { return false }
+        newCell(text, from: pb.string(forType: .manifoldBlockLink).flatMap(TextView.blockID(inLink:)))
+        return true
+    }
+
+    /// A new cell with `text` (the last one, if it's empty), linked from
+    /// the block it came from.
+    private func newCell(_ text: String, from block: BlockID?) {
         if let last = order.last, let v = cells[last], v.editor.isEditable,
            v.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             // The last cell's empty (a new notebook's): it, not another.
@@ -389,10 +420,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         } else {
             insert(at: order.count, source: " " + text)
         }
-        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
-            delegate?.notebook(self, linkedFrom: block)
-        }
-        return true
+        if let block { delegate?.notebook(self, linkedFrom: block) }
     }
 
     func addCell() {
