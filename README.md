@@ -502,7 +502,10 @@ around it, and comes back with its history.
   outline, set in by level — a Markdown tile's headings, and whatever else has one
   (§7.5): a terminal's commands (how each ended beside it), an agent's
   turns, a source file's symbols from its language server, a PDF's
-  contents, a diff's files; type words to narrow them, ↩ to focus the
+  contents, a diff's files; type words to narrow them — ranked, then, by
+  how well each says them: one named exactly first, then one that begins
+  with them, one with a word that does, one that has them anywhere, one
+  found by its tile's name alone; the shorter first — ↩ to focus the
   tile or go to the place in it, as a click in its own outline goes. A terminal's row
   says where it is, what runs in it and what that reports, so "claude"
   finds the terminal running it. ⌥↑ and ⌥↓ move a page up or down
@@ -558,7 +561,8 @@ around it, and comes back with its history.
   as Prism's notes are, and edits it as one: Return a new row, Tab and
   ⇧Tab in and out with its children, ⌃⌘↑ ⌃⌘↓ to move it, ⌘↩ a checkbox
   (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start
-  its kind, a bullet clicked to fold what's under it (← and → fold and
+  its kind, ```` ``` ```` (a language after it, or not) then Return a code
+  block, the caret in it (Return past its closing fence, a row after it), a bullet clicked to fold what's under it (← and → fold and
   unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 or the tile's menu all of them), a
   bullet dragged to move a row with its children, in or out as it's
   dropped; Escape selects rows (↑ ↓, ⇧ to extend, Space checks them off,

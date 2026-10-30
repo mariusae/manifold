@@ -101,4 +101,16 @@ struct OutlineIndexTests {
         #expect(OutlineIndex<Int, Int>.intersect(b, a) == [5, 200, 5000])
         #expect(OutlineIndex<Int, Int>.intersect([], b).isEmpty)
     }
+
+    /// What's found is ranked by how well each row matches: the row named
+    /// exactly first, then its start, a word's start, anywhere.
+    @Test func rowsRankByHowWellTheyMatch() {
+        let rows = ["**Size thresholds** create states", "131 literal font calls in 13 sizes", "siz", "symbol(_:size:weight:)", "resize"]
+        let ranked = rows.sorted { OutlineIndex<String, String>.score($0, query: "siz") > OutlineIndex<String, String>.score($1, query: "siz") }
+        #expect(ranked.first == "siz")
+        #expect(OutlineIndex<String, String>.score("siz", query: "siz") > OutlineIndex<String, String>.score("Size thresholds", query: "siz"))
+        #expect(OutlineIndex<String, String>.score("Size thresholds", query: "siz") > OutlineIndex<String, String>.score("resize", query: "siz"))
+        #expect(OutlineIndex<String, String>.score("go to line", query: "go line") == 480)
+        #expect(OutlineIndex<String, String>.score("Theme.swift", query: "siz") == 0)
+    }
 }

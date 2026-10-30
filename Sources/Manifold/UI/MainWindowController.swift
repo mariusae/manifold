@@ -5779,8 +5779,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let index = syncOutlineIndex() else { return [] }
         let rows = index.rows(of: placement)
         // (Not by its title: the tile's own outline is found by its own words.)
-        let found = query.isEmpty ? Array(rows.indices) : index.find(query, in: [placement], titles: false).first?.items ?? []
+        var found = query.isEmpty ? Array(rows.indices) : index.find(query, in: [placement], titles: false).first?.items ?? []
         let words = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        // Asked, ranked as the space's are (the item named exactly first).
+        if words {
+            let score = Dictionary(found.filter { rows.indices.contains($0) }.map { ($0, OutlineIndex<PlacementID, Outline.Item>.score(rows[$0].title, query: query)) },
+                                   uniquingKeysWith: { a, _ in a })
+            found.sort { x, y in
+                let a = score[x] ?? 0, b = score[y] ?? 0
+                if a != b { return a > b }
+                let la = rows.indices.contains(x) ? rows[x].title.count : 0, lb = rows.indices.contains(y) ? rows[y].title.count : 0
+                return la != lb ? la < lb : x < y
+            }
+        }
         return found.compactMap { i -> FinderItem? in
             guard rows.indices.contains(i) else { return nil }
             let item = rows[i]
@@ -5924,13 +5935,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// tile's name) — a text's headings, a source file's symbols, a
     /// terminal's commands, an agent's turns, a PDF's contents, a diff's
     /// files — found in the index; and the tile itself, if its name, its
-    /// place, what runs in it or what that reports holds them.
+    /// place, what runs in it or what that reports holds them. With nothing
+    /// asked, the space's outline as it lies; asked, ranked by how well each
+    /// matches (`OutlineIndex.score`: the row named exactly first), the
+    /// shorter first, then as they lie.
     private func spaceOutlineRows(_ a: ArrangementState, query: String) -> [FinderItem] {
         guard let index = syncOutlineIndex() else { return [] }
         let order = a.columns.joined().map(\.id)
         var found: [PlacementID: [Int]] = [:]
         for hit in index.find(query, in: order) { found[hit.tile] = hit.items }
         let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        let ranking = !words.isEmpty
+        var scores: [Int] = []
         let running = runningPrograms()
         var items: [FinderItem] = []
         for (c, column) in a.columns.enumerated() {
@@ -5954,6 +5970,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if words.allSatisfy({ haystack.contains($0) }) {
                     items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle, detail: tileDetail,
                                             note: notes.joined(separator: " · "), run: { [weak self] in self?.arrive(atTile: id) }))
+                    // (Found by its place or what runs in it, not its name: below those named.)
+                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(b.displayTitle, query: query), 150)) }
                 }
                 let rows = index.rows(of: id)
                 let name = b.displayTitle
@@ -5961,9 +5979,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 items.reserveCapacity(items.count + hits.count)
                 for i in hits where rows.indices.contains(i) {
                     let item = rows[i]
+                    // (Found by its tile's name alone: below those that say it.)
+                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(item.title, query: query), 100)) }
                     items.append(FinderItem(symbol: item.code ? "chevron.forward" : "number", title: item.title,
                                             detail: item.detail.isEmpty ? name : name.isEmpty ? item.detail : name + " · " + item.detail,
-                                            note: item.running ? "running" : item.failed ? "failed" : "", level: item.level + 1,
+                                            note: item.running ? "running" : item.failed ? "failed" : "", level: ranking ? 0 : item.level + 1,
                                             run: { [weak self] in
                         guard let self else { return }
                         self.arrive(atTile: id)
@@ -5972,7 +5992,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
         }
-        return items
+        guard ranking, scores.count == items.count else { return items }
+        return items.indices.sorted { x, y in
+            if scores[x] != scores[y] { return scores[x] > scores[y] }
+            if items[x].title.count != items[y].title.count { return items[x].title.count < items[y].title.count }
+            return x < y
+        }.map { items[$0] }
     }
 
     /// ⌘↩: the focused text between being edited and viewed — Markdown

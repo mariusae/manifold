@@ -265,6 +265,33 @@ public final class OutlineIndex<Tile: Hashable, Row> {
         }
     }
 
+    /// How well a row's text matches a query, for ranking what `find`
+    /// found (higher first): the text exactly, its start, a word's start,
+    /// in order word by word, anywhere, every word somewhere; nothing when
+    /// it was found by its tile's title alone.
+    public static func score(_ text: String, query: String) -> Int {
+        let t = text.lowercased().trimmingCharacters(in: .whitespaces)
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return 0 }
+        if t == q { return 600 }
+        if t.hasPrefix(q) { return 520 }
+        let words = t.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        if words.contains(where: { $0.hasPrefix(q) }) { return 500 }
+        let asked = q.split(whereSeparator: \.isWhitespace).map(String.init)
+        if asked.count > 1 {
+            var i = 0
+            let ordered = asked.allSatisfy { w in
+                guard i < words.count, let j = words[i...].firstIndex(where: { $0.hasPrefix(w) }) else { return false }
+                i = j + 1
+                return true
+            }
+            if ordered { return 480 }
+        }
+        if t.contains(q) { return 400 }
+        if asked.allSatisfy({ t.contains($0) }) { return 300 }
+        return 0
+    }
+
     // MARK: Parts
 
     private var scratch: [UInt32] = []
