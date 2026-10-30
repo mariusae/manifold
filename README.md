@@ -385,7 +385,7 @@ parts from the Mac's conventions on purpose.
 - **⇧⌘W deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu), with nothing asked: every tile of it taken off at
   once, in every space, and a toast — "Deleted “…”" — with Undo while a
-  bar along its foot counts down (eight seconds, twelve when it has
+  bar along its foot counts down (four seconds, six when it has
   something to lose: a note's words, unsaved edits, a job running, which
   the toast names). When it runs out, every link to and from it is
   broken, on every host, and the block itself gone, its history with it;
