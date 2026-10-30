@@ -281,10 +281,11 @@ final class Hosts {
     /// Everything the roots reach over strong edges, across hosts: a
     /// block's edges are in its own host's graph (its placements in its
     /// workspace's host's, its links by hand in its own links shard).
-    func reachable() -> Set<BlockID> {
-        local.node.graph.reachable(from: roots()) { [weak self] b in
-            self?.client(of: b)?.node.graph.strongEdges(from: b) ?? []
-        }
+    func reachable(without gone: BlockID? = nil) -> Set<BlockID> {
+        // (`gone`: as if it weren't there — what deleting it would let go.)
+        local.node.graph.reachable(from: roots().filter { $0 != gone }) { [weak self] b in
+            b == gone ? [] : self?.client(of: b)?.node.graph.strongEdges(from: b).filter { $0.to != gone } ?? []
+        }.subtracting(gone.map { [$0] } ?? [])
     }
 
     /// Whether a block exists and nothing reaches it: closed, and to be

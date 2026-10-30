@@ -965,6 +965,10 @@ enum DebugControl {
             // "toast say <text>": said, with an OK; "toast nudge": shaken.
             if arg.hasPrefix("say ") { wc?.notice(String(arg.dropFirst(4)), action: "OK") {}; return "said" }
             if arg == "nudge" { wc?.debugToastNudge(); return "nudged" }
+            // "toast finish": its time up now (what waits on it done).
+            if arg == "finish" { wc?.debugToastFinish(); return "finished" }
+            // "toast /path.png": the toast as shown now, its countdown too.
+            if arg.hasPrefix("/") { return wc?.debugToastPicture(arg) ?? "none" }
             return wc?.debugToast ?? "none"
         case "fencing":
             // Each host: watching or not, who took over, what's fenced.

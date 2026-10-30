@@ -140,6 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // A deletion waiting out its undo: done.
+        windowController?.finishPending()
         hosts.flushState()
         CrashGuard.launchedFine()
     }

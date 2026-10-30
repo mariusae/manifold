@@ -365,8 +365,9 @@ parts from the Mac's conventions on purpose.
   not — and what only it kept (its tiles' blocks, its pins) with it.
   **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
-  when any of that has unsaved edits or a job running, a toast at the
-  foot of the window names each, with Restore.
+  when any of that has unsaved edits, a note's words or a job running, a
+  toast at the foot of the window names each, with Undo while a bar along
+  its foot runs down (held while the pointer is on it); ⇧⌘T after.
 - **The Inspector** (View ▸ Inspector, **⇧⌘I**, again to go back) shows
   the focused block's properties in the sidebar, and follows the focus,
   as Star's property sheets did for whatever was selected: what it is and
@@ -382,13 +383,16 @@ parts from the Mac's conventions on purpose.
   when last); and what can be done with it (Copy Contents, Copy Link,
   Copy Path, Reveal in Finder, the Neighborhood Map, Pin in This Space).
 - **⇧⌘W deletes** the focused tile's block (Tile ▸ Delete Block, or
-  the bar's menu): every tile of it taken off, in every space, every
-  link to and from it broken, on every host, and the block itself gone
-  at once, its history with it. What only it reached isn't deleted with
-  it — unreached now, it's in Recently Closed, collected after the half
-  hour unless something reaches it again, and a toast says how many.
-  When the block has something to lose — a note's words, which are kept
-  nowhere else, unsaved edits, a job running — it asks first.
+  the bar's menu), with nothing asked: every tile of it taken off at
+  once, in every space, and a toast — "Deleted “…”" — with Undo while a
+  bar along its foot counts down (eight seconds, twelve when it has
+  something to lose: a note's words, unsaved edits, a job running, which
+  the toast names). When it runs out, every link to and from it is
+  broken, on every host, and the block itself gone, its history with it;
+  Undo, or ⇧⌘T, or the block put back anywhere meanwhile, and it's kept.
+  What only it reached isn't deleted with it — it goes to Recently
+  Closed, collected after the half hour unless something reaches it
+  again, and the toast says how many.
 
 ## Finding and following
 

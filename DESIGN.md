@@ -38,7 +38,8 @@ links to them, and arranged in spaces.
   touched.
 - **Losing something is said, never silent.** Closing the last reference
   to a block with unsaved edits or a running job goes through, and a
-  toast says what was closed, with Restore (⇧⌘T) beside it.
+  toast says what was closed, with Undo beside it while its countdown
+  runs (⇧⌘T after); deleting is undone the same way, not asked first.
 - **State on hosts, rendering on the client.** A host runs a server that
   owns its blocks' effects (files, processes) and their logs. The client
   mirrors what it shows and leads what you edit, so typing never waits on a
@@ -611,9 +612,11 @@ within the grace is simply kept, its mark forgotten.
 Closing is what makes things unreachable. ⌘W takes a tile off its
 space — when it was the last tile of a block nothing else reaches, a
 toast says so; ⌥⇧⌘W removes a space whole. **Deleting** (⇧⌘W) is the
-one way a block goes at once: its tiles taken off everywhere, its links
-both ways broken on every host (`unlink`), and the host discarding it
-(`discard`: its session ended, its log deleted, unregistered). What only
+one way a block goes for good: its tiles taken off everywhere at once,
+and when the toast's countdown runs out (Undo meanwhile puts them back;
+nothing is asked first) its links both ways broken on every host
+(`unlink`), and the host discarding it (`discard`: its session ended,
+its log deleted, unregistered) — unless it was placed again meanwhile. What only
 it reached is left to the collector like anything closed — in Recently
 Closed for the grace, not deleted with it. The app keeps what it closed
 on a stack, and **⇧⌘T** puts the last thing back where it was — a tile
@@ -628,10 +631,13 @@ Collection is never refused and never silent. Closing takes with it
 everything the closed block alone reached — what it placed, what it
 linked by hand, and onward — so the app compares what was reachable
 before and after, and when something on its way out would lose
-something — a text with unsaved edits, a terminal with a job running,
-which collection will end — a toast at the foot of the window names
-each of them and offers Restore, which reopens what was closed and so
-reaches them all again.
+something — a text with unsaved edits, a note's words, a terminal with
+a job running, which collection will end — a toast at the foot of the
+window names each of them and offers Undo, which reopens what was closed
+and so reaches them all again. A toast that can be undone counts down:
+a bar along its foot runs out over its time, held while the pointer is
+on it; what waits on it (a deletion) is done when it runs out, when the
+toast is put away, or when another takes its place.
 
 **Holds, across hosts.** A host sees only its own shards, so a reference
 from another host — a space there placing a block here, a link by
@@ -1500,7 +1506,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   block stays without a tile.
 - **Closing can lose a block.** ⌘W on the last tile showing a block lets
   it go after half an hour, where macOS's closing never deletes. It's
-  said, not silent: a toast with Restore, ⇧⌘T, Recently Closed, and
+  said, not silent: a toast with Undo, ⇧⌘T, Recently Closed, and
   Open Quickly's *recent* rows.
 - **Size is presentation, not state.** A tile shrinks along one ladder —
   content, summary card, bar, stashed — by the room it has; there is no

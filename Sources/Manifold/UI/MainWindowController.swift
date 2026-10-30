@@ -873,8 +873,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// After tiles were taken off: whatever was reached before and isn't
     /// now — the blocks closed, and everything only they reached through
     /// what they placed and linked — is on its way to collection. When
-    /// that would lose something — a text edited and unsaved, a terminal
-    /// with a job running — a toast names each, with Restore.
+    /// that would lose something — a text edited and unsaved, a note's
+    /// words (kept nowhere else), a terminal with a job running — a toast
+    /// names each, with Undo while its time runs down.
     func afterClosing(reachedBefore before: Set<BlockID>) {
         let after = hosts.reachable()
         var lost: [String] = []
@@ -882,6 +883,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let b = hosts.block(id) else { continue }
             if b.kind == .text, b.text?.isDirty == true {
                 lost.append("“\(b.displayTitle)” (unsaved edits)")
+            } else if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                // A note's words are kept nowhere else.
+                lost.append("“\(b.displayTitle)” (a note)")
             } else if (b.kind == .terminal || b.kind == .agent), b.terminal?.busy == true {
                 lost.append("“\(b.displayTitle)” (\(b.kind == .agent ? "agent running" : "job running"))")
             }
@@ -891,7 +895,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let minutes = hosts.local.desk.settings.collectAfterMinutes
         let when = minutes > 0 ? "; gone in \(minutes) min" : ""
         let text = lost.count == 1 ? "Closed \(lost[0])\(when)" : "Closed \(lost.count) blocks with something to lose: \(lost.joined(separator: ", "))\(when)"
-        toast.show(text, action: "Restore ⇧⌘T", for: 12) { [weak self] in self?.reopenClosed(nil) }
+        // Undo while its time runs (⇧⌘T after, until it's collected).
+        toast.show(text, action: "Undo", for: 12, countdown: true) { [weak self] in self?.reopenClosed(nil) }
         layoutViews()
     }
 
@@ -900,7 +905,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// workspace onto the desk. What has been collected meanwhile is
     /// skipped.
     @objc func reopenClosed(_ sender: Any?) {
-        toast.hide()
+        // Put away once it's back: a deletion waiting on the toast then
+        // finds the block placed again, and isn't done.
+        defer { toast.hide() }
         while let last = closedStack.popLast() {
             switch last {
             case let .workspace(id, index):
@@ -2170,43 +2177,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         } catch {}
     }
 
-    /// A block deleted (§4): every tile of it taken off, in every space;
-    /// every link to it and from it broken, on every host, pins too; the
-    /// block itself gone at once — its log, its session, its entry in the
-    /// registry. What only it reached isn't deleted with it: unreached now,
-    /// it's in Recently Closed, and collected after the grace unless
-    /// something reaches it again. Asked first when there's something to
-    /// lose: a note's words (a note has no file), unsaved edits, a job.
+    /// A block deleted (§4): every tile of it taken off at once, in every
+    /// space, and a toast with Undo counting down; when it's run out, every
+    /// link to it and from it broken, on every host, pins too, and the
+    /// block itself gone — its log, its session, its entry in the registry.
+    /// Undo (or ⇧⌘T, or the block placed again any other way meanwhile)
+    /// puts its tiles back and nothing more is done. Nothing is asked
+    /// first: what it would lose (a note's words, unsaved edits, a job) is
+    /// said in the toast, given longer. What only it reached isn't deleted
+    /// with it: unreached then, it's in Recently Closed, and collected after
+    /// the grace unless something reaches it again.
     func deleteBlock(_ block: BlockID) {
         guard let b = hosts.block(block), b.kind != .arrangement else { return NSSound.beep() }
         var loses: [String] = []
-        if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) { loses.append("its text, which is kept nowhere else") }
+        if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) { loses.append("its text") }
         else if b.text?.isDirty == true { loses.append("its unsaved edits") }
         if b.terminal?.busy == true { loses.append(b.kind == .agent ? "the agent at work in it" : "the job running in it") }
-        if !loses.isEmpty, let window {
-            let alert = NSAlert()
-            alert.messageText = "Delete “\(b.displayTitle)”?"
-            alert.informativeText = "Deleting it loses " + loses.joined(separator: " and ") + ". It can't be undone."
-            alert.addButton(withTitle: "Delete")
-            alert.addButton(withTitle: "Cancel")
-            alert.buttons.first?.hasDestructiveAction = true
-            alert.beginSheetModal(for: window) { [weak self] response in
-                if response == .alertFirstButtonReturn { self?.deleteNow(block) }
-            }
-            return
-        }
-        deleteNow(block)
-    }
-
-    private func deleteNow(_ block: BlockID) {
-        let title = hosts.block(block)?.displayTitle ?? "the block"
-        let before = hosts.reachable()
-        // Its tiles, in every space; and what ⇧⌘T would bring back of it.
+        let title = b.displayTitle
+        // Its tiles, in every space, each remembered as a tile closed is
+        // (Undo and ⇧⌘T put them back).
+        var tiles = 0
         for ws in allWorkspaces {
             guard let a = hosts.arrangement(ws) else { continue }
-            let tiles = a.placements(of: block)
-            if !tiles.isEmpty { hosts.append(tiles.map { .remove($0.id) }, to: .block(ws)) }
+            let placed = a.placements(of: block)
+            for p in placed { noteClosing(p.id, in: ws) }
+            tiles += placed.count
+            if !placed.isEmpty { hosts.append(placed.map { .remove($0.id) }, to: .block(ws)) }
         }
+        // What it alone reached, which goes to Recently Closed with it.
+        let alone = hosts.reachable().subtracting(hosts.reachable(without: block)).subtracting([block]).count
+        var text = "Deleted “\(title)”"
+        if !loses.isEmpty { text += ", " + loses.joined(separator: " and ") }
+        if alone > 0 { text += alone == 1 ? "; 1 block only it reached to Recently Closed" : "; \(alone) blocks only it reached to Recently Closed" }
+        toast.show(text, action: "Undo", for: loses.isEmpty ? 8 : 12, countdown: true, then: { [weak self] in
+            self?.deleteNow(block)
+        }) { [weak self] in
+            guard let self else { return }
+            for _ in 0..<tiles { self.reopenClosed(nil) }
+        }
+        layoutViews()
+    }
+
+    /// The deletion, its time up: unless it was placed again meanwhile.
+    private func deleteNow(_ block: BlockID) {
+        guard hosts.block(block) != nil, !isPlaced(block) else { return }
+        // Not to be brought back by ⇧⌘T any more.
         closedStack.removeAll { if case let .tile(_, _, _, p, _) = $0 { return p.block == block } else { return false } }
         // Its links, both ways, wherever they're kept.
         var links = Set<String>()
@@ -2217,19 +2232,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         for l in links { hosts.propose(.unlink(l)) }
         hosts.propose(.discard(block))
-        // What only it reached, now in Recently Closed.
-        let let_go = before.subtracting(hosts.reachable()).subtracting([block]).count
-        let minutes = hosts.local.desk.settings.collectAfterMinutes
-        if let_go > 0 {
-            let what = let_go == 1 ? "1 block only it reached is" : "\(let_go) blocks only it reached are"
-            toast.show("Deleted “\(title)”; \(what) in Recently Closed" + (minutes > 0 ? ", gone in \(minutes) min" : ""), action: "Show", for: 10) { [weak self] in
-                self?.setOrganization(.closed)
-            }
-        } else {
-            toast.show("Deleted “\(title)”", action: "OK", for: 4) {}
-        }
         layoutViews()
     }
+
+    /// Debugging: the toast's time up now, what waits on it done.
+    func debugToastFinish() { toast.hide() }
+    func debugToastPicture(_ path: String) -> String { toast.debugPicture(to: path) }
+
+    /// Whatever waits on a toast's time, done now (the app quitting).
+    func finishPending() { toast.finishPending() }
 
     /// ⌥⇧⌘W: the workspace removed — the only way one goes (§4); what only
     /// it kept is collected after the grace, reopened meanwhile by ⇧⌘T.
