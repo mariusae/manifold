@@ -6,17 +6,23 @@ set -e
 cd "$(dirname "$0")/.."
 
 [ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
+[ -f Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h ] || scripts/build-ghostty.sh
+grep -q 'ghostty_surface_manifold_links' Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
 
 config=${CONFIG:-release}
-swift build -c "$config"
+swift_build() {
+  swift build --disable-sandbox "$@"
+}
+
+swift_build -c "$config"
 # The servers for Linux hosts (scripts/build-linux.sh), built by default
 # when swiftly is there (the script installs the toolchain and SDK it
 # needs); LINUX=0 skips them.
 if [ "${LINUX:-1}" != 0 ] && [ -x "${SWIFTLY:-$HOME/.swiftly/bin/swiftly}" ]; then
   scripts/build-linux.sh
 fi
-bin=$(swift build -c "$config" --show-bin-path)
+bin=$(swift_build -c "$config" --show-bin-path)
 app=${APP:-build/Manifold.app}
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"

@@ -62,14 +62,14 @@ for t in x86_64 aarch64; do
   # The host's terminal emulator, for this arch (Package.swift links linux/).
   cp "Frameworks/manifold-vt/linux-$t/libmanifoldvt.a" Frameworks/manifold-vt/linux/
   log=$(mktemp)
-  if ! "$SWIFTLY" run +"$V" swift build -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd > "$log" 2>&1; then
+  if ! "$SWIFTLY" run +"$V" swift build --disable-sandbox -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd > "$log" 2>&1; then
     grep -v target-arch-variant "$log" | grep -E "error" | head -20 >&2
     rm -f "$log"
     echo "scripts/build-linux.sh: the $t build failed" >&2
     exit 1
   fi
   rm -f "$log"
-  bin=$("$SWIFTLY" run +"$V" swift build -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd --show-bin-path 2>/dev/null)
+  bin=$("$SWIFTLY" run +"$V" swift build --disable-sandbox -c release --swift-sdk "$sdk" --triple "$t-swift-linux-musl" --product manifoldd --show-bin-path 2>/dev/null)
   mkdir -p ".build/$t-swift-linux-musl/release"
   "$SWIFTLY" run +"$V" llvm-objcopy --strip-all "$bin/manifoldd" ".build/$t-swift-linux-musl/release/manifoldd"
   ls -la ".build/$t-swift-linux-musl/release/manifoldd"
