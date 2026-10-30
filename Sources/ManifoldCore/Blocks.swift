@@ -78,6 +78,9 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     /// What a block's scrubber marks — a terminal's commands, a text's
     /// headings — as a list to steer the block's tile by (§3.8).
     case outline
+    /// A note (Markdown) as an outline to edit — rows, checkboxes, folds
+    /// — its Markdown written back as it changes (§7.9).
+    case outliner
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)

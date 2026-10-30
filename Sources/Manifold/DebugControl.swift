@@ -324,6 +324,11 @@ enum DebugControl {
             guard let wc, let b = wc.focusedShown?.block, b.isNote else { return "no note focused" }
             wc.hosts.append(.title(arg.isEmpty ? nil : arg), to: .block(b.id))
             return "ok"
+        case "outliner":
+            // "outliner [return|tab|backtab|delete|check|up|down|fold <row>|type <text>|caret <row> <offset>]":
+            // the focused outline, driven as its keys do; its rows after.
+            guard let o = wc?.focusedShown.flatMap({ wc?.views[$0.id] }) as? OutlineNoteView else { return "no outline focused" }
+            return o.debug(arg)
         case "optpage":
             // "optpage": what the last ⌥↑ or ⌥↓ did.
             return OptionKeysPage.last

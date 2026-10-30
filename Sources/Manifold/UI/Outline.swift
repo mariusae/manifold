@@ -789,3 +789,11 @@ final class CommandDots: NSView {
         "dots \(dots.count) hidden \(isHidden)\n" + dots.map { "\($0.id) y\(Int($0.y))\($0.failed ? " failed" : "")\($0.running ? " running" : "")" }.joined(separator: "\n")
     }
 }
+
+extension Outline.Item {
+    /// A note's outline entry (a heading, or a top-level item, checked or
+    /// not), as an item.
+    init(_ item: NoteOutlineItem) {
+        self.init(title: item.title, level: item.level, detail: item.task.map { $0.isDone ? "done" : "to do" } ?? "")
+    }
+}

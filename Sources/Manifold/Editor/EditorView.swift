@@ -468,9 +468,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let version = document?.version ?? -1
         guard version != headingsVersion || version < 0 else { return markCurrentHeading() }
         headingsVersion = version
-        let found = MarkdownOutline.headings(in: textView.text.string)
+        // A note's outline, as its preview and outline have it: its
+        // headings and its top-level items.
+        let found = NoteOutlineMarkdown.items(in: textView.text.string)
         headingLines = found.map(\.line)
-        headingsOutline.set(Outline.headings(found.map { (title: $0.text, level: $0.level) }))
+        headingsOutline.set(found.map(Outline.Item.init))
         markCurrentHeading()
     }
 

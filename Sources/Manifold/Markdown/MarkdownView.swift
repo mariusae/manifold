@@ -150,22 +150,23 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         }
         addSubview(scrubber)
         addSubview(note)
+        // The note's outline (its headings and top-level items, as its
+        // editor and outline have it): an entry gone to by its line.
         headingsOutline.onPick = { [weak self] i in
-            self?.scroll(toHeading: i, warping: false)
-            self?.headingsOutline.current = i
+            guard let self, self.itemLines.indices.contains(i) else { return }
+            NavJumps.willJump?(self)
+            self.scroll(toTopLine: Double(self.itemLines[i]))
+            self.headingsOutline.current = i
         }
-        // A heading's place: the line it's on in the text.
+        // An entry's place: the line it's on in the text.
         headingsOutline.block = block
         headingsOutline.placeFor = { [weak self] i in
-            guard let text = self?.source()?.text else { return nil }
-            let lines = MarkdownOutline.headings(in: text).map(\.line)
-            return lines.indices.contains(i) ? "line=\(lines[i] + 1)" : nil
+            guard let lines = self?.itemLines, lines.indices.contains(i) else { return nil }
+            return "line=\(lines[i] + 1)"
         }
         headingsOutline.menuFor = { [weak self] i in
-            guard let self, let text = self.source()?.text else { return nil }
-            let lines = MarkdownOutline.headings(in: text).map(\.line)
-            guard lines.indices.contains(i) else { return nil }
-            return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(lines[i] + 1)")
+            guard let self, self.itemLines.indices.contains(i) else { return nil }
+            return Drags.linkMenu("Copy Link to This Place", self.block, "line=\(self.itemLines[i] + 1)")
         }
         scriptSent = false
         mermaidSent = false
@@ -189,18 +190,27 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
+    /// The outline's entries' lines in the text, from 0.
+    private var itemLines: [Int] = []
+
+    /// The note's outline from its text (`NoteOutlineMarkdown.items`), each
+    /// entry placed on the page by the element its line starts (the page's
+    /// `data-sourcepos`), and where the page is.
     private func readOutline() {
         guard loaded else { return }
-        let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].offsetTop,hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,m:m};})()"
+        let items = source().map { NoteOutlineMarkdown.items(in: $0.text) } ?? []
+        let lines = items.map { $0.line + 1 }
+        let js = "(function(L){var els=document.querySelectorAll('[data-sourcepos]'),first={};for(var i=0;i<els.length;i++){var m=/^(\\d+):/.exec(els[i].getAttribute('data-sourcepos'));if(m&&!(m[1] in first)){first[m[1]]=els[i];}}var t=[];for(var j=0;j<L.length;j++){var e=first[L[j]];t.push(e?e.getBoundingClientRect().top+window.scrollY:-1);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,t:t};})(\(lines))"
         web.evaluateJavaScript(js) { [weak self] r, _ in
             guard let self, let d = r as? [String: Any], let h = d["h"] as? Double, let y = d["y"] as? Double, let v = d["v"] as? Double else { return }
-            let rows = ((d["m"] as? [[Any]]) ?? []).compactMap { row -> (top: Double, title: String, level: Int)? in
-                guard row.count == 3, let top = row[0] as? Double, let tag = row[1] as? String, let text = row[2] as? String else { return nil }
-                return (top, text, Int(tag.dropFirst()) ?? 1)
-            }
-            self.lastOutline = (rows.map(\.top), h, v)
+            // One not found on the page (inside something rendered whole) at
+            // the one before it.
+            var tops: [Double] = []
+            for t in (d["t"] as? [Double]) ?? [] { tops.append(t >= 0 ? t : (tops.last ?? 0)) }
+            self.itemLines = items.map(\.line)
+            self.lastOutline = (tops, h, v)
             self.scrubber.update(total: h, offset: y, shown: v)
-            self.headingsOutline.set(Outline.headings(rows.map { (title: $0.title, level: $0.level) }))
+            self.headingsOutline.set(items.map(Outline.Item.init))
             self.markCurrentHeading(at: y)
         }
     }

@@ -326,6 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(.separator())
         item(edit, "Edit or View", #selector(MainWindowController.toggleEditPreview(_:)), "\r")
         item(edit, "Edit or View Beside", #selector(MainWindowController.editPreviewBeside(_:)), "p", [.command, .option, .shift])
+        item(edit, "Edit as Outline", #selector(MainWindowController.toggleOutliner(_:)), "\r", [.command, .option])
         edit.addItem(.separator())
         let code = NSMenu(title: "Code")
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])

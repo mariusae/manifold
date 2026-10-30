@@ -34,7 +34,7 @@ struct Shown: Equatable {
 
     private func kindOf(_ lens: Lens) -> BlockKind {
         switch lens {
-        case .editor, .preview: .text
+        case .editor, .preview, .outliner: .text
         case .terminal: .terminal
         case .directory: .directory
         case .web: .web

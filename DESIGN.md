@@ -1000,6 +1000,33 @@ nothing asks first, but the widget's tooltip says what it runs.
 
 ---
 
+### 7.9 Outline
+
+A note — any Markdown text — as an outline (the `outliner` lens, ⌥⌘↩
+from its editor or preview, and back): Prism's, after Bike. The Markdown
+is read into rows (`NoteOutlineMarkdown`, in ManifoldCore): list items and
+what nests in them, headings, paragraphs, quotes, fenced code, rules, each
+with the small facts of how it was written (its bullet, its spacing, the
+blank lines before it), so that a note read and written back unedited
+comes back byte for byte. The rows are what's edited (`NoteOutlineView`,
+a text view whose paragraphs are the rows, each carrying its row as an
+attribute): Return makes a row, Tab and ⇧Tab move rows in and out with
+their children, ⌃⌘↑ ⌃⌘↓ move them among their siblings, ⌘↩ cycles a
+checkbox (open, checked, none), Markdown typed at a row's start (`#`,
+`>`, `[ ]`, `1.`) sets its kind, a bullet clicked folds its children (a
+fold is how it shows, not what it says: the children are still written),
+paste of Markdown comes in as rows and copy of rows goes out as Markdown;
+undo is the outline's own. Each change is written back as the Markdown
+the rows say — only the bytes between what's unchanged at either end, one
+edit to the block's log — and a change from anywhere else (its editor,
+another Mac, `mani write`) is read in again, the caret kept on its row.
+
+A note's outline — what its tile shows as ticks and in its sidebar, and
+⌘P finds — is the same in every lens (`NoteOutlineMarkdown.items`): its
+headings, and its top-level items each under the heading before it, with
+the line each starts on; the editor goes there by line, the preview by
+the element its line starts.
+
 ## 8. Hosts, attachments and the wire
 
 ### 8.1 Processes

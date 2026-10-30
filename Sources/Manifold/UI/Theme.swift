@@ -86,6 +86,7 @@ enum Theme {
         case .output: "text.alignleft"
         case .notebook: "text.line.first.and.arrowtriangle.forward"
         case .outline: "list.bullet.rectangle"
+        case .outliner: "list.bullet.indent"
         case .ui: "slider.horizontal.3"
         }
     }

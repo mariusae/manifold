@@ -536,7 +536,17 @@ around it, and comes back with its history.
   name, and its file's name names it from then on. A file's text is the file's: one shown whose text hasn't
   come in is asked for until it does (whatever went astray on the way),
   says "Reading the file…" and can't be typed into or saved meanwhile,
-  and a file opened again is looked at on disk again. The **editor** lens is Manifold's own
+  and a file opened again is looked at on disk again. **Edit as Outline**
+  (⌥⌘↩, again to go back) shows a note — any Markdown — as an outline,
+  as Prism's notes are, and edits it as one: Return a new row, Tab and
+  ⇧Tab in and out with its children, ⌃⌘↑ ⌃⌘↓ to move it, ⌘↩ a checkbox
+  (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start
+  its kind, a bullet clicked to fold what's under it; checklists,
+  headings, numbered lists, quotes, code and rules each drawn as they
+  are. What's on screen is the Markdown: each change is written back as
+  it reads (unedited, byte for byte), and a change made anywhere else
+  shows at once. In any lens, a note's outline (its ticks, its sidebar,
+  ⌘P) is its headings and its top-level items. The **editor** lens is Manifold's own
   text view (the bar's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out
   with Core Text, line numbers, several

@@ -420,6 +420,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
+            for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged() }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
             for case let n as NotebookView in views.values { n.codeFont = codeFont; n.documentChanged() }
@@ -746,6 +747,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             w.delegate = self
             w.source = { [weak self] in self?.hosts.block(p.block) }
             v = w
+        case .outliner:
+            // A note as an outline: its Markdown read into rows, written
+            // back as they change.
+            let o = OutlineNoteView(placement: p.id, block: p.block, theme: hosts.state.appearance.theme)
+            o.source = { [weak self] in self?.hosts.block(p.block) }
+            o.apply = { [weak self] edits in self?.hosts.append(.edit(edits), to: .block(p.block)) }
+            o.documentChanged()
+            v = o
         default:
             let e = EditorView(placement: p.id, block: p.block, path: shown.path ?? "",
                                font: editorFont(for: p, path: shown.path),
@@ -2492,6 +2501,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case #selector(toggleTileSidebar(_:)):
             guard let v = arrangement?.focused.flatMap({ views[$0] }), v.hasSidebar else { item.title = "Show Outline"; return false }
             item.title = v.sidebarShown ? "Hide Outline" : "Show Outline"
+            return true
+        case #selector(toggleOutliner(_:)):
+            guard let f = focusedShown, canOutline(f) else { item.title = "Edit as Outline"; return false }
+            item.title = f.lens == .outliner ? "Edit as Text" : "Edit as Outline"
             return true
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
             guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
@@ -5972,6 +5985,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let e = views[id] as? EditorView { carry(e.topLine) }
         else if let m = views[id] as? MarkdownView { m.topLine(carry) }
         else { carry(nil) }
+    }
+
+    /// Edit ▸ Edit as Outline (⌥⌘↩): a note — any Markdown text — as an
+    /// outline to edit, in the same tile; again, back to its editor.
+    @objc func toggleOutliner(_ sender: Any?) {
+        guard let f = focusedShown, canOutline(f) else { return NSSound.beep() }
+        let id = f.id, other: Lens = f.lens == .outliner ? .editor : .outliner
+        let fresh = ULID.make()
+        replace(id, with: f.placement.block, lens: other, as: fresh)
+        if arrangement?.full == id { appendToSelected([.full(fresh)]) }
+    }
+
+    /// Whether a tile's text can be an outline: a note, or a Markdown file.
+    private func canOutline(_ f: Shown) -> Bool {
+        guard let b = f.block, b.kind == .text, f.lens.isText || f.lens == .outliner else { return false }
+        return Lens.viewRendering(for: b.path) == .markdown
     }
 
     /// ⌥⇧⌘P: the other mode beside this one, both in view.
