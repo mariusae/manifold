@@ -168,6 +168,7 @@ final class Server {
 
     func run() throws {
         load()
+        rememberFirstLineTitles()
         pruneHistory()
         machine.start()
         // Its language servers as its own settings say, from the start.
@@ -543,11 +544,22 @@ final class Server {
     /// The titles notes were given from their first lines, as last given.
     private var firstLineTitles: [BlockID: String] = [:]
 
+    /// Notes whose title is their first line, as loaded: so (not named by
+    /// hand), kept so as their first line changes — what a server before
+    /// this one noted goes with it.
+    private func rememberFirstLineTitles() {
+        for b in node.blocks where b.id.host == host && b.isNote {
+            guard let t = b.text, let title = b.title, !title.isEmpty, Block.noteTitle(from: t.text) == title else { continue }
+            firstLineTitles[b.id] = title
+        }
+    }
+
     /// An untitled note is called by its first line, as its title — kept
     /// so as that line changes, from whichever client — until it's named
     /// otherwise (Name Note…), which it's then left with; the name emptied,
-    /// it's called by its first line again. One whose title is its first line's words already
-    /// (given before this server started) goes on being kept.
+    /// it's called by its first line again. One whose title was its first
+    /// line's words when this server started goes on being kept
+    /// (`rememberFirstLineTitles`).
     private func titleFromFirstLine(_ block: Block) {
         guard let text = block.text else { return }
         let title = block.title ?? ""
