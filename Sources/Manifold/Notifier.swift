@@ -5,8 +5,9 @@ import UserNotifications
 /// The Mac's notifications for what happens out of sight (§3.7): a block
 /// that comes to need you (an agent asking leave), one that finishes or
 /// fails, a terminal's command that ran a while and ended. Only while
-/// the block isn't in sight — Manifold not in front, or the tile not
-/// showing — and only for what happens after launch. Clicked, it goes to
+/// the block isn't in sight — Manifold not in front, its window covered,
+/// the screen locked or asleep, or the tile not showing — and only for
+/// what happens after launch. Clicked, it goes to
 /// the block (and the command), as ⌘J does.
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// A command shorter than this ending says nothing.

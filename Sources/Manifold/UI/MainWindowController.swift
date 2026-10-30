@@ -1318,12 +1318,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "chose \(title)"
     }
 
-    /// Whether a block is in sight: Manifold in front, its window shown,
-    /// and a tile of it showing in the workspace (not stashed, not behind
-    /// a maximized one).
+    /// Whether a block is in sight: Manifold in front, its window shown
+    /// and not covered (by another's window), the screen awake and not
+    /// locked, and a tile of it showing in the workspace (not stashed, not
+    /// behind a maximized one).
     func inSight(_ block: BlockID) -> Bool {
-        guard NSApp.isActive, let window, window.isVisible, !window.isMiniaturized, stateView == nil, let a = arrangement else { return false }
+        guard NSApp.isActive, let window, window.isVisible, !window.isMiniaturized, window.occlusionState.contains(.visible),
+              !Self.screenAway(window.screen), stateView == nil, let a = arrangement else { return false }
         return a.placements(of: block).contains { !a.isStashed($0.id) && (a.full == nil || a.full == $0.id) }
+    }
+
+    /// The screen locked, or the window's display asleep: what's in front
+    /// isn't seen.
+    static func screenAway(_ screen: NSScreen?) -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        if session?["CGSSessionScreenIsLocked"] as? Bool == true { return true }
+        let display = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+        return CGDisplayIsAsleep(display) != 0
     }
 
     /// A notification clicked: to the block, and the command if one.
