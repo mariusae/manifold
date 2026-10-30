@@ -40,6 +40,14 @@ final class LinkBadge: NSView {
     var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
+            // The same links, only what they say changed (a note's title as
+            // it's typed): the faces dressed again, not made again — made
+            // again, they jumped about the bar with every key.
+            if cards.map(\.link) == oldValue.map(\.link), cards.map(\.block) == oldValue.map(\.block),
+               chips.count == min(cards.count, Self.mostShown) {
+                for (c, card) in zip(chips, cards) { dress(c, card) }
+                return
+            }
             rebuild()
         }
     }

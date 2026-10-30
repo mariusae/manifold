@@ -1000,7 +1000,7 @@ final class TextView: NSView, NSTextInputClient {
     func setSelections(_ s: [Selection], scroll: Bool = true) {
         selections = s
         normalizeSelections()
-        if markdown {
+        if markdown, !dropTracking {
             // The caret's line shows its Markdown as written: the line it
             // left and the one it came to are laid out again.
             let now = selections.last.map { text.line(at: $0.head) }
@@ -1824,8 +1824,25 @@ final class TextView: NSView, NSTextInputClient {
     /// grid behind does (a tile of its own, a link to the tile).
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
-    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        endDropTracking()
+        Dropping.exited(self, sender)
+    }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        endDropTracking()
+        return Dropping.perform(self, sender)
+    }
+    override func draggingEnded(_ sender: NSDraggingInfo) { endDropTracking() }
+
+    /// A drag over the text: the caret follows it, but the lines it passes
+    /// stay as they read (a card stays a card), not shown as written.
+    private var dropTracking = false
+
+    private func endDropTracking() {
+        guard dropTracking else { return }
+        dropTracking = false
+        setSelections(selections, scroll: false)
+    }
 
     /// Whether it's a note or Markdown: a block lands as a link to it, a
     /// picture inline.
@@ -2276,6 +2293,7 @@ extension TextView: DropTaking {
 
     /// The caret follows the pointer; only moved when it would move.
     func dropTrack(_ d: Dragged, at p: NSPoint) {
+        dropTracking = true
         let at = offset(at: p)
         if selections.count != 1 || selections[0].anchor != at || selections[0].head != at {
             setSelections([Selection(at: at)], scroll: false)

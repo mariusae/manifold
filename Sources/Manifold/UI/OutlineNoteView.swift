@@ -214,6 +214,24 @@ final class OutlineNoteView: NSView, PaneContent {
         let words = command.split(separator: " ", maxSplits: 1).map(String.init)
         window?.makeFirstResponder(text)
         switch words.first {
+        case "grab":
+            // "grab <row>": the mouse down on that row's handle and moved 10
+            // points, as posted events: whether it's taken as the handle,
+            // and the drag begun.
+            guard let layout = text.layoutManager as? NoteOutlineLayoutManager, let storage = text.textStorage, let window,
+                  let i = Int(words.count > 1 ? words[1] : ""), text.paragraphRanges.indices.contains(i),
+                  let c = layout.handleCenter(of: text.paragraphRanges[i], row: NoteOutlineText.style(storage, at: text.paragraphRanges[i].location).row, origin: text.textContainerOrigin) else { return "no row" }
+            let hit = layout.handleHit(at: c, origin: text.textContainerOrigin)
+            let at = text.convert(c, to: nil)
+            func mouse(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent {
+                NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                   context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            }
+            NSApp.postEvent(mouse(.leftMouseDragged, NSPoint(x: at.x, y: at.y - 10)), atStart: false)
+            NSApp.postEvent(mouse(.leftMouseUp, NSPoint(x: at.x, y: at.y - 10)), atStart: false)
+            text.debugDragBegan = nil
+            text.mouseDown(with: mouse(.leftMouseDown, at))
+            return "handle hit \(hit.map(String.init) ?? "none") · drag \(text.debugDragBegan ?? "not begun")"
         case "handles":
             // Each row's handle, where it's drawn: its center's height in its line.
             guard let layout = text.layoutManager as? NoteOutlineLayoutManager, let storage = text.textStorage else { return "no layout" }
@@ -750,10 +768,13 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         return rect.offsetBy(dx: origin.x, dy: origin.y)
     }
 
-    /// The row whose handle is at a point in the view, if any.
-    func handleHit(at point: NSPoint, origin: NSPoint) -> Int? {
+    /// The row whose handle is at a point in the view, if any (of those
+    /// among some characters: the ones shown).
+    func handleHit(at point: NSPoint, origin: NSPoint, among characters: NSRange? = nil) -> Int? {
         guard let view, let storage = textStorage else { return nil }
         for (index, paragraph) in view.paragraphRanges.enumerated() {
+            if let characters, NSMaxRange(paragraph) < characters.location { continue }
+            if let characters, paragraph.location > NSMaxRange(characters) { break }
             let row = NoteOutlineText.style(storage, at: paragraph.location).row
             if case .none = Self.handle(for: row) { continue }
             guard let c = handleCenter(of: paragraph, row: row, origin: origin) else { continue }
@@ -823,6 +844,8 @@ final class NoteOutlineTextView: NSTextView {
     private let hiddenGlyphs = NoteHiddenGlyphs()
     /// The rows being dragged from here, by their bullets.
     var draggedRows: Range<Int>?
+    /// Debugging: the last rows begun to be dragged.
+    var debugDragBegan: String?
     /// Where dragged rows would go.
     let dropLine = NSView()
     /// A link clicked: followed, by the one rule.
@@ -1662,6 +1685,7 @@ final class NoteOutlineTextView: NSTextView {
     func beginDraggingRows(from index: Int, event: NSEvent) {
         let all = rows
         guard index < all.count else { return }
+        debugDragBegan = "rows from \(index)"
         let selection = selectedRows.flatMap { $0.contains(index) ? $0 : nil } ?? index..<(index + 1)
         let block = NoteOutlineEditing.block(all, selection)
         draggedRows = block
@@ -1734,6 +1758,38 @@ final class NoteOutlineTextView: NSTextView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         carriesRows(sender) ? dropRows(sender) : ownText(sender) ? super.performDragOperation(sender) : Dropping.perform(self, sender)
+    }
+
+    // A text view takes a drag from itself for its selected text, moved:
+    // it refuses rows (nothing it knows of is being dragged) and, given
+    // the chance, takes the selection away after. Rows and things are ours.
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        carriesRows(sender) || !ownText(sender) ? true : super.prepareForDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        guard let sender, !carriesRows(sender), ownText(sender) else { return }
+        super.concludeDragOperation(sender)
+    }
+
+    // MARK: The pointer over handles
+
+    /// Over a row's handle (a bullet, a checkbox, a number), the arrow: it's
+    /// clicked or dragged, not typed at.
+    private func overHandle(_ event: NSEvent) -> Bool {
+        guard let layout = layoutManager as? NoteOutlineLayoutManager, let container = textContainer else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let shown = layout.characterRange(forGlyphRange: layout.glyphRange(forBoundingRect: visibleRect, in: container), actualGlyphRange: nil)
+        return layout.handleHit(at: point, origin: textContainerOrigin, among: shown) != nil
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        if overHandle(event) { NSCursor.arrow.set() }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        if overHandle(event) { NSCursor.arrow.set() } else { super.cursorUpdate(with: event) }
     }
 
     /// A line where rows dragged over would go.

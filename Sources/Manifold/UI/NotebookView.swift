@@ -868,6 +868,12 @@ final class CellEditor: NSTextView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         sender.draggingSource as? NSView === self ? super.performDragOperation(sender) : Dropping.perform(self, sender)
     }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        sender.draggingSource as? NSView === self ? super.prepareForDragOperation(sender) : true
+    }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        if sender?.draggingSource as? NSView === self { super.concludeDragOperation(sender) }
+    }
 
     /// A block dropped in, its link noted (the notebook mentions it).
     var onLinked: ((BlockID) -> Void)?
