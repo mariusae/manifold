@@ -327,8 +327,11 @@ public enum Mani {
               `mani run --wait manifold:… "cmd"` for a terminal.
             - To give one back: `mani info <name>` has `ref` and `link`; `mani ls --json`
               has each tile's `ref`. Write the link into a note (`[name](manifold:…)`)
-              and it shows as the block, a click away; print a reference in your reply and
-              the user ⌘-clicks it to go there.
+              and it shows as the block, a click away; on a line of its own as an image,
+              `![name](manifold:…)`, it shows as the block's live card (a place's: a
+              command's line and how it ended, a heading's section, a page); a reference
+              written bare in a note shows as the block too. Print a reference in your reply
+              and the user ⌘-clicks it to go there.
             - A reference to a block that's gone (deleted) or on a host that isn't connected
               says so; don't guess its contents.
 

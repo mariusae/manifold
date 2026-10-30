@@ -99,6 +99,14 @@ final class TextView: NSView, NSTextInputClient {
     /// The pills each laid-out line drew, with the looks they were drawn
     /// with: when a look changes, the line is laid out again.
     private var pillLines: [Int: [(BlockID, PillLook)]] = [:]
+    /// A block's summary card (a place's in it), from whoever knows blocks:
+    /// what a line that's only `![name](manifold:…)` shows instead.
+    var cardFor: ((BlockID, String?) -> SummaryCardContent?)?
+    /// The cards laid-out lines show (in the line's place), the rows each
+    /// takes, and where they go clicked.
+    private var cardLines: [Int: (block: BlockID, place: String?, target: String, content: SummaryCardContent, rows: Int)] = [:]
+    /// A line that's a block's card: `![name](manifold:…)` alone on it.
+    private static let embedLine = try! NSRegularExpression(pattern: #"^\s*!\[[^\]\n]*\]\((manifold:[^)\s]+)\)\s*$"#)
     /// The lines that are code fences, found once per text.
     /// The lines that are fences, in order (counted below a line by halving).
     private var fenceLines: [Int]?
@@ -250,8 +258,13 @@ final class TextView: NSView, NSTextInputClient {
     /// look since changed are laid out again.
     func refreshPills() {
         updatePillTimer()
-        guard markdown, let pillLook, !pillLines.isEmpty else { return }
-        let stale = pillLines.filter { $0.value.contains { pillLook($0.0) != $0.1 } }.map(\.key)
+        guard markdown else { return }
+        var stale = pillLook.map { look in pillLines.filter { $0.value.contains { look($0.0) != $0.1 } }.map(\.key) } ?? []
+        // And cards whose summaries changed.
+        stale += cardLines.filter { n, c in
+            guard let now = cardFor?(c.block, c.place) else { return true }
+            return now.summary != c.content.summary || now.symbol != c.content.symbol || (now.thumbnail == nil) != (c.content.thumbnail == nil)
+        }.map(\.key)
         guard !stale.isEmpty else { return }
         for n in stale {
             layouts.removeValue(forKey: n)
@@ -259,6 +272,34 @@ final class TextView: NSView, NSTextInputClient {
         }
         needsDisplay = true
     }
+
+    /// Where line `n`'s card is drawn, if it shows one.
+    private func cardRect(ofLine n: Int) -> NSRect? {
+        guard let c = cardLines[n], layouts[n] != nil else { return nil }
+        return NSRect(x: textLeft, y: top(ofLine: n) + 3, width: min(wrapWidth, 460), height: SummaryCard.height(for: c.content))
+    }
+
+    /// A line's card, as its block's summary says it now (§3.11).
+    private func drawCard(ofLine n: Int) {
+        guard let c = cardLines[n], let r = cardRect(ofLine: n) else { return }
+        let card = Self.cardPainter
+        card.content = c.content
+        card.frame = NSRect(origin: .zero, size: r.size)
+        NSGraphicsContext.saveGraphicsState()
+        let move = NSAffineTransform()
+        move.translateX(by: r.minX, yBy: r.minY)
+        move.concat()
+        card.draw(card.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// Debugging: the lines showing cards, and the rows each takes.
+    var debugCards: String {
+        cardLines.isEmpty ? "" : " cards " + cardLines.keys.sorted().map { "\($0 + 1):\(cardLines[$0]!.rows)" }.joined(separator: " ")
+    }
+
+    /// One card, drawn wherever a line shows one.
+    private static let cardPainter = SummaryCard(SummaryCardContent(id: "", symbol: "doc", summary: BlockSummary(title: "")))
 
     /// A pill running (the ring turning) keeps its lines redrawn.
     private func updatePillTimer() {
@@ -380,7 +421,19 @@ final class TextView: NSView, NSTextInputClient {
         if let l = layouts[n] { return l }
         let string = text.lineText(n)
         let attributed = NSMutableAttributedString(string: string.isEmpty ? " " : string, attributes: attributes())
-        if markdown, !string.isEmpty {
+        // A block's card in place of the line (not the caret's, which shows
+        // it as written): the line's words out of sight under it.
+        cardLines.removeValue(forKey: n)
+        var card: (block: BlockID, place: String?, target: String, content: SummaryCardContent)?
+        if markdown, rawLine != n, string.contains("](manifold:"), let cardFor, !inCodeBlock(n),
+           let m = Self.embedLine.firstMatch(in: string, range: NSRange(location: 0, length: (string as NSString).length)) {
+            let target = (string as NSString).substring(with: m.range(at: 1))
+            if let (id, place) = BlockID.link(target), let content = cardFor(id, place) {
+                card = (id, place, target, content)
+                attributed.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: 0, length: attributed.length))
+            }
+        }
+        if markdown, !string.isEmpty, card == nil {
             var drawn: [(BlockID, PillLook)] = []
             MarkdownStyle.apply(to: attributed, base: font, code: codeFont, palette: markdownPalette, reveal: rawLine == n, inCodeBlock: inCodeBlock(n)) { [weak self] id in
                 guard let look = self?.pillLook?(id) else { return nil }
@@ -426,8 +479,14 @@ final class TextView: NSView, NSTextInputClient {
         }
         let l = LineLayout(rows: rows, text: string, rowStarts: starts)
         layouts[n] = l
-        if n < rowCounts.count, rowCounts[n] != rows.count {
-            rowCounts[n] = rows.count
+        // Rows enough for its card.
+        var total = rows.count
+        if let card {
+            total = max(rows.count, Int(ceil((SummaryCard.height(for: card.content) + 6) / lineHeight)))
+            cardLines[n] = (card.block, card.place, card.target, card.content, total)
+        }
+        if n < rowCounts.count, rowCounts[n] != total {
+            rowCounts[n] = total
             invalidateRowStarts(after: n)
             DispatchQueue.main.async { [weak self] in
                 self?.resizeToFit()
@@ -760,6 +819,12 @@ final class TextView: NSView, NSTextInputClient {
                 ctx.textPosition = origin
                 CTLineDraw(row, ctx)
                 if markdown { drawPills(in: row, at: rowTop, ctx) }
+            }
+            if cardLines[n] != nil {
+                ctx.restoreGState()
+                drawCard(ofLine: n)
+                ctx.saveGState()
+                ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }
         }
         ctx.restoreGState()
@@ -1778,6 +1843,12 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
+        // A block's card clicked: followed, as its link is.
+        if event.clickCount == 1, let n = cardLines.keys.first(where: { cardRect(ofLine: $0)?.contains(p) == true }), let c = cardLines[n] {
+            dragAnchor = nil
+            delegate?.textView(self, follow: c.target, over: flags.contains(.option))
+            return
+        }
         if event.clickCount == 1, !flags.contains(.shift) || flags.contains(.command), let target = linkTarget(at: p) {
             // A link, clicked: followed by the one rule (⌘ beside, ⌥ over,
             // ⇧⌘ the system's app) — the caret stays, so the pill does.

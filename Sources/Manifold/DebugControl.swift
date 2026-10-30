@@ -1142,7 +1142,7 @@ enum DebugControl {
                 let r = tv.caretRectInWindow(offset)
                 return "\(Int(r.maxX + 4)) \(Int(content.bounds.height - r.midY))"
             }
-            return "selections \(tv.selections.map { "\($0.min)-\($0.max)" }) undo \(tv.undoDepth) line \(tv.caretLine + 1) col \(tv.caretColumn)\n" + tv.text.string
+            return "selections \(tv.selections.map { "\($0.min)-\($0.max)" }) undo \(tv.undoDepth) line \(tv.caretLine + 1) col \(tv.caretColumn)\(tv.debugCards)\n" + tv.text.string
         case "scheme":
             guard let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
             let item = NSMenuItem()

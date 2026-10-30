@@ -585,7 +585,16 @@ note, as if the block had been ⇧-dragged into it. Into a note the
 block also lands as a Markdown link, `[title](manifold:host/ulid)`,
 hence a `mention` edge too; the editor draws such a link as a capsule
 — symbol, title and status as the tile's bar has them, redrawn as they
-change — and the preview as a small one, either clicked as any link. Annotation is thus the graph again:
+change — and the preview as a small one, either clicked as any link; a
+reference written bare (`manifold:host/id#place`, as agents write them)
+the same. An embed, `![name](manifold:…)` alone on its line, is the
+block's summary card instead (§3.1's, drawn in the editor in the line's
+place but on the caret's line, under its row in the outline, as HTML in
+the preview), redrawn as the summary changes; one naming a place is
+that place's (`Block.summary(at:)`: a command's line and how it ended,
+with its output's last lines where the terminal is shown; a heading's
+or an item's section, `NoteOutlineMarkdown.section`; a PDF's page, with
+its picture). Annotation is thus the graph again:
 nothing new is stored but edges and the note's own text.
 
 ### 3.11 Dragging things

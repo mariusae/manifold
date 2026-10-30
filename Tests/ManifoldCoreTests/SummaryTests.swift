@@ -47,3 +47,22 @@ import Testing
     // Output that merely ends in the mark, not at the prompt's start, stays.
     #expect(ShellCommand.output("total: 3›", prompt: prompt) == "total: 3›")
 }
+
+@Test func aPlaceInABlockSaysItselfToo() {
+    let h = HostID("h")
+    let now = Date(timeIntervalSince1970: 10_000)
+    func at(_ s: Double) -> Stamp { Stamp(wall: Int64(s * 1000), host: h) }
+    var note = Block(id: BlockID(host: h), kind: .text, created: at(0))
+    note.apply(.content("# Plan\n\n## Steps\n- **ship** it\n- rest\n## Later\nmore\n", encoding: "utf-8", lineEnding: "\n", fingerprint: nil), at: at(1))
+    let steps = note.summary(at: "line=3", now: now)
+    #expect(steps?.title == "Steps")
+    #expect(steps?.lines == ["ship it", "rest"])
+    #expect(steps?.place == note.displayTitle)
+    var term = Block(id: BlockID(host: h), kind: .terminal, created: at(0))
+    term.apply(.ran(id: 7, "make test", at: at(9990)), at: at(9990))
+    term.apply(.exited(id: 7, status: 2, at: at(9995)), at: at(9995))
+    let made = term.summary(at: "command=7", now: now)
+    #expect(made?.title == "make test" && made?.lines == ["exit 2"] && made?.tone == .failed && made?.code == true)
+    #expect(term.summary(at: "command=8", now: now) == nil)
+    #expect(note.summary(at: "page=2", now: now) == nil)
+}

@@ -51,6 +51,9 @@ enum MarkdownStyle {
     /// A link: `[words](address)` — or, to a block, no words (an image's
     /// `![](manifold:…)`), its pill naming it.
     private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]*)(\]\()([^)\s]+)(\))"#)
+    /// A block's reference written bare (`manifold:host/id#place`, as an
+    /// agent writes one): its pill too.
+    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,6}) "#)
     private static let listItem = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|\d+[.)])(\s)"#)
     private static let quote = try! NSRegularExpression(pattern: #"^(>\s?)+"#)
@@ -148,6 +151,24 @@ enum MarkdownStyle {
                 a.addAttributes([.foregroundColor: palette.accent, .underlineStyle: NSUnderlineStyle.single.rawValue], range: words)
                 mark(m.range(at: 1)); mark(rest)
             }
+        }
+
+        // A bare reference: its block's pill, as a link's; on the caret's
+        // line, as written.
+        var linked: [NSRange] = []
+        for m in link.matches(in: a.string, range: all) { linked.append(m.range) }
+        for m in reference.matches(in: a.string, range: all) where !inCode(m.range) && !linked.contains(where: { NSIntersectionRange($0, m.range).length > 0 }) {
+            let address = s.substring(with: m.range)
+            guard let (id, place) = BlockID.link(address) else { continue }
+            a.addAttribute(target, value: address, range: m.range)
+            guard !reveal, var look = look(id) else {
+                a.addAttributes([.foregroundColor: palette.text, chip: palette.chipTint], range: m.range)
+                continue
+            }
+            if let place { look.title += " · " + place.replacingOccurrences(of: "=", with: " ") }
+            let first = NSRange(location: m.range.location, length: 1)
+            a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: pillWidth(look), font: base)], range: first)
+            hide(NSRange(location: m.range.location + 1, length: m.range.length - 1))
         }
 
         // Emphasis: the face changes, the markers go.

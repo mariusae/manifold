@@ -2,6 +2,7 @@ import AppKit
 import WebKit
 import ManifoldCore
 import UniformTypeIdentifiers
+import PDFKit
 
 /// The window: the selected arrangement filling it, the sidebar (the desk)
 /// floating over its left edge when the mouse goes there (or docked, when
@@ -418,7 +419,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             lastFocused = a.focused
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
-            for case let m as MarkdownView in views.values { m.textChanged() }
+            for case let m as MarkdownView in views.values { m.textChanged(); m.refreshCards() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged() }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
@@ -598,7 +599,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             if let e = v as? EditorView {
                 e.offline = shown.offline
-                e.richMarkdown = viewState(of: p)["markdown"] != "raw"
+            e.richMarkdown = viewState(of: p)["markdown"] != "raw"
                 e.home = hosts.block(p.block)?.place
                 e.noteName = hosts.block(p.block).flatMap { $0.isNote ? $0.title : nil }
                 e.isRemote = p.block.host != host.host
@@ -671,6 +672,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .preview where Lens.viewRendering(for: shown.path) == .markdown:
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.imageSource = { [weak self] id in self?.imageSource(id) }
+            m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
             m.delegate = self
             m.takesDrops = shown.block?.kind == .text
             m.source = { [weak self] in
@@ -718,6 +720,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let m = MarkdownView(placement: p.id, block: p.block, path: "", theme: hosts.state.appearance.theme)
             m.delegate = self
             m.imageSource = { [weak self] id in self?.imageSource(id) }
+            m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
             m.source = { [weak self] in
                 guard let md = self?.hosts.block(p.block)?.output?.markdown else { return nil }
                 return (md, md.hashValue)
@@ -755,6 +758,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             o.onOpen = { [weak self] target in self?.open(target, from: p.id) }
             o.onLinked = { [weak self] b in self?.link(b, to: p.block) }
             o.keepImage = { [weak self] data, kind, insert in self?.keepImage(data, kind: kind, for: p.block, insert: insert) }
+            o.cardFor = { [weak self] id, place in self?.cardContent(for: id, at: place) }
             o.documentChanged()
             v = o
         default:
@@ -767,6 +771,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let b = self?.hosts.block(id) else { return nil }
                 return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b), status: StatusGlyph.look(of: b))
             }
+            e.blockCard = { [weak self] id, place in self?.cardContent(for: id, at: place) }
             e.richMarkdown = viewState(of: p)["markdown"] != "raw"
             e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
             e.setSidebar(viewState(of: p)["outline"] == "1")
@@ -6751,6 +6756,23 @@ extension MainWindowController: GridDelegate {
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent? {
         guard let p = arrangement?.placement(placement) else { return nil }
         return cardContent(for: p.block, view: views[placement], id: placement)
+    }
+
+    /// A place's card in a block (§3.11), as a note shows `![…](manifold:…#…)`:
+    /// the place's summary — a command's with its output's last lines, a
+    /// page's with its picture — else the block's own.
+    func cardContent(for block: BlockID, at fragment: String?) -> SummaryCardContent? {
+        guard let fragment, let b = hosts.block(block), var s = b.summary(at: fragment) else { return cardContent(for: block) }
+        var thumbnail: NSImage?
+        if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)),
+           let t = views.values.first(where: { $0.block == block }) as? TerminalView, let out = t.transcript(ofCommand: id)?.1 {
+            s.lines += out.split(separator: "\n").map { Block.oneLine(String($0)) }.filter { !$0.isEmpty }.suffix(2)
+        }
+        if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)), block.host == host.host, let path = b.path,
+           let page = PDFDocument(url: URL(fileURLWithPath: path))?.page(at: n - 1) {
+            thumbnail = page.thumbnail(of: NSSize(width: 160, height: 200), for: .cropBox)
+        }
+        return SummaryCardContent(id: "", symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
     }
 
     /// A block's summary card: its summary, and what only the window has —

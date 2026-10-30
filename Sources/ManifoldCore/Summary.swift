@@ -170,6 +170,55 @@ extension Block {
         return s
     }
 
+    /// A place in the block in a few lines (§3.11), as a reference names
+    /// it: a command by its line and how it ended (an agent's turn by what
+    /// it was asked and said); a heading or an item by its words and its
+    /// section's first lines; a page by its number. Its `place` is the
+    /// block it's in. Nil for a place the block doesn't have.
+    public func summary(at fragment: String, now: Date = Date()) -> BlockSummary? {
+        let parts = fragment.split(separator: "=", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let n = Int(parts[1]) else { return nil }
+        switch parts[0] {
+        case "command":
+            if let turn = terminal?.turns?.first(where: { $0.id == n }) {
+                var s = BlockSummary(title: Self.oneLine(turn.prompt, max: 80), place: displayTitle)
+                if let m = turn.message { s.lines = [Self.oneLine(m)] }
+                if let files = turn.files, !files.isEmpty { s.lines.append("\(files.count) file\(files.count == 1 ? "" : "s") changed") }
+                s.note = turn.ended == nil ? "working" : BlockSummary.ago(turn.ended, now: now)
+                if turn.ended == nil { s.tone = .running }
+                return s
+            }
+            guard let c = terminal?.commands?.first(where: { $0.id == n }) else { return nil }
+            var s = BlockSummary(title: Self.oneLine(c.text, max: 80), place: displayTitle)
+            s.code = true
+            if c.isRunning {
+                s.note = "running"
+                s.tone = .running
+            } else {
+                let status = c.status ?? 0
+                s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
+                s.lines = [status == 0 ? "ok" : "exit \(status)"]
+                if status != 0 { s.tone = .failed }
+            }
+            return s
+        case "line":
+            guard kind == .text, let t = text?.text.string else { return nil }
+            let section = NoteOutlineMarkdown.section(of: t, line: n)
+            let lines = Self.firstLines(section, skipping: "", count: 4)
+            guard let first = lines.first else { return nil }
+            var s = BlockSummary(title: String(first.prefix(80)), place: displayTitle)
+            s.lines = Array(lines.dropFirst())
+            return s
+        case "page":
+            guard kind == .pdf else { return nil }
+            var s = BlockSummary(title: "Page \(n)", place: displayTitle)
+            s.wantsThumbnail = true
+            return s
+        default:
+            return nil
+        }
+    }
+
     /// A text's first lines worth showing: not blank, the title's own line
     /// left out, Markdown's marks taken off.
     public static func firstLines(_ text: String, skipping title: String, count: Int) -> [String] {
@@ -208,7 +257,7 @@ extension Block {
 
     /// A line as it fits on one: a terminal's escapes taken out, whitespace
     /// run together, cut at a length.
-    static func oneLine(_ s: String, max: Int = 140) -> String {
+    public static func oneLine(_ s: String, max: Int = 140) -> String {
         let plain = s.replacingOccurrences(of: #"\x{1B}(\][^\x{07}\x{1B}]*(\x{07}|\x{1B}\\)?|\[[0-?]*[ -/]*[@-~]|.)|[\x{00}-\x{08}\x{0E}-\x{1F}\x{7F}]"#,
                                            with: "", options: .regularExpression)
         let flat = plain.split(whereSeparator: \.isWhitespace).joined(separator: " ")

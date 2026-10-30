@@ -33,6 +33,11 @@ final class OutlineNoteView: NSView, PaneContent {
         get { text.keepImage }
         set { text.keepImage = newValue }
     }
+    /// A block's card (a place's in it), for a row that's only its embed.
+    var cardFor: ((BlockID, String?) -> SummaryCardContent?)? {
+        get { text.cardFor }
+        set { text.cardFor = newValue }
+    }
     var theme: FontTheme { didSet { if theme != oldValue { text.metrics = Self.metrics(theme) } } }
 
     private let scroll = NSScrollView()
@@ -111,7 +116,7 @@ final class OutlineNoteView: NSView, PaneContent {
     func documentChanged() {
         guard let b = source(), let t = b.text, !b.needsRead else { return }
         let markdown = t.text.string
-        guard markdown != written else { return }
+        guard markdown != written else { return text.refreshCards() }
         let first = written == nil
         var outline = NoteOutlineMarkdown.parse(markdown)
         let rows = outline.rows
@@ -256,6 +261,28 @@ extension NSAttributedString.Key {
     /// Inline Markdown's markup (`**`, a link's brackets and address): kept
     /// in the text, laid out as nothing.
     static let noteHidden = NSAttributedString.Key("ManifoldNoteHidden")
+    /// A row that's only a block's embed (`![name](manifold:…)`): its card
+    /// (`NoteCard`), drawn under it.
+    static let noteCard = NSAttributedString.Key("ManifoldNoteCard")
+}
+
+/// A block's card under the row that embeds it (§3.11), as its summary
+/// said when the row was styled.
+final class NoteCard {
+    let block: BlockID
+    let place: String?
+    let target: String
+    let content: SummaryCardContent
+    init(block: BlockID, place: String?, target: String, content: SummaryCardContent) {
+        self.block = block
+        self.place = place
+        self.target = target
+        self.content = content
+    }
+    var height: CGFloat { SummaryCard.height(for: content) }
+    static let line = try! NSRegularExpression(pattern: #"^\s*!\[[^\]\n]*\]\((manifold:[^)\s]+)\)\s*$"#)
+    /// One card, drawn wherever a row shows one.
+    static let painter = SummaryCard(SummaryCardContent(id: "", symbol: "doc", summary: BlockSummary(title: "")))
 }
 
 /// What a paragraph is: a row, less its text, which is the paragraph's.
@@ -309,6 +336,12 @@ enum NoteOutlineText {
         return InlineMarkup.spans(in: text, range: range).map { span in
             guard span.isImage else { return span }
             var shown = span
+            // A block's embed: its name, a link to it, its card drawn under the row.
+            if case let .image(reference) = span.kind, reference.source.hasPrefix("manifold:") {
+                shown.kind = .link(reference.source)
+                shown.content = NSRange(location: span.range.location + 2, length: (reference.alt as NSString).length)
+                return shown
+            }
             shown.kind = .imageText
             shown.content = span.range
             return shown
@@ -384,7 +417,19 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
     /// selection before the view hears the text changed).
     var onCharactersEdited: (() -> Void)?
 
+    /// A block's card (a place's in it), for a row that's only its embed.
+    var cardFor: ((BlockID, String?) -> SummaryCardContent?)?
+
     init(metrics: NoteOutlineMetrics) { self.metrics = metrics }
+
+    /// The card a row's text embeds, if it's only that.
+    func card(for text: String) -> NoteCard? {
+        guard text.contains("](manifold:"), let cardFor,
+              let m = NoteCard.line.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
+        let target = (text as NSString).substring(with: m.range(at: 1))
+        guard let (id, place) = BlockID.link(target), let content = cardFor(id, place) else { return nil }
+        return NoteCard(block: id, place: place, target: target, content: content)
+    }
 
     func textStorage(_ storage: NSTextStorage, didProcessEditing mask: NSTextStorageEditActions, range edited: NSRange, changeInLength delta: Int) {
         if mask.contains(.editedCharacters) { onCharactersEdited?() }
@@ -439,6 +484,12 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
             // A code block's fences: there to be edited, not read.
             if row.kind == .code { dimFences(storage, in: paragraph) }
             else if row.kind != .rule { styleInline(storage, in: paragraph, row: row) }
+            // A block's card under it: room made below the row.
+            if row.kind != .code, let card = card(for: row.text),
+               let ps = (storage.attribute(.paragraphStyle, at: paragraph.location, effectiveRange: nil) as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle {
+                ps.paragraphSpacing += card.height + 8
+                storage.addAttributes([.paragraphStyle: ps, .noteCard: card], range: paragraph)
+            }
             storage.fixAttributes(in: paragraph)
         }
     }
@@ -486,7 +537,14 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
             }
             for run in span.markup { storage.addAttribute(.noteHidden, value: true, range: run) }
         }
+        // A block's reference written bare: a link to it.
+        for m in Self.reference.matches(in: storage.string, range: body) {
+            guard let url = URL(string: text.substring(with: m.range)) else { continue }
+            storage.addAttributes([.link: url, .foregroundColor: Theme.accent], range: m.range)
+        }
     }
+
+    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
 
     /// `==text==`'s ground: a highlighter's yellow, the text reading through it.
     static let highlighter = NSColor(name: "noteHighlighter") { appearance in
@@ -596,7 +654,30 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
             default: break
             }
             drawHandle(Self.handle(for: row), row: row, paragraph: paragraph, origin: origin, indent: indent)
+            if let card = storage.attribute(.noteCard, at: paragraph.location, effectiveRange: nil) as? NoteCard {
+                let r = NSRect(x: indent, y: frame.maxY + 4, width: min(460, origin.x + width - indent), height: card.height)
+                let painter = NoteCard.painter
+                painter.content = card.content
+                painter.frame = NSRect(origin: .zero, size: r.size)
+                NSGraphicsContext.saveGraphicsState()
+                let move = NSAffineTransform()
+                move.translateX(by: r.minX, yBy: r.minY)
+                move.concat()
+                painter.draw(painter.bounds)
+                NSGraphicsContext.restoreGraphicsState()
+            }
         }
+    }
+
+    /// Where a row's card is drawn, if it shows one.
+    func cardRect(of paragraph: NSRange, origin: NSPoint) -> (NoteCard, NSRect)? {
+        guard let storage = textStorage, let view, paragraph.location < storage.length,
+              let card = storage.attribute(.noteCard, at: paragraph.location, effectiveRange: nil) as? NoteCard,
+              let frame = frame(of: paragraph, origin: origin) else { return nil }
+        let row = NoteOutlineText.style(storage, at: paragraph.location).row
+        let indent = origin.x + view.metrics.textIndent(for: row)
+        let width = view.textContainer?.size.width ?? view.bounds.width
+        return (card, NSRect(x: indent, y: frame.maxY + 4, width: min(460, origin.x + width - indent), height: card.height))
     }
 
     /// Where a row's handle is drawn: its middle, in the room before the
@@ -738,6 +819,27 @@ final class NoteOutlineTextView: NSTextView {
     /// A picture dropped, kept for the note (as an image block): given the
     /// Markdown that shows it.
     var keepImage: ((Data, String, @escaping (String) -> Void) -> Void)?
+    /// A block's card (a place's in it), for a row that's only its embed.
+    var cardFor: ((BlockID, String?) -> SummaryCardContent?)? {
+        get { styler.cardFor }
+        set { styler.cardFor = newValue }
+    }
+
+    /// The blocks' cards, as their summaries are now: the rows showing one
+    /// that changed styled again.
+    func refreshCards() {
+        guard let storage = textStorage, let cardFor else { return }
+        var stale: [NSRange] = []
+        storage.enumerateAttribute(.noteCard, in: NSRange(location: 0, length: storage.length)) { value, run, _ in
+            guard let card = value as? NoteCard else { return }
+            let now = cardFor(card.block, card.place)
+            if now?.summary != card.content.summary || now?.symbol != card.content.symbol { stale.append(run) }
+        }
+        guard !stale.isEmpty else { return }
+        storage.beginEditing()
+        for r in stale { storage.edited(.editedAttributes, range: r, changeInLength: 0) }
+        storage.endEditing()
+    }
     /// A block dropped in by its link (or reference, card): linked from the note.
     var onLinked: ((BlockID) -> Void)?
 
@@ -1473,6 +1575,12 @@ final class NoteOutlineTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A block's card clicked: followed, as its link is.
+        if let layout = layoutManager as? NoteOutlineLayoutManager,
+           let card = paragraphRanges.lazy.compactMap({ layout.cardRect(of: $0, origin: self.textContainerOrigin) }).first(where: { $0.1.contains(point) })?.0 {
+            onOpen?(card.target)
+            return
+        }
         if let index = (layoutManager as? NoteOutlineLayoutManager)?.handleHit(at: point, origin: textContainerOrigin) {
             window?.makeFirstResponder(self)
             // Clicked, a handle does what it does; moved, it carries its row.

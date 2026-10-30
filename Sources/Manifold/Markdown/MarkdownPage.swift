@@ -289,6 +289,18 @@ enum MarkdownPage {
         a[href^="manifold:"] { display: inline-block; padding: 0 0.55em; border: 0.5px solid rgba(127,127,127,0.5); border-radius: 999px;
           background: rgba(127,127,127,0.12); color: inherit; font-size: 0.9em; line-height: 1.55; vertical-align: 0.05em; }
         a[href^="manifold:"]:hover { text-decoration: none; background: rgba(127,127,127,0.24); }
+        a.mcard[href^="manifold:"] { display: flex; gap: 0.8em; max-width: 30rem; margin: 0.4em 0; padding: 0.6em 0.8em; border-radius: 10px;
+          border: 0.5px solid rgba(127,127,127,0.45); background: rgba(127,127,127,0.07); font-size: 0.88em; line-height: 1.4; vertical-align: baseline; }
+        a.mcard[href^="manifold:"]:hover { background: rgba(127,127,127,0.14); }
+        .mcard-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .mcard-head { display: flex; align-items: center; gap: 0.45em; }
+        .mcard-head img { width: 1.05em; height: 1.05em; flex: none; }
+        .mcard-title { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mcard-note { flex: none; opacity: 0.6; font-size: 0.92em; }
+        .mcard-note.failed { color: #d6453d; opacity: 1; } .mcard-note.running { color: #2f8fdd; opacity: 1; } .mcard-note.attention { color: #d68a1d; opacity: 1; }
+        .mcard-place, .mcard-line { opacity: 0.68; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mcard-line.code { font-family: var(--mono), Menlo, monospace; font-size: 0.9em; }
+        .mcard-thumb { width: 5.5em; max-height: 5.5em; border-radius: 5px; object-fit: cover; flex: none; }
         a { color: #007d9c; text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
           font-family: var(--mono), Menlo, monospace; font-size: calc(0.83rem * var(--mono-scale, 1));

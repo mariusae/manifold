@@ -410,21 +410,107 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     /// host's bytes once fetched (nil until then; `imagesArrived` after).
     var imageSource: ((BlockID) -> String?)?
 
-    /// `<img src="manifold:…">`, an image a note shows by its block: the
-    /// source the page can load.
+    /// A block's card (a place's in it), for `![name](manifold:…)` naming
+    /// one that isn't an image (§3.11).
+    var cardFor: ((BlockID, String?) -> SummaryCardContent?)?
+    /// The cards the page shows, by address, as they said when drawn.
+    private var cardsShown: [String: BlockSummary] = [:]
+
+    private static let embed = try! NSRegularExpression(pattern: #"<img src="(manifold:[^"]*)" alt="([^"]*)"[^>]*>"#)
+
+    /// A reference written bare in the text (`manifold:host/id#place`).
+    private static let bareReference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
+
+    /// `<img src="manifold:…">`, a block a note shows: an image by the
+    /// source the page can load; anything else as its card, a link. And a
+    /// reference written bare, a link by its block's name.
     private func resolvingImages(_ html: String) -> String {
-        guard html.contains("src=\"manifold:"), let imageSource else { return html }
-        var out = ""
-        var rest = Substring(html)
-        while let r = rest.range(of: "src=\"manifold:") {
-            out += rest[..<r.lowerBound]
-            guard let end = rest[r.upperBound...].firstIndex(of: "\"") else { break }
-            let address = String(rest[r.upperBound..<end])
-            let source = BlockID.link("manifold:" + address).flatMap { imageSource($0.block) } ?? ""
-            out += "src=\"" + source.replacingOccurrences(of: "\"", with: "%22") + "\""
-            rest = rest[rest.index(after: end)...]
+        let html = linkingReferences(html)
+        guard html.contains("src=\"manifold:") else { cardsShown = [:]; return html }
+        let ns = html as NSString
+        var out = "", at = 0
+        var cards: [String: BlockSummary] = [:]
+        for m in Self.embed.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            out += ns.substring(with: NSRange(location: at, length: m.range.location - at))
+            at = NSMaxRange(m.range)
+            let address = ns.substring(with: m.range(at: 1))
+            let link = BlockID.link(address)
+            if let link, let content = cardFor?(link.block, link.fragment) {
+                cards[address] = content.summary
+                out += Self.cardHTML(content, href: address)
+            } else {
+                let source = link.flatMap { imageSource?($0.block) } ?? ""
+                out += ns.substring(with: m.range).replacingOccurrences(of: "src=\"" + address + "\"", with: "src=\"" + source.replacingOccurrences(of: "\"", with: "%22") + "\"")
+            }
         }
-        return out + rest
+        cardsShown = cards
+        return out + ns.substring(from: at)
+    }
+
+    private func linkingReferences(_ html: String) -> String {
+        guard html.contains("manifold:") else { return html }
+        let ns = html as NSString
+        var out = "", at = 0
+        for m in Self.bareReference.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            let address = ns.substring(with: m.range)
+            guard let link = BlockID.link(address) else { continue }
+            out += ns.substring(with: NSRange(location: at, length: m.range.location - at))
+            at = NSMaxRange(m.range)
+            let name = cardFor?(link.block, link.fragment)?.summary.title ?? address
+            out += "<a href=\"\(address)\">\(escape(name))</a>"
+        }
+        return out + ns.substring(from: at)
+    }
+
+    /// The blocks' cards, as their summaries are now: the page drawn again
+    /// if any changed.
+    func refreshCards() {
+        guard !cardsShown.isEmpty, let cardFor else { return }
+        let changed = cardsShown.contains { address, shown in
+            BlockID.link(address).flatMap { cardFor($0.block, $0.fragment)?.summary } != shown
+        }
+        if changed { render(scrollToTop: false) }
+    }
+
+    /// A card as the page shows it: the block's symbol, title and note,
+    /// where it is, a few lines, a picture at the right.
+    private static func cardHTML(_ c: SummaryCardContent, href: String) -> String {
+        func esc(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: "\"", with: "&quot;")
+        }
+        let s = c.summary
+        var h = "<a class=\"mcard\" href=\"\(esc(href))\"><span class=\"mcard-body\"><span class=\"mcard-head\">"
+        if let icon = symbolURI(c.symbol) { h += "<img src=\"\(icon)\" alt=\"\">" }
+        h += "<span class=\"mcard-title\">\(esc(s.title))</span>"
+        if let note = s.note { h += "<span class=\"mcard-note \(s.tone.rawValue)\">\(esc(note))</span>" }
+        h += "</span>"
+        if let place = s.place, !place.isEmpty { h += "<span class=\"mcard-place\">\(esc(place.abbreviatingHome))</span>" }
+        for line in s.lines.prefix(3) { h += "<span class=\"mcard-line\(s.code ? " code" : "")\">\(esc(line))</span>" }
+        h += "</span>"
+        if let t = c.thumbnail, let uri = pngURI(t, maxWidth: 240) { h += "<img class=\"mcard-thumb\" src=\"\(uri)\" alt=\"\">" }
+        return h + "</a>"
+    }
+
+    private static var symbolURIs: [String: String] = [:]
+    /// A symbol as the page can show it, grey (it reads on light and dark).
+    private static func symbolURI(_ name: String) -> String? {
+        if let u = symbolURIs[name] { return u }
+        guard let image = Theme.symbol(name, size: 26, weight: .regular, color: NSColor(white: 0.5, alpha: 1)), let u = pngURI(image, maxWidth: 64) else { return nil }
+        symbolURIs[name] = u
+        return u
+    }
+
+    private static func pngURI(_ image: NSImage, maxWidth: CGFloat) -> String? {
+        let scale = min(1, maxWidth / max(image.size.width, 1))
+        let size = NSSize(width: max(1, (image.size.width * scale).rounded()), height: max(1, (image.size.height * scale).rounded()))
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:]).map { "data:image/png;base64," + $0.base64EncodedString() }
     }
 
     /// Another host's images came: the page drawn again with them.

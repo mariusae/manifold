@@ -150,6 +150,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
+        textView.cardFor = { [weak self] id, place in self?.blockCard?(id, place) }
         status.font = UIType.detail
         status.textColor = Theme.text
         status.lineBreakMode = .byTruncatingTail
@@ -602,6 +603,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
     /// A block's look for its pill in the text, from whoever knows blocks.
     var blockLook: ((BlockID) -> PillLook?)?
+    /// A block's card (a place's in it), for a line that's only its embed.
+    var blockCard: ((BlockID, String?) -> SummaryCardContent?)?
     /// The blocks' looks may have changed: pills drawn with old ones are redrawn.
     func refreshPills() { textView.refreshPills() }
     var onToggleMarkdown: ((_ rich: Bool) -> Void)?

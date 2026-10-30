@@ -319,7 +319,15 @@ parts from the Mac's conventions on purpose.
   block also lands in the text, `[title](manifold:…)`, shown as a
   link — the block's symbol, name and status, live, as its tile's
   bar shows them — in the editor and in the preview,
-  clicked to go to the block; the note then *mentions* it too. So a
+  clicked to go to the block; the note then *mentions* it too. A
+  reference written bare (`manifold:host/id`, as an agent writes one)
+  shows the same. On a line of its own as an image, `![name](manifold:…)`
+  (what ⌃'s **Inline** puts in), a block shows as its **summary card**
+  instead, live — its symbol, title, state, a few lines, a picture of a
+  page — in the editor (the Markdown back on the caret's line), the
+  outline (under its row) and the preview; a place's card for a place
+  in it: a command's line and how it ended, a heading's section, a
+  PDF's page. So a
   web of annotations grows: notes about blocks, blocks in notes,
   blocks linked to blocks.
 - **Images in notes**: paste one (a screenshot, a picture copied — from
