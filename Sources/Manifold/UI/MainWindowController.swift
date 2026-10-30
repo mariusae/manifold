@@ -1896,9 +1896,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// <host> <path> d|f` (a folder's entry), `finder <path>` (the Finder's),
     /// `text <words>`, `url <address>`, `image <path>` (a picture's data),
     /// `row <i>` (the shown floating list's), `from <terminal> <i>` (its
-    /// outline's). `form`: ⌃ held, that chosen from the menu.
-    func debugDrop(_ spec: [String], as form: DropForm?, grid slot: (Int, Int)?) -> String {
+    /// outline's). `form`: that chosen from the palette; `palette`: the
+    /// palette opened over the target's middle, its rows (then "pick <i>").
+    func debugDrop(_ spec: [String], as form: DropForm?, grid slot: (Int, Int)?, palette: Bool = false) -> String {
         let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
+        // "pick <i>": the open palette's row i dropped on.
+        if spec.first == "pick", spec.count > 1, let i = Int(spec[1]) { return DropPalette.debugPick(i, pb) }
         pb.clearContents()
         let rest = spec.dropFirst().joined(separator: " ")
         var item: NSPasteboardWriting?
@@ -1950,6 +1953,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return "offered \(forms.map(\.rawValue).joined(separator: ", "))"
         }
         guard let target = debugDropTarget else { return "the focused tile takes no drops" }
+        if palette {
+            DropPalette.close()
+            DropPalette.open(over: target, pb, at: target.convert(NSPoint(x: target.visibleRect.midX, y: target.visibleRect.midY), to: nil))
+            return DropPalette.debugState
+        }
         return Dropping.debugDrop(pb, on: target, at: nil)
     }
 

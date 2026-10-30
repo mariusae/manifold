@@ -315,7 +315,7 @@ public enum Mani {
             `[Its name](manifold:…)`, which a note shows as the block's name. You'll find them
             where the user put them: dragged into your prompt (a block, a file, an outline's
             item dropped on you comes as its reference, its link, its path or what it holds —
-            they chose which, ⌃ as they dropped it), in a note's text, from Copy Link. Treat one as "that block":
+            they chose which as they dropped it), in a note's text, from Copy Link. Treat one as "that block":
             - Any mani command takes one as a name, either form: `mani read manifold:…`
               (at `#command=7`, that command's output; at `#page=3`, that page),
               `mani info manifold:…` (what and where it is, its links),

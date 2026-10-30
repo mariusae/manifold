@@ -624,8 +624,15 @@ its words, a block its reference), an agent a file's path and what
 anything else holds, a notebook a new cell, a folder a copy (its own
 host's entries moved), the grid a tile where it lands, or over a tile
 whose view takes nothing, for a block, the link to the tile. The hint
-beside the pointer says what a drop does there, and that **⌃** held as it's
-dropped offers the rest, from a menu. What a view doesn't take goes on to
+beside the pointer says what a drop does there. A quick drop does that;
+the pointer resting a moment (`Dropping.restDelay`, 0.6 s, as a folder
+in the Finder springs open) — or ⌃ held — opens a palette there
+(`DropPalette`, after Dropzone): a row for each form the target takes,
+the plain one under the pointer, so a drop that doesn't move still does
+what it would have, the others below it; moved onto one and dropped,
+that's put in, where the pointer rested; moved well away, it closes and
+the target has the drag again. While open the palette is the drop's
+target itself, whatever is under it. What a view doesn't take goes on to
 the grid behind it; nothing is refused.
 
 ---

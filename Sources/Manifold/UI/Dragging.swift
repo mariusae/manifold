@@ -97,8 +97,8 @@ struct DragThing: Codable, Equatable {
 }
 
 /// What a dropped thing is put in as. Each target takes some, the one it
-/// suits first (what a plain drop does, the hint says); ⌃ held as it's
-/// dropped, a menu offers the rest.
+/// suits first (what a plain drop does, the hint says); the pointer
+/// resting, the palette offers the rest (`DropPalette`).
 enum DropForm: String, CaseIterable {
     case link, reference, path, text, contents, inline, open, linkTile, copy, move
 }
@@ -265,16 +265,20 @@ extension DropTaking {
     func dropTrack(_ d: Dragged, at p: NSPoint) {}
 }
 
-/// Dropping things, the same everywhere: the hint, ⌃'s menu, and what a
-/// view doesn't take handed on to the grid.
+/// Dropping things, the same everywhere: the hint, the palette of what
+/// else a thing can be there, and what a view doesn't take handed on to
+/// the grid.
 @MainActor enum Dropping {
-    /// ⌃ held: what's put in chosen from a menu.
-    static var choosing: Bool { debugChoice != nil || NSEvent.modifierFlags.contains(.control) }
-
-    /// Debugging: the form chosen, as if from the menu (it isn't shown),
-    /// and the forms the last drop offered.
+    /// Debugging: the form chosen, as if from the palette (it isn't
+    /// shown), and the forms the last drop offered.
     static var debugChoice: DropForm?
     private(set) static var lastOffered: [DropForm] = []
+
+    /// How long the pointer rests over a target before its palette opens.
+    static let restDelay: TimeInterval = 0.6
+    /// Where the pointer last came to rest, and since when; the timer that
+    /// opens the palette if it stays.
+    private static var rest: (point: NSPoint, view: Weak<NSView>, timer: Timer)?
 
     /// What a form does, said in general.
     static func hint(_ form: DropForm, _ d: Dragged) -> String {
@@ -322,18 +326,46 @@ extension DropTaking {
         grid(of: view)?.draggingExited(sender)
         view.dropTrack(d, at: p)
         let plain = view.dropHint(first, d)
-        DropHint.say(choosing && forms.count > 1 ? "Choose what to put in…" : forms.count > 1 ? plain + " · ⌃ for more" : plain,
-                     at: sender.draggingLocation, in: view.window)
-        return first == .move ? .move : first == .linkTile ? .link : .copy
+        DropHint.say(forms.count > 1 ? plain + " · hold for more" : plain, at: sender.draggingLocation, in: view.window)
+        if forms.count > 1 { resting(view, sender, at: sender.draggingLocation) }
+        return op(first)
+    }
+
+    static func op(_ form: DropForm) -> NSDragOperation { form == .move ? .move : form == .linkTile ? .link : .copy }
+
+    /// The pointer over a target with choices: come to rest (within a few
+    /// points) for a moment, or ⌃ held, the palette opens there.
+    private static func resting(_ view: DropTaking, _ sender: NSDraggingInfo, at point: NSPoint) {
+        if NSEvent.modifierFlags.contains(.control) { return DropPalette.open(over: view, sender.draggingPasteboard, at: point) }
+        if let r = rest, r.view.value === view, hypot(r.point.x - point.x, r.point.y - point.y) < 4 { return }
+        rest?.timer.invalidate()
+        let timer = Timer(timeInterval: restDelay, repeats: false) { [weak view] _ in
+            MainActor.assumeIsolated {
+                rest = nil
+                guard let view else { return }
+                DropPalette.open(over: view, sender.draggingPasteboard, at: point)
+            }
+        }
+        // (The drag holds the run loop in its own mode.)
+        RunLoop.main.add(timer, forMode: .common)
+        rest = (point, Weak(view), timer)
+    }
+
+    /// No longer resting: moved on, gone, dropped.
+    static func stopResting() {
+        rest?.timer.invalidate()
+        rest = nil
     }
 
     static func exited(_ view: DropTaking, _ sender: NSDraggingInfo?) {
         DropHint.hush()
+        if rest?.view.value === view { stopResting() }
         grid(of: view)?.draggingExited(sender)
     }
 
     static func perform(_ view: DropTaking, _ sender: NSDraggingInfo) -> Bool {
         DropHint.hush()
+        stopResting()
         guard let d = Dragged(sender.draggingPasteboard) else { return grid(of: view)?.performDragOperation(sender) ?? false }
         let p = view.convert(sender.draggingLocation, from: nil)
         let forms = view.dropForms(d, at: p)
@@ -342,30 +374,11 @@ extension DropTaking {
         return true
     }
 
-    /// `d` put in by `view` as its plain form, or (⌃) as chosen from a menu at `p`.
+    /// `d` put in by `view` as its plain form (debugging: as chosen).
     static func take(_ d: Dragged, _ forms: [DropForm], by view: DropTaking, at p: NSPoint?) {
         lastOffered = forms
-        guard choosing, forms.count > 1 else { return view.dropPut(d, as: forms[0], at: p) }
         if let chosen = debugChoice { return forms.contains(chosen) ? view.dropPut(d, as: chosen, at: p) : NSSound.beep() }
-        let menu = NSMenu()
-        let name = d.things.count == 1 ? d.things[0].title : ""
-        let header = NSMenuItem(title: name.isEmpty || name.count > 40 ? "Put it in as" : "Put “\(name)” in as", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-        for form in forms {
-            let (general, symbol) = label(form)
-            let title = view.dropLabel(form, d) ?? general
-            let detail = d.detail(form)
-            let item = ClosureMenuItem(title, symbol: symbol) { view.dropPut(d, as: form, at: p) }
-            item.toolTip = detail
-            let text = NSMutableAttributedString(string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-            text.append(NSAttributedString(string: "  " + detail, attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]))
-            item.attributedTitle = text
-            menu.addItem(item)
-        }
-        let at = p ?? view.window.map { view.convert($0.mouseLocationOutsideOfEventStream, from: nil) } ?? .zero
-        // After the drop has finished: the menu runs once the drag is over.
-        DispatchQueue.main.async { menu.popUp(positioning: nil, at: at, in: view) }
+        view.dropPut(d, as: forms[0], at: p)
     }
 
     /// Debugging: what dropping `pb` on `view` does (at `p`; nil, its
@@ -418,5 +431,156 @@ extension DropTaking {
             insert(text)
             if form != .text, form != .path { blocks.forEach(linked) }
         }
+    }
+}
+
+/// A weak reference, for keeping one in a tuple.
+struct Weak<T: AnyObject> {
+    weak var value: T?
+    init(_ value: T) { self.value = value }
+}
+
+/// What else a thing can be where it's held (§3.11), as Dropzone shows
+/// its targets: the pointer rests over a target a moment (or ⌃ is held)
+/// and the forms it takes open there, one row each, the plain one under
+/// the pointer — so a drop that doesn't move still does what it would
+/// have — the others below it (above, near the window's foot). The drag
+/// moved onto one and dropped, that's what's put in, where the pointer
+/// rested; moved well away, the palette goes and the target has the drag
+/// again. While open, it's the drop's target itself.
+final class DropPalette: NSView {
+    private static var shown: DropPalette?
+
+    private weak var target: DropTaking?
+    /// Where the pointer rested, in the target's terms: where it goes in.
+    private let anchor: NSPoint
+    private let forms: [DropForm]
+    private var rows: [NSRect] = []
+    private var labels: [(title: String, detail: String, symbol: String)] = []
+    private var highlighted: Int? { didSet { if highlighted != oldValue { needsDisplay = true } } }
+
+    static let rowHeight: CGFloat = 40
+    static let width: CGFloat = 280
+    static let pad: CGFloat = 6
+    /// How far past its edge the pointer goes before it closes.
+    static let margin: CGFloat = 28
+
+    static var isOpen: Bool { shown != nil }
+
+    /// Opened over `view` at `point` (window terms), for what's dragged.
+    static func open(over view: DropTaking, _ pb: NSPasteboard, at point: NSPoint) {
+        guard shown == nil, let window = view.window, let content = window.contentView, let d = Dragged(pb) else { return }
+        let local = view.convert(point, from: nil)
+        let forms = view.dropForms(d, at: local)
+        guard forms.count > 1 else { return }
+        DropHint.hush()
+        Dropping.stopResting()
+        let palette = DropPalette(target: view, anchor: local, forms: forms, labels: forms.map { f in
+            let (general, symbol) = Dropping.label(f)
+            return (view.dropLabel(f, d) ?? general, d.detail(f), symbol)
+        }, at: content.convert(point, from: nil), in: content.bounds)
+        content.addSubview(palette, positioned: .above, relativeTo: nil)
+        shown = palette
+        // The target lets go of it: it's the palette's now.
+        Dropping.grid(of: view)?.draggingExited(nil)
+    }
+
+    static func close() {
+        shown?.removeFromSuperview()
+        shown = nil
+    }
+
+    private init(target: DropTaking, anchor: NSPoint, forms: [DropForm], labels: [(String, String, String)], at point: NSPoint, in bounds: NSRect) {
+        self.target = target
+        self.anchor = anchor
+        self.forms = forms
+        self.labels = labels.map { (title: $0.0, detail: $0.1, symbol: $0.2) }
+        let n = CGFloat(forms.count), h = Self.rowHeight, m = Self.margin, p = Self.pad
+        // The plain one's row centered on the pointer; the rest below it,
+        // or above if there's no room below.
+        let below = point.y - h / 2 - (n - 1) * h - p >= bounds.minY + 6
+        var x = point.x - 36
+        x = min(max(x, bounds.minX + 6), bounds.maxX - Self.width - 6)
+        let firstY = point.y - h / 2
+        let ys = (0..<forms.count).map { i in below ? firstY - CGFloat(i) * h : firstY + CGFloat(i) * h }
+        let box = NSRect(x: x - p, y: (ys.min() ?? firstY) - p, width: Self.width + 2 * p, height: n * h + 2 * p)
+        super.init(frame: box.insetBy(dx: -m, dy: -m))
+        rows = ys.map { NSRect(x: x - frame.minX, y: $0 - frame.minY, width: Self.width, height: h) }
+        wantsLayer = true
+        layer?.zPosition = 120
+        registerForDraggedTypes(Dragged.types)
+        highlighted = 0
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var box: NSRect { bounds.insetBy(dx: Self.margin, dy: Self.margin) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let card = NSBezierPath(roundedRect: box, xRadius: Radius.surface, yRadius: Radius.surface)
+        NSGraphicsContext.saveGraphicsState()
+        Elevation.resting.shadow.set()
+        SummaryCard.fill.setFill()
+        card.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        EdgeColor.subtle.setStroke()
+        card.lineWidth = 0.5
+        card.stroke()
+        for (i, r) in rows.enumerated() {
+            let on = i == highlighted
+            if on {
+                Theme.accent.withAlphaComponent(0.9).setFill()
+                NSBezierPath(roundedRect: r.insetBy(dx: 2, dy: 2), xRadius: Radius.control, yRadius: Radius.control).fill()
+            }
+            let ink = on ? NSColor.white : Theme.text
+            if let symbol = Theme.symbol(labels[i].symbol, size: 14, weight: .regular, color: on ? .white : Theme.secondaryText) {
+                symbol.draw(in: NSRect(x: r.minX + 12, y: r.midY - symbol.size.height / 2, width: symbol.size.width, height: symbol.size.height))
+            }
+            let title = NSAttributedString(string: labels[i].title + (i == 0 ? "" : ""), attributes: [.font: UIType.title, .foregroundColor: ink])
+            title.draw(at: NSPoint(x: r.minX + 38, y: r.midY + 1))
+            let detail = NSMutableAttributedString(string: labels[i].detail, attributes: [.font: UIType.detail, .foregroundColor: on ? NSColor.white.withAlphaComponent(0.85) : Theme.secondaryText])
+            detail.draw(with: NSRect(x: r.minX + 38, y: r.midY - 15, width: r.width - 50, height: 15), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+    }
+
+    private func row(at sender: NSDraggingInfo) -> Int? {
+        let p = convert(sender.draggingLocation, from: nil)
+        return rows.firstIndex { $0.contains(p) }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let p = convert(sender.draggingLocation, from: nil)
+        guard bounds.contains(p) else { return [] }
+        highlighted = row(at: sender) ?? (box.contains(p) ? highlighted : nil)
+        return Dropping.op(forms[highlighted ?? 0])
+    }
+
+    /// Gone well past its edge: it closes, the target below has the drag.
+    override func draggingExited(_ sender: NSDraggingInfo?) { Self.close() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { Self.close() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { Self.close() }
+        guard let target, let d = Dragged(sender.draggingPasteboard) else { return false }
+        let form = forms[row(at: sender) ?? highlighted ?? 0]
+        target.dropPut(d, as: form, at: anchor)
+        return true
+    }
+
+    /// Debugging: the open palette's rows, the highlighted marked.
+    static var debugState: String {
+        guard let s = shown else { return "closed" }
+        return s.forms.enumerated().map { "\($0.offset == s.highlighted ? "▸" : " ") \($0.element.rawValue) “\(s.labels[$0.offset].title)”" }.joined(separator: "\n")
+    }
+
+    /// Debugging: row `i` dropped on, as a drop there would.
+    static func debugPick(_ i: Int, _ pb: NSPasteboard) -> String {
+        defer { Dropping.stopResting() }
+        guard let s = shown, s.forms.indices.contains(i), let target = s.target, let d = Dragged(pb) else { return "no palette" }
+        target.dropPut(d, as: s.forms[i], at: s.anchor)
+        close()
+        return "put in as \(s.forms[i].rawValue)"
     }
 }

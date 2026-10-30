@@ -156,8 +156,12 @@ parts from the Mac's conventions on purpose.
   picture, a note of the words, the block brought — or, a block over a
   tile, the tile linked to it (below); on another app, as a file or
   text. While you drag, a word beside the pointer says what dropping
-  does there. Hold **⌃** as you drop for a menu of what else it can be
-  there: its **link** (`[name](manifold:…)`, as a note shows it), its
+  does there, and a quick drop does it. Rest the pointer a moment (or
+  hold **⌃**) and a palette opens there of what else it can be — the
+  usual one under the pointer, so dropping without moving still does
+  it, the others below to move onto and drop on, moving away closing
+  it, as a folder in the Finder springs open as you hold a file over
+  it: its **link** (`[name](manifold:…)`, as a note shows it), its
   **reference** (`manifold:host/id`, a place after `#` — what an agent
   and `mani` take as its name: drop a block on an agent as its
   reference and the agent can read it, change it and point back to it),
@@ -322,7 +326,7 @@ parts from the Mac's conventions on purpose.
   clicked to go to the block; the note then *mentions* it too. A
   reference written bare (`manifold:host/id`, as an agent writes one)
   shows the same. On a line of its own as an image, `![name](manifold:…)`
-  (what ⌃'s **Inline** puts in), a block shows as its **summary card**
+  (what the palette's **Inline** puts in), a block shows as its **summary card**
   instead, live — its symbol, title, state, a few lines, a picture of a
   page — in the editor (the Markdown back on the caret's line), the
   outline (under its row) and the preview; a place's card for a place
@@ -768,7 +772,7 @@ around it, and comes back with its history.
   and it's the file, a thing as anything dragged is (above): a terminal
   types its path, a note links to it, a folder takes it in, the grid
   opens it where it lands (on its host, another's too), another app
-  takes the file (one of this Mac's); ⌃ as you drop for the rest. The
+  takes the file (one of this Mac's); rest the pointer for the rest. The
   selection, the folders left open, the divider and the filter are kept
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
@@ -869,7 +873,7 @@ around it, and comes back with its history.
   thing (above), by its words (`#line=`, `#page=`, `#command=`): into a
   note it's a link to that heading, page or command; on a shell, its
   words (a command typed again); on an agent, what's there (a heading's
-  section, a command's output); on a tile, the blocks are linked; ⌃ for
+  section, a command's output); on a tile, the blocks are linked; rest the pointer for
   the rest. A diff's file carries itself, as a file dragged from a
   listing does. A **shell's commands** have a dot each too, beside the
   prompt (red for one that failed, the accent for one still running):

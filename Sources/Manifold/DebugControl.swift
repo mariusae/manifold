@@ -394,7 +394,7 @@ enum DebugControl {
             // previous ask's answer (it comes a moment later).
             return wc?.debugContents(arg) ?? "no window"
         case "drop":
-            // "drop <what> [as <form>] [grid <column> <at>]": a thing dropped
+            // "drop <what> [as <form>] [grid <column> <at>] [palette]": a thing dropped
             // on the focused tile (or the grid's slot), as dragged from where
             // it's written (block, file, finder, text, url, image, row, from);
             // "as": ⌃ held, that chosen from the menu.
@@ -404,13 +404,15 @@ enum DebugControl {
                 slot = (c, a)
                 w.removeSubrange(g...(g + 2))
             }
+            let palette = w.last == "palette"
+            if palette { w.removeLast() }
             var form: DropForm?
             if let i = w.lastIndex(of: "as"), i + 1 < w.count {
                 guard let f = DropForm(rawValue: w[i + 1]) else { return "no form \(w[i + 1])" }
                 form = f
                 w.removeSubrange(i...(i + 1))
             }
-            return wc?.debugDrop(w, as: form, grid: slot) ?? "no window"
+            return wc?.debugDrop(w, as: form, grid: slot, palette: palette) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
         case "column":
