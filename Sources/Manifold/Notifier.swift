@@ -42,7 +42,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 seenStatus[b.id] = r.at
                 if seeded, new, r.wantsAttention, Self.speaks(b.kind), !inSight(b.id) { post(status: r, of: b) }
             }
-            if let commands = b.terminal?.commands, let last = commands.last(where: { $0.ended != nil }) {
+            // The shell's commands, not an agent's turns (marks on the
+            // scrubber too): a turn ending is said by the agent's status.
+            let turns = Set(b.terminal?.turns?.map(\.id) ?? [])
+            if let commands = b.terminal?.commands, let last = commands.last(where: { $0.ended != nil && !turns.contains($0.id) }) {
                 let before = seenCommand[b.id]
                 seenCommand[b.id] = last.id
                 if seeded, let before, last.id != before, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand, !inSight(b.id) {
