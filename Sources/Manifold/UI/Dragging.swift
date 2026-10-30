@@ -654,7 +654,9 @@ final class DropPalette: NSView {
             title = NSAttributedString(string: more.map { "and \($0) more" } ?? name(t),
                                        attributes: [.font: UIType.label, .foregroundColor: Theme.text])
             icon = t.flatMap(Self.icon)
-            let w = 10 + (icon != nil ? 16 + 6 : 0) + min(ceil(title.size().width), 280) + 12
+            let iconWidth: CGFloat = icon != nil ? 22 : 0
+            let titleWidth = min(ceil(title.size().width), 280)
+            let w = 22 + iconWidth + titleWidth
             size = NSSize(width: w + 2 * room, height: height + 2 * room)
         }
         return NSImage(size: size, flipped: false) { bounds in
