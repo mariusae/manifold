@@ -404,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Show Hidden Files", #selector(DirectoryView.toggleHiddenFiles(_:)), ".", [.command, .shift])
+        item(view, "Use Groups", #selector(DirectoryView.toggleGroups(_:)), "0", [.command, .control])
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.

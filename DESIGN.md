@@ -905,7 +905,13 @@ search block (§7.5) beside.
 Or in columns, as the Finder's (`DirectoryColumnsMode`), drawn with the
 tree's parts — its rows, symbols and bands, a column a list each, the
 preview after the last — the mode kept with the tile, and the one chosen
-last taken by a tile without one. There the field filters rather than
+last taken by a tile without one. A column's entries are in groups
+(`FileGroup`, View ▸ Use Groups, on unless the tile says otherwise): the
+Finder's by kind, but code by its language, from a table of extensions
+and whole names (Makefile, LICENSE), else from what the system makes of
+the type; folders first with no header, then each group under one,
+keeping the sort's order; the arrows step over the headers, and a click
+on one leaves the choice as it was. There the field filters rather than
 searches: each column keeps, in its own order, the files matching it and
 the folders on the way to them (from the same ranking, every match, not
 the best thousand), the selection moving to the first match in that order

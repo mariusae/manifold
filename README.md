@@ -761,7 +761,14 @@ around it, and comes back with its history.
   a folder gone into or a new tile takes the one chosen last): each
   folder chosen opens in the next column, the file chosen is previewed
   after the last, in the tree's rows — a folder's chevron at its row's
-  end — and ← → go between columns, ⏎ into the folder chosen. The field
+  end — and ← → go between columns, ⏎ into the folder chosen. A column's
+  files are in groups, as the Finder's Use Groups has them, but code by
+  its language: folders first, then Documents, PDF Documents, each
+  language (C, Python, Rust, Swift, …), Build (Makefile, Dockerfile),
+  Configuration (JSON, TOML, YAML, lock files), Spreadsheets,
+  Presentations, Images, Movies, Music, Archives and Other, each under a
+  small grey header and in the sort's order (View ▸ Use Groups, ⌃⌘0,
+  turns them off; the tile keeps it). The field
   at the top (⌘F, or / from the list; ⇥ goes between
   it and the list) is a search in the tree and a filter in columns:
   there each column keeps only the files that match and the folders on

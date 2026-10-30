@@ -52,6 +52,122 @@ extension String {
     var capitalizingFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
+/// The group a folder's entry is shown under, as the Finder's Use Groups
+/// has them by kind — but code by its language: folders (first, and not
+/// headed in columns), Documents, PDF
+/// Documents, Rust, Swift, … (each language its own, by name), Build,
+/// Configuration, Spreadsheets, Presentations, Images, Movies, Music,
+/// Archives, Other. `rank` orders them.
+struct FileGroup: Hashable {
+    let rank: Int
+    let title: String
+
+    static let folders = FileGroup(rank: 0, title: "Folders")
+    static let documents = FileGroup(rank: 10, title: "Documents")
+    static let pdf = FileGroup(rank: 11, title: "PDF Documents")
+    static func language(_ name: String) -> FileGroup { FileGroup(rank: 20, title: name) }
+    static let build = FileGroup(rank: 30, title: "Build")
+    static let configuration = FileGroup(rank: 31, title: "Configuration")
+    static let spreadsheets = FileGroup(rank: 40, title: "Spreadsheets")
+    static let presentations = FileGroup(rank: 41, title: "Presentations")
+    static let images = FileGroup(rank: 50, title: "Images")
+    static let movies = FileGroup(rank: 51, title: "Movies")
+    static let music = FileGroup(rank: 52, title: "Music")
+    static let archives = FileGroup(rank: 60, title: "Archives")
+    static let other = FileGroup(rank: 99, title: "Other")
+
+    /// Groups in the order shown: by rank, languages by name.
+    static func < (a: FileGroup, b: FileGroup) -> Bool {
+        a.rank != b.rank ? a.rank < b.rank : a.title.localizedStandardCompare(b.title) == .orderedAscending
+    }
+
+    static func of(_ name: String, isDirectory: Bool) -> FileGroup {
+        if isDirectory { return .folders }
+        let lower = name.lowercased(), ext = lower.pathExtension
+        if let g = byName[lower] { return g }
+        if !ext.isEmpty, let l = languages[ext] { return .language(l) }
+        if let g = byExtension[ext] { return g }
+        // Not in the tables: by what the system makes of its type.
+        guard !ext.isEmpty, let t = UTType(filenameExtension: ext) else { return .other }
+        if t.conforms(to: .pdf) { return .pdf }
+        if t.conforms(to: .image) { return .images }
+        if t.conforms(to: .movie) { return .movies }
+        if t.conforms(to: .audio) { return .music }
+        if t.conforms(to: .archive) || t.conforms(to: .diskImage) { return .archives }
+        if t.conforms(to: .spreadsheet) { return .spreadsheets }
+        if t.conforms(to: .presentation) { return .presentations }
+        if t.conforms(to: .sourceCode) { return .language(t.localizedDescription?.capitalizingFirst ?? "Source Code") }
+        if t.conforms(to: .text) || t.conforms(to: .compositeContent) { return .documents }
+        return .other
+    }
+
+    /// Files known by their whole name.
+    private static let byName: [String: FileGroup] = {
+        var m: [String: FileGroup] = [:]
+        for n in ["readme", "license", "licence", "copying", "authors", "notice", "changelog", "contributing", "todo", "news"] { m[n] = .documents }
+        for n in ["makefile", "gnumakefile", "dockerfile", "containerfile", "justfile", "cmakelists.txt", "build", "build.bazel",
+                  "workspace", "rakefile", "gemfile", "procfile", "vagrantfile", "meson.build"] { m[n] = .build }
+        for n in [".gitignore", ".gitattributes", ".gitmodules", ".editorconfig", ".env", ".envrc", ".dockerignore", ".clang-format",
+                  ".swiftlint.yml", ".prettierrc", ".eslintrc"] { m[n] = .configuration }
+        return m
+    }()
+
+    /// Code, by extension, named by its language.
+    private static let languages: [String: String] = {
+        var m: [String: String] = [:]
+        let table: [(String, [String])] = [
+            ("Swift", ["swift", "swiftinterface"]), ("Rust", ["rs"]), ("Go", ["go"]), ("C", ["c", "h"]),
+            ("C++", ["cc", "cpp", "cxx", "c++", "hpp", "hh", "hxx", "ipp", "inl"]), ("Objective-C", ["m", "mm"]),
+            ("Python", ["py", "pyi", "pyx", "ipynb"]), ("Ruby", ["rb", "erb"]), ("JavaScript", ["js", "mjs", "cjs", "jsx"]),
+            ("TypeScript", ["ts", "mts", "cts", "tsx"]), ("Java", ["java"]), ("Kotlin", ["kt", "kts"]), ("Scala", ["scala", "sc"]),
+            ("Zig", ["zig"]), ("Lua", ["lua"]), ("Haskell", ["hs", "lhs"]), ("OCaml", ["ml", "mli"]), ("Elixir", ["ex", "exs"]),
+            ("Erlang", ["erl", "hrl"]), ("PHP", ["php"]), ("C#", ["cs"]), ("F#", ["fs", "fsi", "fsx"]), ("Dart", ["dart"]),
+            ("Julia", ["jl"]), ("R", ["r"]), ("Perl", ["pl", "pm"]), ("Clojure", ["clj", "cljs", "cljc", "edn"]),
+            ("Elm", ["elm"]), ("Nim", ["nim"]), ("Odin", ["odin"]), ("V", ["v"]), ("D", ["d"]), ("Fortran", ["f", "f90", "f95"]),
+            ("Assembly", ["s", "asm"]), ("Shell", ["sh", "bash", "zsh", "fish", "ksh", "command", "rc"]),
+            ("PowerShell", ["ps1", "psm1"]), ("SQL", ["sql"]), ("HTML", ["html", "htm", "xhtml"]),
+            ("CSS", ["css", "scss", "sass", "less"]), ("Vue", ["vue"]), ("Svelte", ["svelte"]), ("Nix", ["nix"]),
+            ("Protocol Buffers", ["proto"]), ("GraphQL", ["graphql", "gql"]), ("Metal", ["metal"]), ("GLSL", ["glsl", "vert", "frag"]),
+            ("Lisp", ["lisp", "el", "scm", "rkt"]), ("Tcl", ["tcl"]), ("Verilog", ["v", "sv"]), ("Solidity", ["sol"]),
+            ("Gleam", ["gleam"]), ("Starlark", ["bzl", "star"]),
+        ]
+        for (lang, exts) in table { for e in exts where m[e] == nil { m[e] = lang } }
+        return m
+    }()
+
+    private static let byExtension: [String: FileGroup] = {
+        var m: [String: FileGroup] = [:]
+        let table: [(FileGroup, [String])] = [
+            (.documents, ["md", "markdown", "mdx", "txt", "text", "rst", "org", "adoc", "tex", "bib", "rtf", "doc", "docx", "pages",
+                          "odt", "epub", "man"]),
+            (.pdf, ["pdf"]),
+            (.build, ["mk", "cmake", "gradle", "bazel", "ninja", "podspec", "xcodeproj", "pbxproj", "xcworkspace"]),
+            (.configuration, ["json", "jsonc", "json5", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "config", "xcconfig",
+                              "lock", "env", "properties", "xml", "entitlements", "xcscheme", "modulemap"]),
+            (.spreadsheets, ["csv", "tsv", "xlsx", "xls", "numbers", "ods"]),
+            (.presentations, ["key", "pptx", "ppt", "odp"]),
+            (.images, ["png", "jpg", "jpeg", "gif", "heic", "heif", "webp", "svg", "ico", "icns", "tiff", "tif", "bmp", "psd", "avif"]),
+            (.movies, ["mp4", "mov", "m4v", "webm", "mkv", "avi"]),
+            (.music, ["mp3", "wav", "m4a", "aac", "flac", "ogg", "aiff", "aif", "opus"]),
+            (.archives, ["zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "7z", "rar", "dmg", "pkg", "jar", "whl"]),
+        ]
+        for (g, exts) in table { for e in exts { m[e] = g } }
+        return m
+    }()
+
+    /// Entries in their groups, the groups in order and each keeping the
+    /// order it was given.
+    static func grouped(_ nodes: [BrowserNode]) -> [(FileGroup, [BrowserNode])] {
+        var by: [FileGroup: [BrowserNode]] = [:]
+        for n in nodes { by[n.group, default: []].append(n) }
+        return by.keys.sorted(by: <).map { ($0, by[$0]!) }
+    }
+}
+
+extension BrowserNode {
+    var group: FileGroup { FileGroup.of(name, isDirectory: isDirectory) }
+}
+
 /// What a file browser knows of the folders under its root (§7.4): each
 /// folder's entries as the host lists them, asked for as they're opened;
 /// hidden and ignored ones shown only when asked; and, when a filter is
@@ -63,6 +179,9 @@ final class DirectoryModel {
     enum SortKey: String { case name, modified, size, kind }
     var sortKey = SortKey.name
     var ascending = true
+    /// Columns' entries under headers by kind, code by language (View ▸
+    /// Use Groups), each group in the sort's order.
+    var useGroups = true
 
     /// Lists a folder on the block's host.
     var list: (String, @escaping ([DirectoryEntry]?) -> Void) -> Void = { _, done in done(nil) }

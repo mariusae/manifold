@@ -205,6 +205,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         m.readingChanged = { [weak self] in self?.updateFooter() }
         // As it was left.
         m.showHidden = keeper.value("hidden") == "1"
+        m.useGroups = keeper.value("groups") != "0"
         if let s = keeper.value("sort")?.split(separator: ":"), s.count == 2, let k = DirectoryModel.SortKey(rawValue: String(s[0])) {
             m.sortKey = k
             m.ascending = s[1] == "1"
@@ -426,9 +427,22 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// View ▸ Show Hidden Files (⇧⌘.), titled by what it will do.
     @objc func toggleHiddenFiles(_ sender: Any?) { toggleHidden() }
 
+    /// View ▸ Use Groups (⌃⌘0, the Finder's): columns' entries under
+    /// headers by kind, code by language; kept with the tile.
+    @objc func toggleGroups(_ sender: Any?) {
+        guard let model else { return }
+        model.useGroups.toggle()
+        keeper.note(["groups": model.useGroups ? "1" : "0"])
+        content?.reloadAll()
+    }
+
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleHiddenFiles(_:)) {
             item.title = model?.showHidden == true ? "Hide Hidden Files" : "Show Hidden Files"
+        }
+        if item.action == #selector(toggleGroups(_:)) {
+            item.state = model?.useGroups == true ? .on : .off
+            return mode == .columns
         }
         return true
     }
@@ -595,6 +609,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "groups": toggleGroups(nil)
         case "tree": setMode(.tree)
         case "columns": setMode(.columns)
         case "key":

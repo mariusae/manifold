@@ -31,7 +31,28 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         let scroll = ClippingScrollView()
         let table = ColumnTable()
         var folder = ""
-        var nodes: [BrowserNode] = []
+        /// Its entries, in the order shown.
+        private(set) var nodes: [BrowserNode] = []
+        /// Its rows: under groups, each group's header before its entries
+        /// (but the folders', first, with none).
+        enum Row { case header(FileGroup), node(BrowserNode) }
+        private(set) var rows: [Row] = []
+
+        func show(_ entries: [BrowserNode], grouped: Bool) {
+            rows = grouped ? FileGroup.grouped(entries).flatMap { ($0.0 == .folders ? [] : [Row.header($0.0)]) + $0.1.map(Row.node) }
+                : entries.map(Row.node)
+            nodes = rows.compactMap { if case let .node(n) = $0 { n } else { nil } }
+        }
+
+        /// The entry at a row; nil at a header, or past them.
+        func node(_ row: Int) -> BrowserNode? {
+            guard rows.indices.contains(row), case let .node(n) = rows[row] else { return nil }
+            return n
+        }
+
+        func row(of path: String) -> Int? {
+            rows.firstIndex { if case let .node(n) = $0 { n.path == path } else { false } }
+        }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -152,13 +173,40 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     private func column(of table: NSTableView) -> Column? { columns.first { $0.table === table } }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { column(of: tableView)?.nodes.count ?? 0 }
+    func numberOfRows(in tableView: NSTableView) -> Int { column(of: tableView)?.rows.count ?? 0 }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { isHeader(tableView, row) }
+
+    /// A header isn't chosen: clicked, what was chosen stays; come to by
+    /// the arrows, the entry past it is.
+    func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
+        guard proposed.count == 1, let p = proposed.first, let c = column(of: tableView), c.node(p) == nil else { return proposed }
+        let mouse: Set<NSEvent.EventType> = [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .otherMouseDown]
+        if let e = NSApp.currentEvent, mouse.contains(e.type) { return tableView.selectedRowIndexes }
+        let past = p > tableView.selectedRow ? p + 1 : p - 1
+        return c.node(past) != nil ? [past] : tableView.selectedRowIndexes
+    }
+
+    /// A header's height: air above it, but for the first.
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        isHeader(tableView, row) ? (row == 0 ? 26 : 40) : 24
+    }
+
+    private func isHeader(_ tableView: NSTableView, _ row: Int) -> Bool {
+        guard let c = column(of: tableView), c.rows.indices.contains(row), case .header = c.rows[row] else { return false }
+        return true
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let c = column(of: tableView), c.nodes.indices.contains(row) else { return nil }
-        let n = c.nodes[row]
+        guard let c = column(of: tableView), c.rows.indices.contains(row) else { return nil }
+        guard let n = c.node(row) else {
+            guard case let .header(g) = c.rows[row] else { return nil }
+            let cell = tableView.makeView(withIdentifier: ColumnHeaderCell.id, owner: nil) as? ColumnHeaderCell ?? ColumnHeaderCell()
+            cell.label.stringValue = g.title
+            return cell
+        }
         let cell = tableView.makeView(withIdentifier: ColumnCell.id, owner: nil) as? ColumnCell ?? ColumnCell()
         // The letters a filter matched, in a file's name.
         var bold: [Int] = []
@@ -172,11 +220,11 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     }
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
-        column(of: tableView)?.nodes[safe: row]?.name
+        column(of: tableView)?.node(row)?.name
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        column(of: tableView)?.nodes[safe: row].map(owner.pasteboardWriter)
+        column(of: tableView)?.node(row).map(owner.pasteboardWriter)
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
@@ -185,7 +233,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let c = columns.first(where: { $0.table.menu === menu }), let n = c.nodes[safe: c.table.clickedRow],
+        guard let c = columns.first(where: { $0.table.menu === menu }), let n = c.node(c.table.clickedRow),
               let m = owner.menu(for: n) else { return }
         for item in m.items { m.removeItem(item); menu.addItem(item) }
     }
@@ -193,7 +241,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     func folder(at point: NSPoint) -> String? {
         // A folder's row: into it; anywhere else in a column, its folder.
         guard let c = columns.first(where: { $0.bounds.contains($0.convert(point, from: self)) }) else { return nil }
-        if let n = c.nodes[safe: c.table.row(at: c.table.convert(point, from: self))], n.isDirectory { return n.path }
+        if let n = c.node(c.table.row(at: c.table.convert(point, from: self))), n.isDirectory { return n.path }
         return c.folder
     }
 
@@ -237,11 +285,11 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
             let c = i < columns.count ? columns[i] : { let c = makeColumn(); columns.append(c); return c }()
             if c.folder != folder || reloading.contains(folder) || c.nodes.isEmpty {
                 c.folder = folder
-                c.nodes = entries(folder) ?? []
+                c.show(entries(folder) ?? [], grouped: model.useGroups)
                 c.table.reloadData()
             }
             let next = i + 1 < t.count ? t[i + 1] : (chosen != folder ? chosen : nil)
-            if let next, let row = c.nodes.firstIndex(where: { $0.path == next }) {
+            if let next, let row = c.row(of: next) {
                 c.table.selectRowIndexes([row], byExtendingSelection: false)
                 c.table.scrollRowToVisible(row)
             } else {
@@ -265,7 +313,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !restoring, let table = notification.object as? NSTableView, let c = column(of: table) else { return }
-        let n = c.nodes[safe: table.selectedRow]
+        let n = c.node(table.selectedRow)
         choose(n?.path ?? (c.folder == model.root ? nil : c.folder))
     }
 
@@ -280,7 +328,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     /// Double-clicked, a file or a folder opens, as its menu's Open does
     /// (a folder in this tile; ⌘ beside, ⌥ over).
     @objc private func doubleClicked(_ sender: NSTableView) {
-        guard let n = column(of: sender)?.nodes[safe: sender.clickedRow] else { return }
+        guard let n = column(of: sender)?.node(sender.clickedRow) else { return }
         owner.open(n)
     }
 
@@ -289,7 +337,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     private func arrow(right: Bool, from c: Column) {
         guard let i = columns.firstIndex(where: { $0 === c }) else { return }
         if right {
-            guard let n = c.nodes[safe: c.table.selectedRow], n.isDirectory else { return }
+            guard let n = c.node(c.table.selectedRow), n.isDirectory else { return }
             toggle(n)
         } else {
             guard i > 0 else { return }
@@ -339,19 +387,25 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     /// own order (folders first, by name), not the best ranked.
     func selectFirst() {
         if model.filtering {
-            if let first = model.matchedFiles.min(by: Self.inColumnOrder) { select(model.absolute(first)) }
+            let grouped = model.useGroups
+            if let first = model.matchedFiles.min(by: { Self.inColumnOrder($0, $1, grouped: grouped) }) { select(model.absolute(first)) }
         } else if let first = entries(model.root)?.first {
             select(first.path)
         }
     }
 
     /// Two relative paths in the order columns show them: at the first
-    /// place they part, a folder before a file, else by name.
-    static func inColumnOrder(_ a: String, _ b: String) -> Bool {
+    /// place they part, a folder before a file, else (under groups) by
+    /// group, else by name.
+    static func inColumnOrder(_ a: String, _ b: String, grouped: Bool = false) -> Bool {
         let pa = a.split(separator: "/"), pb = b.split(separator: "/")
         for i in 0..<min(pa.count, pb.count) where pa[i] != pb[i] {
             let fa = i < pa.count - 1, fb = i < pb.count - 1
             if fa != fb { return fa }
+            if grouped, !fa {
+                let ga = FileGroup.of(String(pa[i]), isDirectory: false), gb = FileGroup.of(String(pb[i]), isDirectory: false)
+                if ga != gb { return ga < gb }
+            }
             return String(pa[i]).standardCompare(String(pb[i]))
         }
         return pa.count < pb.count
@@ -371,7 +425,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         let reloading = Set(columns.map(\.folder))
         if model.filtering, !model.isLoadingTree, chosen.map({ !model.matchedFiles.contains(model.relative($0)) }) ?? true,
            !model.matchedFiles.isEmpty {
-            for c in columns { c.nodes = [] }
+            for c in columns { c.show([], grouped: false) }
             selectFirst()
             return
         }
@@ -383,11 +437,12 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     var debugRows: String {
         columns.enumerated().map { i, c -> String in
-            let rows = c.nodes.prefix(14).enumerated().map { r, n in
-                (c.table.selectedRow == r ? "[" : "") + n.name + (n.isDirectory ? "/" : "") + (c.table.selectedRow == r ? "]" : "")
+            let rows = c.rows.prefix(20).enumerated().map { r, row -> String in
+                guard case let .node(n) = row else { if case let .header(g) = row { return "‹\(g.title)›" }; return "" }
+                return (c.table.selectedRow == r ? "[" : "") + n.name + (n.isDirectory ? "/" : "") + (c.table.selectedRow == r ? "]" : "")
             }
             return "column \(i) \(model.relative(c.folder).isEmpty ? "." : model.relative(c.folder)): " + rows.joined(separator: " ")
-                + (c.nodes.count > 14 ? " … (\(c.nodes.count))" : "")
+                + (c.rows.count > 20 ? " … (\(c.nodes.count))" : "")
         }.joined(separator: "\n")
             + "\npreview " + (previewBox.isHidden ? "none" : "\(preview.node?.name ?? "nothing") \(Int(previewBox.frame.width)) wide")
             + " · keyboard in column \(focusedColumn) · strip \(Int(strip.frame.width)) in \(Int(scroll.contentSize.width))"
@@ -405,6 +460,30 @@ final class ColumnTable: NSTableView {
         if mods.isEmpty, event.keyCode == 124 { return onArrow?(true) ?? () }
         if mods.isEmpty, event.keyCode == 123 { return onArrow?(false) ?? () }
         super.keyDown(with: event)
+    }
+}
+
+/// A group's header in a column, as the Finder's: its name, small and
+/// grey, at the foot of its row (the air above it parting it from the
+/// group before).
+final class ColumnHeaderCell: NSTableCellView {
+    static let id = NSUserInterfaceItemIdentifier("column-header")
+    let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.id
+        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = Theme.secondaryText
+        label.lineBreakMode = .byTruncatingTail
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        label.frame = NSRect(x: 12, y: 4, width: max(0, bounds.width - 20), height: 15)
     }
 }
 
