@@ -544,7 +544,7 @@ final class DropPalette: NSView {
         for (i, r) in rows.enumerated() {
             let on = i == highlighted
             if on {
-                Theme.accent.withAlphaComponent(0.9).setFill()
+                Tints.accentFill.setFill()
                 NSBezierPath(roundedRect: r.insetBy(dx: 2, dy: 2), xRadius: Radius.control, yRadius: Radius.control).fill()
             }
             let ink = on ? NSColor.white : Theme.text

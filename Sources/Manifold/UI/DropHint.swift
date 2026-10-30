@@ -74,13 +74,13 @@ final class DropHint: NSView {
         let inner = bounds.insetBy(dx: Self.room, dy: Self.room)
         var x = inner.minX
         if let symbol {
-            // The badge: filled, ringed in white, as the system's is, so it
-            // reads over anything.
+            // The badge: the tint (as deep as white on it needs), ringed in
+            // white as the system's is, so it reads over anything.
             let b = Self.badge
             let circle = NSBezierPath(ovalIn: NSRect(x: x, y: inner.midY - b / 2, width: b, height: b))
             NSGraphicsContext.saveGraphicsState()
             Elevation.resting.shadow.set()
-            (symbol == Dropping.refused ? NSColor.systemGray : Theme.accent).setFill()
+            (symbol == Dropping.refused ? NSColor.systemGray : Tints.accentFill).setFill()
             circle.fill()
             NSGraphicsContext.restoreGraphicsState()
             NSColor.white.setStroke()
