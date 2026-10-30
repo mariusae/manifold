@@ -681,6 +681,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
         HoverCard.shared.hide()
         if !pathDrag { delegate?.organizationDragChanged(true) }
+        DragPill.dress(session, from: outlineView, at: screenPoint)
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {

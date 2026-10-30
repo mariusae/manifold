@@ -204,6 +204,10 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         guard rows.indices.contains(row), case let .change(entry) = rows[row] else { return nil }
         return Drags.file(root + "/" + entry.path, isDirectory: false, on: block.host)
     }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+    }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {

@@ -663,7 +663,8 @@ final class FloatingListRow: NSView, NSDraggingSource {
             return i
         }
         item.setDraggingFrame(bounds, contents: image)
-        beginDraggingSession(with: [item], event: event, source: self)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
         FloatingList.shared.hideNow()
     }
 

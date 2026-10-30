@@ -399,6 +399,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         case let .hit(hit): return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
         }
     }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+    }
     // Each row looked up only where it is: asked for one the table still
     // thinks it has, nothing.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {

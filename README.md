@@ -155,8 +155,12 @@ parts from the Mac's conventions on purpose.
   grid, a tile of its own where it lands — a file opened, a page, a
   picture, a note of the words, the block brought — or, a block over a
   tile, the tile linked to it (below); on another app, as a file or
-  text. While you drag, a word beside the pointer says what dropping
-  does there, and a quick drop does it. Rest the pointer a moment (or
+  text. What you drag shows as a pill — its icon and name — and
+  beside the pointer a badge with the symbol of what dropping does
+  there, and words saying it, changing as you go (⃠ where nothing can
+  be done); a quick drop does it. Only what works is offered: a file
+  Manifold doesn't open (a film) goes into a note as its path, and on
+  the grid opens in its own app. Rest the pointer a moment (or
   hold **⌃**) and a palette opens there of what else it can be — the
   usual one under the pointer, so dropping without moving still does
   it, the others below to move onto and drop on, moving away closing

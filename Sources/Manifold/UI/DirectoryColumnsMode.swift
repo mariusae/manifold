@@ -179,6 +179,10 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         column(of: tableView)?.nodes[safe: row].map(owner.pasteboardWriter)
     }
 
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let c = columns.first(where: { $0.table.menu === menu }), let n = c.nodes[safe: c.table.clickedRow],

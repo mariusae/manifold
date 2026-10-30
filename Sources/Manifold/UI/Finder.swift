@@ -874,6 +874,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         shown.indices.contains(row) ? shown[row].drag?() : nil
     }
 
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+    }
+
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard shown.indices.contains(row) else { return Self.rowHeight }
         let item = shown[row]

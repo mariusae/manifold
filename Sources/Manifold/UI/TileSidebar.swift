@@ -20,6 +20,10 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         rows.indices.contains(row) ? outline.dragItem(rows[row]) : nil
     }
 
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard rows.indices.contains(table.clickedRow), let m = outline.menuFor?(rows[table.clickedRow]) else { return }

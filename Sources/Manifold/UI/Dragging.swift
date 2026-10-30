@@ -57,8 +57,9 @@ struct DragThing: Codable, Equatable {
     /// What its path form says, and on which host.
     var place: File? { file ?? folder }
     var isImage: Bool { file.map { !$0.isDirectory && BlockKind.forFile($0.path) == .image } ?? false }
-    /// It can be named by a block: one already, or a file opened as one.
-    var nameable: Bool { block != nil || file != nil }
+    /// It can be named by a block: one already, or a file Manifold opens
+    /// as one (not a film, an archive: only its path, then).
+    var nameable: Bool { block != nil || file.map { Drags.opens?($0) ?? true } == true }
 
     /// The block it names: its own, or its file's (opened as a block, not placed).
     @MainActor func named() -> BlockID? { block ?? file.flatMap { Drags.resolve?($0) } }
@@ -167,8 +168,9 @@ struct Dragged {
         case .link: all { $0.nameable || $0.url != nil }
         case .reference, .linkTile: all(\.nameable)
         case .path: all { $0.place != nil }
-        case .text: all { $0.text != nil }
-        case .contents: all { $0.block != nil || $0.file.map { !$0.isDirectory } == true }
+        // (A file's words that are only its path: its path, not twice.)
+        case .text: all { $0.text != nil && $0.text != $0.place?.path }
+        case .contents: all { $0.block != nil || ($0.nameable && $0.file.map { !$0.isDirectory } == true) }
         case .inline: pictures || all(\.nameable)
         case .open: true
         case .copy, .move: all { $0.file != nil } || (things.isEmpty && (hasPictureData || !promised.isEmpty)) || pictures
@@ -322,16 +324,29 @@ extension DropTaking {
         guard let d = Dragged(sender.draggingPasteboard) else { return grid(of: view)?.draggingUpdated(sender) ?? [] }
         let p = view.convert(sender.draggingLocation, from: nil)
         let forms = view.dropForms(d, at: p)
-        guard let first = forms.first else { return grid(of: view)?.draggingUpdated(sender) ?? [] }
+        guard let first = forms.first else {
+            if let grid = grid(of: view) { return grid.draggingUpdated(sender) }
+            // Nothing it can be here, nor behind: said so, not left blank.
+            DropHint.say(refusal, symbol: refused, at: sender.draggingLocation, in: view.window)
+            return []
+        }
         grid(of: view)?.draggingExited(sender)
         view.dropTrack(d, at: p)
-        let plain = view.dropHint(first, d)
-        DropHint.say(forms.count > 1 ? plain + " · hold for more" : plain, at: sender.draggingLocation, in: view.window)
+        DropHint.say(view.dropHint(first, d), symbol: label(first).1, at: sender.draggingLocation, in: view.window)
         if forms.count > 1 { resting(view, sender, at: sender.draggingLocation) }
-        return op(first)
+        return op(sender)
     }
 
-    static func op(_ form: DropForm) -> NSDragOperation { form == .move ? .move : form == .linkTile ? .link : .copy }
+    static let refusal = "Can't be dropped here"
+    static let refused = "nosign"
+
+    /// The operation a drop answers: one that shows no badge of the
+    /// system's (a +, a curved arrow) beside the pointer — the hint's own
+    /// shows what it does — of those the drag's source allows.
+    static func op(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let allowed = sender.draggingSourceOperationMask
+        return [NSDragOperation.generic, .move, .copy, .link].first(where: allowed.contains) ?? []
+    }
 
     /// The pointer over a target with choices: come to rest (within a few
     /// points) for a moment, or ⌃ held, the palette opens there.
@@ -386,10 +401,10 @@ extension DropTaking {
     static func debugDrop(_ pb: NSPasteboard, on view: DropTaking, at p: NSPoint?) -> String {
         guard let d = Dragged(pb) else { return "not a thing" }
         let forms = view.dropForms(d, at: p ?? NSPoint(x: view.bounds.midX, y: view.bounds.midY))
-        guard let first = forms.first else { return "handed on to the grid" }
+        guard let first = forms.first else { return grid(of: view) == nil ? "refused: “\(refusal)”" : "handed on to the grid" }
         let taken = debugChoice.flatMap { forms.contains($0) ? $0 : nil } ?? first
         take(d, forms, by: view, at: p)
-        return "dropped as \(taken.rawValue) · offered \(forms.map(\.rawValue).joined(separator: ", ")) · “\(view.dropHint(first, d))”"
+        return "dropped as \(taken.rawValue) · offered \(forms.map(\.rawValue).joined(separator: ", ")) · [\(label(first).1)] “\(view.dropHint(first, d))”"
     }
 
     /// A link, a reference, a path put in among words: a space before
@@ -554,7 +569,10 @@ final class DropPalette: NSView {
         let p = convert(sender.draggingLocation, from: nil)
         guard bounds.contains(p) else { return [] }
         highlighted = row(at: sender) ?? (box.contains(p) ? highlighted : nil)
-        return Dropping.op(forms[highlighted ?? 0])
+        // The row lit is what a drop does now: the hint's badge, its own
+        // symbol, would only cover it.
+        DropHint.hush()
+        return Dropping.op(sender)
     }
 
     /// Gone well past its edge: it closes, the target below has the drag.
@@ -582,5 +600,107 @@ final class DropPalette: NSView {
         target.dropPut(d, as: s.forms[i], at: s.anchor)
         close()
         return "put in as \(s.forms[i].rawValue)"
+    }
+}
+
+/// How a thing looks while it's dragged (§3.11), from wherever it's
+/// dragged: a pill of its own — its icon, its name — on the window's
+/// ground, edged and shadowed, so it reads over anything it passes. The
+/// pills sit just left of the pointer, one under another; past a few,
+/// how many more.
+@MainActor enum DragPill {
+    static let height: CGFloat = 24
+    /// The most shown before "and N more".
+    static let most = 4
+    /// Room around for the shadow.
+    private static let room: CGFloat = 4
+    /// Its ground: raised off the window's, light or dark, so it stands out
+    /// over a page, a terminal, a list.
+    static let fill = NSColor.dynamic(NSColor(white: 1, alpha: 1), NSColor(white: 0.3, alpha: 1))
+
+    /// The things a drag from `view` carries (begun at `screenPoint`)
+    /// dressed as pills. What isn't a thing (a tile moved) keeps its look.
+    static func dress(_ session: NSDraggingSession, from view: NSView, at screenPoint: NSPoint) {
+        guard let window = view.window else { return }
+        let p = view.convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        let items = session.draggingPasteboard.pasteboardItems ?? []
+        func thing(_ item: NSDraggingItem, _ i: Int) -> DragThing? {
+            let pb = item.item as? NSPasteboardItem ?? (items.indices.contains(i) ? items[i] : nil)
+            return pb?.data(forType: .manifoldThing).flatMap { try? JSONDecoder().decode(DragThing.self, from: $0) }
+        }
+        var things: [DragThing?] = []
+        session.enumerateDraggingItems(options: [], for: view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, i, _ in
+            things.append(thing(item, i))
+        }
+        guard things.contains(where: { $0 != nil }) else { return }
+        let appearance = view.effectiveAppearance
+        let count = things.count
+        session.enumerateDraggingItems(options: [], for: view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, i, _ in
+            guard i < things.count else { return }
+            let image: NSImage
+            if i < most || count == most + 1 {
+                image = pill(things[i], appearance: appearance)
+            } else if i == most {
+                image = pill(nil, more: count - most, appearance: appearance)
+            } else {
+                image = NSImage(size: NSSize(width: 1, height: 1))
+            }
+            let dy = CGFloat(min(i, most)) * (height + 2)
+            let y = view.isFlipped ? p.y - image.size.height / 2 + dy : p.y - image.size.height / 2 - dy
+            item.setDraggingFrame(NSRect(x: p.x - image.size.width - 2, y: y, width: image.size.width, height: image.size.height), contents: image)
+        }
+    }
+
+    /// What its pill says.
+    static func name(_ t: DragThing?) -> String {
+        guard let t else { return "" }
+        if !t.title.isEmpty { return t.title }
+        if let f = t.place { return f.path.lastPathComponent }
+        if let u = t.url { return u }
+        let words = (t.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
+        return words.count > 40 ? String(words.prefix(40)) + "…" : words
+    }
+
+    /// Its icon: a file's as the Finder shows it, a block's symbol, a page's, words'.
+    static func icon(_ t: DragThing) -> NSImage? {
+        if let f = t.file { return PathInserter.icon(for: f.path, isFolder: f.isDirectory) }
+        let symbol = t.block.flatMap { Drags.symbol?($0) } ?? (t.folder != nil ? "folder" : t.url != nil ? "globe" : "text.alignleft")
+        return Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText)
+    }
+
+    /// A thing's pill (nil: "and `more` more"), drawn as `appearance` has it.
+    static func pill(_ t: DragThing?, more: Int? = nil, appearance: NSAppearance) -> NSImage {
+        var size = NSSize.zero, title = NSAttributedString(), icon: NSImage?
+        appearance.performAsCurrentDrawingAppearance {
+            title = NSAttributedString(string: more.map { "and \($0) more" } ?? name(t),
+                                       attributes: [.font: UIType.label, .foregroundColor: Theme.text])
+            icon = t.flatMap(Self.icon)
+            let w = 10 + (icon != nil ? 16 + 6 : 0) + min(ceil(title.size().width), 280) + 12
+            size = NSSize(width: w + 2 * room, height: height + 2 * room)
+        }
+        return NSImage(size: size, flipped: false) { bounds in
+            appearance.performAsCurrentDrawingAppearance {
+                let r = bounds.insetBy(dx: room, dy: room)
+                let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+                NSGraphicsContext.saveGraphicsState()
+                Elevation.resting.shadow.set()
+                fill.setFill()
+                shape.fill()
+                NSGraphicsContext.restoreGraphicsState()
+                EdgeColor.controlHovered.setStroke()
+                shape.lineWidth = 0.5
+                shape.stroke()
+                var x = r.minX + 10
+                if let icon {
+                    let s = NSSize(width: min(icon.size.width, 16), height: min(icon.size.height, 16))
+                    icon.draw(in: NSRect(x: x + (16 - s.width) / 2, y: r.midY - s.height / 2, width: s.width, height: s.height))
+                    x += 16 + 6
+                }
+                let h = title.size().height
+                title.draw(with: NSRect(x: x, y: r.midY - h / 2, width: r.maxX - 12 - x, height: h),
+                           options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            }
+            return true
+        }
     }
 }

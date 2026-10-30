@@ -383,7 +383,8 @@ final class LinkBadge: NSView {
         }
         drag.setDraggingFrame(view.bounds, contents: picture)
         dragIsPath = event.modifierFlags.contains(.shift)
-        view.beginDraggingSession(with: [drag], event: event, source: self)
+        let session = view.beginDraggingSession(with: [drag], event: event, source: self)
+        DragPill.dress(session, from: view, at: NSEvent.mouseLocation)
     }
 
     private var dragIsPath = false

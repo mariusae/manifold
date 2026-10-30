@@ -180,6 +180,10 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         (item as? BrowserNode).map(owner.pasteboardWriter)
     }
 
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
+        DragPill.dress(session, from: outlineView, at: screenPoint)
+    }
+
     var shownFolders: [String] { model.filtering ? [] : expanded.map { model.absolute($0) } }
 
     // MARK: Choosing, opening

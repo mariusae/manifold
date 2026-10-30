@@ -1729,8 +1729,19 @@ final class NoteOutlineTextView: NSTextView {
         guard rect.width > 0, rect.height > 0, let bitmap = bitmapImageRepForCachingDisplay(in: rect) else { return image }
         cacheDisplay(in: rect, to: bitmap)
         image.addRepresentation(bitmap)
+        // On a card of their own, as a thing's pill is (§3.11), so they read
+        // over whatever they're dragged across.
+        let appearance = effectiveAppearance
         return NSImage(size: rect.size, flipped: false) { bounds in
-            image.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 0.75)
+            appearance.performAsCurrentDrawingAppearance {
+                let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
+                DragPill.fill.setFill()
+                card.fill()
+                EdgeColor.controlHovered.setStroke()
+                card.lineWidth = 0.5
+                card.stroke()
+                image.draw(in: bounds)
+            }
             return true
         }
     }

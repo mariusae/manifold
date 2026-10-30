@@ -315,6 +315,11 @@ enum Drags {
     /// The block a file dragged names: opened as one (not placed), for a
     /// link or a reference to it; nil for one Manifold doesn't open.
     static var resolve: ((DragThing.File) -> BlockID?)?
+    /// Whether a file is one Manifold opens (`resolve` would name it),
+    /// without opening it.
+    static var opens: ((DragThing.File) -> Bool)?
+    /// A block's symbol, for its pill while it's dragged.
+    static var symbol: ((BlockID) -> String?)?
     /// A picture kept for a note (`note`), as an image block: `insert`
     /// given the Markdown that shows it.
     static var keepImage: ((_ data: Data, _ kind: String, _ note: BlockID, _ insert: @escaping (String) -> Void) -> Void)?

@@ -393,11 +393,35 @@ enum DebugControl {
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
         case "drophint":
-            // "drophint <text>": the drop's hint, at the window's middle, as
-            // a ⇧-drag over a target shows it (gone a moment later).
+            // "drophint [:symbol] <text>": the drop's hint, at the window's
+            // middle, as a drag over a target shows it (gone a moment later).
             guard let window = wc?.window, let content = window.contentView else { return "no window" }
-            DropHint.say(arg, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
+            var words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            let symbol = words.first?.hasPrefix(":") == true ? String(words.removeFirst().dropFirst()) : nil
+            DropHint.say(words.first, symbol: symbol, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
             return "said"
+        case "dragpill":
+            // "dragpill <out.png> <path>…": the pills dragging those files
+            // (this Mac's) would show, one under another, written out.
+            let words = arg.split(separator: " ").map(String.init)
+            guard words.count > 1, let window = wc?.window else { return "dragpill <out.png> <path>…" }
+            let things = words.dropFirst().map { DragThing(title: $0.lastPathComponent, file: .init(host: Drags.localHost, path: $0, isDirectory: false), text: $0) }
+            let pills = MainActor.assumeIsolated { things.map { DragPill.pill($0, appearance: window.effectiveAppearance) } }
+            let size = NSSize(width: pills.map(\.size.width).max() ?? 1, height: pills.reduce(0) { $0 + $1.size.height })
+            // At 2×, on the window's ground.
+            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * 2, pixelsHigh: Int(size.height) * 2, bitsPerSample: 8,
+                                             samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return "no image" }
+            rep.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            window.effectiveAppearance.performAsCurrentDrawingAppearance { Theme.windowBackground.setFill() }
+            NSRect(origin: .zero, size: size).fill()
+            var y = size.height
+            for p in pills { y -= p.size.height; p.draw(in: NSRect(origin: NSPoint(x: 0, y: y), size: p.size)) }
+            NSGraphicsContext.restoreGraphicsState()
+            guard let png = rep.representation(using: .png, properties: [:]) else { return "no image" }
+            try? png.write(to: URL(fileURLWithPath: words[0]))
+            return "wrote \(pills.count)"
         case "contents":
             // "contents [block]": what Copy Contents (⇧⌘C) would copy — the
             // previous ask's answer (it comes a moment later).

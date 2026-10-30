@@ -623,8 +623,25 @@ suits first: a note a link (a picture inline), a shell a path (a place
 its words, a block its reference), an agent a file's path and what
 anything else holds, a notebook a new cell, a folder a copy (its own
 host's entries moved), the grid a tile where it lands, or over a tile
-whose view takes nothing, for a block, the link to the tile. The hint
-beside the pointer says what a drop does there. A quick drop does that;
+whose view takes nothing, for a block, the link to the tile. Each
+target's order is a priority list, and what a thing can't be there is
+left out of it: a file Manifold doesn't open (a film, an archive) can't
+be linked to, referenced, inlined or read, so a note takes its path,
+and the grid opens it in its own app — no form that would do nothing
+is offered, the next in the list is the plain one instead.
+
+While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
+its icon, its name, on a raised ground with an edge and a shadow — a
+few one under another, then "and N more"), wherever it's dragged from,
+so it reads over anything it passes; rows dragged by their bullets go
+on a card the same way. Beside the pointer, where the system's + would
+be, a **badge** shows the symbol of what a drop does there — the
+palette's for that form — with the **hint** after it in words
+(`DropHint`); a drop answers an operation that shows no badge of the
+system's. Both are said again as the drag moves (a modifier pressed,
+another target, the palette's rows), so they're always what dropping
+right then would do; where nothing can be done, a grey ⃠ says so. A
+quick drop does what they say;
 the pointer resting a moment (`Dropping.restDelay`, 0.6 s, as a folder
 in the Finder springs open) — or ⌃ held — opens a palette there
 (`DropPalette`, after Dropzone): a row for each form the target takes,
@@ -632,8 +649,9 @@ the plain one under the pointer, so a drop that doesn't move still does
 what it would have, the others below it; moved onto one and dropped,
 that's put in, where the pointer rested; moved well away, it closes and
 the target has the drag again. While open the palette is the drop's
-target itself, whatever is under it. What a view doesn't take goes on to
-the grid behind it; nothing is refused.
+target itself, whatever is under it, and its lit row, with its symbol,
+is what a drop does. What a view doesn't take goes on to the grid
+behind it.
 
 ---
 

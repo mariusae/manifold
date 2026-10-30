@@ -260,7 +260,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         let size = NSSize(width: min(image.size.width, 160), height: min(image.size.width, 160) * image.size.height / max(image.size.width, 1))
         let at = convert(event.locationInWindow, from: nil)
         drag.setDraggingFrame(NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height), contents: image)
-        beginDraggingSession(with: [drag], event: event, source: self)
+        let session = beginDraggingSession(with: [drag], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
     }
 
     private var mouseDownAt: NSPoint?

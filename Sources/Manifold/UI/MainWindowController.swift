@@ -4623,6 +4623,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.fetchContents(id, at: fragment, done)
         }
         Drags.resolve = { [weak self] f in self?.pathBlock(f.path, isDirectory: f.isDirectory, on: f.host)?.0 }
+        Drags.opens = { [weak self] f in self?.pathOpens(f.path, isDirectory: f.isDirectory, on: f.host) ?? true }
+        Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         Drags.keepImage = { [weak self] data, kind, note, insert in self?.keepImage(data, kind: kind, for: note, insert: insert) }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
@@ -6192,6 +6194,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !local || Self.isEditable(path) { return (hosts.textBlock(for: path, on: on), Lens.default(for: .text, path: path)) }
         return nil
     }
+
+    /// Whether `pathBlock` would open a file, without opening it: asked
+    /// as a drag moves, so what it reads of a file here is kept a while.
+    func pathOpens(_ path: String, isDirectory: Bool, on: HostID) -> Bool {
+        let local = on == host.host
+        if isDirectory || Lens.isMarkdown(path) || !local || Self.isHTML(path) { return true }
+        if let kind = Self.mediaKind(path), kind == .pdf || kind == .image { return true }
+        if let (opens, when) = opensKnown[path], when.timeIntervalSinceNow > -30 { return opens }
+        let opens = Self.isEditable(path)
+        opensKnown[path] = (opens, Date())
+        return opens
+    }
+
+    private var opensKnown: [String: (Bool, Date)] = [:]
 
     static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]
 

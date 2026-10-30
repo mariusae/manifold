@@ -1648,7 +1648,8 @@ final class GridView: NSView, NSDraggingSource {
         dragItem.setDraggingFrame(NSRect(x: p.x - 24, y: p.y - image.size.height / 2, width: image.size.width,
                                          height: image.size.height), contents: image)
         if !pathDrag { delegate?.gridDragChanged(true) }
-        view.beginDraggingSession(with: [dragItem], event: event, source: self)
+        let session = view.beginDraggingSession(with: [dragItem], event: event, source: self)
+        DragPill.dress(session, from: view, at: NSEvent.mouseLocation)
     }
 
     /// A tile's outline ticks at its content's upper right, in from the
@@ -3690,6 +3691,12 @@ extension GridView: DropTaking {
             if d.pictures { return d.things.count > 1 ? "New images here" : "A new image here" }
             if d.things.allSatisfy({ $0.block != nil }) { return "Put a tile of it here" }
             if d.things.allSatisfy({ $0.url != nil && $0.file == nil }) { return "Open the page here" }
+            // A file Manifold doesn't open (a film, an archive): its own app opens it.
+            if d.things.allSatisfy({ $0.file != nil && !$0.nameable }) {
+                guard d.things.count == 1, let f = d.things[0].file,
+                      let app = NSWorkspace.shared.urlForApplication(toOpen: URL(fileURLWithPath: f.path)) else { return "Open them in their apps" }
+                return "Open it in " + FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+            }
             if d.things.allSatisfy({ !$0.nameable && $0.url == nil }) { return "A new note of it here" }
             return "Open it here"
         default: return Dropping.hint(form, d)
