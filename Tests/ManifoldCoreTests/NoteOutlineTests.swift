@@ -116,4 +116,14 @@ struct NoteOutlineTests {
         let gone = InlineEditing.deletion(at: 10, forward: false, text: text, within: whole, spans: spans)
         #expect(gone.map { text.substring(with: $0) } == "d")
     }
+
+    /// A place in a note, as a reference names it, read as what it stands for.
+    @Test func aPlaceIsItsSection() {
+        let note = "# A\nintro\n\n## B\n```\n# not a heading\n```\n- one\n  - one a\n\n- two\n# C\nlast\n"
+        #expect(NoteOutlineMarkdown.section(of: note, line: 4) == "## B\n```\n# not a heading\n```\n- one\n  - one a\n\n- two")
+        #expect(NoteOutlineMarkdown.section(of: note, line: 8) == "- one\n  - one a")
+        #expect(NoteOutlineMarkdown.section(of: note, line: 2) == "intro")
+        #expect(NoteOutlineMarkdown.section(of: note, line: 1).hasSuffix("- two"))
+        #expect(NoteOutlineMarkdown.section(of: note, line: 99) == "")
+    }
 }

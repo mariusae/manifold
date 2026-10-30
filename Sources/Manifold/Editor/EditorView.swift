@@ -13,7 +13,7 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, image data: Data, kind: String)
     /// A web address was ⌘-clicked.
     func editor(_ view: EditorView, open url: URL, over: Bool)
-    /// A block was ⇧-dragged in as a link: linked to this one.
+    /// A block was dropped in as a link (§3.11): linked to this one.
     func editor(_ view: EditorView, linkedFrom block: BlockID)
     /// A link in the text was clicked: a block's pill, or an address;
     /// with ⌥ (`over`), what opens goes over this tile.
@@ -408,9 +408,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
 
     func debugType(_ text: String) { textView.insert(text) }
-    func debugDrop(_ pb: NSPasteboard) -> Bool {
-        textView.drop(pb, at: textView.convert(textView.caretRectInWindow(textView.primarySelection.head), from: nil).origin)
-    }
+    /// Debugging: what dropping `pb` at the caret does.
+    func debugDrop(_ pb: NSPasteboard) -> String { Dropping.debugDrop(pb, on: textView, at: nil) }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {

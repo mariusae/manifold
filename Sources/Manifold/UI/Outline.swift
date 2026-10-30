@@ -30,15 +30,12 @@ final class Outline {
     var onPick: ((Int) -> Void)?
     /// What can be done with an item, as a menu.
     var menuFor: ((Int) -> NSMenu?)?
-    /// What an item carries, dragged out (a file, a command's text).
+    /// What an item with no place of its own carries, dragged out (a diff's file).
     var writerFor: ((Int) -> NSPasteboardWriting?)?
     /// The block it's the outline of, and each item's place in it ("line=12",
     /// "page=3", "command=7"): what a link to an item says.
     var block: BlockID?
     var placeFor: ((Int) -> String?)?
-    /// The block an item opens as when chosen, if it's one of its own (an
-    /// agent's turn, a command's output): what it carries ⇧-dragged.
-    var blockFor: ((Int) -> BlockID?)?
 
     /// Counts up each time its items change (not the current one): what
     /// a space's index (`OutlineIndex`) goes by, with which outline it is
@@ -65,27 +62,20 @@ final class Outline {
         onPick?(i)
     }
 
-    /// What an item carries dragged. ⇧: the block it opens as, if it opens
-    /// as one of its own (an agent's turn); else its block as a pill
-    /// ⇧-dragged carries it — its path, and its link, here to the item's
-    /// place in it — so a note mentions the place and a tile it's dropped on
-    /// is linked (⌥⇧, the link alone); an item without a place of its own
-    /// carries what the view gives (a diff's file, as its block). Plain:
-    /// what the view gives.
-    func dragItem(_ i: Int, modifiers: NSEvent.ModifierFlags) -> NSPasteboardWriting? {
+    /// What an item carries dragged (§3.11): the place in its block it is
+    /// (a heading, a page, a command), with its words — a note links to
+    /// it, a shell types it, an agent is given what's there; an item with
+    /// no place of its own, what the view gives (a diff's file), else its block.
+    func dragItem(_ i: Int) -> NSPasteboardWriting? {
         guard items.indices.contains(i) else { return nil }
-        if modifiers.contains(.shift), let place = Drags.place, let opened = blockFor?(i) {
-            return place(opened, nil, items[i].title, modifiers)
-        }
-        if modifiers.contains(.shift), let block, let place = Drags.place {
-            if let fragment = placeFor?(i) { return place(block, fragment, items[i].title, modifiers) }
-            if writerFor == nil { return place(block, nil, items[i].title, modifiers) }
-        }
-        return writerFor?(i)
+        if let block, let place = Drags.place, let fragment = placeFor?(i) { return place(block, fragment, items[i].title) }
+        if let w = writerFor?(i) { return w }
+        if let block, let place = Drags.place { return place(block, nil, items[i].title) }
+        return nil
     }
 
     /// Whether an item can be dragged at all.
-    var draggable: Bool { block != nil || writerFor != nil || blockFor != nil }
+    var draggable: Bool { block != nil || writerFor != nil }
 
     /// Headings as items, the shallowest at the left (a text whose
     /// headings all begin at ## isn't indented a step for nothing).
@@ -178,7 +168,7 @@ final class OutlineTicks: NSView {
                                  outline?.pick(i)
                              },
                              menu: outline.menuFor == nil ? nil : { [weak outline] in outline?.menuFor?(i) },
-                             drag: !outline.draggable ? nil : { [weak outline] mods in outline?.dragItem(i, modifiers: mods) })
+                             drag: !outline.draggable ? nil : { [weak outline] _ in outline?.dragItem(i) })
         }
     }
 

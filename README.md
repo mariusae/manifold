@@ -137,26 +137,35 @@ parts from the Mac's conventions on purpose.
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
   while you drag is the target tile's shape, to say so; ⇧-drag a bar
-  and it's not the tile you
-  carry but what it stands for, and where it lands decides what's done
-  with it, as Star's printer took a document: on a terminal its path (a
-  terminal's folder, a page's address) is typed, quoted for the shell;
-  on an agent, its path if it's a file, else what it holds (a terminal's
-  history, a search's hits, a note never saved) is pasted in, so the
-  agent has it; on a shell notebook, its path goes in the cell under
-  it, or outside the cells a cell is made for it, the caret before it
-  for the command; on an editor, its path where the pointer is (in a
-  note, a link to it); on another app, as a file or text. While you
-  drag, a word beside the pointer says what dropping does there. Hold
-  **⌃** as you drop for a menu of what else it can be there: its
-  **link** (`[name](manifold:…)`, as a note shows it), its **reference**
-  (`manifold:host/id`, what an agent and `mani` take as its name — drop a
-  block on an agent as its reference and the agent can read it, change
-  it and point back to it), its **path**, or its **contents** (what it
-  holds, as text) — a path onto a note, say, where a link is the usual. It
-  carries the block too, linking it to where it lands (below);
-  ⌥⇧-drag for the link alone: the tile it's dropped on (a terminal, a
-  note) is linked to it, nothing typed or put in. **⇧⌘C (Edit ▸ Copy
+  and it's not the tile you carry but the block itself — a **thing**,
+  as everything else you drag is without ⇧: an outline's item (a
+  command, a heading, a page), a listing's file or folder, a search's
+  hit, a file from the Finder, a page's address, a picture, words.
+  Where a thing lands decides what's done with it, as Star's printer
+  took a document: on a terminal a file's path is typed, quoted for the
+  shell (this Mac's files sent first to a shell on another host), a
+  command again by its words, a block by its reference; on an agent, a
+  file's path, else what it holds (a terminal's history, a note, a
+  command's output, a heading's section) is pasted in, so the agent has
+  it; on a shell notebook, it goes in the cell under it, or outside the
+  cells a cell is made for it; in a note (the editor, the outline, the
+  preview), a link to it — a file opened as a block for it — a picture
+  kept and shown, a page's link; in code, its path; on a folder, a
+  copy (its own host's entries moved, as the Finder moves them); on the
+  grid, a tile of its own where it lands — a file opened, a page, a
+  picture, a note of the words, the block brought — or, a block over a
+  tile, the tile linked to it (below); on another app, as a file or
+  text. While you drag, a word beside the pointer says what dropping
+  does there. Hold **⌃** as you drop for a menu of what else it can be
+  there: its **link** (`[name](manifold:…)`, as a note shows it), its
+  **reference** (`manifold:host/id`, a place after `#` — what an agent
+  and `mani` take as its name: drop a block on an agent as its
+  reference and the agent can read it, change it and point back to it),
+  its **path**, its **text**, its **contents** (what it holds, as
+  text), **inline** (in a note: a picture, or the block's card), a tile
+  of its own, a link to the tile, a copy or a move — a path onto a
+  note, say, where a link is the usual. A block put in is linked from
+  where it lands (below). **⇧⌘C (Edit ▸ Copy
   Contents)** copies the focused block's content as text, whatever it
   is — a file's or note's text, a terminal's whole history, a page's
   or PDF's text, a diff's patch, a listing, a search's hits, a
@@ -744,12 +753,10 @@ around it, and comes back with its history.
   the folder chosen, in the same tile. A double-click (or ⏎) opens a file
   as a link does — gone to, else beside; a double-click on a folder opens
   it, as its menu's Open does — in this tile (⌘ beside, ⌥ over). Drag an entry out
-  and it's its path — a terminal types it, an editor inserts it, the
-  grid opens it where it lands (on its host, another's too), another
-  app takes the file (one of this Mac's); ⇧-drag it
-  and it's its block too, as a bar ⇧-dragged is: a note mentions it, a
-  terminal or a tile it's dropped on is linked to it; ⌥⇧-drag it for
-  the link alone. The
+  and it's the file, a thing as anything dragged is (above): a terminal
+  types its path, a note links to it, a folder takes it in, the grid
+  opens it where it lands (on its host, another's too), another app
+  takes the file (one of this Mac's); ⌃ as you drop for the rest. The
   selection, the folders left open, the divider and the filter are kept
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
@@ -846,15 +853,13 @@ around it, and comes back with its history.
   and the whole outline opens over them, indented by level, where you are
   marked: click an item to go there, or its ⋯ (or right-click it) for what
   else it can do — copy a link to a heading or a page, a turn's changes,
-  undo a turn. **⇧-drag an item** and it carries what the block's bar
-  ⇧-dragged does, its link naming the item's place (`#line=`, `#page=`):
-  into a note it's a link to that heading or page; on a tile, the blocks
-  are linked; on a terminal or an editor, the block's path; ⌥⇧-drag for
-  the link alone. An agent's turn (a command, in a terminal's sidebar)
-  carries the block it opens as when clicked — the turn, the command's
-  output — made then if it wasn't yet. A diff's file carries itself, as a
-  file ⇧-dragged from a listing does; dragged plainly, an item carries
-  what it does from the sidebar (a command's text, a diff's file). A **shell's commands** have a dot each too, beside the
+  undo a turn. **Drag an item** and it's that place in the block, a
+  thing (above), by its words (`#line=`, `#page=`, `#command=`): into a
+  note it's a link to that heading, page or command; on a shell, its
+  words (a command typed again); on an agent, what's there (a heading's
+  section, a command's output); on a tile, the blocks are linked; ⌃ for
+  the rest. A diff's file carries itself, as a file dragged from a
+  listing does. A **shell's commands** have a dot each too, beside the
   prompt (red for one that failed, the accent for one still running):
   rest the pointer on a dot for **Copy Command and Output** and **Open as
   Block**.

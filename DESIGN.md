@@ -588,6 +588,37 @@ hence a `mention` edge too; the editor draws such a link as a capsule
 change — and the preview as a small one, either clicked as any link. Annotation is thus the graph again:
 nothing new is stored but edges and the note's own text.
 
+### 3.11 Dragging things
+
+There are two kinds of drag. A tile's bar (or a block's row, card or
+face) dragged plainly *moves* it, or brings the block — the arrangement
+is what changes. Everything else dragged is a **thing**, and so is a
+tile ⇧-dragged: a block, or a place in one (an outline's item: a
+command, a heading, a page, by its words); a file or folder on a host
+(a folder's entry, a search's hit, a changed file, one from the
+Finder); a page's address; a picture; words. A thing is written the same
+from wherever it's dragged (`DragThing`: the block and its place, the
+file and its host, the folder a terminal is in, the address, the words),
+beside what another app takes (its file here, its text), and read the
+same wherever it lands (`Dragged`), from Manifold or not.
+
+Where it lands takes it as one of the **forms** a thing can be: its
+*link* (`[name](manifold:…)`, a file opened as a block to be linked to),
+its *reference* (`manifold:host/id#place`), its *path* (on that host
+only), its *text*, its *contents* (what it holds, or what's at the place:
+a command's output, a heading's section, a page), *inline* (in a note: a
+picture kept as an image block, any other block as its card), a *tile*
+of its own, a *link to the tile* under it, a *copy* or a *move* into a
+folder. Each target (`DropTaking`) says which it takes, the one that
+suits first: a note a link (a picture inline), a shell a path (a place
+its words, a block its reference), an agent a file's path and what
+anything else holds, a notebook a new cell, a folder a copy (its own
+host's entries moved), the grid a tile where it lands, or over a tile
+whose view takes nothing, for a block, the link to the tile. The hint
+beside the pointer says what a drop does there, and that **⌃** held as it's
+dropped offers the rest, from a menu. What a view doesn't take goes on to
+the grid behind it; nothing is refused.
+
 ---
 
 ## 4. Keeping and collection

@@ -394,24 +394,23 @@ enum DebugControl {
             // previous ask's answer (it comes a moment later).
             return wc?.debugContents(arg) ?? "no window"
         case "drop":
-            // "drop <block>": a block ⇧-dragged into the focused editor;
-            // "drop row N": the shown outline's item N, ⇧-dragged there.
-            if arg.hasPrefix("row "), let i = Int(arg.dropFirst(4)) { return wc?.debugDropRow(i) ?? "no window" }
-            // "drop from <terminal> <i>": that terminal's outline item ⇧-dragged
-            // onto the focused terminal.
-            let w = arg.split(separator: " ").map(String.init)
-            if w.first == "from", w.count == 3, let t = BlockID(string: w[1]), let i = Int(w[2]) {
-                return wc?.debugDropCommand(from: t, i) ?? "no window"
+            // "drop <what> [as <form>] [grid <column> <at>]": a thing dropped
+            // on the focused tile (or the grid's slot), as dragged from where
+            // it's written (block, file, finder, text, url, image, row, from);
+            // "as": ⌃ held, that chosen from the menu.
+            var w = arg.split(separator: " ").map(String.init)
+            var slot: (Int, Int)?
+            if let g = w.lastIndex(of: "grid"), g + 2 < w.count, let c = Int(w[g + 1]), let a = Int(w[g + 2]) {
+                slot = (c, a)
+                w.removeSubrange(g...(g + 2))
             }
-            // "drop <block> link|reference|path|contents": ⌃ held, that chosen from the menu.
-            let parts = arg.split(separator: " ").map(String.init)
-            guard let first = parts.first, let id = BlockID(string: first) else { return "usage: drop <host/ulid> [link|reference|path|contents]" }
-            if parts.count > 1 {
-                let forms: [String: BlockDrop.Form] = ["link": .link, "reference": .reference, "path": .path, "contents": .contents]
-                guard let form = forms[parts[1]] else { return "no form \(parts[1])" }
-                return wc?.debugDrop(id, as: form) ?? "no window"
+            var form: DropForm?
+            if let i = w.lastIndex(of: "as"), i + 1 < w.count {
+                guard let f = DropForm(rawValue: w[i + 1]) else { return "no form \(w[i + 1])" }
+                form = f
+                w.removeSubrange(i...(i + 1))
             }
-            return wc?.debugDrop(id) ?? "no window"
+            return wc?.debugDrop(w, as: form, grid: slot) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
         case "column":

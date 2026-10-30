@@ -185,7 +185,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.manifoldBlockLink, .string, .fileURL] + Promises.types)
+        registerForDraggedTypes(Dragged.types)
         wantsLayer = true
         fontChanged()
     }
@@ -1752,127 +1752,24 @@ final class TextView: NSView, NSTextInputClient {
 
     // MARK: Drops
 
-    /// Text (or files, as their paths) dropped on the text goes in where
-    /// the pointer is.
+    /// Things dropped on the text go in where the pointer is (§3.11): in a
+    /// note or Markdown, a block's (or a file's, a place's) link, a picture
+    /// kept and shown, a page's link; in code a file's path; words as they
+    /// are — ⌃ for the rest. A text that can't be edited takes none: the
+    /// grid behind does (a tile of its own, a link to the tile).
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
 
-    /// A link alone (⌥⇧-dragged) isn't put in: the grid links the tile
-    /// it's dropped on, as it does over any tile.
-    private func linkOnlyGrid(_ sender: NSDraggingInfo?) -> GridView? {
-        // Nor does a text that can't be edited take anything: a file dropped
-        // opens, a ⇧-dragged block links, as over any tile.
-        guard sender?.draggingPasteboard.types?.contains(.manifoldLinkOnly) == true || !isEditable else { return nil }
-        var v = superview
-        while let s = v, !(s is GridView) { v = s.superview }
-        return v as? GridView
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        DropHint.hush()
-        if let grid = linkOnlyGrid(sender) { grid.draggingExited(sender) }
-    }
-
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if let grid = linkOnlyGrid(sender) { return grid.draggingUpdated(sender) }
-        // A picture from Photos (promised, not yet a file): into a note.
-        if isEditable, onImage != nil, Self.droppedText(sender.draggingPasteboard) == nil, !Promises.receivers(sender.draggingPasteboard).isEmpty { return .copy }
-        let block = BlockDrop(sender.draggingPasteboard)
-        guard isEditable, block != nil || Self.droppedText(sender.draggingPasteboard, links: acceptsBlockLinks) != nil else { return [] }
-        if let block {
-            let plain = blockForm(block) == .link ? "Put a link to it here" : blockForm(block) == .path ? "Put its path here" : "Put its reference here"
-            DropHint.say(BlockDrop.hint(plain, choices: block.forms(Self.blockForms).count), at: sender.draggingLocation, in: window)
-        }
-        let p = convert(sender.draggingLocation, from: nil)
-        let at = offset(at: p)
-        // The caret follows the pointer; only moved when it would move.
-        if selections.count != 1 || selections[0].anchor != at || selections[0].head != at {
-            setSelections([Selection(at: at)], scroll: false)
-        }
-        return .copy
-    }
-
-    /// Whether a ⇧-dragged block lands as a link to it (a note, a
-    /// Markdown text) rather than as its path.
+    /// Whether it's a note or Markdown: a block lands as a link to it, a
+    /// picture inline.
     var acceptsBlockLinks = false
-
-    /// What a ⇧-dragged block can be put in as here (⌃ held: a menu of them).
-    static let blockForms: [BlockDrop.Form] = [.link, .reference, .path, .contents]
-
-    /// What a plain ⇧-drop puts in: a link in a note or Markdown; else its
-    /// path, or its reference if it has none.
-    private func blockForm(_ block: BlockDrop) -> BlockDrop.Form {
-        acceptsBlockLinks ? .link : block.path != nil ? .path : .reference
-    }
-
-    /// A ⇧-dragged block put in where the caret is, as `form`; a link or a
-    /// reference noted as a mention.
-    private func put(_ block: BlockDrop, as form: BlockDrop.Form) {
-        block.text(form) { [weak self] text in
-            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
-            self.insert(text)
-            if form == .link || form == .reference { self.delegate?.textView(self, mentioned: block.block) }
-        }
-    }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
-        if let grid = linkOnlyGrid(sender) { return grid.performDragOperation(sender) }
-        return drop(sender.draggingPasteboard, at: convert(sender.draggingLocation, from: nil))
-    }
-
-    /// What a drop does: the text in where the point is; a block's link
-    /// noted as a mention.
-    func drop(_ pb: NSPasteboard, at p: NSPoint) -> Bool {
-        if isEditable, let onImage, Self.droppedText(pb) == nil, case let receivers = Promises.receivers(pb), !receivers.isEmpty {
-            window?.makeFirstResponder(self)
-            setSelections([Selection(at: offset(at: p))], scroll: false)
-            Promises.receive(receivers) { urls in
-                for u in urls where BlockKind.forFile(u.path) == .image { if let data = try? Data(contentsOf: u) { onImage(data, u.pathExtension.lowercased()) } }
-            }
-            return true
-        }
-        // Image files dropped on Markdown: kept as images and shown where they land.
-        if isEditable, let onImage, pb.types?.contains(.manifoldBlockLink) != true, case let images = Self.images(on: pb), !images.isEmpty {
-            window?.makeFirstResponder(self)
-            setSelections([Selection(at: offset(at: p))], scroll: false)
-            images.forEach(onImage)
-            return true
-        }
-        // A ⇧-dragged block: as suits here, or (⌃) as chosen.
-        if isEditable, let block = BlockDrop(pb) {
-            window?.makeFirstResponder(self)
-            setSelections([Selection(at: offset(at: p))], scroll: false)
-            let forms = block.forms(Self.blockForms)
-            if BlockDrop.choosing, forms.count > 1 {
-                block.choose(forms, at: p, in: self) { [weak self] form in self?.put(block, as: form) }
-            } else {
-                put(block, as: blockForm(block))
-            }
-            return true
-        }
-        guard isEditable, let text = Self.droppedText(pb, links: acceptsBlockLinks) else { return false }
-        window?.makeFirstResponder(self)
-        setSelections([Selection(at: offset(at: p))], scroll: false)
-        insert(text)
-        if acceptsBlockLinks, let link = pb.string(forType: .manifoldBlockLink), let id = Self.blockID(inLink: link) {
-            delegate?.textView(self, mentioned: id)
-        }
-        return true
-    }
 
     /// The block a `[title](manifold:host/ulid)` link names.
     static func blockID(inLink link: String) -> BlockID? {
         guard let r = link.range(of: "](manifold:"), let end = link[r.upperBound...].firstIndex(of: ")") else { return nil }
         return BlockID.link(String(link[r.upperBound..<end]))?.block
-    }
-
-    static func droppedText(_ pb: NSPasteboard, links: Bool = false) -> String? {
-        if links, let link = pb.string(forType: .manifoldBlockLink), !link.isEmpty { return link }
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            return urls.map(\.path).joined(separator: "\n")
-        }
-        if let s = pb.string(forType: .string), !s.isEmpty { return s }
-        return nil
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -2297,5 +2194,45 @@ final class TextView: NSView, NSTextInputClient {
 extension TextView: NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         [.copy, .generic]
+    }
+}
+
+extension TextView: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        guard isEditable else { return [] }
+        return acceptsBlockLinks ? Dropping.noteForms(d) : d.forms([.path, .text, .reference, .link, .contents])
+    }
+
+    /// The caret follows the pointer; only moved when it would move.
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        let at = offset(at: p)
+        if selections.count != 1 || selections[0].anchor != at || selections[0].head != at {
+            setSelections([Selection(at: at)], scroll: false)
+        }
+    }
+
+    /// Put in where the caret is; a block named noted as a mention.
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        window?.makeFirstResponder(self)
+        if let p { setSelections([Selection(at: offset(at: p))], scroll: false) }
+        let mentioned = { [weak self] (id: BlockID) in
+            guard let self else { return }
+            self.delegate?.textView(self, mentioned: id)
+        }
+        let words = [.link, .reference, .path].contains(form)
+        let put = { [weak self] (text: String) in
+            guard let self else { return }
+            guard words, !text.contains("\n"), let head = self.selections.first?.head else { return self.insert(text) }
+            let char = { (i: Int) in self.text.byte(at: i).map { Character(UnicodeScalar($0)) } }
+            self.insert(Dropping.spaced(text, after: head > 0 ? char(head - 1) : nil, before: char(head)))
+        }
+        if acceptsBlockLinks {
+            return Dropping.noteText(d, as: form, keep: onImage, insert: put, linked: mentioned)
+        }
+        d.text(form, separator: "\n") { [weak self] text, blocks in
+            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            put(text)
+            if form == .link || form == .reference { blocks.forEach(mentioned) }
+        }
     }
 }

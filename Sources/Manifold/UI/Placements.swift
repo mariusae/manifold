@@ -292,19 +292,46 @@ extension String {
 /// AppKit has a `TextRange` of its own; ours is the core's.
 typealias TextRange = ManifoldCore.TextRange
 
-/// What a row or a pill writes when dragged (§3.4), the same everywhere: a
-/// path on a host — a file or folder found, changed or listed — as a
-/// folder's entry is; a block as a ⇧-dragged pill is (plain: the block
-/// itself, to bring). Given by the window, which knows the blocks.
+/// What a row or a pill writes when dragged (§3.4, §3.11), the same
+/// everywhere: a thing (`DragThing`) — a file or folder on a host, found,
+/// changed or listed, as a folder's entry is; a block, or a place in it.
+/// A block's own pill, row or card, dragged plain, is the block moved or
+/// brought (a tile); ⇧-dragged, the thing it is. Given by the window,
+/// which knows the blocks.
 enum Drags {
-    static var path: ((_ path: String, _ isDirectory: Bool, _ host: HostID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem)?
     static var block: ((_ block: BlockID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
-    /// What a block holds, as text (a ⇧-drop's Contents): fetched, a block
+
+    /// A file or folder on a host, dragged (a place in it: a hit's line).
+    static func file(_ path: String, isDirectory: Bool, on host: HostID, fragment: String? = nil) -> NSPasteboardItem {
+        item(DragThing(fragment: fragment, title: path.lastPathComponent, file: .init(host: host, path: path, isDirectory: isDirectory), text: path))
+    }
+    /// What a block holds, as text (a drop's Contents), or a place in it
+    /// (a command's output, a heading's section, a page): fetched, a block
     /// still being made waited for; nil if it can't be.
-    static var contents: ((_ block: BlockID, _ done: @escaping (String?) -> Void) -> Void)?
-    /// A place in a block ⇧-dragged (an outline's item): what the block
-    /// carries ⇧-dragged, its link to the place ("line=12"; nil, the block).
-    static var place: ((_ block: BlockID, _ fragment: String?, _ title: String, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
+    static var contents: ((_ block: BlockID, _ fragment: String?, _ done: @escaping (String?) -> Void) -> Void)?
+    /// A place in a block dragged (an outline's item): the block as a
+    /// thing, its place in it ("line=12"; nil, the block), the item's words.
+    static var place: ((_ block: BlockID, _ fragment: String?, _ title: String) -> NSPasteboardItem?)?
+    /// The block a file dragged names: opened as one (not placed), for a
+    /// link or a reference to it; nil for one Manifold doesn't open.
+    static var resolve: ((DragThing.File) -> BlockID?)?
+    /// A picture kept for a note (`note`), as an image block: `insert`
+    /// given the Markdown that shows it.
+    static var keepImage: ((_ data: Data, _ kind: String, _ note: BlockID, _ insert: @escaping (String) -> Void) -> Void)?
+    /// This Mac's host: whose files have URLs here.
+    static var localHost = HostID("local")
+
+    /// What dragging a thing writes, from wherever it's dragged: the thing,
+    /// and for another app its words, its file here, its page.
+    static func item(_ t: DragThing) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        if let data = try? JSONEncoder().encode(t) { item.setData(data, forType: .manifoldThing) }
+        let reference = t.block.map { "manifold:" + $0.description + (t.fragment.map { "#" + $0 } ?? "") }
+        if let s = t.text ?? t.place?.path ?? t.url ?? reference { item.setString(s, forType: .string) }
+        if let f = t.file, f.host == localHost { item.setString(URL(fileURLWithPath: f.path).absoluteString, forType: .fileURL) }
+        if let u = t.url { item.setString(u, forType: .URL) }
+        return item
+    }
 
     static var modifiers: NSEvent.ModifierFlags { NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags }
 

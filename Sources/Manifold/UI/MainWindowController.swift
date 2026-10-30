@@ -654,7 +654,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = t
         case .image, .pdf:
             let m = MediaView(placement: p.id, block: p.block, kind: p.lens)
-            m.isLocal = p.block.host == host.host
             m.delegate = self
             m.source = { [weak self] in self?.hosts.block(p.block) }
             v = m
@@ -673,7 +672,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
             m.imageSource = { [weak self] id in self?.imageSource(id) }
             m.delegate = self
-            m.acceptsImages = shown.block?.kind == .text
+            m.takesDrops = shown.block?.kind == .text
             m.source = { [weak self] in
                 guard let t = self?.hosts.block(p.block)?.text else { return nil }
                 return (t.text.string, t.version)
@@ -754,6 +753,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             o.source = { [weak self] in self?.hosts.block(p.block) }
             o.apply = { [weak self] edits in self?.hosts.append(.edit(edits), to: .block(p.block)) }
             o.onOpen = { [weak self] target in self?.open(target, from: p.id) }
+            o.onLinked = { [weak self] b in self?.link(b, to: p.block) }
+            o.keepImage = { [weak self] data, kind, insert in self?.keepImage(data, kind: kind, for: p.block, insert: insert) }
             o.documentChanged()
             v = o
         default:
@@ -1319,7 +1320,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugGridPath(_ arg: String) -> String {
         let f = arg.split(separator: " ").map(String.init)
         guard f.count == 3 else { return "usage: gridpath <host> <path> d|f" }
-        gridOpenPaths([(HostID(f[0]), f[1], f[2] == "d")], column: 0, at: 99, newColumn: false)
+        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
+        pb.clearContents()
+        pb.writeObjects([Drags.file(f[1], isDirectory: f[2] == "d", on: HostID(f[0]))])
+        guard let d = Dragged(pb) else { return "not a thing" }
+        gridOpen(d, column: 0, at: 99, newColumn: false)
         return "opened"
     }
 
@@ -1812,7 +1817,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let s = pb.string(forType: .string), !s.isEmpty {
             show(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: s), lens: .editor, .here)
         } else if case let images = TextView.images(on: pb), let (data, kind) = images.first {
-            gridOpenDropped(.image(data, kind), column: max((arrangement?.columns.count ?? 1) - 1, 0), at: Int.max, newColumn: false)
+            keepDroppedImage(data, kind: kind, place: .inColumn(max((arrangement?.columns.count ?? 1) - 1, 0)))
         } else {
             NSSound.beep()
         }
@@ -1880,34 +1885,75 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "typed \(text.count)"
     }
 
-    /// Debugging: a block ⇧-dragged into the focused editor, dropped at its caret.
-    /// Debugging: a block ⇧-dragged onto the focused tile — an editor, a
-    /// terminal (or agent), a notebook (outside its cells).
-    /// Debugging: as `debugDrop`, ⌃ held and `form` chosen from the menu;
-    /// what the menu offered.
-    func debugDrop(_ block: BlockID, as form: BlockDrop.Form) -> String {
-        BlockDrop.debugChoice = form
-        defer { BlockDrop.debugChoice = nil }
-        let r = debugDrop(block)
-        return r + " · offered " + BlockDrop.lastOffered.map { "\($0)" }.joined(separator: ", ")
-    }
-
-    func debugDrop(_ block: BlockID) -> String {
-        guard let b = hosts.block(block) else { return "no such block" }
-        // As a ⇧-drag writes it (a block with no path, its link alone).
+    /// Debugging: a thing dropped (§3.11) on the focused tile's view (at
+    /// its caret, or its middle), or the grid's slot `column`/`at` —
+    /// written as its source writes it: `block <id> [fragment]`, `file
+    /// <host> <path> d|f` (a folder's entry), `finder <path>` (the Finder's),
+    /// `text <words>`, `url <address>`, `image <path>` (a picture's data),
+    /// `row <i>` (the shown floating list's), `from <terminal> <i>` (its
+    /// outline's). `form`: ⌃ held, that chosen from the menu.
+    func debugDrop(_ spec: [String], as form: DropForm?, grid slot: (Int, Int)?) -> String {
         let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
         pb.clearContents()
-        guard let item = pathDragItem(for: block, linkOnly: false) else { return "no drag for \(b.displayTitle)" }
-        for t in item.types { if let s = item.string(forType: t) { pb.setString(s, forType: t) } }
-        if let e = debugFocusedEditor { return e.debugDrop(pb) ? "dropped" : "refused" }
-        guard let f = focusedShown, let v = views[f.placement.id] else { return "nothing focused" }
-        if let t = v as? TerminalView {
-            let (taken, gives) = t.accepts(pb)
-            guard taken else { return "refused as it's dragged over" }
-            return (t.take(pb) ? "dropped" : "refused") + (gives ? ", its contents given" : ", typed")
+        let rest = spec.dropFirst().joined(separator: " ")
+        var item: NSPasteboardWriting?
+        switch spec.first {
+        case "block":
+            guard spec.count > 1, let id = BlockID(string: spec[1]) else { return "no block" }
+            item = spec.count > 2 ? Drags.place?(id, spec[2], hosts.block(id)?.displayTitle ?? "") : Drags.block?(id, [.shift])
+        case "file":
+            guard spec.count == 4 else { return "file <host> <path> d|f" }
+            item = Drags.file(spec[2], isDirectory: spec[3] == "d", on: HostID(spec[1]))
+        case "finder":
+            let i = NSPasteboardItem()
+            i.setString(URL(fileURLWithPath: rest).absoluteString, forType: .fileURL)
+            item = i
+        case "text":
+            let i = NSPasteboardItem()
+            i.setString(rest, forType: .string)
+            item = i
+        case "url":
+            let i = NSPasteboardItem()
+            i.setString(rest, forType: .URL)
+            i.setString(rest, forType: .string)
+            item = i
+        case "image":
+            guard let data = FileManager.default.contents(atPath: rest) else { return "can't read \(rest)" }
+            let i = NSPasteboardItem()
+            i.setData(data, forType: rest.lowercased().hasSuffix(".png") ? .png : .tiff)
+            item = i
+        case "row":
+            let rows = FloatingList.shared.rows
+            guard spec.count > 1, let n = Int(spec[1]), rows.indices.contains(n) else { return "no row" }
+            item = rows[n].drag?([])
+        case "from":
+            guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
+                  let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "from <terminal> <i>" }
+            item = source.debugOutlineDrag(n)
+        default:
+            return "drop block|file|finder|text|url|image|row|from … [as <form>] [grid <column> <at>]"
         }
-        if let n = v as? NotebookView { return n.take(pb) ? "dropped" : "refused" }
-        return "the focused tile takes no drops"
+        guard let item else { return "nothing dragged" }
+        pb.writeObjects([item])
+        Dropping.debugChoice = form
+        defer { Dropping.debugChoice = nil }
+        if let (column, at) = slot {
+            guard let d = Dragged(pb) else { return "not a thing" }
+            let forms = content.dropForms(d, at: content.debugSlotPoint(column: column, at: at))
+            guard !forms.isEmpty else { return "refused" }
+            Dropping.take(d, forms, by: content, at: content.debugSlotPoint(column: column, at: at))
+            return "offered \(forms.map(\.rawValue).joined(separator: ", "))"
+        }
+        guard let target = debugDropTarget else { return "the focused tile takes no drops" }
+        return Dropping.debugDrop(pb, on: target, at: nil)
+    }
+
+    /// The focused tile's view that takes things dropped.
+    private var debugDropTarget: DropTaking? {
+        guard let f = focusedShown, let v = views[f.placement.id] else { return nil }
+        if let e = v as? EditorView { return e.textView }
+        if let o = v as? OutlineNoteView { return o.dropTarget }
+        return v as? DropTaking
     }
 
     /// Debugging: what Copy Contents would copy, from the focused tile (or
@@ -1922,31 +1968,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             do { self?.debugContentsAnswer = try await self?.maniDesk.contents(of: b, view: view, all: true) ?? "" } catch let e as ManiDesk.Failure { self?.debugContentsAnswer = "failure: " + e.message } catch {}
         }
         return last
-    }
-
-    /// Debugging: a terminal's outline item ⇧-dragged onto the focused
-    /// terminal, as a drag would land: refused as it's over it, or taken.
-    func debugDropCommand(from terminal: BlockID, _ i: Int) -> String {
-        guard let source = views.values.first(where: { $0.block == terminal }) as? TerminalView,
-              let item = source.debugOutlineDrag(i) else { return "no outline item \(i) there" }
-        guard let f = focusedShown, let t = views[f.placement.id] as? TerminalView else { return "no terminal focused" }
-        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
-        pb.clearContents()
-        for type in item.types { if let s = item.string(forType: type) { pb.setString(s, forType: type) } }
-        let carried = item.types.map(\.rawValue).joined(separator: ", ")
-        let (taken, gives) = t.accepts(pb)
-        guard taken else { return "refused as it's dragged over (\(carried))" }
-        return (t.take(pb) ? "dropped" : "refused") + (gives ? ", its contents given" : ", typed") + " (\(carried))"
-    }
-
-    func debugDropRow(_ i: Int) -> String {
-        guard let e = debugFocusedEditor else { return "no editor focused" }
-        let rows = FloatingList.shared.rows
-        guard rows.indices.contains(i), let item = rows[i].drag?([.shift]) as? NSPasteboardItem else { return "no row \(i)" }
-        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-drop"))
-        pb.clearContents()
-        for t in item.types { if let s = item.string(forType: t) { pb.setString(s, forType: t) } }
-        return e.debugDrop(pb) ? "dropped" : "refused"
     }
 
     /// What to call a note: its title, else its first line (`Block.noteTitle`), else "Note".
@@ -4582,25 +4603,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func watchHistoryButtons() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: fragment) }
-        Drags.path = { [weak self] path, isDir, host, mods in self?.entryDragItem(path, isDirectory: isDir, on: host, modifiers: mods) ?? NSPasteboardItem() }
-        Drags.place = { [weak self] id, fragment, title, mods in
-            guard let self else { return nil }
-            if let item = self.pathDragItem(for: id, linkOnly: mods.contains(.option), place: fragment.map { ($0, title) }) { return item }
-            // A block the host is making now (a turn's, asked for as the
-            // drag began): its link, by the item's name, to land as it comes.
-            let item = NSPasteboardItem()
-            let t = title.replacingOccurrences(of: "]", with: "\\]")
-            item.setString("[\(t)](manifold:\(id.description))", forType: .manifoldBlockLink)
-            if mods.contains(.option) { item.setString("1", forType: .manifoldLinkOnly) }
-            return item
-        }
-        Drags.contents = { [weak self] id, done in
+        Drags.localHost = host.host
+        Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: fragment, title: title)) } }
+        Drags.contents = { [weak self] id, fragment, done in
             guard let self else { return done(nil) }
-            self.fetchContents(id, done)
+            self.fetchContents(id, at: fragment, done)
         }
+        Drags.resolve = { [weak self] f in self?.pathBlock(f.path, isDirectory: f.isDirectory, on: f.host)?.0 }
+        Drags.keepImage = { [weak self] data, kind, note, insert in self?.keepImage(data, kind: kind, for: note, insert: insert) }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
-            if mods.contains(.shift) { return self.pathDragItem(for: id, linkOnly: mods.contains(.option)) }
+            if mods.contains(.shift) { return Drags.item(self.dragThing(id)) }
             // Plain: the block, to bring where it's dropped (nothing a text
             // view would take for text to put in).
             let item = NSPasteboardItem()
@@ -4858,7 +4871,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 items.append(FinderItem(symbol: symbol, title: p.title, detail: p.detail, note: p.note,
                                         age: p.at.map { Age.short($0) }.flatMap { $0 == "now" ? nil : $0 },
                                         run: { [weak self] in self?.open(link, from: self?.arrangement?.focused) },
-                                        drag: { Drags.place?(id, fragment, title, Drags.modifiers) }, kinds: kinds))
+                                        drag: { Drags.place?(id, fragment, title) }, kinds: kinds))
                 if items.count >= 100 { return items }
             }
         }
@@ -4884,7 +4897,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                             self.arrive(atTile: pid)
                                             o?.pick(i)
                                         },
-                                        drag: { Drags.place?(id, fragment, title, Drags.modifiers) }, kinds: kinds))
+                                        drag: { Drags.place?(id, fragment, title) }, kinds: kinds))
                 if items.count >= 150 { return items }
             }
         }
@@ -6935,8 +6948,14 @@ extension MainWindowController: GridDelegate {
     /// A block from the sidebar dropped in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool) {
         guard let b = hosts.block(block) else { return }
-        if b.kind == .arrangement { return hosts.select(block) }
-        let lens = Lens.default(for: b.kind, path: b.path)
+        place(block, lens: Lens.default(for: b.kind, path: b.path), column: column, at: at, newColumn: newColumn)
+    }
+
+    /// A block placed where a drop showed it going: at `at` in `column`,
+    /// or a new column there (a workspace dropped, gone to; one already
+    /// here, focused).
+    private func place(_ block: BlockID, lens: Lens, column: Int, at: Int, newColumn: Bool) {
+        if hosts.block(block)?.kind == .arrangement { return hosts.select(block) }
         guard let a = arrangement else { return show(block, lens: lens, .here) }
         if newColumn || column >= a.columns.count { return show(block, lens: lens, .inNewColumn(column)) }
         let below = at > 0 && at - 1 < a.columns[column].count ? a.columns[column][at - 1].id : nil
@@ -7066,60 +7085,79 @@ extension MainWindowController: GridDelegate {
     }
     func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
-    /// Files dropped from the Finder: each opened where it landed, the
-    /// first in a new column there if that's where the drop was.
-    func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool) {
-        for (i, path) in paths.enumerated() {
-            let isDir = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
-            let media = Self.mediaKind(path)
-            let block = isDir ? hosts.directoryBlock(for: path, on: host.host)
-                : media.flatMap { kind in host.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: host.host)
-            let lens: Lens = isDir ? .directory : media == .pdf ? .pdf : media == .image ? .image : Lens.default(for: .text, path: path)
-            let place: Where = i == 0 && newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
-            show(block, lens: lens, place)
+    /// Things dropped on the grid (§3.11), each a tile of its own where they
+    /// landed, in order: a block brought (gone to the place in it); a file
+    /// opened as Manifold opens it (one it doesn't, by the Mac's app for
+    /// it); a page; a picture kept as an image block; words, a note.
+    func gridOpen(_ d: Dragged, column: Int, at: Int, newColumn: Bool) {
+        var slot = (column: column, at: at, newColumn: newColumn)
+        // Each below the one before.
+        func next(_ block: BlockID, _ lens: Lens) {
+            place(block, lens: lens, column: slot.column, at: slot.at, newColumn: slot.newColumn)
+            slot = (slot.column, slot.newColumn ? 1 : slot.at + 1, false)
+        }
+        if d.things.isEmpty {
+            if !d.promised.isEmpty {
+                return Promises.receive(d.promised) { [weak self] urls in
+                    self?.gridOpen(files: urls.map(\.path), column: column, at: at, newColumn: newColumn)
+                }
+            }
+            let place: Where = newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
+            return d.pictureData { [weak self] pictures in
+                for (data, kind) in pictures { self?.keepDroppedImage(data, kind: kind, place: place) }
+            }
+        }
+        for t in d.things {
+            if let b = t.block, let block = hosts.block(b) {
+                next(b, Lens.default(for: block.kind, path: block.path))
+                if let f = t.fragment { goTo(f, in: b) }
+            } else if let f = t.file {
+                guard let (b, lens) = pathBlock(f.path, isDirectory: f.isDirectory, on: f.host) else {
+                    if f.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: f.path)) }
+                    continue
+                }
+                next(b, lens)
+                if let fragment = t.fragment { goTo(fragment, in: b) }
+            } else if let u = t.url {
+                next(host.newWeb(url: u), .web)
+            } else if let text = t.text {
+                // Words dropped: a note of them, at home where the focused block is.
+                next(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: text), .editor)
+            }
         }
     }
 
     var gridLocalHost: HostID { host.host }
 
-    func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool) {
-        let place: Where = newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
-        switch thing {
-        case let .promised(receivers):
-            Promises.receive(receivers) { [weak self] urls in
-                guard !urls.isEmpty else { return }
-                self?.gridOpenFiles(urls.map(\.path), column: column, at: at, newColumn: newColumn)
-            }
-        case let .web(url):
-            show(host.newWeb(url: url.absoluteString), lens: .web, place, context: "dropped")
-        case let .text(text):
-            // Words dropped: a note of them, at home where the focused block is.
-            show(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: text), lens: .editor, place)
-        case let .image(data, kind):
-            // A picture dropped: kept as an image block (in Manifold's folder).
-            let id = BlockID(host: host.host)
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd-HHmmss"
-            let name = "image-\(f.string(from: Date())).\(kind)"
-            Transfers.shared.run(name, detail: "to \(hosts.label(of: host.host))", symbol: "photo") { [host] _, done in
-                host.saveImage(data, block: id, name: name, folder: nil) { error, _ in done(error) }
-                return nil
-            } then: { [weak self] error in
-                guard let self else { return }
-                if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
-                self.showWhenMade(id, lens: .image, place: place, what: "the image")
-            }
+    /// This Mac's files (from the Finder, written by another app) opened
+    /// where they landed, as dropped things are.
+    func gridOpen(files paths: [String], column: Int, at: Int, newColumn: Bool) {
+        let things = paths.map { path -> DragThing in
+            var dir: ObjCBool = false
+            _ = FileManager.default.fileExists(atPath: path, isDirectory: &dir)
+            return DragThing(title: path.lastPathComponent, file: .init(host: host.host, path: path, isDirectory: dir.boolValue), outside: true)
         }
+        let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.opened-files"))
+        pb.clearContents()
+        pb.writeObjects(things.map(Drags.item))
+        guard let d = Dragged(pb) else { return }
+        gridOpen(d, column: column, at: at, newColumn: newColumn)
     }
 
-    func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool) {
-        for (i, p) in paths.enumerated() {
-            guard let (block, lens) = pathBlock(p.path, isDirectory: p.isDirectory, on: p.host) else {
-                if p.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: p.path)) }
-                continue
-            }
-            let place: Where = i == 0 && newColumn ? .inNewColumn(column) : .inColumn(min(column, max((arrangement?.columns.count ?? 1) - 1, 0)))
-            show(block, lens: lens, place)
+    /// A picture dropped on the grid, kept as an image block (in
+    /// Manifold's folder), shown once it's there.
+    private func keepDroppedImage(_ data: Data, kind: String, place: Where) {
+        let id = BlockID(host: host.host)
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        let name = "image-\(f.string(from: Date())).\(kind == "jpeg" ? "jpg" : kind)"
+        Transfers.shared.run(name, detail: "to \(hosts.label(of: host.host))", symbol: "photo") { [host] _, done in
+            host.saveImage(data, block: id, name: name, folder: nil) { error, _ in done(error) }
+            return nil
+        } then: { [weak self] error in
+            guard let self else { return }
+            if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
+            self.showWhenMade(id, lens: .image, place: place, what: "the image")
         }
     }
 
@@ -7274,56 +7312,23 @@ extension MainWindowController: GridDelegate {
         return menu
     }
 
-    /// A path on a host dragged from a row (a hit, a change, a file in a
-    /// diff), as a folder's entry is: its path, its place on its host, its
-    /// file here; with ⇧ its block's link too; ⌥⇧ the link alone.
-    func entryDragItem(_ path: String, isDirectory: Bool, on h: HostID, modifiers mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
-        let item = NSPasteboardItem()
-        let link = mods.contains(.shift) ? pathBlock(path, isDirectory: isDirectory, on: h).map { id, _ -> String in
-            let title = (hosts.block(id)?.displayTitle ?? path.lastPathComponent).replacingOccurrences(of: "]", with: "\\]")
-            return "[\(title)](manifold:\(id.description))"
-        } : nil
-        if let link, mods.contains(.option) {
-            item.setString(link, forType: .manifoldBlockLink)
-            item.setString("1", forType: .manifoldLinkOnly)
-            return item
+    /// A block as a thing dragged (§3.11) — a tile ⇧-dragged, a sidebar
+    /// row, a card, an outline's item (a place in it, by its words): the
+    /// block, its file if it's one, the folder a terminal is in, a page's
+    /// address. One the host is making now (a turn's) by its link alone,
+    /// to land as it comes.
+    func dragThing(_ id: BlockID, fragment: String? = nil, title: String? = nil) -> DragThing {
+        let b = hosts.block(id)
+        var t = DragThing(block: id, fragment: fragment, title: title ?? b?.displayTitle ?? "")
+        guard let b else { return t }
+        if let path = b.path, [.text, .image, .pdf, .directory].contains(b.kind) {
+            t.file = .init(host: id.host, path: path, isDirectory: b.kind == .directory)
+        } else if let dir = b.place, dir.hasPrefix("/") {
+            t.folder = .init(host: id.host, path: dir, isDirectory: true)
         }
-        item.setString(path, forType: .string)
-        item.setString("\(h.raw)\t\(path)\t\(isDirectory ? "d" : "f")", forType: .manifoldPath)
-        if h == host.host, !(isDirectory && link != nil) { item.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL) }
-        if let link { item.setString(link, forType: .manifoldBlockLink) }
-        return item
-    }
-
-    /// What a block stands for when ⇧-dragged from anywhere (§3.4) — a
-    /// tile's pill, a sidebar row, a finder row, a link's pill: its path
-    /// (a terminal's folder, a page's address) for what types or inserts
-    /// text, its file (here, not a folder) for the grid or another app, its
-    /// place on its host for a folder tile, and its link for a note, a
-    /// terminal or a tile to be linked. `linkOnly` (⌥⇧): the link alone.
-    /// `place`: a place in it (an outline's item: "line=12", and its
-    /// title), which the link names.
-    func pathDragItem(for id: BlockID, linkOnly: Bool, place: (fragment: String, title: String)? = nil) -> NSPasteboardItem? {
-        guard let b = hosts.block(id) else { return nil }
-        let item = NSPasteboardItem()
-        let title = (place?.title ?? b.displayTitle).replacingOccurrences(of: "]", with: "\\]")
-        item.setString("[\(title)](manifold:\(id.description)\(place.map { "#" + $0.fragment } ?? ""))", forType: .manifoldBlockLink)
-        if linkOnly {
-            item.setString("1", forType: .manifoldLinkOnly)
-            return item
-        }
-        guard let text = b.path ?? b.web?.url ?? b.terminal?.cwd ?? b.place else { return item }
-        item.setString(text, forType: .string)
-        if text.hasPrefix("/") {
-            // Its place on its host, for a folder tile to copy — a file's or
-            // a folder's own, not a terminal's working directory.
-            if let path = b.path { item.setString("\(id.host.raw)\t\(path)\t\(b.kind == .directory ? "d" : "f")", forType: .manifoldPath) }
-            var dir: ObjCBool = false
-            if id.host == host.host, FileManager.default.fileExists(atPath: text, isDirectory: &dir), !dir.boolValue {
-                item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
-            }
-        }
-        return item
+        t.url = b.web?.url
+        t.text = fragment != nil ? title : b.web?.url
+        return t
     }
 
     /// Copy Link (a `manifold:` address that opens the block from any app
@@ -7471,7 +7476,7 @@ extension MainWindowController: EditorViewDelegate {
         host.setSettings(s)
     }
 
-    /// A block ⇧-dragged into the editor: linked to the note (the host's
+    /// A block dropped into the editor: linked to the note (the host's
     /// mention scan sees the link in the text too, as a mention).
     func editor(_ view: EditorView, linkedFrom block: BlockID) { link(block, to: view.block) }
 
@@ -7509,12 +7514,22 @@ extension MainWindowController: EditorViewDelegate {
     /// and shown at the end of the text.
     func markdownView(_ view: MarkdownView, image data: Data, kind: String) {
         let block = view.block
-        keepImage(data, kind: kind, for: block) { [weak self] markdown in
-            guard let self, let t = self.hosts.block(block)?.text else { return }
-            let end = t.text.count
-            let lead = t.text.string.hasSuffix("\n") || t.text.string.isEmpty ? "" : "\n"
-            self.hosts.append(.edit([TextEdit(TextRange(end, end), lead + "\n" + markdown + "\n")]), to: .block(block))
-        }
+        keepImage(data, kind: kind, for: block) { [weak self] markdown in self?.append(markdown, to: block) }
+    }
+
+    /// Markdown dropped on a preview (a link, words), at the end of the
+    /// text, the blocks it names linked from it.
+    func markdownView(_ view: MarkdownView, append markdown: String, naming blocks: [BlockID]) {
+        append(markdown, to: view.block)
+        for b in blocks { link(b, to: view.block) }
+    }
+
+    /// Markdown put at the end of a text, a paragraph of its own.
+    private func append(_ markdown: String, to block: BlockID) {
+        guard let t = hosts.block(block)?.text else { return }
+        let end = t.text.count
+        let lead = t.text.string.hasSuffix("\n") || t.text.string.isEmpty ? "" : "\n"
+        hosts.append(.edit([TextEdit(TextRange(end, end), lead + "\n" + markdown + "\n")]), to: .block(block))
     }
 
     /// An image kept for a text, on its host: written as an image block,
@@ -7545,47 +7560,26 @@ extension MainWindowController: EditorViewDelegate {
         }
     }
 
-    /// A block ⇧-dragged onto a terminal: its path typed, and linked.
+    /// A block dropped on a terminal: linked.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID) { link(block, to: view.block) }
 
-    /// For an agent, what stands for a block it's given: its path where
-    /// it's a file (or a folder, or a page's address) the agent can read;
-    /// else what it holds, which only Manifold has to give.
-    func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)? {
-        // Not here yet (a command ⇧-dragged from an outline, its block asked
-        // for as the drag began): given once it comes, if it's one whose
-        // contents go.
-        if let b = hosts.block(block), !Self.givesContents(b) { return nil }
-        return { [weak self] done in self?.fetchContents(block, only: Self.givesContents, done) ?? done(nil) }
-    }
-
-    /// What a block holds, as text (a ⇧-drop's Contents, an agent's): a
-    /// block still being made waited for (a few seconds at most); nil if
-    /// it doesn't come, isn't one `only` takes, or can't be read.
-    func fetchContents(_ block: BlockID, only: @escaping (Block) -> Bool = { _ in true }, _ done: @escaping (String?) -> Void) {
+    /// What a block holds, as text (a drop's Contents, an agent's), or a
+    /// place in it: a block still being made waited for (a few seconds at
+    /// most); nil if it doesn't come or can't be read.
+    func fetchContents(_ block: BlockID, at fragment: String? = nil, _ done: @escaping (String?) -> Void) {
         Task { @MainActor [weak self] in
             for _ in 0..<40 where self?.hosts.block(block) == nil { try? await Task.sleep(for: .milliseconds(100)) }
-            guard let self, let b = self.hosts.block(block), only(b) else { return done(nil) }
-            self.give(b, done)
+            guard let self, let b = self.hosts.block(block) else { return done(nil) }
+            self.give(b, at: fragment, done)
         }
     }
 
-    /// Whether an agent is given a block's contents rather than its path:
-    /// one with no file (a terminal, a command's output, a search, a note).
-    static func givesContents(_ b: Block) -> Bool {
-        switch b.kind {
-        case .terminal, .agent, .output, .search, .diff, .notebook, .git, .process: true
-        case .text: b.path == nil
-        default: false
-        }
-    }
-
-    /// A block's contents as text, for an agent.
-    private func give(_ b: Block, _ done: @escaping (String?) -> Void) {
+    /// A block's contents as text (a place's in it), for an agent.
+    private func give(_ b: Block, at fragment: String?, _ done: @escaping (String?) -> Void) {
         let shown = views.first { $0.value.block == b.id }?.value
         Task { @MainActor in
             do {
-                done(try await maniDesk.contents(of: b, view: shown, all: true))
+                done(try await maniDesk.contents(of: b, at: fragment, view: shown))
             } catch let e as ManiDesk.Failure {
                 toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
                 done(nil)
@@ -7920,12 +7914,6 @@ extension MainWindowController: DirectoryViewDelegate {
 
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool {
         hosts.client(view.block.host)?.transport.isLocal ?? true
-    }
-
-    func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String? {
-        guard let (id, _) = pathBlock(path, isDirectory: isDirectory, on: view.block.host) else { return nil }
-        let title = (hosts.block(id)?.displayTitle ?? path.lastPathComponent).replacingOccurrences(of: "]", with: "\\]")
-        return "[\(title)](manifold:\(id.description))"
     }
 
     func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String, moving: Bool) {
@@ -8423,13 +8411,6 @@ extension MainWindowController: TerminalViewDelegate {
         if made { return show(id, lens: .output, place, kind: .opened, context: context) }
         // Shown once the host has made it (a moment).
         showWhenMade(id, lens: .output, place: place, context: context, what: "the command's output")
-    }
-
-    func terminal(_ view: TerminalView, blockFor command: ShellCommand, output: String) -> BlockID {
-        if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
-            return turnBlock(command.id, of: view.block).id
-        }
-        return outputBlock(of: command, in: view.block, output: output).id
     }
 
     /// The block of a command's output, made by the host if there's none.
@@ -9008,11 +8989,11 @@ extension MainWindowController: OrganizationViewDelegate {
         if selected != workspace { hosts.select(workspace) }
         render()
         let column = max((arrangement?.columns.count ?? 1) - 1, 0)
-        gridOpenFiles(files, column: column, at: Int.max, newColumn: false)
+        gridOpen(files: files, column: column, at: Int.max, newColumn: false)
     }
 
     func organizationPathItem(for block: BlockID, modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem? {
-        pathDragItem(for: block, linkOnly: modifiers.contains(.option))
+        Drags.item(dragThing(block))
     }
 }
 

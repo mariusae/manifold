@@ -395,8 +395,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
-        case let .file(path, _): return Drags.path?(path, false, block.host, Drags.modifiers)
-        case let .hit(hit): return Drags.path?(hit.path, false, block.host, Drags.modifiers)
+        case let .file(path, _): return Drags.file(path, isDirectory: false, on: block.host)
+        case let .hit(hit): return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
         }
     }
     // Each row looked up only where it is: asked for one the table still

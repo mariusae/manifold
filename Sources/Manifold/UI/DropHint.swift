@@ -1,8 +1,8 @@
 import AppKit
 
-/// What a drop will do, said beside the pointer while a block is
-/// ⇧-dragged over somewhere that takes it — "Type its path", "Give its
-/// contents", "Link" — so where it lands decides, visibly. Each target
+/// What a drop will do, said beside the pointer while a thing is dragged
+/// over somewhere that takes it — "Type its path", "Give the agent what it
+/// holds", "Open it here" (§3.11) — so where it lands decides, visibly. Each target
 /// says it as the drag moves over it; unsaid for a moment (the drag gone
 /// elsewhere, ended), it goes.
 final class DropHint: NSView {
@@ -35,11 +35,6 @@ final class DropHint: NSView {
     static func hush() {
         shared?.expiry?.invalidate()
         shared?.isHidden = true
-    }
-
-    /// A block ⇧-dragged (its link carried, not the tile itself).
-    static func isBlockLink(_ pb: NSPasteboard) -> Bool {
-        pb.types?.contains(.manifoldBlockLink) == true && pb.string(forType: .manifoldPlacement) == nil
     }
 
     override init(frame: NSRect) {

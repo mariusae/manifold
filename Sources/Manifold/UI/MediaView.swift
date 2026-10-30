@@ -246,17 +246,15 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     @objc func decreaseFontSize(_ sender: Any?) { if let p = pdfView { p.zoomOut(nil) } else { scroll.magnification /= 1.25 } }
     @objc func resetFontSize(_ sender: Any?) { if let p = pdfView { p.autoScales = true } else { fitted = false; fit() } }
 
-    /// An image dragged out of its tile: its file (here), else the picture,
-    /// for the Finder, Mail, a note.
+    /// An image dragged out of its tile: the image block (its file here),
+    /// and the picture, for the Finder, Mail, a note.
     override func mouseDragged(with event: NSEvent) {
         guard pdfView == nil, let image = imageView.image, let start = mouseDownAt else { return }
         let p = event.locationInWindow
         guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
         mouseDownAt = nil
-        let item = NSPasteboardItem()
-        if isLocal, let path = source()?.path, FileManager.default.fileExists(atPath: path) {
-            item.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL)
-        }
+        // The image block as a thing (§3.11): a note shows it, not a copy.
+        let item = Drags.block?(block, [.shift]) ?? NSPasteboardItem()
         if let tiff = image.tiffRepresentation { item.setData(tiff, forType: .tiff) }
         let drag = NSDraggingItem(pasteboardWriter: item)
         let size = NSSize(width: min(image.size.width, 160), height: min(image.size.width, 160) * image.size.height / max(image.size.width, 1))
@@ -265,8 +263,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         beginDraggingSession(with: [drag], event: event, source: self)
     }
 
-    /// Whether the block's host is this Mac (set by the window).
-    var isLocal = true
     private var mouseDownAt: NSPoint?
 
     override func mouseDown(with event: NSEvent) {

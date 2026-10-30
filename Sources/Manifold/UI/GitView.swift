@@ -202,7 +202,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     /// A change dragged out: its file, as a folder's entry is.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row), case let .change(entry) = rows[row] else { return nil }
-        return Drags.path?(root + "/" + entry.path, false, block.host, Drags.modifiers)
+        return Drags.file(root + "/" + entry.path, isDirectory: false, on: block.host)
     }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
 

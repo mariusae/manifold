@@ -17,7 +17,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     var onPageChange: ((Page) -> Void)?
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        rows.indices.contains(row) ? outline.dragItem(rows[row], modifiers: Drags.modifiers) : nil
+        rows.indices.contains(row) ? outline.dragItem(rows[row]) : nil
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {

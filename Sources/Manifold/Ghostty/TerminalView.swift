@@ -15,18 +15,10 @@ protocol TerminalViewDelegate: AnyObject {
     /// A command and its output, to show as a block of their own, beside
     /// a placement (an outline's) if given.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?)
-    /// The block a command opens as (an agent's turn, its turn; a shell's
-    /// command, its output): the one made before, else one the host is
-    /// asked to make now — what the command carries ⇧-dragged.
-    func terminal(_ view: TerminalView, blockFor command: ShellCommand, output: String) -> BlockID
     /// Copy on Select was switched from the pill's menu: a setting.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
-    /// A block was ⇧-dragged onto the terminal (its path typed): linked to it.
+    /// A block was dropped on the terminal (§3.11; its path typed, what it holds given): linked to it.
     func terminal(_ view: TerminalView, linkedFrom block: BlockID)
-    /// A block ⇧-dragged onto an agent that a path doesn't stand for (a
-    /// terminal, a search, a note with no file): its content, to be put
-    /// in as a paste. Nil: the path is typed, as for a shell.
-    func terminal(_ view: TerminalView, contentsFor block: BlockID) -> ((@escaping (String?) -> Void) -> Void)?
     /// What runs under the terminal's shell, as last listed: the tree its
     /// menu shows. `refresh`: a fresh listing is asked for too.
     func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry]
@@ -73,9 +65,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         link = TerminalLink(block: block, client: client)
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
-        // A block's link too: one with no path, ⇧-dragged, carries nothing
-        // else, and an agent takes it for what the block holds.
-        registerForDraggedTypes([.fileURL, .string, .manifoldBlockLink])
+        // Things dropped (§3.11).
+        registerForDraggedTypes(Dragged.types)
 
         var config = ghostty_surface_config_new()
         config.platform_tag = GHOSTTY_PLATFORM_MACOS
@@ -361,24 +352,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             }
             self.go(toCommand: c.id)
         }
-        // A command dragged out: its text (to type again, to keep in a note).
-        o.writerFor = { [weak self] i in
+        // A command dragged out: its place, by its text (to type again, to
+        // link to from a note, its output to give an agent).
+        o.placeFor = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return nil }
-            let item = NSPasteboardItem()
-            item.setString(self.outlined[i].text, forType: .string)
-            return item
+            return "command=\(self.outlined[i].id)"
         }
         o.menuFor = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return nil }
             return self.delegate?.terminal(self, menuFor: self.outlined[i])
         }
         o.block = block
-        // ⇧-dragged, a command is the block it opens as, clicked.
-        o.blockFor = { [weak self] i in
-            guard let self, self.outlined.indices.contains(i), let delegate = self.delegate else { return nil }
-            let c = self.outlined[i]
-            return delegate.terminal(self, blockFor: c, output: self.transcript(ofCommand: c.id)?.1 ?? "")
-        }
         return o
     }()
     /// An agent's terminal: its turns are its outline, and its commands
@@ -731,10 +715,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     // MARK: Debugging
 
-    /// Debugging: what the outline's item `i` carries ⇧-dragged.
+    /// Debugging: what the outline's item `i` carries dragged.
     func debugOutlineDrag(_ i: Int) -> NSPasteboardItem? {
         fillOutline()
-        return commandsOutline.dragItem(i, modifiers: [.shift]) as? NSPasteboardItem
+        return commandsOutline.dragItem(i) as? NSPasteboardItem
     }
 
     var debugScrubber: String {
@@ -1734,118 +1718,30 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     // MARK: Drops
 
-    /// Files or text dropped on the terminal are typed into it, paths
-    /// quoted for the shell, as a terminal takes them.
-    /// Whether a drag is taken, and if so whether an agent is given what
-    /// the block holds: an agent takes a block with no path (a command's
-    /// output, a search) for that; anything else, for text to type.
-    func accepts(_ pb: NSPasteboard) -> (taken: Bool, gives: Bool) {
-        let gives = isAgent && pb.string(forType: .manifoldLinkOnly) == nil
-            && TextView.blockID(inLink: pb.string(forType: .manifoldBlockLink) ?? "").flatMap { delegate?.terminal(self, contentsFor: $0) } != nil
-        return (gives || BlockDrop(pb) != nil || Self.dropText(pb) != nil, gives)
-    }
-
-    /// What a ⇧-dragged block can be put in as here: a shell types its
-    /// path, its reference or what it holds; an agent takes its link too.
-    private var blockForms: [BlockDrop.Form] { isAgent ? [.contents, .path, .reference, .link] : [.path, .reference, .contents] }
-
-    /// What a plain ⇧-drop puts in: an agent, what a block with no file
-    /// holds (`gives`); else its path, or its reference if it has none.
-    private func blockForm(_ block: BlockDrop, gives: Bool) -> BlockDrop.Form {
-        gives ? .contents : block.path != nil ? .path : .reference
-    }
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let pb = sender.draggingPasteboard
-        let (taken, gives) = accepts(pb)
-        guard taken else { return [] }
-        if let block = BlockDrop(pb) {
-            let plain: String = switch blockForm(block, gives: gives) {
-            case .contents: "Give the agent its contents"
-            case .path: isAgent ? "Give the agent its path" : "Type its path"
-            default: isAgent ? "Give the agent its reference" : "Type its reference"
-            }
-            DropHint.say(BlockDrop.hint(plain, choices: block.forms(blockForms).count), at: sender.draggingLocation, in: window)
-        }
-        return .copy
-    }
-
-    /// A ⇧-dragged block put in as `form`: typed (a path or a reference
-    /// quoted for the shell), or what it holds given as one paste; and the
-    /// terminal linked to it.
-    private func put(_ block: BlockDrop, as form: BlockDrop.Form) {
-        block.text(form) { [weak self] text in
-            guard let self, let surface = self.surface, let text, !text.isEmpty else { return NSSound.beep() }
-            let typed = form == .path || form == .reference ? Self.shellQuoted(text) : text
-            typed.withCString { ghostty_surface_text(surface, $0, UInt(typed.utf8.count)) }
-            self.delegate?.terminal(self, linkedFrom: block.block)
-        }
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) { DropHint.hush() }
-
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
+    /// Things dropped on a terminal (§3.11): a shell has a file's path typed
+    /// (quoted, as it needs), a place by its words (a command again), a
+    /// block by its reference; an agent is given a file's path, what a
+    /// block or a place holds (a note, a command's output) as one paste,
+    /// words as they are — ⌃ for the rest. Each block named is linked.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
 
     /// On another host: this Mac's files dropped are sent to the shell's
     /// folder there, and their paths there typed (what they're called
     /// there, given back when they're in).
     var uploadDrop: (([URL], @escaping ([String]) -> Void) -> Void)?
 
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
-        return take(sender.draggingPasteboard)
+    /// Files from this Mac, for a shell on another host: sent there first.
+    private func uploads(_ d: Dragged) -> [URL]? {
+        guard uploadDrop != nil, !d.things.isEmpty, d.things.allSatisfy({ $0.outside && $0.file?.host == Drags.localHost }) else { return nil }
+        return d.things.compactMap { $0.file.map { URL(fileURLWithPath: $0.path) } }
     }
 
-    /// What's dropped, taken: typed, given (an agent's), or sent and typed.
-    func take(_ pb: NSPasteboard) -> Bool {
-        if let uploadDrop, pb.types?.contains(.manifoldPath) != true,
-           let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            window?.makeFirstResponder(self)
-            uploadDrop(urls) { [weak self] paths in
-                guard let self, let surface = self.surface, !paths.isEmpty else { return }
-                let text = paths.map(Self.shellQuoted).joined(separator: " ")
-                text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
-            }
-            return true
-        }
-        // A ⇧-dragged block: as suits here (an agent given what a block
-        // that isn't a file holds, as one paste, so its lines don't send
-        // the prompt), or (⌃) as chosen.
-        if let block = BlockDrop(pb) {
-            window?.makeFirstResponder(self)
-            let forms = block.forms(blockForms)
-            if BlockDrop.choosing, forms.count > 1, let window {
-                let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-                block.choose(forms, at: p, in: self) { [weak self] form in self?.put(block, as: form) }
-            } else {
-                put(block, as: blockForm(block, gives: accepts(pb).gives))
-            }
-            return true
-        }
-        guard let surface, let text = Self.dropText(pb) else { return false }
-        window?.makeFirstResponder(self)
+    private func type(_ text: String) {
+        guard let surface else { return }
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
-        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
-            delegate?.terminal(self, linkedFrom: block)
-        }
-        return true
-    }
-
-    /// What a drop types: each file's path, quoted if the shell would
-    /// need it, a space between; else the text as it is.
-    static func dropText(_ pb: NSPasteboard) -> String? {
-        // A folder tile's entries (a folder, another host's file: no file
-        // URL) by their paths, each quoted.
-        let entries = (pb.pasteboardItems ?? []).compactMap { $0.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) }
-            .filter { $0.count == 3 }.map { String($0[1]) }
-        if !entries.isEmpty { return entries.map(shellQuoted).joined(separator: " ") }
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            return urls.map { shellQuoted($0.path) }.joined(separator: " ")
-        }
-        // A tile ⇧-dragged: its path (or address), quoted as one word.
-        if pb.types?.contains(.manifoldBlockLink) == true, let s = pb.string(forType: .string), !s.isEmpty { return shellQuoted(s) }
-        if let s = pb.string(forType: .string), !s.isEmpty { return s }
-        return nil
     }
 
     static func shellQuoted(_ path: String) -> String {
@@ -2027,5 +1923,54 @@ extension TerminalView {
             return transcript(ofCommand: id).map { "$ " + $0.0.text + "\n" + $0.1 }
         }
         return options.all ? transcriptLines : visibleText
+    }
+}
+
+extension TerminalView: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        var forms: [DropForm]
+        if !isAgent {
+            forms = Dropping.shellForms(d)
+        } else if !d.things.isEmpty, d.things.allSatisfy({ $0.file != nil && $0.fragment == nil }) {
+            forms = d.forms([.path, .contents, .reference, .link, .text])
+        } else if d.things.contains(where: \.nameable) {
+            forms = d.forms([.contents, .text, .reference, .link, .path])
+        } else {
+            forms = d.forms([.text, .link, .path])
+        }
+        // A path is only a path on its own host (this Mac's files are sent there).
+        if uploads(d) == nil, d.things.contains(where: { $0.place.map { $0.host != block.host } ?? false }) { forms.removeAll { $0 == .path } }
+        return forms
+    }
+
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
+        switch form {
+        case .path: isAgent ? "Give the agent its path" : uploads(d) != nil ? "Send it there and type its path" : "Type its path"
+        case .text: isAgent ? "Give the agent its words" : "Type it"
+        case .reference: isAgent ? "Give the agent its reference" : "Type its reference"
+        case .contents: isAgent ? "Give the agent what it holds" : "Paste what it holds"
+        case .link: isAgent ? "Give the agent its link" : "Type its link"
+        default: Dropping.hint(form, d)
+        }
+    }
+
+    /// Typed: paths and references quoted for the shell, a space between;
+    /// words, contents as they are (one paste); the terminal linked to
+    /// each block named.
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        window?.makeFirstResponder(self)
+        if form == .path, let urls = uploads(d), let uploadDrop {
+            return uploadDrop(urls) { [weak self] paths in
+                guard let self, !paths.isEmpty else { return }
+                self.type(paths.map(Self.shellQuoted).joined(separator: " ") + " ")
+            }
+        }
+        // (A path or a reference typed with a space after it, as Terminal types one.)
+        let words = form == .path || form == .reference
+        d.text(form, separator: words ? " " : "\n", quote: Self.shellQuoted) { [weak self] text, blocks in
+            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            self.type(words ? text + " " : text)
+            for b in blocks { self.delegate?.terminal(self, linkedFrom: b) }
+        }
     }
 }

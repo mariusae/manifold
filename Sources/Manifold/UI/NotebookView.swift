@@ -10,7 +10,7 @@ protocol NotebookViewDelegate: AnyObject {
     func notebookStart(_ view: NotebookView)
     /// A path or an address ⌘-clicked in an output.
     func notebook(_ view: NotebookView, open target: String)
-    /// A block ⇧-dragged into a cell: its path typed, and linked.
+    /// A block dropped in (§3.11): linked.
     func notebook(_ view: NotebookView, linkedFrom block: BlockID)
     /// A cell's output, as a block of its own beside the notebook.
     func notebook(_ view: NotebookView, openOutput cell: NotebookCell)
@@ -353,64 +353,22 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     // MARK: Drops
 
-    /// A block ⇧-dragged (or a file, a folder's entries) onto the notebook
-    /// outside its cells: a new cell at the end with its path, the caret
-    /// before it for the command (a cell under the drop takes it itself).
+    /// Things dropped on the notebook outside its cells (§3.11): a new cell
+    /// at the end with it, as a shell takes it — a file's path, a place's
+    /// words, a block's reference — the caret before it for the command (a
+    /// cell under the drop takes it itself).
     private func registerDrops() {
-        registerForDraggedTypes([.manifoldBlockLink, .fileURL, .manifoldPath])
+        registerForDraggedTypes(Dragged.types)
     }
 
-    private func dropTakes(_ pb: NSPasteboard) -> Bool {
-        pb.string(forType: .manifoldPlacement) == nil && (BlockDrop(pb) != nil || TerminalView.dropText(pb) != nil)
-    }
-
-    /// What a ⇧-dragged block can be put in a new cell as.
-    private static let blockForms: [BlockDrop.Form] = [.path, .reference, .contents]
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard dropTakes(sender.draggingPasteboard) else { return [] }
-        if let block = BlockDrop(sender.draggingPasteboard) {
-            let plain = block.path != nil ? "A new cell with its path" : "A new cell with its reference"
-            DropHint.say(BlockDrop.hint(plain, choices: block.forms(Self.blockForms).count), at: sender.draggingLocation, in: window)
-        } else {
-            DropHint.say("A new cell with its path", at: sender.draggingLocation, in: window)
-        }
-        return .copy
-    }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
-    override func draggingExited(_ sender: NSDraggingInfo?) { DropHint.hush() }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
-        return take(sender.draggingPasteboard)
-    }
-
-    /// What's dropped outside the cells: a new cell with it.
-    func take(_ pb: NSPasteboard) -> Bool {
-        // A ⇧-dragged block: its path (or reference), or (⌃) as chosen.
-        if let block = BlockDrop(pb) {
-            let forms = block.forms(Self.blockForms)
-            let put = { [weak self] (form: BlockDrop.Form) in
-                block.text(form) { text in
-                    guard let self, let text, !text.isEmpty else { return NSSound.beep() }
-                    self.newCell(form == .contents ? text : TerminalView.shellQuoted(text), from: block.block)
-                }
-            }
-            if BlockDrop.choosing, forms.count > 1, let window {
-                block.choose(forms, at: convert(window.mouseLocationOutsideOfEventStream, from: nil), in: self, put)
-            } else {
-                put(block.path != nil ? .path : .reference)
-            }
-            return true
-        }
-        guard dropTakes(pb), let text = TerminalView.dropText(pb) else { return false }
-        newCell(text, from: pb.string(forType: .manifoldBlockLink).flatMap(TextView.blockID(inLink:)))
-        return true
-    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
 
     /// A new cell with `text` (the last one, if it's empty), linked from
-    /// the block it came from.
-    private func newCell(_ text: String, from block: BlockID?) {
+    /// the blocks it came from.
+    private func newCell(_ text: String, from blocks: [BlockID]) {
         if let last = order.last, let v = cells[last], v.editor.isEditable,
            v.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             // The last cell's empty (a new notebook's): it, not another.
@@ -420,7 +378,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         } else {
             insert(at: order.count, source: " " + text)
         }
-        if let block { delegate?.notebook(self, linkedFrom: block) }
+        for b in blocks { delegate?.notebook(self, linkedFrom: b) }
     }
 
     func addCell() {
@@ -892,31 +850,23 @@ extension NotebookView {
 final class CellEditor: NSTextView {
     weak var cellView: NotebookCellView?
 
-    /// Dropped on a cell, as on a terminal: files and folders by their
-    /// paths, quoted for the shell; a ⇧-dragged block, its path (and the
-    /// link to it noted).
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if isEditable, DropHint.isBlockLink(sender.draggingPasteboard) {
-            DropHint.say("Put its path in this cell", at: sender.draggingLocation, in: window)
-        }
-        return super.draggingUpdated(sender)
+    /// Things dropped on a cell, as on a shell: a file's path quoted, a
+    /// place's words, a block's reference — ⌃ for the rest — put in where
+    /// the pointer is, each block named noted.
+    /// (Its own text dragged within it is moved, as text is.)
+    override var acceptableDragTypes: [NSPasteboard.PasteboardType] { Dragged.types + super.acceptableDragTypes }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingSource as? NSView === self ? super.draggingEntered(sender) : Dropping.updated(self, sender)
     }
-
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingSource as? NSView === self ? super.draggingUpdated(sender) : Dropping.updated(self, sender)
+    }
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        DropHint.hush()
+        Dropping.exited(self, sender)
         super.draggingExited(sender)
     }
-
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        DropHint.hush()
-        let pb = sender.draggingPasteboard
-        guard isEditable, let text = TerminalView.dropText(pb) else { return super.performDragOperation(sender) }
-        let at = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
-        window?.makeFirstResponder(self)
-        setSelectedRange(NSRange(location: at, length: 0))
-        insertText(text, replacementRange: NSRange(location: at, length: 0))
-        if let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) { onLinked?(block) }
-        return true
+        sender.draggingSource as? NSView === self ? super.performDragOperation(sender) : Dropping.perform(self, sender)
     }
 
     /// A block dropped in, its link noted (the notebook mentions it).
@@ -1284,5 +1234,58 @@ extension NotebookView: Printable {
             "$ " + c.source.replacingOccurrences(of: "\n", with: "\n  ") + (c.output.isEmpty ? "" : "\n" + c.output)
         }.joined(separator: "\n\n")
         return TextPrint.operation(text, title: source()?.displayTitle ?? "Shell Notebook", font: TextPrint.codeFont)
+    }
+}
+
+extension NotebookView: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        Dropping.shellForms(d).filter { $0 != .path || d.things.allSatisfy { $0.place?.host == block.host } }
+    }
+
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
+        switch form {
+        case .path: "A new cell with its path"
+        case .reference: "A new cell with its reference"
+        case .text: "A new cell with it"
+        case .contents: "A new cell with what it holds"
+        case .link: "A new cell with its link"
+        default: Dropping.hint(form, d)
+        }
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        d.text(form, separator: " ", quote: TerminalView.shellQuoted) { [weak self] text, blocks in
+            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            self.newCell(text, from: blocks)
+        }
+    }
+}
+
+extension CellEditor: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        guard isEditable else { return [] }
+        return Dropping.shellForms(d)
+    }
+
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
+        form == .path ? "Put its path in this cell" : Dropping.hint(form, d)
+    }
+
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        let at = characterIndexForInsertion(at: p)
+        if selectedRange() != NSRange(location: at, length: 0) { setSelectedRange(NSRange(location: at, length: 0)) }
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        let at = p.map { characterIndexForInsertion(at: $0) } ?? selectedRange().location
+        window?.makeFirstResponder(self)
+        let words = form == .path || form == .reference
+        d.text(form, separator: words ? " " : "\n", quote: TerminalView.shellQuoted) { [weak self] text, blocks in
+            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            let r = NSRange(location: min(at, (self.string as NSString).length), length: 0)
+            self.setSelectedRange(r)
+            self.insertText(text, replacementRange: r)
+            blocks.forEach { self.onLinked?($0) }
+        }
     }
 }

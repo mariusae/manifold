@@ -170,7 +170,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         // A file (or a change in it) dragged out: the file, on the diff's host.
         o.writerFor = { [weak self] i in
             guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }
-            return Drags.path?(path, false, self.block.host, Drags.modifiers)
+            return Drags.file(path, isDirectory: false, on: self.block.host)
         }
         o.menuFor = { [weak self] i in
             guard let self, self.marks.indices.contains(i), let path = self.filePath(ofRow: self.marks[i]) else { return nil }

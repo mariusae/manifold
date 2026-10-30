@@ -10,6 +10,9 @@ protocol MarkdownViewDelegate: AnyObject {
     func markdownViewDidReveal(_ view: MarkdownView)
     /// An image dropped on the page, for the text to show.
     func markdownView(_ view: MarkdownView, image data: Data, kind: String)
+    /// Markdown dropped on the page (a link, a reference, words), put at
+    /// the end of the text; the blocks it names linked from it.
+    func markdownView(_ view: MarkdownView, append markdown: String, naming blocks: [BlockID])
     /// ⌘[ (-1) or ⌘] (1): the page this tile showed before or after, as
     /// a link followed in place left it; false at either end.
     func markdownView(_ view: MarkdownView, history direction: Int) -> Bool
@@ -140,8 +143,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         web.unregisterDraggedTypes()
-        // Images dropped on the page go into the text (at its end).
-        registerForDraggedTypes([.fileURL, .png, .tiff])
+        // Things dropped on the page go into the text (at its end).
+        registerForDraggedTypes(Dragged.types)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         addSubview(web)
@@ -223,8 +226,8 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     var outline: Outline? { headingsOutline }
     private var sidebar: TileSidebar?
     private var sidebarRestored = false
-    /// The page shows a note or a Markdown file, which images dropped go into.
-    var acceptsImages = false
+    /// The page shows a note or a Markdown file, which things dropped go into.
+    var takesDrops = false
     /// How far down the page is, as last seen.
     private var scrollY: Double = 0
     var navLocation: NavLocation? { .offset(scrollY) }
@@ -526,29 +529,29 @@ extension MarkdownView: Printable {
     func printOperation() -> NSPrintOperation? { webPrint }
 }
 
-extension MarkdownView {
-    /// Images, for a text that takes them; anything else is the grid's
-    /// (a file opened where it lands, a link made), handed on.
-    private func takesImages(_ sender: NSDraggingInfo?) -> Bool {
-        guard acceptsImages, let pb = sender?.draggingPasteboard else { return false }
-        return !TextView.images(on: pb).isEmpty
-    }
+/// Things dropped on the page go into its text, at the end, as a note
+/// takes them (§3.11): a block's link, a picture kept and shown — ⌃ for
+/// the rest. A page that isn't a text's hands them on to the grid.
+extension MarkdownView: DropTaking {
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
 
-    private var grid: GridView? {
-        var v = superview
-        while let s = v, !(s is GridView) { v = s.superview }
-        return v as? GridView
-    }
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] { takesDrops ? Dropping.noteForms(d) : [] }
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        takesImages(sender) ? .copy : grid?.draggingUpdated(sender) ?? []
-    }
-    override func draggingExited(_ sender: NSDraggingInfo?) { grid?.draggingExited(sender) }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard takesImages(sender) else { return grid?.performDragOperation(sender) ?? false }
-        for (data, kind) in TextView.images(on: sender.draggingPasteboard) { delegate?.markdownView(self, image: data, kind: kind) }
-        return true
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String { Dropping.hint(form, d).replacingOccurrences(of: " here", with: " at the end") }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        var named: [BlockID] = []
+        Dropping.noteText(d, as: form, keep: { [weak self] data, kind in
+            guard let self else { return }
+            self.delegate?.markdownView(self, image: data, kind: kind)
+        }, insert: { [weak self] markdown in
+            guard let self else { return }
+            // (The blocks named come after the text: linked once it's in.)
+            DispatchQueue.main.async { self.delegate?.markdownView(self, append: markdown, naming: named) }
+        }, linked: { named.append($0) })
     }
 }
 

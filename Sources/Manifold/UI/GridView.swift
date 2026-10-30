@@ -33,15 +33,12 @@ protocol GridDelegate: AnyObject {
     func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
     /// A block from the sidebar dropped at a place in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
-    /// Files dropped from outside: opened where they landed.
-    func gridOpenFiles(_ paths: [String], column: Int, at: Int, newColumn: Bool)
+    /// Things dropped (§3.11) — files, a block, a page, a picture, words —
+    /// each a tile of its own where they landed: into column `column` at
+    /// `at`, or a new column at `column`.
+    func gridOpen(_ dragged: Dragged, column: Int, at: Int, newColumn: Bool)
     /// This Mac's host, whose files can go out as files.
     var gridLocalHost: HostID { get }
-    /// Something from another app dropped on the grid: a web address, an
-    /// image, text — made a block of its own where it lands.
-    func gridOpenDropped(_ thing: GridView.Dropped, column: Int, at: Int, newColumn: Bool)
-    /// Entries dragged from a folder's tile, on its host (another's too).
-    func gridOpenPaths(_ paths: [(host: HostID, path: String, isDirectory: Bool)], column: Int, at: Int, newColumn: Bool)
     /// Another arrangement dropped: its columns come over at `column`.
     func gridDropArrangement(_ arrangement: BlockID, column: Int)
     func gridCanDrop(_ arrangement: BlockID) -> Bool
@@ -137,8 +134,9 @@ final class GridView: NSView, NSDraggingSource {
     private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
     /// The drop under way covers the tile it's on (⌥-drag).
     private var dropCovers = false
+    /// The tile a thing dropped would link, by its title, for the hint.
+    private var lastLinkTitle: String?
     /// The drag is a block's link (⇧): dropped, it links to the tile's block.
-    private var dropLinks = false
     /// While a block is dragged anywhere: a catcher over every tile takes
     /// the drag, since a web view would otherwise keep it to itself.
     var dragging = false {
@@ -196,56 +194,11 @@ final class GridView: NSView, NSDraggingSource {
         // when light and dark switch.
         themed { $0.needsLayout = true }
         dropOverlay.isHidden = true
-        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldBlockLink, .fileURL, .manifoldPath, .URL, .string, .png, .tiff] + Promises.types)
+        registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock] + Dragged.types)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// What another app drags that the grid makes a block of.
-    enum Dropped {
-        /// Files another app promises (Photos, Mail): opened once written.
-        case promised([NSFilePromiseReceiver])
-        case web(URL)
-        case image(Data, String)
-        case text(String)
-    }
-
-    /// A web address, an image or text from another app (none of ours, no
-    /// files): what it becomes.
-    static func dropped(_ pb: NSPasteboard) -> Dropped? {
-        let ours: [NSPasteboard.PasteboardType] = [.manifoldPlacement, .manifoldBlock, .manifoldArrangement, .manifoldBlockLink, .manifoldPath, .fileURL]
-        guard !(pb.types ?? []).contains(where: ours.contains) else { return nil }
-        let promised = Promises.receivers(pb)
-        if !promised.isEmpty { return .promised(promised) }
-        if let url = (pb.readObjects(forClasses: [NSURL.self]) as? [URL])?.first, url.scheme == "http" || url.scheme == "https" { return .web(url) }
-        if let png = pb.data(forType: .png) { return .image(png, "png") }
-        if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) { return .image(png, "png") }
-        if let s = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            if !s.contains(" "), !s.contains("\n"), let url = URL(string: s), url.scheme == "http" || url.scheme == "https" { return .web(url) }
-            return .text(s)
-        }
-        return nil
-    }
-    private var dropOther: Dropped?
-
-    /// A folder's entries being dragged, on their host.
-    private static func droppedPaths(_ pb: NSPasteboard) -> [(host: HostID, path: String, isDirectory: Bool)] {
-        guard pb.string(forType: .manifoldBlockLink) == nil else { return [] }
-        return (pb.pasteboardItems ?? []).compactMap { item in
-            let f = item.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) ?? []
-            guard f.count == 3 else { return nil }
-            return (HostID(String(f[0])), String(f[1]), f[2] == "d")
-        }
-    }
-
-    /// Files from the Finder (or anywhere) being dragged: their paths.
-    private static func droppedFiles(_ pb: NSPasteboard) -> [String] {
-        guard pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil, pb.string(forType: .manifoldArrangement) == nil,
-              pb.string(forType: .manifoldBlockLink) == nil,
-              let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return [] }
-        return urls.map(\.path)
-    }
-    private var dropFiles = false
 
     func show(_ columns: [[Tile]], fractions: [Double], heights: [PlacementID: Double], focused: PlacementID?, full: PlacementID? = nil) {
         // Maximized or restored: where the tile was, to grow or shrink from.
@@ -1604,29 +1557,12 @@ final class GridView: NSView, NSDraggingSource {
         coverDrag = event.modifierFlags.contains(.option)
         aloneDrag = alone || event.modifierFlags.contains(.command)
         if event.modifierFlags.contains(.shift) {
-            // ⇧-drag: not the tile but what it stands for — its path (a
-            // terminal's folder, a page's address) — for wherever text or
-            // files are taken: a terminal types it, an editor inserts it.
-            // With ⌥ too, the link alone: nothing typed or put in.
-            let linkOnly = event.modifierFlags.contains(.option)
-            guard let block = shown?.block else { return }
-            if linkOnly {
-                item.setString("1", forType: .manifoldLinkOnly)
-            } else if let text = block.path ?? block.web?.url ?? block.terminal?.cwd ?? block.place {
-                // (A block with none — a command's output, a search — goes
-                // as its link alone: an agent takes what it holds.)
-                item.setString(text, forType: .string)
-                // A file's URL too — not a folder's: a web view in the drag's
-                // way takes a dragged folder for a file list and reads it.
-                var isDir: ObjCBool = false
-                if text.hasPrefix("/"), FileManager.default.fileExists(atPath: text, isDirectory: &isDir), !isDir.boolValue {
-                    item.setString(URL(fileURLWithPath: text).absoluteString, forType: .fileURL)
-                }
+            // ⇧-drag: not the tile but the thing it is (§3.11) — its link
+            // for a note, its path for a shell, a tile of it elsewhere.
+            guard let block = shown?.block, let thing = Drags.block?(block.id, [.shift]) else { return }
+            for t in thing.types {
+                if let d = thing.data(forType: t) { item.setData(d, forType: t) }
             }
-            // And the block as a link a note takes: [title](manifold:id).
-            // Not as a block: the grid takes no ⇧-drag, the views under it do.
-            let title = block.displayTitle.replacingOccurrences(of: "]", with: "\\]")
-            item.setString("[\(title)](manifold:\(block.id.description))", forType: .manifoldBlockLink)
             pathDrag = true
         } else {
             item.setString(placement, forType: .manifoldPlacement)
@@ -1657,6 +1593,16 @@ final class GridView: NSView, NSDraggingSource {
         // Not while finding: the find pill's there, doing the same job.
         t.available = shown && body.height >= 3 * size.height && !FindHost.isFinding(tile.view)
         keep(t, above: tile.view)
+    }
+
+    /// Debugging: a point a drop at slot `at` of column `column` would be
+    /// made at (the upper part of the tile it goes before; below the last).
+    func debugSlotPoint(column c: Int, at: Int) -> NSPoint {
+        let frames = columnFrames()
+        guard frames.indices.contains(c) else { return .zero }
+        let tiles = tileFrames(column: c, in: frames[c])
+        guard let last = tiles.last else { return NSPoint(x: frames[c].midX, y: frames[c].midY) }
+        return at < tiles.count ? NSPoint(x: frames[c].midX, y: tiles[at].maxY - 3) : NSPoint(x: frames[c].midX, y: last.minY + 3)
     }
 
     /// Debugging: the focused tile's ticks, and its outline.
@@ -1705,7 +1651,7 @@ final class GridView: NSView, NSDraggingSource {
         badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
     }
 
-    /// Whether the drag under way is a ⇧-drag of a block's path.
+    /// Whether the drag under way is a tile's ⇧-drag: the block as a thing (§3.11).
     private var pathDrag = false
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
@@ -1772,36 +1718,11 @@ final class GridView: NSView, NSDraggingSource {
         let point = convert(sender.draggingLocation, from: nil)
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
         let pb = sender.draggingPasteboard
-        // (Not a pill's own ⌥⇧-drag, its file already a tile here.)
-        if !pathDrag, !Self.droppedFiles(pb).isEmpty || !Self.droppedPaths(pb).isEmpty, let target = dropTarget(at: point, dragged: nil) {
-            // Files from outside: opened where they land, as a block is brought.
-            showDrop(target.rect)
-            drop = target
-            dropFiles = true
-            dropLinks = false
-            return .copy
-        }
-        dropFiles = false
-        dropOther = nil
-        if !pathDrag, let thing = Self.dropped(pb), let target = dropTarget(at: point, dragged: nil) {
-            // From another app: a page, a picture, words — a block of its own where it lands.
-            showDrop(target.rect)
-            drop = target
-            dropOther = thing
-            dropLinks = false
-            return .copy
-        }
-        if pb.string(forType: .manifoldPlacement) == nil, pb.string(forType: .manifoldBlock) == nil,
-           let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) {
-            // ⇧-drag: a block's link, over a tile whose view didn't take it
-            // (one that types or inserts it takes it first): linked to the
-            // tile's block, its whole shape the sign.
-            guard let t = tile(at: point), t.shown.block?.id != block else { hideDrop(); return [] }
-            DropHint.say("Link to “\(t.shown.title)”", at: sender.draggingLocation, in: window)
-            showDrop(t.view.frame)
-            drop = (0, 0, t.view.frame, false, t.shown.id)
-            dropLinks = true
-            return .link
+        // A thing (§3.11): opened where it lands, or linked to the tile it's over.
+        if Dragged(pb) != nil {
+            let op = Dropping.updated(self, sender)
+            if op.isEmpty { hideDrop() }
+            return op
         }
         let isBlock = pb.string(forType: .manifoldPlacement) != nil || pb.string(forType: .manifoldBlock) != nil
         let arrangement = pb.string(forType: .manifoldArrangement).flatMap(BlockID.init(string:))
@@ -2207,31 +2128,9 @@ final class GridView: NSView, NSDraggingSource {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         DropHint.hush()
         defer { hideDrop() }
-        guard let target = drop else { return false }
         let pb = sender.draggingPasteboard
-        if let thing = dropOther {
-            dropOther = nil
-            delegate?.gridOpenDropped(thing, column: target.column, at: target.at, newColumn: target.newColumn)
-            return true
-        }
-        if dropFiles {
-            dropFiles = false
-            // A folder's entries on their host, another's too; else files.
-            let paths = Self.droppedPaths(pb)
-            if !paths.isEmpty {
-                delegate?.gridOpenPaths(paths, column: target.column, at: target.at, newColumn: target.newColumn)
-                return true
-            }
-            let files = Self.droppedFiles(pb)
-            guard !files.isEmpty else { return false }
-            delegate?.gridOpenFiles(files, column: target.column, at: target.at, newColumn: target.newColumn)
-            return true
-        }
-        if dropLinks {
-            guard let onto = target.onto, let link = pb.string(forType: .manifoldBlockLink), let block = TextView.blockID(inLink: link) else { return false }
-            delegate?.gridLink(block, to: onto)
-            return true
-        }
+        if Dragged(pb) != nil { return Dropping.perform(self, sender) }
+        guard let target = drop else { return false }
         if let placement = pb.string(forType: .manifoldPlacement) {
             if let onto = target.onto {
                 if dropCovers { delegate?.gridCover(placement, over: onto, alone: aloneDrag) } else { delegate?.gridStash(placement, behind: onto, alone: aloneDrag) }
@@ -2255,7 +2154,6 @@ final class GridView: NSView, NSDraggingSource {
         dropOverlay.isHidden = true
         drop = nil
         dropCovers = false
-        dropLinks = false
     }
 
     /// The sheets behind a card with a stack (§3.1): each a rounded sheet
@@ -3696,5 +3594,69 @@ final class CountBadge: NSView {
         // The figures' own box (cap height, baseline up), set in the middle.
         let baseline = (bounds.height - Self.font.capHeight) / 2
         text.draw(at: NSPoint(x: (bounds.width - text.size().width) / 2, y: baseline + Self.font.descender))
+    }
+}
+
+/// Things dropped on the grid (§3.11) — between tiles, or over a tile whose
+/// view doesn't take them: a tile of its own where it lands (a file
+/// opened, a page, a picture, a note of words, a block brought); a
+/// block's own over a tile, the tile linked to it — ⌃ for the other.
+extension GridView: DropTaking {
+    /// The tile a drop at `p` would link, if what's dragged can be linked to and isn't it.
+    private func linkTarget(_ d: Dragged, at p: NSPoint) -> Tile? {
+        guard d.offers(.linkTile), let t = tile(at: p) else { return nil }
+        return d.things.contains { $0.block != nil && $0.block == t.shown.block?.id } ? nil : t
+    }
+
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        let onto = linkTarget(d, at: p)
+        let slot = dropTarget(at: p, dragged: nil)
+        if onto != nil, d.things.allSatisfy({ $0.block != nil }) { return [.linkTile] + (slot != nil ? [.open] : []) }
+        return (slot != nil ? [.open] : []) + (onto != nil ? [.linkTile] : [])
+    }
+
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
+        switch form {
+        case .linkTile: return lastLinkTitle.map { "Link “\($0)” to it" } ?? "Link the tile to it"
+        case .open:
+            if d.pictures { return d.things.count > 1 ? "New images here" : "A new image here" }
+            if d.things.allSatisfy({ $0.block != nil }) { return "Put a tile of it here" }
+            if d.things.allSatisfy({ $0.url != nil && $0.file == nil }) { return "Open the page here" }
+            if d.things.allSatisfy({ !$0.nameable && $0.url == nil }) { return "A new note of it here" }
+            return "Open it here"
+        default: return Dropping.hint(form, d)
+        }
+    }
+
+    func dropLabel(_ form: DropForm, _ d: Dragged) -> String? {
+        form == .linkTile ? lastLinkTitle.map { "Link “\($0)” to It" } : nil
+    }
+
+    /// Where it lands shown: the slot it opens in, or the whole tile linked.
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        let forms = dropForms(d, at: p)
+        if forms.first == .linkTile, let t = linkTarget(d, at: p) {
+            lastLinkTitle = t.shown.title
+            showDrop(t.view.frame)
+            drop = (0, 0, t.view.frame, false, t.shown.id)
+        } else if let slot = dropTarget(at: p, dragged: nil) {
+            lastLinkTitle = linkTarget(d, at: p)?.shown.title
+            showDrop(slot.rect)
+            drop = slot
+        }
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        let p = p ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        switch form {
+        case .linkTile:
+            guard let t = linkTarget(d, at: p) else { return NSSound.beep() }
+            for thing in d.things {
+                if let b = thing.named() { delegate?.gridLink(b, to: t.shown.id) }
+            }
+        default:
+            guard let slot = dropTarget(at: p, dragged: nil) else { return NSSound.beep() }
+            delegate?.gridOpen(d, column: slot.column, at: slot.at, newColumn: slot.newColumn)
+        }
     }
 }

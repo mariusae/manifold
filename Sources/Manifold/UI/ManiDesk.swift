@@ -541,6 +541,22 @@ final class ManiDesk {
         return lines(try await contents(of: b, view: view, pages: pages, all: r.flags["all"] != nil), r.flags["lines"])
     }
 
+    /// What a place in a block holds (a reference's `#…`): a command's
+    /// output, a page's text, a heading's section or an item's; without
+    /// one, the whole block's (a terminal's whole history).
+    func contents(of b: Block, at fragment: String?, view: PaneContent?) async throws -> String {
+        if let f = fragment {
+            if f.hasPrefix("command="), let id = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == id }) {
+                return try await output(of: c, in: b.id, view: view)
+            }
+            if f.hasPrefix("page="), let n = Int(f.dropFirst(5)) { return try await contents(of: b, view: view, pages: n...n) }
+            if f.hasPrefix("line="), let n = Int(f.dropFirst(5)), b.kind == .text, let text = b.text, !b.needsRead {
+                return NoteOutlineMarkdown.section(of: text.text.string, line: n)
+            }
+        }
+        return try await contents(of: b, view: view, all: true)
+    }
+
     /// A block's content as text, whatever it is — a file's or note's
     /// text, a terminal's transcript, a page's or a PDF's text, a diff's
     /// patch, a listing, a search's hits, a command's output, a notebook's

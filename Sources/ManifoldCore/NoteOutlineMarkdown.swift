@@ -462,4 +462,44 @@ extension NoteOutlineMarkdown {
 
     /// The same, from the text.
     public static func items(in source: String) -> [NoteOutlineItem] { items(of: parse(source)) }
+
+    /// The lines a place in Markdown stands for (a reference's `#line=N`,
+    /// from 1): a heading's section, up to the next heading as high (none
+    /// counted in code); a list item, with what's nested in it; else its
+    /// paragraph.
+    public static func section(of text: String, line n: Int) -> String {
+        let lines = text.components(separatedBy: "\n").map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
+        let i = n - 1
+        guard lines.indices.contains(i) else { return "" }
+        func heading(_ l: String) -> Int? {
+            let h = l.prefix { $0 == "#" }.count
+            guard (1...6).contains(h) else { return nil }
+            return l.count == h || l.dropFirst(h).first == " " ? h : nil
+        }
+        func indent(_ l: String) -> Int { l.prefix { $0 == " " || $0 == "\t" }.count }
+        func blank(_ l: String) -> Bool { l.trimmingCharacters(in: .whitespaces).isEmpty }
+        func item(_ l: String) -> Bool {
+            let t = l.drop { $0 == " " || $0 == "\t" }
+            if let c = t.first, "-*+".contains(c), t.dropFirst().first == " " { return true }
+            let digits = t.prefix { $0.isNumber }
+            return !digits.isEmpty && digits.count < 10 && [".", ")"].contains(t.dropFirst(digits.count).first) && t.dropFirst(digits.count + 1).first == " "
+        }
+        var end = i + 1
+        if let h = heading(lines[i]) {
+            var fenced = false
+            while end < lines.count {
+                let l = lines[end]
+                if l.trimmingCharacters(in: .whitespaces).hasPrefix("```") || l.trimmingCharacters(in: .whitespaces).hasPrefix("~~~") { fenced.toggle() }
+                if !fenced, let k = heading(l), k <= h { break }
+                end += 1
+            }
+        } else if item(lines[i]) {
+            let base = indent(lines[i])
+            while end < lines.count, blank(lines[end]) || indent(lines[end]) > base { end += 1 }
+        } else {
+            while end < lines.count, !blank(lines[end]) { end += 1 }
+        }
+        while end > i + 1, blank(lines[end - 1]) { end -= 1 }
+        return lines[i..<end].joined(separator: "\n")
+    }
 }

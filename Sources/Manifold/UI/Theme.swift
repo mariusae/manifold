@@ -261,14 +261,8 @@ extension NSPasteboard.PasteboardType {
     static let manifoldPlacement = NSPasteboard.PasteboardType("com.manifold.placement")
     /// A block being dragged from the sidebar, by id.
     static let manifoldBlock = NSPasteboard.PasteboardType("com.manifold.block")
-    /// A ⇧-dragged block as a Markdown link to it, for a note to take.
+    /// A block's link as Copy Link puts it on the clipboard, for a note to paste.
     static let manifoldBlockLink = NSPasteboard.PasteboardType("com.manifold.blocklink")
-    /// With a block's link, ⌥⇧-dragged: the link alone — the tile it's
-    /// dropped on linked to it, nothing typed or put in.
-    static let manifoldLinkOnly = NSPasteboard.PasteboardType("com.manifold.linkonly")
-    /// A folder's entry dragged out: "host<TAB>path<TAB>d|f" — on any
-    /// host, where a file URL is only for this Mac's.
-    static let manifoldPath = NSPasteboard.PasteboardType("com.manifold.path")
     /// A host's row in the sidebar being dragged, by session id.
     static let manifoldHost = NSPasteboard.PasteboardType("com.manifold.host")
 }

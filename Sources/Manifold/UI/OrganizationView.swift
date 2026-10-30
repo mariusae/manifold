@@ -695,10 +695,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return context == .withinApplication ? [.move, .copy] : []
     }
 
-    /// Files from the Finder (or anywhere) dragged: their paths, if no block is.
+    /// This Mac's files dragged (from the Finder, a folder's tile): their
+    /// paths, if no block is.
     private static func files(_ pb: NSPasteboard) -> [String] {
-        guard OrgDragItem(pb) == nil, pb.types?.contains(.manifoldBlockLink) != true else { return [] }
-        return (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []).map(\.path)
+        guard OrgDragItem(pb) == nil, let d = Dragged(pb), d.things.allSatisfy({ $0.block == nil }) else { return [] }
+        return d.things.compactMap { $0.file?.host == Drags.localHost ? $0.file?.path : nil }
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {

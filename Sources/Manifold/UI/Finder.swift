@@ -789,7 +789,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             else { let a = actions[c.action]; run = a }
             let drag: (() -> NSPasteboardWriting?)?
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
-            else if let path = c.path, c.action < 0 { drag = { Drags.path?(path, false, .local, Drags.modifiers) } }
+            else if let path = c.path, c.action < 0 { drag = { Drags.file(path, isDirectory: false, on: Drags.localHost) } }
             else { drag = nil }
             return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
         }

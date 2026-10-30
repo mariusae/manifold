@@ -23,6 +23,16 @@ final class OutlineNoteView: NSView, PaneContent {
         get { text.onOpen }
         set { text.onOpen = newValue }
     }
+    /// A block dropped in by its link: linked from the note.
+    var onLinked: ((BlockID) -> Void)? {
+        get { text.onLinked }
+        set { text.onLinked = newValue }
+    }
+    /// A picture dropped, kept for the note: given the Markdown that shows it.
+    var keepImage: ((Data, String, @escaping (String) -> Void) -> Void)? {
+        get { text.keepImage }
+        set { text.keepImage = newValue }
+    }
     var theme: FontTheme { didSet { if theme != oldValue { text.metrics = Self.metrics(theme) } } }
 
     private let scroll = NSScrollView()
@@ -36,6 +46,8 @@ final class OutlineNoteView: NSView, PaneContent {
     private let headings = Outline()
 
     var focusView: NSView { text }
+    /// What takes things dropped on it.
+    var dropTarget: DropTaking { text }
     var isDead: Bool { false }
     var outline: Outline? { headings }
 
@@ -723,6 +735,11 @@ final class NoteOutlineTextView: NSTextView {
     let dropLine = NSView()
     /// A link clicked: followed, by the one rule.
     var onOpen: ((String) -> Void)?
+    /// A picture dropped, kept for the note (as an image block): given the
+    /// Markdown that shows it.
+    var keepImage: ((Data, String, @escaping (String) -> Void) -> Void)?
+    /// A block dropped in by its link (or reference, card): linked from the note.
+    var onLinked: ((BlockID) -> Void)?
 
     init(metrics: NoteOutlineMetrics) {
         self.metrics = metrics
@@ -755,7 +772,7 @@ final class NoteOutlineTextView: NSTextView {
         dropLine.layer?.backgroundColor = Theme.accent.cgColor
         dropLine.isHidden = true
         addSubview(dropLine)
-        registerForDraggedTypes([Self.rowsType])
+        registerForDraggedTypes([Self.rowsType] + Dragged.types)
         load([.blank], keepingCaret: false)
     }
 
@@ -1536,21 +1553,27 @@ final class NoteOutlineTextView: NSTextView {
 
     private func carriesRows(_ sender: NSDraggingInfo) -> Bool { sender.draggingPasteboard.types?.contains(Self.rowsType) ?? false }
 
+    /// Its own text dragged within it, moved as text is.
+    private func ownText(_ sender: NSDraggingInfo) -> Bool { sender.draggingSource as? NSView === self }
+
+    override var acceptableDragTypes: [NSPasteboard.PasteboardType] { [Self.rowsType] + Dragged.types + super.acceptableDragTypes }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        carriesRows(sender) ? rowDragUpdated(sender) : super.draggingEntered(sender)
+        carriesRows(sender) ? rowDragUpdated(sender) : ownText(sender) ? super.draggingEntered(sender) : Dropping.updated(self, sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        carriesRows(sender) ? rowDragUpdated(sender) : super.draggingUpdated(sender)
+        carriesRows(sender) ? rowDragUpdated(sender) : ownText(sender) ? super.draggingUpdated(sender) : Dropping.updated(self, sender)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         dropLine.isHidden = true
+        Dropping.exited(self, sender)
         super.draggingExited(sender)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        carriesRows(sender) ? dropRows(sender) : super.performDragOperation(sender)
+        carriesRows(sender) ? dropRows(sender) : ownText(sender) ? super.performDragOperation(sender) : Dropping.perform(self, sender)
     }
 
     /// A line where rows dragged over would go.
@@ -1729,5 +1752,44 @@ final class NoteOutlineTextView: NSTextView {
         NoteOutlineEditing.normalize(&all)
         replace(before, with: all, actionName: "Paste")
         restoreCaret(CaretPosition(row: at + incoming.count - 1, offset: Int.max))
+    }
+}
+
+/// Things dropped on the outline (§3.11), as a note takes them: a block's
+/// (a file's, a place's) link, a page's, words, put in where the pointer
+/// is; pictures, cards, several things at once as rows of their own where
+/// the line shows — ⌃ for the rest.
+extension NoteOutlineTextView: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] { isEditable ? Dropping.noteForms(d) : [] }
+
+    /// Whether what a plain drop puts in goes as rows (a line shown) rather
+    /// than into a row's text (the caret following).
+    private func asRows(_ d: Dragged) -> Bool { Dropping.noteForms(d).first == .inline || d.things.count > 1 }
+
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        if asRows(d) { return showDropLine(rowDrop(at: p)) }
+        dropLine.isHidden = true
+        let at = characterIndexForInsertion(at: p)
+        if selectedRange() != NSRange(location: at, length: 0) { setSelectedRange(NSRange(location: at, length: 0)) }
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        dropLine.isHidden = true
+        window?.makeFirstResponder(self)
+        let at = p.map { characterIndexForInsertion(at: $0) } ?? selectedRange().location
+        let drop = p.map { rowDrop(at: $0) } ?? RowDrop(index: paragraphRanges.count, depth: 0)
+        let put = { [weak self] (markdown: String, rows: Bool) in
+            guard let self else { return }
+            if rows { return self.insertRows(NoteOutlineMarkdown.parse(markdown).rows, at: drop) }
+            let all = self.string as NSString
+            let r = NSRange(location: min(at, all.length), length: 0)
+            let char = { (i: Int) -> Character? in i >= 0 && i < all.length ? Character(all.substring(with: NSRange(location: i, length: 1))) : nil }
+            let text = [.link, .reference, .path].contains(form) ? Dropping.spaced(markdown, after: char(r.location - 1), before: char(r.location)) : markdown
+            self.setSelectedRange(r)
+            self.insertText(text, replacementRange: r)
+        }
+        let keep = keepImage.map { keep in { (data: Data, kind: String) in keep(data, kind) { put($0, true) } } }
+        Dropping.noteText(d, as: form, keep: keep, insert: { put($0, form == .inline || $0.contains("\n")) },
+                          linked: { [weak self] in self?.onLinked?($0) })
     }
 }

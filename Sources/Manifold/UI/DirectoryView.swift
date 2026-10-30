@@ -36,9 +36,6 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) -> () -> Void
     /// Whether the block's host is this machine.
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool
-    /// An entry dragged with ⇧: its block (made if need be), as the link
-    /// a note takes, `[title](manifold:id)`; nil for a file no block shows.
-    func directoryView(_ view: DirectoryView, linkFor path: String, isDirectory: Bool) -> String?
     /// Files dropped on the folder — this Mac's, or a folder tile's entries
     /// on any host — put in `folder`, on the block's host.
     func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String, moving: Bool)
@@ -132,7 +129,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         footer.isHidden = true
         addSubview(footer)
         addSubview(note)
-        registerForDraggedTypes([.fileURL, .manifoldPath] + Promises.types)
+        registerForDraggedTypes(Dragged.types)
         documentChanged()
     }
 
@@ -286,13 +283,11 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     // MARK: Dragging
 
-    /// An entry dragged out, as a tile's pill is with ⇧: its path, for a
-    /// terminal to type or an editor to insert; its file, on this machine,
-    /// for the grid to open where it lands (or another app to take); and,
-    /// with ⇧, its block as a link — a note mentions it, a terminal or a
-    /// tile it's dropped on is linked to it. ⌥⇧, the link alone.
+    /// What dragging an entry writes (§3.11): the file, on its host — a
+    /// folder takes it in, a terminal types its path, a note links to it,
+    /// the grid opens it, another app takes its file (here).
     func pasteboardItem(for node: BrowserNode) -> NSPasteboardItem {
-        pasteboardItem(for: node, mods: NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags)
+        Drags.file(node.path, isDirectory: node.isDirectory, on: block.host)
     }
 
     /// What dragging an entry writes: on this Mac, its item (the file's URL
@@ -313,6 +308,8 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     // MARK: Drops on the folder
 
     /// The folder taking a drop: outlined in the accent, as the Finder does.
+    /// The folder a drop over it would go into, as the hint names it.
+    private var dropFolderShown: String?
     private var dropping = false {
         didSet {
             guard dropping != oldValue else { return }
@@ -321,87 +318,59 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         }
     }
 
-    /// What's dragged, as it would land here: none of what's already in
-    /// this folder (an entry dragged within its own listing).
     /// Where a drop at a point goes: the folder under it (a row's, a
     /// column's), else the one shown.
-    private func dropFolder(_ sender: NSDraggingInfo) -> String? {
+    private func dropFolder(at p: NSPoint) -> String? {
         guard let model else { return nil }
         guard let content else { return model.root }
-        return content.folder(at: content.convert(sender.draggingLocation, from: nil)) ?? model.root
+        return content.folder(at: content.convert(p, from: self)) ?? model.root
     }
 
-    private func dropped(_ pb: NSPasteboard, into folder: String) -> [DroppedItem] {
-        guard let model else { return [] }
-        let entries: [DroppedItem] = (pb.pasteboardItems ?? []).compactMap { item in
-            let f = item.string(forType: .manifoldPath)?.split(separator: "\t", omittingEmptySubsequences: false) ?? []
-            guard f.count == 3 else { return nil }
-            let host = HostID(String(f[0])), path = String(f[1])
-            // Not where it is already, nor into itself.
-            if host == block.host, path.deletingLastPathComponent == folder || path == folder || folder.hasPrefix(path + "/") { return nil }
-            return .entry(host: host, path: path, isDirectory: f[2] == "d")
+    /// The files dragged, as they'd land in `folder`: none already there
+    /// (an entry dragged within its own listing), nor a folder into itself.
+    private func dropped(_ d: Dragged, into folder: String) -> [DroppedItem] {
+        if d.things.isEmpty { return d.promised.map { .promised($0) } }
+        return d.things.compactMap { t in
+            guard let f = t.file else { return nil }
+            if f.host == block.host, f.path.deletingLastPathComponent == folder || f.path == folder || folder.hasPrefix(f.path + "/") { return nil }
+            return t.outside ? .local(URL(fileURLWithPath: f.path)) : .entry(host: f.host, path: f.path, isDirectory: f.isDirectory)
         }
-        if !entries.isEmpty || pb.types?.contains(.manifoldPath) == true { return entries }
-        // A link alone (⌥⇧) or a tile's path isn't a file to put here.
-        if pb.types?.contains(.manifoldLinkOnly) == true || pb.types?.contains(.manifoldBlockLink) == true { return [] }
-        let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        if urls.isEmpty { return Promises.receivers(pb).map { .promised($0) } }
-        let local = delegate?.directoryViewIsLocal(self) == true
-        return urls.filter { !(local && $0.deletingLastPathComponent().standardizedFileURL.path == folder) }.map { .local($0) }
     }
 
-    /// Entries of this host's dropped without ⌥ move, as the Finder moves
-    /// within a disk; anything else (⌥, another host, another app) is copied.
-    private func moves(_ items: [DroppedItem], _ sender: NSDraggingInfo) -> Bool {
-        guard !NSEvent.modifierFlags.contains(.option) else { return false }
-        return items.allSatisfy { if case let .entry(h, _, _) = $0 { h == block.host } else { false } }
+    /// Files dragged that are all where they'd go: nothing to do, and not
+    /// the grid's either.
+    private func alreadyHere(_ sender: NSDraggingInfo) -> Bool {
+        guard let d = Dragged(sender.draggingPasteboard), !d.things.isEmpty, d.things.allSatisfy({ $0.file != nil }),
+              let folder = dropFolder(at: convert(sender.draggingLocation, from: nil)) else { return false }
+        return dropped(d, into: folder).isEmpty
     }
 
+    /// Things dropped on the folder (§3.11): files copied in — this host's
+    /// own entries moved, as the Finder moves within a disk (⌥: copied) —
+    /// ⌃ for the other; anything else is the grid's.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let folder = dropFolder(sender) else { return [] }
-        let items = dropped(sender.draggingPasteboard, into: folder)
-        dropping = !items.isEmpty
-        return dropping ? (moves(items, sender) ? .move : .copy) : []
+        if alreadyHere(sender) { dropping = false; return [] }
+        let op = Dropping.updated(self, sender)
+        if op.isEmpty { dropping = false }
+        return op
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) { dropping = false }
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropping = false
+        Dropping.exited(self, sender)
+    }
     override func draggingEnded(_ sender: NSDraggingInfo) { dropping = false }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         dropping = false
-        guard let folder = dropFolder(sender) else { return false }
-        let items = dropped(sender.draggingPasteboard, into: folder)
-        guard !items.isEmpty else { return false }
-        delegate?.directoryView(self, receive: items, into: folder, moving: moves(items, sender))
-        return true
+        if alreadyHere(sender) { return false }
+        return Dropping.perform(self, sender)
     }
 
     /// An entry right-clicked, by its path.
     func menu(for node: BrowserNode) -> NSMenu? { delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory) }
-
-    func pasteboardItem(for node: BrowserNode, mods: NSEvent.ModifierFlags) -> NSPasteboardItem {
-        let item = NSPasteboardItem()
-        let link = mods.contains(.shift)
-        // ⌥⇧: the link alone, nothing typed or put in.
-        if link, mods.contains(.option), let text = delegate?.directoryView(self, linkFor: node.path, isDirectory: node.isDirectory) {
-            item.setString(text, forType: .manifoldBlockLink)
-            item.setString("1", forType: .manifoldLinkOnly)
-            return item
-        }
-        item.setString(node.path, forType: .string)
-        item.setString("\(block.host.raw)\t\(node.path)\t\(node.isDirectory ? "d" : "f")", forType: .manifoldPath)
-        // A folder's URL only for a plain drag: a web view in the way
-        // takes a dragged folder for a file list and reads it.
-        if delegate?.directoryViewIsLocal(self) == true, !mods.contains(.shift) || !node.isDirectory {
-            item.setString(URL(fileURLWithPath: node.path).absoluteString, forType: .fileURL)
-        }
-        if link, let text = delegate?.directoryView(self, linkFor: node.path, isDirectory: node.isDirectory) {
-            item.setString(text, forType: .manifoldBlockLink)
-        }
-        return item
-    }
 
     // MARK: Going places
 
@@ -645,17 +614,14 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if let shown = content?.shownFolders { model?.refresh(shown) }
         case "focusfilter": performTextFinderAction(nil)
         case "drag":
-            // "drag [shift] [opt]": what dragging the selection carries.
+            // "drag": what dragging the selection carries.
             guard let path = content?.selectedPath else { return "nothing selected" }
             var isDir: ObjCBool = false
             let local = delegate?.directoryViewIsLocal(self) == true && FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
             let node = BrowserNode(path: path, entry: DirectoryEntry(name: path.lastPathComponent, isDirectory: local && isDir.boolValue,
                                                                      size: 0, modified: 0, isHidden: false))
-            var mods: NSEvent.ModifierFlags = []
-            if arg.contains("shift") { mods.insert(.shift) }
-            if arg.contains("opt") { mods.insert(.option) }
-            let item = pasteboardItem(for: node, mods: mods)
-            return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? "")" }.joined(separator: "\n")
+            let item = pasteboardItem(for: node)
+            return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? item.data(forType: $0).map { String(decoding: $0, as: UTF8.self) } ?? "")" }.joined(separator: "\n")
         case "enter":
             // ⏎ in the filter, as typed there.
             _ = control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
@@ -709,7 +675,7 @@ final class EntryPromise: NSFilePromiseProvider {
     }
 
     override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
-        if let extra, extra.types.contains(type) { return extra.string(forType: type) }
+        if let extra, extra.types.contains(type) { return extra.string(forType: type) ?? extra.data(forType: type) }
         return super.pasteboardPropertyList(forType: type)
     }
 }
@@ -735,4 +701,33 @@ final class PromiseKeeper: NSObject, NSFilePromiseProviderDelegate {
 
     /// Fetched on the main queue, where the host's answers come.
     func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { .main }
+}
+
+extension DirectoryView: DropTaking {
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        guard let folder = dropFolder(at: p) else { return [] }
+        let items = dropped(d, into: folder)
+        guard !items.isEmpty, items.count == max(d.things.count, d.promised.count) else { return [] }
+        let own = items.allSatisfy { if case let .entry(h, _, _) = $0 { h == block.host } else { false } }
+        guard own else { return [.copy] }
+        return NSEvent.modifierFlags.contains(.option) ? [.copy, .move] : [.move, .copy]
+    }
+
+    func dropHint(_ form: DropForm, _ d: Dragged) -> String {
+        let name = (dropFolderShown ?? "").lastPathComponent
+        let into = name.isEmpty ? " here" : " into “\(name)”"
+        return (form == .move ? "Move" : "Copy") + into
+    }
+
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        dropping = true
+        dropFolderShown = dropFolder(at: p)
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        guard let folder = p.flatMap({ dropFolder(at: $0) }) ?? model?.root else { return }
+        let items = dropped(d, into: folder)
+        guard !items.isEmpty else { return NSSound.beep() }
+        delegate?.directoryView(self, receive: items, into: folder, moving: form == .move)
+    }
 }
