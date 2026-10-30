@@ -367,7 +367,8 @@ public enum NoteOutlineMarkdown {
         return (hashes, spacing, String(rest.dropFirst(spacing)))
     }
 
-    static func fenceMarker(_ content: String) -> String? {
+    /// The fence a line opens a code block with (its run of ``` or ~~~), if it does.
+    public static func fenceMarker(_ content: String) -> String? {
         for marker in ["```", "~~~"] where content.hasPrefix(marker) {
             let run = content.prefix(while: { $0 == marker.first })
             if marker == "```" && content.dropFirst(run.count).contains("`") { return nil }
@@ -448,7 +449,8 @@ extension NoteOutlineMarkdown {
             line += row.gap.count
             defer { line += row.lineCount }
             guard row.depth == 0 else { continue }
-            let title = String(row.text.prefix { $0 != "\n" })
+            // Its words, as they read: emphasis, links, code without their marks.
+            let title = InlineMarkup.plainText(String(row.text.prefix { $0 != "\n" }))
             if case let .heading(level) = row.kind {
                 let rank = min(max(level - (top ?? level), 0), 3)
                 under = rank + 1

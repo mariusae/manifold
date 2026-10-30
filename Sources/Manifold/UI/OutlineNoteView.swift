@@ -214,6 +214,15 @@ final class OutlineNoteView: NSView, PaneContent {
         let words = command.split(separator: " ", maxSplits: 1).map(String.init)
         window?.makeFirstResponder(text)
         switch words.first {
+        case "handles":
+            // Each row's handle, where it's drawn: its center's height in its line.
+            guard let layout = text.layoutManager as? NoteOutlineLayoutManager, let storage = text.textStorage else { return "no layout" }
+            return text.paragraphRanges.enumerated().map { i, p in
+                let row = NoteOutlineText.style(storage, at: p.location).row
+                let line = p.location < storage.length ? layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: p.location), effectiveRange: nil) : .zero
+                let c = layout.handleCenter(of: p, row: row, origin: .zero)
+                return "\(i) line \(Int(line.minY))+\(Int(line.height)) handle \(c.map { String(format: "%.1f", $0.y - line.minY) } ?? "none")"
+            }.joined(separator: "\n")
         case "return": text.insertNewline(nil)
         case "tab": text.insertTab(nil)
         case "backtab": text.insertBacktab(nil)
@@ -686,9 +695,11 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         guard let view else { return nil }
         let glyph = glyphIndexForCharacter(at: paragraph.location)
         guard glyph < numberOfGlyphs else { return nil }
-        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        // The baseline from the line's used room and the row's font, not
+        // its first glyph's: an empty row's is its line break, set lower.
+        let used = lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
         let font = view.metrics.font(for: row)
-        let baseline = origin.y + line.minY + location(forGlyphAt: glyph).y
+        let baseline = origin.y + used.maxY + font.descender
         return NSPoint(x: origin.x + view.metrics.textIndent(for: row) - view.metrics.indent / 2, y: baseline - font.xHeight / 2)
     }
 
@@ -1337,11 +1348,28 @@ final class NoteOutlineTextView: NSTextView {
             return splitRow()
         }
         let index = rowIndex(at: selectedRange().location)
-        let current = row(at: index)
+        // (Its text as it is now, not as last styled.)
+        let current = rows[index]
         // `---` alone on a row, then Return: a line across.
         if selectedRange().length == 0, current.task == nil, current.kind == .bullet || current.kind == .paragraph,
            ["---", "***", "___"].contains(current.text.trimmingCharacters(in: .whitespaces)) {
             return makeRule(at: index)
+        }
+        // ``` (a language after it, or not) alone on a row, then Return: a
+        // code block, the caret in it.
+        let typed = current.text.trimmingCharacters(in: .whitespaces)
+        if selectedRange().length == 0, current.task == nil, current.kind == .bullet || current.kind == .paragraph,
+           let marker = NoteOutlineMarkdown.fenceMarker(typed) {
+            return makeCode(at: index, opening: typed, closing: marker)
+        }
+        // Past a code block's closing fence: a row after it, to write in.
+        if current.kind == .code, selectedRange().length == 0, selectedRange().location == rowEnd(index), Self.closes(current.text) {
+            var all = rows
+            let before = all
+            all.insert(NoteRow(kind: .bullet, depth: current.depth, gap: []), at: index + 1)
+            NoteOutlineEditing.normalize(&all)
+            replace(before, with: all, actionName: "New Row")
+            return restoreCaret(CaretPosition(row: index + 1, offset: 0))
         }
         splitRow()
     }
@@ -1484,6 +1512,30 @@ final class NoteOutlineTextView: NSTextView {
         replaceRow(index, with: row, actionName: "Change Row Type")
         restoreCaret(CaretPosition(row: index, offset: 0))
         return true
+    }
+
+    private func makeCode(at index: Int, opening: String, closing: String) {
+        var all = rows
+        let before = all
+        all[index] = NoteRow(kind: .code, depth: all[index].depth, text: opening + "\n\n" + closing, gap: all[index].gap)
+        NoteOutlineEditing.normalize(&all)
+        replace(before, with: all, actionName: "Code Block")
+        restoreCaret(CaretPosition(row: index, offset: (opening as NSString).length + 1))
+    }
+
+    /// Where a row's text ends (before its line break).
+    private func rowEnd(_ index: Int) -> Int {
+        let p = paragraphRanges[index]
+        let text = textStorage!.string as NSString
+        return NSMaxRange(p) > p.location && text.character(at: NSMaxRange(p) - 1) == 0x0A ? NSMaxRange(p) - 1 : NSMaxRange(p)
+    }
+
+    /// Whether a code row's text ends with its closing fence.
+    static func closes(_ code: String) -> Bool {
+        let lines = code.components(separatedBy: "\n")
+        guard lines.count >= 2, let opening = NoteOutlineMarkdown.fenceMarker(lines[0].trimmingCharacters(in: .whitespaces)) else { return false }
+        let last = lines[lines.count - 1].trimmingCharacters(in: .whitespaces)
+        return last.count >= opening.count && last.allSatisfy { $0 == opening.first }
     }
 
     private func makeRule(at index: Int) {
