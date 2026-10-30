@@ -53,19 +53,28 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func post(status r: StatusRecord, of b: Block) {
-        let title: String
+        let title: String, sound: Sound
         switch r.state {
-        case .blocked: title = "\(b.displayTitle) needs you"
-        case .error: title = "\(b.displayTitle) failed"
-        default: title = "\(b.displayTitle) is done"
+        case .blocked: (title, sound) = ("\(b.displayTitle) needs you", .needsYou)
+        case .error: (title, sound) = ("\(b.displayTitle) failed", .failed)
+        default: (title, sound) = ("\(b.displayTitle) is done", .done)
         }
-        post(id: "status-\(b.id)", title: title, body: r.msg ?? r.title ?? r.app ?? "", block: b.id, command: nil)
+        post(id: "status-\(b.id)", title: title, body: r.msg ?? r.title ?? r.app ?? "", sound: sound, block: b.id, command: nil)
     }
 
     private func post(command c: ShellCommand, of b: Block, took ms: Int64) {
         let failed = (c.status ?? 0) != 0
         let title = failed ? "Failed after \(Self.duration(ms))" + (c.status.map { " (exit \($0))" } ?? "") : "Finished after \(Self.duration(ms))"
-        post(id: "command-\(b.id)-\(c.id)", title: title, body: "\(c.text)\n\(b.displayTitle)", block: b.id, command: c.id)
+        post(id: "command-\(b.id)-\(c.id)", title: title, body: "\(c.text)\n\(b.displayTitle)", sound: failed ? .failed : .done,
+             block: b.id, command: c.id)
+    }
+
+    /// What a notification sounds like: a knock on wood. Done, two, the
+    /// second a touch higher; needs you, three, quicker, the last firmest;
+    /// failed, two, slower, the second lower and duller. (Resources/Sounds,
+    /// copied to the top of the bundle's Resources, where the Mac looks.)
+    enum Sound: String {
+        case done = "knock-done.caf", needsYou = "knock-needs-you.caf", failed = "knock-failed.caf"
     }
 
     static func duration(_ ms: Int64) -> String {
@@ -75,13 +84,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         return "\(s / 3600) h \(s % 3600 / 60) min"
     }
 
-    private func post(id: String, title: String, body: String, block: BlockID, command: Int?) {
+    private func post(id: String, title: String, body: String, sound: Sound, block: BlockID, command: Int?) {
         let center = UNUserNotificationCenter.current()
         let send = {
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.sound = .default
+            content.sound = Bundle.main.url(forResource: sound.rawValue, withExtension: nil) != nil
+                ? UNNotificationSound(named: UNNotificationSoundName(sound.rawValue)) : .default
             content.threadIdentifier = block.description
             var info: [String: Any] = ["block": block.description]
             if let command { info["command"] = command }
