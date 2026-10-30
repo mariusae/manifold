@@ -18,6 +18,11 @@ final class OutlineNoteView: NSView, PaneContent {
     var source: () -> Block? = { nil }
     /// Edits to the block's text, as an editor makes them.
     var apply: ([TextEdit]) -> Void = { _ in }
+    /// A link in it clicked: followed, by the one rule.
+    var onOpen: ((String) -> Void)? {
+        get { text.onOpen }
+        set { text.onOpen = newValue }
+    }
     var theme: FontTheme { didSet { if theme != oldValue { text.metrics = Self.metrics(theme) } } }
 
     private let scroll = NSScrollView()
@@ -33,6 +38,13 @@ final class OutlineNoteView: NSView, PaneContent {
     var focusView: NSView { text }
     var isDead: Bool { false }
     var outline: Outline? { headings }
+
+    /// Its folds, in the tile's menu (⌥⌘9 and ⌥⌘0 in it).
+    var pillItems: [NSMenuItem] {
+        [ClosureMenuItem("Collapse All", symbol: "arrow.down.right.and.arrow.up.left") { [weak self] in self?.text.collapseAll(nil) },
+         ClosureMenuItem("Expand All", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in self?.text.expandAll(nil) },
+         .separator()]
+    }
 
     init(placement: PlacementID, block: BlockID, theme: FontTheme) {
         self.placement = placement
@@ -193,6 +205,24 @@ final class OutlineNoteView: NSView, PaneContent {
         case "up": text.moveRowsUp(nil)
         case "down": text.moveRowsDown(nil)
         case "fold": if words.count > 1, let r = Int(words[1]) { text.clickHandle(ofRow: r) }
+        case "escape": text.cancelOperation(nil)
+        case "left": text.moveLeft(nil)
+        case "right": text.moveRight(nil)
+        case "rowup": text.moveUp(nil)
+        case "rowdown": text.moveDown(nil)
+        case "extend": text.moveDownAndModifySelection(nil)
+        case "space": text.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
+        case "collapseall": text.collapseAll(nil)
+        case "expandall": text.expandAll(nil)
+        case "copy":
+            let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-outline"))
+            pb.clearContents()
+            _ = text.writeSelection(to: pb, type: .string)
+            return "copied:\n" + (pb.string(forType: .string) ?? "")
+        case "move":
+            // "move <row> <before row> <depth>": the row and what's under it, dragged there.
+            let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
+            if n.count == 3 { text.moveRows(NoteOutlineEditing.block(text.rows, n[0]..<(n[0] + 1)), from: text, to: .init(index: n[1], depth: n[2])) }
         case "type": if words.count > 1 { for ch in words[1] { text.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) } }
         case "caret":
             let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
@@ -200,7 +230,8 @@ final class OutlineNoteView: NSView, PaneContent {
         default: break
         }
         let c = text.caretPosition
-        return "caret \(c.row):\(c.offset)\n" + debugRows
+        let selected = text.selectedRows.map { " rows \($0.lowerBound)…\($0.upperBound - 1)" } ?? ""
+        return "caret \(c.row):\(c.offset)\(selected)\n" + debugRows
     }
 }
 
@@ -210,6 +241,9 @@ extension NSAttributedString.Key {
     /// The row a paragraph is, as a `NoteRowStyle`: every character of a
     /// paragraph, its line break too, carries the same one.
     static let noteRow = NSAttributedString.Key("ManifoldNoteRow")
+    /// Inline Markdown's markup (`**`, a link's brackets and address): kept
+    /// in the text, laid out as nothing.
+    static let noteHidden = NSAttributedString.Key("ManifoldNoteHidden")
 }
 
 /// What a paragraph is: a row, less its text, which is the paragraph's.
@@ -254,6 +288,19 @@ enum NoteOutlineText {
     static func style(_ text: NSAttributedString, at location: Int) -> NoteRowStyle {
         guard text.length > 0 else { return NoteRowStyle(.blank) }
         return text.attribute(.noteRow, at: min(location, text.length - 1), effectiveRange: nil) as? NoteRowStyle ?? NoteRowStyle(.blank)
+    }
+
+    /// A row's inline spans (`InlineMarkup`), a picture as its Markdown
+    /// (pictures aren't drawn here: nothing of it hidden).
+    static func spans(in text: NSString, range: NSRange) -> [InlineSpan] {
+        let range = NSIntersectionRange(range, NSRange(location: 0, length: text.length))
+        return InlineMarkup.spans(in: text, range: range).map { span in
+            guard span.isImage else { return span }
+            var shown = span
+            shown.kind = .imageText
+            shown.content = span.range
+            return shown
+        }
     }
 
     static func rows(_ text: NSAttributedString) -> [NoteRow] {
@@ -320,10 +367,15 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
     var metrics: NoteOutlineMetrics
     /// Rows folded inside a row an edit swallowed, and where they belong.
     var orphans: [(location: Int, rows: [NoteRow])] = []
+    /// Told of every change to the characters, before anything else hears
+    /// of it (what's cached of where rows are goes then: an undo sets the
+    /// selection before the view hears the text changed).
+    var onCharactersEdited: (() -> Void)?
 
     init(metrics: NoteOutlineMetrics) { self.metrics = metrics }
 
     func textStorage(_ storage: NSTextStorage, didProcessEditing mask: NSTextStorageEditActions, range edited: NSRange, changeInLength delta: Int) {
+        if mask.contains(.editedCharacters) { onCharactersEdited?() }
         guard storage.length > 0 else { return }
         let text = storage.string as NSString
         var range = text.paragraphRange(for: NSRange(location: min(edited.location, text.length), length: min(edited.length, text.length - min(edited.location, text.length))))
@@ -374,8 +426,60 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
             storage.addAttribute(.noteRow, value: style, range: paragraph)
             // A code block's fences: there to be edited, not read.
             if row.kind == .code { dimFences(storage, in: paragraph) }
+            else if row.kind != .rule { styleInline(storage, in: paragraph, row: row) }
             storage.fixAttributes(in: paragraph)
         }
+    }
+
+    /// The row's inline Markdown as it reads (Prism's, after Bike): bold,
+    /// italic, struck through, highlighted, code in the code face, links in
+    /// the accent (followed by the one rule), tags — the markup around each
+    /// kept but laid out as nothing; a picture's Markdown greyed (pictures
+    /// aren't drawn here), a comment hidden whole.
+    private func styleInline(_ storage: NSTextStorage, in paragraph: NSRange, row: NoteRow) {
+        let text = storage.string as NSString
+        let body = NSRange(location: paragraph.location, length: max(0, paragraph.length - 1))
+        let base = metrics.font(for: row)
+        func font(at location: Int) -> NSFont { storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont ?? base }
+        for span in NoteOutlineText.spans(in: text, range: body) {
+            let content = span.content
+            switch span.kind {
+            case .strong:
+                storage.addAttribute(.font, value: NSFontManager.shared.convert(font(at: content.location), toHaveTrait: .boldFontMask), range: content)
+            case .emphasis:
+                let plain = font(at: content.location)
+                let italic = NSFontManager.shared.convert(plain, toHaveTrait: .italicFontMask)
+                if italic.fontDescriptor.symbolicTraits.contains(.italic) {
+                    storage.addAttribute(.font, value: italic, range: content)
+                } else {
+                    // A face with no italic: slanted.
+                    storage.addAttribute(.obliqueness, value: 0.18, range: content)
+                }
+            case .strikethrough:
+                storage.addAttributes([.strikethroughStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: Theme.secondaryText], range: content)
+            case .highlight:
+                storage.addAttribute(.backgroundColor, value: Self.highlighter, range: content)
+            case .code:
+                storage.addAttributes([.font: NSFont(descriptor: metrics.code.fontDescriptor, size: round(base.pointSize * 0.9)) ?? metrics.code,
+                                       .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.18)], range: content)
+            case let .link(target), let .url(target):
+                if let url = URL(string: target) { storage.addAttribute(.link, value: url, range: content) }
+                storage.addAttribute(.foregroundColor, value: Theme.accent, range: content)
+            case .wikiLink, .tag:
+                storage.addAttribute(.foregroundColor, value: Theme.accent, range: content)
+            case .imageText:
+                storage.addAttribute(.foregroundColor, value: Theme.secondaryText, range: span.range)
+            case .image, .comment:
+                break
+            }
+            for run in span.markup { storage.addAttribute(.noteHidden, value: true, range: run) }
+        }
+    }
+
+    /// `==text==`'s ground: a highlighter's yellow, the text reading through it.
+    static let highlighter = NSColor(name: "noteHighlighter") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor.systemYellow.withAlphaComponent(0.32) : NSColor(srgbRed: 1, green: 0.86, blue: 0.3, alpha: 0.55)
     }
 
     private func dimFences(_ storage: NSTextStorage, in paragraph: NSRange) {
@@ -446,6 +550,23 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         let covered = (storage.string as NSString).paragraphRange(for: characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil))
         let metrics = view.metrics
         let width = view.textContainer?.size.width ?? view.bounds.width
+        // Rows selected as rows: one block, from the leftmost handle across.
+        if let selected = view.selectedRows {
+            var block = NSRect.null
+            var left = CGFloat.greatestFiniteMagnitude
+            let paragraphs = view.paragraphRanges
+            for index in selected where index < paragraphs.count {
+                let row = NoteOutlineText.style(storage, at: paragraphs[index].location).row
+                left = min(left, origin.x + max(0, metrics.textIndent(for: row) - metrics.indent))
+                if let frame = frame(of: paragraphs[index], origin: origin, whole: true) { block = block.union(frame) }
+            }
+            if !block.isNull {
+                let rect = NSRect(x: left - 4, y: block.minY, width: origin.x + width - left + 4, height: block.height)
+                let active = view.window?.isKeyWindow == true && view.window?.firstResponder === view
+                (active ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28) : NSColor.unemphasizedSelectedContentBackgroundColor).setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+            }
+        }
         for paragraph in view.paragraphRanges where NSIntersectionRange(paragraph, covered).length > 0 || paragraph.location == covered.location {
             let row = NoteOutlineText.style(storage, at: paragraph.location).row
             guard let frame = frame(of: paragraph, origin: origin) else { continue }
@@ -514,12 +635,13 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         }
     }
 
-    /// The rectangle a paragraph's lines take.
-    private func frame(of paragraph: NSRange, origin: NSPoint) -> NSRect? {
+    /// The rectangle a paragraph's lines take (`whole`: with the room
+    /// around them, so neighbours meet).
+    func frame(of paragraph: NSRange, origin: NSPoint, whole: Bool = false) -> NSRect? {
         let glyphs = glyphRange(forCharacterRange: NSRange(location: paragraph.location, length: max(1, paragraph.length - 1)), actualCharacterRange: nil)
         guard glyphs.length > 0, glyphs.location < numberOfGlyphs else { return nil }
         var rect = NSRect.null
-        enumerateLineFragments(forGlyphRange: glyphs) { _, used, _, _, _ in rect = rect.union(used) }
+        enumerateLineFragments(forGlyphRange: glyphs) { fragment, used, _, _, _ in rect = rect.union(whole ? fragment : used) }
         guard !rect.isNull else { return nil }
         return rect.offsetBy(dx: origin.x, dy: origin.y)
     }
@@ -535,6 +657,31 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
             if abs(point.x - c.x) <= r, abs(point.y - c.y) <= r { return index }
         }
         return nil
+    }
+}
+
+/// Lays out hidden markup as nothing: no ink, no width — a control
+/// character of no advance rather than a null glyph (a line starting with
+/// null glyphs is measured from the line before it).
+final class NoteHiddenGlyphs: NSObject, NSLayoutManagerDelegate {
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                       properties: UnsafePointer<NSLayoutManager.GlyphProperty>, characterIndexes: UnsafePointer<Int>,
+                       font: NSFont, forGlyphRange range: NSRange) -> Int {
+        guard let storage = layoutManager.textStorage else { return 0 }
+        var any = false
+        for i in 0..<range.length where storage.attribute(.noteHidden, at: characterIndexes[i], effectiveRange: nil) != nil { any = true; break }
+        guard any else { return 0 }
+        var changed = [NSLayoutManager.GlyphProperty](UnsafeBufferPointer(start: properties, count: range.length))
+        for i in 0..<range.length where storage.attribute(.noteHidden, at: characterIndexes[i], effectiveRange: nil) != nil {
+            changed[i] = .controlCharacter
+        }
+        layoutManager.setGlyphs(glyphs, properties: changed, characterIndexes: characterIndexes, font: font, forGlyphRange: range)
+        return range.length
+    }
+
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction,
+                       forControlCharacterAt index: Int) -> NSLayoutManager.ControlCharacterAction {
+        layoutManager.textStorage?.attribute(.noteHidden, at: index, effectiveRange: nil) != nil ? .zeroAdvancement : action
     }
 }
 
@@ -560,6 +707,22 @@ final class NoteOutlineTextView: NSTextView {
     /// desk's (whose undo the window's chain reaches first).
     private let undo = UndoManager()
     override var undoManager: UndoManager? { undo }
+    /// The rows selected as rows, when they are (Escape, or a selection
+    /// reaching past a row), and its anchor and head.
+    private(set) var selectedRows: Range<Int>?
+    private(set) var rowAnchor = 0
+    private(set) var rowHead = 0
+    var isSelectingRows: Bool { selectedRows != nil }
+    /// How selected text looks, set aside while rows are selected (they
+    /// look like rows instead).
+    private var textSelectionAttributes: [NSAttributedString.Key: Any] = [:]
+    private let hiddenGlyphs = NoteHiddenGlyphs()
+    /// The rows being dragged from here, by their bullets.
+    var draggedRows: Range<Int>?
+    /// Where dragged rows would go.
+    let dropLine = NSView()
+    /// A link clicked: followed, by the one rule.
+    var onOpen: ((String) -> Void)?
 
     init(metrics: NoteOutlineMetrics) {
         self.metrics = metrics
@@ -573,7 +736,9 @@ final class NoteOutlineTextView: NSTextView {
         layout.addTextContainer(container)
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 40), textContainer: container)
         layout.view = self
+        layout.delegate = hiddenGlyphs
         storage.delegate = styler
+        styler.onCharactersEdited = { [weak self] in self?.paragraphCache = nil }
         isRichText = false
         importsGraphics = false
         allowsUndo = true
@@ -584,6 +749,13 @@ final class NoteOutlineTextView: NSTextView {
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
         insertionPointColor = Theme.accent
+        linkTextAttributes = [.cursor: NSCursor.pointingHand, .foregroundColor: Theme.accent]
+        textSelectionAttributes = selectedTextAttributes
+        dropLine.wantsLayer = true
+        dropLine.layer?.backgroundColor = Theme.accent.cgColor
+        dropLine.isHidden = true
+        addSubview(dropLine)
+        registerForDraggedTypes([Self.rowsType])
         load([.blank], keepingCaret: false)
     }
 
@@ -602,6 +774,7 @@ final class NoteOutlineTextView: NSTextView {
         loading = false
         adjusting = false
         paragraphCache = nil
+        if selectedRows != nil { leaveRowSelection() }
         restoreCaret(caret)
         // Read anew (a change from elsewhere): what was done here before
         // can't be undone over it.
@@ -732,8 +905,9 @@ final class NoteOutlineTextView: NSTextView {
         scrollRangeToVisible(selectedRange())
     }
 
-    /// The rows a command applies to: those the selection spans.
+    /// The rows a command applies to: those selected, or the selection's.
     var targetRows: Range<Int> {
+        if let selectedRows { return selectedRows }
         let range = selectedRange()
         return rowIndex(at: range.location)..<(rowIndex(at: max(range.location, NSMaxRange(range) - 1)) + 1)
     }
@@ -746,9 +920,17 @@ final class NoteOutlineTextView: NSTextView {
         let before = rows
         let target = selection ?? targetRows
         let caret = caretPosition
+        let wasSelectingRows = isSelectingRows
         var after = before
         guard let result = transform(&after, target) else { NSSound.beep(); return false }
         replace(before, with: after, actionName: name)
+        if wasSelectingRows {
+            // Rows selected stay selected, where they went.
+            if followingCaret { selectRows(anchor: result.lowerBound, head: max(result.lowerBound, result.upperBound - 1)) }
+            else { selectRows(anchor: min(rowAnchor, paragraphRanges.count - 1), head: min(rowHead, paragraphRanges.count - 1)) }
+            scrollRangeToVisible(selectedRange())
+            return true
+        }
         if followingCaret {
             restoreCaret(CaretPosition(row: min(result.lowerBound + (caret.row - target.lowerBound), paragraphRanges.count - 1), offset: caret.offset))
         } else {
@@ -767,8 +949,216 @@ final class NoteOutlineTextView: NSTextView {
         let end = min(NSMaxRange(range), lastLocation)
         range.location = min(range.location, lastLocation)
         range.length = max(0, end - range.location)
+        if !adjusting {
+            // Never within hidden markup: to its edge, the way it was going.
+            let old = selectedRange()
+            let start = snap(range.location, forward: range.location > old.location)
+            let finish = range.length == 0 ? start : snap(NSMaxRange(range), forward: NSMaxRange(range) > NSMaxRange(old))
+            range = NSRange(location: start, length: max(0, finish - start))
+            // Selecting past a row selects rows.
+            let top = rowIndex(at: range.location), bottom = rowIndex(at: max(range.location, NSMaxRange(range) - 1))
+            if top != bottom {
+                let anchor = selectedRows == nil ? rowIndex(at: selectedRange().location) : rowAnchor
+                return selectRows(anchor: anchor, head: anchor == top ? bottom : top, stillSelecting: stillSelecting)
+            }
+            if selectedRows != nil { leaveRowSelection() }
+        }
         super.setSelectedRanges([NSValue(range: range)], affinity: affinity, stillSelecting: stillSelecting)
         typingAttributes = storage.attributes(at: min(paragraphRanges[rowIndex(at: range.location)].location, storage.length - 1), effectiveRange: nil)
+            .filter { $0.key != .noteHidden && $0.key != .link }
+    }
+
+    // MARK: Rows as rows
+
+    func selectRows(anchor: Int, head: Int, stillSelecting: Bool = false) {
+        let count = paragraphRanges.count
+        rowAnchor = min(max(anchor, 0), count - 1)
+        rowHead = min(max(head, 0), count - 1)
+        let picked = min(rowAnchor, rowHead)..<(max(rowAnchor, rowHead) + 1)
+        if selectedRows == nil { selectedTextAttributes = [:] }
+        selectedRows = picked
+        let ranges = paragraphRanges
+        let start = ranges[picked.lowerBound].location
+        let end = min(NSMaxRange(ranges[picked.upperBound - 1]), lastLocation)
+        let was = adjusting
+        adjusting = true
+        super.setSelectedRanges([NSValue(range: NSRange(location: start, length: max(0, end - start)))], affinity: .downstream, stillSelecting: stillSelecting)
+        adjusting = was
+        needsDisplay = true
+    }
+
+    func leaveRowSelection() {
+        selectedRows = nil
+        selectedTextAttributes = textSelectionAttributes
+        needsDisplay = true
+    }
+
+    /// Back to editing text, the caret at a row's end (or start).
+    func editText(inRow index: Int, atEnd: Bool = true) {
+        leaveRowSelection()
+        let paragraph = paragraphRanges[min(index, paragraphRanges.count - 1)]
+        setSelectedRange(NSRange(location: atEnd ? NSMaxRange(paragraph) - 1 : paragraph.location, length: 0))
+        scrollRangeToVisible(selectedRange())
+    }
+
+    private func scrollRowToVisible(_ index: Int) {
+        guard paragraphRanges.indices.contains(index) else { return }
+        scrollRangeToVisible(paragraphRanges[index])
+    }
+
+    /// Escape: the caret's row selected as a row; again, back to its text.
+    override func cancelOperation(_ sender: Any?) {
+        if selectedRows != nil { return editText(inRow: rowHead) }
+        let row = rowIndex(at: selectedRange().location)
+        selectRows(anchor: row, head: row)
+    }
+
+    /// ⌘A: the row's text; again, every row.
+    override func selectAll(_ sender: Any?) {
+        let row = rowIndex(at: selectedRange().location)
+        let paragraph = paragraphRanges[row]
+        let text = NSRange(location: paragraph.location, length: paragraph.length - 1)
+        if selectedRows == nil, selectedRange() != text, text.length > 0 { setSelectedRange(text) }
+        else { selectRows(anchor: 0, head: paragraphRanges.count - 1) }
+    }
+
+    override func moveUp(_ sender: Any?) {
+        guard selectedRows != nil else { return super.moveUp(sender) }
+        if rowHead == 0 { return NSSound.beep() }
+        selectRows(anchor: rowHead - 1, head: rowHead - 1)
+        scrollRowToVisible(rowHead)
+    }
+
+    override func moveDown(_ sender: Any?) {
+        guard selectedRows != nil else { return super.moveDown(sender) }
+        let last = paragraphRanges.count - 1
+        if rowHead == last { return NSSound.beep() }
+        selectRows(anchor: rowHead + 1, head: rowHead + 1)
+        scrollRowToVisible(rowHead)
+    }
+
+    override func moveUpAndModifySelection(_ sender: Any?) {
+        if selectedRows != nil { selectRows(anchor: rowAnchor, head: rowHead - 1); return scrollRowToVisible(rowHead) }
+        super.moveUpAndModifySelection(sender)
+    }
+
+    override func moveDownAndModifySelection(_ sender: Any?) {
+        if selectedRows != nil { selectRows(anchor: rowAnchor, head: rowHead + 1); return scrollRowToVisible(rowHead) }
+        super.moveDownAndModifySelection(sender)
+    }
+
+    /// ← and →: with rows selected, fold and unfold them; in text, a
+    /// character, over hidden markup.
+    override func moveLeft(_ sender: Any?) {
+        if selectedRows != nil { return collapse(sender) }
+        if !stepOverMarkup(forward: false) { super.moveLeft(sender) }
+    }
+
+    override func moveRight(_ sender: Any?) {
+        if selectedRows != nil { return expand(sender) }
+        if !stepOverMarkup(forward: true) { super.moveRight(sender) }
+    }
+
+    // MARK: Hidden markup
+
+    /// The text of the row a place is in, its line break left out.
+    func textRange(ofRowAt location: Int) -> NSRange {
+        let paragraph = paragraphRanges[rowIndex(at: location)]
+        return NSRange(location: paragraph.location, length: max(0, paragraph.length - 1))
+    }
+
+    /// The inline spans of the row a place is in (none in code).
+    func spans(atRowOf location: Int) -> [InlineSpan] {
+        guard let storage = textStorage, storage.length > 0 else { return [] }
+        if case .code = row(at: rowIndex(at: location)).kind { return [] }
+        return NoteOutlineText.spans(in: storage.string as NSString, range: textRange(ofRowAt: location))
+    }
+
+    private func snap(_ location: Int, forward: Bool) -> Int {
+        guard textStorage!.length > 0 else { return location }
+        return InlineEditing.snap(location, runs: spans(atRowOf: location).flatMap(\.markup), forward: forward)
+    }
+
+    /// A character on within the row, stopping on both sides of hidden
+    /// markup; false when the row's edge is that way.
+    private func stepOverMarkup(forward: Bool) -> Bool {
+        let range = selectedRange()
+        guard range.length == 0, textStorage!.length > 0 else { return false }
+        let bounds = textRange(ofRowAt: range.location)
+        if forward ? range.location >= NSMaxRange(bounds) : range.location <= bounds.location { return false }
+        let next = InlineEditing.step(from: range.location, forward: forward, text: textStorage!.string as NSString,
+                                      within: bounds, spans: spans(atRowOf: range.location))
+        let was = adjusting
+        adjusting = true
+        setSelectedRange(NSRange(location: next, length: 0))
+        adjusting = was
+        scrollRangeToVisible(selectedRange())
+        return true
+    }
+
+    /// The nearest shown character deleted, as Bike does, when hidden
+    /// markup is in the way or the character is all a span shows; false
+    /// when an ordinary delete will do.
+    private func deleteShown(forward: Bool) -> Bool {
+        let caret = selectedRange()
+        guard caret.length == 0, textStorage!.length > 0 else { return false }
+        let bounds = textRange(ofRowAt: caret.location)
+        let spans = spans(atRowOf: caret.location)
+        let text = textStorage!.string as NSString
+        guard !spans.isEmpty, let target = InlineEditing.deletion(at: caret.location, forward: forward, text: text, within: bounds, spans: spans) else { return false }
+        let adjacent = forward ? target.location == caret.location : NSMaxRange(target) == caret.location
+        if adjacent, target.length == text.rangeOfComposedCharacterSequence(at: target.location).length { return false }
+        let after = forward ? caret.location : caret.location - target.length
+        let was = adjusting
+        adjusting = true
+        if shouldChangeText(in: target, replacementString: "") {
+            textStorage!.replaceCharacters(in: target, with: "")
+            didChangeText()
+        }
+        adjusting = was
+        tidy()
+        setSelectedRange(NSRange(location: min(NSMaxRange(target) <= caret.location ? after : caret.location, lastLocation), length: 0))
+        return true
+    }
+
+    /// An edit that would take some of a span's markup but not all of it
+    /// leaves that markup be, so the span's text keeps its style.
+    override func shouldChangeText(inRanges ranges: [NSValue], replacementStrings strings: [String]?) -> Bool {
+        guard !adjusting, ranges.count == 1, let replacement = strings?.first, let storage = textStorage else {
+            return super.shouldChangeText(inRanges: ranges, replacementStrings: strings)
+        }
+        let range = ranges[0].rangeValue
+        guard range.length > 0, NSMaxRange(range) <= storage.length else { return super.shouldChangeText(inRanges: ranges, replacementStrings: strings) }
+        let text = storage.string as NSString
+        let spans = NoteOutlineText.spans(in: text, range: text.paragraphRange(for: range))
+        let pieces = InlineEditing.deletablePieces(of: range, spans: spans)
+        guard pieces != [range] else { return super.shouldChangeText(inRanges: ranges, replacementStrings: strings) }
+        var kept = ""
+        var location = range.location
+        for piece in pieces {
+            kept += text.substring(with: NSRange(location: location, length: piece.location - location))
+            location = NSMaxRange(piece)
+        }
+        kept += text.substring(with: NSRange(location: location, length: NSMaxRange(range) - location))
+        adjusting = true
+        let changed = super.shouldChangeText(inRanges: ranges, replacementStrings: [replacement + kept])
+        if changed {
+            storage.replaceCharacters(in: range, with: NSAttributedString(string: replacement + kept, attributes: typingAttributes))
+            didChangeText()
+        }
+        adjusting = false
+        if changed {
+            setSelectedRange(NSRange(location: range.location + (replacement as NSString).length, length: 0))
+            tidy()
+        }
+        return false
+    }
+
+    /// A link clicked: followed by the one rule (a note's `manifold:` link
+    /// to its block, a web address, a path).
+    override func clicked(onLink link: Any, at charIndex: Int) {
+        guard let target = (link as? URL)?.absoluteString ?? link as? String else { return }
+        onOpen?(target)
     }
 
     // MARK: Keys
@@ -788,11 +1178,24 @@ final class NoteOutlineTextView: NSTextView {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
         let mods = event.modifierFlags.intersection([.shift, .command, .option, .control])
         if [36, 76].contains(event.keyCode), mods == .command { cycleChecklist(nil); return true }
+        // Folds (⌘9 and ⌘0 are spaces' here): ⌃⌘ the rows', ⌥⌘ all.
+        switch (mods, event.charactersIgnoringModifiers) {
+        case ([.command, .control], "9"): collapse(nil); return true
+        case ([.command, .control], "0"): expand(nil); return true
+        case ([.command, .option], "9"): collapseAll(nil); return true
+        case ([.command, .option], "0"): expandAll(nil); return true
+        default: break
+        }
         return super.performKeyEquivalent(with: event)
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         let typed = (string as? NSAttributedString)?.string ?? string as? String ?? ""
+        // Rows selected: space checks them off; nothing else is typed over them.
+        if selectedRows != nil {
+            if typed == " " { toggleDone(nil) } else { NSSound.beep() }
+            return
+        }
         if typed == " ", replacementRange.location == NSNotFound, selectedRange().length == 0, applySmartRowType() { return }
         super.insertText(string, replacementRange: replacementRange)
     }
@@ -808,6 +1211,12 @@ final class NoteOutlineTextView: NSTextView {
     override func insertBacktab(_ sender: Any?) { outdentRows(sender) }
 
     override func insertNewline(_ sender: Any?) {
+        // Return from rows: a new row after them, to write in.
+        if let selectedRows {
+            let index = selectedRows.upperBound - 1
+            editText(inRow: index)
+            return splitRow()
+        }
         let index = rowIndex(at: selectedRange().location)
         let current = row(at: index)
         // `---` alone on a row, then Return: a line across.
@@ -826,6 +1235,7 @@ final class NoteOutlineTextView: NSTextView {
     }
 
     override func deleteBackward(_ sender: Any?) {
+        if selectedRows != nil { return deleteRows(sender) }
         let range = selectedRange()
         if range.length == 0 {
             let index = rowIndex(at: range.location)
@@ -847,7 +1257,13 @@ final class NoteOutlineTextView: NSTextView {
                 if index == 0 { return }
             }
         }
-        super.deleteBackward(sender)
+        if !deleteShown(forward: false) { super.deleteBackward(sender) }
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        if selectedRows != nil { return deleteRows(sender) }
+        if selectedRange().length == 0, selectedRange().location >= lastLocation { return }
+        if !deleteShown(forward: true) { super.deleteForward(sender) }
     }
 
     // MARK: Commands
@@ -974,6 +1390,55 @@ final class NoteOutlineTextView: NSTextView {
         }
     }
 
+    /// Rows selected deleted, with their children.
+    @objc func deleteRows(_ sender: Any?) {
+        let wasSelectingRows = isSelectingRows
+        var landing = 0
+        perform("Delete Rows") { rows, selection in
+            landing = NoteOutlineEditing.delete(&rows, selection)
+            return landing..<(landing + 1)
+        }
+        if !wasSelectingRows { restoreCaret(CaretPosition(row: landing, offset: 0)) }
+    }
+
+    @objc func toggleDone(_ sender: Any?) {
+        perform("Toggle Done") { rows, selection in NoteOutlineEditing.toggleDone(&rows, selection); return selection }
+    }
+
+    // MARK: Folding
+
+    /// ⌃⌘9 (← with rows selected): the rows' children folded away; ⌃⌘0
+    /// (→): back. ⌥⌘9 and ⌥⌘0: every row's.
+    @objc func collapse(_ sender: Any?) { fold(name: "Collapse") { rows, i in -NoteOutlineEditing.fold(&rows, at: i) } }
+    @objc func expand(_ sender: Any?) { fold(name: "Expand") { rows, i in NoteOutlineEditing.unfold(&rows, at: i) } }
+    @objc func collapseAll(_ sender: Any?) {
+        fold(name: "Collapse All", selection: 0..<paragraphRanges.count) { rows, i in -NoteOutlineEditing.foldCompletely(&rows, at: i) }
+    }
+    @objc func expandAll(_ sender: Any?) {
+        fold(name: "Expand All", selection: 0..<paragraphRanges.count) { rows, i in NoteOutlineEditing.unfold(&rows, at: i, completely: true) }
+    }
+
+    /// Each targeted row with children folded or unfolded, the selection
+    /// kept on its rows; `change` says how many rows came on screen, less
+    /// how many left it.
+    private func fold(name: String, selection: Range<Int>? = nil, _ change: (inout [NoteRow], Int) -> Int) {
+        perform(name, on: selection, followingCaret: selection == nil) { rows, selection in
+            var changed = false
+            var upper = selection.upperBound
+            var index = selection.lowerBound
+            // Only rows at the top of the selection's subtrees: a child folded
+            // into its parent is no longer there to fold.
+            while index < min(upper, rows.count) {
+                let delta = change(&rows, index)
+                if delta != 0 { changed = true }
+                upper += delta
+                index = NoteOutlineEditing.subtreeEnd(rows, index)
+            }
+            guard changed else { return nil }
+            return min(selection.lowerBound, rows.count - 1)..<min(max(upper, selection.lowerBound + 1), rows.count)
+        }
+    }
+
     /// A checkbox checks; a bullet with children folds them, or unfolds.
     func clickHandle(ofRow index: Int) {
         let all = rows
@@ -993,9 +1458,225 @@ final class NoteOutlineTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         if let index = (layoutManager as? NoteOutlineLayoutManager)?.handleHit(at: point, origin: textContainerOrigin) {
             window?.makeFirstResponder(self)
+            // Clicked, a handle does what it does; moved, it carries its row.
+            let start = event.locationInWindow
+            while let next = window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+                if next.type == .leftMouseUp { break }
+                if hypot(next.locationInWindow.x - start.x, next.locationInWindow.y - start.y) >= 4 {
+                    return beginDraggingRows(from: index, event: event)
+                }
+            }
             return clickHandle(ofRow: index)
         }
         super.mouseDown(with: event)
+    }
+
+    // MARK: Rows dragged by their handles
+
+    /// Rows on the pasteboard, as their Markdown: moved within Manifold
+    /// (folded ones with what's folded in them), Markdown anywhere else.
+    static let rowsType = NSPasteboard.PasteboardType("com.manifold.outline-rows")
+
+    /// Where dragged rows go: before the row at an index, at a depth.
+    struct RowDrop: Equatable { var index: Int; var depth: Int }
+
+    /// The row whose handle the mouse went down on — or the rows selected,
+    /// if it's among them — with what's under them, picked up.
+    func beginDraggingRows(from index: Int, event: NSEvent) {
+        let all = rows
+        guard index < all.count else { return }
+        let selection = selectedRows.flatMap { $0.contains(index) ? $0 : nil } ?? index..<(index + 1)
+        let block = NoteOutlineEditing.block(all, selection)
+        draggedRows = block
+        let markdown = markdown(forRows: selection)
+        let item = NSPasteboardItem()
+        item.setString(markdown, forType: Self.rowsType)
+        item.setString(markdown, forType: .string)
+        let dragging = NSDraggingItem(pasteboardWriter: item)
+        let frame = rowsFrame(block)
+        dragging.setDraggingFrame(frame, contents: snapshot(of: frame))
+        beginDraggingSession(with: [dragging], event: event, source: self)
+    }
+
+    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        draggedRows != nil ? (context == .withinApplication ? .move : .copy) : super.draggingSession(session, sourceOperationMaskFor: context)
+    }
+
+    override func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        if draggedRows == nil { super.draggingSession(session, endedAt: screenPoint, operation: operation) }
+        draggedRows = nil
+        dropLine.isHidden = true
+    }
+
+    /// The rectangle some rows take, from their handles across.
+    private func rowsFrame(_ block: Range<Int>) -> NSRect {
+        guard let layout = layoutManager, let container = textContainer, !block.isEmpty else { return .zero }
+        let ranges = paragraphRanges
+        let characters = NSRange(location: ranges[block.lowerBound].location, length: NSMaxRange(ranges[block.upperBound - 1]) - ranges[block.lowerBound].location)
+        var rect = NSRect.null
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(forCharacterRange: characters, actualCharacterRange: nil)) { f, _, _, _, _ in rect = rect.union(f) }
+        guard !rect.isNull else { return .zero }
+        rect = rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let left = textContainerOrigin.x + metrics.textIndent(for: row(at: block.lowerBound)) - metrics.indent
+        rect.size.width = min(rect.maxX, textContainerOrigin.x + container.size.width) - left
+        rect.origin.x = left
+        return rect.integral
+    }
+
+    private func snapshot(of rect: NSRect) -> NSImage {
+        let image = NSImage(size: rect.size)
+        guard rect.width > 0, rect.height > 0, let bitmap = bitmapImageRepForCachingDisplay(in: rect) else { return image }
+        cacheDisplay(in: rect, to: bitmap)
+        image.addRepresentation(bitmap)
+        return NSImage(size: rect.size, flipped: false) { bounds in
+            image.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 0.75)
+            return true
+        }
+    }
+
+    private func carriesRows(_ sender: NSDraggingInfo) -> Bool { sender.draggingPasteboard.types?.contains(Self.rowsType) ?? false }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        carriesRows(sender) ? rowDragUpdated(sender) : super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        carriesRows(sender) ? rowDragUpdated(sender) : super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropLine.isHidden = true
+        super.draggingExited(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        carriesRows(sender) ? dropRows(sender) : super.performDragOperation(sender)
+    }
+
+    /// A line where rows dragged over would go.
+    private func rowDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if let event = NSApp.currentEvent { autoscroll(with: event) }
+        let drop = rowDrop(at: convert(sender.draggingLocation, from: nil))
+        guard !isInsideDragged(drop, from: sender) else { dropLine.isHidden = true; return [] }
+        showDropLine(drop)
+        return sender.draggingSource is NoteOutlineTextView ? .move : .copy
+    }
+
+    private func showDropLine(_ drop: RowDrop) {
+        let ranges = paragraphRanges
+        let y: CGFloat
+        if drop.index < ranges.count { y = rowsFrame(drop.index..<(drop.index + 1)).minY }
+        else { y = rowsFrame((ranges.count - 1)..<ranges.count).maxY }
+        let x = textContainerOrigin.x + metrics.indent * CGFloat(drop.depth) + metrics.indent / 2
+        dropLine.frame = NSRect(x: x, y: y - 1, width: max(20, bounds.width - x - 14), height: 2)
+        dropLine.isHidden = false
+    }
+
+    /// Rows dropped put in place, taken from where they were.
+    private func dropRows(_ sender: NSDraggingInfo) -> Bool {
+        dropLine.isHidden = true
+        let drop = rowDrop(at: convert(sender.draggingLocation, from: nil))
+        guard !isInsideDragged(drop, from: sender) else { return false }
+        if let source = sender.draggingSource as? NoteOutlineTextView, let block = source.draggedRows {
+            moveRows(block, from: source, to: drop)
+            return true
+        }
+        guard let markdown = sender.draggingPasteboard.string(forType: Self.rowsType) else { return false }
+        insertRows(NoteOutlineMarkdown.parse(markdown).rows, at: drop)
+        return true
+    }
+
+    private func isInsideDragged(_ drop: RowDrop, from sender: NSDraggingInfo) -> Bool {
+        guard let source = sender.draggingSource as? NoteOutlineTextView, source === self, let block = draggedRows else { return false }
+        return drop.index > block.lowerBound && drop.index < block.upperBound
+    }
+
+    /// Where rows dropped at a point go: above or below the row under it,
+    /// by which half; as deep as the pointer is far in — no deeper than a
+    /// child of the row before, never so shallow as to take the children of
+    /// the row after away from it.
+    func rowDrop(at point: NSPoint) -> RowDrop {
+        let all = rows
+        guard let layout = layoutManager, let container = textContainer, textStorage!.length > 0, !all.isEmpty else { return RowDrop(index: 0, depth: 0) }
+        let inContainer = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyph = min(layout.glyphIndex(for: inContainer, in: container), max(layout.numberOfGlyphs - 1, 0))
+        let under = rowIndex(at: layout.characterIndexForGlyph(at: glyph))
+        let frame = rowsFrame(under..<(under + 1))
+        var index = point.y > frame.midY ? under + 1 : under
+        if point.y > rowsFrame(all.indices.suffix(1)).maxY { index = all.count }
+        let previous = index > 0 ? all[index - 1] : nil
+        let deepest = previous.map { $0.depth + ($0.canHaveChildren ? 1 : 0) } ?? 0
+        let shallowest = index < all.count && previous.map({ all[index].depth > $0.depth }) == true ? all[index].depth : 0
+        let pointed = Int(((inContainer.x - metrics.indent / 2) / metrics.indent).rounded(.down))
+        return RowDrop(index: index, depth: min(max(pointed, shallowest), max(deepest, shallowest)))
+    }
+
+    /// Rows moved here from a view: this one, or another note's.
+    func moveRows(_ block: Range<Int>, from source: NoteOutlineTextView, to drop: RowDrop) {
+        guard source !== self else {
+            if drop.index > block.lowerBound, drop.index < block.upperBound { return }
+            let before = rows
+            var after = before
+            let moving = Self.takeOut(block, from: &after)
+            var index = drop.index
+            if index > block.lowerBound { index -= block.count }
+            return place(moving, at: RowDrop(index: index, depth: drop.depth), in: &after, before: before)
+        }
+        let moving = Array(source.rows[block])
+        source.removeRows(block)
+        insertRows(moving, at: drop)
+    }
+
+    func insertRows(_ moving: [NoteRow], at drop: RowDrop) {
+        guard !moving.isEmpty else { return }
+        let before = rows
+        var after = before
+        place(moving, at: drop, in: &after, before: before)
+    }
+
+    private func place(_ moving: [NoteRow], at drop: RowDrop, in after: inout [NoteRow], before: [NoteRow]) {
+        window?.makeFirstResponder(self)
+        if selectedRows != nil { leaveRowSelection() }
+        let shift = drop.depth - moving[0].depth
+        var placed = moving.map { r -> NoteRow in var r = r; r.depth = max(0, r.depth + shift); return r }
+        var start = min(drop.index, after.count)
+        // The blank lines where they go stay there, above them now.
+        placed[0].gap = start < after.count ? after[start].gap : []
+        if start < after.count { after[start].gap = [] }
+        after.insert(contentsOf: placed, at: start)
+        // A note that was only an empty row loses it.
+        if after.count == placed.count + 1 {
+            let empty = start == 0 ? after.count - 1 : 0
+            if after[empty].text.isEmpty, after[empty].folded.isEmpty, after[empty].kind == .bullet {
+                after.remove(at: empty)
+                if empty < start { start -= 1 }
+            }
+        }
+        NoteOutlineEditing.normalize(&after)
+        replace(before, with: after, actionName: "Move Rows")
+        selectRows(anchor: start, head: start + placed.count - 1)
+    }
+
+    /// Rows taken out, the blank lines before them given to the row that
+    /// comes up in their place.
+    static func takeOut(_ block: Range<Int>, from rows: inout [NoteRow]) -> [NoteRow] {
+        let taken = Array(rows[block])
+        rows.removeSubrange(block)
+        if let gap = taken.first?.gap, !gap.isEmpty, block.lowerBound < rows.count, rows[block.lowerBound].gap.isEmpty { rows[block.lowerBound].gap = gap }
+        return taken
+    }
+
+    /// Rows that moved to another note taken out of this one (one left with
+    /// none keeps an empty row).
+    func removeRows(_ block: Range<Int>) {
+        let before = rows
+        guard block.upperBound <= before.count else { return }
+        if selectedRows != nil { leaveRowSelection() }
+        var after = before
+        _ = Self.takeOut(block, from: &after)
+        if after.isEmpty { after = [.blank] }
+        NoteOutlineEditing.normalize(&after)
+        replace(before, with: after, actionName: "Move Rows")
     }
 
     // MARK: Pasteboard
@@ -1003,15 +1684,25 @@ final class NoteOutlineTextView: NSTextView {
     /// Rows copied as the Markdown they say; within one row, its text.
     override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
         let target = targetRows
-        guard target.count > 1 else { return super.writeSelection(to: pboard, type: type) }
+        if selectedRows == nil, target.count <= 1 {
+            guard type == .string else { return super.writeSelection(to: pboard, type: type) }
+            let text = (textStorage!.string as NSString).substring(with: selectedRange())
+            return pboard.setString(text.replacingOccurrences(of: NoteOutlineText.lineSeparator, with: "\n"), forType: .string)
+        }
+        guard type == .string else { return false }
+        return pboard.setString(markdown(forRows: target), forType: .string)
+    }
+
+    override var writablePasteboardTypes: [NSPasteboard.PasteboardType] { selectedRows != nil ? [.string] : super.writablePasteboardTypes }
+
+    /// Rows and their children as the Markdown they say, from depth 0.
+    func markdown(forRows target: Range<Int>) -> String {
         let all = rows
-        let block = NoteOutlineEditing.block(all, target)
-        var picked = Array(all[block])
+        var picked = Array(all[NoteOutlineEditing.block(all, target)])
         let base = picked.map(\.depth).min() ?? 0
         for i in picked.indices { picked[i].depth -= base }
-        picked[0].gap = []
-        pboard.clearContents()
-        return pboard.setString(NoteOutlineMarkdown.serialize(NoteOutline(rows: picked)), forType: .string)
+        if !picked.isEmpty { picked[0].gap = [] }
+        return NoteOutlineMarkdown.serialize(NoteOutline(rows: picked))
     }
 
     /// Markdown of more than a line comes in as rows: in place of an empty

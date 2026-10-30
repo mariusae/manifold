@@ -98,4 +98,22 @@ struct NoteOutlineTests {
         // A note of bullets alone: they're its outline, at the top.
         #expect(NoteOutlineMarkdown.items(in: "- a\n  - a1\n- b\n").map(\.level) == [0, 0])
     }
+
+    /// A row's inline Markdown: its markup what's hidden, the caret kept
+    /// out of it, Delete taking what's shown.
+    @Test func inlineMarkupIsHiddenAndSteppedOver() {
+        let text = "a **bold** [link](x)" as NSString
+        let whole = NSRange(location: 0, length: text.length)
+        let spans = InlineMarkup.spans(in: text, range: whole)
+        let hidden = spans.flatMap(\.markup).map { text.substring(with: $0) }
+        #expect(hidden.contains("**"))
+        #expect(hidden.contains("](x)"))
+        #expect(InlineMarkup.plainText(text as String) == "a bold link")
+        // Within the opening ** the caret goes past it, or back before it.
+        #expect(InlineEditing.snap(3, runs: spans.flatMap(\.markup), forward: true) == 4)
+        #expect(InlineEditing.snap(3, runs: spans.flatMap(\.markup), forward: false) == 2)
+        // Delete after "bold**" takes the d, not a *.
+        let gone = InlineEditing.deletion(at: 10, forward: false, text: text, within: whole, spans: spans)
+        #expect(gone.map { text.substring(with: $0) } == "d")
+    }
 }

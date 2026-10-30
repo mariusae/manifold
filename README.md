@@ -541,7 +541,13 @@ around it, and comes back with its history.
   as Prism's notes are, and edits it as one: Return a new row, Tab and
   ⇧Tab in and out with its children, ⌃⌘↑ ⌃⌘↓ to move it, ⌘↩ a checkbox
   (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start
-  its kind, a bullet clicked to fold what's under it; checklists,
+  its kind, a bullet clicked to fold what's under it (← and → fold and
+  unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 or the tile's menu all of them), a
+  bullet dragged to move a row with its children, in or out as it's
+  dropped; Escape selects rows (↑ ↓, ⇧ to extend, Space checks them off,
+  Delete deletes them, Return or Escape back to the text); emphasis,
+  code, strikethrough and links styled, their markup hidden (the caret
+  steps over it, the file keeps it), a link clicked opened; checklists,
   headings, numbered lists, quotes, code and rules each drawn as they
   are. What's on screen is the Markdown: each change is written back as
   it reads (unedited, byte for byte), and a change made anywhere else

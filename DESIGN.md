@@ -1016,7 +1016,19 @@ checkbox (open, checked, none), Markdown typed at a row's start (`#`,
 `>`, `[ ]`, `1.`) sets its kind, a bullet clicked folds its children (a
 fold is how it shows, not what it says: the children are still written),
 paste of Markdown comes in as rows and copy of rows goes out as Markdown;
-undo is the outline's own. Each change is written back as the Markdown
+undo is the outline's own. Escape leaves the text for the rows: a block of
+them selected, drawn behind them, that ↑ ↓ move and ⇧ extends, and that
+Space checks off, Delete deletes, Tab moves in, ← and → fold and unfold,
+⌘C copies as Markdown; Escape or Return goes back to the text. A bullet
+dragged (past a few points; a click still folds) carries its row and the
+rows under it, a line showing where they'll go and how deep, from where
+the pointer is across; ⌥⌘9 ⌥⌘0 fold and unfold every row (as Prism does,
+a heading's section folds under it). Inline Markdown — emphasis, code,
+strikethrough, links, pictures as their text (`InlineMarkup`,
+`InlineEditing`, Prism's) — is styled, its markup laid out as zero-width
+glyphs, so the bytes stay the note's: the caret steps over markup it
+can't see, Delete takes what's shown and not a hidden `*`, and a link
+clicked opens where it points. Each change is written back as the Markdown
 the rows say — only the bytes between what's unchanged at either end, one
 edit to the block's log — and a change from anywhere else (its editor,
 another Mac, `mani write`) is read in again, the caret kept on its row.

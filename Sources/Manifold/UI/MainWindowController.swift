@@ -753,6 +753,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let o = OutlineNoteView(placement: p.id, block: p.block, theme: hosts.state.appearance.theme)
             o.source = { [weak self] in self?.hosts.block(p.block) }
             o.apply = { [weak self] edits in self?.hosts.append(.edit(edits), to: .block(p.block)) }
+            o.onOpen = { [weak self] target in self?.open(target, from: p.id) }
             o.documentChanged()
             v = o
         default:
