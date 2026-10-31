@@ -219,8 +219,8 @@ parts from the Mac's conventions on purpose.
   resize them. Each tile is a **card** with a **bar** across its top:
   its symbol and **title** (its name), where it is in grey, its
   **links** (the linked blocks' faces, stacked), the program its
-  status names in a grey capsule, its status
-  glyph, and maximize and close (×) at the right. The bar is always there; as
+  status names in a grey capsule, its status's pill when it needs you,
+  and maximize and close (×) at the right. The bar is always there; as
   a tile narrows it gives things up in order — the place, then the
   program, then maximize, then the links — so the
   symbol and some of the name always show. The content runs beneath it, rounded,
@@ -1062,8 +1062,8 @@ around it, and comes back with its history.
   Over and the Neighborhood Map. Links written in a text — `[[title]]`,
   `[words](file.md)` — become edges the moment they're typed, so the
   map shows a note's backlinks whether or not anyone followed them.
-  A row says what its block's status adds to its glyph (a question's
-  kind, its message — not "Done"); an untitled note goes by its first
+  A row says what its block's status adds to its pill (its title, its
+  message — not "Done" or "Permission"); an untitled note goes by its first
   words, as its links name it; a text with unsaved edits has its bar's
   dot after the name; a page has its site's icon.
 - **Pin in Space** (⌃⌘T, as the Finder's Add to Sidebar; a tile's bar
@@ -1120,15 +1120,21 @@ around it, and comes back with its history.
   report arrives; a new prompt or the process ending clears working
   and blocked; done and failed stay, read once you attend to the block
   by focusing it — or at once, when it finishes while you're looking. A busy terminal that says nothing is working.
-  Searches, git and diff blocks report as the host works for them. One
-  glyph says it wherever a block is named — an open ring turning for
-  working (filling clockwise from the top when the program says how
-  far, as OSC 9;4 progress does), an amber ring
-  with a dot for a block that needs you, a filled check for done and
-  not read yet (red for failed), a plain check once read, a moon for a
-  terminal gone inactive — at the right of each tile's bar and of the
-  sidebar's rows, with how long ago beside it there, and in the
-  Open Quickly; the Dock badge counts the blocks that need you or are
+  Searches, git and diff blocks report as the host works for them. A
+  block's name says it wherever it's shown — its tile's bar, its sidebar
+  row, its card in the Overview — and adds something only when the
+  block needs you: while it works, the name **shimmers**, a soft band
+  sweeping across it every couple of seconds, every working name in
+  step (with the program's percent beside it in grey, when it says how
+  far, as OSC 9;4 progress does; with Reduce motion, the name holds
+  still, a little dim, a dot beside it); what needs you, done or
+  failed and not yet seen, has a word in a **pill** at the right —
+  Permission, Question, Sign in or Needs you in amber, Done in grey,
+  Failed in red — exactly while it's in the inbox (⌘J), after how long
+  ago in the sidebar; once seen, nothing. In a bar short of room the
+  word gives way to a dot in its color before the name gives way. An
+  inactive terminal's name is dim. A host's states keep their glyphs.
+  The counts at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile
   not showing — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's

@@ -1,7 +1,9 @@
 import AppKit
 import ManifoldCore
 
-/// A block's status in one glyph (§3.7), drawn wherever its name is: an
+/// A block's status in one glyph (§3.7) — where a name doesn't say it
+/// (`StatusMark` does, in bars, sidebar rows and cards): a notebook's
+/// cells, a block's pill in a note, a host's row. An
 /// open ring turning for running (filling clockwise from the top when the
 /// program says how far, as OSC 9;4 or 7501 progress does), an amber ring
 /// with a dot for a block that needs you, a filled disc with a check for
@@ -11,6 +13,9 @@ import ManifoldCore
 final class StatusGlyph: NSView {
     enum Look: Equatable {
         case working(progress: Int?)
+        /// Working, with Reduce motion: a still dot by a name that doesn't
+        /// shimmer (`StatusMark`).
+        case busy
         case needsYou
         case done(read: Bool)
         case failed(read: Bool)
@@ -130,6 +135,7 @@ final class StatusGlyph: NSView {
         var words: [String]
         switch look {
         case .working(let p): words = [p.map { "Working, \($0)%" } ?? "Working"]
+        case .busy: words = ["Working"]
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
         case .inactive: words = ["Inactive: the shell ended while idle"]
@@ -151,21 +157,13 @@ final class StatusGlyph: NSView {
         return words.joined(separator: "\n")
     }
 
-    /// What the status says that the glyph doesn't — a question's kind,
-    /// the title, the message — for a row beside the glyph: not "Done",
-    /// "Working", which the glyph is.
+    /// What the status says that its pill doesn't — the title, the
+    /// message — for a row beside it: not "Done", "Permission", which the
+    /// pill is (`StatusMark`).
     static func remark(_ block: Block?) -> String? {
-        guard let block, let look = look(of: block) else { return nil }
+        guard let block, look(of: block) != nil else { return nil }
         let r = block.statusRecord
         var words: [String] = []
-        if look == .needsYou {
-            switch r?.kind {
-            case .permission?: words.append("permission")
-            case .question?: words.append("a question")
-            case .auth?: words.append("a sign-in")
-            case nil: break
-            }
-        }
         if let title = r?.title, !title.isEmpty { words.append(title) }
         if let msg = r?.msg, !msg.isEmpty { words.append(msg) }
         return words.isEmpty ? nil : words.joined(separator: " · ")
@@ -324,6 +322,10 @@ final class StatusGlyph: NSView {
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
+        case .busy:
+            let r = radius * 0.4
+            Theme.text.withAlphaComponent(0.7).setFill()
+            NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
         case .working, .connecting:
             // Running: an open ring. With no word of how far, three
             // quarters of it, turning; with progress, as much of it as is

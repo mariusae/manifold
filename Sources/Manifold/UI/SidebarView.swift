@@ -443,7 +443,9 @@ final class StatusCountsView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        for (g, look) in zip(glyphs, [StatusGlyph.Look.needsYou, .working(progress: nil), .done(read: false)]) {
+        // Quiet, as the rows are (`StatusMark`): working a still dot, done
+        // the plain check; only what needs you in amber.
+        for (g, look) in zip(glyphs, [StatusGlyph.Look.needsYou, .busy, .done(read: true)]) {
             g.look = look
             addSubview(g)
         }

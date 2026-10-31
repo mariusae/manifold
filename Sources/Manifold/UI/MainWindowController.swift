@@ -243,6 +243,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         ) { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.render() }
         }
+        // Reduce motion turned on or off: working's names shimmer, or hold
+        // still with a dot (`StatusMark`), everywhere at once.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.render()
+            self?.refreshOrganization(now: true)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -3508,6 +3516,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         n.stale = block.text?.stale == true
         n.image = block.web.flatMap { Favicons.image(forPage: $0.url) }
         n.look = StatusGlyph.look(of: block)
+        n.blocked = block.statusRecord?.kind
         n.tooltip = StatusGlyph.tooltip(block)
         n.trailing = StatusGlyph.at(of: block).map(Age.short)
         return n
@@ -4187,7 +4196,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.stale = b?.text?.stale == true
                     n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
                     if a.isStashed(p.id) { n.behind = true } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
-                    n.look = StatusGlyph.look(of: b); n.tooltip = StatusGlyph.tooltip(b)
+                    n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
                     n.trailing = StatusGlyph.at(of: b).map(Age.short)
                     n.arrangement = id
                     n.column = c
@@ -4325,6 +4334,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 node.dirty = block.text?.isDirty == true
                 node.stale = block.text?.stale == true
                 node.look = StatusGlyph.look(of: block)
+                node.blocked = block.statusRecord?.kind
                 node.trailing = StatusGlyph.at(of: block).map(Age.short)
                 node.dimmed = !isActive
                 active[ObjectIdentifier(node)] = isActive
@@ -6899,7 +6909,9 @@ extension MainWindowController: GridDelegate {
            let page = PDFDocument(url: URL(fileURLWithPath: path))?.page(at: n - 1) {
             thumbnail = page.thumbnail(of: NSSize(width: 160, height: 200), for: .cropBox)
         }
-        return SummaryCardContent(id: "", symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+        var c = SummaryCardContent(id: "", symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+        c.mark = StatusMark(of: b)
+        return c
     }
 
     /// A block's summary card: its summary, and what only the window has —
@@ -6926,7 +6938,9 @@ extension MainWindowController: GridDelegate {
         if s.wantsThumbnail {
             thumbnail = tilePictures[b.id] ?? view.flatMap { HoverCard.picture(of: $0, evenHidden: true) }
         }
-        return SummaryCardContent(id: id, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+        var c = SummaryCardContent(id: id, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
+        c.mark = StatusMark(of: b)
+        return c
     }
 
     func gridFocus(_ placement: PlacementID) { focus(placement) }
@@ -9156,7 +9170,7 @@ enum StatusGroup: Int, CaseIterable {
         case .needsYou: self = .needsYou
         case .done: self = .done
         case .failed: self = .failed
-        case .working: self = .working
+        case .working, .busy: self = .working
         case .inactive, .connecting, .offline, .quiet, .watching: self = .inactive
         }
     }

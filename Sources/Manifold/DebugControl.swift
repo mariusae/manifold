@@ -109,6 +109,16 @@ enum DebugControl {
         case "travel":
             // The sidebar's band going from space to space, if it is.
             return wc?.debugOrganization.debugTraveller ?? "no window"
+        case "shimmerstrip":
+            // "shimmerstrip <out.png> [frames] [which]": a shimmering name's
+            // row (the first, or the which-th) at points along its sweep,
+            // one under another.
+            let w = arg.split(separator: " ").map(String.init)
+            let shown = Shimmer.shown, which = w.count > 2 ? Int(w[2]) ?? 0 : 0
+            guard let path = w.first, shown.indices.contains(which), let image = shown[which].debugStrip(count: w.count > 1 ? Int(w[1]) ?? 6 : 6),
+                  let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return "nothing shimmering" }
+            try? png.write(to: URL(fileURLWithPath: path))
+            return "wrote \(path)"
         case "menukeys":
             // Every main-menu item with a key, as "Menu ▸ Item  ⌥⌘S" (hidden
             // ones marked), then the keys more than one item has; "menukeys
@@ -888,7 +898,10 @@ enum DebugControl {
             case "space": wc.showWorkspaceOverview(nil)
             case "agents": wc.showAgents(nil)
             case "leave": wc.hideStateView()
-            default: return "usage: sv list|overview|leave"
+            case "needsyou": wc.showStateView(.needsYou)
+            case "working": wc.showStateView(.working)
+            case "done": wc.showStateView(.done)
+            default: return "usage: sv list|overview|summaries|space|agents|needsyou|working|done|leave"
             }
             return "ok"
         case "holds":

@@ -144,14 +144,15 @@ Each tile has a **bar** across its top: the block's symbol and its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the
 bar gives up as it narrows — its **links** (the linked blocks' faces,
-stacked), its status
-glyph (§3.7, the program it names in the tooltip), and maximize and
+stacked), its status's
+pill (§3.7, the program it names in the tooltip), and maximize and
 close; tiles stacked behind it show as its sheets. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌘-click
 fills its column, ⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
-show: the place goes first, then maximize, then the links; close and
-the status glyph stay, and last the title is cut.
+show: the place goes first, then maximize, then the links, and the
+status's word becomes a dot; close and the status stay, and last the
+title is cut.
 
 A tile **shrinks along one ladder**, by the room it has, not by a state:
 its content; then, under a few lines' room, its **summary card** (the
@@ -454,18 +455,27 @@ Where it comes from:
 becomes the focused tile while the window is key. The host does the
 dismissing for the blocks it leads, on the client's `attend` proposal.
 
-**Indicators**, as apex's handle says what a window waits for: one
-glyph, drawn wherever a block's title is — its bar, its sidebar row, an
-Open Quickly row, a summary card. `working` is an open ring, three quarters of it
-turning while the program does not say how far and filled clockwise
-from the top as far as it does (OSC 9;4 progress counts); `blocked` an
-amber ring with a dot, its tooltip the kind and the message; `done` a
-filled disc with a check until attended to, then a plain check;
-`error` the same in red; `idle` nothing. In a tile's bar and a
-sidebar row the glyph sits at the right edge, in the sidebar with how
-long ago the status was reported before it, and what it said on the
-line beneath the name. The Dock badge counts the blocks blocked and
-done.
+**Indicators** (`StatusMark`), wherever a block's title is — its bar,
+its sidebar row, a summary card (the Overview's) — add ink only when
+the block needs you. `working`: the title **shimmers** (`Shimmer`: its
+layer masked to 75%, a full-strength band sweeping across every 2.5 s,
+by the clock, so every working title moves in step and many read as
+one calm rhythm), the percent beside it in grey when the program says
+how far (OSC 9;4 counts); with Reduce motion the title holds at 75%
+and a still dot sits beside it. `blocked`, and `done` and `error` until
+attended to, are a word in a **pill** at the right edge (`StatusPill`):
+the kind — Permission, Question, Sign in, else Needs you — in amber,
+Done in grey, Failed in red; a pill shows exactly while the block is
+in the inbox (⌘J), and once attended to there's nothing. Short of
+room, a bar's pill is a dot in its color before the title is cut. An
+inactive terminal's title is dimmed; `idle` nothing. A host's states
+(connecting, offline, quiet, watching) keep their glyphs, and a
+notebook's cells their own, beside their run's time and exit status.
+In the sidebar the pill comes after how long ago the status was
+reported, and what it said (its title, its message) is on the line
+beneath the name. The Dock badge counts the blocks blocked and done.
+(It was one glyph — a turning ring, an amber ring, a filled check —
+until October 2026: every row wore one, and a code had to be learned.)
 
 **One rule for the modifiers**, wherever a click opens a block — a
 sidebar row, a link or a block's link in a note, a tile's links, a

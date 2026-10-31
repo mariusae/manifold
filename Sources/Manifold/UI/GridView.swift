@@ -2515,6 +2515,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
+    /// The status in a word, when it needs you (`StatusMark`).
+    private let statusPill = StatusPillView()
+    /// The name shimmering while the block works.
+    private lazy var shimmer = Shimmer(name)
     /// The block's host, when it isn't the workspace's (§8).
     private let hostPill = HostPill()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
@@ -2664,6 +2668,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !fanButton.isHidden { w += 22 }
         w += CGFloat(ownButtons.filter { !$0.isHidden }.count) * 22
         if !glyph.isHidden { w += StatusGlyph.size + 8 }
+        if !statusPill.isHidden { w += statusPill.wanted.width + 8 }
         return w
     }
 
@@ -2710,7 +2715,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, glyph, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [icon, name, subtitle, glyph, statusPill, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -2992,12 +2997,19 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func showRest(_ shown: Shown, stashed: Bool, focused: Bool) {
         if close.isHidden != stashed { close.isHidden = stashed }
-        let look: StatusGlyph.Look? = shown.offline ? .offline : StatusGlyph.look(of: shown.block)
+        // The status by the name (`StatusMark`): a pill only when it needs
+        // you, the name shimmering while it works, dim when inactive.
+        let mark = shown.offline ? StatusMark(.offline) : StatusMark(of: shown.block)
         if glyph.block != shown.block?.id { glyph.block = shown.block?.id }
-        if glyph.look != look { glyph.look = look }
-        if glyph.isHidden != (look == nil) { glyph.isHidden = look == nil }
+        if glyph.look != mark.glyph { glyph.look = mark.glyph }
+        if glyph.isHidden != (mark.glyph == nil) { glyph.isHidden = mark.glyph == nil }
+        if statusPill.kind != mark.pill { statusPill.kind = mark.pill }
+        shimmer.on = mark.shimmer
+        let fade: CGFloat = mark.dim ? 0.6 : 1
+        if name.alphaValue != fade { name.alphaValue = fade }
         let tip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
         if glyph.toolTip != tip { glyph.toolTip = tip }
+        if statusPill.toolTip != tip { statusPill.toolTip = tip }
         if self.focused != focused {
             self.focused = focused
             updateColors()
@@ -3061,6 +3073,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if showFan { used += 22 }
             if showOwn { used += ownWidth }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
+            if !statusPill.isHidden { used += statusPill.wanted.width + 8 }
             return bounds.width - used
         }
         // The view's own buttons go first of all: what the tile is matters more.
@@ -3068,6 +3081,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
         if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
         if spare() < nameNeed, showSidebar { showSidebar = false }
+        // The status's word gives way to a dot in its color before the
+        // name gives way to it.
+        statusPill.compact = false
+        if spare() < nameNeed, !statusPill.isHidden { statusPill.compact = true }
         if spare() < nameNeed, showFan { showFan = false }
         if spare() < nameNeed, showCorner { showCorner = false }
         // Narrower still, the pill goes altogether: the symbol and a bit of
@@ -3116,6 +3133,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 right -= 22
             }
         }
+        if !statusPill.isHidden {
+            let s = statusPill.wanted
+            statusPill.frame = NSRect(x: right - s.width, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
+            right -= s.width + 8
+        }
         if !glyph.isHidden {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
@@ -3127,6 +3149,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let hostRoom = showHost ? hostWidth + 8 : 0
         let nw = min(wanted, max(0, right - x - hostRoom))
         name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
+        shimmer.layout()
         var sx = x - 2 + nw + 8
         hostPill.isHidden = !showHost
         if showHost {

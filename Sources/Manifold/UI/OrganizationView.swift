@@ -98,13 +98,15 @@ final class OrgNode {
     /// The same tile shown twice (pinned at the top, and in its stack):
     /// the placement both rows are for, so the one lights with the other.
     var twin: PlacementID?
-    /// What the block is doing (§3.7), shown as a glyph.
+    /// What the block is doing (§3.7), shown by its name (`StatusMark`).
     var look: StatusGlyph.Look?
+    /// What it needs, when it's blocked: the pill's word.
+    var blocked: BlockedKind?
     /// A text edited and unsaved: a dot after the name, as on its bar —
     /// amber when the file changed on disk under the edits.
     var dirty = false
     var stale = false
-    /// A word at the right, before the glyph: how long ago.
+    /// A word at the right, before the pill: how long ago.
     var trailing: String?
     var tooltip: String?
     /// A host's ping times lately, drawn by its name (`Sparkline`).
@@ -920,6 +922,8 @@ final class OrgRowView: NSTableCellView {
     private let detail = NSTextField(labelWithString: "")
     private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
+    private let pill = StatusPillView()
+    private lazy var shimmer = Shimmer(name)
     private let trailing = NSTextField(labelWithString: "")
     private let sparkline = Sparkline()
     /// The hairline a divider row is.
@@ -947,7 +951,7 @@ final class OrgRowView: NSTableCellView {
         trailing.alignment = .right
         detailIcon.contentTintColor = Theme.secondaryText
         detailIcon.isHidden = true
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline, rule] { addSubview(v) }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule] { addSubview(v) }
         rule.isHidden = true
     }
 
@@ -958,18 +962,25 @@ final class OrgRowView: NSTableCellView {
         // A divider: the hairline alone.
         let divider = node.style == .divider
         rule.isHidden = !divider
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph, sparkline] as [NSView] where divider { v.isHidden = true }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline] as [NSView] where divider { v.isHidden = true }
         if divider {
+            shimmer.on = false
             toolTip = nil
             needsLayout = true
             return
         }
         icon.isHidden = false
         name.isHidden = false
+        // The status by the name (`StatusMark`): a pill only when it needs
+        // you, the name shimmering while it works.
+        let mark = StatusMark(node.look, kind: node.blocked)
         glyph.block = node.block
-        glyph.look = node.look
-        glyph.isHidden = node.look == nil
+        glyph.look = mark.glyph
+        glyph.isHidden = mark.glyph == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
+        pill.kind = node.style == .section ? nil : mark.pill
+        pill.toolTip = node.liveTooltip == nil ? node.tooltip : nil
+        shimmer.on = mark.shimmer && node.style != .section
         sparkline.pings = node.pings
         sparkline.isHidden = node.pings == nil
         trailing.stringValue = node.trailing ?? ""
@@ -992,7 +1003,7 @@ final class OrgRowView: NSTableCellView {
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-            name.textColor = node.dimmed || node.behind ? Theme.secondaryText : Theme.text
+            name.textColor = node.dimmed || node.behind || mark.dim ? Theme.secondaryText : Theme.text
         }
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {
@@ -1041,6 +1052,8 @@ final class OrgRowView: NSTableCellView {
 
     override func layout() {
         super.layout()
+        // The shimmer fitted to the name, wherever it was put.
+        defer { shimmer.layout() }
         let h = bounds.height
         if let node, node.style == .divider {
             rule.frame = NSRect(x: 22, y: (h / 2).rounded(), width: max(0, bounds.width - 26), height: 1)
@@ -1055,6 +1068,7 @@ final class OrgRowView: NSTableCellView {
                 right -= w + 6
             }
             glyph.isHidden = true
+            pill.isHidden = true
             // "1 needs you", in amber, at the right.
             if !trailing.isHidden {
                 let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
@@ -1071,8 +1085,13 @@ final class OrgRowView: NSTableCellView {
             return
         }
         // The status at the right of the name's line, as apex sets it:
-        // how long ago, then the glyph at the edge.
+        // how long ago, then the pill (or a glyph) at the edge.
         func statusAtRight(_ right: inout CGFloat, y: CGFloat) {
+            if !pill.isHidden {
+                let s = pill.wanted
+                pill.frame = NSRect(x: right - s.width - 1, y: y + (17 - s.height) / 2, width: s.width, height: s.height)
+                right -= s.width + 7
+            }
             if !glyph.isHidden {
                 glyph.frame = NSRect(x: right - StatusGlyph.size - 2, y: y + (17 - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
                 right -= StatusGlyph.size + 8
