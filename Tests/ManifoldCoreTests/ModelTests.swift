@@ -831,6 +831,67 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns[0].first?.id == y.id && !a.isStashed(y.id) && !a.isStashed(top.id))
 }
 
+@Test func roomGoesBackWhereItCameFrom() {
+    let p = { Placement(block: BlockID(), lens: .terminal) }
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.001 }
+    // Opened under the top and closed: the top has its room back, not the
+    // tile below.
+    var a = ArrangementState()
+    let top = p(), low = p(), opened = p()
+    a.apply(.place(top, column: 0, at: 0))
+    a.apply(.place(low, column: 0, at: 1))
+    a.apply(.heights([top.id: 0.7, low.id: 0.3]))
+    a.apply(.place(opened, column: 0, at: 1))
+    #expect(near(a.height(of: top.id), 0.35) && near(a.height(of: opened.id), 0.35))
+    a.apply(.remove(opened.id))
+    #expect(near(a.height(of: top.id), 0.7) && near(a.height(of: low.id), 0.3))
+    // Moved to another column and closed there: each column as it was —
+    // the first paid back as it left, the second as it closed.
+    var b = ArrangementState()
+    let x = p(), y = p(), z = p(), w = p()
+    b.apply(.place(x, column: 0, at: 0))
+    b.apply(.place(z, column: 1, at: 0))
+    b.apply(.place(w, column: 1, at: 1))
+    b.apply(.heights([z.id: 0.8, w.id: 0.2]))
+    b.apply(.place(y, column: 0, at: 1))
+    for e in b.moving(y.id, column: 1, at: 1, alone: false) { b.apply(e) }
+    #expect(near(b.height(of: x.id), 1) && near(b.height(of: z.id), 0.4))
+    b.apply(.remove(y.id))
+    #expect(near(b.height(of: z.id), 0.8) && near(b.height(of: w.id), 0.2))
+    // A column opened and closed: the widths as they were, not made equal.
+    var c = ArrangementState()
+    let l = p(), r = p(), n = p()
+    c.apply(.place(l, column: 0, at: 0))
+    c.apply(.place(r, column: 1, at: 0))
+    c.apply(.fractions([0.7, 0.3]))
+    c.apply(.place(n, column: 2, at: 0))
+    #expect(c.fractions.count == 3 && near(c.fractions[2], 1.0 / 3))
+    c.apply(.remove(n.id))
+    #expect(near(c.fractions[0], 0.7) && near(c.fractions[1], 0.3))
+    // A height set by hand forgives the loan: the room goes to the tile
+    // above, as a tile with nothing owed gives it.
+    var d = ArrangementState()
+    let t1 = p(), t2 = p(), t3 = p()
+    d.apply(.place(t1, column: 0, at: 0))
+    d.apply(.place(t3, column: 0, at: 1))
+    d.apply(.place(t2, column: 0, at: 2))
+    d.apply(.heights([t1.id: 0.5, t3.id: 0.2, t2.id: 0.3]))
+    #expect(d.loans.isEmpty)
+    d.apply(.remove(t2.id))
+    #expect(near(d.height(of: t1.id), 0.5) && near(d.height(of: t3.id), 0.5))
+    // Closed with a stack behind it: the next takes its room and its debt.
+    var e = ArrangementState()
+    let base = p(), front = p(), back = p()
+    e.apply(.place(base, column: 0, at: 0))
+    e.apply(.place(front, column: 0, at: 1))
+    e.apply(.place(back, column: 1, at: 0))
+    e.apply(.stash(back.id, behind: front.id))
+    e.apply(.remove(front.id))
+    #expect(e.loans[back.id]?[base.id] != nil)
+    e.apply(.remove(back.id))
+    #expect(near(e.height(of: base.id), 1))
+}
+
 @Test func aTileNudgedGoesOneStepItsStackAlong() {
     var a = ArrangementState()
     let p = { Placement(block: BlockID(), lens: .terminal) }

@@ -848,8 +848,14 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     /// A tile **maximized** over the whole arrangement (§3.1), the rest
     /// hidden behind it until it is restored.
     public var full: PlacementID?
+    /// Room lent (§3.1): what each tile took of its column's height from
+    /// the tiles that made room for it as it came (opened, or moved in) —
+    /// each lender and how much — paid back to them as it goes (closed,
+    /// moved away, stacked), if they're still beside it. A height set by
+    /// hand forgives the loans of the tiles it sets.
+    public var loans: [PlacementID: [PlacementID: Double]] = [:]
 
-    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused, full }
+    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused, full, loans }
 
     public init() {}
 
@@ -861,6 +867,7 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         heights = (try? c.decodeIfPresent([PlacementID: Double].self, forKey: .heights)) ?? [:]
         focused = try c.decodeIfPresent(PlacementID.self, forKey: .focused)
         full = try? c.decodeIfPresent(PlacementID.self, forKey: .full)
+        loans = (try? c.decodeIfPresent([PlacementID: [PlacementID: Double]].self, forKey: .loans)) ?? [:]
         normalize()
     }
 
@@ -951,6 +958,10 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         if let f = focused, placement(f) == nil { focused = nil }
         if focused == nil { focused = placements.first?.id }
         if let f = full, placement(f) == nil { full = nil }
+        if !loans.isEmpty {
+            let here = Set(fixed.keys)
+            loans = loans.filter { here.contains($0.key) }.mapValues { $0.filter { here.contains($0.key) } }.filter { !$0.value.isEmpty }
+        }
     }
 }
 

@@ -55,6 +55,12 @@ parts from the Mac's conventions on purpose.
   A space is what you made it: a block brought in stays until
   you take it off (⌘W), and nothing is tidied away. A new tile lands
   below the biggest tile of the active column, taking its lower half;
+  **room goes back where it came from** — close it, or move it away,
+  and the tile that made room for it has its room back (one moved
+  elsewhere borrows there, and gives it back there when it closes), so
+  opening and closing leaves the space as it was, unless you resized
+  them meanwhile; a new column takes its width from every column in
+  proportion and gives it back the same way;
   Tile ▸ Grow (⌃⌘=) takes a step from its neighbors; Fill
   the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
   others. A stash is a stack behind any tile: the sheets behind it peek

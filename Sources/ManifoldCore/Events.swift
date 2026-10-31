@@ -637,20 +637,67 @@ extension WebState {
 }
 
 extension ArrangementState {
-    /// A tile gone from column `c`: its height to the one below it, else
-    /// the one above (acme's colclose).
-    /// A tile gone from a column leaves its room to the nearest tile that
-    /// shows — the one that took its place, else the next below, else the
-    /// nearest above — never to a stashed one, which would come out.
+    /// A tile gone from column `c` (closed, moved away, stacked): its room
+    /// goes back where it came from (§3.1) — to the tiles it borrowed it
+    /// from, still beside it and showing, as much as each lent (less, in
+    /// proportion, if it has less now); the rest to the tile it would
+    /// have taken room from, the nearest above that shows, else below —
+    /// never to a stashed one, which would come out. So a tile opened and
+    /// closed again leaves its column as it was.
     private mutating func giveBack(_ id: PlacementID, inColumn c: Int, wasAt i: Int) {
         let h = heights.removeValue(forKey: id) ?? 0
+        let owed = loans.removeValue(forKey: id) ?? [:]
+        forgetLender(id)
         guard !columns[c].isEmpty else { return }
         let column = columns[c]
-        let at = min(i, column.count - 1)
-        let heir = column[at...].first(where: { !isStashed($0.id) })?.id
-            ?? column[..<at].last(where: { !isStashed($0.id) })?.id
-            ?? column[at].id
-        heights[heir] = (heights[heir] ?? 0) + h
+        let lenders = owed.filter { k, v in v > 0 && column.contains { $0.id == k } && !isStashed(k) }
+        let total = lenders.values.reduce(0, +)
+        let scale = total > h && total > 0 ? h / total : 1
+        var left = h
+        // In a set order: every copy of the space pays back alike.
+        for (k, v) in lenders.sorted(by: { $0.key < $1.key }) {
+            heights[k] = (heights[k] ?? 0) + v * scale
+            left -= v * scale
+        }
+        guard left > 1e-9 else { return }
+        let at = min(i, column.count)
+        let heir = column[..<at].last(where: { !isStashed($0.id) })?.id
+            ?? column[at...].first(where: { !isStashed($0.id) })?.id
+            ?? column[min(at, column.count - 1)].id
+        heights[heir] = (heights[heir] ?? 0) + left
+    }
+
+    /// A tile gone from where it lent room: nothing owed to it there.
+    private mutating func forgetLender(_ id: PlacementID) {
+        for (b, l) in loans where l[id] != nil {
+            loans[b]?.removeValue(forKey: id)
+            if loans[b]?.isEmpty == true { loans.removeValue(forKey: b) }
+        }
+    }
+
+    /// A column added at the end: its width taken from every column in
+    /// proportion (a fair share of the n + 1), given back the same way
+    /// when it goes (`removeColumn`) — the widths as they were, not made
+    /// equal.
+    private mutating func appendColumn(_ column: [Placement]) {
+        let n = columns.count
+        columns.append(column)
+        if n > 0, fractions.count == n {
+            let share = 1 / Double(n + 1)
+            fractions = fractions.map { $0 * (1 - share) } + [share]
+        } else {
+            fractions = Self.equalFractions(n + 1)
+        }
+    }
+
+    private mutating func removeColumn(_ c: Int) {
+        columns.remove(at: c)
+        if fractions.count == columns.count + 1 {
+            let gone = fractions.remove(at: c)
+            fractions = gone < 1 && !fractions.isEmpty ? fractions.map { $0 / (1 - gone) } : Self.equalFractions(columns.count)
+        } else {
+            fractions = Self.equalFractions(columns.count)
+        }
     }
 
     /// The stashed tiles right under a tile in its column: the stack
@@ -671,8 +718,7 @@ extension ArrangementState {
             var p = placed
             if p.placedAt == nil { p.placedAt = stamp }
             if column >= columns.count {
-                columns.append([p])
-                fractions = Self.equalFractions(columns.count)
+                appendColumn([p])
                 heights[p.id] = 1
             } else {
                 let c = max(column, 0)
@@ -688,6 +734,7 @@ extension ArrangementState {
                     let h = heights[donor] ?? 1 / Double(columns[c].count)
                     heights[donor] = h / 2
                     heights[p.id] = h / 2
+                    loans[p.id] = [donor: h / 2]
                 }
                 columns[c].insert(p, at: i)
             }
@@ -699,6 +746,7 @@ extension ArrangementState {
             heights = state.heights
             focused = state.focused
             full = state.full
+            loans = state.loans
             normalize()
         case let .stash(id, behind):
             guard id != behind, let (c, i) = locate(id), locate(behind) != nil, !isStashed(behind) else { return }
@@ -707,8 +755,18 @@ extension ArrangementState {
             guard !stack.contains(where: { $0.id == behind }) else { return }
             let p = columns[c].remove(at: i)
             columns[c].removeAll { t in stack.contains { $0.id == t.id } }
-            giveBack(id, inColumn: c, wasAt: i)
-            if columns[c].isEmpty { columns.remove(at: c) }
+            if locate(behind)?.column == c, !isStashed(id) {
+                // Covered by a tile in its own column: that one takes its
+                // room, and what it owes for it — it's where it was.
+                heights[behind] = (heights[behind] ?? 0) + (heights.removeValue(forKey: id) ?? 0)
+                for (lender, v) in loans.removeValue(forKey: id) ?? [:] where lender != behind {
+                    loans[behind, default: [:]][lender, default: 0] += v
+                }
+                forgetLender(id)
+            } else {
+                giveBack(id, inColumn: c, wasAt: i)
+            }
+            if columns[c].isEmpty { removeColumn(c) }
             guard let (tc, ti) = locate(behind) else { return }
             columns[tc].insert(contentsOf: [p] + stack, at: ti + 1)
             heights[p.id] = 0
@@ -724,11 +782,11 @@ extension ArrangementState {
             giveBack(id, inColumn: c, wasAt: i)
             var target = column
             if columns[c].isEmpty {
-                columns.remove(at: c)
+                removeColumn(c)
                 if target > c { target -= 1 }
             }
             if target >= columns.count {
-                columns.append([p] + stack)
+                appendColumn([p] + stack)
                 heights[p.id] = 1
             } else {
                 let t = max(target, 0)
@@ -736,10 +794,12 @@ extension ArrangementState {
                 // The room comes from the nearest tile that shows above the
                 // spot, else the first that shows; a stashed one has none.
                 let shown = columns[t].filter { !isStashed($0.id) }
+                // Borrowed, as an opened tile's is: paid back when it goes.
                 if let donor = (columns[t][..<j].last { !isStashed($0.id) } ?? shown.first)?.id {
                     let h = heights[donor] ?? 1 / Double(max(shown.count, 1))
                     heights[donor] = h / 2
                     heights[p.id] = h / 2
+                    loans[p.id] = [donor: h / 2]
                 } else {
                     heights[p.id] = 1
                 }
@@ -756,14 +816,16 @@ extension ArrangementState {
             let heir = isStashed(id) ? nil : followers(of: id).first
             columns[c].remove(at: i)
             if let heir {
+                // Its room, and what it owes for it.
                 heights[heir.id] = heights.removeValue(forKey: id) ?? 0
+                loans[heir.id] = loans.removeValue(forKey: id)
+                forgetLender(id)
             } else {
                 giveBack(id, inColumn: c, wasAt: i)
             }
             var next: PlacementID? = heir?.id ?? (columns[c].isEmpty ? nil : columns[c][min(i, columns[c].count - 1)].id)
             if columns[c].isEmpty {
-                columns.remove(at: c)
-                fractions = Self.equalFractions(columns.count)
+                removeColumn(c)
                 next = columns.isEmpty ? nil : columns[min(c, columns.count - 1)].first?.id
             }
             if focused == id { focused = next }
@@ -781,6 +843,12 @@ extension ArrangementState {
             }
         case let .heights(h):
             for (k, v) in h where placement(k) != nil && v >= 0 { heights[k] = v }
+            // Set by hand (a divider dragged, a tile grown): what those
+            // tiles owe, or are owed, is forgiven.
+            for k in h.keys {
+                loans.removeValue(forKey: k)
+                forgetLender(k)
+            }
             normalize()
         case .layout:
             break

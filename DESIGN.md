@@ -138,7 +138,22 @@ every tile a block, all of them visible. A new tile lands in the
 biggest empty space, else takes the lower half of the biggest tile in
 the active column (acme's `makenewwindow`); a tile grows by a few
 lines, as big as can be, or to the whole column; the divider between
-columns sets widths; a tile closed gives its height to its neighbor.
+columns sets widths. **Room goes back where it came from**: a tile
+keeps what it borrowed as it came — opened, or moved in — from the
+tiles that made room for it (`ArrangementState.loans`: each lender and
+how much), and as it goes — closed, moved away, stacked — pays each
+back that's still beside it, so a tile opened and closed again leaves
+its column as it was, and one moved elsewhere and closed there leaves
+both as they were. A height set by hand (a divider dragged, a tile
+grown) forgives the loans of the tiles it sets; what isn't owed goes to
+the tile above, else below — where a new tile would have taken it from.
+A tile covered by one dragged over it (stashed behind it in its own
+column) hands that one its room and its debt; one closed with a stack
+behind it, to the next in the stack. Columns likewise: a new column
+takes a fair share of the width from every column in proportion, and
+gives it back in proportion when it goes — the widths as they were, not
+made equal. Every copy of the space works the loans out alike from the
+same events.
 Each tile has a **bar** across its top: the block's symbol and its
 **title** (a dot after it while edited and unsaved), where it is, its
 host in a chip after the title (a server's symbol and the host's name,
