@@ -722,7 +722,18 @@ minute it walks its own shards from its roots, notes each block nothing
 reaches with the moment that began, and **collects** any that has been
 so for the grace (`collectAfterMinutes`, 30 by default, a setting): its
 session ended, its file unwatched, its links gone, its log deleted, the
-registry told, and every replica following. A block reached again
+registry told, and every replica following. What's thrown away —
+collected, or deleted — the registry remembers a while (`Discarded`,
+in `Registry.gone`: its id, kind, title and path, how and when it went;
+for 30 days by the newest's time, 5,000 at most), so a reference to it
+can still say what it was: the pointer over a `manifold:` link whose
+block isn't here — in a terminal (⌘'s links, a program's OSC 8), a note,
+an editor's Markdown, a preview — shows a line beside it
+(`ReferenceTip`, from `Hosts.whyMissing`): deleted or collected, and
+when; on a host not attached, still being reached, or unreachable; or
+no such block. Followed anyway, the same line by the pointer (at the
+window's foot for a link from another app); `mani` says it as its
+error. A block reached again
 within the grace is simply kept, its mark forgotten.
 
 Closing is what makes things unreachable. ⌘W takes a tile off its

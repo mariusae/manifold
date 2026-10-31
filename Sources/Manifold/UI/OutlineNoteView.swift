@@ -1800,6 +1800,21 @@ final class NoteOutlineTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         if overHandle(event) { NSCursor.arrow.set() }
+        // A link to a block that's gone says so as the pointer comes onto it.
+        ReferenceTip.hover(linkTarget(at: convert(event.locationInWindow, from: nil)), in: self)
+    }
+
+    /// The target of the link under a point, if it's on its letters.
+    private func linkTarget(at point: NSPoint) -> String? {
+        guard let layout = layoutManager, let container = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let p = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        var fraction: CGFloat = 0
+        let glyph = layout.glyphIndex(for: p, in: container, fractionOfDistanceThroughGlyph: &fraction)
+        guard layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).contains(p) else { return nil }
+        let i = layout.characterIndexForGlyph(at: glyph)
+        guard i < storage.length else { return nil }
+        let v = storage.attribute(.link, at: i, effectiveRange: nil)
+        return (v as? URL)?.absoluteString ?? v as? String
     }
 
     override func cursorUpdate(with event: NSEvent) {

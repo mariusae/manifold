@@ -287,7 +287,7 @@ final class ManiDesk {
         // link, a ⇧-drop or Copy Link gives one; or a Markdown link to one,
         // as notes hold them.
         if let (id, fragment) = BlockID.reference(s) {
-            guard hosts.block(id) != nil else { throw Failure(message: "\(s): no such block here (deleted, or on a host that isn't connected)") }
+            if let why = hosts.whyMissing(id) { throw Failure(message: "\(s): \(why)") }
             var t = located(id, scope)
             t.fragment = fragment
             return t

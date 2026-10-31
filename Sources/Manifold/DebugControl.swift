@@ -796,6 +796,16 @@ enum DebugControl {
             // As if the Mac woke: the hosts tried or checked now.
             wc?.hosts.nudgeHosts(after: 0)
             return "nudged"
+        case "reftip":
+            // "reftip [hover <target>]": what the line by the pointer says
+            // (a reference that leads nowhere), the pointer as if over a
+            // link to the target first.
+            return MainActor.assumeIsolated {
+                if arg.hasPrefix("hover "), let content = wc?.window?.contentView {
+                    ReferenceTip.hover(String(arg.dropFirst(6)), in: content)
+                }
+                return ReferenceTip.debugState
+            }
         case "openlink":
             // "openlink manifold:host/ulid[#command=N]": as from another app.
             wc?.openLink(arg)

@@ -265,6 +265,50 @@ final class Hosts {
     var links: [Link] { all.flatMap { $0.links.links } }
     func isConnected(_ host: HostID) -> Bool { client(host)?.isConnected ?? false }
 
+    /// Why a reference to `id` leads nowhere, in a line — what it was and
+    /// how and when it went, as its host remembers (`Registry.gone`); a
+    /// host not attached, not yet reached, not reachable; no such block —
+    /// or nil, when it leads to a block (as last seen, if need be).
+    func whyMissing(_ id: BlockID) -> String? {
+        guard block(id) == nil else { return nil }
+        let host = label(of: id.host)
+        guard let c = client(of: id) else { return "It's on \(host), which isn't attached here" }
+        if let d = c.registry.gone[id] {
+            let kind = Self.kindWord(d.kind, path: d.path)
+            let what = d.title.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : "“\($0)” (\(kind))" } ?? "This \(kind)"
+            let when = Self.goneDates.string(from: Date(timeIntervalSince1970: Double(d.at.wall) / 1000))
+            return d.deleted ? "\(what) was deleted, \(when)" : "\(what) was closed and collected, \(when)"
+        }
+        switch c.link {
+        case .connecting where !c.hasState: return "It's on \(host), which is still being reached"
+        case .unreachable: return "It's not on \(host) as last seen, and \(host) can't be reached now"
+        default: return "There's no such block on \(host)"
+        }
+    }
+
+    /// What a block of `kind` is called, in a word.
+    static func kindWord(_ kind: BlockKind, path: String?) -> String {
+        switch kind {
+        case .text: path == nil ? "note" : "file"
+        case .arrangement: "space"
+        case .directory: "folder"
+        case .web: "page"
+        case .pdf: "PDF"
+        case .ui: "panel"
+        default: kind.rawValue
+        }
+    }
+
+    /// When a block went: "today at 10:41", "yesterday", "Oct 3, 2026 at…".
+    private static let goneDates: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.doesRelativeDateFormatting = true
+        f.formattingContext = .middleOfSentence
+        return f
+    }()
+
     // MARK: Keeping (§4), across hosts
 
     /// The roots as this client sees them: every host's own, and the

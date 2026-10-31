@@ -1243,8 +1243,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
         let hovered = under.flatMap { u in runs.firstIndex { $0.row == u.row && $0.from <= u.col && u.col < $0.to } }
         showLinks(runs.map { ($0.row, $0.from, $0.to) }, hovered: hovered)
+        // A reference under it that leads nowhere says so.
+        ReferenceTip.hover(hovered.flatMap { _ in link(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))?.target }, in: self)
         (hovered != nil ? NSCursor.pointingHand : cursor).set()
     }
+
+    /// A program's own link (OSC 8) under the pointer, as ghostty says, or
+    /// none: one to a block that's gone says so (`ReferenceTip`).
+    func overLink(_ url: String?) { ReferenceTip.hover(url, in: self) }
 
     /// The links drawn by ghostty, over its copy of the screen: their text
     /// in the link color an editor's ⌘ links have, the one under the
@@ -1264,6 +1270,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     private func clearLinks() {
+        ReferenceTip.hover(nil, in: self)
         if let surface { ghostty_surface_manifold_links(surface, nil, 0, 0, -1, 0) }
         glow.showLinks(nil, color: TextView.linkColor, cellHeight: 0)
     }

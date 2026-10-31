@@ -239,6 +239,13 @@ final class GhosttyRuntime {
                 NSWorkspace.shared.open(URL(fileURLWithPath: str))
             }
             return true
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            // A program's own link (OSC 8) under the pointer, or none: one
+            // that leads nowhere says so.
+            let l = action.action.mouse_over_link
+            let str = l.url.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(l.len)), as: UTF8.self) }
+            DispatchQueue.main.async { view?.overLink(str.flatMap { $0.isEmpty ? nil : $0 }) }
+            return true
         case GHOSTTY_ACTION_RING_BELL:
             NSSound.beep()
             return true
@@ -267,7 +274,7 @@ final class GhosttyRuntime {
             return true
         case GHOSTTY_ACTION_RENDER, GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_PWD,
              GHOSTTY_ACTION_COLOR_CHANGE, GHOSTTY_ACTION_RENDERER_HEALTH,
-             GHOSTTY_ACTION_MOUSE_OVER_LINK, GHOSTTY_ACTION_CONFIG_CHANGE, GHOSTTY_ACTION_SIZE_LIMIT,
+             GHOSTTY_ACTION_CONFIG_CHANGE, GHOSTTY_ACTION_SIZE_LIMIT,
              GHOSTTY_ACTION_INITIAL_SIZE, GHOSTTY_ACTION_SHOW_CHILD_EXITED, GHOSTTY_ACTION_COMMAND_FINISHED,
              GHOSTTY_ACTION_PROGRESS_REPORT, GHOSTTY_ACTION_KEY_SEQUENCE, GHOSTTY_ACTION_KEY_TABLE:
             // Titles and directories come from the server, which sees the

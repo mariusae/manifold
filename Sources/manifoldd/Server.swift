@@ -483,8 +483,9 @@ final class Server {
 
     /// A block gone for good: its session ended, its file unwatched, its
     /// links here gone, its log deleted, and the registry told, which
-    /// every replica follows.
-    private func discard(_ block: BlockID) {
+    /// every replica follows — and keeps a while what it was, and how
+    /// (`deleted`, else collected) and when it went.
+    private func discard(_ block: BlockID, deleted: Bool) {
         sessions.removeValue(forKey: block)?.terminate()
         notebooks.removeValue(forKey: block)?.terminate()
         watchers.removeValue(forKey: block)
@@ -495,6 +496,8 @@ final class Server {
         for l in node.links(host).links where l.from == block || l.to == block { append(.unlink(l.id), to: .links(host)) }
         node.remove(.block(block))
         store.delete(.block(block))
+        let entry = node.registry(host).blocks[block]
+        append(.discarded(Discarded(id: block, kind: b.kind, title: entry?.title ?? b.displayTitle, path: entry?.path ?? b.path, deleted: deleted, at: clock.now())), to: .registry(host))
         append(.unregister(block), to: .registry(host))
     }
 
@@ -537,7 +540,7 @@ final class Server {
         for id in gone {
             let what = node.block(id).map { "\($0.kind) \"\($0.displayTitle)\"" } ?? "block"
             log("collected \(what) \(id): reached by nothing for \(minutes) min")
-            discard(id)
+            discard(id, deleted: false)
         }
     }
 
@@ -884,7 +887,7 @@ final class Server {
             if node.registry(host).holds[id] != nil { append(.release(id), to: .registry(host)) }
             done()
         case let .discard(block):
-            discard(block)
+            discard(block, deleted: true)
             done()
         case let .link(link):
             append(.link(link), to: .links(host))

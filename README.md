@@ -422,6 +422,13 @@ parts from the Mac's conventions on purpose.
   when any of that has unsaved edits, a note's words or a job running, a
   toast at the foot of the window names each, with Undo while a bar along
   its foot runs down (held while the pointer is on it); ⇧⌘T after.
+  A reference to a block that's gone says so: its host remembers for a
+  month what it threw away, so the pointer over a link to one — in a
+  terminal (⌘ held, or a program's own link), a note, a preview —
+  shows a line by it, "“Claude” (agent) was deleted, today at 10:41"
+  (or closed and collected; or on a host that isn't attached, or isn't
+  reachable now; or no such block), and clicking it anyway says the
+  same; `mani` answers so too.
 - **The Inspector** (View ▸ Inspector, **⌥⌘I**, again to go back) shows
   the focused block's properties in the sidebar, and follows the focus,
   as Star's property sheets did for whatever was selected: what it is and

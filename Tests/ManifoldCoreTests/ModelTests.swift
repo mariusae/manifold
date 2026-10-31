@@ -2005,3 +2005,25 @@ private final class Seen: @unchecked Sendable {
     #expect(b.title == nil)
     #expect(b.titleIsFirstLine == nil)
 }
+
+@Test func whatWasThrownAwayIsRememberedAWhile() {
+    var r = Registry()
+    let day: Int64 = 86_400_000
+    let old = BlockID(host: .local), recent = BlockID(host: .local)
+    r.apply(.register(RegistryEntry(id: old, kind: .agent, title: "Claude", created: Stamp(wall: 0), lastSeen: Stamp(wall: 0))))
+    r.apply(.discarded(Discarded(id: old, kind: .agent, title: "Claude", path: nil, deleted: true, at: Stamp(wall: day))))
+    r.apply(.unregister(old))
+    #expect(r.blocks[old] == nil && r.gone[old]?.deleted == true && r.gone[old]?.title == "Claude")
+    // Another gone within the month: both remembered.
+    r.apply(.discarded(Discarded(id: recent, kind: .text, title: nil, path: nil, deleted: false, at: Stamp(wall: 20 * day))))
+    #expect(r.gone.count == 2)
+    // Past the month after the first: it's forgotten, by the newest's time.
+    let later = BlockID(host: .local)
+    r.apply(.discarded(Discarded(id: later, kind: .text, title: nil, path: nil, deleted: false, at: Stamp(wall: (Int64(Registry.goneDays) + 2) * day))))
+    #expect(r.gone[old] == nil && r.gone[recent] != nil && r.gone[later] != nil)
+    // Kept through encoding; a registry from before has none.
+    let back = try! JSONDecoder().decode(Registry.self, from: JSONEncoder().encode(r))
+    #expect(back.gone == r.gone)
+    let before = try! JSONDecoder().decode(Registry.self, from: Data(#"{"blocks":[]}"#.utf8))
+    #expect(before.gone.isEmpty)
+}

@@ -128,6 +128,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         web = PreviewWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
         selectionOwner.view = self
+        // A link to a block that's gone says so as the pointer comes onto it.
+        handler.onHover = { [weak self] target in
+            guard let self else { return }
+            ReferenceTip.hover(target, in: self)
+        }
         handler.onState = { [weak self] values in
             self?.keeper.note(values)
             if values["scroll"] != nil { self?.scheduleOutline() }
@@ -569,6 +574,8 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
     var onState: (([String: String]) -> Void)?
     /// The page moving, frame by frame: nothing to keep, only to follow.
     var onScrolling: ((Double) -> Void)?
+    /// The pointer onto a block's link (its address) or off it (nil).
+    var onHover: ((String?) -> Void)?
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let dict = message.body as? [String: Any] else { return }
@@ -578,6 +585,7 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
             NSPasteboard.general.setString(text, forType: .string)
             return
         }
+        if let h = dict["hover"] as? String { onHover?(h.isEmpty ? nil : h); return }
         var values: [String: String] = [:]
         if let y = dict["scrolling"] as? Double { onScrolling?(y); return }
         if let y = dict["scroll"] as? Double { values["scroll"] = "\(Int(y.rounded()))" }

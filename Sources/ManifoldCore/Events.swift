@@ -127,8 +127,34 @@ public struct RegistryEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A block gone for good (§4), as its host remembers it a while after:
+/// so a reference to it can say what it was, and how and when it went.
+public struct Discarded: Codable, Equatable, Sendable, Identifiable {
+    public var id: BlockID
+    public var kind: BlockKind
+    public var title: String?
+    public var path: String?
+    /// Deleted (⌘D), else collected: nothing reached it for the grace.
+    public var deleted: Bool
+    public var at: Stamp
+
+    public init(id: BlockID, kind: BlockKind, title: String?, path: String?, deleted: Bool, at: Stamp) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.path = path
+        self.deleted = deleted
+        self.at = at
+    }
+}
+
 public struct Registry: Codable, Equatable, Sendable {
     public var blocks: [BlockID: RegistryEntry] = [:]
+    /// Blocks gone for good, remembered for `goneDays` (so many at most,
+    /// the oldest forgotten first).
+    public var gone: [BlockID: Discarded] = [:]
+    public static let goneDays = 30
+    public static let goneLimit = 5_000
     /// The trail (§3.5): blocks gone to on this host's desk, in order, as
     /// the host saw them focused and selected; so many, the oldest dropped.
     public var trail: [Step] = []
@@ -138,13 +164,14 @@ public struct Registry: Codable, Equatable, Sendable {
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case blocks, trail, holds }
+    enum CodingKeys: String, CodingKey { case blocks, trail, holds, gone }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         blocks = try c.decode([BlockID: RegistryEntry].self, forKey: .blocks)
         trail = (try? c.decodeIfPresent([Step].self, forKey: .trail)) ?? []
         holds = (try? c.decodeIfPresent([String: Hold].self, forKey: .holds)) ?? [:]
+        gone = (try? c.decodeIfPresent([BlockID: Discarded].self, forKey: .gone)) ?? [:]
     }
 }
 
@@ -345,6 +372,9 @@ public enum Event: Codable, Equatable, Sendable {
     case register(RegistryEntry)
     case seen([BlockID], at: Stamp)
     case unregister(BlockID)
+    /// A block gone for good, to be remembered a while (`Registry.gone`):
+    /// appended just before its `unregister`.
+    case discarded(Discarded)
     /// Another host's standing reference to a block here (§4): a root
     /// on this host, until released.
     case hold(Hold)
@@ -909,6 +939,15 @@ extension Registry {
         case let .unregister(id):
             blocks.removeValue(forKey: id)
             holds = holds.filter { $0.value.block != id }
+        case let .discarded(d):
+            gone[d.id] = d
+            // Forgotten after so long, by the newest's time (as every
+            // replica has it alike), and past so many, the oldest first.
+            let since = d.at.wall - Int64(Self.goneDays) * 86_400_000
+            gone = gone.filter { $0.value.at.wall >= since }
+            if gone.count > Self.goneLimit {
+                for old in gone.values.sorted(by: { $0.at < $1.at }).prefix(gone.count - Self.goneLimit) { gone.removeValue(forKey: old.id) }
+            }
         case let .hold(h):
             holds[h.id] = h
         case let .release(id):

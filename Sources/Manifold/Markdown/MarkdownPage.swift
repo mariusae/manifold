@@ -235,6 +235,14 @@ enum MarkdownPage {
             if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); }); }
             clearTimeout(t1); t1 = setTimeout(function () { post({ scroll: window.scrollY }); }, 250);
           });
+          // The pointer onto a block's link, or off it: one to a block
+          // that's gone is told by the pointer.
+          var hovered = '';
+          document.addEventListener('mouseover', function (e) {
+            var a = e.target.closest && e.target.closest('a[href^="manifold:"]');
+            var h = a ? a.getAttribute('href') : '';
+            if (h !== hovered) { hovered = h; post({ hover: h }); }
+          });
           document.addEventListener('selectionchange', function () {
             if (window.manifoldQuiet && Date.now() < window.manifoldQuiet) return;
             clearTimeout(t2); t2 = setTimeout(function () {

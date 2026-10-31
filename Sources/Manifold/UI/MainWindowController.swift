@@ -4701,6 +4701,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         Drags.resolve = { [weak self] f in self?.pathBlock(f.path, isDirectory: f.isDirectory, on: f.host)?.0 }
         Drags.opens = { [weak self] f in self?.pathOpens(f.path, isDirectory: f.isDirectory, on: f.host) ?? true }
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
+        ReferenceTip.whyMissing = { [weak self] id in self?.hosts.whyMissing(id) }
         Drags.keepImage = { [weak self] data, kind, note, insert in self?.keepImage(data, kind: kind, for: note, insert: insert) }
         Drags.block = { [weak self] id, mods in
             guard let self else { return nil }
@@ -5300,7 +5301,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// first (brought to its top), then its column's — not whichever comes
     /// first (another of the block's tiles elsewhere, focused for nothing).
     func goTo(_ id: BlockID, near: PlacementID? = nil) {
-        guard let block = hosts.block(id) else { return }
+        guard let block = hosts.block(id) else { return sayMissing(id) }
         hideStateView()
         warpPointerToFocus()
         if block.kind == .arrangement { return hosts.select(id) }
@@ -5448,7 +5449,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// over; to the system's app. A space is gone to whatever's held.
     func follow(_ block: BlockID, lens: Lens? = nil, from placement: PlacementID?, _ d: Disposition,
                 kind: LinkKind = .opened, context: String? = nil) {
-        guard let b = hosts.block(block) else { return }
+        guard let b = hosts.block(block) else { return sayMissing(block) }
         if b.kind == .arrangement { return d == .system ? NSSound.beep() : goTo(block) }
         let lens = lens ?? Lens.default(for: b.kind, path: b.path)
         switch d {
@@ -6189,6 +6190,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // A link to a block (manifold:host/ulid, as a note's pill is): go to
         // it — and to a place in it, if the link names one (#command=7).
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
+            if hosts.whyMissing(b) != nil { return sayMissing(b) }
             follow(b, from: placement, d, context: "followed")
             if d == .system { return }
             linkFollowed(from: placement, to: b)
@@ -7554,6 +7556,19 @@ extension MainWindowController: GridDelegate {
         if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
         if fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
         if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
+    }
+
+    /// A block gone to that isn't there: why (`Hosts.whyMissing`), by
+    /// the pointer when a click in the window went to it, else at the
+    /// window's foot (a link opened from another app).
+    func sayMissing(_ id: BlockID) {
+        let why = hosts.whyMissing(id) ?? "There's nothing there"
+        let mouse: Set<NSEvent.EventType> = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp]
+        if let e = NSApp.currentEvent, e.window === window, mouse.contains(e.type) {
+            ReferenceTip.say(why, in: window)
+        } else {
+            toast.show(why, action: "OK", for: 6) {}
+        }
     }
 
     func openLink(_ address: String) {

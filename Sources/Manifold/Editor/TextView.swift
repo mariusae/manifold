@@ -1983,7 +1983,9 @@ final class TextView: NSView, NSTextInputClient {
 
     override func mouseMoved(with event: NSEvent) {
         guard isUnderPointer else { return }
-        let over = linkTarget(at: convert(event.locationInWindow, from: nil)) != nil
+        let target = linkTarget(at: convert(event.locationInWindow, from: nil))
+        ReferenceTip.hover(target, in: self)
+        let over = target != nil
         if over != overLink {
             overLink = over
             updateCursor()
