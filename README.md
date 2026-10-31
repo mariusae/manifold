@@ -243,7 +243,7 @@ parts from the Mac's conventions on purpose.
   down past the tile beside it, left or right into the next column about
   as far down as it was, or into a column of its own at the edge.
 - **Keys mean the same thing everywhere.** ⇧ is the bigger one or the
-  way back: ⌘W closes a tile, ⌥⇧⌘W a space; ⌘F finds here, ⇧⌘F in
+  way back: ⌘W closes a tile, ⇧⌘W a space; ⌘F finds here, ⇧⌘F in
   files; ⌘/ shows the tile's sidebar (its outline), ⇧⌘/ the window's.
   Brackets go through a sequence, the modifier saying which: ⌘[ ⌘] the
   tile's own history, ⌥⌘[ ⌥⌘] the tiles, ⇧⌘[ ⇧⌘] the spaces. ⌥⌘ and an
@@ -407,7 +407,7 @@ parts from the Mac's conventions on purpose.
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
 - **⌘W** closes the focused tile. **Spaces stay** until you remove
-  one (**⌥⇧⌘W**, Space ▸ Remove Space, or its row's menu): named or
+  one (**⇧⌘W**, Space ▸ Remove Space, or its row's menu): named or
   not, emptied or not, nothing removes one for you. With none at all,
   the window says what a space is and offers New Terminal, Open
   Folder… and Open Quickly. A block is kept while
@@ -436,7 +436,7 @@ parts from the Mac's conventions on purpose.
   by the one rule; its **history** (how often it's been gone to, and
   when last); and what can be done with it (Copy Contents, Copy Link,
   Copy Path, Reveal in Finder, the Neighborhood Map, Pin in This Space).
-- **⇧⌘W deletes** the focused tile's block (Tile ▸ Delete Block, or
+- **⌘D deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu), with nothing asked: every tile of it taken off at
   once, in every space, and a toast — "Deleted “…”" — with Undo while a
   bar along its foot counts down (four seconds, six when it has
@@ -609,7 +609,7 @@ around it, and comes back with its history.
   text view (the bar's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out
   with Core Text, line numbers, several
-  cursors (⌘D selects the next occurrence; ⌃⇧↑/↓ add carets; ⌥-click
+  cursors (⌥⌘E selects the next occurrence, Xcode's key; ⌃⇧↑/↓ add carets; ⌥-click
   adds one), find and replace (⌘F, ⌥⌘F; every match marked; see Find,
   below), Go to Line
   (⌘L, or ⌃G as code editors have it, editing or viewing: a capsule
@@ -1474,7 +1474,7 @@ is migrated into logs on first run.
   in your environment to keep yours): `git commit` and friends edit in an
   editor over the terminal that ran them, the terminal stashed behind
   it, and return when the editor is taken off (⌘W) and the terminal
-  comes back — **⌥⌘W** (File ▸ Save and Close, in any editor) saves and
+  comes back — **⇧⌘S** (File ▸ Save and Close, in any editor) saves and
   then closes, once the file is written, so the command reads what you
   wrote. A file already a block when `$EDITOR` opens it is the same
   block, in a second tile over the terminal, unsaved edits and all. The block it edited in is ephemeral: once the command

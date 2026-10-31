@@ -281,7 +281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         item(file, "Save", #selector(EditorView.saveDocument(_:)), "s")
         // Saved, then closed once it's written: vim's :wq, an $EDITOR's done.
-        item(file, "Save and Close", #selector(MainWindowController.saveAndClose(_:)), "w", [.command, .option])
+        // ⇧⌘S: save, and the bigger thing (Manifold has no Save As).
+        item(file, "Save and Close", #selector(MainWindowController.saveAndClose(_:)), "s", [.command, .shift])
         item(file, "Revert to Saved", #selector(EditorView.revertDocumentToSaved(_:)), "")
         file.addItem(.separator())
         // From the menu alone: ⌘P is the outline.
@@ -347,7 +348,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         linesItem.submenu = lines
         edit.addItem(linesItem)
         let carets = NSMenu(title: "Selection")
-        item(carets, "Add Next Occurrence", #selector(TextView.addNextOccurrence(_:)), "d")
+        // ⌥⌘E, Xcode's Select Next Occurrence (⌘D is Delete Block).
+        item(carets, "Add Next Occurrence", #selector(TextView.addNextOccurrence(_:)), "e", [.command, .option])
         item(carets, "Add Caret Above", #selector(TextView.addCaretAbove(_:)), up, [.control, .shift])
         item(carets, "Add Caret Below", #selector(TextView.addCaretBelow(_:)), down, [.control, .shift])
         let caretsItem = NSMenuItem(title: "Selection", action: nil, keyEquivalent: "")
@@ -464,7 +466,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(tile, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
         // Deleted, not closed: its links broken, the block gone; what only
         // it reached into Recently Closed.
-        item(tile, "Delete Block", #selector(MainWindowController.deleteFocusedBlock(_:)), "w", [.command, .shift])
+        // ⌘D: common, and safe enough at a key — its toast undoes it.
+        item(tile, "Delete Block", #selector(MainWindowController.deleteFocusedBlock(_:)), "d")
         tile.addItem(.separator())
         // ↩, how the tile shows: ⌘↩ its own thing (Edit or View, Run Cell,
         // Toggle Checkbox — titled by the tile), ⌥ as an outline, ⌃ the
@@ -511,7 +514,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(space, "Name Space…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         item(space, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         space.addItem(.separator())
-        item(space, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift, .option])
+        // ⇧⌘W, as the Mac closes a window: ⌘W's bigger thing.
+        item(space, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
 
         let window = submenu(main, "Window")
         // ⌘M is Stash: Minimize from the menu alone.

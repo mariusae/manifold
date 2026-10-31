@@ -2061,7 +2061,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
     /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
     /// collected said, with Restore, if it had edits or a job running.
-    /// ⌥⌘W: the focused editor (or a menu's) saved, then its tile closed —
+    /// ⇧⌘S: the focused editor (or a menu's) saved, then its tile closed —
     /// once the file is written, not before: an `$EDITOR`'s command, which
     /// reads it, ends as the tile goes. A file with nothing unsaved just
     /// closes; a note with no file is saved as one first (⌘S's panel);
@@ -2080,7 +2080,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         closeOnceSaved()
     }
 
-    /// Tiles waiting on their saves to close (⌥⌘W): the block, its space,
+    /// Tiles waiting on their saves to close (⇧⌘S): the block, its space,
     /// and when to give up (a note's save panel may be open a while).
     private var savingToClose: [PlacementID: (block: BlockID, space: BlockID, until: Date)] = [:]
 
@@ -2169,7 +2169,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         afterClosing(reachedBefore: before)
     }
 
-    /// ⇧⌘W: the focused tile's block deleted (or `sender`'s, a menu's).
+    /// ⌘D: the focused tile's block deleted (or `sender`'s, a menu's).
     @objc func deleteFocusedBlock(_ sender: Any?) {
         let block = ((sender as? NSMenuItem)?.representedObject as? PlacementID).flatMap { arrangement?.placement($0)?.block }
             ?? focusedShown?.placement.block
@@ -2336,7 +2336,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Whatever waits on a toast's time, done now (the app quitting).
     func finishPending() { toast.finishPending() }
 
-    /// ⌥⇧⌘W: the workspace removed — the only way one goes (§4); what only
+    /// ⇧⌘W: the workspace removed — the only way one goes (§4); what only
     /// it kept is collected after the grace, reopened meanwhile by ⇧⌘T.
     @objc func closeTab(_ sender: Any?) {
         guard let id = selected else { return }

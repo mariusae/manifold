@@ -1634,7 +1634,7 @@ final class TextView: NSView, NSTextInputClient {
         replace([(TextRange(a, b), swapped)])
     }
 
-    /// ⌘D: with a word under the caret, selects it; with a selection, adds
+    /// ⌥⌘E: with a word under the caret, selects it; with a selection, adds
     /// the next occurrence as another selection.
     private func selectNextOccurrence() {
         guard let last = selections.last else { return }

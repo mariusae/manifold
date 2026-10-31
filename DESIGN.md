@@ -196,7 +196,7 @@ tiles and spaces; ⌘[ ⌘] a tile's own, for the views that go on in place.
 
 **Keys** mean one thing each, wherever they're pressed, and every one
 is in a menu (Rex's discipline). ⇧ is the bigger thing or the way back
-(⌘W a tile, ⌥⇧⌘W a space; ⌘F here, ⇧⌘F in files; ⌘/ the tile's sidebar,
+(⌘W a tile, ⇧⌘W a space; ⌘F here, ⇧⌘F in files; ⌘/ the tile's sidebar,
 ⇧⌘/ the window's; ⌘G, ⇧⌘G). Brackets walk a sequence, the modifier
 naming which (⌘ a tile's history, ⌥⌘ the tiles, ⇧⌘ the spaces). ⌥⌘ and
 an arrow moves the focus that way, as `mani`'s @left and @below name
@@ -247,7 +247,7 @@ space of spaces; nothing more is needed for folders.
 ### 3.3 Spaces are the roots
 
 A space is a root, named or not, emptied or not, until you remove it
-(⌥⇧⌘W, or its row's menu) or drop it on another; nothing removes one
+(⇧⌘W, or its row's menu) or drop it on another; nothing removes one
 for you. What it reaches is kept: what it places, what it **pins** (Pin
 in Space: a strong link from the space, so a block can stay without a
 tile), and what those link to by hand. Naming a space names it and
@@ -717,7 +717,7 @@ within the grace is simply kept, its mark forgotten.
 
 Closing is what makes things unreachable. ⌘W takes a tile off its
 space — when it was the last tile of a block nothing else reaches, a
-toast says so; ⌥⇧⌘W removes a space whole. **Deleting** (⇧⌘W) is the
+toast says so; ⇧⌘W removes a space whole. **Deleting** (⌘D) is the
 one way a block goes for good: its tiles taken off everywhere at once,
 and when the toast's countdown runs out (Undo meanwhile puts them back;
 nothing is asked first) its links both ways broken on every host
@@ -1654,7 +1654,7 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **Spaces are the only roots, and only you remove one.** No Keep, no
   favourites: a block lives while a space reaches it — shows it, pins it,
   or reaches it through a link by hand — and a space stays, named or
-  not, emptied or not, until it's removed (⌥⇧⌘W, its row's menu) or
+  not, emptied or not, until it's removed (⇧⌘W, its row's menu) or
   dropped on another. One rule for what lasts. Pin in Space is how a
   block stays without a tile.
 - **Closing can lose a block.** ⌘W on the last tile showing a block lets
@@ -1694,11 +1694,13 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
   the step above it. Minimize stays in the Window menu, keyless.
 - **⌥⌘M is the map,** taking macOS's Minimize All.
-- **⇧⌘W deletes a block,** where the Mac closes a window: Manifold's
-  windows are its spaces, removed with ⌥⇧⌘W, and ⌘W on Settings
-  closes it.
-- **⌥⌘W saves and closes** an editor (vim's `:wq`, an `$EDITOR`'s done),
-  where the Mac closes all windows.
+- **⌘D deletes a block,** where the Finder duplicates: deleting is
+  common, and its toast undoes it. Add Next Occurrence, Sublime's ⌘D,
+  is Xcode's ⌥⌘E.
+- **⇧⌘W removes a space,** as the Mac closes a window: Manifold's
+  windows are its spaces; ⌘W on Settings closes it.
+- **⇧⌘S saves and closes** an editor (vim's `:wq`, an `$EDITOR`'s done):
+  save, and the bigger thing; there's no Save As.
 - **⌃⌘T pins,** the Finder's Add to Sidebar: a pin keeps a block in its
   space's part of the sidebar, with a tile or without.
 - **⌘` walks spaces,** the app's windows; with one space it walks
