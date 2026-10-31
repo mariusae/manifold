@@ -1,8 +1,10 @@
 import AppKit
 
-/// What a drop will do, shown beside the pointer while a thing is dragged
-/// over somewhere that takes it (§3.11): a badge where the system's +
-/// would be, the symbol of what a drop does there — the palette's for it.
+/// What a drop will do, shown while a thing is dragged over somewhere
+/// that takes it (§3.11): a badge, the symbol of what a drop does there —
+/// the palette's for it. A drag of Manifold's own wears it on its pill, at
+/// the corner by the pointer (`DragPill.wear`); one from elsewhere (the
+/// Finder's) has it beside the pointer, where the system's + would be.
 /// Each target shows it as the drag moves over it, so it's always what
 /// dropping now would do; unshown for a moment (the drag gone elsewhere,
 /// ended), it goes.
@@ -37,6 +39,13 @@ final class DropBadge: NSView {
         }
     }
 
+    /// `symbol` shown for the drag `sender` over `view` — on its pill if
+    /// it's one of ours, else beside the pointer; nil, taken off.
+    static func show(_ symbol: String?, for sender: NSDraggingInfo, over view: NSView) {
+        if DragPill.wear(symbol, sender, over: view) { return hush() }
+        if let symbol { show(symbol, at: sender.draggingLocation, in: view.window) } else { hush() }
+    }
+
     /// Unshown at once (dropped, or the target let go of the drag).
     static func hush() {
         shared?.expiry?.invalidate()
@@ -63,11 +72,15 @@ final class DropBadge: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        // The tint (as deep as white on it needs), ringed in white as the
-        // system's badge is, so it reads over anything; grey where nothing
-        // can be done.
-        let b = Self.size, inner = bounds.insetBy(dx: Self.room, dy: Self.room)
-        let circle = NSBezierPath(ovalIn: NSRect(x: inner.midX - b / 2, y: inner.midY - b / 2, width: b, height: b))
+        Self.draw(symbol, at: NSPoint(x: bounds.midX, y: bounds.midY))
+    }
+
+    /// `symbol`'s badge drawn centered at `c`: the tint (as deep as white on
+    /// it needs), ringed in white as the system's badge is, so it reads
+    /// over anything; grey where nothing can be done.
+    static func draw(_ symbol: String, at c: NSPoint) {
+        let b = size
+        let circle = NSBezierPath(ovalIn: NSRect(x: c.x - b / 2, y: c.y - b / 2, width: b, height: b))
         NSGraphicsContext.saveGraphicsState()
         Elevation.resting.shadow.set()
         (symbol == Dropping.refused ? NSColor.systemGray : Tints.accentFill).setFill()
@@ -78,7 +91,7 @@ final class DropBadge: NSView {
         circle.stroke()
         if let image = Theme.symbol(symbol, size: 10, weight: .bold, color: .white) {
             let s = image.size
-            image.draw(in: NSRect(x: inner.midX - s.width / 2, y: inner.midY - s.height / 2, width: s.width, height: s.height))
+            image.draw(in: NSRect(x: c.x - s.width / 2, y: c.y - s.height / 2, width: s.width, height: s.height))
         }
     }
 }

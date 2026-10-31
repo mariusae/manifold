@@ -437,12 +437,15 @@ enum DebugControl {
             DropBadge.show(arg, at: content.convert(NSPoint(x: content.bounds.midX, y: content.bounds.midY), to: nil), in: window)
             return "shown"
         case "dragpill":
-            // "dragpill <out.png> <path>…": the pills dragging those files
-            // (this Mac's) would show, one under another, written out.
-            let words = arg.split(separator: " ").map(String.init)
-            guard words.count > 1, let window = wc?.window else { return "dragpill <out.png> <path>…" }
+            // "dragpill <out.png> [badge=<symbol>] <path>…": the pills dragging
+            // those files (this Mac's) would show, one under another, the
+            // first wearing the badge, written out.
+            var words = arg.split(separator: " ").map(String.init)
+            let badge = words.first(where: { $0.hasPrefix("badge=") }).map { String($0.dropFirst(6)) }
+            words.removeAll { $0.hasPrefix("badge=") }
+            guard words.count > 1, let window = wc?.window else { return "dragpill <out.png> [badge=<symbol>] <path>…" }
             let things = words.dropFirst().map { DragThing(title: $0.lastPathComponent, file: .init(host: Drags.localHost, path: $0, isDirectory: false), text: $0) }
-            let pills = MainActor.assumeIsolated { things.map { DragPill.pill($0, appearance: window.effectiveAppearance) } }
+            let pills = MainActor.assumeIsolated { things.enumerated().map { DragPill.pill($0.element, appearance: window.effectiveAppearance, badge: $0.offset == 0 ? badge : nil) } }
             let size = NSSize(width: pills.map(\.size.width).max() ?? 1, height: pills.reduce(0) { $0 + $1.size.height })
             // At 2×, on the window's ground.
             guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * 2, pixelsHigh: Int(size.height) * 2, bitsPerSample: 8,

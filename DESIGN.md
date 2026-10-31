@@ -676,10 +676,14 @@ While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
 its icon, its name, on a raised ground with an edge and a shadow — a
 few one under another, then "and N more"), wherever it's dragged from,
 so it reads over anything it passes; rows dragged by their bullets go
-on a card the same way. Beside the pointer, where the system's + would
-be, a **badge** (`DropBadge`) shows the symbol of what a drop does
-there — the palette's for that form, and only that: no words; a drop
-answers an operation that shows no badge of the system's. It's shown
+on a card the same way. The first pill wears a **badge** (`DropBadge`,
+`DragPill.wear`) on its upper right corner, by the pointer, with the
+symbol of what a drop does there — the palette's for that form, and
+only that: no words; a drop answers an operation that shows no badge
+of the system's. (The target draws it into the drag's own image: a
+badge in the window would be under it. A drag from another app, whose
+image isn't ours, has it beside the pointer, where the system's + would
+be.) It's shown
 again as the drag moves (a modifier pressed, another target, the
 palette's rows), so it's always what dropping right then would do;
 where nothing can be done, a grey ⃠. A quick drop does what it shows;

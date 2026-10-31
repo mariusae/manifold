@@ -1811,7 +1811,11 @@ final class GridView: NSView, NSDraggingSource {
         return sender.draggingSourceOperationMask.contains(.move) ? .move : .copy
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) { hideDrop() }
+    /// The drag gone from it (nil: a view in it, or the palette, has it now).
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        hideDrop()
+        if let sender { DropBadge.show(nil, for: sender, over: self) }
+    }
     override func draggingEnded(_ sender: NSDraggingInfo) { hideDrop() }
 
     private func showDrop(_ rect: NSRect) {

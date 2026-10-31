@@ -307,12 +307,12 @@ extension DropTaking {
         guard let first = forms.first else {
             if let grid = grid(of: view) { return grid.draggingUpdated(sender) }
             // Nothing it can be here, nor behind: shown so, not left blank.
-            DropBadge.show(refused, at: sender.draggingLocation, in: view.window)
+            DropBadge.show(refused, for: sender, over: view)
             return []
         }
-        grid(of: view)?.draggingExited(sender)
+        grid(of: view)?.draggingExited(nil)
         view.dropTrack(d, at: p)
-        DropBadge.show(label(first).1, at: sender.draggingLocation, in: view.window)
+        DropBadge.show(label(first).1, for: sender, over: view)
         if forms.count > 1 { resting(view, sender, at: sender.draggingLocation) }
         return op(sender)
     }
@@ -352,9 +352,9 @@ extension DropTaking {
     }
 
     static func exited(_ view: DropTaking, _ sender: NSDraggingInfo?) {
-        DropBadge.hush()
+        if let sender { DropBadge.show(nil, for: sender, over: view) } else { DropBadge.hush() }
         if rest?.view.value === view { stopResting() }
-        grid(of: view)?.draggingExited(sender)
+        grid(of: view)?.draggingExited(nil)
     }
 
     static func perform(_ view: DropTaking, _ sender: NSDraggingInfo) -> Bool {
@@ -550,7 +550,7 @@ final class DropPalette: NSView {
         highlighted = row(at: sender) ?? (box.contains(p) ? highlighted : nil)
         // The row lit is what a drop does now: the badge, its own symbol,
         // would only cover it.
-        DropBadge.hush()
+        DropBadge.show(nil, for: sender, over: self)
         return Dropping.op(sender)
     }
 
@@ -586,13 +586,19 @@ final class DropPalette: NSView {
 /// dragged: a pill of its own — its icon, its name — on the window's
 /// ground, edged and shadowed, so it reads over anything it passes. The
 /// pills sit just left of the pointer, one under another; past a few,
-/// how many more.
+/// how many more. The first wears the drop's badge at its corner by the
+/// pointer (`wear`).
 @MainActor enum DragPill {
     static let height: CGFloat = 24
     /// The most shown before "and N more".
     static let most = 4
     /// Room around for the shadow.
     private static let room: CGFloat = 4
+    /// Room above and right of each for the badge on its corner.
+    private static let badgeRoom: CGFloat = 12
+    /// The drag dressed last: its first pill's thing, to draw again with
+    /// a badge, and the badge it wears.
+    private static var dressed: (sequence: Int, thing: DragThing?, appearance: NSAppearance, worn: String?)?
     /// Its ground: raised off the window's, light or dark, so it stands out
     /// over a page, a terminal, a list.
     static let fill = NSColor.dynamic(NSColor(white: 1, alpha: 1), NSColor(white: 0.3, alpha: 1))
@@ -614,6 +620,7 @@ final class DropPalette: NSView {
         guard things.contains(where: { $0 != nil }) else { return }
         let appearance = view.effectiveAppearance
         let count = things.count
+        dressed = (session.draggingSequenceNumber, things[0], appearance, nil)
         session.enumerateDraggingItems(options: [], for: view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, i, _ in
             guard i < things.count else { return }
             let image: NSImage
@@ -624,10 +631,28 @@ final class DropPalette: NSView {
             } else {
                 image = NSImage(size: NSSize(width: 1, height: 1))
             }
-            let dy = CGFloat(min(i, most)) * (height + 2)
-            let y = view.isFlipped ? p.y - image.size.height / 2 + dy : p.y - image.size.height / 2 - dy
-            item.setDraggingFrame(NSRect(x: p.x - image.size.width - 2, y: y, width: image.size.width, height: image.size.height), contents: image)
+            // Its middle at the pointer's height, the badge's room above.
+            let dy = CGFloat(min(i, most)) * (height + 2), below = room + height / 2
+            let y = view.isFlipped ? p.y - (image.size.height - below) + dy : p.y - below - dy
+            item.setDraggingFrame(NSRect(x: p.x - image.size.width + badgeRoom - 2, y: y, width: image.size.width, height: image.size.height), contents: image)
         }
+    }
+
+    /// The drop's `symbol` worn by the first pill of the drag `sender`, as
+    /// it's over `view` (nil: taken off); false if the drag wasn't dressed
+    /// here (from another app, a tile moved), for the badge beside the
+    /// pointer instead.
+    static func wear(_ symbol: String?, _ sender: NSDraggingInfo, over view: NSView) -> Bool {
+        guard var d = dressed, d.sequence == sender.draggingSequenceNumber else { return false }
+        guard d.worn != symbol else { return true }
+        d.worn = symbol
+        dressed = d
+        let image = pill(d.thing, appearance: d.appearance, badge: symbol)
+        sender.enumerateDraggingItems(options: [], for: view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, stop in
+            item.setDraggingFrame(item.draggingFrame, contents: image)
+            stop.pointee = true
+        }
+        return true
     }
 
     /// What its pill says.
@@ -647,8 +672,9 @@ final class DropPalette: NSView {
         return Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText)
     }
 
-    /// A thing's pill (nil: "and `more` more"), drawn as `appearance` has it.
-    static func pill(_ t: DragThing?, more: Int? = nil, appearance: NSAppearance) -> NSImage {
+    /// A thing's pill (nil: "and `more` more"), drawn as `appearance` has
+    /// it, `badge`'s symbol on its upper right corner.
+    static func pill(_ t: DragThing?, more: Int? = nil, appearance: NSAppearance, badge: String? = nil) -> NSImage {
         var size = NSSize.zero, title = NSAttributedString(), icon: NSImage?
         appearance.performAsCurrentDrawingAppearance {
             title = NSAttributedString(string: more.map { "and \($0) more" } ?? name(t),
@@ -657,11 +683,11 @@ final class DropPalette: NSView {
             let iconWidth: CGFloat = icon != nil ? 22 : 0
             let titleWidth = min(ceil(title.size().width), 280)
             let w = 22 + iconWidth + titleWidth
-            size = NSSize(width: w + 2 * room, height: height + 2 * room)
+            size = NSSize(width: w + 2 * room + badgeRoom, height: height + 2 * room + badgeRoom)
         }
         return NSImage(size: size, flipped: false) { bounds in
             appearance.performAsCurrentDrawingAppearance {
-                let r = bounds.insetBy(dx: room, dy: room)
+                let r = NSRect(x: room, y: room, width: bounds.width - 2 * room - badgeRoom, height: height)
                 let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
                 NSGraphicsContext.saveGraphicsState()
                 Elevation.resting.shadow.set()
@@ -680,6 +706,7 @@ final class DropPalette: NSView {
                 let h = title.size().height
                 title.draw(with: NSRect(x: x, y: r.midY - h / 2, width: r.maxX - 12 - x, height: h),
                            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+                if let badge { DropBadge.draw(badge, at: NSPoint(x: r.maxX - 3, y: r.maxY - 1)) }
             }
             return true
         }

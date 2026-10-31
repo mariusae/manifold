@@ -161,10 +161,10 @@ parts from the Mac's conventions on purpose.
   grid, a tile of its own where it lands — a file opened, a page, a
   picture, a note of the words, the block brought — or, a block over a
   tile, the tile linked to it (below); on another app, as a file or
-  text. What you drag shows as a pill — its icon and name — and
-  beside the pointer a badge with the symbol of what dropping does
-  there (the palette's), changing as you go (⃠ where nothing can be
-  done); a quick drop does it. Only what works is offered: a file
+  text. What you drag shows as a pill — its icon and name — wearing
+  at its corner by the pointer a badge with the symbol of what
+  dropping does there (the palette's), changing as you go (⃠ where
+  nothing can be done); a quick drop does it. Only what works is offered: a file
   Manifold doesn't open (a film) goes into a note as its path, and on
   the grid opens in its own app. Rest the pointer a moment (or
   hold **⌃**) and a palette opens there of what else it can be — the
