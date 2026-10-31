@@ -124,8 +124,10 @@ final class GridView: NSView, NSDraggingSource {
     /// mostly shows again the workspace it showed two switches ago, and a
     /// pill costs more to make than to show again.
     private var sparePills: [PlacementID: TilePill] = [:]
-    /// How long a tile takes to glide to a new place or size.
-    static var glide: TimeInterval { Motion.base }
+    /// How long a tile takes to glide to a new place or size: on the
+    /// travel curve, most of the way in its first third, so the move is
+    /// seen, then settling.
+    static var glide: TimeInterval { Motion.spatial }
     /// Debugging: grid layouts so far (the debug "layouts").
     static var layouts = 0
     private var columnDividers: [DividerView] = []
@@ -155,6 +157,8 @@ final class GridView: NSView, NSDraggingSource {
     private let dragCatcher = DragCatcherView()
     /// A ring around the focused tile.
     private let focusRing = FocusRingView()
+    /// The tile the focus ring was round at the last layout.
+    private var ringFor: PlacementID?
     /// The column whose stack of stashed pills is fanned out, under the pointer.
     /// The shown tile whose stack is fanned out under its pill.
     private var fanned: PlacementID? = nil
@@ -819,16 +823,14 @@ final class GridView: NSView, NSDraggingSource {
         var summarizedNow: Set<PlacementID> = []
         func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
             if gliding, let was, was != .zero, was != frame, !view.isHidden {
-                // A tile's content takes its new size at once and glides to
-                // its place: sized at every step, a terminal would resize its
-                // shell at each (over the network, on another host), an
-                // editor lay its text out again at each.
-                let resized = view is PaneContent && was.size != frame.size
-                if resized { view.setFrameSize(frame.size) }
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = Self.glide
-                    ctx.timingFunction = Motion.appear
-                    if resized { view.animator().setFrameOrigin(frame.origin) } else { view.animator().frame = frame }
+                if view is PaneContent, was.size != frame.size {
+                    slide(view, to: frame)
+                } else {
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = Self.glide
+                        ctx.timingFunction = Motion.travel
+                        view.animator().frame = frame
+                    }
                 }
             } else {
                 view.frame = frame
@@ -920,12 +922,15 @@ final class GridView: NSView, NSDraggingSource {
         }
         // Tiles placed since the last layout come in where they land (not
         // one come up from its stack: that's a swap, ⌃⇥'s, at once).
+        var cameIn: Set<PlacementID> = []
         if gliding, !lastFrames.isEmpty {
             for t in columns.flatMap({ $0 }) where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !placed.contains(t.shown.id) && !held(t.shown.id) {
                 comeIn([t.view, pills[t.shown.id], tileSummaries[t.shown.id]].compactMap { $0 }.filter { !$0.isHidden })
+                cameIn.insert(t.shown.id)
             }
         }
         placed = Set(columns.flatMap { $0 }.map(\.shown.id))
+        let wasFrames = lastFrames
         lastFrames = frameNow
         self.collapsed = collapsedNow
         self.summarized = summarizedNow
@@ -938,12 +943,24 @@ final class GridView: NSView, NSDraggingSource {
             let body = frameNow[focused] ?? t.view.frame
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
             if focusRing.frame != card {
-                focusRing.frame = card
+                // With its tile as it glides; to another (the one left
+                // focused by a tile closed), from where that one was.
+                if gliding, ringFor == focused, focusRing.frame != .zero {
+                    focusRing.glide(to: card)
+                } else if gliding, ringFor != nil, let was = wasFrames[focused], was.height > 0 {
+                    focusRing.glide(to: card, from: NSRect(x: was.minX, y: was.minY, width: was.width, height: was.height + Self.barHeight))
+                } else {
+                    focusRing.frame = card
+                }
                 focusRing.needsDisplay = true
             }
+            ringFor = focused
+            // Round a tile coming in, coming in with it.
+            if cameIn.contains(focused) { comeIn([focusRing]) }
             if let p = pills[focused] { keep(focusRing, above: p) }
         } else {
             focusRing.isHidden = true
+            ringFor = nil
         }
         for (i, d) in columnDividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
@@ -963,30 +980,85 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Coming and going
 
-    /// A tile placed comes in where it lands — fading in, from a little
-    /// smaller — as its neighbours glide aside for it (only fading, with
-    /// Reduce motion).
+    /// A tile placed comes in where it lands — growing from smaller,
+    /// seen at once — as its neighbours' edges slide aside for it (only
+    /// fading, with Reduce motion).
     /// Every tile at the last layout, shown or in a stack.
     private var placed: Set<PlacementID> = []
 
     private func comeIn(_ parts: [NSView]) {
         guard let card = parts.map(\.frame).reduce(nil, { (r: NSRect?, f: NSRect) in r.map { $0.union(f) } ?? f }) else { return }
-        let c = CGPoint(x: card.midX, y: card.midY), k = Motion.reduced ? 1 : 0.94
+        let c = CGPoint(x: card.midX, y: card.midY), k = Motion.reduced ? 1 : 0.86
         for v in parts {
             guard let l = v.layer else { continue }
             let o = v.frame.origin
+            // Seen at once, there before it's grown: the growing is what
+            // shows it coming, not a fade.
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
             fade.toValue = 1
+            fade.duration = Self.glide * 0.4
+            fade.timingFunction = Motion.appear
             let grow = CABasicAnimation(keyPath: "transform")
             grow.fromValue = CATransform3DScale(CATransform3DMakeTranslation(c.x - o.x - (c.x - o.x) * k, c.y - o.y - (c.y - o.y) * k, 0), k, k, 1)
             grow.toValue = CATransform3DIdentity
+            grow.duration = Self.glide
+            grow.timingFunction = Motion.travel
             let g = CAAnimationGroup()
             g.animations = [fade, grow]
-            g.duration = Motion.spatial
-            g.timingFunction = Motion.appear
+            g.duration = Self.glide
             l.add(g, forKey: "comeIn")
         }
+    }
+
+    /// A tile's content resized as its neighbours come, go or grow: sized
+    /// at once — at every step, a terminal would resize its shell at each
+    /// (over the network, on another host), an editor lay its text out
+    /// again at each — while its edges glide from where they show now to
+    /// where they go, what it shows held at its top left, cut off or
+    /// uncovered as they pass: a neighbour's edge seen sliding, not the
+    /// tile jumping to its size.
+    /// Layers sliding, their own gravity and ground, given back as they stop.
+    private var sliding: [ObjectIdentifier: (gravity: CALayerContentsGravity, ground: CGColor?)] = [:]
+
+    private func slide(_ view: NSView, to frame: NSRect) {
+        guard let l = view.layer else { view.frame = frame; return }
+        let now = l.presentation() ?? l
+        let size = now.bounds.size, position = now.position
+        view.frame = frame
+        let to = l.bounds
+        // Its top where its content's is (a layer's y runs up).
+        let from = CGRect(x: 0, y: l.isGeometryFlipped ? 0 : to.height - size.height, width: size.width, height: size.height)
+        // Its own drawing (a terminal's surface, drawn at its new size a
+        // moment later) held, not stretched, on its ground: where it's
+        // bigger than that drawing, not a hole.
+        let key = ObjectIdentifier(l)
+        if l.contents != nil, sliding[key] == nil {
+            sliding[key] = (l.contentsGravity, l.backgroundColor)
+            l.contentsGravity = l.isGeometryFlipped ? .bottomLeft : .topLeft
+            if (l.backgroundColor?.alpha ?? 0) == 0 {
+                let ground = view is TerminalView ? TerminalPalette.current(for: view).background : Theme.windowBackground.withAlphaComponent(1)
+                view.effectiveAppearance.performAsCurrentDrawingAppearance { l.backgroundColor = ground.cgColor }
+            }
+        }
+        let bounds = CABasicAnimation(keyPath: "bounds")
+        bounds.fromValue = NSValue(rect: from)
+        bounds.toValue = NSValue(rect: to)
+        let move = CABasicAnimation(keyPath: "position")
+        move.fromValue = NSValue(point: position)
+        move.toValue = NSValue(point: l.position)
+        let g = CAAnimationGroup()
+        g.animations = [bounds, move]
+        g.duration = Self.glide
+        g.timingFunction = Motion.travel
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self, weak l] in
+            guard let self, let l, l.animation(forKey: "slide") == nil, let was = self.sliding.removeValue(forKey: key) else { return }
+            l.contentsGravity = was.gravity
+            l.backgroundColor = was.ground
+        }
+        l.add(g, forKey: "slide")
+        CATransaction.commit()
     }
 
     /// Crossing over to it: fading in over what it takes the place of.
@@ -1031,9 +1103,9 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.commit()
     }
 
-    /// A tile closed (or moved away): a picture of it where it was, fading
-    /// and shrinking a little, as its neighbours glide into the room it
-    /// leaves — what went, seen going. Its view goes at once, as before.
+    /// A tile closed (or moved away): a picture of it where it was,
+    /// shrinking and fading, as its neighbours' edges slide into the room
+    /// it leaves — what went, seen going. Its view goes at once, as before.
     func fadeAway(_ v: PaneContent) {
         let bar = pills[v.placement]
         guard window != nil, !isHiddenOrHasHiddenAncestor, !isSwitching, !v.isHidden, let host = layer else { return }
@@ -1058,24 +1130,29 @@ final class GridView: NSView, NSDraggingSource {
         }
         guard !ghosts.isEmpty else { return }
         let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
-        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = Motion.reduced ? 1 : 0.96
+        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = Motion.reduced ? 1 : 0.86
         CATransaction.begin()
         CATransaction.setCompletionBlock { ghosts.forEach { $0.removeFromSuperlayer() } }
         for g in ghosts {
             host.addSublayer(g)
             g.opacity = 0
+            // Shrinking at once, seen going as it shrinks; faded out by
+            // the time its neighbours have taken most of its room.
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 1
             fade.toValue = 0
+            fade.duration = Self.glide * 0.6
+            fade.timingFunction = Motion.appear
             // Shrunk about the tile's middle, its parts with it.
             let o = g.position
             let shrink = CABasicAnimation(keyPath: "transform")
             shrink.fromValue = CATransform3DIdentity
             shrink.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
+            shrink.duration = Self.glide * 0.6
+            shrink.timingFunction = Motion.travel
             let grp = CAAnimationGroup()
             grp.animations = [fade, shrink]
-            grp.duration = Motion.base
-            grp.timingFunction = Motion.disappear
+            grp.duration = Self.glide * 0.6
             g.add(grp, forKey: "fadeAway")
         }
         CATransaction.commit()
@@ -3421,6 +3498,28 @@ final class FocusRingView: NSView {
         ring.frame = bounds
         ring.path = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
         CATransaction.commit()
+    }
+
+    /// Moved with its tile as the tile glides there (`GridView.glide`):
+    /// placed at once, its ring carried from where it shows now.
+    /// `from`: where to carry it from instead, in its superview's terms.
+    func glide(to frame: NSRect, from start: NSRect? = nil) {
+        let was = self.frame
+        let now = start.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) }
+            ?? (ring.presentation() ?? ring).frame.offsetBy(dx: was.minX - frame.minX, dy: was.minY - frame.minY)
+        self.frame = frame
+        let from = CGRect(origin: .zero, size: now.size)
+        let bounds = CABasicAnimation(keyPath: "bounds")
+        bounds.fromValue = NSValue(rect: from)
+        let position = CABasicAnimation(keyPath: "position")
+        position.fromValue = NSValue(point: CGPoint(x: now.midX, y: now.midY))
+        let path = CABasicAnimation(keyPath: "path")
+        path.fromValue = CGPath(roundedRect: from.insetBy(dx: 1, dy: 1), cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
+        let g = CAAnimationGroup()
+        g.animations = [bounds, position, path]
+        g.duration = GridView.glide
+        g.timingFunction = Motion.travel
+        ring.add(g, forKey: "glide")
     }
 
     /// Arrived at: the ring itself swells and glows, and settles back.

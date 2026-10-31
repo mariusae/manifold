@@ -1322,8 +1322,9 @@ is plain, not glass. The sizes, radii, shadows and motion are a few
 named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
 Things move where moving says something, briefly, and never what you
-type into: a tile placed comes in where it lands as the others glide
-aside, one closed fades where it was as they take its room, one gone to
+type into: a tile placed grows in where it lands as the edges of the
+others slide aside for it, one closed shrinks away where it was as
+their edges slide into its room (as Rex's panes do), one gone to
 has its focus ring swell and glow a moment; one too short for its
 content crosses over to its summary card, and back; Maximize grows the
 tile from its place over the rest, Restore shrinks it back; with ⌃⇥ the

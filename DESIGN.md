@@ -1780,7 +1780,13 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **What moves, moves where it goes, and says so:** a space comes in
   as the sidebar has it (from below for one lower, from above for one
   higher), a band gliding down the sidebar with it; a tile placed comes
-  in where it lands, one closed fades where it was, one arrived at has
+  in where it lands, seen at once and growing from 86% about its
+  middle, one closed shrinks to 86% and fades where it was, and the
+  tiles beside either have their edges slide (on the travel curve, most
+  of the way in the first third of 0.24 s, the focus ring with them):
+  what a tile shows is sized once, where it ends, and held at its top
+  left as its edges pass, cut off or uncovered on its own ground, not
+  jumping to its size and sliding; one arrived at has
   its focus ring swell (the one ring), one maximized grows from its
   place, one summarized crosses over to its card; a tile becoming its
   card (⌃⇥, Overview) is one shape going from the one's place and size

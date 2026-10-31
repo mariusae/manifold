@@ -599,8 +599,11 @@ enum DebugControl {
             return wc.debugSearchOutline(arg)
         case "layerimage":
             // "layerimage <path>": the surface as Core Animation draws it, its
-            // own layers (the sheets) included.
-            guard let wc, let view = wc.debugSurface, let layer = view.layer else { return "no surface" }
+            // own layers (the sheets) included; "layerimage <path> live": as
+            // it shows this moment, part way through a transition.
+            let live = arg.hasSuffix(" live"), arg = live ? String(arg.dropLast(5)) : arg
+            guard let wc, let view = wc.debugSurface, let model = view.layer else { return "no surface" }
+            let layer = live ? model.presentation() ?? model : model
             let scale = view.window?.backingScaleFactor ?? 2
             let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
             guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
