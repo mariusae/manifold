@@ -427,7 +427,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// View ▸ Show Hidden Files (⇧⌘.), titled by what it will do.
     @objc func toggleHiddenFiles(_ sender: Any?) { toggleHidden() }
 
-    /// View ▸ Use Groups (⌃⌘0, the Finder's): columns' entries under
+    /// View ▸ Use Groups (⌃⌘G): columns' entries under
     /// headers by kind, code by language; kept with the tile.
     @objc func toggleGroups(_ sender: Any?) {
         guard let model else { return }

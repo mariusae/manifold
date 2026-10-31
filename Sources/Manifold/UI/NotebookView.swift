@@ -403,14 +403,14 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     }
 
     /// The focused cell's own, with the keys a cell takes: run it (⌘↩,
-    /// ⇧↩ to the next), move it (⌥⌘↑ ⌥⌘↓).
+    /// ⇧↩ to the next), move it (⌃⌘↑ ⌃⌘↓, as an editor moves a line).
     private var cellItems: [NSMenuItem] {
         guard let id = focusedCell else { return [] }
         let run = ClosureMenuItem("Run Cell", symbol: "play.fill", key: "\r") { [weak self] in self?.run(id, then: .stay) }
         let up = ClosureMenuItem("Move Cell Up", symbol: "arrow.up", key: String(UnicodeScalar(NSUpArrowFunctionKey)!)) { [weak self] in self?.move(id, by: -1) }
         let down = ClosureMenuItem("Move Cell Down", symbol: "arrow.down", key: String(UnicodeScalar(NSDownArrowFunctionKey)!)) { [weak self] in self?.move(id, by: 1) }
-        up.keyEquivalentModifierMask = [.command, .option]
-        down.keyEquivalentModifierMask = [.command, .option]
+        up.keyEquivalentModifierMask = [.command, .control]
+        down.keyEquivalentModifierMask = [.command, .control]
         return [run, up, down, .separator()]
     }
 
@@ -438,7 +438,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
                 run(cell.id, then: .stay)
                 return true
             }
-            if mods == [.command, .option], event.keyCode == 126 || event.keyCode == 125 {
+            if mods == [.command, .control], event.keyCode == 126 || event.keyCode == 125 {
                 move(cell.id, by: event.keyCode == 126 ? -1 : 1)
                 return true
             }
@@ -846,7 +846,7 @@ extension NotebookView {
 }
 
 /// A cell's command: ⌘↩, ⇧↩ and ⌥↩ run it; ↑ and ↓ past its edges go to
-/// the cells beside it; ⌥⌘↑ and ⌥⌘↓ move it.
+/// the cells beside it; ⌃⌘↑ and ⌃⌘↓ move it.
 final class CellEditor: NSTextView {
     weak var cellView: NotebookCellView?
 

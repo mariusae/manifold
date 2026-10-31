@@ -831,6 +831,35 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns[0].first?.id == y.id && !a.isStashed(y.id) && !a.isStashed(top.id))
 }
 
+@Test func aTileNudgedGoesOneStepItsStackAlong() {
+    var a = ArrangementState()
+    let p = { Placement(block: BlockID(), lens: .terminal) }
+    let top = p(), behind = p(), mid = p(), low = p(), other = p()
+    for (i, t) in [top, behind, mid, low].enumerated() { a.apply(.place(t, column: 0, at: i)) }
+    a.apply(.place(other, column: 1, at: 0))
+    a.apply(.stash(behind.id, behind: top.id))
+    // Down past mid, the stack along.
+    for e in a.nudging(top.id, .below)! { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [mid.id, top.id, behind.id, low.id])
+    #expect(a.isStashed(behind.id) && a.focused == top.id)
+    // Up again; nothing above the top.
+    for e in a.nudging(top.id, .above)! { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [top.id, behind.id, mid.id, low.id])
+    #expect(a.nudging(top.id, .above) == nil)
+    #expect(a.nudging(low.id, .below) == nil)
+    // Right, into the other column, about as far down: low under other.
+    for e in a.nudging(low.id, .right)! { a.apply(e) }
+    #expect(a.columns[1].map(\.id) == [other.id, low.id])
+    // Left past the first column: a column of its own there.
+    for e in a.nudging(mid.id, .left)! { a.apply(e) }
+    #expect(a.columns.count == 3 && a.columns[0].map(\.id) == [mid.id])
+    // Alone in its column at the edge: no further.
+    #expect(a.nudging(mid.id, .left) == nil)
+    // Alone, moved right: its column goes.
+    for e in a.nudging(mid.id, .right)! { a.apply(e) }
+    #expect(a.columns.count == 2 && a.columns[0].contains { $0.id == mid.id })
+}
+
 @Test func aTileStashedBehindAnotherComesBackUnderIt() {
     var a = ArrangementState()
     let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)

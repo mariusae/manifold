@@ -21,11 +21,11 @@ parts from the Mac's conventions on purpose.
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
   organized two ways (Spaces · Files, below), narrowed at a key to
-  the blocks with a status (⌘., below). It sits beside the content; ⌃⌘S (or the button at its top
+  the blocks with a status (⌥⌘., below). It sits beside the content; ⇧⌘/ or ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
   top to move the window. Along the bottom of the sidebar run Spaces and Files, the
-  lighthouse (the filter, ⌘.), and, at the right, counts of what needs you,
+  lighthouse (the filter, ⌥⌘.), and, at the right, counts of what needs you,
   is working and is done and not yet read, which turn the filter on. The
   window sits on a wash of soft colour (Look, below). Under Spaces the
   tree is one shape, always: a host's
@@ -231,7 +231,23 @@ parts from the Mac's conventions on purpose.
   for the tile's menu; ⇧-click it for where the block is, folder by folder up
   to the root (a terminal's working directory likewise), each browsing
   that folder here, as ⌘-clicking a document's title does in the
-  Finder. ⌥⌘[ and ⌥⌘] move the focus between tiles.
+  Finder. ⌥⌘ and an arrow moves the focus to the tile that way (Go ▸
+  Focus), ⌥⌘[ and ⌥⌘] to the next and previous; ⌥⇧⌘ and an arrow moves
+  the focused tile a step that way (Tile ▸ Move), its stack along: up or
+  down past the tile beside it, left or right into the next column about
+  as far down as it was, or into a column of its own at the edge.
+- **Keys mean the same thing everywhere.** ⇧ is the bigger one or the
+  way back: ⌘W closes a tile, ⌥⇧⌘W a space; ⌘F finds here, ⇧⌘F in
+  files; ⌘/ shows the tile's sidebar (its outline), ⇧⌘/ the window's.
+  Brackets go through a sequence, the modifier saying which: ⌘[ ⌘] the
+  tile's own history, ⌥⌘[ ⌥⌘] the tiles, ⇧⌘[ ⇧⌘] the spaces. ⌥⌘ and an
+  arrow is the focus going that way, ⌥⇧⌘ and an arrow the tile; ⌃⌘↑ ⌃⌘↓
+  moves what you're on — an editor's line, an outline's row, a
+  notebook's cell. ↩ is how the tile shows (Tile menu): ⌘↩ its own thing
+  — Edit or View for a text, Run Cell in a notebook, Toggle Checkbox in
+  an outline, the menu titled so — ⌥⌘↩ as an outline, ⌃⌘↩ the other
+  mode beside, ⇧⌘↩ maximized. ⌘. is cancel (a notebook's Interrupt).
+  Every key is in a menu.
 - Two verbs put a block in front of you. **Go to** finds it where it
   already is: the space it is in (this one if it is here, else
   the one most recently gone to) is selected and the tile focused.
@@ -246,7 +262,7 @@ parts from the Mac's conventions on purpose.
   drop between two tiles lands there). A preview going page to page and
   a listing going into a folder change in place, ⌘[ coming back. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
   are brought here, into the active column; ⌥⇧⌘N opens a terminal in a
-  new column, ⌥⌘T a new space with one. A note is at home in the
+  new column, ⌘T a new space with one (Space ▸ New Space). A note is at home in the
   folder of the block it was made from: it is found there, and saved
   there by default. Open Folder… (⌥⌘O) browses a folder you choose
   beside the focused block; Browse This Folder (⌃⌘O) its own (a
@@ -366,14 +382,14 @@ parts from the Mac's conventions on purpose.
   box in a task list — a quote with its mark, and on an empty item ends
   it. The bar's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
-- **Blocks with a status** (⌘., View ▸ Show Only Blocks with a Status,
+- **Blocks with a status** (⌥⌘., View ▸ Show Only Blocks with a Status,
   the lighthouse at the sidebar's foot, or its counts) narrows the
   sidebar, whichever way it's organized, to the blocks that are working,
   need you, or are done or failed — and the way to each: its host and
   space in Spaces (a tile behind in a stack with the stack's top, the
   two in the stack's outline), its folders in Files — every row on the
   way open, each count of what's shown. The lighthouse fills, lit, while
-  it's on; ⌘. again, or a click, shows everything as it was, what you
+  it's on; ⌥⌘. again, or a click, shows everything as it was, what you
   had open and closed kept. Nothing to show says so. The filter is one
   of a kind that may grow: it tests each block, and the trees it narrows
   don't know which. The **Inbox** is the blocks whose status wants
@@ -400,7 +416,7 @@ parts from the Mac's conventions on purpose.
   when any of that has unsaved edits, a note's words or a job running, a
   toast at the foot of the window names each, with Undo while a bar along
   its foot runs down (held while the pointer is on it); ⇧⌘T after.
-- **The Inspector** (View ▸ Inspector, **⇧⌘I**, again to go back) shows
+- **The Inspector** (View ▸ Inspector, **⌥⌘I**, again to go back) shows
   the focused block's properties in the sidebar, and follows the focus,
   as Star's property sheets did for whatever was selected: what it is and
   where (its host, its path, a page's address, a terminal's folder, a
@@ -573,7 +589,7 @@ around it, and comes back with its history.
   (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start
   its kind, ```` ``` ```` (a language after it, or not) then Return a code
   block, the caret in it (Return past its closing fence, a row after it), a bullet clicked to fold what's under it (← and → fold and
-  unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 or the tile's menu all of them), a
+  unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 all of them; View ▸ Collapse and Expand), a
   bullet dragged to move a row with its children, in or out as it's
   dropped; Escape selects rows (↑ ↓, ⇧ to extend, Space checks them off,
   Delete deletes them, Return or Escape back to the text); emphasis,
@@ -593,7 +609,7 @@ around it, and comes back with its history.
   (⌘L, or ⌃G as code editors have it, editing or viewing: a capsule
   where find's is, a line or `line:column` and how many there are, the
   text going there as it's typed, ↩ to stay, ⎋ to go back), line operations (move ⌃⌘↑/↓, duplicate ⇧⌘D, delete ⇧⌘K or ⌃⇧K, join ⌃J,
-  comment ⌘/, indent and outdent with Tab and ⇧Tab over a selection —
+  comment ⌥⌘/ (⌘/ is the outline), indent and outdent with Tab and ⇧Tab over a selection —
   Edit ▸ Lines and Edit ▸ Selection list them),
   brackets and quotes paired, new lines indented like the last, undo as
   entries in the block's log (undone back to what was saved, it's clean
@@ -605,7 +621,7 @@ around it, and comes back with its history.
   on disk beneath them, clicked to choose between reloading the file
   and overwriting it with the edits.
 - **Viewing and editing**: a file opens to be viewed (unless `$EDITOR`
-  opened it, to be edited) and a note to be written in; ⌘↩ (Edit ▸
+  opened it, to be edited) and a note to be written in; ⌘↩ (Tile ▸
   Edit or View, or the bar's menu) goes between the two in the same
   tile, the line at the top staying at the top and an editor's caret
   going along. How a file is viewed goes by its extension (a table in
@@ -626,7 +642,7 @@ around it, and comes back with its history.
   code with why. (Mermaid 11.4.1 is bundled, MIT; the page's own
   scripts still don't run.) Code (by its extension) is set in
   the fixed-width font when edited too, unless the tile's menu says
-  otherwise. ⌥⇧⌘P puts the other mode beside the
+  otherwise. ⌃⌘↩ puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a
   file shown already, in either mode, goes to its tile. A link followed
   in a Markdown view opens another Markdown file in the same tile, as a
@@ -769,7 +785,7 @@ around it, and comes back with its history.
   language (C, Python, Rust, Swift, …), Build (Makefile, Dockerfile),
   Configuration (JSON, TOML, YAML, lock files), Spreadsheets,
   Presentations, Images, Movies, Music, Archives and Other, each under a
-  small grey header and in the sort's order (View ▸ Use Groups, ⌃⌘0,
+  small grey header and in the sort's order (View ▸ Use Groups, ⌃⌘G,
   turns them off; the tile keeps it). The field
   at the top (⌘F, or / from the list; ⇥ goes between
   it and the list) is a search in the tree and a filter in columns:
@@ -900,7 +916,7 @@ around it, and comes back with its history.
   goes there (its ⋯ shows the command's output, or the turn, as a block);
   a Markdown text's, a source file's, a PDF's, a diff's or a web page's — as a
   list at the tile's left —
-  the sidebar button in the tile's bar, or View ▸ Show Outline (⌥⌘S) —
+  the sidebar button in the tile's bar, or View ▸ Show Outline (⌘/) —
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
@@ -939,8 +955,8 @@ around it, and comes back with its history.
   variable exported, a directory changed into or an alias made in one
   cell is there in the next. ⌘↩ runs a cell; ⇧↩ runs it and goes to the
   next (made if it's the last); ⌥↩ runs it and makes one below; ↑ and ↓
-  past a cell's first or last line go to the cells beside it; ⌥⌘↑ and
-  ⌥⌘↓ move it (the bar's menu lists them, for the focused cell). A run's output streams in as it comes and replaces the
+  past a cell's first or last line go to the cells beside it; ⌃⌘↑ and
+  ⌃⌘↓ move it, as an editor moves a line; ⌘. (Tile ▸ Interrupt) stops it (the bar's menu lists them, for the focused cell). A run's output streams in as it comes and replaces the
   last; beneath it, the sidebar's status glyph (turning while it runs, a
   check once done, red when it failed) with how it ended (Done, Exit 1,
   Interrupted), how long it took and when; the gutter numbers the runs as
@@ -1005,7 +1021,7 @@ around it, and comes back with its history.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
-- **Interactive Smartlog** (File ▸ Source Control, ⌥⌘I): Sapling's
+- **Interactive Smartlog** (File ▸ Source Control, ⌥⌘S): Sapling's
   own smartlog for the repository the focused block is in — its commits
   and stacks, to commit, amend, rebase and split by hand — as a block of
   its own, beside, like any other: the host runs `sl web` (or finds the one
@@ -1022,7 +1038,7 @@ around it, and comes back with its history.
   where they're commonly installed — Homebrew's and Linuxbrew's folders,
   `~/.local/bin` — as well as on the PATH they were started with.
 - **The sidebar organizes the same graph three ways** (View ▸ Organize
-  By, ⌥⌘1–3; the words in every block are found with Open Quickly's In
+  By, ⌥⌘1–2; the words in every block are found with Open Quickly's In
   Blocks): **Spaces** — every space, each named by what it
   holds unless you name it (its blocks' folder, with the branch when a
   git block is there); **Files** — every
@@ -1372,7 +1388,7 @@ is migrated into logs on first run.
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
   A space lives on a host too, among that host's spaces, which every Mac
-  attached to the host sees: New Terminal in a New Space (⌥⌘T)
+  attached to the host sees: New Space (⌘T)
   makes it on the focused block's host, a host's row in the Spaces
   sidebar has New Space on *host* in its menu. What a Mac shows and settles on is its own.
   Two Macs on one host take turns at what they edit — a space, a note,

@@ -1230,7 +1230,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Hides the floating sidebar, unless something's still using it; `force`
-    /// hides it even with the mouse over it (when asked to by ⌃⌘S).
+    /// hides it even with the mouse over it (when asked to by ⇧⌘/ or ⌃⌘S).
     private func hideSidebar(force: Bool = false) {
         guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil,
               NSApp.modalWindow == nil, window?.attachedSheet == nil else { return }
@@ -1747,7 +1747,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
     }
 
-    /// ⌥⌘T (and the first thing at launch): a new terminal in a new
+    /// ⌘T (and the first thing at launch): a new terminal in a new
     /// workspace — both on the focused block's host, so a workspace begun
     /// from a remote block lives there, for every Mac attached to that
     /// host to see.
@@ -2577,7 +2577,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let f = focusedShown, canOutline(f) else { item.title = "Edit as Outline"; return false }
             item.title = f.lens == .outliner ? "Edit as Text" : "Edit as Outline"
             return true
+        case #selector(interruptTile(_:)):
+            return focusedShown.map { views[$0.id] is NotebookView } ?? false
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
+            let primary = item.action == #selector(toggleEditPreview(_:))
+            if primary, let f = focusedShown, views[f.id] is NotebookView { item.title = "Run Cell"; return true }
+            if primary, let f = focusedShown, views[f.id] is OutlineNoteView { item.title = "Toggle Checkbox"; return true }
+            item.title = primary ? "Edit or View" : "Edit or View Beside"
             guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
             let viewing = f.lens == .preview
             item.title = item.action == #selector(toggleEditPreview(_:)) ? (viewing ? "Edit" : "View") : (viewing ? "Edit Beside" : "View Beside")
@@ -3295,6 +3301,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func nextTile(_ sender: Any?) { stepPane(1) }
     @objc func previousTile(_ sender: Any?) { stepPane(-1) }
 
+    /// Go ▸ Focus ▸ (⌥⌘ and an arrow): the tile that way, as `mani`'s
+    /// @left and @below name it.
+    @objc func focusLeft(_ sender: Any?) { focusToward(.left) }
+    @objc func focusRight(_ sender: Any?) { focusToward(.right) }
+    @objc func focusUp(_ sender: Any?) { focusToward(.above) }
+    @objc func focusDown(_ sender: Any?) { focusToward(.below) }
+
+    private func focusToward(_ way: ManiLayout.Direction) {
+        guard let a = arrangement, case let .tile(id) = ManiLayout(a).resolve(way.rawValue, from: a.focused) else { return NSSound.beep() }
+        focus(id)
+    }
+
+    /// Tile ▸ Move ▸ (⌥⇧⌘ and an arrow): the focused tile a step that
+    /// way, its stack along (`ArrangementState.nudging`).
+    @objc func moveTileLeft(_ sender: Any?) { moveTile(.left) }
+    @objc func moveTileRight(_ sender: Any?) { moveTile(.right) }
+    @objc func moveTileUp(_ sender: Any?) { moveTile(.above) }
+    @objc func moveTileDown(_ sender: Any?) { moveTile(.below) }
+
+    private func moveTile(_ way: ManiLayout.Direction) {
+        guard let a = arrangement, let id = a.focused, a.full == nil, let events = a.nudging(id, way) else { return NSSound.beep() }
+        appendToSelected(events)
+    }
+
     private func stepPane(_ d: Int) {
         guard let a = arrangement, a.visible.count > 1 else { return }
         let visible = a.visible
@@ -3383,7 +3413,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
 
-    /// View ▸ Inspector (⇧⌘I): the sidebar shows the focused block's
+    /// View ▸ Inspector (⌥⌘I): the sidebar shows the focused block's
     /// properties, and following the focus; again, back to what it showed.
     @objc func toggleInspector(_ sender: Any?) {
         if organization == .inspector, sidebarShown {
@@ -3899,7 +3929,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// dimmed, each brought back by a click, until collected.
     // MARK: The Inspector (§3.5)
 
-    /// The focused block's properties (⇧⌘I), Star's property sheet for any
+    /// The focused block's properties (⌥⌘I), Star's property sheet for any
     /// block: what it is, and what only its kind has; where it's placed and
     /// pinned (a click goes there); what keeps it (§4); its links, either
     /// way (a click opens one by the one rule); its history; and what can be
@@ -5696,7 +5726,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(block, lens: .git, .here)
     }
 
-    /// Interactive Smartlog (⌥⌘I): Sapling's, for the repository the focused
+    /// Interactive Smartlog (⌥⌘S): Sapling's, for the repository the focused
     /// block is in, as a block of its own (§7.6) — the one there is, else
     /// a new one; if there's no Sapling there, its tile says why.
     @objc func showSmartlog(_ sender: Any?) {
@@ -6049,9 +6079,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌘↩: the focused text between being edited and viewed — Markdown
     /// rendered (a note's too), anything else as it is on the grey of a
     /// page of code — in the same tile.
+    /// ⌘↩, the tile's own thing to do: a text from editing to viewing or
+    /// back; a notebook's cell run; an outline's row a checkbox, checked,
+    /// a bullet again. (Those two take the key themselves; this is the
+    /// menu's, titled by it.)
     @objc func toggleEditPreview(_ sender: Any?) {
         guard let f = focusedShown else { return }
+        if let n = views[f.id] as? NotebookView { return n.runFocused() }
+        if let o = views[f.id] as? OutlineNoteView { return o.cycleChecklist() }
         toggleMode(f.id)
+    }
+
+    /// Tile ▸ Interrupt (⌘.): a notebook's running cell stopped.
+    @objc func interruptTile(_ sender: Any?) {
+        guard let f = focusedShown, let n = views[f.id] as? NotebookView else { return NSSound.beep() }
+        n.interrupt()
     }
 
     /// A text's tile from editing to viewing or back, in place: what was
@@ -6093,7 +6135,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return Lens.viewRendering(for: b.path) == .markdown
     }
 
-    /// ⌥⇧⌘P: the other mode beside this one, both in view.
+    /// ⌃⌘↩: the other mode beside this one, both in view.
     @objc func editPreviewBeside(_ sender: Any?) {
         guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return }
         let other: Lens = f.lens == .preview ? .editor : .preview
@@ -6763,7 +6805,7 @@ extension MainWindowController: SidebarDelegate {
     func sidebarFilter(_ filter: SidebarFilter?) { setSidebarFilter(filter) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
-    /// The sidebar's +: a new workspace with a terminal in it (⌥⌘T).
+    /// The sidebar's +: a new workspace with a terminal in it (⌘T).
     func sidebarNewTab() { newTerminal(nil) }
 
     func sidebarMove(_ arrangement: BlockID, to index: Int) {
@@ -7548,7 +7590,7 @@ extension MainWindowController: EditorViewDelegate {
 
     var debugPrintOperation: NSPrintOperation? { (arrangement?.focused.flatMap { views[$0] } as? Printable)?.printOperation() }
 
-    /// ⌥⌘S: the focused tile's own sidebar, shown or put away — a
+    /// ⌘/: the focused tile's own sidebar, shown or put away — a
     /// Markdown text's headings, a PDF's contents and pages (§7.5).
     @objc func toggleTileSidebar(_ sender: Any?) {
         guard let f = arrangement?.focused, let v = views[f], v.hasSidebar else { return NSSound.beep() }

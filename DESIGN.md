@@ -178,6 +178,23 @@ over (the one rule, §3.7). New things (a terminal, a note, a search) are
 brought here. Go Back and Go Forward (⌃- ⌃⇧-) walk the trail across
 tiles and spaces; ⌘[ ⌘] a tile's own, for the views that go on in place.
 
+**Keys** mean one thing each, wherever they're pressed, and every one
+is in a menu (Rex's discipline). ⇧ is the bigger thing or the way back
+(⌘W a tile, ⌥⇧⌘W a space; ⌘F here, ⇧⌘F in files; ⌘/ the tile's sidebar,
+⇧⌘/ the window's; ⌘G, ⇧⌘G). Brackets walk a sequence, the modifier
+naming which (⌘ a tile's history, ⌥⌘ the tiles, ⇧⌘ the spaces). ⌥⌘ and
+an arrow moves the focus that way, as `mani`'s @left and @below name
+tiles (`ManiLayout`); ⌥⇧⌘ and an arrow moves the tile a step that way,
+its stack along (`ArrangementState.nudging`: up or down past the shown
+tile beside it, left or right into the next column about as far down,
+a column of its own at the edge). ⌃⌘↑ ⌃⌘↓ moves the item you're on — a
+line, an outline's row, a notebook's cell. ↩ is how the tile shows: ⌘↩
+its own action (Edit or View, Run Cell, Toggle Checkbox — the Tile
+menu's item titled by the tile), ⌥⌘↩ as an outline, ⌃⌘↩ the other mode
+beside, ⇧⌘↩ maximized. ⌘. is cancel. A menu keeps a key for one item
+only (AppKit clears it from the next), so no two commands share one,
+even where they'd never both apply; `menukeys` (debug) lists them all.
+
 The space's log holds `Place{placement, column, at}`, `Move`, `Remove`,
 `Focus`, `Fractions`, `Heights`, `MoveColumn`, `Stash`, `Full` and
 `Title`.
@@ -355,7 +372,7 @@ the graph has to capture everything any organization needs:
 | **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, a stack's tiles in a dotted outline | the spaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
-Two, and a filter over either (`SidebarFilter`, ⌘., the lighthouse at
+Two, and a filter over either (`SidebarFilter`, ⌥⌘., the lighthouse at
 the foot): a test of each block — the first, blocks with a status,
 working, needing you, done or failed — that keeps the rows it admits
 and the way to each (`OrgNode.filtered`: a row stays if it or anything

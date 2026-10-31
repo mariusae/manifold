@@ -349,6 +349,47 @@ extension ArrangementState {
         return (alone ? leavingAlone(id) : []) + [.move(id, column: column, at: spot)]
     }
 
+    /// A tile moved one step a way (⌥⇧⌘ and an arrow), its stack along:
+    /// up or down past the shown tile beside it in its column; left or
+    /// right into the next column, about as far down as it was, or — at
+    /// the edge, with others still in its column — a new column of its
+    /// own there. Nil where it can go no further.
+    public func nudging(_ id: PlacementID, _ way: ManiLayout.Direction) -> [Event]? {
+        guard let (c, i) = locate(id), !isStashed(id) else { return nil }
+        let taken = Set(([id] + followers(of: id).map(\.id)))
+        let rest = columns[c].filter { !taken.contains($0.id) }
+        switch way {
+        case .above:
+            guard let k = rest[..<i].lastIndex(where: { !isStashed($0.id) }) else { return nil }
+            return moving(id, column: c, at: k, alone: false) + [.focus(id)]
+        case .below:
+            guard let k = rest[i...].firstIndex(where: { !isStashed($0.id) }) else { return nil }
+            let end = rest[(k + 1)...].prefix { isStashed($0.id) }.count + k + 1
+            return [.move(id, column: c, at: end), .focus(id)]
+        case .left, .right:
+            let t = way == .left ? c - 1 : c + 1
+            guard columns.indices.contains(t) else {
+                // A column of its own at the edge, if it isn't one already.
+                guard !rest.isEmpty else { return nil }
+                let move = Event.move(id, column: columns.count, at: 0)
+                return way == .right ? [move, .focus(id)] : [move, .moveColumn(from: columns.count, to: 0), .focus(id)]
+            }
+            // About as far down: before the first tile there whose middle
+            // is below this one's.
+            func middles(_ col: [Placement]) -> [(Int, Double)] {
+                var y = 0.0
+                return col.enumerated().compactMap { j, p in
+                    guard !isStashed(p.id) else { return nil }
+                    defer { y += height(of: p.id) }
+                    return (j, y + height(of: p.id) / 2)
+                }
+            }
+            let mine = middles(columns[c]).first { columns[c][$0.0].id == id }?.1 ?? 0
+            let spot = middles(columns[t]).first { $0.1 > mine }?.0 ?? columns[t].count
+            return moving(id, column: t, at: spot, alone: false) + [.focus(id)]
+        }
+    }
+
     /// A tile dropped on another's pill: into the stack behind it.
     public func stashing(_ id: PlacementID, behind target: PlacementID) -> [Event] {
         guard id != target, locate(id) != nil, locate(target) != nil, !isStashed(target) else { return [] }

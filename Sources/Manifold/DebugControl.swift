@@ -109,6 +109,34 @@ enum DebugControl {
         case "travel":
             // The sidebar's band going from space to space, if it is.
             return wc?.debugOrganization.debugTraveller ?? "no window"
+        case "menukeys":
+            // Every main-menu item with a key, as "Menu ▸ Item  ⌥⌘S" (hidden
+            // ones marked), then the keys more than one item has; "menukeys
+            // all": those with none too.
+            func glyphs(_ item: NSMenuItem) -> String {
+                let m = item.keyEquivalentModifierMask
+                var k = item.keyEquivalent
+                let named: [Int: String] = [NSUpArrowFunctionKey: "↑", NSDownArrowFunctionKey: "↓", NSLeftArrowFunctionKey: "←",
+                                            NSRightArrowFunctionKey: "→", NSHomeFunctionKey: "Home", NSEndFunctionKey: "End"]
+                if let u = k.unicodeScalars.first, let n = named[Int(u.value)] { k = n }
+                if k == "\r" { k = "↩" } else if k == "\t" { k = "⇥" } else if k == " " { k = "Space" }
+                return (m.contains(.control) ? "⌃" : "") + (m.contains(.option) ? "⌥" : "") + (m.contains(.shift) ? "⇧" : "")
+                    + (m.contains(.command) ? "⌘" : "") + k.uppercased()
+            }
+            var lines: [String] = [], seen: [String: [String]] = [:]
+            func walk(_ menu: NSMenu, _ path: String) {
+                for item in menu.items {
+                    let here = path.isEmpty ? item.title : path + " ▸ " + item.title
+                    if let sub = item.submenu { walk(sub, here); continue }
+                    guard !item.keyEquivalent.isEmpty || arg == "all" else { continue }
+                    let g = glyphs(item)
+                    lines.append("\(here)  \(g)" + (item.isHidden ? " (hidden)" : ""))
+                    seen[g, default: []].append(here)
+                }
+            }
+            if let main = NSApp.mainMenu { walk(main, "") }
+            let twice = seen.filter { $0.value.count > 1 }.sorted { $0.key < $1.key }.map { "\($0.key): " + $0.value.joined(separator: " · ") }
+            return lines.joined(separator: "\n") + (twice.isEmpty ? "" : "\n-- shared:\n" + twice.joined(separator: "\n"))
         case "action":
             let sel = Selector(arg)
             let start: NSResponder? = wc?.window?.firstResponder ?? wc?.window
@@ -839,7 +867,7 @@ enum DebugControl {
             guard let wc else { return "no window" }
             if a.first == "show", a.count >= 2, let org = Organization(rawValue: a[1]) { wc.setOrganization(org); return "ok" }
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
-            // "org filter on|off": the sidebar narrowed to blocks with a status (⌘.).
+            // "org filter on|off": the sidebar narrowed to blocks with a status (⌥⌘.).
             if a.first == "filter", a.count >= 2 { wc.setSidebarFilter(a[1] == "on" ? .status : nil); return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))

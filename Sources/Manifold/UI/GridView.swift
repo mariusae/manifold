@@ -2615,7 +2615,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         didSet {
             guard sidebar != oldValue else { return }
             sidebarButton.contentTintColor = sidebar == true ? Theme.accent : Theme.secondaryText
-            sidebarButton.toolTip = sidebar == true ? "Hide Outline (⌥⌘S)" : "Show Outline (⌥⌘S)"
+            sidebarButton.toolTip = sidebar == true ? "Hide Outline (⌘/)" : "Show Outline (⌘/)"
             needsLayout = true
             // Its button come or gone (a view's outline arrived): the links'
             // pill, which the grid places before the buttons, placed again.

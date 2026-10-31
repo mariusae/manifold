@@ -47,7 +47,7 @@ final class SidebarView: NSView {
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
     /// The tree; the bar at the bottom: by workspace or by file, the
-    /// filter (⌘.), and the counts of what's doing something, which turn
+    /// filter (⌥⌘.), and the counts of what's doing something, which turn
     /// the filter on.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
@@ -94,11 +94,11 @@ final class SidebarView: NSView {
         card.addSubview(header)
         pinButton.target = self
         pinButton.action = #selector(togglePinned)
-        pinButton.toolTip = "Keep Sidebar Shown (⌃⌘S)"
+        pinButton.toolTip = "Keep Sidebar Shown (⇧⌘/)"
         card.addSubview(pinButton)
         newButton.target = self
         newButton.action = #selector(newClicked)
-        newButton.toolTip = "New Space (⌥⌘T)"
+        newButton.toolTip = "New Space (⌘T)"
         card.addSubview(newButton)
         moreButton.target = self
         moreButton.action = #selector(moreClicked)
@@ -231,7 +231,7 @@ final class SidebarView: NSView {
         let shown = f ?? .status
         filterButton.image = shown.image(on: f != nil)
         filterButton.contentTintColor = f == nil ? Theme.secondaryText : Theme.accent
-        filterButton.toolTip = f == nil ? "Show Only \(shown.title) (⌘.)" : "Showing Only \(shown.title) — Show All (⌘.)"
+        filterButton.toolTip = f == nil ? "Show Only \(shown.title) (⌥⌘.)" : "Showing Only \(shown.title) — Show All (⌥⌘.)"
     }
 
 

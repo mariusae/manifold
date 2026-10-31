@@ -257,7 +257,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(file, "New Block…", #selector(MainWindowController.newBlockPicker(_:)), "n", [.command, .option])
         file.addItem(.separator())
         item(file, "New Terminal in a New Column", #selector(MainWindowController.newTerminalInNewColumn(_:)), "n", [.command, .option, .shift])
-        item(file, "New Terminal in a New Space", #selector(MainWindowController.newTerminal(_:)), "t", [.command, .option])
         item(file, "New Note from Selection", #selector(MainWindowController.newNoteFromSelection(_:)), "")
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")
         let agents = NSMenu(title: "Launch Agent Here")
@@ -273,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // file against its last commit, the file's history.
         let source = NSMenu(title: "Source Control")
         item(source, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
-        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "i", [.command, .option])
+        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "s", [.command, .option])
         item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
         item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
         let sourceItem = NSMenuItem(title: "Source Control", action: nil, keyEquivalent: "")
@@ -320,13 +319,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let findItem = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
         findItem.submenu = find
         edit.addItem(findItem)
-        // ⌘L is one key for two things, by the tile: a line, in an editor
-        // (as Xcode's); its address, in a page (as a browser's).
-        item(edit, "Go to Line…", #selector(MainWindowController.goToLineOrAddress(_:)), "l")
-        edit.addItem(.separator())
-        item(edit, "Edit or View", #selector(MainWindowController.toggleEditPreview(_:)), "\r")
-        item(edit, "Edit or View Beside", #selector(MainWindowController.editPreviewBeside(_:)), "p", [.command, .option, .shift])
-        item(edit, "Edit as Outline", #selector(MainWindowController.toggleOutliner(_:)), "\r", [.command, .option])
         edit.addItem(.separator())
         let code = NSMenu(title: "Code")
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
@@ -342,13 +334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(.separator())
         // An editor's own: lines, carets, and a note's marks.
         let up = String(UnicodeScalar(NSUpArrowFunctionKey)!), down = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+        let left = String(UnicodeScalar(NSLeftArrowFunctionKey)!), right = String(UnicodeScalar(NSRightArrowFunctionKey)!)
         let lines = NSMenu(title: "Lines")
         item(lines, "Delete Line", #selector(TextView.deleteLine(_:)), "k", [.command, .shift])
         item(lines, "Duplicate Line", #selector(TextView.duplicateLine(_:)), "d", [.command, .shift])
         item(lines, "Move Line Up", #selector(TextView.moveLineUp(_:)), up, [.command, .control])
         item(lines, "Move Line Down", #selector(TextView.moveLineDown(_:)), down, [.command, .control])
         item(lines, "Join Lines", #selector(TextView.joinLine(_:)), "j", [.control])
-        item(lines, "Comment or Uncomment", #selector(TextView.toggleLineComment(_:)), "/")
+        // ⌥⌘/: ⌘/ is the tile's outline, everywhere.
+        item(lines, "Comment or Uncomment", #selector(TextView.toggleLineComment(_:)), "/", [.command, .option])
         let linesItem = NSMenuItem(title: "Lines", action: nil, keyEquivalent: "")
         linesItem.submenu = lines
         edit.addItem(linesItem)
@@ -370,10 +364,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(edit, "Clear Screen", #selector(TerminalView.clearScreen(_:)), "k")
 
         let view = submenu(main, "View")
+        // ⌘/ the tile's sidebar (its outline), ⇧⌘/ the window's: ⇧ the
+        // bigger one, as it is for closing and finding.
+        item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "/")
         // Titled by what it does now: the sidebar kept beside the tiles, or
         // let slide out over them at the window's edge.
-        item(view, "Keep Sidebar Shown", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
-        item(view, "Show Outline", #selector(MainWindowController.toggleTileSidebar(_:)), "s", [.command, .option])
+        item(view, "Keep Sidebar Shown", #selector(MainWindowController.togglePinnedSidebar(_:)), "/", [.command, .shift])
+        // ⌃⌘S too, the Finder's and Mail's.
+        let sidebar = item(view, "Keep Sidebar Shown", #selector(MainWindowController.togglePinnedSidebar(_:)), "s", [.command, .control])
+        sidebar.isHidden = true
+        sidebar.allowsKeyEquivalentWhenHidden = true
         view.addItem(.separator())
         let organize = NSMenu(title: "Organize By")
         for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2")] {
@@ -383,9 +383,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         organizeItem.submenu = organize
         view.addItem(organizeItem)
         // The focused block's properties, in the sidebar (Star's SHOW PROPERTIES).
-        item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .shift])
+        item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .option])
         // The sidebar narrowed, whichever way it's organized (§3.6).
-        item(view, "Show Only Blocks with a Status", #selector(MainWindowController.toggleSidebarFilter(_:)), ".")
+        // ⌥⌘.: ⌘. is the system's cancel (a notebook's Interrupt).
+        item(view, "Show Only Blocks with a Status", #selector(MainWindowController.toggleSidebarFilter(_:)), ".", [.command, .option])
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         // ⌘= too, the key + is on, unshifted.
@@ -404,7 +405,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Forward in This Tile", #selector(WebView.goForward(_:)), "]", [.command])
         item(view, "Reload Page", #selector(WebView.reloadPage(_:)), "r", [.command])
         item(view, "Show Hidden Files", #selector(DirectoryView.toggleHiddenFiles(_:)), ".", [.command, .shift])
-        item(view, "Use Groups", #selector(DirectoryView.toggleGroups(_:)), "0", [.command, .control])
+        // ⌃⌘G, not the Finder's ⌃⌘0: that's an outline's Expand, and a
+        // menu keeps a key for one item only.
+        item(view, "Use Groups", #selector(DirectoryView.toggleGroups(_:)), "g", [.command, .control])
+        view.addItem(.separator())
+        // An outline's folds (the outliner takes the keys itself, before
+        // the menu).
+        item(view, "Collapse", #selector(NoteOutlineTextView.collapse(_:)), "9", [.command, .control])
+        item(view, "Expand", #selector(NoteOutlineTextView.expand(_:)), "0", [.command, .control])
+        item(view, "Collapse All", #selector(NoteOutlineTextView.collapseAll(_:)), "9", [.command, .option])
+        item(view, "Expand All", #selector(NoteOutlineTextView.expandAll(_:)), "0", [.command, .option])
+        view.addItem(.separator())
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.
@@ -413,6 +424,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Find in Blocks…", #selector(MainWindowController.findInBlocks(_:)), "o", [.command, .shift])
         item(go, "Outline…", #selector(MainWindowController.goToTile(_:)), "p")
         item(go, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
+        // ⌘L is one key for two things, by the tile: a line, in an editor
+        // (as Xcode's); its address, in a page (as a browser's).
+        item(go, "Go to Line…", #selector(MainWindowController.goToLineOrAddress(_:)), "l")
         go.addItem(.separator())
         // The places you've been (§3.5): ⌃- and ⌃⇧-, as VS Code's.
         item(go, "Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
@@ -432,6 +446,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item(go, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
         go.addItem(.separator())
+        // ⌥⌘ and an arrow: the tile that way (⌥⇧⌘ moves it there).
+        let focusMenu = NSMenu(title: "Focus")
+        for (title, sel, key) in [("Left", #selector(MainWindowController.focusLeft(_:)), left), ("Right", #selector(MainWindowController.focusRight(_:)), right),
+                                  ("Up", #selector(MainWindowController.focusUp(_:)), up), ("Down", #selector(MainWindowController.focusDown(_:)), down)] {
+            item(focusMenu, "Focus " + title, sel, key, [.command, .option])
+        }
+        let focusItem = NSMenuItem(title: "Focus", action: nil, keyEquivalent: "")
+        focusItem.submenu = focusMenu
+        go.addItem(focusItem)
         item(go, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
         item(go, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
 
@@ -443,17 +466,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // it reached into Recently Closed.
         item(tile, "Delete Block", #selector(MainWindowController.deleteFocusedBlock(_:)), "w", [.command, .shift])
         tile.addItem(.separator())
+        // ↩, how the tile shows: ⌘↩ its own thing (Edit or View, Run Cell,
+        // Toggle Checkbox — titled by the tile), ⌥ as an outline, ⌃ the
+        // other mode beside, ⇧ over everything.
+        item(tile, "Edit or View", #selector(MainWindowController.toggleEditPreview(_:)), "\r")
+        item(tile, "Edit or View Beside", #selector(MainWindowController.editPreviewBeside(_:)), "\r", [.command, .control])
+        item(tile, "Edit as Outline", #selector(MainWindowController.toggleOutliner(_:)), "\r", [.command, .option])
+        item(tile, "Maximize", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
+        tile.addItem(.separator())
         item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
-        item(tile, "Maximize", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
         item(tile, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
         item(tile, "Stash", #selector(MainWindowController.stashTile(_:)), "m")
+        // ⌥⇧⌘ and an arrow: the tile a step that way, its stack along.
+        let moveMenu = NSMenu(title: "Move")
+        for (title, sel, key) in [("Left", #selector(MainWindowController.moveTileLeft(_:)), left), ("Right", #selector(MainWindowController.moveTileRight(_:)), right),
+                                  ("Up", #selector(MainWindowController.moveTileUp(_:)), up), ("Down", #selector(MainWindowController.moveTileDown(_:)), down)] {
+            item(moveMenu, "Move " + title, sel, key, [.command, .option, .shift])
+        }
+        let moveItem = NSMenuItem(title: "Move", action: nil, keyEquivalent: "")
+        moveItem.submenu = moveMenu
+        tile.addItem(moveItem)
         tile.addItem(.separator())
         // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's tiles.
         item(tile, "Next in Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
         item(tile, "Previous in Stack", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
         item(tile, "Unstack", #selector(MainWindowController.unstackFocused(_:)), "")
         item(tile, "Close Stack", #selector(MainWindowController.closeFocusedStack(_:)), "")
+        tile.addItem(.separator())
+        // ⌘., the system's cancel: a notebook's running cell.
+        item(tile, "Interrupt", #selector(MainWindowController.interruptTile(_:)), ".")
         tile.addItem(.separator())
         // ⌃⌘T, the Finder's Add to Sidebar: a pin keeps the block in the
         // space's part of the sidebar, tile or not.
@@ -463,6 +505,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Space: the space itself.
         let space = submenu(main, "Space")
+        // ⌘T, as a browser's new tab (⇧⌘T reopens what was closed, ⇧⌘[ ⇧⌘]
+        // go between them): a space with a terminal.
+        item(space, "New Space", #selector(MainWindowController.newTerminal(_:)), "t")
         item(space, "Name Space…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         item(space, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         space.addItem(.separator())

@@ -42,6 +42,9 @@ final class OutlineNoteView: NSView, PaneContent {
 
     private let scroll = NSScrollView()
     private let text: NoteOutlineTextView
+
+    /// ⌘↩ from the menu: the caret's row a checkbox, checked, a bullet again.
+    func cycleChecklist() { text.cycleChecklist(nil) }
     /// What isn't rows — frontmatter, blank lines at the end, the line
     /// ending — kept to write the rows back with.
     private var shell = NoteOutline(rows: [])
