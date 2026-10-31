@@ -763,7 +763,9 @@ around it, and comes back with its history.
   after the last, in the tree's rows — a folder's chevron at its row's
   end — and ← → go between columns, ⏎ into the folder chosen. A column's
   files are in groups, as the Finder's Use Groups has them, but code by
-  its language: folders first, then Documents, PDF Documents, each
+  its language: folders first, then Uppercase (README, LICENSE,
+  AGENTS.md, CHANGELOG.md — a name in capitals is usually a project's
+  own, there to be read), Documents, PDF Documents, each
   language (C, Python, Rust, Swift, …), Build (Makefile, Dockerfile),
   Configuration (JSON, TOML, YAML, lock files), Spreadsheets,
   Presentations, Images, Movies, Music, Archives and Other, each under a

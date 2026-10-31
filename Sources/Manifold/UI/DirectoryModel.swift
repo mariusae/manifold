@@ -54,7 +54,8 @@ extension String {
 
 /// The group a folder's entry is shown under, as the Finder's Use Groups
 /// has them by kind — but code by its language: folders (first, and not
-/// headed in columns), Documents, PDF
+/// headed in columns), Uppercase (README, LICENSE, AGENTS.md: a name in
+/// capitals is a project's own, and usually wants reading), Documents, PDF
 /// Documents, Rust, Swift, … (each language its own, by name), Build,
 /// Configuration, Spreadsheets, Presentations, Images, Movies, Music,
 /// Archives, Other. `rank` orders them.
@@ -63,6 +64,7 @@ struct FileGroup: Hashable {
     let title: String
 
     static let folders = FileGroup(rank: 0, title: "Folders")
+    static let uppercase = FileGroup(rank: 5, title: "Uppercase")
     static let documents = FileGroup(rank: 10, title: "Documents")
     static let pdf = FileGroup(rank: 11, title: "PDF Documents")
     static func language(_ name: String) -> FileGroup { FileGroup(rank: 20, title: name) }
@@ -83,6 +85,7 @@ struct FileGroup: Hashable {
 
     static func of(_ name: String, isDirectory: Bool) -> FileGroup {
         if isDirectory { return .folders }
+        if isUppercase(name) { return .uppercase }
         let lower = name.lowercased(), ext = lower.pathExtension
         if let g = byName[lower] { return g }
         if !ext.isEmpty, let l = languages[ext] { return .language(l) }
@@ -99,6 +102,19 @@ struct FileGroup: Hashable {
         if t.conforms(to: .sourceCode) { return .language(t.localizedDescription?.capitalizingFirst ?? "Source Code") }
         if t.conforms(to: .text) || t.conforms(to: .compositeContent) { return .documents }
         return .other
+    }
+
+    /// A name in capitals before its first dot (README, LICENSE,
+    /// CHANGELOG.md, BUILD.bazel): two letters at least, and digits, _ and -
+    /// besides; its extension in any case.
+    static func isUppercase(_ name: String) -> Bool {
+        guard let stem = name.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false).first, !name.hasPrefix(".") else { return false }
+        var letters = 0
+        for c in stem.unicodeScalars {
+            if ("A"..."Z").contains(c) { letters += 1 }
+            else if !(("0"..."9").contains(c) || c == "_" || c == "-") { return false }
+        }
+        return letters >= 2
     }
 
     /// Files known by their whole name.

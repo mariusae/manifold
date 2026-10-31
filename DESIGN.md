@@ -909,7 +909,9 @@ last taken by a tile without one. A column's entries are in groups
 (`FileGroup`, View ▸ Use Groups, on unless the tile says otherwise): the
 Finder's by kind, but code by its language, from a table of extensions
 and whole names (Makefile, LICENSE), else from what the system makes of
-the type; folders first with no header, then each group under one,
+the type, and a name in capitals before its first dot (README,
+LICENSE, AGENTS.md) a group of its own, after the folders, whatever its
+extension; folders first with no header, then each group under one,
 keeping the sort's order; the arrows step over the headers, and a click
 on one leaves the choice as it was. There the field filters rather than
 searches: each column keeps, in its own order, the files matching it and
