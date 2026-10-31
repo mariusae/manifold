@@ -404,8 +404,11 @@ final class GridView: NSView, NSDraggingSource {
                 // collapsed to its bar stays out of sight, as layout left it:
                 // shown here, a sliver of it showed under its bar until the
                 // next layout (and blinked with each, typing in a note whose
-                // title is in its bar).
-                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id) || summarized.contains(id)) }
+                // title is in its bar). Behind a maximized tile, out of sight
+                // too, once it's grown over them: shown at a render (a
+                // status changing, a minute going by), a PDF drew over it.
+                let behindFull = full != nil && full != id && zooming != full
+                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id) || summarized.contains(id) || behindFull) }
                 // Its summary standing in for it, said afresh with each render.
                 if let card = tileSummaries[id], summarized.contains(id), let s = summaryContent(tile) { card.content = s }
             }
