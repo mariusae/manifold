@@ -1138,7 +1138,8 @@ around it, and comes back with its history.
   Permission, Question, Sign in or Needs you in amber, Done in grey,
   Failed in red — exactly while it's in the inbox (⌘J), after how long
   ago in the sidebar; once seen, nothing. In a bar short of room the
-  word gives way to a dot in its color before the name gives way. An
+  word gives way to a dot in its color before the name gives way; in a
+  bar it's left of the links and the buttons, by the name. An
   inactive terminal's name is dim. A host's states keep their glyphs.
   The counts at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile

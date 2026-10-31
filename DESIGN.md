@@ -484,7 +484,11 @@ attended to, are a word in a **pill** at the right edge (`StatusPill`):
 the kind — Permission, Question, Sign in, else Needs you — in amber,
 Done in grey, Failed in red; a pill shows exactly while the block is
 in the inbox (⌘J), and once attended to there's nothing. Short of
-room, a bar's pill is a dot in its color before the title is cut. An
+room, a bar's pill is a dot in its color before the title is cut. In
+a bar it's left of everything else at the right — the links' pill, the
+buttons — just after the title, so a status coming or going moves
+nothing else; the grid places the links' pill again whenever the bar's
+buttons or the links' room change, not only when it lays out. An
 inactive terminal's title is dimmed; `idle` nothing. A host's states
 (connecting, offline, quiet, watching) keep their glyphs, and a
 notebook's cells their own, beside their run's time and exit status.

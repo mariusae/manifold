@@ -237,6 +237,7 @@ final class GridView: NSView, NSDraggingSource {
         for (id, b) in badges where !incoming.contains(id) {
             b.removeFromSuperview()
             badges.removeValue(forKey: id)
+            badgeRects.removeValue(forKey: id)
         }
         for (id, t) in ticks where !incoming.contains(id) {
             t.removeFromSuperview()
@@ -377,6 +378,7 @@ final class GridView: NSView, NSDraggingSource {
                 if tile.links.isEmpty {
                     badges[id]?.removeFromSuperview()
                     badges.removeValue(forKey: id)
+                    badgeRects.removeValue(forKey: id)
                     pill.linkWanted = 0
                     pill.fanEdge = nil
                 } else {
@@ -388,7 +390,13 @@ final class GridView: NSView, NSDraggingSource {
                     }()
                     badge.cards = tile.links
                     pill.linkWanted = badge.capsuleWantedWidth
-                    pill.onLinkRoom = { [weak badge] room in badge?.capsuleLimit = room }
+                    // The bar's buttons or the links' room changed without
+                    // the grid laying out (a status come or gone): placed
+                    // again where it was, against the bar as it is now.
+                    pill.onLinkRoom = { [weak self, weak badge, weak pill] in
+                        guard let self, let badge, let pill, !pill.isHidden, let r = self.badgeRects[id] else { return }
+                        self.placeBadge(badge, of: id, in: r)
+                    }
                     badge.summary = { [weak self] block in self?.delegate?.gridLinkSummary(block) }
                     // Fanned out, the title fades out before the first face.
                     badge.onFanEdge = { [weak pill, weak badge] edge in
@@ -1702,7 +1710,11 @@ final class GridView: NSView, NSDraggingSource {
         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
     }
 
+    /// The tile's frame each links' badge was last placed against.
+    private var badgeRects: [PlacementID: NSRect] = [:]
+
     private func placeBadge(_ badge: LinkBadge, of id: PlacementID, in r: NSRect) {
+        badgeRects[id] = r
         badge.isHidden = false
         badge.fansDown = true
         // The bar has settled what room the pill gets and what else shows.
@@ -2552,10 +2564,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// What the links' pill wants of the bar, its sheets included; what
     /// it's given is `linkGiven`, after the shrinkage below.
     var linkWanted: CGFloat = 0 { didSet { if linkWanted != oldValue { needsLayout = true } } }
-    private(set) var linkGiven: CGFloat = 0 { didSet { if linkGiven != oldValue { onLinkRoom?(linkGiven) } } }
-    /// The links' room changed as the bar laid out (it was resized): for
-    /// the capsule, which the grid placed, to take it at once.
-    var onLinkRoom: ((CGFloat) -> Void)?
+    private(set) var linkGiven: CGFloat = 0
+    /// The links' room, or the buttons right of it, changed as the bar
+    /// laid out (resized, a button shown, a status come or gone): for the
+    /// capsule, which the grid places, to be placed again at once.
+    var onLinkRoom: (() -> Void)?
+    /// What `onLinkRoom` was last told: the buttons' width and the links' room.
+    private var linkRoomSaid: (CGFloat, CGFloat) = (0, 0)
     /// Where the links fanned out over the bar begin (in the bar): the
     /// title and the place show up to there, fading out before it; nil,
     /// all of them.
@@ -2666,16 +2681,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
     static let height: CGFloat = GridView.barHeight
     /// What the bar's right end takes: close, maximize, and room.
     static let rightChrome: CGFloat = 54
-    /// What the bar's right end takes now, its status, tag and dot included.
+    /// What the bar's right end takes now: its buttons (the links' pill
+    /// is left of them, the status left of that).
     var rightTaken: CGFloat {
         var w: CGFloat = 10
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
         if !sidebarButton.isHidden { w += 22 }
         if !fanButton.isHidden { w += 22 }
-        w += CGFloat(ownButtons.filter { !$0.isHidden }.count) * 22
-        if !glyph.isHidden { w += StatusGlyph.size + 8 }
-        if !statusPill.isHidden { w += statusPill.wanted.width + 8 }
+        let own = ownButtons.filter { !$0.isHidden }.count
+        if own > 0 { w += CGFloat(own) * 22 + 4 }
         return w
     }
 
@@ -3140,6 +3155,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 right -= 22
             }
         }
+        // The links' pill sits before the buttons (the grid puts it there,
+        // by `rightTaken`); the status before it, by the name, whatever
+        // else shows.
+        right -= linkRoom
         if !statusPill.isHidden {
             let s = statusPill.wanted
             statusPill.frame = NSRect(x: right - s.width, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
@@ -3149,8 +3168,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
         }
-        // The links' pill sits before the dot and the buttons: the name stops short of it.
-        right -= linkRoom
         let th = ceil(name.intrinsicContentSize.height)
         let wanted = nameWanted
         let hostRoom = showHost ? hostWidth + 8 : 0
@@ -3179,6 +3196,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
             subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
         }
         window?.invalidateCursorRects(for: self)
+        let said = (rightTaken, linkGiven)
+        if said != linkRoomSaid {
+            linkRoomSaid = said
+            onLinkRoom?()
+        }
     }
 
     /// The place, where it's to edit (a page's address), as far as its
