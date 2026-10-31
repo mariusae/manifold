@@ -54,7 +54,7 @@ extension String {
 
 /// The group a folder's entry is shown under, as the Finder's Use Groups
 /// has them by kind — but code by its language: folders (first, and not
-/// headed in columns), Uppercase (README, LICENSE, AGENTS.md: a name in
+/// headed in columns), Notices (README, LICENSE, AGENTS.md: a name in
 /// capitals is a project's own, and usually wants reading), Documents, PDF
 /// Documents, Rust, Swift, … (each language its own, by name), Build,
 /// Configuration, Spreadsheets, Presentations, Images, Movies, Music,
@@ -64,7 +64,7 @@ struct FileGroup: Hashable {
     let title: String
 
     static let folders = FileGroup(rank: 0, title: "Folders")
-    static let uppercase = FileGroup(rank: 5, title: "Uppercase")
+    static let notices = FileGroup(rank: 5, title: "Notices")
     static let documents = FileGroup(rank: 10, title: "Documents")
     static let pdf = FileGroup(rank: 11, title: "PDF Documents")
     static func language(_ name: String) -> FileGroup { FileGroup(rank: 20, title: name) }
@@ -85,7 +85,7 @@ struct FileGroup: Hashable {
 
     static func of(_ name: String, isDirectory: Bool) -> FileGroup {
         if isDirectory { return .folders }
-        if isUppercase(name) { return .uppercase }
+        if isUppercase(name) { return .notices }
         let lower = name.lowercased(), ext = lower.pathExtension
         if let g = byName[lower] { return g }
         if !ext.isEmpty, let l = languages[ext] { return .language(l) }
