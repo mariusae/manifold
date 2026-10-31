@@ -473,9 +473,11 @@ dismissing for the blocks it leads, on the client's `attend` proposal.
 **Indicators** (`StatusMark`), wherever a block's title is — its bar,
 its sidebar row, a summary card (the Overview's) — add ink only when
 the block needs you. `working`: the title **shimmers** (`Shimmer`: its
-layer masked to 75%, a full-strength band sweeping across every 2.5 s,
-by the clock, so every working title moves in step and many read as
-one calm rhythm), the percent beside it in grey when the program says
+layer masked so a wide band — about 40% of the title, 60 to 160
+points — faded to 30% sweeps across it in 2 s every 3 s, the title at
+full strength between, by the clock, so every working title moves in
+step and many read as one rhythm; a narrow bright band on a dimmed
+title was too subtle), the percent beside it in grey when the program says
 how far (OSC 9;4 counts); with Reduce motion the title holds at 75%
 and a still dot sits beside it. `blocked`, and `done` and `error` until
 attended to, are a word in a **pill** at the right edge (`StatusPill`):

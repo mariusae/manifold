@@ -1129,8 +1129,8 @@ around it, and comes back with its history.
   Searches, git and diff blocks report as the host works for them. A
   block's name says it wherever it's shown — its tile's bar, its sidebar
   row, its card in the Overview — and adds something only when the
-  block needs you: while it works, the name **shimmers**, a soft band
-  sweeping across it every couple of seconds, every working name in
+  block needs you: while it works, the name **shimmers**, a wide faded band
+  sweeping across it every three seconds, every working name in
   step (with the program's percent beside it in grey, when it says how
   far, as OSC 9;4 progress does; with Reduce motion, the name holds
   still, a little dim, a dot beside it); what needs you, done or

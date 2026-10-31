@@ -149,16 +149,30 @@ final class StatusPillView: NSView {
 }
 
 /// A name shimmering while its block works (`StatusMark`): its layer
-/// masked so it shows at 75%, a band at full strength sweeping across it
-/// every 2.5 s — every name in step, by the clock, so many working read
-/// as one calm rhythm. With Reduce motion it holds still at 75%.
+/// masked so a wide band, faded to 30%, sweeps across it every 3 s, the
+/// name at full strength between — every name in step, by the clock, so
+/// many working read as one rhythm. With Reduce motion it holds still at
+/// 75%.
 final class Shimmer {
     private weak var view: NSView?
     private var mask: CAGradientLayer?
     /// Whether the mask was made for Reduce motion (made again if that changes).
     private var madeReduced = false
-    static let period: Double = 2.5
-    static let rest: CGFloat = 0.75
+    static let period: Double = 3
+    /// How faded the band is at its middle.
+    static let faded: CGFloat = 0.3
+    /// How faded the name is, still (Reduce motion).
+    static let still: CGFloat = 0.75
+
+    /// The band across a name `w` wide, in a mask three times as wide (the
+    /// band in its middle): each stop's alpha and place.
+    static func stops(width w: CGFloat) -> [(alpha: CGFloat, at: CGFloat)] {
+        // About 40% of the name, 60 points at least and 160 at most (no
+        // wider than the name, so the mask always covers it); its middle
+        // third at its faintest, its edges soft.
+        let w = max(w, 1), half = min(min(max(0.42 * w, 60), 160) / 2, 0.45 * w) / (3 * w)
+        return [(1, 0), (1, 0.5 - half), (faded, 0.5 - half / 3), (faded, 0.5 + half / 3), (1, 0.5 + half), (1, 1)]
+    }
 
     init(_ view: NSView) { self.view = view }
 
@@ -183,9 +197,9 @@ final class Shimmer {
         let m = CAGradientLayer()
         m.startPoint = CGPoint(x: 0, y: 0.5)
         m.endPoint = CGPoint(x: 1, y: 0.5)
-        let dim = NSColor(white: 0, alpha: Self.rest).cgColor, full = NSColor(white: 0, alpha: 1).cgColor
         madeReduced = Motion.reduced
-        m.colors = madeReduced ? [dim, dim] : [dim, dim, full, dim, dim]
+        let still = NSColor(white: 0, alpha: Self.still).cgColor
+        m.colors = madeReduced ? [still, still] : Self.stops(width: 1).map { NSColor(white: 0, alpha: $0.alpha).cgColor }
         mask = m
         view.layer?.mask = m
         Self.made.add(self)
@@ -217,7 +231,8 @@ final class Shimmer {
         let lr = view.convert(view.bounds, to: row)
         let out = NSImage(size: NSSize(width: w * scale, height: h * scale * CGFloat(count)))
         out.lockFocus()
-        let band = min(0.12, 60 / (3 * max(lw, 1))) * 3 * lw
+        let stops = Self.stops(width: lw)
+        let band = (0.5 - stops[1].at) * 3 * lw
         for i in 0..<count {
             let y = CGFloat(count - 1 - i) * h * scale
             // On the window's ground: a sidebar's row is clear.
@@ -225,13 +240,12 @@ final class Shimmer {
             NSRect(x: 0, y: y, width: w * scale, height: h * scale).fill()
             ground.draw(in: NSRect(x: 0, y: y, width: w * scale, height: h * scale))
             // The label masked: drawn into its own image, then kept by the
-            // gradient's alpha (75%, a band at full).
+            // gradient's alpha (full, the band faded).
             let mid = -band - 2 + (lw + 2 * band + 4) * CGFloat(i) / CGFloat(max(count - 1, 1))
             let masked = NSImage(size: NSSize(width: lw * scale, height: lr.height * scale))
             masked.lockFocus()
             label.draw(in: NSRect(x: 0, y: 0, width: lw * scale, height: lr.height * scale))
-            let g = NSGradient(colorsAndLocations: (NSColor(white: 0, alpha: Self.rest), 0), (NSColor(white: 0, alpha: Self.rest), 0.5 - band / (2 * lw * 3)),
-                               (NSColor(white: 0, alpha: 1), 0.5), (NSColor(white: 0, alpha: Self.rest), 0.5 + band / (2 * lw * 3)), (NSColor(white: 0, alpha: Self.rest), 1))
+            let g = NSGradient(colors: stops.map { NSColor(white: 0, alpha: $0.alpha) }, atLocations: stops.map(\.at), colorSpace: .deviceGray)
             NSGraphicsContext.current?.compositingOperation = .destinationIn
             g?.draw(in: NSRect(x: (mid - 1.5 * lw) * scale, y: 0, width: 3 * lw * scale, height: lr.height * scale), angle: 0)
             masked.unlockFocus()
@@ -254,20 +268,20 @@ final class Shimmer {
             CATransaction.commit()
             return
         }
-        // Three widths, the band in the middle of them (60 points at most,
-        // its middle the mask's): it moves from just before the name to
-        // just past it, then rests a beat before it again.
+        // Three widths, the band in the middle of them (its middle the
+        // mask's): it moves from just before the name to just past it,
+        // then rests a beat before it again.
         let w = max(b.width, 1)
-        let band = min(0.12, 60 / (3 * w)), half = band * 3 * w
+        let stops = Self.stops(width: w), half = (0.5 - stops[1].at) * 3 * w
         let from = -half - 2, to = w + half + 2
         m.bounds = CGRect(x: 0, y: 0, width: 3 * w, height: b.height)
         m.position = CGPoint(x: from, y: b.midY)
-        m.locations = [0, 0.5 - band, 0.5, 0.5 + band, 1].map { NSNumber(value: Double($0)) }
+        m.locations = stops.map { NSNumber(value: Double($0.at)) }
         CATransaction.commit()
         let sweep = CABasicAnimation(keyPath: "position.x")
         sweep.fromValue = from
         sweep.toValue = to
-        sweep.duration = Self.period * 0.72
+        sweep.duration = Self.period * 0.65
         sweep.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         let group = CAAnimationGroup()
         group.animations = [sweep]
