@@ -312,6 +312,9 @@ enum Drags {
     /// A place in a block dragged (an outline's item): the block as a
     /// thing, its place in it ("line=12"; nil, the block), the item's words.
     static var place: ((_ block: BlockID, _ fragment: String?, _ title: String) -> NSPasteboardItem?)?
+    /// A text's selection dragged: a reference to its place (the
+    /// declaration it names, else the stretch itself), and its words.
+    static var selection: ((_ block: BlockID, _ range: TextRange, _ text: String) -> NSPasteboardItem?)?
     /// The block a file dragged names: opened as one (not placed), for a
     /// link or a reference to it; nil for one Manifold doesn't open.
     static var resolve: ((DragThing.File) -> BlockID?)?

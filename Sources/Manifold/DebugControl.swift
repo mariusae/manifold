@@ -1011,6 +1011,17 @@ enum DebugControl {
             return wc?.debugSearchPreview(arg) ?? "no window"
         case "dir":
             return wc?.debugDirectory(arg) ?? "no window"
+        case "dragselection":
+            // "dragselection <line> <from> <to>": that stretch of a line (from 1,
+            // columns from 0) selected in the focused editor, and what dragging
+            // it would carry (nothing put on any pasteboard).
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count == 3 else { return "usage: dragselection <line> <from> <to>" }
+            let rope = e.textView.text, start = rope.offset(ofLine: n[0] - 1)
+            let range = TextRange(start + n[1], start + n[2])
+            guard let item = Drags.selection?(e.block, range, rope[range]) else { return "carries its words alone" }
+            return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? item.data(forType: $0).map { String(decoding: $0, as: UTF8.self) } ?? "")" }.joined(separator: "\n")
         case "folds":
             // "folds [collapse|expand|collapseAll|expandAll] [line]": the
             // focused editor's folds and marked places (§2.5), after doing so

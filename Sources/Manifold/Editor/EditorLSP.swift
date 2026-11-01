@@ -355,6 +355,12 @@ extension EditorView {
     }
     func textViewRequestsCompletion(_ view: TextView) { completeSymbol(nil) }
 
+    /// The selection dragged: its words, and a reference to what it names
+    /// (§2.5) — the declaration, else the stretch — a symbol into an agent.
+    func textView(_ view: TextView, dragSelection range: TextRange, text: String) -> NSPasteboardWriting? {
+        Drags.selection?(block, range, text)
+    }
+
     /// A gutter's line dragged: a reference to its place (§2.5) — what an
     /// outline's item carries, its line made an anchor by the window.
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {

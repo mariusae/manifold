@@ -1876,7 +1876,65 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// line (`#line=N`), going there from anywhere.
     @objc func copyLinkToLine(_ sender: Any?) {
         guard let f = focusedShown, let e = views[f.id] as? EditorView, case let .line(n)? = e.navLocation else { return NSSound.beep() }
-        copyLink(to: f.placement.block, fragment: "line=\(n)")
+        copyLink(to: f.placement.block, fragment: anchored("line=\(n)", in: f.placement.block))
+    }
+
+    // MARK: Asking an agent about a place (§2.5)
+
+    /// What an agent is asked to do with a place: describe it (a note that
+    /// describes it, shown with it), explain it (how it fits), or walk
+    /// through it (a note of references, a step each).
+    enum AgentAsk { case describe, explain, walk }
+
+    @objc func describeWithAgent(_ sender: Any?) { askAgent(.describe) }
+    @objc func explainWithAgent(_ sender: Any?) { askAgent(.explain) }
+    @objc func walkWithAgent(_ sender: Any?) { askAgent(.walk) }
+
+    /// The focused editor's place — its selection's, else the declaration
+    /// the caret is in — handed to an agent with what to make of it: the
+    /// agent in this space most lately used, else a new one beside. What
+    /// it makes (notes, links with relations) comes back into the graph,
+    /// and shows where it belongs.
+    private func askAgent(_ ask: AgentAsk) {
+        guard let f = focusedShown, let e = views[f.id] as? EditorView, let b = hosts.block(f.placement.block), let rope = b.text?.text else { return NSSound.beep() }
+        let sel = e.textView.selections.last { !$0.isCaret }
+        let wanted = sel.flatMap { Anchoring.anchor(range: $0.range, of: b) }
+            ?? Anchoring.anchor(atLine: rope.line(at: e.textView.primarySelection.head), of: b)
+        guard let wanted, let ref = reference(to: wanted, in: b.id) else { return NSSound.beep() }
+        let name = Anchoring.name(of: wanted), file = b.path?.lastPathComponent ?? b.displayTitle
+        let prompt: String
+        switch ask {
+        case .describe:
+            prompt = "Describe \(ref) (\(name) in \(file)) for someone reading the code: what it does and how, as short pseudocode where that helps. "
+                + "Put it in a note — mani new note --title \"\(name)\" --text \"…\" — then link the note to it: mani link @last \(ref) --as describes. Keep it brief."
+        case .explain:
+            prompt = "Explain \(ref) (\(name) in \(file)): why it's there, and how it fits with what uses it (mani refs \(ref) lists them, if the project is indexed). "
+                + "Put it in a note — mani new note --title \"Why \(name)\" --text \"…\" — then link it: mani link @last \(ref) --as explains."
+        case .walk:
+            prompt = "Walk me through \(ref) (\(name) in \(file)): how a call to it unfolds, step by step. Make a note of the steps in order, each a reference to its place "
+                + "(mani ref <file> --symbol <Type.method>; mani refs for its callers) and a sentence — mani new note --title \"How \(name) works\" --text \"…\". I'll step through it with ⌃⌘]."
+        }
+        if let agent = agentForAsking() {
+            hosts.propose(.input(block: agent, text: prompt + "\r"))
+            toast.show("Asked \(hosts.block(agent)?.displayTitle ?? "the agent") about \(name)", action: "Show", for: 4) { [weak self] in self?.arrive(agent, from: nil) }
+        } else {
+            guard let client = hosts.client(b.id.host) else { return NSSound.beep() }
+            let command = desk.settings.agentCommand + " '" + prompt.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            let agent = client.newAgent(cwd: b.path?.deletingLastPathComponent ?? b.place, command: command)
+            show(agent, lens: .agent, .beside, context: "asked about \(name)")
+        }
+    }
+
+    /// The agent to ask: the one in this space most lately settled on (a
+    /// tile of its, still running), else any here.
+    private func agentForAsking() -> BlockID? {
+        guard let a = arrangement else { return nil }
+        let agents = a.placements.filter { hosts.block($0.block)?.kind == .agent && hosts.block($0.block)?.terminal?.dormantSince == nil }
+        guard !agents.isEmpty else { return nil }
+        for place in settled where place.space == selected {
+            if let tile = place.tile, let p = agents.first(where: { $0.id == tile }) { return p.block }
+        }
+        return agents.first?.block
     }
 
     /// New Note from Clipboard: its text as a note (a picture: an image block).
@@ -4755,6 +4813,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
         Drags.localHost = host.host
         MarkdownStyle.placeName = { [weak self] id, anchor in self?.hosts.block(id)?.anchors?[anchor].map(Anchoring.name(of:)) }
+        Drags.selection = { [weak self] id, range, text in
+            guard let self, let b = self.hosts.block(id), let wanted = Anchoring.anchor(range: range, of: b),
+                  let address = self.reference(to: wanted, in: id) else { return nil }
+            var t = self.dragThing(id, fragment: BlockID.link(address)?.fragment, title: Anchoring.name(of: wanted))
+            t.text = text
+            return Drags.item(t)
+        }
         Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: $0.anchored(fragment, in: id), title: title)) } }
         Drags.contents = { [weak self] id, fragment, done in
             guard let self else { return done(nil) }

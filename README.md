@@ -895,7 +895,9 @@ around it, and comes back with its history.
   ("“Card.save” is no longer in Card.swift"). An outline's item dragged
   or Copy Link'd, or a line dragged from an editor's gutter (the line
   numbers), makes one — the declaration or heading on that line, else the
-  line — and the same place gives the same reference (a terminal's
+  line — and so does a selection dragged out of the text (a function's
+  name: the function; anything else: that stretch), carrying its words
+  for other apps — and the same place gives the same reference (a terminal's
   command and a PDF's page are anchored the same way). Links carry places
   at either end, and what they mean (a relation: `describes`,
   `annotates`, `explains`, `step`, any word); `mani info` lists a file's
@@ -928,6 +930,14 @@ around it, and comes back with its history.
   A folded function with a note describing it shows the note in its
   body's place. A caret come into what's folded (gone to, found) opens
   it.
+- **Asking an agent about code**: Describe, Explain and Walk Through
+  with an Agent (an editor's menu, Code ▸) hand the place — the
+  selection's, else the declaration the caret is in — to the agent in
+  the space most lately used (else a new one beside), asking it for a
+  note that describes it (linked `--as describes`, so it shows under the
+  function and in its folded body's place), one that explains how it
+  fits (`--as explains`), or a walk: a note of references a step each.
+  What it makes is graph like anything else; Manifold shows it.
 - **Walks through code**: a note of references in order, a sentence each
   (one an agent writes with `mani ref`), is walked with ⌃⌘] (Go ▸ Next
   Step) and ⌃⌘[: each step shown beside the note in one tile, at its

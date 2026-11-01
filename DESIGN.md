@@ -229,7 +229,12 @@ references, in order, are a walk, stepped beside it (⌃⌘]). A
 terminal's command and a PDF's page are anchored too — referred to (an
 outline's item dragged, Copy Link, a link made through `mani`), `command=`
 and `page=` become anchors at them, read and gone to as those places
-are (`Anchor.legibleFragment`). SCIP: each host runs a project's
+are; a selection dragged out of a text refers to the declaration it
+names, else to its stretch (`Anchoring.anchor(range:)`). Describe,
+Explain and Walk Through with an Agent hand an agent a place and what to
+make of it — notes and links by relation, through `mani` — the
+presentation left to Manifold: nothing of it is built in but the asking
+(`Anchor.legibleFragment` for commands and pages). SCIP: each host runs a project's
 indexer when asked (`SCIPService`, in the user's login shell, the index
 kept by root's hash in its folder, read once and again when made anew);
 `SCIPIndex` reads Sourcegraph's protobuf (documents, occurrences with

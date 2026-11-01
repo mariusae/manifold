@@ -28,6 +28,20 @@ enum Anchoring {
         return Anchor(id: "", at: .range, range: lineRange, excerpt: words, name: String(words.prefix(60)))
     }
 
+    /// The anchor a reference to a stretch of a text would name: the
+    /// declaration whose name (or whole) it is, the heading it is, else
+    /// the stretch itself — what a selection dragged out refers to.
+    static func anchor(range: TextRange, of b: Block) -> Anchor? {
+        guard let rope = b.text?.text, range.end <= rope.count, !range.isEmpty else { return nil }
+        if let tree = tree(of: b), let d = tree.declarations().last(where: { $0.nameRange == range || $0.range == range }) {
+            return Anchor(id: "", at: .symbol(path: d.path), range: d.range, excerpt: firstLine(rope, d.range), name: d.path)
+        }
+        let line = rope.line(at: range.start)
+        if rope.lineRange(line) == range, let a = anchor(atLine: line, of: b), case .heading = a.at { return a }
+        let words = rope[range].split(separator: "\n").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        return Anchor(id: "", at: .range, range: range, excerpt: firstLine(rope, range), name: String(words.prefix(60)))
+    }
+
     /// The block's anchor for the same place as `a`, if it has one: a
     /// reference to it again is to that anchor, not a new one.
     static func existing(_ a: Anchor, in b: Block) -> Anchor? {

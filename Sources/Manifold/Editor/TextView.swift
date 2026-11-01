@@ -27,6 +27,9 @@ protocol TextViewDelegate: AnyObject {
     func textView(_ view: TextView, follow target: String, over: Bool)
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
+    /// The selection dragged: what it carries — its words, and a reference
+    /// to its place (§2.5); nil for its words alone.
+    func textView(_ view: TextView, dragSelection range: TextRange, text: String) -> NSPasteboardWriting?
     /// A line (from 0) dragged from the gutter: what it carries — a
     /// reference to the declaration or heading there, else the line (§2.5).
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting?
@@ -2312,9 +2315,10 @@ final class TextView: NSView, NSTextInputClient {
     private func dragSelection(_ event: NSEvent) {
         let s = selectedText
         guard !s.isEmpty else { return }
-        let item = NSPasteboardItem()
-        item.setString(s, forType: .string)
-        let drag = NSDraggingItem(pasteboardWriter: item)
+        // Its place too, where there's one to refer to (one selection).
+        let one = selections.filter { !$0.isCaret }
+        let writer: NSPasteboardWriting = one.count == 1 ? delegate?.textView(self, dragSelection: one[0].range, text: s) ?? Self.words(s) : Self.words(s)
+        let drag = NSDraggingItem(pasteboardWriter: writer)
         let shown = String(s.prefix(200)).replacingOccurrences(of: "\t", with: "  ")
         let label = NSAttributedString(string: shown.split(separator: "\n", omittingEmptySubsequences: false).prefix(6).joined(separator: "\n"),
                                        attributes: [.font: UIType.body, .foregroundColor: NSColor.labelColor])
@@ -2328,6 +2332,12 @@ final class TextView: NSView, NSTextInputClient {
         let p = convert(event.locationInWindow, from: nil)
         drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
         beginDraggingSession(with: [drag], event: event, source: self)
+    }
+
+    private static func words(_ s: String) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        item.setString(s, forType: .string)
+        return item
     }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
@@ -2368,6 +2378,12 @@ final class TextView: NSView, NSTextInputClient {
             menu.addItem(withTitle: "New Note from Selection", action: #selector(MainWindowController.newNoteFromSelection(_:)), keyEquivalent: "")
         }
         menu.addItem(withTitle: "Copy Link to This Line", action: #selector(MainWindowController.copyLinkToLine(_:)), keyEquivalent: "")
+        // An agent asked about the place (§2.5): what it makes comes back
+        // into the graph, and shows here.
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Describe with an Agent", action: #selector(MainWindowController.describeWithAgent(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Explain with an Agent", action: #selector(MainWindowController.explainWithAgent(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Walk Through with an Agent", action: #selector(MainWindowController.walkWithAgent(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "")
         // Insert from iPhone or iPad (Continuity Camera): a photo, a scan,
