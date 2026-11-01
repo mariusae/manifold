@@ -108,6 +108,8 @@ final class ManiDesk {
                        fromAnchor: fromAnchor, toAnchor: toAnchor, relation: r.flags["as"])
             return ""
         case "symbols": return try await symbols(r, scope)
+        case "index": return try await index(r, scope)
+        case "refs": return try await refs(r, scope)
         case "ref": return try await ref(r, scope)
         case "rename":
             let t = try await target(r.args[0], scope)
@@ -406,6 +408,95 @@ final class ManiDesk {
         return "[\(name.replacingOccurrences(of: "]", with: "\\]"))](\(address))"
     }
 
+    // MARK: SCIP (§2.5)
+
+    private func scip(_ request: SCIPRequest, on host: HostID) async -> SCIPResult {
+        await withCheckedContinuation { c in hosts.scip(request, on: host) { c.resume(returning: $0) } }
+    }
+
+    private func describe(_ s: SCIPStatus) -> String {
+        let root = s.root?.abbreviatingHome ?? "no project"
+        let by = s.indexer.map { " (\($0))" } ?? ""
+        switch s.state {
+        case .none: return "\(root)\(by): no index yet" + (s.message.map { " — " + $0 } ?? "")
+        case .indexing: return "\(root)\(by): indexing…"
+        case .current: return "\(root)\(by): indexed" + (s.at.map { " " + Age.ago(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? "")
+        case .failed: return "\(root)\(by): the indexer failed:\n" + (s.message ?? "")
+        }
+    }
+
+    /// `mani index`: the project a file (or this folder) is in indexed.
+    private func index(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        var path = (r.args.first ?? ".").expandingTildeInPath
+        if !path.hasPrefix("/") { path = r.cwd.appendingPathComponent(path) }
+        path = URL(fileURLWithPath: path).standardizedFileURL.path
+        var isDir: ObjCBool = false
+        // A folder: the project at it (a file in it, as far as finding goes).
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue { path = path.appendingPathComponent(".") }
+        let request: SCIPRequest = r.flags["status"] != nil ? .status(path: path) : .index(path: path)
+        guard case .status(var s) = await scip(request, on: scope.host) else {
+            if case .error(let m) = await scip(.status(path: path), on: scope.host) { throw Failure(message: m) }
+            throw Failure(message: "no indexer for \(path.abbreviatingHome)")
+        }
+        if r.flags["wait"] != nil, r.flags["status"] == nil {
+            for _ in 0..<1200 where s.state == .indexing {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                if case .status(let now) = await scip(.status(path: path), on: scope.host) { s = now }
+            }
+            if s.state == .failed { throw Failure(message: describe(s)) }
+        }
+        return describe(s)
+    }
+
+    /// `mani refs`: where a symbol is used across its project.
+    private func refs(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        let b = try await textBlock(r.args[0], scope)
+        let fragment = BlockID.reference(r.args[0])?.fragment
+        guard let path = b.path, let rope = b.text?.text else { throw Failure(message: "\(b.displayTitle) isn't a file") }
+        // Where the symbol's name is: the declaration a reference, --symbol
+        // or --line names, else the reference's place itself.
+        var at: Int?
+        let decls = SyntaxLanguage.forPath(path).map { SyntaxTree($0, text: rope, background: false).declarations() } ?? []
+        if let want = r.flags["symbol"] {
+            at = (decls.first { $0.path == want } ?? decls.first { $0.path.hasSuffix("." + want) || $0.name == want })?.nameRange.start
+            if at == nil { throw Failure(message: "no declaration \(want) in \(b.displayTitle)") }
+        } else if let n = r.flags["line"].flatMap(Int.init) {
+            guard n >= 1, n <= rope.lineCount else { throw Failure(message: "\(b.displayTitle) has \(rope.lineCount) lines") }
+            let range = rope.lineRange(n - 1)
+            at = decls.last { $0.range.start >= range.start && $0.range.start <= range.end }?.nameRange.start
+                ?? rope.offset(ofLine: n - 1) + (rope.lineText(n - 1).utf8.prefix { $0 == 32 || $0 == 9 }.count)
+        } else if let f = fragment, Anchor.isAnchor(f), let a = b.anchors?[f], let (range, _) = Anchoring.locate(a, in: b) {
+            at = decls.first { $0.range == range }?.nameRange.start ?? range.start
+        }
+        guard let at else { throw Failure(message: "say which symbol: a reference to it, or --symbol, or --line", status: 2) }
+        let line = rope.line(at: at)
+        guard case .symbol(let found) = await scip(.symbol(path: path, line: line, byte: at - rope.offset(ofLine: line)), on: b.id.host) else {
+            if case .error(let m) = await scip(.status(path: path), on: b.id.host) { throw Failure(message: m) }
+            throw Failure(message: "\(path.abbreviatingHome)'s project has no index (mani index makes one)")
+        }
+        guard let s = found else { throw Failure(message: "the index knows no symbol there (it may be out of date: mani index)") }
+        guard case .locations(let places) = await scip(.references(symbol: s.symbol, path: path), on: b.id.host) else {
+            throw Failure(message: "the index couldn't say where \(s.name) is used")
+        }
+        // Paths as from the command's folder (whichever way /tmp is spelled).
+        let base = URL(fileURLWithPath: r.cwd).resolvingSymlinksInPath().path + "/"
+        func shown(_ p: String) -> String {
+            let real = URL(fileURLWithPath: p).resolvingSymlinksInPath().path
+            return real.hasPrefix(base) ? String(real.dropFirst(base.count)) : p.abbreviatingHome
+        }
+        guard r.flags["markdown"] != nil else {
+            return places.map { "\(shown($0.path)):\($0.line + 1):\($0.isDefinition ? " (definition)" : "") \($0.text)" }.joined(separator: "\n")
+        }
+        // Each a reference to its place (its line's anchor, in its file's block).
+        var out: [String] = []
+        for p in places.prefix(100) {
+            let fb = try await textBlock(p.path, scope)
+            guard let address = wc.reference(toLine: p.line, in: fb.id, exactly: true) else { continue }
+            out.append("[\(shown(p.path)):\(p.line + 1)](\(address))\(p.isDefinition ? " (definition)" : "") — `\(p.text)`")
+        }
+        return out.joined(separator: "\n")
+    }
+
     /// An anchor's lines, as the text is now (found again if it moved).
     private func anchorText(_ anchor: String, in b: Block) throws -> String {
         guard let a = b.anchors?[anchor] else { throw Failure(message: "no such place in \(b.displayTitle)") }
@@ -578,6 +669,7 @@ final class ManiDesk {
             out["places"] = anchors.values.sorted { ($0.range?.start ?? 0) < ($1.range?.start ?? 0) }.prefix(100).map { a -> [String: Any] in
                 var o: [String: Any] = ["ref": MainWindowController.address(b.id, anchor: a.id), "name": Anchoring.name(of: a)]
                 if let r = a.range, let rope = b.text?.text, r.start <= rope.count { o["line"] = rope.line(at: r.start) + 1 }
+                if let symbol = a.scip { o["scip"] = symbol }
                 let from = inbound.filter { $0.toAnchor == a.id }.map { e -> [String: Any] in
                     var f: [String: Any] = ["from": e.from.description, "title": hosts.block(e.from)?.displayTitle ?? ""]
                     if let r = e.relation { f["relation"] = r }

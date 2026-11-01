@@ -479,7 +479,15 @@ final class Hosts {
             done?(nil)
         case let .lsp(request):
             lsp(request) { _ in done?(nil) }
+        case let .scip(request):
+            local.scip(request) { _ in done?(nil) }
         }
+    }
+
+    /// A question for a host's SCIP index of a file's project (§2.5).
+    func scip(_ request: SCIPRequest, on host: HostID, done: @escaping (SCIPResult) -> Void) {
+        guard let c = client(host) else { return done(.error("that host isn't attached")) }
+        c.scip(request, done: done)
     }
 
     func propose(_ proposal: Proposal, on host: HostID) {

@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import ManifoldCore
+import ManifoldSyntax
 import UniformTypeIdentifiers
 import PDFKit
 
@@ -7698,8 +7699,10 @@ extension MainWindowController: GridDelegate {
     /// A reference to a line of a text (from 0): to the declaration or
     /// heading there, else the line — its anchor found among the block's,
     /// or minted in its log.
-    func reference(toLine line: Int, in id: BlockID) -> String? {
-        guard let b = hosts.block(id), let wanted = Anchoring.anchor(atLine: line, of: b) else { return nil }
+    /// `exactly`: the line itself unless a declaration starts on it (a
+    /// use of a symbol, not the function it's in).
+    func reference(toLine line: Int, in id: BlockID, exactly: Bool = false) -> String? {
+        guard let b = hosts.block(id), let wanted = Anchoring.anchor(atLine: line, of: b, exactly: exactly) else { return nil }
         return reference(to: wanted, in: id)
     }
 
@@ -7707,11 +7710,30 @@ extension MainWindowController: GridDelegate {
     /// or one minted in its log.
     func reference(to wanted: Anchor, in id: BlockID) -> String? {
         guard let b = hosts.block(id) else { return nil }
-        if let a = Anchoring.existing(wanted, in: b) { return Self.address(id, anchor: a.id) }
+        if let a = Anchoring.existing(wanted, in: b) {
+            if a.scip == nil { nameInIndex(a, of: id) }
+            return Self.address(id, anchor: a.id)
+        }
         var a = wanted
         a.id = Anchor.newID(taken: Set(b.anchors?.keys.map { $0 } ?? []))
         hosts.append([.anchor(a)], to: .block(id))
+        nameInIndex(a, of: id)
         return Self.address(id, anchor: a.id)
+    }
+
+    /// A declaration's anchor given its name in the project's SCIP index,
+    /// if there's one (asked of the host; nothing if not).
+    private func nameInIndex(_ a: Anchor, of id: BlockID) {
+        guard case .symbol = a.at, let b = hosts.block(id), let path = b.path, let rope = b.text?.text, let r = a.range,
+              let language = SyntaxLanguage.forPath(path) else { return }
+        let decl = SyntaxTree(language, text: rope, background: false).declarations().first { $0.range == r }
+        let at = decl?.nameRange.start ?? r.start
+        let line = rope.line(at: at)
+        hosts.scip(.symbol(path: path, line: line, byte: at - rope.offset(ofLine: line)), on: id.host) { [weak self] result in
+            guard let self, case .symbol(let s?) = result, var now = self.hosts.block(id)?.anchors?[a.id], now.scip != s.symbol else { return }
+            now.scip = s.symbol
+            self.hosts.append([.anchor(now)], to: .block(id))
+        }
     }
 
     /// A place written as a line of a text (`line=12`, an outline's item)
@@ -7751,7 +7773,17 @@ extension MainWindowController: GridDelegate {
         default: break
         }
         guard let (range, putRight) = Anchoring.locate(a, in: b), let rope = b.text?.text else {
-            return sayMissing(why: "“\(Anchoring.name(of: a))” is no longer in \(b.displayTitle)")
+            // Gone from its file: where the index says it's defined now, if
+            // it knows it (moved to another file).
+            let gone = "“\(Anchoring.name(of: a))” is no longer in \(b.displayTitle)"
+            guard let symbol = a.scip, let path = b.path else { return sayMissing(why: gone) }
+            hosts.scip(.definition(symbol: symbol, path: path), on: id.host) { [weak self] result in
+                guard let self else { return }
+                guard case .locations(let found) = result, let there = found.first, there.path != path else { return self.sayMissing(why: gone) }
+                self.open(path: there.path, line: there.line + 1, column: nil, on: id.host, from: self.arrangement?.focused, context: "moved")
+                self.toast.show("“\(Anchoring.name(of: a))” moved to \(there.path.lastPathComponent)", action: "OK", for: 4) {}
+            }
+            return
         }
         if let putRight { hosts.append([.anchor(putRight)], to: .block(id)) }
         goToPlace(.line(rope.line(at: range.start) + 1), in: id)
@@ -7884,6 +7916,10 @@ extension MainWindowController: EditorViewDelegate {
 
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         hosts.lsp(request, done: done)
+    }
+
+    func editor(_ view: EditorView, scip request: SCIPRequest, done: @escaping (SCIPResult) -> Void) {
+        hosts.scip(request, on: view.block.host, done: done)
     }
 
     func editor(_ view: EditorView, open url: URL, over: Bool) {

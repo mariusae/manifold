@@ -229,8 +229,17 @@ references, in order, are a walk, stepped beside it (⌃⌘]). A
 terminal's command and a PDF's page are anchored too — referred to (an
 outline's item dragged, Copy Link, a link made through `mani`), `command=`
 and `page=` become anchors at them, read and gone to as those places
-are (`Anchor.legibleFragment`). To come: anchors in diffs (made again
-from their sources); SCIP for references across files.
+are (`Anchor.legibleFragment`). SCIP: each host runs a project's
+indexer when asked (`SCIPService`, in the user's login shell, the index
+kept by root's hash in its folder, read once and again when made anew);
+`SCIPIndex` reads Sourcegraph's protobuf (documents, occurrences with
+their roles, symbols' information) and answers the symbol at a place
+(columns counted as the document says), its definitions, its uses, and
+what a file defines; `SCIPRequest`/`SCIPResult` carry them over the
+wire as LSP's do. `mani index`, `mani refs` and Find References' fallback
+use it; a declaration's anchor keeps its `scip` name, followed to
+another file when it's gone from its own. To come: anchors in diffs
+(made again from their sources); indexing as files change.
 
 ---
 

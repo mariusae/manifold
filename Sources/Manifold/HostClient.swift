@@ -196,6 +196,7 @@ final class HostClient {
     private var nextProposal = 1
     private var pendingProposals: [Int: (String?) -> Void] = [:]
     private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
+    private var pendingSCIP: [Int: (SCIPResult) -> Void] = [:]
     private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
     private var pendingLookUps: [Int: ([PathKind?]?) -> Void] = [:]
     private var pendingMachine: [Int: (MachineSample?) -> Void] = [:]
@@ -415,6 +416,15 @@ final class HostClient {
         nextProposal += 1
         pendingLSP[id] = done
         conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
+    }
+
+    /// A question for the host's SCIP index of a file's project (§2.5).
+    func scip(_ request: SCIPRequest, done: @escaping (SCIPResult) -> Void) {
+        guard conn != nil else { return done(.error("not attached")) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingSCIP[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .scip(request))))
     }
 
     /// A folder's entries, ignored ones marked (§7.4).
@@ -1150,6 +1160,8 @@ final class HostClient {
             onGutter?(block)
         case let .lspResult(id, result):
             pendingLSP.removeValue(forKey: id)?(result)
+        case let .scipResult(id, result):
+            pendingSCIP.removeValue(forKey: id)?(result)
         case .end:
             break // only on a file's stream
         case let .notebookLive(block, cell, output):

@@ -907,6 +907,19 @@ around it, and comes back with its history.
   that describes, annotates or explains it shows under its line, in the
   technical font beside code (the tile's menu hides them). A reference
   written bare shows the place's name on its pill.
+- **Indexes (SCIP)**: `mani index` (or Code ▸ Index Project) has the
+  project's indexer make its SCIP index on its host — rust-analyzer for a
+  Cargo crate; scip-typescript and scip-python, fetched by npx when first
+  used; scip-go, scip-clang (with a `compile_commands.json`) and scip-java
+  where installed — in the background, kept in the host's folder. Then
+  `mani refs <file> --symbol Type.method` lists every place a symbol is
+  used across the project (`--markdown`: each a reference, for a walk),
+  and Find References uses it when no language server answers. An
+  anchor at a declaration keeps its index name, so one moved to another
+  file is followed there where the indexer keeps its name (Go within a
+  package, C and C++; rust-analyzer and scip-typescript name a symbol by
+  its module or file, so moving it renames it). Indexed when asked, not
+  as files change: run it again after big changes.
 - **Folding**: in an editor, Collapse (⌃⌘9) folds the declaration the
   caret is in (its body, by the language's grammar; a Markdown
   section, in a note or Markdown file) under its first line, a chip

@@ -325,6 +325,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
         item(code, "Go to Definition", #selector(EditorView.goToDefinition(_:)), "j", [.command, .control])
         item(code, "Find References", #selector(EditorView.findReferences(_:)), "r", [.command, .control, .shift])
+        // The project's SCIP index (§2.5): references across its files.
+        item(code, "Index Project", #selector(EditorView.indexProject(_:)), "")
         item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
         code.addItem(.separator())
         item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "r", [.command, .control])

@@ -68,6 +68,7 @@ final class Server {
     /// Shards changed since their last snapshot.
     private var dirtyShards: Set<ShardID> = []
     private let languageServers: LanguageServers
+    private let scip: SCIPService
     private let searches: Searches
     private let mentions: Mentions
     private let git: Git
@@ -125,6 +126,7 @@ final class Server {
         searches = Searches(queue: queue)
         mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
+        scip = SCIPService(queue: queue)
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
         mentions.mentions = { [weak self] block in
             guard let g = self?.node.graph else { return [] }
@@ -1013,6 +1015,10 @@ final class Server {
         case let .lsp(request):
             languageServers.request(request) { result in
                 conn.send(.message(ServerMessage.lspResult(id: id, result)))
+            }
+        case let .scip(request):
+            scip.request(request) { result in
+                conn.send(.message(ServerMessage.scipResult(id: id, result)))
             }
         case let .editFile(path, edits):
             guard let contents = TextFile.read(path) else { return done("can't read \(path)") }

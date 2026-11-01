@@ -178,6 +178,9 @@ public enum Proposal: Codable, Sendable {
     case languageServers([LanguageServerConfig])
     /// A question for the language server of a block's file.
     case lsp(LSPRequest)
+    /// A question for the SCIP index of a file's project (§2.5), or the
+    /// project indexed.
+    case scip(SCIPRequest)
     /// Edits applied to a file on the host that isn't open as a block (a
     /// rename across files).
     case editFile(path: String, edits: [TextEdit])
@@ -559,6 +562,8 @@ public enum ServerMessage: Codable, Sendable {
     case diagnostics(BlockID, [Diagnostic])
     /// The answer to a `lsp` proposal.
     case lspResult(id: Int, LSPResult)
+    /// The answer to a `scip` proposal.
+    case scipResult(id: Int, SCIPResult)
     /// A language server's state: starting, ready, or gone, with a word.
     case languageServer(language: String, root: String, state: String)
     /// How a text block's lines stand against what's committed.

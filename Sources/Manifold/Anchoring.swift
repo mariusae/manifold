@@ -10,14 +10,14 @@ enum Anchoring {
     /// The anchor a reference to `line` (from 0) of a text would name: the
     /// declaration that starts on it (else the innermost it's in), the
     /// heading on it, else the line itself. Its id is to be given.
-    static func anchor(atLine line: Int, of b: Block) -> Anchor? {
+    static func anchor(atLine line: Int, of b: Block, exactly: Bool = false) -> Anchor? {
         guard let rope = b.text?.text, line >= 0, line < rope.lineCount else { return nil }
         let lineRange = rope.lineRange(line)
         if let tree = tree(of: b) {
             let decls = tree.declarations()
             let starting = decls.last { rope.line(at: $0.range.start) == line }
             let within = decls.last { $0.range.start <= lineRange.start && $0.range.end >= lineRange.end }
-            if let d = starting ?? within {
+            if let d = starting ?? (exactly ? nil : within) {
                 return Anchor(id: "", at: .symbol(path: d.path), range: d.range, excerpt: firstLine(rope, d.range), name: d.path)
             }
         }

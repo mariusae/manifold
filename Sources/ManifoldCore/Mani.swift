@@ -196,6 +196,31 @@ public enum Mani {
                  and the line it starts on — or each heading of a Markdown text, indented
                  by its level. What `mani ref --symbol` and `--heading` take.
                  """, inApp: true),
+        Verb(words: ["index"], args: "[file or folder]", minArgs: 0, maxArgs: 1,
+             flags: [Flag(name: "wait", short: "w", help: "wait for it to be made, and say how it went"),
+                     Flag(name: "status", help: "only say how the index stands")],
+             summary: "Index a project (SCIP): its symbols, and where each is used",
+             details: """
+                 Runs the indexer for the project the file (else this folder) is in, on
+                 its host, in the background: rust-analyzer for a Cargo crate,
+                 scip-typescript (TypeScript, JavaScript) and scip-python, fetched by npx
+                 when first used; scip-go, scip-clang (with compile_commands.json) and
+                 scip-java where they're installed. Then `mani refs` finds where a symbol
+                 is used across the project, and Find References does when no language
+                 server answers. Run it again after big changes.
+                 """, inApp: true),
+        Verb(words: ["refs"], args: "<file or reference>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "symbol", value: "path", help: "a declaration in the file, by its path (`Type.method`) or name"),
+                     Flag(name: "line", value: "n", help: "the declaration at this line (from 1)"),
+                     Flag(name: "markdown", help: "each as a reference, [file:line](manifold:…), for a note")],
+             summary: "Where a symbol is used across its project (from its SCIP index)",
+             details: """
+                 Every place the symbol is used, across the project's files, from its
+                 index (`mani index` makes it): `path:line: the line`, its definition
+                 marked. The symbol by a reference to it (`mani ref` prints one), or a
+                 file and --symbol or --line. --markdown prints each as a reference to
+                 its place, for a walk through code.
+                 """, inApp: true),
         Verb(words: ["ref"], args: "<file>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "symbol", value: "path", help: "a declaration, by its path (`Type.method`) or name"),
                      Flag(name: "heading", value: "title", help: "a Markdown heading, by its title"),
@@ -378,6 +403,10 @@ public enum Mani {
             - A walk through code (how a request is handled, what boot does) is a note of
               such references in order, a sentence each: make it with `mani new note`.
             - `mani info <file>` lists its places referred to and what links to each.
+            - Across files: `mani index` (in the project; `--wait`) makes its SCIP index,
+              then `mani refs <file> --symbol Type.method` (or a reference) lists every
+              place the symbol is used, `path:line: the line`; `--markdown` as references,
+              ready for a walk. Use it before guessing at callers with grep.
 
             ## What the user says, and what to run
             - "this" with a `manifold:` reference in their message: `mani read <it>` (and

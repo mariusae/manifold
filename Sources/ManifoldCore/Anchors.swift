@@ -19,6 +19,9 @@ public struct Anchor: Codable, Equatable, Hashable, Sendable, Identifiable {
     /// The text changed under it where no edit said: its range is a guess
     /// until it's found again.
     public var unsure: Bool?
+    /// A declaration's global name in its project's SCIP index, where one
+    /// was: what finds it in another file, moved there.
+    public var scip: String?
 
     public init(id: String, at: AnchorTarget, range: TextRange? = nil, excerpt: String? = nil, name: String? = nil) {
         self.id = id

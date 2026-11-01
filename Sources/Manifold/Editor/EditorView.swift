@@ -32,6 +32,8 @@ protocol EditorViewDelegate: AnyObject {
     func editorPlaces(_ view: EditorView) -> [TextView.Place]
     /// The editor asks the block's language server something.
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
+    /// The editor asks the host's SCIP index of its file's project (§2.5).
+    func editor(_ view: EditorView, scip request: SCIPRequest, done: @escaping (SCIPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
     func editor(_ view: EditorView, open path: String, line: Int, column: Int, over: Bool)
     /// The places the language server says use `word`, as a block of them.

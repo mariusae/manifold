@@ -96,13 +96,68 @@ extension EditorView {
 
     /// Find References: a block of every place that uses the word at the
     /// caret, as a search's hits, beside this one.
+    /// Find References: the language server's, else (none running, or it
+    /// found none) the project's SCIP index's (§2.5), across its files.
     @objc func findReferences(_ sender: Any?) {
         let at = caret
         let word = textView.text[textView.wordRange(at: at)]
-        ask(.references(block, offset: at), busy: "Looking for references…") { [weak self] result in
-            guard let self, case .locations(let places) = result else { return }
-            guard !places.isEmpty else { return self.flash("No references found") }
-            self.delegate?.editor(self, references: places, of: word)
+        busyMessage = "Looking for references…"
+        delegate?.editor(self, lsp: .references(block, offset: at)) { [weak self] result in
+            guard let self else { return }
+            if case .locations(let places) = result, !places.isEmpty {
+                self.busyMessage = nil
+                return self.delegate?.editor(self, references: places, of: word) ?? ()
+            }
+            let why: String = if case .error(let m) = result { m } else { "No references found" }
+            self.indexReferences(at: at, word: word, else: why)
+        }
+    }
+
+    /// Code ▸ Index Project: the project the file is in indexed (SCIP,
+    /// §2.5), on its host; said along the bottom as it goes and when done.
+    @objc func indexProject(_ sender: Any?) {
+        guard !path.isEmpty else { return NSSound.beep() }
+        delegate?.editor(self, scip: .index(path: path)) { [weak self] result in
+            guard let self else { return }
+            guard case .status(let s) = result else {
+                if case .error(let m) = result { self.flash(m) }
+                return
+            }
+            self.busyMessage = "Indexing \(s.root?.lastPathComponent ?? "the project") with \(s.indexer ?? "its indexer")…"
+            self.watchIndex()
+        }
+    }
+
+    private func watchIndex(_ tries: Int = 1200) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            self.delegate?.editor(self, scip: .status(path: self.path)) { [weak self] result in
+                guard let self, case .status(let s) = result else { return }
+                switch s.state {
+                case .indexing: if tries > 0 { self.watchIndex(tries - 1) }
+                case .current: self.busyMessage = nil; self.flash("Indexed \(s.root?.lastPathComponent ?? "the project")")
+                case .failed: self.busyMessage = nil; self.flash("Indexing failed: " + (s.message?.split(separator: "\n").last.map(String.init) ?? ""))
+                case .none: self.busyMessage = nil
+                }
+            }
+        }
+    }
+
+    /// References from the project's index; `why` said if it has none.
+    private func indexReferences(at offset: Int, word: String, else why: String) {
+        let rope = textView.text
+        guard !path.isEmpty else { busyMessage = nil; return flash(why) }
+        let line = rope.line(at: offset)
+        delegate?.editor(self, scip: .symbol(path: path, line: line, byte: offset - rope.offset(ofLine: line))) { [weak self] result in
+            guard let self else { return }
+            guard case .symbol(let s?) = result else { self.busyMessage = nil; return self.flash(why) }
+            self.delegate?.editor(self, scip: .references(symbol: s.symbol, path: self.path)) { [weak self] result in
+                guard let self else { return }
+                self.busyMessage = nil
+                guard case .locations(let found) = result, !found.isEmpty else { return self.flash(why) }
+                let places = found.map { LSPLocation(path: $0.path, line: $0.line, character: $0.character, endLine: $0.endLine, endCharacter: $0.endCharacter) }
+                self.delegate?.editor(self, references: places, of: word)
+            }
         }
     }
 
