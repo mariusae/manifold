@@ -361,6 +361,42 @@ extension EditorView {
         Drags.selection?(block, range, text)
     }
 
+    /// Peek: what the name the pointer rests on is — the language server's
+    /// hover (its signature, its documentation), else the project's
+    /// index's — under it, while the pointer stays.
+    func textView(_ view: TextView, peekAt word: TextRange, in rect: NSRect) {
+        let show = { [weak self] (markdown: String) in
+            guard let self, let window = self.window, self.textView.stillPeeking(at: word) else { return }
+            let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            let body = self.theme.technicalFont(size: 12.5)
+            let content = MarkdownText.attributed(String(trimmed.prefix(1500)), font: body, code: self.theme.font(.monospaced, size: 12))
+            PeekTip.shared.show(content, under: rect, in: window)
+        }
+        let index = { [weak self] (answer: @escaping (String) -> Void) in
+            guard let self, !self.path.isEmpty else { return }
+            let rope = self.textView.text, line = rope.line(at: word.start)
+            self.delegate?.editor(self, scip: .symbol(path: self.path, line: line, byte: word.start - rope.offset(ofLine: line))) { result in
+                guard case .symbol(let s?) = result else { return }
+                // Its definition's line (its signature, mostly), then what's said of it.
+                var md = ""
+                if let d = s.definition { md = "```\n\(d.text)\n```\n" }
+                md += s.documentation.isEmpty ? (s.definition.map { $0.path.lastPathComponent + ":\($0.line + 1)" } ?? "") : s.documentation
+                answer(md)
+            }
+        }
+        // Both asked at once: the index answers at once, a language server
+        // (starting, busy) may take a while — its answer, when it comes, in
+        // place of the index's.
+        var serverAnswered = false
+        delegate?.editor(self, lsp: .hover(block, offset: word.start)) { result in
+            guard case .hover(let text) = result, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            serverAnswered = true
+            show(text)
+        }
+        index { if !serverAnswered { show($0) } }
+    }
+
     /// A gutter's line dragged: a reference to its place (§2.5) — what an
     /// outline's item carries, its line made an anchor by the window.
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {

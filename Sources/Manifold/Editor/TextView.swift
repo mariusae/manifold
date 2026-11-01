@@ -30,6 +30,9 @@ protocol TextViewDelegate: AnyObject {
     /// The selection dragged: what it carries — its words, and a reference
     /// to its place (§2.5); nil for its words alone.
     func textView(_ view: TextView, dragSelection range: TextRange, text: String) -> NSPasteboardWriting?
+    /// The pointer has rested on a name in code (`word`, in the window at
+    /// `rect`): what it is, shown under it, if anything's known (peek).
+    func textView(_ view: TextView, peekAt word: TextRange, in rect: NSRect)
     /// A line (from 0) dragged from the gutter: what it carries — a
     /// reference to the declaration or heading there, else the line (§2.5).
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting?
@@ -245,6 +248,7 @@ final class TextView: NSView, NSTextInputClient {
                 // Not ours: nothing is known about what moved.
                 syntax?.update(to: document.rope)
                 foldsFollowText()
+                pinnedRanges = nil
                 invalidateAll()
                 if document.rope.lineCount != knownLineCount { undoStack = []; redoStack = [] }
             }
@@ -940,7 +944,7 @@ final class TextView: NSView, NSTextInputClient {
         let f = folds.map { "\(text.line(at: $0.start) + 1)-\(text.line(at: max($0.end - 1, $0.start)) + 1)" }.joined(separator: ",")
         let p = places.map { "\($0.line + 1):\($0.links.count)\($0.note != nil ? "+note" : "")" }.joined(separator: ",")
         let uses = symbolUses.map { "\(text.line(at: $0.start) + 1):\($0.start - text.offset(ofLine: text.line(at: $0.start)))" }.joined(separator: ",")
-        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count) uses [\(uses)]"
+        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count) uses [\(uses)] pinned [\(pinned.map(\.word).joined(separator: ","))] \(pinnedUses().count)"
     }
 
     // MARK: Drawing
@@ -1080,7 +1084,15 @@ final class TextView: NSView, NSTextInputClient {
             NSRect(x: 0, y: top(ofLine: h), width: bounds.width, height: CGFloat(layout(line: h).rows.count) * lineHeight).fill()
         }
 
-        // The caret's symbol's other uses, faintly; matches, then selections' backgrounds.
+        // Pinned symbols' uses, each its colour; the caret's symbol's other
+        // uses, faintly; matches, then selections' backgrounds.
+        if !pinned.isEmpty {
+            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
+            for (h, color) in pinnedUses() where h.end >= firstOffset && h.start <= lastOffset {
+                color.setFill()
+                rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill() }
+            }
+        }
         if !symbolUses.isEmpty {
             let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
             Self.useColor.setFill()
@@ -1494,6 +1506,7 @@ final class TextView: NSView, NSTextInputClient {
         syntaxEdited()
         foldsEdited(edits)
         foldsText = text
+        pinnedRanges = nil
         resizeToFit()
         needsDisplay = true
     }
@@ -1543,6 +1556,7 @@ final class TextView: NSView, NSTextInputClient {
     // MARK: Keys
 
     override func keyDown(with event: NSEvent) {
+        endPeek()
         if delegate?.textView(self, handle: event) == true { return }
         if handleShortcut(event) { return }
         inputContext?.handleEvent(event)
@@ -1723,6 +1737,112 @@ final class TextView: NSView, NSTextInputClient {
     private func lineEnd(_ offset: Int) -> Int { text.lineRange(text.line(at: offset)).end }
 
     private func isWord(_ b: UInt8) -> Bool { b == 0x5F || (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b >= 0x80 }
+
+    // MARK: Peek
+
+    /// The name the pointer rests on, waited on before it's peeked at.
+    private var peekWord: TextRange?
+    private var peekWork: DispatchWorkItem?
+
+    /// The pointer moved: over a name in code, a peek at it a moment after
+    /// it stops there; off it, any peek put away.
+    private func notePeek(at p: NSPoint, event: NSEvent) {
+        if Date() < debugPeekUntil { return }
+        guard showsSymbolUses, event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]), !text.isEmpty,
+              p.x >= textLeft, let w = word(at: p) else { return endPeek() }
+        guard w != peekWord else { return }
+        endPeek()
+        peekWord = w
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.peekWord == w, let window = self.window else { return }
+            let r = self.rects(of: w).first ?? .zero
+            self.delegate?.textView(self, peekAt: w, in: self.convert(r, to: nil))
+            _ = window
+        }
+        peekWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+    }
+
+    /// The pointer's off the name (or a key went down, the text scrolled).
+    func endPeek() {
+        peekWork?.cancel()
+        peekWork = nil
+        peekWord = nil
+        PeekTip.shared.hide()
+    }
+
+    /// Debugging: a peek at the name at a byte, as if the pointer rested there.
+    private var debugPeekUntil = Date.distantPast
+
+    func debugPeek(at offset: Int) {
+        // (The pointer's own moves don't put it away meanwhile.)
+        debugPeekUntil = Date().addingTimeInterval(4)
+        let w = wordRange(at: offset)
+        peekWord = w
+        delegate?.textView(self, peekAt: w, in: convert(rects(of: w).first ?? .zero, to: nil))
+    }
+
+    /// Whether the name a peek was asked about is still the one rested on.
+    func stillPeeking(at w: TextRange) -> Bool { peekWord == w }
+
+    /// The name under a point: a word of code's, the point over its letters.
+    private func word(at p: NSPoint) -> TextRange? {
+        let o = offset(at: p)
+        let w = wordRange(at: o)
+        guard w.length >= 2, let first = text.byte(at: w.start), !(first >= 0x30 && first <= 0x39),
+              let r = rects(of: w).first, r.insetBy(dx: -1, dy: 0).contains(p) else { return nil }
+        if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: w).isEmpty { return nil }
+        return w
+    }
+
+    // MARK: Pinned highlights
+
+    /// Symbols whose uses stay tinted, each its own colour (⌃⌘E), until
+    /// unpinned or cleared: several followed through the text at once.
+    private var pinned: [(word: String, color: NSColor)] = [] { didSet { pinnedRanges = nil; needsDisplay = true } }
+    private var pinnedRanges: [(TextRange, NSColor)]?
+    static let pinColors: [NSColor] = [
+        NSColor.dynamic(NSColor(srgbRed: 0.2, green: 0.7, blue: 0.7, alpha: 0.28), NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 0.35)),
+        NSColor.dynamic(NSColor(srgbRed: 0.95, green: 0.7, blue: 0.2, alpha: 0.32), NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 0.35)),
+        NSColor.dynamic(NSColor(srgbRed: 0.6, green: 0.45, blue: 0.95, alpha: 0.28), NSColor(srgbRed: 0.65, green: 0.5, blue: 1, alpha: 0.35)),
+        NSColor.dynamic(NSColor(srgbRed: 0.95, green: 0.4, blue: 0.55, alpha: 0.26), NSColor(srgbRed: 1, green: 0.45, blue: 0.6, alpha: 0.33)),
+    ]
+
+    /// Highlight Uses (⌃⌘E): the caret's symbol's uses pinned in the next
+    /// colour; again on a pinned one, unpinned.
+    @objc func highlightUses(_ sender: Any?) {
+        let w = wordRange(at: primarySelection.head)
+        guard w.length >= 1 else { return NSSound.beep() }
+        let word = text[w]
+        if let i = pinned.firstIndex(where: { $0.word == word }) {
+            pinned.remove(at: i)
+            return
+        }
+        let used = Set(pinned.map { ObjectIdentifier($0.color) })
+        let color = Self.pinColors.first { !used.contains(ObjectIdentifier($0)) } ?? Self.pinColors[pinned.count % Self.pinColors.count]
+        if pinned.count >= Self.pinColors.count { pinned.removeFirst() }
+        pinned.append((word, color))
+    }
+
+    /// Clear Highlights: every pinned symbol unpinned.
+    @objc func clearHighlights(_ sender: Any?) { pinned = [] }
+
+    /// The pinned symbols' uses, whole words not in comments (found once
+    /// a text, again after it changes).
+    private func pinnedUses() -> [(TextRange, NSColor)] {
+        if let r = pinnedRanges { return r }
+        var out: [(TextRange, NSColor)] = []
+        for (word, color) in pinned {
+            for hit in text.findAll(word, limit: 5000) {
+                let before = hit.start > 0 ? text.byte(at: hit.start - 1) : nil, after = text.byte(at: hit.end)
+                guard before.map(isWord) != true, after.map(isWord) != true else { continue }
+                if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: hit).isEmpty { continue }
+                out.append((hit, color))
+            }
+        }
+        pinnedRanges = out
+        return out
+    }
 
     /// The caret's symbol's other uses in the text (code, not Markdown):
     /// the same word, whole, elsewhere — a moment after the caret stops.
@@ -2221,6 +2341,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func mouseDown(with event: NSEvent) {
+        endPeek()
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
         let offset = self.offset(at: p)
@@ -2405,6 +2526,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override func mouseMoved(with event: NSEvent) {
         guard isUnderPointer else { return }
+        notePeek(at: convert(event.locationInWindow, from: nil), event: event)
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
         let over = target != nil

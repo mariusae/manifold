@@ -928,7 +928,12 @@ around it, and comes back with its history.
   Callers (a note of them beside the editor, walked with ⌃⌘]), list the
   functions that call a symbol — found by the index, named by each
   file's grammar — and their callers, each a reference.
-- **Reading code**: the caret on a name tints its other uses in the
+- **Reading code**: the pointer resting on a name shows what it is
+  under it (peek): its definition's line and documentation, from the
+  language server, else at once from the project's index, gone as the
+  pointer leaves. Code ▸ Highlight Uses (⌃⌘E) keeps a symbol's uses
+  tinted in its own colour — four at once, again to unpin, Clear
+  Highlights for all; the caret on a name tints its other uses in the
   file (whole words, not in comments); the tile's menu's Open with
   Bodies Folded opens it as an outline of its functions, their notes
   showing (kept with the tile).

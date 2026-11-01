@@ -695,6 +695,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scheduleStateSave()
         completion?.close()
         hover?.close()
+        textView.endPeek()
     }
 
     func textViewDidEdit(_ view: TextView) {

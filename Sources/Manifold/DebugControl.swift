@@ -1022,6 +1022,15 @@ enum DebugControl {
             let range = TextRange(start + n[1], start + n[2])
             guard let item = Drags.selection?(e.block, range, rope[range]) else { return "carries its words alone" }
             return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? item.data(forType: $0).map { String(decoding: $0, as: UTF8.self) } ?? "")" }.joined(separator: "\n")
+        case "peekat":
+            // "peekat <line> <column>": a peek asked at the name there (from 1,
+            // 0) in the focused editor; "peekat" alone, what the tip says.
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count == 2 else { return PeekTip.shared.isShown ? PeekTip.shared.shownText : "nothing shown" }
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            e.textView.endPeek()
+            e.textView.debugPeek(at: e.textView.text.offset(ofLine: n[0] - 1) + n[1])
+            return "asked"
         case "folds":
             // "folds [collapse|expand|collapseAll|expandAll] [line]": the
             // focused editor's folds and marked places (§2.5), after doing so
