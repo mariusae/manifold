@@ -128,39 +128,56 @@ Everything is the graph: blocks are its nodes, links its edges, and what
 the screen shows of them is a projection of it. Finer than a block, a
 **place** in it can be named, and named the same way whatever it's in.
 
-**References.** A reference names a block and, optionally, a place in
-it: `manifold:host/ulid#place`. A place is `scheme=value`, several
-joined by `&`: the first is its identity, the rest hints —
-`#sym=TextView.layout(line:)&line=482` is the declaration wherever it
-has moved, the line only where to look first (put right when it's found
-elsewhere). Values are percent-encoded. The schemes are open: each block
-kind says which it has, and a new way of knowing a block's structure is
-a new scheme, not a new kind of reference.
+**Anchors.** A reference names a block and, optionally, a place in it
+by an **anchor**: `manifold:host/ulid#k7q2m`, an id the block made, opaque
+to everything else — nothing in a reference to parse. Referring to a
+place mints its anchor in the target block's own log (a proposal to its
+host), or finds the one there for that place; the block alone says
+what an anchor is and where it is now. So an anchor put right is put
+right once, for every reference to it, and it has a home for what a
+place has: its name, where it was last found, whether it's gone. An
+anchor lasts as long as its block — references are pasted where no edge
+follows them (a commit's message, a chat) — and the few legible places
+written before anchors (`#line=12`, `#command=7`, `#page=3`) still
+lead where they say.
 
-| kind | places |
+An anchor holds what it's at, the way its kind knows the block's
+structure — a declaration's path (`Type.method`, by its language's
+grammar), a symbol's global name (`scip`, where an index has one), a
+heading's path, a command, a page, a hunk, a cell, an element's id, a
+time — and what finds it again: a text's anchor has a range, moved
+through every edit as the block moves its selections (§2.4), in one order
+on every replica, so it holds even where nothing knows the language;
+and an excerpt, for when the text changed where no edit said (the file
+written by another program): the block finds it again by what it's
+at, else by the excerpt, else says it's gone, kept to be put right.
+
+| kind | what an anchor is at |
 |---|---|
-| `text`, code | `sym` (a declaration's path, `Type.method`, by its language's grammar), `scip` (a symbol's global name, where an index has one), `line` |
-| `text`, Markdown | `heading` (its path of slugs), `item`, `line` |
-| `terminal`, `agent` | `command` (one command and its output), `turn` |
-| `pdf` | `page` |
-| `diff` | `file`, `hunk` (a file and its hunk's heading) |
-| notebook | `cell` |
-| `web` | `anchor` (an element's id) |
-| media | `t` (a time) |
+| `text`, code | a declaration (its path by the grammar; its `scip` name where indexed), or a range |
+| `text`, Markdown | a heading (its path), an item, or a range |
+| `terminal`, `agent` | a command (one command and its output), a turn |
+| `pdf` | a page |
+| `diff` | a file, a hunk (a file and its hunk's heading) |
+| notebook | a cell |
+| `web` | an element (its id) |
+| media | a time |
 
-The kinds prefer the most lasting identity they can give — `scip`, then
-`sym` or `heading`, then `line` — and each says, of its places:
+Each kind says, of its places:
 
 - **what they are**, in order: its outline is one such list, not the only
   one (a file's declarations, its headings, a terminal's commands);
-- **where one is** in the content as it is now, or that it's gone;
-- **which is at** a location, the most lasting — what dragging from there
-  makes a reference to;
+- **which is at** a location, the most lasting it can say — what dragging
+  from there anchors;
+- **where an anchor is** in the content as it is now, or that it's gone;
 - **what it's called**, and its summary: a pill's title, a card's face (a
   declaration's signature and doc comment, a command and how it ended).
 
-**Edges between places.** A link has a place at either end, or none:
-`Link{from, fromPlace, to, toPlace, kind, relation, at}` — from a
+Agents make references through `mani` (a file's declarations listed, a
+reference to one printed), never by spelling an anchor.
+
+**Edges between places.** A link has an anchor at either end, or none:
+`Link{from, fromAnchor, to, toAnchor, kind, relation, at}` — from a
 note's paragraph to a declaration in a file, from a hunk to the heading
 that explains it. Read both ways, as every link is (§3.10): a place
 lists what links to it, as a block does — a declaration marked as
@@ -881,9 +898,9 @@ proposal to the space (which may live on `local`) to place
 
 ### 6.1 Links
 
-A link is `Link{from, fromPlace, to, toPlace, kind, relation, at}` in the
-`links` shard of the host the `from` block lives on — a place at either
-end, or none, and what it means (§2.5). Kinds:
+A link is `Link{from, fromAnchor, to, toAnchor, kind, relation, at}` in
+the `links` shard of the host the `from` block lives on — an anchor (a
+place, §2.5) at either end, or none, and what it means. Kinds:
 
 | kind | made by |
 |---|---|
