@@ -900,7 +900,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// that would lose something — a text edited and unsaved, a note's
     /// words (kept nowhere else), a terminal with a job running — a toast
     /// names each, with Undo while its time runs down.
-    func afterClosing(reachedBefore before: Set<BlockID>) {
+    /// `space`: a space was removed (⇧⌘W), named so — said whether or not
+    /// anything is lost with it, as it's a step easily taken unawares.
+    func afterClosing(reachedBefore before: Set<BlockID>, space: String? = nil) {
         let after = hosts.reachable()
         var lost: [String] = []
         for id in before.subtracting(after) {
@@ -914,13 +916,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 lost.append("“\(b.displayTitle)” (\(b.kind == .agent ? "agent running" : "job running"))")
             }
         }
-        guard !lost.isEmpty else { return }
+        guard !lost.isEmpty || space != nil else { return }
         lost.sort()
         let minutes = hosts.local.desk.settings.collectAfterMinutes
         let when = minutes > 0 ? "; gone in \(minutes) min" : ""
-        let text = lost.count == 1 ? "Closed \(lost[0])\(when)" : "Closed \(lost.count) blocks with something to lose: \(lost.joined(separator: ", "))\(when)"
+        var text: String
+        if let space {
+            text = "Removed “\(space)” to Recently Closed"
+            if !lost.isEmpty { text += ", with " + lost.joined(separator: ", ") + when }
+        } else {
+            text = lost.count == 1 ? "Closed \(lost[0])\(when)" : "Closed \(lost.count) blocks with something to lose: \(lost.joined(separator: ", "))\(when)"
+        }
         // Undo while its time runs (⇧⌘T after, until it's collected).
-        toast.show(text, action: "Undo", for: 12, countdown: true) { [weak self] in self?.reopenClosed(nil) }
+        toast.show(text, action: "Undo", for: lost.isEmpty ? 6 : 12, countdown: true) { [weak self] in self?.reopenClosed(nil) }
         layoutViews()
     }
 
@@ -2341,8 +2349,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func closeTab(_ sender: Any?) {
         guard let id = selected else { return }
         let before = hosts.reachable()
+        let name = hosts.arrangement(id).map { title(of: $0) } ?? "Untitled"
         removeFromDesk(id)
-        afterClosing(reachedBefore: before)
+        afterClosing(reachedBefore: before, space: name)
     }
 
     /// Every workspace on every host, in the sidebar's order.
