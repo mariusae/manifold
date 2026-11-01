@@ -688,7 +688,7 @@ around it, and comes back with its history.
   Menlo's x-height), and **Humanist** (Hoefler&Co.'s ScreenSmart
   faces: Ideal Sans Book 14.5 to edit, with lining, tabular figures and
   ligatures, `lnum, tnum, liga`; Chronicle 15.5 to read, at 1.55, with
-  ligatures; Menlo 13, with Whitney 13.5 beside it — SF where Whitney
+  ligatures; Menlo 13, with Whitney Medium 13.5 beside it — SF where Whitney
   isn't installed), which is offered only where Ideal Sans SSm and
   Chronicle SSm are installed (without them, a saved Humanist is set as
   Apple, and it comes back when they are). Headings in a preview take the reading role's heading weight, as the

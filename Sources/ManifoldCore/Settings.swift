@@ -326,14 +326,15 @@ public struct Typography: Codable, Equatable, Sendable {
     /// old-style, proportional) and ligatures; Chronicle to read, with
     /// ligatures, its headings a step below Bold (Semibold, or Medium where
     /// the family has none); Menlo for code, and Whitney beside it, made for
-    /// information, at 13.5 to meet Menlo's x-height (SF where it isn't
-    /// installed). Lines: 1.45 to edit, 1.55 to read (a
+    /// information, at 13.5 to meet Menlo's x-height, in its Medium (its
+    /// weights run 300 to 450: Book 325, Medium 350, Bold 400 — so asked
+    /// for at 400 it was Bold; SF where it isn't installed). Lines: 1.45 to edit, 1.55 to read (a
     /// serif's longer lines and smaller eye want more), 1.3 for code.
     public static let humanist = Typography(
         editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga", boldFace: "Semibold"),
         reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga", headingWeight: 600),
         monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"),
-        technical: TypeStyle(family: "Whitney SSm", size: 13.5, lineHeight: 1.3, features: "lnum"))
+        technical: TypeStyle(family: "Whitney SSm", size: 13.5, weight: 350, lineHeight: 1.3, features: "lnum"))
 
     /// Apple: Avenir Next to edit (its tall x-height and long extenders
     /// set at 1.45), New York to read (at 1.5), Menlo for code, and Lucida
