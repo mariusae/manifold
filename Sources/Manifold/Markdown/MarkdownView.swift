@@ -394,6 +394,10 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         }
         let script = scriptSent ? "" : MarkdownPage.script
         scriptSent = true
+        // Notes about its places, under them (§2.5).
+        let places = (placesFor?() ?? []).filter { $0.note != nil }
+        placesShown = places
+        if !places.isEmpty { js += placesScript(places) }
         js += " window.manifoldPendingDiagrams || 0;"
         web.evaluateJavaScript(script + MarkdownPage.themeScript(theme) + js) { [weak self] result, _ in
             self?.scheduleOutline()
@@ -405,6 +409,40 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
                 self?.web.evaluateJavaScript("manifoldDiagrams();") { [weak self] _, _ in self?.scheduleOutline() }
             }
         }
+    }
+
+    // MARK: Places (§2.5)
+
+    /// The text's places with notes about them (a heading a note
+    /// describes), from the window; shown under their elements.
+    var placesFor: (() -> [TextView.Place])?
+    private var placesShown: [TextView.Place] = []
+
+    /// The notes about places, put under the elements their lines start
+    /// (the page's `data-sourcepos`) — again when they change.
+    func refreshPlaces() {
+        guard loaded, renderedVersion >= 0 else { return }
+        let places = (placesFor?() ?? []).filter { $0.note != nil }
+        guard places != placesShown else { return }
+        placesShown = places
+        web.evaluateJavaScript(placesScript(places))
+    }
+
+    private func placesScript(_ places: [TextView.Place]) -> String {
+        let items = places.compactMap { p -> [String: Any]? in
+            guard let n = p.note else { return nil }
+            let head = "<div style=\"font-size:0.8em;opacity:0.7\">\(escape(n.relation)) · <a href=\"\(n.target)\">\(escape(n.title))</a></div>"
+            return ["line": p.line + 1, "html": head + MarkdownRenderer.html(n.text)]
+        }
+        let data = (try? JSONSerialization.data(withJSONObject: items)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+        return """
+            (function(P){document.querySelectorAll('.manifold-place-note').forEach(function(e){e.remove();});
+            var els=document.querySelectorAll('[data-sourcepos]');
+            P.forEach(function(p){var el=null;for(var i=0;i<els.length;i++){if(els[i].getAttribute('data-sourcepos').split(':')[0]==String(p.line)){el=els[i];break;}}
+            if(!el)return;var d=document.createElement('div');d.className='manifold-place-note';d.innerHTML=p.html;
+            d.style.cssText='border-left:2px solid rgba(90,140,230,0.6);padding:2px 0 2px 12px;margin:4px 0 14px;opacity:0.85;font-size:0.93em';
+            el.insertAdjacentElement('afterend',d);});})(\(data));
+            """
     }
 
     /// Mermaid, from the app's resources, read once (some 2.5 MB).

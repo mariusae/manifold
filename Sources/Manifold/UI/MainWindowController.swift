@@ -429,7 +429,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             lastFocused = a.focused
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
-            for case let m as MarkdownView in views.values { m.textChanged(); m.refreshCards() }
+            for case let m as MarkdownView in views.values { m.textChanged(); m.refreshCards(); m.refreshPlaces() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
             for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged() }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
@@ -685,6 +685,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
             m.delegate = self
             m.takesDrops = shown.block?.kind == .text
+            m.placesFor = { [weak self] in self?.places(of: p.block) ?? [] }
             m.source = { [weak self] in
                 guard let t = self?.hosts.block(p.block)?.text else { return nil }
                 return (t.text.string, t.version)
@@ -7965,8 +7966,12 @@ extension MainWindowController: EditorViewDelegate {
     /// anchor with links to it or from it, at its line as last known; a
     /// note linked to it as describing, annotating or explaining it, its
     /// words (its title line left out).
-    func editorPlaces(_ view: EditorView) -> [TextView.Place] {
-        guard let b = hosts.block(view.block), let anchors = b.anchors, !anchors.isEmpty, let rope = b.text?.text else { return [] }
+    func editorPlaces(_ view: EditorView) -> [TextView.Place] { places(of: view.block) }
+
+    /// A text's places something is said about (§2.5), as an editor or a
+    /// preview shows them.
+    func places(of id: BlockID) -> [TextView.Place] {
+        guard let b = hosts.block(id), let anchors = b.anchors, !anchors.isEmpty, let rope = b.text?.text else { return [] }
         let n = hosts.neighborhood(of: b.id)
         let inbound = n.inbound.values.flatMap { $0 }.filter { $0.toAnchor != nil }
         let outbound = n.outbound.values.flatMap { $0 }.filter { $0.fromAnchor != nil }
@@ -8875,6 +8880,13 @@ extension MainWindowController: GitViewDelegate {
     /// The pane's diff: its block made (or found) on the repository's
     /// host, shown in the git tile's place — what it opens goes beside it.
     /// Never placed, it isn't Recently Closed's (`closedItems`).
+    func gitView(_ view: GitView, indexStatus done: @escaping (SCIPStatus?) -> Void) {
+        guard let root = hosts.block(view.block)?.path else { return done(nil) }
+        hosts.scip(.status(path: root.appendingPathComponent(".")), on: view.block.host) { result in
+            if case .status(let s) = result, s.state != .none { done(s) } else { done(nil) }
+        }
+    }
+
     func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
         guard let client = hosts.client(view.block.host) else { return nil }
         let id = client.diffBlock(subject)

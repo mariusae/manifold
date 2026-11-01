@@ -35,7 +35,22 @@ final class SCIPService {
         return folder.appendingPathComponent(String(h, radix: 36) + ".scip")
     }
 
+    /// A path as one spelling of it (/tmp and /private/tmp the same root).
+    private static func real(_ path: String) -> String {
+        let leaf = path.lastPathComponent
+        let dir = URL(fileURLWithPath: path.deletingLastPathComponent).resolvingSymlinksInPath().path
+        return dir.appendingPathComponent(leaf)
+    }
+
     func request(_ r: SCIPRequest, done: @escaping (SCIPResult) -> Void) {
+        let r: SCIPRequest = switch r {
+        case let .index(path): .index(path: Self.real(path))
+        case let .status(path): .status(path: Self.real(path))
+        case let .symbol(path, line, byte): .symbol(path: Self.real(path), line: line, byte: byte)
+        case let .references(symbol, path): .references(symbol: symbol, path: Self.real(path))
+        case let .defined(path): .defined(path: Self.real(path))
+        case let .definition(symbol, path): .definition(symbol: symbol, path: Self.real(path))
+        }
         switch r {
         case let .index(path):
             guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers) ?? project(of: path) else {
@@ -77,7 +92,7 @@ final class SCIPService {
     static var reindexAfter: TimeInterval = 20
 
     func saved(_ path: String) {
-        guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers),
+        guard let (indexer, root) = SCIPIndexer.forFile(Self.real(path), among: indexers),
               FileManager.default.fileExists(atPath: file(root).path) else { return }
         pendingIndex[root]?.cancel()
         let work = DispatchWorkItem { [weak self] in

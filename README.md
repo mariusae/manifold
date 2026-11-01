@@ -904,7 +904,8 @@ around it, and comes back with its history.
   places and what links to each. Agents make them with `mani symbols`
   (a file's declarations, by path), `mani ref <file> --symbol Type.method`
   and `mani link <note> <ref> --as describes`.
-  In an editor, a place with links has a mark in the gutter (clicked,
+  A note that describes a Markdown heading shows under it in the preview
+  too. In an editor, a place with links has a mark in the gutter (clicked,
   what links to it and from it, each followed when chosen), and a note
   that describes, annotates or explains it shows under its line, in the
   technical font beside code (the tile's menu hides them). A reference
@@ -922,7 +923,8 @@ around it, and comes back with its history.
   package, C and C++; rust-analyzer and scip-typescript name a symbol by
   its module or file, so moving it renames it). Once a project has an
   index, saving a file of it indexes it again (20 seconds after the last
-  save). `mani callers <file> --symbol f [--depth n]`, and Code ▸ Show
+  save); a git tile says how its project's index stands beside the
+  branch (indexing…, indexed 12m). `mani callers <file> --symbol f [--depth n]`, and Code ▸ Show
   Callers (a note of them beside the editor, walked with ⌃⌘]), list the
   functions that call a symbol — found by the index, named by each
   file's grammar — and their callers, each a reference.

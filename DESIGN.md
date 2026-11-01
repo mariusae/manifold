@@ -249,8 +249,11 @@ Callers (`mani callers`, Show Callers) are the index's uses grouped by
 the declaration each is in, by the file's grammar, recursively — a
 note of references, so a tree of calls is a walk like any other. To
 come: anchors in diffs (made again from their sources); indexers'
-settings per host (as language servers' are); notes on places in the
-Markdown preview and in the margin.
+settings per host (as language servers' are); notes in the margin. The
+Markdown preview shows a note about a place under the element its line
+starts (`placesFor`, the page's `data-sourcepos`); a git tile shows its
+project's index's state; the host takes one spelling of a path (/tmp is
+/private/tmp) for a project's root.
 
 ---
 

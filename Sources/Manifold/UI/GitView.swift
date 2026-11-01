@@ -10,6 +10,8 @@ protocol GitViewDelegate: AnyObject {
     /// A diff of what's chosen, for the pane under the list (its block
     /// made, or found, to show it).
     func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView?
+    /// How the repository's SCIP index stands (§2.5), if it has one.
+    func gitView(_ view: GitView, indexStatus done: @escaping (SCIPStatus?) -> Void)
 }
 
 /// The git lens (DESIGN.md §7.5): a repository's branch, what's changed,
@@ -43,6 +45,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let note = BusyNote()
     private var root = ""
     private var vcs: VCS = .git
+    /// How the project's SCIP index stands, in words (none: nothing said).
+    private var indexWords = ""
     /// The pane under the list: the chosen row's diff; the split between
     /// them is kept with the tile.
     private let split = NSSplitView()
@@ -226,9 +230,24 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         var branch = g.branch ?? ""
         if g.ahead > 0 { branch += " ↑\(g.ahead)" }
         if g.behind > 0 { branch += " ↓\(g.behind)" }
-        branchLabel.stringValue = branch
+        branchLabel.stringValue = branch + (indexWords.isEmpty ? "" : "   " + indexWords)
         guard g.refreshedAt != refreshedAt else { return }
         refreshedAt = g.refreshedAt
+        // The project's index, as it stands, beside the branch.
+        delegate?.gitView(self, indexStatus: { [weak self] s in
+            guard let self else { return }
+            let words: String
+            switch s?.state {
+            case .indexing: words = "indexing…"
+            case .current: words = "indexed" + (s?.at.map { " " + Age.short(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? "")
+            case .failed: words = "index failed"
+            default: words = ""
+            }
+            if words != self.indexWords {
+                self.indexWords = words
+                self.branchLabel.stringValue = branch + (words.isEmpty ? "" : "   " + words)
+            }
+        })
         var out: [Row] = []
         if let e = g.error { out.append(.note(e)) }
         out.append(.section(g.status.isEmpty ? "No changes" : "\(g.status.count) change\(g.status.count == 1 ? "" : "s")"))
