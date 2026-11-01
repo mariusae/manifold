@@ -703,12 +703,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // Lines and letters as the role sets them, edited or viewed alike.
         textView.lineHeightMultiple = theme.editorLineHeight(font, font: f)
         textView.tracking = theme.tracking(font, font: f)
-        // Code set monospaced has its comments' words in the technical
+        // Code set monospaced has its doc comments' words in the technical
         // font beside it, at the same scale (§7.1).
-        let comment = theme.technicalFont(size: f.pointSize)
+        let doc = theme.technicalFont(size: f.pointSize)
         textView.syntaxLanguage = SyntaxLanguage.forPath(path)
-        textView.commentFont = font == .monospaced ? comment : nil
-        textView.commentTracking = theme.technicalTracking(comment)
+        textView.docFont = font == .monospaced ? doc : nil
+        textView.docTracking = theme.technicalTracking(doc)
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }

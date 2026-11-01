@@ -908,25 +908,31 @@ What it is to use, modelled on Panic's Nova, without syntax highlighting:
 
 - Proportional (the theme's editing font) or fixed-width text from the
   theme, as now.
-- Set fixed-width, a comment's words are in the theme's technical font
-  beside it (proportional; Xcode's way), its leader, delimiters and the
-  stars down a block's left kept in the code's face, so where a comment
-  starts and what it's lined up with stay on the code's grid; all
-  comments, nothing guessed about what one says. Where they are is the
-  language's tree-sitter grammar's (`ManifoldSyntax`: a grammar per
-  language by name or extension, and a query of its comment nodes),
-  so strings, raw and multi-line ones, interpolations and characters
-  are as the language has them, and a comment in an interpolation is
-  one. The tree is kept as the text changes: what changed is found by
-  comparing the text with the one parsed (the same at the start and
-  the end), the tree edited at once and parsed again from it in the
-  background, only what the change touched — the lines whose syntax
-  changed (a block comment opened above them) laid out again when it's
-  in. A comment's leader and delimiters are told from its words by the
-  language's marks (`//`, `#`, `/*` … `*/`, `--[[`). In the app: no
-  language server (most don't say, or say late, and a font changes
-  layout). A language with no grammar has its comments monospaced. The
-  tree is there for more than comments, later. The face
+- Set fixed-width, a doc comment's words are in the theme's technical
+  font beside it (proportional; Xcode's way), its leader, delimiters
+  and the stars down a block's left kept in the code's face, so where a
+  comment starts and what it's lined up with stay on the code's grid;
+  other comments are code's, monospaced. What a doc comment is is the
+  language's, asked of its tree-sitter grammar's tree (`ManifoldSyntax`:
+  a grammar per language by name or extension, and a query of its doc
+  comments): one written so (`///`, `/** */` — not `////`, `/**/` —
+  Doxygen's `//!` and `/*!` in C and C++), one the grammar says is
+  (Rust's), the run of comments on the lines just above a declaration,
+  none blank between (Go's, Ruby's), or a docstring (Python's, Elixir's
+  `@doc`). Strings, raw and multi-line ones, interpolations and
+  characters are as the language has them. Queries' predicates —
+  `#match?`, `#eq?`, `#any-of?`, and `#adjacent?` of our own, for a
+  declaration's run — are evaluated here, tree-sitter leaving them to
+  whoever asks. The tree is kept as the text changes: what changed is
+  found by comparing the text with the one parsed (the same at the
+  start and the end), the tree edited at once and parsed again from it
+  in the background, only what the change touched — the lines whose
+  syntax changed (a block comment opened above them) laid out again
+  when it's in. A comment's leader and delimiters are told from its
+  words by the language's marks (`//`, `#`, `/*` … `*/`, `--[[`). In
+  the app: no language server (most don't say, or say late, and a font
+  changes layout). A language with no grammar has nothing set apart.
+  The tree is there for more than this, later. The face
   alone: the same text colour, no hue.
 - Multiple cursors and selections; select next occurrence; column
   selection with ⌥-drag.

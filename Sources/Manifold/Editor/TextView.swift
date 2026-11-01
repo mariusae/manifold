@@ -122,11 +122,11 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
     private(set) var syntax: SyntaxTree?
-    /// Code's comments set apart: the font (the technical) and letter
+    /// Code's doc comments set apart: the font (the technical) and letter
     /// spacing their words are set in — their leaders and delimiters left
     /// in the text's own. Nil: not set apart.
-    var commentFont: NSFont? { didSet { if commentFont != oldValue, syntax != nil { invalidateAll() } } }
-    var commentTracking: CGFloat = 0 { didSet { if commentTracking != oldValue, syntax != nil { invalidateAll() } } }
+    var docFont: NSFont? { didSet { if docFont != oldValue, syntax != nil { invalidateAll() } } }
+    var docTracking: CGFloat = 0 { didSet { if docTracking != oldValue, syntax != nil { invalidateAll() } } }
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
     private var pillPhase: Double { Date.timeIntervalSinceReferenceDate }
     private var pillTimer: Timer?
@@ -258,10 +258,10 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     /// The syntax of these ranges changed (a block comment opened above
-    /// them): their lines laid out again, where it shows — their comments
-    /// set apart.
+    /// them): their lines laid out again, where it shows — their doc
+    /// comments set apart.
     private func syntaxChanged(_ changed: [TextRange]) {
-        guard commentFont != nil, !changed.isEmpty else { return }
+        guard docFont != nil, !changed.isEmpty else { return }
         for r in changed {
             let first = text.line(at: r.start), last = text.line(at: r.end)
             for k in layouts.keys where k >= first && k <= last { layouts.removeValue(forKey: k) }
@@ -479,13 +479,13 @@ final class TextView: NSView, NSTextInputClient {
             if drawn.isEmpty { pillLines.removeValue(forKey: n) } else { pillLines[n] = drawn }
             updatePillTimer()
         }
-        // Its comments' words in the technical font (not Markdown's).
-        if !markdown, !string.isEmpty, let syntax, let commentFont {
+        // Its doc comments' words in the technical font (not Markdown's).
+        if !markdown, !string.isEmpty, let syntax, let docFont {
             let start = text.offset(ofLine: n)
-            for r in syntax.commentWords(in: TextRange(start, start + string.utf8.count)) {
+            for r in syntax.docWords(in: TextRange(start, start + string.utf8.count)) {
                 let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
                 guard b > a else { continue }
-                attributed.addAttributes([.font: commentFont, .kern: commentTracking], range: NSRange(location: a, length: b - a))
+                attributed.addAttributes([.font: docFont, .kern: docTracking], range: NSRange(location: a, length: b - a))
             }
         }
         // The names ⌘ shows as links, on this line.

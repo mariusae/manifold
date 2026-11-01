@@ -669,12 +669,14 @@ around it, and comes back with its history.
 - **Fonts**: besides the interface's system font, a theme has four: a
   **monospaced** one for terminals and code, a **technical** one beside
   it — proportional, for what's said about code: in an editor set
-  monospaced, a comment's words are set in it, its `//`, `#` or `/*`
-  left in the monospaced, wherever the language's comments are (its
-  tree-sitter grammar's parse, kept as it's typed, in two dozen
-  languages by extension: Swift, C, C++, Rust, Go, Python, JavaScript,
-  TypeScript, Java, Kotlin, Ruby, shell and others; elsewhere comments
-  stay monospaced) — an **editing** one for what's
+  monospaced, a doc comment's words are set in it, its `///` or `/**`
+  left in the monospaced, and other comments stay monospaced. What's a
+  doc comment is the language's: `///` and `/** */` in Swift, Rust's
+  own, Doxygen's in C and C++, Javadoc, KDoc and JSDoc, the comments
+  just above a declaration in Go and Ruby, Python's docstrings and
+  Elixir's `@doc` — found in its tree-sitter grammar's parse, kept as
+  it's typed (in two dozen languages by extension; elsewhere nothing
+  is set apart) — an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
   Markdown preview). Each theme sets them — face, size, line height

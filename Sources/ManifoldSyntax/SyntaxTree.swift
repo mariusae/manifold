@@ -4,11 +4,39 @@ import ManifoldCore
 import struct ManifoldCore.TextRange
 
 /// A query asked of a language's trees (tree-sitter's S-expressions),
-/// compiled once.
+/// compiled once, with the predicates its patterns are filtered by —
+/// tree-sitter leaves those to whoever asks: `#match?` / `#not-match?`
+/// (a capture's text and a regular expression), `#eq?` / `#not-eq?` (a
+/// capture's text and a string or another capture's), `#any-of?` (and
+/// strings), and `#adjacent? @a @b`, of Manifold's own: of @a's nodes,
+/// only the run on the lines just above @b's, none blank between (a
+/// declaration's doc comments). Others are taken as holding.
 public final class SyntaxQuery {
     let query: OpaquePointer
     /// Its captures' names, by index.
     public let captureNames: [String]
+
+    enum Argument {
+        case capture(UInt32)
+        case string(String)
+    }
+
+    final class Predicate {
+        let name: String
+        let arguments: [Argument]
+        init(_ name: String, _ arguments: [Argument]) {
+            self.name = name
+            self.arguments = arguments
+        }
+        /// `#match?`'s expression, compiled once.
+        lazy var regex: NSRegularExpression? = {
+            guard arguments.count == 2, case .string(let p) = arguments[1] else { return nil }
+            return try? NSRegularExpression(pattern: p)
+        }()
+    }
+
+    /// Each pattern's predicates, by its index.
+    let predicates: [[Predicate]]
 
     /// Nil if it doesn't compile for the language (a node type it hasn't).
     public init?(_ language: SyntaxLanguage, _ source: String) {
@@ -16,10 +44,31 @@ public final class SyntaxQuery {
         var error = TSQueryErrorNone
         guard let q = source.withCString({ ts_query_new(language.grammar, $0, UInt32(strlen($0)), &offset, &error) }) else { return nil }
         query = q
+        func name(_ s: UnsafePointer<CChar>?, _ n: UInt32) -> String {
+            String(decoding: UnsafeRawBufferPointer(start: s, count: Int(n)), as: UTF8.self)
+        }
         captureNames = (0..<ts_query_capture_count(q)).map { i in
             var n: UInt32 = 0
-            let s = ts_query_capture_name_for_id(q, i, &n)!
-            return String(decoding: UnsafeRawBufferPointer(start: s, count: Int(n)), as: UTF8.self)
+            let s = ts_query_capture_name_for_id(q, i, &n)
+            return name(s, n)
+        }
+        predicates = (0..<ts_query_pattern_count(q)).map { pattern in
+            var count: UInt32 = 0
+            guard let steps = ts_query_predicates_for_pattern(q, pattern, &count) else { return [] }
+            var out: [Predicate] = [], words: [Argument] = []
+            for i in 0..<Int(count) {
+                let step = steps[i]
+                switch step.type {
+                case TSQueryPredicateStepTypeCapture: words.append(.capture(step.value_id))
+                case TSQueryPredicateStepTypeString:
+                    var n: UInt32 = 0
+                    words.append(.string(name(ts_query_string_value_for_id(q, step.value_id, &n), n)))
+                default:
+                    if case .string(let first)? = words.first { out.append(Predicate(first, Array(words.dropFirst()))) }
+                    words = []
+                }
+            }
+            return out
         }
     }
 
@@ -39,7 +88,9 @@ public final class SyntaxTree {
     public let language: SyntaxLanguage
     /// The text the tree is of (edited to, if not yet parsed again).
     public private(set) var text: Rope
-    private var tree: OpaquePointer?
+    private var tree: OpaquePointer? { didSet { texts = [:] } }
+    /// Nodes' texts, for predicates, while the tree's the same.
+    private var texts: [TextRange: String] = [:]
     private let cursor: OpaquePointer
     private let parser: Parser
     private let background: Bool
@@ -71,6 +122,13 @@ public final class SyntaxTree {
         ts_query_cursor_delete(cursor)
     }
 
+    /// The tree as an S-expression (for a look at it).
+    public var outline: String {
+        guard let tree, let s = ts_node_string(ts_tree_root_node(tree)) else { return "" }
+        defer { free(s) }
+        return String(cString: s)
+    }
+
     /// Whether there's a tree (the text was parsed, in time).
     public var isParsed: Bool { tree != nil }
 
@@ -86,6 +144,7 @@ public final class SyntaxTree {
                                new_end_point: Self.point(newEnd, in: new))
         if let tree { ts_tree_edit(tree, &edit) }
         text = new
+        texts = [:]
         guard !gaveUp else { return [] }
         let edited = [TextRange(start, newEnd)]
         if !background { return edited + adopt(parser.parse(text, old: tree)) }
@@ -139,27 +198,100 @@ public final class SyntaxTree {
         }
     }
 
-    /// The captures of `query` among the nodes overlapping `range`, in
-    /// order: each's name and the node's bytes.
+    /// The captures of `query` among the nodes overlapping `range`, its
+    /// predicates held, in the text's order, each once: each's name and
+    /// its node's bytes. Captures named with a `_` first are left out.
     public func captures(_ query: SyntaxQuery, in range: TextRange) -> [(name: String, range: TextRange)] {
         guard let tree else { return [] }
         ts_query_cursor_set_byte_range(cursor, UInt32(range.start), UInt32(max(range.end, range.start + 1)))
         ts_query_cursor_exec(cursor, query.query, ts_tree_root_node(tree))
-        var out: [(String, TextRange)] = []
+        var out: [(name: String, range: TextRange)] = []
+        var seen = Set<TextRange>()
         var match = TSQueryMatch()
-        var index: UInt32 = 0
-        while ts_query_cursor_next_capture(cursor, &match, &index) {
-            let capture = match.captures[Int(index)]
-            let node = capture.node
-            out.append((query.captureNames[Int(capture.index)], TextRange(Int(ts_node_start_byte(node)), Int(ts_node_end_byte(node)))))
+        while ts_query_cursor_next_match(cursor, &match) {
+            var captures = (0..<Int(match.capture_count)).map { match.captures[$0] }
+            guard holds(query.predicates[Int(match.pattern_index)], &captures) else { continue }
+            for c in captures {
+                let name = query.captureNames[Int(c.index)]
+                let r = TextRange(Int(ts_node_start_byte(c.node)), Int(ts_node_end_byte(c.node)))
+                if !name.hasPrefix("_"), seen.insert(r).inserted { out.append((name, r)) }
+            }
         }
-        return out
+        return out.sorted { $0.range < $1.range }
+    }
+
+    /// Whether a match's predicates hold (`#adjacent?` leaving out the
+    /// nodes it doesn't take).
+    private func holds(_ predicates: [SyntaxQuery.Predicate], _ captures: inout [TSQueryCapture]) -> Bool {
+        func nodes(_ i: UInt32) -> [TSNode] { captures.filter { $0.index == i }.map(\.node) }
+        func texts(_ a: SyntaxQuery.Argument) -> [String] {
+            switch a {
+            case .capture(let i): return nodes(i).map(nodeText)
+            case .string(let s): return [s]
+            }
+        }
+        for p in predicates {
+            let args = p.arguments
+            switch p.name {
+            case "match?", "not-match?":
+                guard let regex = p.regex, let first = args.first else { continue }
+                let matched = texts(first).allSatisfy { regex.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) != nil }
+                if matched != (p.name == "match?") { return false }
+            case "eq?", "not-eq?":
+                guard args.count == 2 else { continue }
+                let equal = texts(args[0]) == texts(args[1])
+                if equal != (p.name == "eq?") { return false }
+            case "any-of?":
+                guard let first = args.first else { continue }
+                let options = Set(args.dropFirst().flatMap(texts))
+                if !texts(first).allSatisfy(options.contains) { return false }
+            case "adjacent?":
+                guard args.count == 2, case .capture(let a) = args[0], case .capture(let b) = args[1],
+                      let below = nodes(b).first else { continue }
+                // Up from the node below, while each is on the line above the last.
+                var line = Int(ts_node_start_point(below).row)
+                var kept = Set<UInt32>()
+                for node in nodes(a).sorted(by: { ts_node_start_byte($0) > ts_node_start_byte($1) }) {
+                    let end = ts_node_end_point(node), start = ts_node_start_point(node)
+                    // A comment that takes its line break ends at the next line's start.
+                    let last = end.column == 0 && end.row > start.row ? Int(end.row) - 1 : Int(end.row)
+                    guard last == line - 1 || last == line else { break }
+                    kept.insert(ts_node_start_byte(node))
+                    line = Int(start.row)
+                }
+                if kept.isEmpty { return false }
+                captures.removeAll { $0.index == a && !kept.contains(ts_node_start_byte($0.node)) }
+            default:
+                continue
+            }
+        }
+        return true
+    }
+
+    /// A node's text, kept while the tree is (predicates ask again as
+    /// lines are laid out).
+    private func nodeText(_ node: TSNode) -> String {
+        let r = TextRange(Int(ts_node_start_byte(node)), Int(ts_node_end_byte(node)))
+        if let t = texts[r] { return t }
+        if texts.count > 2000 { texts = [:] }
+        let t = text[r]
+        texts[r] = t
+        return t
     }
 
     /// The words of the comments in `range` (a line's), as bytes of the
     /// text: their leaders and delimiters left out (`CommentMarks`).
     public func commentWords(in range: TextRange) -> [TextRange] {
-        guard let query = language.commentQuery, !range.isEmpty else { return [] }
+        language.commentQuery.map { words(of: $0, in: range) } ?? []
+    }
+
+    /// The words of the doc comments (and docstrings) in `range`.
+    public func docWords(in range: TextRange) -> [TextRange] {
+        language.docQuery.map { words(of: $0, in: range) } ?? []
+    }
+
+    private func words(of query: SyntaxQuery, in range: TextRange) -> [TextRange] {
+        guard !range.isEmpty else { return [] }
         let marks = language.marks
         var out: [TextRange] = []
         // The line's own bytes at hand, the comment's ends read as wanted.
@@ -168,8 +300,10 @@ public final class SyntaxTree {
             k >= range.start && k < range.end ? lineBytes[k - range.start] : text.byte(at: k) ?? 0
         }
         for c in captures(query, in: range) {
-            let segment = max(c.range.start, range.start)..<min(c.range.end, range.end)
-            guard !segment.isEmpty else { continue }
+            // A match's captures may lie off the line (a doc comment's others).
+            let lo = max(c.range.start, range.start), hi = min(c.range.end, range.end)
+            guard lo < hi else { continue }
+            let segment = lo..<hi
             if let w = marks.words(of: c.range.range, segment: segment, byte: byte) {
                 // Comments within comments (Rust's doc comments' parts) once.
                 if let last = out.last, last.end > w.lowerBound { continue }

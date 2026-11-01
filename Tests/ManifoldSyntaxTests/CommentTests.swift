@@ -118,3 +118,38 @@ private func said(_ path: String, _ text: String) -> [[String]] {
     #expect(tree.commentWords(in: rope.lineRange(30_000)).map { rope[$0] } == ["let value = compute(x, y) // what it is"])
     #expect(tree.commentWords(in: rope.lineRange(20_000)).map { rope[$0] } == ["what it is"])
 }
+
+/// The doc comments' words in each line.
+private func documented(_ path: String, _ text: String) -> [[String]] {
+    let rope = Rope(text)
+    let tree = SyntaxTree(SyntaxLanguage.forPath(path)!, text: rope, background: false)
+    return (0..<rope.lineCount).map { n in tree.docWords(in: rope.lineRange(n)).map { rope[$0] } }
+}
+
+@Test func docCommentsAreTheOnesWrittenSo() {
+    #expect(documented("a.swift", "/// Doc.\n// Not.\n//// Not either.\n/** Block doc. */\n/* Not. */\n/**/ let a = 1") == [["Doc."], [], [], ["Block doc."], [], []])
+    #expect(documented("a.rs", "/// Outer.\n//! Inner.\n// Plain.\n//// Plain too.\n/** Block. */ fn f() {}") == [["Outer."], ["Inner."], [], [], ["Block."]])
+    #expect(documented("a.c", "/// D.\n//! E.\n/** F. */\n/*! G. */\n// H.\nint x;") == [["D."], ["E."], ["F."], ["G."], [], []])
+    #expect(documented("a.java", "/**\n * Docs.\n */\n/* Not. */\n// Not.\nclass A {}") == [[], ["Docs."], [], [], [], []])
+    #expect(documented("a.ts", "/** T. */\n// U.\nlet a = 1") == [["T."], [], []])
+    #expect(documented("a.zig", "/// Z.\n// Y.\nconst a = 1;") == [["Z."], [], []])
+    #expect(documented("a.lua", "--- L.\n-- M.\nlocal a = 1") == [["L."], [], []])
+}
+
+@Test func docCommentsAreTheRunJustAboveADeclaration() {
+    let go = "// Copyright.\n\n// Package p does.\npackage p\n\n// F does x\n// and y.\nfunc F() {\n\t// inside\n\tx := 1\n}\n// trailing\n"
+    #expect(documented("a.go", go) == [[], [], ["Package p does."], [], [], ["F does x"], ["and y."], [], [], [], [], [], []])
+    let ruby = "# frozen\n\n# A thing.\nclass A\n  # Does it.\n  def f\n    # inside\n  end\nend"
+    #expect(documented("a.rb", ruby) == [[], [], ["A thing."], [], ["Does it."], [], [], [], []])
+}
+
+@Test func docstringsAndDocAttributes() {
+    let py = "\"\"\"Module.\"\"\"\n# not\ndef f():\n    \"\"\"Doc of f,\n    two lines.\"\"\"\n    s = \"not\"\n"
+    #expect(documented("a.py", py) == [["Module."], [], [], ["Doc of f,"], ["two lines."], [], []])
+    let ex = "defmodule A do\n  @moduledoc \"\"\"\n  Module.\n  \"\"\"\n  @doc \"F.\"\n  @foo \"not\"\n  # not\n  def f, do: 1\nend"
+    #expect(documented("a.ex", ex) == [[], [], ["Module."], [], ["F."], [], [], [], []])
+}
+
+@Test func everyLanguagesDocQueryCompiles() {
+    for l in SyntaxLanguage.all where l.docSource != nil { #expect(l.docQuery != nil, "\(l.name)") }
+}

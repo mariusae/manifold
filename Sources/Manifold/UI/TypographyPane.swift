@@ -278,8 +278,8 @@ final class TypographyPane: SettingsPane {
 
     // MARK: Changing
 
-    /// Code in the monospaced font, its comments in the technical as it's
-    /// set, on the monospaced's lines — as an editor has them.
+    /// Code in the monospaced font, its doc comments in the technical as
+    /// it's set, on the monospaced's lines — as an editor has them.
     private func showTechnicalSample() {
         let mono = source.appearance().typography.monospaced
         let code = mono.font(size: CGFloat(mono.size), role: .monospaced)
@@ -291,11 +291,11 @@ final class TypographyPane: SettingsPane {
         let out = NSMutableAttributedString(string: text, attributes: [
             .font: code, .kern: CGFloat(mono.tracking) / 1000 * code.pointSize, .paragraphStyle: p, .foregroundColor: Theme.text,
         ])
-        // Its comments found as the editor finds them.
+        // Its doc comments found as the editor finds them.
         let rope = Rope(text)
         let tree = SyntaxTree(SyntaxLanguage.forPath("sample.swift")!, text: rope)
         for n in 0..<rope.lineCount {
-            for r in tree.commentWords(in: rope.lineRange(n)) {
+            for r in tree.docWords(in: rope.lineRange(n)) {
                 let a = rope.utf16Offset(ofByte: r.start), b = rope.utf16Offset(ofByte: r.end)
                 out.addAttributes([.font: comment, .kern: CGFloat(style.tracking) / 1000 * comment.pointSize], range: NSRange(location: a, length: b - a))
             }
