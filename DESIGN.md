@@ -58,7 +58,8 @@ links to them, and arranged in spaces.
 | **Log** | an append-only sequence of entries, with snapshots that are a pure function of a prefix |
 | **Block** | a thing with identity: an id, a kind, and a deterministic `apply` from its log to its state |
 | **Exec** | an entry that asks for an effect, naming who performs it; the outcome returns as entries |
-| **Link** | a typed edge from one block to another, possibly across hosts |
+| **Link** | a typed edge from one block (or a place in it) to another (or a place in it), possibly across hosts |
+| **Place** | a part of a block that can be named: a declaration, a heading, a command, a page, a hunk (§2.5) |
 | **Space** | a block (of kind `arrangement`) whose content is placements of other blocks, laid out |
 | **Lens** | a way of rendering a block (an editor or a preview of one text block) |
 | **Host** | a server owning blocks: their logs, files and processes |
@@ -120,6 +121,74 @@ block records what the placement has selected.
 
 `apply` is pure: no clock reads, no randomness, no I/O. Anything with an
 effect is an exec (§5).
+
+### 2.5 Places, and edges between them
+
+Everything is the graph: blocks are its nodes, links its edges, and what
+the screen shows of them is a projection of it. Finer than a block, a
+**place** in it can be named, and named the same way whatever it's in.
+
+**References.** A reference names a block and, optionally, a place in
+it: `manifold:host/ulid#place`. A place is `scheme=value`, several
+joined by `&`: the first is its identity, the rest hints —
+`#sym=TextView.layout(line:)&line=482` is the declaration wherever it
+has moved, the line only where to look first (put right when it's found
+elsewhere). Values are percent-encoded. The schemes are open: each block
+kind says which it has, and a new way of knowing a block's structure is
+a new scheme, not a new kind of reference.
+
+| kind | places |
+|---|---|
+| `text`, code | `sym` (a declaration's path, `Type.method`, by its language's grammar), `scip` (a symbol's global name, where an index has one), `line` |
+| `text`, Markdown | `heading` (its path of slugs), `item`, `line` |
+| `terminal`, `agent` | `command` (one command and its output), `turn` |
+| `pdf` | `page` |
+| `diff` | `file`, `hunk` (a file and its hunk's heading) |
+| notebook | `cell` |
+| `web` | `anchor` (an element's id) |
+| media | `t` (a time) |
+
+The kinds prefer the most lasting identity they can give — `scip`, then
+`sym` or `heading`, then `line` — and each says, of its places:
+
+- **what they are**, in order: its outline is one such list, not the only
+  one (a file's declarations, its headings, a terminal's commands);
+- **where one is** in the content as it is now, or that it's gone;
+- **which is at** a location, the most lasting — what dragging from there
+  makes a reference to;
+- **what it's called**, and its summary: a pill's title, a card's face (a
+  declaration's signature and doc comment, a command and how it ended).
+
+**Edges between places.** A link has a place at either end, or none:
+`Link{from, fromPlace, to, toPlace, kind, relation, at}` — from a
+note's paragraph to a declaration in a file, from a hunk to the heading
+that explains it. Read both ways, as every link is (§3.10): a place
+lists what links to it, as a block does — a declaration marked as
+written about, in its gutter and its outline, its links there.
+
+**Relations.** An edge's kind says how it was made and whether it keeps
+(§3.4, §6.1); its **relation** says what it means: an open word, as a
+scheme is. Some Manifold knows how to show — `describes` (a summary, a
+function's pseudocode), `annotates` (a remark on it), `explains`, `step`
+(one of a walk through code) — and any other is a link like the rest.
+
+**Presentation is a projection.** Nothing is stored about how an edge
+shows; the lens decides, and you choose per tile. A note that
+`describes` a function may show in the function's place, its body folded
+under its description (in the technical font, §7.1); in the margin;
+as a card on a rest; or only among the links. A walk through code is a
+note whose references, in its text's order, are its steps — its edges
+ordered by their places in it — followed one beside the other. So an
+agent adds nodes (notes, panels) and edges, through `mani`, and how they
+appear is Manifold's; and you organize them by hand the same way.
+
+**Uniform.** A reference with a place is a reference like any other: it
+drags, drops, shows as a pill and a card, is followed, is listed among
+links both ways, and says why when it leads nowhere — the block gone
+(§3.9's `whyMissing`), or the place: "`layout(line:)` is no longer in
+TextView.swift", the edge kept until it's put right (re-anchored) or
+removed. Keeping is per block: a place changes nothing of what keeps what
+(§4).
 
 ---
 
@@ -638,7 +707,7 @@ reference written bare (`manifold:host/id#place`, as agents write them)
 the same. An embed, `![name](manifold:…)` alone on its line, is the
 block's summary card instead (§3.1's, drawn in the editor in the line's
 place but on the caret's line, under its row in the outline, as HTML in
-the preview), redrawn as the summary changes; one naming a place is
+the preview), redrawn as the summary changes; one naming a place (§2.5) is
 that place's (`Block.summary(at:)`: a command's line and how it ended,
 with its output's last lines where the terminal is shown; a heading's
 or an item's section, `NoteOutlineMarkdown.section`; a PDF's page, with
@@ -812,8 +881,9 @@ proposal to the space (which may live on `local`) to place
 
 ### 6.1 Links
 
-A link is `Link{from, to, kind, at}` in the `links` shard of the host the
-`from` block lives on. Kinds:
+A link is `Link{from, fromPlace, to, toPlace, kind, relation, at}` in the
+`links` shard of the host the `from` block lives on — a place at either
+end, or none, and what it means (§2.5). Kinds:
 
 | kind | made by |
 |---|---|
