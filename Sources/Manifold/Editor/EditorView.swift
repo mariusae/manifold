@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldCore
+import ManifoldSyntax
 
 protocol EditorViewDelegate: AnyObject {
     /// The editor appends to its block's log.
@@ -140,7 +141,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.menuPlacement = placement
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
-        textView.commentSyntax = font == .monospaced ? CommentSyntax.forPath(path) : nil
+        textView.syntaxLanguage = SyntaxLanguage.forPath(path)
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
         textView.markdown = isMarkdownOutline
         if isMarkdownOutline {
@@ -705,9 +706,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // Code set monospaced has its comments' words in the technical
         // font beside it, at the same scale (§7.1).
         let comment = theme.technicalFont(size: f.pointSize)
-        textView.commentFont = comment
+        textView.syntaxLanguage = SyntaxLanguage.forPath(path)
+        textView.commentFont = font == .monospaced ? comment : nil
         textView.commentTracking = theme.technicalTracking(comment)
-        textView.commentSyntax = font == .monospaced ? CommentSyntax.forPath(path) : nil
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }

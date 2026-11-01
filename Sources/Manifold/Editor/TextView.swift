@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldCore
+import ManifoldSyntax
 
 /// What the text view edits: the block's text, through its log.
 protocol TextViewDocument: AnyObject {
@@ -110,17 +111,22 @@ final class TextView: NSView, NSTextInputClient {
     /// The lines that are code fences, found once per text.
     /// The lines that are fences, in order (counted below a line by halving).
     private var fenceLines: [Int]?
-    /// Code's comments set apart (§7.1): how its language writes them, and
-    /// the font (the technical) and letter spacing their words are set in —
-    /// their leaders and delimiters left in the text's own. Nil: not set apart.
-    var commentSyntax: CommentSyntax? { didSet { if commentSyntax != oldValue { invalidateAll() } } }
-    var commentFont: NSFont? { didSet { if commentFont != oldValue, commentSyntax != nil { invalidateAll() } } }
-    var commentTracking: CGFloat = 0 { didSet { if commentTracking != oldValue, commentSyntax != nil { invalidateAll() } } }
-    /// The state each line starts in (in a block comment, a string run
-    /// on), made as far as it's been needed: right through
-    /// `commentStatesThrough`.
-    private var commentStates: [CommentState] = []
-    private var commentStatesThrough = -1
+    /// The text's language, where there's a grammar for it (§7.1): its
+    /// syntax tree, kept as the text changes.
+    var syntaxLanguage: SyntaxLanguage? {
+        didSet {
+            guard syntaxLanguage !== oldValue else { return }
+            syntax = syntaxLanguage.map { SyntaxTree($0, text: text) }
+            syntax?.onChange = { [weak self] in self?.syntaxChanged($0) }
+            invalidateAll()
+        }
+    }
+    private(set) var syntax: SyntaxTree?
+    /// Code's comments set apart: the font (the technical) and letter
+    /// spacing their words are set in — their leaders and delimiters left
+    /// in the text's own. Nil: not set apart.
+    var commentFont: NSFont? { didSet { if commentFont != oldValue, syntax != nil { invalidateAll() } } }
+    var commentTracking: CGFloat = 0 { didSet { if commentTracking != oldValue, syntax != nil { invalidateAll() } } }
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
     private var pillPhase: Double { Date.timeIntervalSinceReferenceDate }
     private var pillTimer: Timer?
@@ -231,6 +237,7 @@ final class TextView: NSView, NSTextInputClient {
         if document.version != knownVersion {
             if !applyingOurs {
                 // Not ours: nothing is known about what moved.
+                syntax?.update(to: document.rope)
                 invalidateAll()
                 if document.rope.lineCount != knownLineCount { undoStack = []; redoStack = [] }
             }
@@ -244,42 +251,26 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
 
+    /// The tree brought to the text as it is now (parsed again in the
+    /// background, `syntaxChanged` told when it's in).
+    private func syntaxEdited() {
+        if let changed = syntax?.update(to: text) { syntaxChanged(changed) }
+    }
+
+    /// The syntax of these ranges changed (a block comment opened above
+    /// them): their lines laid out again, where it shows — their comments
+    /// set apart.
+    private func syntaxChanged(_ changed: [TextRange]) {
+        guard commentFont != nil, !changed.isEmpty else { return }
+        for r in changed {
+            let first = text.line(at: r.start), last = text.line(at: r.end)
+            for k in layouts.keys where k >= first && k <= last { layouts.removeValue(forKey: k) }
+        }
+        needsDisplay = true
+    }
+
     /// Whether a line is inside a fenced code block: an odd number of
     /// fences before it.
-    /// The comment state line `n` starts in, the lines above scanned as
-    /// far as they haven't been.
-    private func commentState(atStartOf n: Int) -> CommentState {
-        guard let syntax = commentSyntax else { return .code }
-        if commentStatesThrough < 0 {
-            commentStates = [.code]
-            commentStatesThrough = 0
-        }
-        while commentStatesThrough < n {
-            let k = commentStatesThrough
-            let end = syntax.scan(Array(text.lineText(k).utf8), from: commentStates[k]).end
-            if commentStates.count > k + 1 { commentStates[k + 1] = end } else { commentStates.append(end) }
-            commentStatesThrough = k + 1
-        }
-        return commentStates[n]
-    }
-
-    /// Line `n` edited (the lines as many as before): the states after it
-    /// made again until one is as it was — a block comment opened or
-    /// closed there changes every line down to where it ends — and those
-    /// lines laid out again.
-    private func commentsEdited(line n: Int) {
-        guard let syntax = commentSyntax, commentStatesThrough > n else { return }
-        let was = commentStatesThrough
-        var k = n
-        while k < was {
-            let end = syntax.scan(Array(text.lineText(k).utf8), from: commentStates[k]).end
-            if end == commentStates[k + 1] { return }
-            commentStates[k + 1] = end
-            layouts.removeValue(forKey: k + 1)
-            k += 1
-        }
-    }
-
     private func inCodeBlock(_ n: Int) -> Bool {
         if fenceLines == nil {
             var f: [Int] = []
@@ -368,7 +359,6 @@ final class TextView: NSView, NSTextInputClient {
         layouts = [:]
         pillLines = [:]
         fenceLines = nil
-        commentStatesThrough = -1
         rowCounts = estimatedRowCounts()
         rowStartsValidThrough = -1
         resizeToFit()
@@ -490,10 +480,10 @@ final class TextView: NSView, NSTextInputClient {
             updatePillTimer()
         }
         // Its comments' words in the technical font (not Markdown's).
-        if !markdown, !string.isEmpty, let syntax = commentSyntax, let commentFont {
-            let comments = syntax.scan(Array(string.utf8), from: commentState(atStartOf: n)).comments
-            for r in comments {
-                let a = utf16Index(in: string, byteOffset: r.lowerBound), b = utf16Index(in: string, byteOffset: r.upperBound)
+        if !markdown, !string.isEmpty, let syntax, let commentFont {
+            let start = text.offset(ofLine: n)
+            for r in syntax.commentWords(in: TextRange(start, start + string.utf8.count)) {
+                let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
                 guard b > a else { continue }
                 attributed.addAttributes([.font: commentFont, .kern: commentTracking], range: NSRange(location: a, length: b - a))
             }
@@ -1210,18 +1200,16 @@ final class TextView: NSView, NSTextInputClient {
             invalidateRowStarts(after: firstLine)
             knownLineCount = newCount
             fenceLines = nil
-            // The comment states from the first change on, made again as wanted.
-            commentStatesThrough = min(commentStatesThrough, firstLine)
         } else if let e = edits.first {
             let n = text.line(at: e.start)
             layouts.removeValue(forKey: n)
-            commentsEdited(line: n)
             if markdown, let f = fenceLines, (Self.countBelow(n + 1, in: f) != Self.countBelow(n, in: f)) != MarkdownStyle.isFence(text.lineText(n)) {
                 // A fence came or went: every line after it is in or out of a block.
                 for k in layouts.keys where k > n { layouts.removeValue(forKey: k) }
                 fenceLines = nil
             }
         }
+        syntaxEdited()
         resizeToFit()
         needsDisplay = true
     }

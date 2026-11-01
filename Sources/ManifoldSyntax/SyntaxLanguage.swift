@@ -1,0 +1,148 @@
+import CTreeSitter
+import CTreeSitterGrammars
+import Foundation
+
+/// A language there's a grammar for (scripts/fetch-tree-sitter.sh): how
+/// files in it are known, and what's asked of their trees — where their
+/// comments are (DESIGN §7.1), and how a comment's leader and delimiters
+/// are told from its words.
+public final class SyntaxLanguage {
+    public let name: String
+    /// The grammar's `const TSLanguage *`.
+    let grammar: OpaquePointer
+    /// The node types that are whole comments.
+    let commentNodes: [String]
+    public let marks: CommentMarks
+
+    init(_ name: String, _ grammar: OpaquePointer?, comments: [String] = ["comment"], marks: CommentMarks) {
+        self.name = name
+        self.grammar = grammar!
+        commentNodes = comments
+        self.marks = marks
+    }
+
+    /// Captures every comment, as `@comment`.
+    public private(set) lazy var commentQuery: SyntaxQuery? =
+        SyntaxQuery(self, "[" + commentNodes.map { "(\($0))" }.joined(separator: " ") + "] @comment")
+
+    // MARK: The languages
+
+    private static let cStyle = CommentMarks(line: ["//"], blocks: [("/*", "*/")])
+    private static let hash = CommentMarks(line: ["#"])
+
+    static let bash = SyntaxLanguage("bash", tree_sitter_bash(), marks: hash)
+    static let c = SyntaxLanguage("c", tree_sitter_c(), marks: cStyle)
+    static let cpp = SyntaxLanguage("cpp", tree_sitter_cpp(), marks: cStyle)
+    static let css = SyntaxLanguage("css", tree_sitter_css(), comments: ["comment", "js_comment"], marks: cStyle)
+    static let elixir = SyntaxLanguage("elixir", tree_sitter_elixir(), marks: hash)
+    static let go = SyntaxLanguage("go", tree_sitter_go(), marks: cStyle)
+    static let html = SyntaxLanguage("html", tree_sitter_html(), marks: CommentMarks(blocks: [("<!--", "-->")]))
+    static let java = SyntaxLanguage("java", tree_sitter_java(), comments: ["line_comment", "block_comment"], marks: cStyle)
+    static let javascript = SyntaxLanguage("javascript", tree_sitter_javascript(), comments: ["comment", "html_comment"], marks: CommentMarks(line: ["//", "<!--", "-->"], blocks: [("/*", "*/")]))
+    static let json = SyntaxLanguage("json", tree_sitter_json(), marks: cStyle)
+    static let kotlin = SyntaxLanguage("kotlin", tree_sitter_kotlin(), comments: ["line_comment", "block_comment"], marks: cStyle)
+    static let lua = SyntaxLanguage("lua", tree_sitter_lua(), marks: CommentMarks(line: ["--"], blocks: [("--[[", "]]")]))
+    static let make = SyntaxLanguage("make", tree_sitter_make(), marks: hash)
+    static let python = SyntaxLanguage("python", tree_sitter_python(), marks: hash)
+    static let ruby = SyntaxLanguage("ruby", tree_sitter_ruby(), marks: CommentMarks(line: ["#"], blocks: [("=begin", "=end")]))
+    static let rust = SyntaxLanguage("rust", tree_sitter_rust(), comments: ["line_comment", "block_comment"], marks: cStyle)
+    static let sql = SyntaxLanguage("sql", tree_sitter_sql(), comments: ["comment", "marginalia"], marks: CommentMarks(line: ["--"], blocks: [("/*", "*/")]))
+    static let swift = SyntaxLanguage("swift", tree_sitter_swift(), comments: ["comment", "multiline_comment"], marks: cStyle)
+    static let toml = SyntaxLanguage("toml", tree_sitter_toml(), marks: hash)
+    static let tsx = SyntaxLanguage("tsx", tree_sitter_tsx(), comments: ["comment", "html_comment"], marks: cStyle)
+    static let typescript = SyntaxLanguage("typescript", tree_sitter_typescript(), comments: ["comment", "html_comment"], marks: cStyle)
+    static let yaml = SyntaxLanguage("yaml", tree_sitter_yaml(), marks: hash)
+    static let zig = SyntaxLanguage("zig", tree_sitter_zig(), marks: cStyle)
+
+    public static let all = [bash, c, cpp, css, elixir, go, html, java, javascript, json, kotlin, lua, make,
+                             python, ruby, rust, sql, swift, toml, tsx, typescript, yaml, zig]
+
+    /// The file's, by its name or extension; nil where there's no grammar
+    /// (or the file's prose: Markdown).
+    public static func forPath(_ path: String) -> SyntaxLanguage? {
+        let name = (path as NSString).lastPathComponent.lowercased()
+        switch name {
+        case "makefile", "gnumakefile": return make
+        case ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".profile", ".envrc": return bash
+        case "gemfile", "rakefile", "podfile", "brewfile", "vagrantfile", "fastfile", "guardfile": return ruby
+        case "cargo.lock", "poetry.lock", "pipfile": return toml
+        default: break
+        }
+        switch (name as NSString).pathExtension {
+        case "sh", "bash", "zsh", "ksh", "command": return bash
+        case "c", "h": return c
+        case "cpp", "cc", "cxx", "c++", "hpp", "hh", "hxx", "h++", "ipp", "metal": return cpp
+        case "css": return css
+        case "ex", "exs": return elixir
+        case "go": return go
+        case "html", "htm", "xhtml": return html
+        case "java": return java
+        case "js", "jsx", "mjs", "cjs": return javascript
+        case "json", "jsonc": return json
+        case "kt", "kts": return kotlin
+        case "lua": return lua
+        case "mk", "make": return make
+        case "py", "pyi", "pyw": return python
+        case "rb", "rake", "gemspec", "ru": return ruby
+        case "rs": return rust
+        case "sql": return sql
+        case "swift": return swift
+        case "toml": return toml
+        case "tsx": return tsx
+        case "ts", "mts", "cts": return typescript
+        case "yaml", "yml": return yaml
+        case "zig", "zon": return zig
+        default: return nil
+        }
+    }
+}
+
+/// How a language marks its comments: what's taken off a comment's ends
+/// (and a block's left margin) to leave its words.
+public struct CommentMarks {
+    /// Line comments' leaders.
+    public var line: [String]
+    /// Block comments' delimiters.
+    public var blocks: [(open: String, close: String)]
+
+    public init(line: [String] = [], blocks: [(open: String, close: String)] = []) {
+        self.line = line
+        self.blocks = blocks
+    }
+
+    /// A comment's words within `segment`, a part of it on one line (it's
+    /// at `comment`, the whole of it): its leader, or a block's opening
+    /// and closing, left off where they're in the segment — with the
+    /// characters the leader's last repeats (///, ##, /**) and a `!` after
+    /// it (//!, /*!) — a block's lines' margin of blanks (and stars, where
+    /// it opens with one), and blanks at either end. Nil if no words.
+    public func words(of comment: Range<Int>, segment: Range<Int>, byte: (Int) -> UInt8) -> Range<Int>? {
+        func has(_ s: String, at k: Int) -> Bool {
+            let u = Array(s.utf8)
+            guard k >= comment.lowerBound, k + u.count <= comment.upperBound else { return false }
+            return u.indices.allSatisfy { byte(k + $0) == u[$0] }
+        }
+        // The longest mark it opens with.
+        let opens = line.map { ($0, nil as String?) } + blocks.map { ($0.open, $0.close as String?) }
+        let mark = opens.filter { has($0.0, at: comment.lowerBound) }.max { $0.0.utf8.count < $1.0.utf8.count }
+        var a = segment.lowerBound, b = segment.upperBound
+        func isBlank(_ k: Int) -> Bool { let c = byte(k); return c == 0x20 || c == 0x09 || c == 0x0D || c == 0x0A }
+        if let close = mark?.1, b == comment.upperBound, has(close, at: b - close.utf8.count) {
+            b -= close.utf8.count
+            let first = close.utf8.first!
+            if first == UInt8(ascii: "*") { while b > a, byte(b - 1) == first { b -= 1 } }
+        }
+        if let (open, _) = mark, a == comment.lowerBound {
+            a = min(a + open.utf8.count, b)
+            let last = open.utf8.last!
+            while a < b, byte(a) == last { a += 1 }
+            if a < b, byte(a) == UInt8(ascii: "!") { a += 1 }
+        } else if let (open, close) = mark, close != nil {
+            while a < b, isBlank(a) { a += 1 }
+            if open.utf8.last == UInt8(ascii: "*") { while a < b, byte(a) == UInt8(ascii: "*") { a += 1 } }
+        }
+        while a < b, isBlank(a) { a += 1 }
+        while b > a, isBlank(b - 1) { b -= 1 }
+        return a < b ? a..<b : nil
+    }
+}

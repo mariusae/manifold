@@ -35,6 +35,22 @@ let package = Package(
             cSettings: [.define("ZSTD_DISABLE_ASM")]
         ),
         .target(name: "ManifoldCore", dependencies: ["CZstd"]),
+        // Tree-sitter, fetched by scripts/fetch-tree-sitter.sh: its runtime
+        // (lib.c, which includes the rest) and the grammars code is parsed with.
+        .target(
+            name: "CTreeSitter",
+            path: "vendor/tree-sitter/runtime",
+            sources: ["src/lib.c"],
+            publicHeadersPath: "include",
+            cSettings: [.headerSearchPath("src"), .unsafeFlags(["-w"])]
+        ),
+        .target(
+            name: "CTreeSitterGrammars",
+            path: "vendor/tree-sitter/grammars",
+            cSettings: [.unsafeFlags(["-w"])]
+        ),
+        // Code parsed: its trees, kept as it's edited, and what they say.
+        .target(name: "ManifoldSyntax", dependencies: ["ManifoldCore", "CTreeSitter", "CTreeSitterGrammars"]),
         .target(
             name: "ManifoldMarkdown",
             dependencies: [
@@ -47,7 +63,7 @@ let package = Package(
         .executableTarget(name: "manifoldd", dependencies: ["ManifoldCore", "CPTY", "CManifoldVT"]),
         .executableTarget(
             name: "Manifold",
-            dependencies: ["ManifoldCore", "ManifoldMarkdown", "CPTY", "GhosttyKit"],
+            dependencies: ["ManifoldCore", "ManifoldMarkdown", "ManifoldSyntax", "CPTY", "GhosttyKit"],
             linkerSettings: [
                 .linkedLibrary("c++"),
                 .linkedFramework("Carbon"),
@@ -60,6 +76,7 @@ let package = Package(
         ),
         .testTarget(name: "ManifoldCoreTests", dependencies: ["ManifoldCore"]),
         .testTarget(name: "ManifoldMarkdownTests", dependencies: ["ManifoldMarkdown"]),
+        .testTarget(name: "ManifoldSyntaxTests", dependencies: ["ManifoldSyntax"]),
     ],
     swiftLanguageModes: [.v5]
 )

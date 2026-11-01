@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds Manifold.app into build/ (or $APP). `scripts/build-app.sh run` also
 # launches it.
-# Needs Frameworks/ from scripts/build-ghostty.sh.
+# Needs Frameworks/ from scripts/build-ghostty.sh, and vendor/tree-sitter/
+# from scripts/fetch-tree-sitter.sh (each run here when missing).
 set -e
 cd "$(dirname "$0")/.."
 
@@ -9,6 +10,8 @@ cd "$(dirname "$0")/.."
 [ -f Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h ] || scripts/build-ghostty.sh
 grep -q 'ghostty_surface_manifold_links' Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
+# Tree-sitter's runtime and grammars (fetched again when its list changes).
+scripts/fetch-tree-sitter.sh
 
 config=${CONFIG:-release}
 swift_build() {

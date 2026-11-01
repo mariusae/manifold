@@ -670,9 +670,11 @@ around it, and comes back with its history.
   **monospaced** one for terminals and code, a **technical** one beside
   it — proportional, for what's said about code: in an editor set
   monospaced, a comment's words are set in it, its `//`, `#` or `/*`
-  left in the monospaced, wherever the language's comments are (found
-  by their form alone, strings and all, a line at a time, in some fifty
-  languages by extension) — an **editing** one for what's
+  left in the monospaced, wherever the language's comments are (its
+  tree-sitter grammar's parse, kept as it's typed, in two dozen
+  languages by extension: Swift, C, C++, Rust, Go, Python, JavaScript,
+  TypeScript, Java, Kotlin, Ruby, shell and others; elsewhere comments
+  stay monospaced) — an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
   Markdown preview). Each theme sets them — face, size, line height
@@ -1668,6 +1670,7 @@ is migrated into logs on first run.
 
 ```
 scripts/build-ghostty.sh    # once: fetches Zig and Ghostty into vendor/, builds Frameworks/
+scripts/fetch-tree-sitter.sh  # once: tree-sitter and its grammars into vendor/tree-sitter
 scripts/build-app.sh run    # builds build/Manifold.app and opens it
 swift test
 ```
@@ -1677,6 +1680,15 @@ The web page, in `docs/` (for GitHub Pages, served from `main`'s
 for links, stacks, the shrink ladder, Open Quickly — from one static
 `index.html` whose blocks are templates; `docs/help/teardown.py` draws
 its figure, light and dark (`python3 docs/help/teardown.py`).
+
+Tree-sitter (the editor's parser, §7.1 of DESIGN.md) is built from
+source: `scripts/fetch-tree-sitter.sh` fetches its runtime and each
+grammar's generated C — pinned releases from crates.io and GitHub,
+checked against their SHA-256 — into `vendor/tree-sitter`, which
+Package.swift builds as `CTreeSitter` and `CTreeSitterGrammars`;
+`scripts/build-app.sh` runs it, and it fetches again when its list
+changes. A grammar is a line in that list and one in
+`SyntaxLanguage.swift`.
 
 The Linux servers come from `scripts/build-linux.sh`, which
 `scripts/build-app.sh` runs: they are built with a swift.org toolchain

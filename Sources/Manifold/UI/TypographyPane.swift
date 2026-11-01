@@ -1,5 +1,6 @@
 import AppKit
 import ManifoldCore
+import ManifoldSyntax
 
 /// Settings ▸ Typography: custom typography (the Custom font theme), a
 /// role at a time — editing, reading, monospaced, technical — each with its family
@@ -291,18 +292,13 @@ final class TypographyPane: SettingsPane {
             .font: code, .kern: CGFloat(mono.tracking) / 1000 * code.pointSize, .paragraphStyle: p, .foregroundColor: Theme.text,
         ])
         // Its comments found as the editor finds them.
-        let syntax = CommentSyntax.forPath("sample.swift")!
-        var state = CommentState.code, at = 0
-        for line in text.components(separatedBy: "\n") {
-            let bytes = Array(line.utf8)
-            let (ranges, end) = syntax.scan(bytes, from: state)
-            state = end
-            for r in ranges {
-                let a = String(decoding: bytes[..<r.lowerBound], as: UTF8.self).utf16.count
-                let b = String(decoding: bytes[..<r.upperBound], as: UTF8.self).utf16.count
-                out.addAttributes([.font: comment, .kern: CGFloat(style.tracking) / 1000 * comment.pointSize], range: NSRange(location: at + a, length: b - a))
+        let rope = Rope(text)
+        let tree = SyntaxTree(SyntaxLanguage.forPath("sample.swift")!, text: rope)
+        for n in 0..<rope.lineCount {
+            for r in tree.commentWords(in: rope.lineRange(n)) {
+                let a = rope.utf16Offset(ofByte: r.start), b = rope.utf16Offset(ofByte: r.end)
+                out.addAttributes([.font: comment, .kern: CGFloat(style.tracking) / 1000 * comment.pointSize], range: NSRange(location: a, length: b - a))
             }
-            at += line.utf16.count + 1
         }
         sample.attributedStringValue = out
     }

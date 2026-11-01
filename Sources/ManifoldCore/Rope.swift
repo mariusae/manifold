@@ -136,6 +136,52 @@ public struct Rope: Equatable, Sendable, CustomStringConvertible {
         return out
     }
 
+    /// The chunk holding `offset`, and where it starts: the text read a
+    /// piece at a time (by a parser); empty at the end.
+    public func chunk(at offset: Int) -> (start: Int, bytes: [UInt8]) {
+        guard offset >= 0, offset < count else { return (count, []) }
+        let (c, _) = locate(offset)
+        return (byteStarts[c], chunks[c].bytes)
+    }
+
+    /// What changed from `old` to this: the bytes `start..<oldEnd` there
+    /// became `start..<newEnd` here — the span between what's the same at
+    /// the start and at the end, compared a run at a time. Nil if nothing.
+    public func changed(from old: Rope) -> (start: Int, oldEnd: Int, newEnd: Int)? {
+        if self == old { return nil }
+        // Whole chunks at once while they're the same.
+        func same(_ x: [UInt8], _ xi: Int, _ y: [UInt8], _ yi: Int, _ n: Int) -> Bool {
+            x.withUnsafeBufferPointer { xp in y.withUnsafeBufferPointer { yp in
+                n == 0 || memcmp(xp.baseAddress! + xi, yp.baseAddress! + yi, n) == 0
+            } }
+        }
+        let limit = min(count, old.count)
+        var prefix = 0
+        while prefix < limit {
+            let (s, x) = chunk(at: prefix), (t, y) = old.chunk(at: prefix)
+            let xi = prefix - s, yi = prefix - t
+            let n = min(x.count - xi, y.count - yi, limit - prefix)
+            if same(x, xi, y, yi, n) { prefix += n; continue }
+            var k = 0
+            while x[xi + k] == y[yi + k] { k += 1 }
+            prefix += k
+            break
+        }
+        var suffix = 0
+        while suffix < limit - prefix {
+            let (s, x) = chunk(at: count - suffix - 1), (t, y) = old.chunk(at: old.count - suffix - 1)
+            // The runs ending suffix bytes before each end.
+            let xe = count - suffix - s, ye = old.count - suffix - t
+            let n = min(xe, ye, limit - prefix - suffix)
+            if same(x, xe - n, y, ye - n, n) { suffix += n; continue }
+            var k = 0
+            while x[xe - 1 - k] == y[ye - 1 - k] { k += 1 }
+            suffix += k
+            break
+        }
+        return (prefix, old.count - suffix, count - suffix)
+    }
+
     /// The byte at `offset` begins a character (or is the end).
     public func isBoundary(_ offset: Int) -> Bool {
         guard offset > 0, offset < count else { return true }
