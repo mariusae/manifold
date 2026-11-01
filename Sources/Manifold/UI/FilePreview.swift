@@ -1,8 +1,11 @@
 import AppKit
+import ManifoldCore
 import Quartz
 
 /// A file as the Finder previews it (§7.4): Quick Look's view of it over
 /// its name, its kind and size, and when it changed; a folder, its icon.
+/// Markdown is rendered as a preview tile renders it, not by Quick Look
+/// (whose page didn't scroll, its lines broken where the text's are).
 /// A file on another host is fetched to a local copy first, when it's
 /// small enough to (else its icon stands in).
 final class FilePreviewView: NSView {
@@ -11,6 +14,11 @@ final class FilePreviewView: NSView {
     var resolve: (String, @escaping (URL?) -> Void) -> () -> Void = { p, done in done(URL(fileURLWithPath: p)); return {} }
 
     private var quickLook: QLPreviewView?
+    /// Makes a Markdown page for a path, its text from the closure given
+    /// (the tile's, so its links go as a preview's); nil: Quick Look's.
+    var makePage: ((String, @escaping () -> (text: String, version: Int)?) -> MarkdownView?)?
+    private var page: MarkdownView?
+    private var pageText: (text: String, version: Int)?
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let info = NSTextField(labelWithString: "")
@@ -58,6 +66,7 @@ final class FilePreviewView: NSView {
         icon.image = n?.icon
         icon.isHidden = n == nil
         quickLook?.isHidden = true
+        page?.isHidden = true
         cancel?()
         cancel = nil
         let now = Date(), passing = now.timeIntervalSince(lastShown) < 0.25
@@ -72,6 +81,7 @@ final class FilePreviewView: NSView {
                 guard let self, self.token == t else { return }
                 self.cancel = nil
                 guard let url else { return }
+                if Lens.isMarkdown(n.path), self.makePage != nil, n.entry.size <= 4_000_000 { return self.showPage(url, for: n, token: t) }
                 let q = self.quickLook ?? self.makeQuickLook()
                 q.previewItem = url as NSURL
                 q.isHidden = false
@@ -83,8 +93,30 @@ final class FilePreviewView: NSView {
         needsLayout = true
     }
 
+    /// Markdown, read (off the main thread) and rendered.
+    private func showPage(_ url: URL, for n: BrowserNode, token t: Int) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let text = (try? Data(contentsOf: url)).map { String(decoding: $0, as: UTF8.self) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.token == t, let text else { return }
+                self.pageText = (text, (self.pageText?.version ?? 0) + 1)
+                if self.page == nil, let p = self.makePage?(n.path, { [weak self] in self?.pageText }) {
+                    self.addSubview(p)
+                    self.page = p
+                }
+                guard let p = self.page else { return }
+                p.show(block: p.block, path: n.path)
+                p.textChanged()
+                p.isHidden = false
+                self.icon.isHidden = true
+                self.needsLayout = true
+            }
+        }
+    }
+
     /// Debugging: what Quick Look was given, and whether it shows.
     var debugState: String {
+        if let page, !page.isHidden { return "page \(page.path.lastPathComponent)" }
         guard let q = quickLook else { return "no quick look" }
         return "quick look \((q.previewItem?.previewItemURL)?.lastPathComponent ?? "nothing")\(q.isHidden ? " hidden" : "")"
     }
@@ -108,6 +140,7 @@ final class FilePreviewView: NSView {
         name.frame = NSRect(x: pad, y: info.frame.maxY + 2, width: w, height: 18)
         let area = NSRect(x: pad, y: pad + infoHeight, width: w, height: max(0, bounds.height - infoHeight - 2 * pad))
         quickLook?.frame = area
+        page?.frame = area
         let side = min(area.width, area.height, 128)
         icon.frame = NSRect(x: area.midX - side / 2, y: area.midY - side / 2, width: side, height: side)
     }

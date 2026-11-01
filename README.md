@@ -797,7 +797,14 @@ around it, and comes back with its history.
   row or its chevron, ⏎), a file a small symbol in its type's colour; the
   file chosen is previewed at the right by Quick Look with its kind, size
   and date, as the Finder's columns do (the divider dragged as you like;
-  a narrow tile shows the tree alone). What the folder's repository
+  a narrow tile shows the tree alone) — Markdown rendered as a preview
+  tile renders it, scrolling, its links followed as there. A folder's
+  **README** (README.md first, else a plain README or README.txt) is
+  shown under its files, as GitHub shows one: a click on its bar
+  collapses it to the bar (and opens it again; the tile keeps it, and a
+  new one takes the choice made last), the bar dragged sets its height;
+  read again when it changes, out of the way of a filter's matches, the
+  bar alone when the tile's too short for both. What the folder's repository
   ignores (git's or Sapling's rules) and hidden files are left out; ⇧⌘.
   (View ▸ Show Hidden Files) shows them, dimmed. Or in **columns**, as
   the Finder's (the switch at the field's right; the tile keeps it, and

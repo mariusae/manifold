@@ -986,7 +986,14 @@ colour; the file chosen previewed at the right (`DirectoryTreeMode`, a
 split the tile keeps) when the tile is wide enough. The preview is Quick
 Look's (`QLPreviewView`) over the name, kind, size and date; a remote file
 is fetched first (`readPath`, 20 MB at most) into a folder by host and
-path. Over them, the way up (an arrow, ⌘↑) and a filter: typed, it lists
+path. Markdown isn't Quick Look's (its page didn't scroll there, and
+broke lines where the text does): it's the preview lens's page
+(`MarkdownView`, the tile's placement, so links go as a preview's). A
+README in the folder (`FolderReadme`: Markdown first, then plain text
+in a code block) is shown under the files, as GitHub shows one, on the
+same page: its bar collapses it (kept with the tile, the last choice
+for a new one) and, dragged, sizes it; it's read again when the
+listing says it changed, and stays out of a filter's way. Over them, the way up (an arrow, ⌘↑) and a filter: typed, it lists
 the tree's files matching it, ranked as Open Quickly ranks (`FileFinder`),
 the letters matched shown; "?" and words search the files' contents, in a
 search block (§7.5) beside.

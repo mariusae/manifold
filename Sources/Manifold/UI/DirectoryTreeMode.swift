@@ -68,6 +68,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         left.addSubview(scroll)
+        preview.makePage = { [weak owner] path, source in owner?.makePage(path, source: source) }
         preview.resolve = { [weak owner] path, done in
             guard let owner else { done(nil); return {} }
             return owner.resolve(path, done: done)

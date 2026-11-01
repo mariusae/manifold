@@ -68,8 +68,9 @@ enum DroppedItem {
 /// best first as it's typed; in columns a filter, each column keeping what
 /// matches and the folders on the way to it, in its own order. "?text"
 /// searches inside the files instead. What a repository ignores and hidden
-/// files are left out (⇧⌘. shows them).
-final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDelegate {
+/// files are left out (⇧⌘. shows them). A README in the folder is shown
+/// under it, as GitHub shows one (`FolderReadme`).
+final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDelegate, MarkdownViewDelegate, FollowsFontTheme {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
@@ -98,6 +99,27 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     private let note = BusyNote()
     private var footerWork: DispatchWorkItem?
     private var content: DirectoryMode?
+    /// The folder's README, under the files: the entry shown (as it was
+    /// listed, so a change reads it again) and its text.
+    private let readme = FolderReadme()
+    private var readmeEntry: DirectoryEntry?
+    private var readmeText: (text: String, version: Int)?
+    private var readmeCancel: (() -> Void)?
+    /// Collapsed to its bar, in this tile — else as last left in any.
+    private var readmeCollapsed: Bool {
+        get { keeper.value("readme").map { $0 == "collapsed" } ?? Self.lastReadmeCollapsed }
+        set {
+            keeper.note(["readme": newValue ? "collapsed" : "open"], after: 0)
+            Self.lastReadmeCollapsed = newValue
+        }
+    }
+    static var lastReadmeCollapsed: Bool {
+        get { UserDefaults.standard.bool(forKey: "folderReadmeCollapsed") }
+        set { UserDefaults.standard.set(newValue, forKey: "folderReadmeCollapsed") }
+    }
+    /// The Markdown pages shown (a file previewed, the README), told when
+    /// the font theme changes.
+    private let pages = NSHashTable<MarkdownView>.weakObjects()
     private var listedAt: Stamp?
     /// The selection, relative to the root, as all modes share it.
     private var selected: String?
@@ -129,6 +151,15 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         footer.isHidden = true
         addSubview(footer)
         addSubview(note)
+        readme.isHidden = true
+        readme.onToggle = { [weak self] in self?.toggleReadme() }
+        readme.onResize = { [weak self] height, done in
+            guard let self else { return }
+            self.readmeHeight = height
+            self.needsLayout = true
+            if done { self.keeper.note(["readmeHeight": "\(Int(self.readme.frame.height))"], after: 0) }
+        }
+        addSubview(readme)
         registerForDraggedTypes(Dragged.types)
         documentChanged()
     }
@@ -136,6 +167,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     required init?(coder: NSCoder) { fatalError() }
 
     func destroy() {
+        readmeCancel?()
         keepCurrent(false)
         keeper.flush()
         content?.destroy()
@@ -151,6 +183,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if let d = b.directory, d.listedAt != nil, d.listedAt != listedAt {
             listedAt = d.listedAt
             model?.setRootEntries(d.entries)
+            readEntries(d.entries)
         }
         updateNote()
     }
@@ -481,6 +514,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         keeper.note(["filter": search.stringValue])
         updateFooter()
         updateNote()
+        needsLayout = true
     }
 
     // The box's hairline in the accent while the filter has the keyboard
@@ -590,8 +624,96 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, modes.frame.minX - 8 - up.frame.maxX - 6), height: Flat.fieldHeight)
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
         footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
-        content?.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
-        note.frame = NSRect(x: 0, y: footerHeight, width: w, height: max(0, h - Self.headerHeight - footerHeight))
+        // The README under the files (not over a filter's matches): its
+        // bar alone when collapsed, or when the tile's too short for both.
+        var bottom = footerHeight
+        let room = h - Self.headerHeight - footerHeight
+        let showsReadme = readmeText != nil && model?.filtering != true && !searchingContents
+        readme.isHidden = !showsReadme
+        if showsReadme {
+            let bar = FolderReadme.barHeight, least: CGFloat = 120
+            let open = !readmeCollapsed && room >= bar + 2 * least
+            let wanted = readmeHeight ?? keeper.double("readmeHeight").map { CGFloat($0) } ?? (room * 0.45).rounded()
+            let height = open ? min(max(wanted, bar + least), room - least) : bar
+            if readme.collapsed == open { readme.collapsed = !open }
+            readme.frame = NSRect(x: 0, y: footerHeight, width: w, height: height)
+            bottom += height
+        }
+        content?.frame = NSRect(x: 0, y: bottom, width: w, height: max(0, h - Self.headerHeight - bottom))
+        note.frame = NSRect(x: 0, y: bottom, width: w, height: max(0, h - Self.headerHeight - bottom))
+    }
+
+    // MARK: The README, and Markdown pages
+
+    /// Its height as dragged, until the tile's laid out again.
+    private var readmeHeight: CGFloat?
+
+    private func toggleReadme() {
+        readmeCollapsed = !readme.collapsed
+        needsLayout = true
+    }
+
+    /// The folder's README among its entries: Markdown first, then plain
+    /// text (README, README.txt, .rst…), whatever the letters' case.
+    static func readme(in entries: [DirectoryEntry]) -> DirectoryEntry? {
+        func rank(_ e: DirectoryEntry) -> Int? {
+            guard !e.isDirectory else { return nil }
+            let name = e.name.lowercased(), ext = name.pathExtension
+            guard (ext.isEmpty ? name : String(name.dropLast(ext.count + 1))) == "readme" else { return nil }
+            if Lens.isMarkdown(name) { return 0 }
+            return ["", "txt", "rst", "adoc", "org", "text"].firstIndex(of: ext).map { $0 + 1 }
+        }
+        return entries.compactMap { e in rank(e).map { (e, $0) } }.min { $0.1 < $1.1 }?.0
+    }
+
+    /// The folder listed (again): its README read if it's new or changed.
+    private func readEntries(_ entries: [DirectoryEntry]) {
+        let found = Self.readme(in: entries)
+        guard found != readmeEntry else { return }
+        readmeEntry = found
+        readmeCancel?()
+        readmeCancel = nil
+        guard let found, let model, found.size <= 4_000_000 else {
+            readmeText = nil
+            needsLayout = true
+            return
+        }
+        let path = model.absolute(found.name)
+        readmeCancel = resolve(path) { [weak self] url in
+            guard let url else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let data = try? Data(contentsOf: url) else { return }
+                let text = String(decoding: data, as: UTF8.self)
+                DispatchQueue.main.async {
+                    guard let self, self.readmeEntry == found else { return }
+                    // Plain text as it's written: in a block of its own.
+                    let markdown = Lens.isMarkdown(found.name) ? text : Self.fenced(text)
+                    self.readmeText = (markdown, (self.readmeText?.version ?? 0) + 1)
+                    self.readme.show(name: found.name) { self.makePage(path) }
+                    self.readme.page?.show(block: self.block, path: path)
+                    self.readme.page?.textChanged()
+                    self.needsLayout = true
+                }
+            }
+        }
+    }
+
+    /// Text in a code block, its fence longer than any run of backticks in it.
+    private static func fenced(_ text: String) -> String {
+        var longest = 0, run = 0
+        for c in text { run = c == "`" ? run + 1 : 0; longest = max(longest, run) }
+        let fence = String(repeating: "`", count: max(3, longest + 1))
+        return fence + "text\n" + text + (text.hasSuffix("\n") ? "" : "\n") + fence + "\n"
+    }
+
+    /// A page for Markdown, as a preview tile has it — its links followed
+    /// as there — showing `path`; its text from `source`, else the README's.
+    func makePage(_ path: String, source: (() -> (text: String, version: Int)?)? = nil) -> MarkdownView {
+        let page = MarkdownView(placement: placement, block: block, path: path, theme: FontTheme.current)
+        page.delegate = self
+        page.source = source ?? { [weak self] in self?.readmeText }
+        pages.add(page)
+        return page
     }
 
     // MARK: Debugging
@@ -626,6 +748,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             delegate?.directoryViewRefresh(self)
             if let shown = content?.shownFolders { model?.refresh(shown) }
         case "focusfilter": performTextFinderAction(nil)
+        case "readme": toggleReadme()
         case "drag":
             // "drag": what dragging the selection carries.
             guard let path = content?.selectedPath else { return "nothing selected" }
@@ -643,6 +766,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
         lines.append("note \(note.debugState)")
+        if let e = readmeEntry {
+            lines.append("readme \(e.name) \(readme.isHidden ? "hidden" : readme.collapsed ? "collapsed" : "open \(Int(readme.frame.height))")\(readmeText == nil ? " (unread)" : "")")
+        }
         if let a = model?.debugAsking, !a.isEmpty { lines.append("listing \(a)") }
         if let d = content { lines.append(d.debugRows) }
         return lines.joined(separator: "\n")
@@ -650,6 +776,24 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 }
 
 protocol DebugDescribing { var debugRows: String { get } }
+
+/// Its Markdown pages' links, followed as a preview tile's are (the tile
+/// is theirs); ⌘[ ⌘] the folder's.
+extension DirectoryView {
+    func markdownView(_ view: MarkdownView, follow url: URL, modifiers: NSEvent.ModifierFlags) {
+        (delegate as? MarkdownViewDelegate)?.markdownView(view, follow: url, modifiers: modifiers)
+    }
+    func markdownViewDidReveal(_ view: MarkdownView) {}
+    func markdownView(_ view: MarkdownView, image data: Data, kind: String) {}
+    func markdownView(_ view: MarkdownView, append markdown: String, naming blocks: [BlockID]) {}
+    func markdownView(_ view: MarkdownView, history direction: Int) -> Bool {
+        delegate?.directoryView(self, history: direction) ?? false
+    }
+
+    func fontThemeChanged() {
+        for p in pages.allObjects { p.theme = FontTheme.current }
+    }
+}
 
 extension NSImage {
     /// A template image drawn in a colour.
