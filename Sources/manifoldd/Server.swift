@@ -823,6 +823,7 @@ final class Server {
                     if let b = self.node.block(block) { self.watch(b, force: true) }
                     self.languageServers.textChanged(block, saved: true)
                     self.gitChanged(under: path)
+                    self.scip.saved(path)
                     done()
                 }
             }

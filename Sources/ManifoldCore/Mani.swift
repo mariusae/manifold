@@ -221,6 +221,17 @@ public enum Mani {
                  file and --symbol or --line. --markdown prints each as a reference to
                  its place, for a walk through code.
                  """, inApp: true),
+        Verb(words: ["callers"], args: "<file or reference>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "symbol", value: "path", help: "a declaration in the file, by its path (`Type.method`) or name"),
+                     Flag(name: "line", value: "n", help: "the declaration at this line (from 1)"),
+                     Flag(name: "depth", value: "n", help: "callers of the callers, this many levels (1 to 4; 1 if not said)")],
+             summary: "The functions that call a symbol, across its project (from its SCIP index)",
+             details: """
+                 Each function that uses the symbol — found by the index, named by the
+                 grammar of the file it's in — with where it does, as Markdown: each a
+                 reference, for a note or a walk (Code ▸ Show Callers makes the note).
+                 --depth goes up the tree.
+                 """, inApp: true),
         Verb(words: ["ref"], args: "<file>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "symbol", value: "path", help: "a declaration, by its path (`Type.method`) or name"),
                      Flag(name: "heading", value: "title", help: "a Markdown heading, by its title"),

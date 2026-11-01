@@ -778,6 +778,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             e.delegate = self
             e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
             e.showsNotes = viewState(of: p)["notes"] != "hidden"
+            e.opensFolded = viewState(of: p)["folded"] == "1"
+            e.onToggleOpensFolded = { [weak self] on in self?.keepViewState(["folded": on ? "1" : ""], of: p) }
             e.onToggleNotes = { [weak self] shown in self?.keepViewState(["notes": shown ? "shown" : "hidden"], of: p) }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
@@ -1922,6 +1924,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let command = desk.settings.agentCommand + " '" + prompt.replacingOccurrences(of: "'", with: "'\\''") + "'"
             let agent = client.newAgent(cwd: b.path?.deletingLastPathComponent ?? b.place, command: command)
             show(agent, lens: .agent, .beside, context: "asked about \(name)")
+        }
+    }
+
+    /// Code ▸ Show Callers: the functions that call the declaration the
+    /// caret is in (the project's index's, each named by its file's
+    /// grammar), as a note of references beside — walked with ⌃⌘].
+    @objc func showCallers(_ sender: Any?) {
+        guard let f = focusedShown, let e = views[f.id] as? EditorView, let b = hosts.block(f.placement.block), let rope = b.text?.text,
+              let path = b.path, let language = SyntaxLanguage.forPath(path) else { return NSSound.beep() }
+        let caret = e.textView.primarySelection.head
+        let decls = SyntaxTree(language, text: rope, background: false).declarations()
+        let at = decls.last { $0.range.contains(caret) || $0.nameRange.contains(caret) }?.nameRange.start ?? caret
+        let placement = f.id
+        Task { @MainActor in
+            do {
+                let scope = ManiDesk.Scope(maniDesk, ManiRequest(verb: "callers", flags: [:], args: [], cwd: path.deletingLastPathComponent, here: nil), ManiDesk.Asker(host: b.id.host, id: 0, client: 0))
+                let (name, markdown) = try await maniDesk.callers(of: b, at: at, depth: 2, scope)
+                let note = (hosts.client(b.id.host) ?? host).newNote(home: path.deletingLastPathComponent, text: markdown)
+                hosts.link(from: note, to: b.id, kind: .linked, context: "callers of \(name)")
+                show(note, lens: .preview, .besideOpener(placement), context: "callers")
+            } catch {
+                toast.show("\(error is ManiDesk.Failure ? (error as! ManiDesk.Failure).message : "\(error)")", action: "OK", for: 6) {}
+            }
         }
     }
 

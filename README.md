@@ -920,8 +920,16 @@ around it, and comes back with its history.
   anchor at a declaration keeps its index name, so one moved to another
   file is followed there where the indexer keeps its name (Go within a
   package, C and C++; rust-analyzer and scip-typescript name a symbol by
-  its module or file, so moving it renames it). Indexed when asked, not
-  as files change: run it again after big changes.
+  its module or file, so moving it renames it). Once a project has an
+  index, saving a file of it indexes it again (20 seconds after the last
+  save). `mani callers <file> --symbol f [--depth n]`, and Code ▸ Show
+  Callers (a note of them beside the editor, walked with ⌃⌘]), list the
+  functions that call a symbol — found by the index, named by each
+  file's grammar — and their callers, each a reference.
+- **Reading code**: the caret on a name tints its other uses in the
+  file (whole words, not in comments); the tile's menu's Open with
+  Bodies Folded opens it as an outline of its functions, their notes
+  showing (kept with the tile).
 - **Folding**: in an editor, Collapse (⌃⌘9) folds the declaration the
   caret is in (its body, by the language's grammar; a Markdown
   section, in a note or Markdown file) under its first line, a chip

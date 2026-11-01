@@ -624,6 +624,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         set { textView.showsNotes = newValue }
     }
     var onToggleNotes: ((Bool) -> Void)?
+    /// This tile opens with every function's body folded (§2.5).
+    var opensFolded = false {
+        didSet { if opensFolded, !oldValue { textView.foldWhenParsed = true } }
+    }
+    var onToggleOpensFolded: ((Bool) -> Void)?
     var onToggleMarkdown: ((_ rich: Bool) -> Void)?
 
     /// The font switched from the pill's menu: this tile's, kept with its view state.
@@ -636,6 +641,15 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 guard let self else { return }
                 self.richMarkdown.toggle()
                 self.onToggleMarkdown?(self.richMarkdown)
+            })
+        }
+        // Code read as an outline of its functions, each body folded.
+        if textView.showsSymbolUses {
+            items.append(ClosureMenuItem(opensFolded ? "Open Unfolded" : "Open with Bodies Folded", symbol: "rectangle.compress.vertical") { [weak self] in
+                guard let self else { return }
+                self.opensFolded.toggle()
+                if self.opensFolded { self.textView.collapseAll(nil) } else { self.textView.expandAll(nil) }
+                self.onToggleOpensFolded?(self.opensFolded)
             })
         }
         // Notes about its places, under them or only marked.
@@ -730,6 +744,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let doc = theme.technicalFont(size: f.pointSize)
         textView.syntaxLanguage = SyntaxLanguage.forPath(path)
         textView.docFont = font == .monospaced ? doc : nil
+        // Code (a file of a language the table has) shows its caret's symbol's uses.
+        textView.showsSymbolUses = CodeLanguage.forPath(path)?.kind == .language
         // Notes about its places in the technical font beside code, else the text's.
         textView.noteFont = font == .monospaced ? doc : nil
         textView.markdownHeadings = path.isEmpty || Lens.isMarkdown(path)

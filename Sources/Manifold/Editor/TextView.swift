@@ -267,7 +267,17 @@ final class TextView: NSView, NSTextInputClient {
     /// The syntax of these ranges changed (a block comment opened above
     /// them): their lines laid out again, where it shows — their doc
     /// comments set apart.
+    /// Every function's body folded once the text's first parsed (a tile
+    /// that opens folded).
+    var foldWhenParsed = false
+
     private func syntaxChanged(_ changed: [TextRange]) {
+        if foldWhenParsed, syntax?.isParsed == true, !text.isEmpty {
+            foldWhenParsed = false
+            let keep = selections
+            collapseAll(nil)
+            if folds.isEmpty { setSelections(keep, scroll: false) }
+        }
         guard docFont != nil, !changed.isEmpty else { return }
         for r in changed {
             let first = text.line(at: r.start), last = text.line(at: r.end)
@@ -929,7 +939,8 @@ final class TextView: NSView, NSTextInputClient {
     var debugFolds: String {
         let f = folds.map { "\(text.line(at: $0.start) + 1)-\(text.line(at: max($0.end - 1, $0.start)) + 1)" }.joined(separator: ",")
         let p = places.map { "\($0.line + 1):\($0.links.count)\($0.note != nil ? "+note" : "")" }.joined(separator: ",")
-        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count)"
+        let uses = symbolUses.map { "\(text.line(at: $0.start) + 1):\($0.start - text.offset(ofLine: text.line(at: $0.start)))" }.joined(separator: ",")
+        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count) uses [\(uses)]"
     }
 
     // MARK: Drawing
@@ -971,6 +982,8 @@ final class TextView: NSView, NSTextInputClient {
     static let lineHighlight = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1),
                                                NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1))
     static let gutterText = NSColor.dynamic(NSColor(white: 0.62, alpha: 1), NSColor(white: 0.42, alpha: 1))
+    /// The caret's symbol's other uses: a faint ground, under a match's.
+    static let useColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.075), NSColor(white: 1, alpha: 0.1))
     static let matchColor = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.9, blue: 0.5, alpha: 0.7),
                                             NSColor(srgbRed: 0.5, green: 0.42, blue: 0.1, alpha: 0.8))
 
@@ -1067,7 +1080,14 @@ final class TextView: NSView, NSTextInputClient {
             NSRect(x: 0, y: top(ofLine: h), width: bounds.width, height: CGFloat(layout(line: h).rows.count) * lineHeight).fill()
         }
 
-        // Matches, then selections' backgrounds.
+        // The caret's symbol's other uses, faintly; matches, then selections' backgrounds.
+        if !symbolUses.isEmpty {
+            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
+            Self.useColor.setFill()
+            for h in symbolUses where h.end >= firstOffset && h.start <= lastOffset {
+                rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.08), xRadius: 3, yRadius: 3).fill() }
+            }
+        }
         if !highlights.isEmpty {
             let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
             Self.matchColor.setFill()
@@ -1316,6 +1336,7 @@ final class TextView: NSView, NSTextInputClient {
             }
         }
         if let h = highlightedLine, !selections.contains(where: { text.line(at: $0.head) == h }) { highlightedLine = nil }
+        scheduleSymbolUses()
         restartCaret()
         needsDisplay = true
         if scroll { scrollToCaret() }
@@ -1702,6 +1723,39 @@ final class TextView: NSView, NSTextInputClient {
     private func lineEnd(_ offset: Int) -> Int { text.lineRange(text.line(at: offset)).end }
 
     private func isWord(_ b: UInt8) -> Bool { b == 0x5F || (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b >= 0x80 }
+
+    /// The caret's symbol's other uses in the text (code, not Markdown):
+    /// the same word, whole, elsewhere — a moment after the caret stops.
+    private(set) var symbolUses: [TextRange] = [] { didSet { if symbolUses != oldValue { needsDisplay = true } } }
+    var showsSymbolUses = false
+    private var usesWork: DispatchWorkItem?
+
+    private func scheduleSymbolUses() {
+        usesWork?.cancel()
+        guard showsSymbolUses, !markdown, selections.count == 1, let s = selections.first, s.isCaret, text.count < 4_000_000 else {
+            symbolUses = []
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.findSymbolUses(at: s.head) }
+        usesWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func findSymbolUses(at offset: Int) {
+        let w = wordRange(at: offset)
+        guard w.length >= 2, let first = text.byte(at: w.start), !(first >= 0x30 && first <= 0x39) else { return symbolUses = [] }
+        let word = text[w]
+        var out: [TextRange] = []
+        for hit in text.findAll(word, limit: 2000) where hit != w {
+            // Whole words only.
+            let before = hit.start > 0 ? text.byte(at: hit.start - 1) : nil, after = text.byte(at: hit.end)
+            guard before.map(isWord) != true, after.map(isWord) != true else { continue }
+            // Not words in a comment, which the grammar knows.
+            if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: hit).isEmpty { continue }
+            out.append(hit)
+        }
+        symbolUses = out
+    }
 
     /// The word around an offset, for the symbol under the caret.
     func wordRange(at offset: Int) -> TextRange {

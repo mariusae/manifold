@@ -325,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(code, "Complete", #selector(EditorView.completeSymbol(_:)), " ", [.control])
         item(code, "Go to Definition", #selector(EditorView.goToDefinition(_:)), "j", [.command, .control])
         item(code, "Find References", #selector(EditorView.findReferences(_:)), "r", [.command, .control, .shift])
+        item(code, "Show Callers", #selector(MainWindowController.showCallers(_:)), "")
         code.addItem(.separator())
         item(code, "Describe with an Agent", #selector(MainWindowController.describeWithAgent(_:)), "")
         item(code, "Explain with an Agent", #selector(MainWindowController.explainWithAgent(_:)), "")

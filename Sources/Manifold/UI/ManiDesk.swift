@@ -110,6 +110,11 @@ final class ManiDesk {
         case "symbols": return try await symbols(r, scope)
         case "index": return try await index(r, scope)
         case "refs": return try await refs(r, scope)
+        case "callers":
+            let b = try await textBlock(r.args[0], scope)
+            let at = try await symbolOffset(r, in: b)
+            let depth = min(max(Int(r.flags["depth"] ?? "1") ?? 1, 1), 4)
+            return try await callers(of: b, at: at, depth: depth, scope).markdown
         case "ref": return try await ref(r, scope)
         case "rename":
             let t = try await target(r.args[0], scope)
@@ -448,11 +453,11 @@ final class ManiDesk {
         return describe(s)
     }
 
-    /// `mani refs`: where a symbol is used across its project.
-    private func refs(_ r: ManiRequest, _ scope: Scope) async throws -> String {
-        let b = try await textBlock(r.args[0], scope)
-        let fragment = BlockID.reference(r.args[0])?.fragment
+    /// Where a symbol's name is in a file, as a command names it: the
+    /// declaration --symbol or --line names, or a reference's place.
+    private func symbolOffset(_ r: ManiRequest, in b: Block) async throws -> Int {
         guard let path = b.path, let rope = b.text?.text else { throw Failure(message: "\(b.displayTitle) isn't a file") }
+        let fragment = BlockID.reference(r.args[0])?.fragment
         // Where the symbol's name is: the declaration a reference, --symbol
         // or --line names, else the reference's place itself.
         var at: Int?
@@ -469,12 +474,71 @@ final class ManiDesk {
             at = decls.first { $0.range == range }?.nameRange.start ?? range.start
         }
         guard let at else { throw Failure(message: "say which symbol: a reference to it, or --symbol, or --line", status: 2) }
-        let line = rope.line(at: at)
-        guard case .symbol(let found) = await scip(.symbol(path: path, line: line, byte: at - rope.offset(ofLine: line)), on: b.id.host) else {
+        return at
+    }
+
+    /// The symbol the index has at a byte of a file.
+    private func indexSymbol(in b: Block, at offset: Int) async throws -> SCIPSymbol {
+        guard let path = b.path, let rope = b.text?.text else { throw Failure(message: "\(b.displayTitle) isn't a file") }
+        let line = rope.line(at: offset)
+        guard case .symbol(let found) = await scip(.symbol(path: path, line: line, byte: offset - rope.offset(ofLine: line)), on: b.id.host) else {
             if case .error(let m) = await scip(.status(path: path), on: b.id.host) { throw Failure(message: m) }
             throw Failure(message: "\(path.abbreviatingHome)'s project has no index (mani index makes one)")
         }
         guard let s = found else { throw Failure(message: "the index knows no symbol there (it may be out of date: mani index)") }
+        return s
+    }
+
+    /// The functions that use the symbol at a byte of a file — each found
+    /// by the index, named by its file's grammar — with where, `depth`
+    /// levels up: as Markdown, each a reference.
+    func callers(of b: Block, at offset: Int, depth: Int, _ scope: Scope) async throws -> (name: String, markdown: String) {
+        let s = try await indexSymbol(in: b, at: offset)
+        var lines: [String] = []
+        var seen: Set<String> = [s.symbol]
+        func up(_ symbol: String, in path: String, host: HostID, level: Int) async throws {
+            guard case .locations(let places) = await scip(.references(symbol: symbol, path: path), on: host) else { return }
+            // By the function each use is in.
+            var groups: [(key: String, block: Block, decl: Declaration?, uses: [SCIPLocation])] = []
+            for p in places where !p.isDefinition {
+                let fb = try await textBlock(p.path, scope)
+                guard let rope = fb.text?.text, p.line < rope.lineCount else { continue }
+                let lineStart = rope.offset(ofLine: p.line)
+                let decls = fb.path.flatMap(SyntaxLanguage.forPath).map { SyntaxTree($0, text: rope, background: false).declarations() } ?? []
+                let decl = decls.last { $0.range.start <= lineStart && $0.range.end > lineStart }
+                let key = "\(fb.id)#\(decl?.path ?? "")"
+                if let i = groups.firstIndex(where: { $0.key == key }) { groups[i].uses.append(p) } else { groups.append((key, fb, decl, [p])) }
+            }
+            for g in groups {
+                let pad = String(repeating: "  ", count: level)
+                let rope = g.block.text!.text
+                var head = "\(pad)- "
+                if let d = g.decl, let ref = wc.reference(toLine: rope.line(at: d.range.start), in: g.block.id) {
+                    head += "[\(d.path)](\(ref)) in \(g.block.displayTitle)"
+                } else {
+                    head += "the top of \(g.block.displayTitle)"
+                }
+                let uses = g.uses.prefix(6).compactMap { u -> String? in
+                    wc.reference(toLine: u.line, in: g.block.id, exactly: true).map { "[line \(u.line + 1)](\($0))" }
+                }
+                lines.append(head + " — " + uses.joined(separator: ", ") + (g.uses.count > 6 ? ", …" : ""))
+                // Its own callers, a level up.
+                if level + 1 < depth, let d = g.decl, let path = g.block.path {
+                    let inner = try? await indexSymbol(in: g.block, at: d.nameRange.start)
+                    if let inner, seen.insert(inner.symbol).inserted { try await up(inner.symbol, in: path, host: g.block.id.host, level: level + 1) }
+                }
+            }
+        }
+        try await up(s.symbol, in: b.path ?? "", host: b.id.host, level: 0)
+        let title = "Callers of \(s.name)"
+        return (s.name, "# \(title)\n\n" + (lines.isEmpty ? "Nothing in the project calls it (as of its index)." : lines.joined(separator: "\n")) + "\n")
+    }
+
+    /// `mani refs`: where a symbol is used across its project.
+    private func refs(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        let b = try await textBlock(r.args[0], scope)
+        guard let path = b.path else { throw Failure(message: "\(b.displayTitle) isn't a file") }
+        let s = try await indexSymbol(in: b, at: try await symbolOffset(r, in: b))
         guard case .locations(let places) = await scip(.references(symbol: s.symbol, path: path), on: b.id.host) else {
             throw Failure(message: "the index couldn't say where \(s.name) is used")
         }

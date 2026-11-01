@@ -71,6 +71,23 @@ final class SCIPService {
         }
     }
 
+    /// A file saved: its project indexed again, if it has an index, a
+    /// while after the last save (a burst of saves, one indexing).
+    private var pendingIndex: [String: DispatchWorkItem] = [:]
+    static var reindexAfter: TimeInterval = 20
+
+    func saved(_ path: String) {
+        guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers),
+              FileManager.default.fileExists(atPath: file(root).path) else { return }
+        pendingIndex[root]?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingIndex.removeValue(forKey: root)
+            self?.index(root, with: indexer)
+        }
+        pendingIndex[root] = work
+        queue.asyncAfter(deadline: .now() + Self.reindexAfter, execute: work)
+    }
+
     /// A file in no indexer's language (a Markdown file in a Rust crate):
     /// the project around it, by any indexer's markers.
     private func project(of path: String) -> (SCIPIndexer, root: String)? {
