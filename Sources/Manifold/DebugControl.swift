@@ -1128,12 +1128,13 @@ enum DebugControl {
             wc.hosts.propose(.attend(b))
             return "ok"
         case "scroll":
-            // "scroll x y dy": a wheel turned dy lines over that point (window
-            // coordinates from the top-left), to the view there.
+            // "scroll x y dy [dx]": a wheel turned dy lines (and dx across)
+            // over that point (window coordinates from the top-left), to the
+            // view there.
             let a = arg.split(separator: " ").compactMap { Double($0) }
-            guard a.count == 3, let window = wc?.window, let content = window.contentView else { return "usage: scroll x y dy" }
+            guard a.count >= 3, let window = wc?.window, let content = window.contentView else { return "usage: scroll x y dy [dx]" }
             let p = NSPoint(x: a[0], y: content.bounds.height - a[1])
-            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(a[2]), wheel2: 0, wheel3: 0),
+            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: Int32(a[2]), wheel2: Int32(a.count > 3 ? a[3] : 0), wheel3: 0),
                   let e = NSEvent(cgEvent: cg), let hit = content.hitTest(p) else { return "no event" }
             hit.scrollWheel(with: e)
             return "scrolled \(type(of: hit))"

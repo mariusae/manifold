@@ -28,7 +28,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     /// One folder's entries, a list of its own.
     final class Column: NSView {
-        let scroll = ClippingScrollView()
+        let scroll = ColumnScroll()
         let table = ColumnTable()
         var folder = ""
         /// Its entries, in the order shown.
@@ -87,6 +87,31 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         override func draw(_ dirtyRect: NSRect) {
             Theme.divider.setFill()
             NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
+        }
+    }
+
+    /// A column's list: it scrolls up and down; a gesture sideways (or a
+    /// wheel turned with ⇧) goes to the strip of columns it's in, which
+    /// scrolls across them — the list took it, and the strip never moved.
+    final class ColumnScroll: NSScrollView {
+        /// The gesture under way is sideways, as it began.
+        private var sideways = false
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            clipsToBounds = true
+            horizontalScrollElasticity = .none
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func scrollWheel(with event: NSEvent) {
+            // Its direction taken as it starts (a trackpad's), else at each
+            // turn (a wheel's); its momentum goes the same way.
+            if event.phase == .began || (event.phase == [] && event.momentumPhase == []) {
+                sideways = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+            }
+            if sideways, let strip = enclosingScrollView { strip.scrollWheel(with: event) } else { super.scrollWheel(with: event) }
         }
     }
 

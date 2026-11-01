@@ -18,8 +18,11 @@ final class FolderReadme: NSView {
     /// done (to keep).
     var onResize: ((CGFloat, _ done: Bool) -> Void)?
 
-    var collapsed = false {
-        didSet {
+    var collapsed = false { didSet { apply() } }
+
+    /// The bar as `collapsed` has it (set in init too, where didSet isn't called).
+    private func apply() {
+        do {
             chevron.image = Theme.symbol(collapsed ? "chevron.right" : "chevron.down", size: 10, weight: .semibold)
             page?.isHidden = collapsed
             bar.resizes = !collapsed
@@ -46,7 +49,7 @@ final class FolderReadme: NSView {
             guard let self else { return }
             self.onResize?(self.frame.height + dy, done)
         }
-        collapsed = false
+        apply()
     }
 
     required init?(coder: NSCoder) { fatalError() }
