@@ -213,7 +213,7 @@ final class Hosts {
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         let block: BlockID
         switch request {
-        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
+        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _), let .highlights(b, _),
              let .navigable(b), let .symbols(b):
             block = b
         }

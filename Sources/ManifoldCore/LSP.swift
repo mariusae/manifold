@@ -146,6 +146,9 @@ public enum LSPRequest: Codable, Sendable {
     case rename(BlockID, offset: Int, newName: String)
     case format(BlockID, tabSize: Int)
     case completion(BlockID, offset: Int)
+    /// The uses in the text of the symbol at a place (its declaration,
+    /// its reads and writes), as byte ranges: what the server highlights.
+    case highlights(BlockID, offset: Int)
     /// Where in the text there's something to go to (a type, a function,
     /// a variable…), as the server's semantic tokens say: what ⌘ shows
     /// as links.

@@ -150,7 +150,7 @@ final class LanguageServers {
         let block: BlockID
         switch request {
         case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
-             let .navigable(b), let .symbols(b):
+             let .highlights(b, _), let .navigable(b), let .symbols(b):
             block = b
         }
         guard let (text, path) = textOf(block), let path else { return done(.error("not a file")) }
@@ -170,6 +170,15 @@ final class LanguageServers {
             server.request("textDocument/references", ["textDocument": ["uri": uri], "position": position(offset),
                                                        "context": ["includeDeclaration": true]]) { [weak self] result in
                 done(.locations(self?.locations(result) ?? []))
+            }
+        case let .highlights(_, offset):
+            server.request("textDocument/documentHighlight", ["textDocument": ["uri": uri], "position": position(offset)]) { result in
+                guard case .success(let value) = result, let items = value as? [[String: Any]] else { return done(.none) }
+                done(.ranges(items.compactMap { item in
+                    guard let range = item["range"] as? [String: Any], let start = range["start"] as? [String: Any], let end = range["end"] as? [String: Any] else { return nil }
+                    return TextRange(text.byteOffset(line: start["line"] as? Int ?? 0, character: start["character"] as? Int ?? 0),
+                                     text.byteOffset(line: end["line"] as? Int ?? 0, character: end["character"] as? Int ?? 0))
+                }))
             }
         case let .hover(_, offset):
             server.request("textDocument/hover", ["textDocument": ["uri": uri], "position": position(offset)]) { result in

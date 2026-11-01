@@ -399,6 +399,16 @@ extension EditorView {
 
     /// A gutter's line dragged: a reference to its place (§2.5) — what an
     /// outline's item carries, its line made an anchor by the window.
+    /// The symbol at a place's uses in this text, as its language server
+    /// highlights them; nil if there's no server or it doesn't say.
+    func textView(_ view: TextView, usesAt offset: Int, _ done: @escaping ([TextRange]?) -> Void) {
+        guard let delegate else { return done(nil) }
+        delegate.editor(self, lsp: .highlights(block, offset: offset)) { result in
+            guard case .ranges(let r) = result, !r.isEmpty else { return done(nil) }
+            done(r)
+        }
+    }
+
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {
         Drags.place?(block, "line=\(line + 1)", view.text.lineText(line).trimmingCharacters(in: .whitespaces))
     }

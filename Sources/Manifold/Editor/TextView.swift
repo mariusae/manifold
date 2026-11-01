@@ -36,6 +36,10 @@ protocol TextViewDelegate: AnyObject {
     /// A line (from 0) dragged from the gutter: what it carries — a
     /// reference to the declaration or heading there, else the line (§2.5).
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting?
+    /// The uses in the text of the symbol at `offset` — that one, not
+    /// every name spelled the same — as its language server says; nil if
+    /// it can't (none, or no answer), for the text's own whole words.
+    func textView(_ view: TextView, usesAt offset: Int, _ done: @escaping ([TextRange]?) -> Void)
 }
 
 /// A selection: from its anchor to its head (the end that moves), in bytes.
@@ -248,7 +252,7 @@ final class TextView: NSView, NSTextInputClient {
                 // Not ours: nothing is known about what moved.
                 syntax?.update(to: document.rope)
                 foldsFollowText()
-                pinnedRanges = nil
+                pinnedChanged(nil)
                 invalidateAll()
                 if document.rope.lineCount != knownLineCount { undoStack = []; redoStack = [] }
             }
@@ -944,7 +948,7 @@ final class TextView: NSView, NSTextInputClient {
         let f = folds.map { "\(text.line(at: $0.start) + 1)-\(text.line(at: max($0.end - 1, $0.start)) + 1)" }.joined(separator: ",")
         let p = places.map { "\($0.line + 1):\($0.links.count)\($0.note != nil ? "+note" : "")" }.joined(separator: ",")
         let uses = symbolUses.map { "\(text.line(at: $0.start) + 1):\($0.start - text.offset(ofLine: text.line(at: $0.start)))" }.joined(separator: ",")
-        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count) uses [\(uses)] pinned [\(pinned.map(\.word).joined(separator: ","))] \(pinnedUses().count)"
+        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count) uses [\(uses)] pinned [\(pinned.map { $0.word + ($0.uses == nil ? "" : "*") }.joined(separator: ","))] \(pinnedUses().count)"
     }
 
     // MARK: Drawing
@@ -1259,7 +1263,7 @@ final class TextView: NSView, NSTextInputClient {
         let startLine = max(text.line(at: range.start), first)
         let endLine = min(text.line(at: range.end), last)
         guard startLine <= endLine else { return }
-        for n in startLine...endLine {
+        for n in startLine...endLine where !hiddenLines.contains(n) {
             let l = layout(line: n)
             let lineStart = text.offset(ofLine: n)
             let lineEnd = lineStart + l.text.utf8.count
@@ -1284,7 +1288,7 @@ final class TextView: NSView, NSTextInputClient {
         let startLine = max(text.line(at: range.start), first)
         let endLine = min(text.line(at: range.end), last)
         guard startLine <= endLine else { return }
-        for n in startLine...endLine {
+        for n in startLine...endLine where !hiddenLines.contains(n) {
             let l = layout(line: n)
             let lineStart = text.offset(ofLine: n)
             let lineEnd = lineStart + l.text.utf8.count
@@ -1506,7 +1510,7 @@ final class TextView: NSView, NSTextInputClient {
         syntaxEdited()
         foldsEdited(edits)
         foldsText = text
-        pinnedRanges = nil
+        pinnedChanged(edits)
         resizeToFit()
         needsDisplay = true
     }
@@ -1799,8 +1803,18 @@ final class TextView: NSView, NSTextInputClient {
 
     /// Symbols whose uses stay tinted, each its own colour (⌃⌘E), until
     /// unpinned or cleared: several followed through the text at once.
-    private var pinned: [(word: String, color: NSColor)] = [] { didSet { pinnedRanges = nil; needsDisplay = true } }
+    private var pinned: [Pin] = [] { didSet { pinnedRanges = nil; needsDisplay = true } }
     private var pinnedRanges: [(TextRange, NSColor)]?
+
+    /// A pinned symbol: its name, its colour, where it was pinned (moved
+    /// through edits), and its uses as its language server said (nil: its
+    /// name's whole words, the server not knowing).
+    private struct Pin {
+        var word: String
+        var color: NSColor
+        var at: Int
+        var uses: [TextRange]?
+    }
     static let pinColors: [NSColor] = [
         NSColor.dynamic(NSColor(srgbRed: 0.2, green: 0.7, blue: 0.7, alpha: 0.28), NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 0.35)),
         NSColor.dynamic(NSColor(srgbRed: 0.95, green: 0.7, blue: 0.2, alpha: 0.32), NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 0.35)),
@@ -1814,25 +1828,69 @@ final class TextView: NSView, NSTextInputClient {
         let w = wordRange(at: primarySelection.head)
         guard w.length >= 1 else { return NSSound.beep() }
         let word = text[w]
-        if let i = pinned.firstIndex(where: { $0.word == word }) {
+        // Again on one of a pinned symbol's uses: unpinned.
+        if let i = pinned.firstIndex(where: { p in p.uses.map { $0.contains { $0.start <= w.start && $0.end >= w.end } } ?? (p.word == word) }) {
             pinned.remove(at: i)
             return
         }
         let used = Set(pinned.map { ObjectIdentifier($0.color) })
         let color = Self.pinColors.first { !used.contains(ObjectIdentifier($0)) } ?? Self.pinColors[pinned.count % Self.pinColors.count]
         if pinned.count >= Self.pinColors.count { pinned.removeFirst() }
-        pinned.append((word, color))
+        pinned.append(Pin(word: word, color: color, at: w.start, uses: nil))
+        askPinnedUses()
+    }
+
+    /// The pinned symbols' uses asked of the language server (again after
+    /// the text changes, a moment after the last change).
+    private var pinWork: DispatchWorkItem?
+    private func askPinnedUses() {
+        for p in pinned {
+            let at = p.at, version = document?.version
+            delegate?.textView(self, usesAt: at) { [weak self] uses in
+                guard let self, self.document?.version == version, let i = self.pinned.firstIndex(where: { $0.at == at }) else { return }
+                self.pinned[i].uses = uses.flatMap { $0.isEmpty ? nil : $0 }
+            }
+        }
+    }
+
+    /// The text changed (by `edits`, or, nil, by what's not known): pinned
+    /// places moved through it, asked again a moment after.
+    private func pinnedChanged(_ edits: [TextEdit]?) {
+        pinnedRanges = nil
+        guard !pinned.isEmpty else { return }
+        for i in pinned.indices {
+            guard let edits else { pinned[i].uses = nil; continue }
+            for e in edits {
+                pinned[i].at = TextRange(at: pinned[i].at).moved(by: e).start
+                pinned[i].uses = pinned[i].uses?.compactMap { r in
+                    e.start < r.end && e.end > r.start ? nil : r.moved(by: e)
+                }
+            }
+        }
+        // A pin whose name isn't where it was any more: by its name again.
+        for i in pinned.indices where text[wordRange(at: min(pinned[i].at, text.count))] != pinned[i].word {
+            if let hit = text.findAll(pinned[i].word, limit: 1).first { pinned[i].at = hit.start }
+        }
+        pinWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.askPinnedUses() }
+        pinWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
     /// Clear Highlights: every pinned symbol unpinned.
     @objc func clearHighlights(_ sender: Any?) { pinned = [] }
 
-    /// The pinned symbols' uses, whole words not in comments (found once
-    /// a text, again after it changes).
+    /// The pinned symbols' uses: the language server's, else their names'
+    /// whole words not in comments (found once a text, again after it changes).
     private func pinnedUses() -> [(TextRange, NSColor)] {
         if let r = pinnedRanges { return r }
         var out: [(TextRange, NSColor)] = []
-        for (word, color) in pinned {
+        for p in pinned {
+            let (word, color) = (p.word, p.color)
+            if let uses = p.uses {
+                out += uses.filter { $0.end <= text.count }.map { ($0, color) }
+                continue
+            }
             for hit in text.findAll(word, limit: 5000) {
                 let before = hit.start > 0 ? text.byte(at: hit.start - 1) : nil, after = text.byte(at: hit.end)
                 guard before.map(isWord) != true, after.map(isWord) != true else { continue }
@@ -1864,6 +1922,18 @@ final class TextView: NSView, NSTextInputClient {
     private func findSymbolUses(at offset: Int) {
         let w = wordRange(at: offset)
         guard w.length >= 2, let first = text.byte(at: w.start), !(first >= 0x30 && first <= 0x39) else { return symbolUses = [] }
+        if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: w).isEmpty { return symbolUses = [] }
+        // That symbol's uses, as its language server says; else the name's.
+        let version = document?.version
+        delegate?.textView(self, usesAt: w.start) { [weak self] uses in
+            guard let self, self.document?.version == version, self.selections.count == 1,
+                  self.wordRange(at: self.primarySelection.head) == w else { return }
+            if let uses { self.symbolUses = uses.filter { $0 != w } } else { self.symbolUses = self.textualUses(of: w) }
+        }
+    }
+
+    /// A name's other whole words in the text, not in comments.
+    private func textualUses(of w: TextRange) -> [TextRange] {
         let word = text[w]
         var out: [TextRange] = []
         for hit in text.findAll(word, limit: 2000) where hit != w {
@@ -1874,7 +1944,7 @@ final class TextView: NSView, NSTextInputClient {
             if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: hit).isEmpty { continue }
             out.append(hit)
         }
-        symbolUses = out
+        return out
     }
 
     /// The word around an offset, for the symbol under the caret.
@@ -2530,8 +2600,10 @@ final class TextView: NSView, NSTextInputClient {
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
         let over = target != nil
-        if over != overLink {
+        let chip = foldChips.values.contains { $0.rect.contains(convert(event.locationInWindow, from: nil)) }
+        if over != overLink || chip != overChip {
             overLink = over
+            overChip = chip
             updateCursor()
         }
     }
@@ -2539,9 +2611,12 @@ final class TextView: NSView, NSTextInputClient {
     override func cursorUpdate(with event: NSEvent) { updateCursor() }
 
     private var overLink = false
+    /// Over a fold's ⋯, a button: the arrow.
+    private var overChip = false
 
     private func updateCursor() {
         guard isUnderPointer else { return }
+        if overChip { return NSCursor.arrow.set() }
         (overLink || hoveredLink.map { !$0.isEmpty } == true ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 
