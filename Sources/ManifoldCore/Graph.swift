@@ -174,6 +174,13 @@ public final class Graph {
     /// When a block was last seen (or made), as the registry says.
     public func seen(_ block: BlockID) -> Stamp? { lastSeen[block] ?? createdOf[block] }
 
+    /// Whether a block has been seen since it was made (on a screen, not
+    /// only made — a git tile's pane's diff).
+    public func seenSinceMade(_ block: BlockID) -> Bool {
+        guard let seen = lastSeen[block] else { return false }
+        return seen != createdOf[block]
+    }
+
     private func setPath(_ block: BlockID, _ path: String?, kind: BlockKind) {
         if let old = pathOf[block] {
             atPath[block.host]?[old.path]?.removeAll { $0 == block }

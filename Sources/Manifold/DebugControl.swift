@@ -1011,6 +1011,10 @@ enum DebugControl {
             return wc?.debugSearchPreview(arg) ?? "no window"
         case "dir":
             return wc?.debugDirectory(arg) ?? "no window"
+        case "gitview":
+            // "gitview [select <row>]": the focused git tile's rows, the one
+            // chosen, and its pane.
+            return wc?.debugGitView(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
         case "layouts":

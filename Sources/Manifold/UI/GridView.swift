@@ -789,6 +789,8 @@ final class GridView: NSView, NSDraggingSource {
                     setHidden(t.view, true)
                     pills[t.shown.id]?.isHidden = true
                     badges[t.shown.id]?.isHidden = true
+                    // A summarized tile's card too (it showed over the maximized one).
+                    tileSummaries[t.shown.id]?.isHidden = true
                     ticks[t.shown.id]?.available = false
                 }
                 for d in columnDividers + rowDividers { d.isHidden = true }

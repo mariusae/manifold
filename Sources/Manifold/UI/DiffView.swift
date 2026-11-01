@@ -19,7 +19,15 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     let block: BlockID
     weak var delegate: DiffViewDelegate?
     var source: () -> Block? = { nil }
-    var theme: FontTheme { didSet { if theme != oldValue { rowsView.font = theme.font(.monospaced, size: 12); rowsView.needsDisplay = true } } }
+    var theme: FontTheme {
+        didSet {
+            guard theme != oldValue else { return }
+            rowsView.font = theme.font(.monospaced, size: 12)
+            rowsView.needsDisplay = true
+            loadedAt = nil
+            documentChanged()
+        }
+    }
 
     private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
@@ -28,6 +36,8 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     fileprivate var printableRows: [DiffRow] { rowsView.rows }
     private var loadedAt: Stamp?
     private var unfolded = false
+    /// A commit's heading, over its rows: its message rendered.
+    private var commitHeader: CommitHeaderView?
 
     var focusView: NSView { rowsView }
     var isDead: Bool { false }
@@ -113,7 +123,13 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             left = min(TileSidebar.width, (bounds.width / 3).rounded())
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - 32)
         }
-        scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height - 32)
+        var top = bounds.height - 32
+        if let commitHeader {
+            let h = commitHeader.height(width: bounds.width - left, limit: (top * 0.45).rounded())
+            commitHeader.frame = NSRect(x: left, y: top - h, width: bounds.width - left, height: h)
+            top -= h
+        }
+        scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: top)
         rowsView.minWidth = scroll.contentSize.width
         rowsView.relayout()
         finder.layout(in: bounds)
@@ -139,6 +155,21 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             note.stringValue = e
         } else if let patch = d.patch {
             rows = DiffRows.patch(patch)
+            // A commit's heading (its fields, its message) shown over the
+            // rows, as a message's in a mail reader — the message as Markdown.
+            if case .commit = d.subject {
+                let first = rows.firstIndex { if case .file = $0.kind { true } else { false } } ?? rows.count
+                // From the patch itself: its rows leave out blank lines,
+                // the message's paragraphs' breaks.
+                let head = patch.range(of: "\ndiff --git ").map { String(patch[..<$0.lowerBound]) } ?? patch
+                if let h = CommitHeaderView.Heading(head.components(separatedBy: "\n")) {
+                    rows.removeFirst(first)
+                    let v = commitHeader ?? CommitHeaderView()
+                    if commitHeader == nil { addSubview(v); commitHeader = v }
+                    v.show(h, theme: theme)
+                    needsLayout = true
+                }
+            }
         } else if let old = d.oldText, let new = d.newText {
             rows = DiffRows.sides(old: old, new: new, unfolded: unfolded)
         } else {
@@ -541,5 +572,114 @@ extension DiffView: FollowsFontTheme {
     func fontThemeChanged() {
         rowsView.font = theme.font(.monospaced, size: 12)
         rowsView.needsDisplay = true
+    }
+}
+
+/// A commit's heading over its diff, as a mail reader shows a message's:
+/// who and when, small, then the message rendered as Markdown — scrolling
+/// on its own past a share of the tile.
+final class CommitHeaderView: NSView {
+    private let meta = NSTextField(labelWithString: "")
+    private let scroll = ClippingScrollView()
+    private let text = NSTextView()
+    private let rule = NSView()
+
+    /// What a commit's heading says: its fields (commit, Author, Date —
+    /// or a Sapling changeset's), and its message.
+    struct Heading: Equatable {
+        var sha = ""
+        var author = ""
+        var date = ""
+        var message = ""
+
+        /// From a patch's lines before its first file, as `git show`
+        /// writes them: fields, a blank line, the message indented.
+        init?(_ lines: [String]) {
+            var fields = true
+            var message: [String] = []
+            for line in lines {
+                if fields {
+                    if line.trimmingCharacters(in: .whitespaces).isEmpty { fields = false; continue }
+                    // The message begins, indented, with no blank line said.
+                    if line.hasPrefix("    ") { fields = false; message.append(String(line.dropFirst(4))); continue }
+                    if line.hasPrefix("commit ") { sha = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+                    else if let r = line.range(of: ":") {
+                        let key = line[..<r.lowerBound].lowercased(), value = line[r.upperBound...].trimmingCharacters(in: .whitespaces)
+                        switch key {
+                        case "author", "user": author = value
+                        case "date": date = value
+                        case "changeset": sha = value
+                        default: break
+                        }
+                    }
+                } else {
+                    message.append(line.hasPrefix("    ") ? String(line.dropFirst(4)) : line)
+                }
+            }
+            while message.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { message.removeLast() }
+            self.message = message.joined(separator: "\n")
+            guard !sha.isEmpty || !self.message.isEmpty else { return nil }
+        }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        meta.font = UIType.detail
+        meta.textColor = Theme.secondaryText
+        meta.lineBreakMode = .byTruncatingTail
+        text.isEditable = false
+        text.isSelectable = true
+        text.drawsBackground = false
+        text.textContainerInset = .zero
+        text.textContainer?.lineFragmentPadding = 0
+        text.textContainer?.widthTracksTextView = true
+        text.isVerticallyResizable = true
+        text.autoresizingMask = [.width]
+        scroll.documentView = text
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        rule.wantsLayer = true
+        rule.themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
+        for v in [meta, scroll, rule] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private static let inset: CGFloat = 12
+
+    func show(_ h: Heading, theme: FontTheme) {
+        meta.stringValue = [String(h.sha.prefix(12)), h.author, h.date].filter { !$0.isEmpty }.joined(separator: " · ")
+        let body = theme.readingFont(size: 15), code = theme.font(.monospaced, size: 12.5)
+        // Its subject a title over the rest, as a message's in a mail reader.
+        let lines = h.message.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let title = NSFontManager.shared.convert(theme.readingFont(size: 17), toHaveTrait: .boldFontMask)
+        let out = NSMutableAttributedString(attributedString: MarkdownText.attributed(String(lines.first ?? ""), font: title, code: code))
+        let rest = lines.count > 1 ? lines[1].trimmingCharacters(in: .newlines) : ""
+        if !rest.isEmpty {
+            out.append(NSAttributedString(string: "\n"))
+            out.append(MarkdownText.attributed(rest, font: body, code: code))
+        }
+        text.textStorage?.setAttributedString(out)
+        needsLayout = true
+    }
+
+    /// Its height at a width: the message whole, at most `limit`.
+    func height(width: CGFloat, limit: CGFloat) -> CGFloat {
+        let w = max(width - 2 * Self.inset, 50)
+        text.frame.size.width = w
+        text.textContainer?.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
+        text.layoutManager?.ensureLayout(for: text.textContainer!)
+        let used = text.layoutManager?.usedRect(for: text.textContainer!).height ?? 0
+        return min(ceil(used) + 18 + 10 + 12, limit)
+    }
+
+    override func layout() {
+        super.layout()
+        let w = bounds.width, h = bounds.height, inset = Self.inset
+        meta.frame = NSRect(x: inset, y: h - 8 - 16, width: w - 2 * inset, height: 16)
+        scroll.frame = NSRect(x: inset, y: 12, width: w - 2 * inset, height: max(0, h - 12 - 28))
+        text.frame.size.width = scroll.contentSize.width
+        rule.frame = NSRect(x: 0, y: 0, width: w, height: 1)
     }
 }

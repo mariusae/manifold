@@ -7,12 +7,16 @@ protocol GitViewDelegate: AnyObject {
     /// Open a file beside it.
     func gitView(_ view: GitView, open path: String)
     func gitViewRefresh(_ view: GitView)
+    /// A diff of what's chosen, for the pane under the list (its block
+    /// made, or found, to show it).
+    func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView?
 }
 
 /// The git lens (DESIGN.md §7.5): a repository's branch, what's changed,
-/// and its recent history, as the host last looked; a change or a commit
-/// opens as a diff beside it.
-final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate {
+/// and its recent history, as the host last looked. The change or commit
+/// chosen shows in a pane under the list, as a mail reader shows the
+/// message chosen; double-clicked (or ⏎), it opens as a diff beside it.
+final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSSplitViewDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
@@ -39,6 +43,18 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let note = BusyNote()
     private var root = ""
     private var vcs: VCS = .git
+    /// The pane under the list: the chosen row's diff; the split between
+    /// them is kept with the tile.
+    private let split = NSSplitView()
+    private let listBox = NSView()
+    private let paneBox = NSView()
+    private let paneNote = NSTextField(labelWithString: "Choose a change or a commit to see it")
+    private var pane: DiffView?
+    private var paneSubject: DiffSubject?
+    private var paneWork: DispatchWorkItem?
+    private var splitPlaced = false
+    /// Shorter than this, no pane: the list alone.
+    static let paneFrom: CGFloat = 320
 
     var focusView: NSView { table }
     var isDead: Bool { false }
@@ -78,15 +94,28 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        addSubview(scroll)
-        addSubview(note)
+        listBox.addSubview(scroll)
+        listBox.addSubview(note)
+        paneNote.font = UIType.body
+        paneNote.textColor = Theme.secondaryText
+        paneNote.alignment = .center
+        paneBox.addSubview(paneNote)
+        split.isVertical = false
+        split.dividerStyle = .thin
+        split.delegate = self
+        split.addArrangedSubview(listBox)
+        split.addArrangedSubview(paneBox)
+        addSubview(split)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() { keeper.flush() }
+    func destroy() {
+        pane?.destroy()
+        keeper.flush()
+    }
 
     private func rowKey(_ row: Row) -> String? {
         switch row {
@@ -100,6 +129,38 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = table.selectedRow
         keeper.note(["selected": row >= 0 && row < rows.count ? (rowKey(rows[row]) ?? "") : ""])
+        // Arrowing through: shown once the choice stays a moment.
+        paneWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showPane() }
+        paneWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (pane == nil ? 0 : 0.12), execute: work)
+    }
+
+    /// What a row shows, as a diff: the change against HEAD, the commit,
+    /// or every change.
+    private func subject(_ row: Row) -> DiffSubject? {
+        switch row {
+        case let .change(s):
+            let path = root.appendingPathComponent(s.path)
+            return .sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path))
+        case let .commit(c): return .commit(repo: root, sha: c.sha)
+        case .allChanges: return root.isEmpty ? nil : .uncommitted(repo: root)
+        default: return nil
+        }
+    }
+
+    /// The chosen row's diff in the pane (made again only if it's another).
+    private func showPane() {
+        let row = table.selectedRow
+        let subject = row >= 0 && row < rows.count ? subject(rows[row]) : nil
+        guard subject != paneSubject || (subject != nil && pane == nil) else { return }
+        paneSubject = subject
+        pane?.destroy()
+        pane?.removeFromSuperview()
+        pane = subject.flatMap { delegate?.gitView(self, previewFor: $0) }
+        if let pane { paneBox.addSubview(pane) }
+        paneNote.isHidden = pane != nil
+        needsLayout = true
     }
 
     private func restoreState() {
@@ -117,9 +178,37 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         header.frame = NSRect(x: 12, y: bounds.height - 24, width: w * 0.55, height: 16)
         refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 26, width: 20, height: 20)
         branchLabel.frame = NSRect(x: w * 0.55 + 16, y: bounds.height - 24, width: w * 0.45 - 16 - 36, height: 16)
-        scroll.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 32)
+        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 32)
+        let tall = split.frame.height >= Self.paneFrom
+        if paneBox.isHidden == tall {
+            paneBox.isHidden = !tall
+            split.adjustSubviews()
+            if tall { placeSplit() }
+        }
+        if !splitPlaced, tall, split.frame.height > 0 { placeSplit() }
+        scroll.frame = listBox.bounds
         note.frame = scroll.frame
         table.tableColumns[0].width = scroll.contentSize.width
+        pane?.frame = paneBox.bounds
+        paneNote.frame = NSRect(x: 0, y: paneBox.bounds.midY - 9, width: paneBox.bounds.width, height: 18)
+    }
+
+    /// Where it was left, or two fifths of the way down.
+    private func placeSplit() {
+        splitPlaced = true
+        let h = split.frame.height
+        let kept = keeper.double("split")
+        split.setPosition(kept.map { min(max($0, 100), h - 120) } ?? (h * 0.4).rounded(), ofDividerAt: 0)
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat { 80 }
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        splitView.bounds.height - 100
+    }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard splitPlaced, !paneBox.isHidden, NSApp.currentEvent?.type == .leftMouseDragged else { return }
+        keeper.note(["split": "\(listBox.frame.height)"])
     }
 
     override func viewDidMoveToWindow() {
@@ -128,6 +217,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     func documentChanged() {
+        pane?.documentChanged()
         note.set(source()?.git?.refreshedAt == nil && source()?.git?.error == nil ? .busy("Reading…") : .idle)
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
@@ -195,6 +285,27 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     override func keyDown(with event: NSEvent) {
         if window?.firstResponder === table, event.keyCode == 36 || event.keyCode == 76 { return rowChosen() }
         super.keyDown(with: event)
+    }
+
+    /// "select <row>", or nothing: its rows, the chosen one marked, and
+    /// what the pane shows.
+    func debug(_ arg: String) -> String {
+        let words = arg.split(separator: " ")
+        if words.first == "select", words.count > 1, let i = Int(words[1]) {
+            table.selectRowIndexes([i], byExtendingSelection: false)
+        }
+        var lines = rows.enumerated().map { i, r -> String in
+            let mark = i == table.selectedRow ? "*" : " "
+            switch r {
+            case let .section(t): return "\(mark)\(i) — \(t)"
+            case let .change(s): return "\(mark)\(i) change \(s.path)"
+            case let .commit(c): return "\(mark)\(i) commit \(c.short) \(c.summary)"
+            case let .note(t): return "\(mark)\(i) note \(t)"
+            case .allChanges: return "\(mark)\(i) all changes"
+            }
+        }
+        lines.append("pane " + (paneBox.isHidden ? "hidden" : pane.map { "\($0.block) \(Int(paneBox.frame.height)) high" } ?? "empty"))
+        return lines.joined(separator: "\n")
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -280,5 +391,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
 }
 
 extension GitView: FollowsFontTheme {
-    func fontThemeChanged() { table.reloadData() }
+    func fontThemeChanged() {
+        table.reloadData()
+        pane?.theme = FontTheme.current
+    }
 }

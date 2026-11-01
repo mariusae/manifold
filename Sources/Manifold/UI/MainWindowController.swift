@@ -1558,6 +1558,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    func debugGitView(_ arg: String) -> String {
+        guard let g = arrangement?.focused.flatMap({ views[$0] as? GitView }) else { return "no git tile focused" }
+        return g.debug(arg)
+    }
+
     func debugDirectory(_ arg: String) -> String {
         // "dir show <host>:<path>": a folder tile of that host's, made here.
         if arg.hasPrefix("show ") {
@@ -3918,7 +3923,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// and nothing reaches — the last seen first.
     private func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
         let far = Stamp(wall: 0, logical: 0, host: c.host)
-        return c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host }
+        // Not a diff only ever shown in a git tile's pane: never seen
+        // since it was made, it was never closed.
+        return c.node.blocks.filter { !reachable.contains($0.id) && $0.id.host == c.host && ($0.kind != .diff || c.node.graph.seenSinceMade($0.id)) }
             .sorted { (c.node.graph.seen($0.id) ?? far) > (c.node.graph.seen($1.id) ?? far) }
     }
 
@@ -8552,6 +8559,18 @@ extension MainWindowController: SearchViewDelegate {
 
     func searchView(_ view: SearchView, open path: String, line: Int) {
         open(path: path, line: line, column: 1, on: view.block.host, from: view.placement, kind: .opened, context: nil)
+    }
+
+    /// The pane's diff: its block made (or found) on the repository's
+    /// host, shown in the git tile's place — what it opens goes beside it.
+    /// Never placed, it isn't Recently Closed's (`closedItems`).
+    func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
+        guard let client = hosts.client(view.block.host) else { return nil }
+        let id = client.diffBlock(subject)
+        let d = DiffView(placement: view.placement, block: id, theme: hosts.state.appearance.theme)
+        d.delegate = self
+        d.source = { [weak self] in self?.hosts.block(id) }
+        return d
     }
 }
 
