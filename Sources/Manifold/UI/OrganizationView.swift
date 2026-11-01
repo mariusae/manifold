@@ -317,6 +317,13 @@ final class DeepOutlineView: NSOutlineView {
         return NSRect(x: x, y: r.minY, width: max(0, bounds.width - 14 - x), height: r.height)
     }
 
+    /// A drag gone from the rows, or let go on them.
+    var onDragGone: (() -> Void)?
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        onDragGone?()
+    }
+
     override func mouseDown(with event: NSEvent) {
         deep = event.modifierFlags.contains(.shift)
         defer { deep = false }
@@ -373,9 +380,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         outline.menu = NSMenu()
         outline.menu?.delegate = self
         outline.backgroundColor = .clear
-        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldHost, .fileURL])
+        // Things too (words, links, pictures), only to spring spaces open.
+        outline.registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock, .manifoldHost] + Dragged.types)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.draggingDestinationFeedbackStyle = .regular
+        outline.onDragGone = { [weak self] in self?.stopSpring() }
         scroll.documentView = outline
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -484,6 +493,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// motion asked for, it only lights there.
     func travel(from old: BlockID?, to new: BlockID) {
         guard window != nil, !isHiddenOrHasHiddenAncestor, let end = spaceRow(new) else { return }
+        // Sprung open by a drag: its own band is there already.
+        if let s = sprung, s.space == new, -s.at.timeIntervalSinceNow < 2 { sprung = nil; return }
         traveller?.removeFromSuperview()
         let band = TravelBand()
         traveller = band
@@ -698,8 +709,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         DragCursor.ended()
-        springWork?.cancel()
-        springNode = nil
+        stopSpring()
         delegate?.organizationDragChanged(false)
         pathDrag = false
     }
@@ -717,10 +727,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        springUnder(info)
         // Files onto a workspace's row: opened there.
         if !Self.files(info.draggingPasteboard).isEmpty {
             guard let node = item as? OrgNode, node.arrangement != nil, node.column == nil, index == NSOutlineViewDropOnItemIndex else { return [] }
-            springLoad(node)
             return .copy
         }
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return [] }
@@ -731,20 +741,18 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         case .block, .placement: isBlock = true
         case .arrangement, .host: isBlock = false
         }
-        if isBlock, let node, node.arrangement != nil, node.column == nil { springLoad(node) }
         // ⌥: the plus by the pointer, as when copying a file.
         return isBlock && Self.copying(info) ? .copy : .move
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        stopSpring()
         let files = Self.files(info.draggingPasteboard)
         if !files.isEmpty, let node = item as? OrgNode, let w = node.arrangement {
-            springWork?.cancel()
             delegate?.organizationOpen(files: files, in: w)
             return true
         }
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return false }
-        springWork?.cancel()
         return delegate?.organizationDrop(drag, onto: item as? OrgNode, at: index, copy: Self.copying(info)) ?? false
     }
 
@@ -753,29 +761,94 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         NSEvent.modifierFlags.contains(.option) || info.draggingSourceOperationMask == .copy
     }
 
-    // MARK: Spring-loaded workspaces
+    // MARK: Spring-loaded spaces
 
     private var springNode: String?
     private var springWork: DispatchWorkItem?
-    static let springDelay: TimeInterval = 0.8
+    private var springBand: SpringBand?
+    /// A space just sprung open: its band already marks it, so the band
+    /// that goes from space to space doesn't come to it too (`travel`).
+    private var sprung: (space: BlockID, at: Date)?
+    /// Debugging: a drag held over the rows, whatever the mouse does.
+    var debugHeld = false
 
-    /// A drag over a workspace's row: held there a moment, the workspace
-    /// opens under it, as Finder springs a folder open.
-    private func springLoad(_ node: OrgNode) {
+    /// How long a drag rests on a space's row before the space opens: the
+    /// system's spring-loading delay (Accessibility ▸ Pointer Control), as
+    /// Finder's folders have it; nil with spring-loading turned off there.
+    static var springDelay: TimeInterval? {
+        let d = UserDefaults.standard
+        if d.object(forKey: "com.apple.springing.enabled") as? Bool == false { return nil }
+        return max(0.1, d.object(forKey: "com.apple.springing.delay") as? Double ?? 0.5)
+    }
+
+    /// A drag over the rows, whatever it carries (a tile, a file, words, a
+    /// link): resting on another space's row, a band in the tint fills the
+    /// row from the left, blinks, and the space opens under it, as Finder
+    /// springs a folder open — to be dropped where it's wanted in it. Not
+    /// while spaces or hosts are being reordered.
+    private func springUnder(_ info: NSDraggingInfo) {
+        switch OrgDragItem(info.draggingPasteboard) {
+        case .arrangement?, .host?: return stopSpring()
+        default: break
+        }
+        let row = outline.row(at: outline.convert(info.draggingLocation, from: nil))
+        guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return stopSpring() }
+        springLoad(node, row: row)
+    }
+
+    private func springLoad(_ node: OrgNode, row: Int) {
+        // A space's row (the one shown wears emphasis), not a column's.
+        guard node.arrangement != nil, node.column == nil, !node.emphasis, let delay = Self.springDelay else { return stopSpring() }
         guard springNode != node.id else { return }
+        stopSpring()
         springNode = node.id
-        springWork?.cancel()
+        let band = SpringBand(frame: outline.rect(ofRow: row))
+        outline.addSubview(band)
+        springBand = band
+        band.charge(over: delay)
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.springNode == node.id, NSEvent.pressedMouseButtons & 1 != 0, let window = self.window else { return }
-            // Still over that row.
-            let p = self.outline.convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            let row = self.outline.row(at: p)
-            guard row >= 0, (self.outline.item(atRow: row) as? OrgNode)?.id == node.id else { return }
-            self.springNode = nil
-            self.delegate?.organizationSpring(node)
+            guard let self, self.springNode == node.id, self.stillOver(node) else { self?.stopSpring(); return }
+            band.blink { [weak self] in
+                guard let self, self.springNode == node.id, self.stillOver(node) else { self?.stopSpring(); return }
+                self.springNode = nil
+                self.springWork = nil
+                self.springBand = nil
+                if let a = node.arrangement { self.sprung = (a, Date()) }
+                self.delegate?.organizationSpring(node)
+                band.fade(over: 0.6 * Motion.slowdown)
+            }
         }
         springWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.springDelay, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// The drag still on, over that row.
+    private func stillOver(_ node: OrgNode) -> Bool {
+        if debugHeld { return true }
+        guard NSEvent.pressedMouseButtons & 1 != 0, let window else { return false }
+        let row = outline.row(at: outline.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        return row >= 0 && (outline.item(atRow: row) as? OrgNode)?.id == node.id
+    }
+
+    /// The drag gone from the row (or the rows, or let go): its band goes.
+    private func stopSpring() {
+        springNode = nil
+        springWork?.cancel()
+        springWork = nil
+        springBand?.fade(over: Motion.fast)
+        springBand = nil
+    }
+
+    /// Debugging: a drag resting on row `row` (held, whatever the mouse
+    /// does, until "off"), or how its band is.
+    func debugSpring(_ arg: String) -> String {
+        if arg == "off" { debugHeld = false; stopSpring(); return "off" }
+        if let row = Int(arg), row >= 0, row < outline.numberOfRows, let node = outline.item(atRow: row) as? OrgNode {
+            debugHeld = true
+            springLoad(node, row: row)
+        }
+        guard let band = springBand else { return "none" }
+        return "band \(springNode ?? "-") \(band.debugState)"
     }
 
     // MARK: Debugging aids
@@ -1172,6 +1245,70 @@ final class OrgRowView: NSTableCellView {
             glyph.alphaValue = 1
             detailIcon.alphaValue = shown ? 1 : 0
         }
+    }
+}
+
+/// A drag resting on a space's row (`springLoad`): the row's band in the
+/// tint, filling from the left as the moment passes; full, it blinks
+/// twice, as a folder Finder springs open does, and the space comes in.
+/// With less motion asked for, it lights at once and doesn't blink.
+private final class SpringBand: NSView {
+    private let fill = CALayer()
+    private let ground = CALayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        let band = bounds.insetBy(dx: 6, dy: 1)
+        for l in [ground, fill] {
+            l.cornerRadius = Radius.control
+            l.cornerCurve = .continuous
+            l.anchorPoint = .zero
+            l.frame = band
+            layer?.addSublayer(l)
+        }
+        ground.backgroundColor = Theme.accent.withAlphaComponent(0.1).cgColor
+        fill.backgroundColor = Theme.accent.withAlphaComponent(0.22).cgColor
+        ground.masksToBounds = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// The fill across the row over `duration`, eased in, so it
+    /// quickens to the spring.
+    func charge(over duration: TimeInterval) {
+        guard !Motion.reduced else { return }
+        let a = CABasicAnimation(keyPath: "bounds.size.width")
+        a.fromValue = fill.cornerRadius * 2
+        a.toValue = fill.bounds.width
+        a.duration = duration
+        a.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fill.add(a, forKey: "charge")
+    }
+
+    func blink(then done: @escaping () -> Void) {
+        guard !Motion.reduced else { return done() }
+        CATransaction.begin()
+        CATransaction.setCompletionBlock(done)
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = [1, 0.2, 1, 0.2, 1]
+        a.keyTimes = [0, 0.25, 0.5, 0.75, 1]
+        a.duration = 0.24 * Motion.slowdown
+        layer?.add(a, forKey: "blink")
+        CATransaction.commit()
+    }
+
+    func fade(over duration: TimeInterval) {
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = duration
+            ctx.timingFunction = Motion.disappear
+            animator().alphaValue = 0
+        }, completionHandler: { [weak self] in self?.removeFromSuperview() })
+    }
+
+    var debugState: String {
+        let w = fill.presentation()?.bounds.width ?? fill.bounds.width
+        return "fill=\(Int(w))/\(Int(fill.bounds.width)) alpha=\(String(format: "%.2f", layer?.presentation()?.opacity ?? 1))"
     }
 }
 

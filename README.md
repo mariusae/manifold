@@ -326,9 +326,13 @@ parts from the Mac's conventions on purpose.
   column's side for a new column there, onto a space in the
   sidebar for its active column, or between spaces for one of
   its own. To another space it moves, as a file does; ⌥-dragged it
-  is copied — shown there as well, the same block in both. Held over a
-  space's row, the space springs open under the drag, to drop
-  it exactly where it should go there; one left empty by a move stays,
+  is copied — shown there as well, the same block in both. Held over
+  another space's row — a tile, or anything else dragged: a file, words,
+  a link, a picture, from here or another app — a band in the tint fills
+  the row from the left, blinks twice, and the space comes in under the
+  drag, as a folder in the Finder springs open, to drop it exactly where
+  it should go there (after the system's spring-loading delay,
+  Accessibility ▸ Pointer Control, and not with it turned off); one left empty by a move stays,
   as every space does until it's removed. A stack's top takes the
   stack along; ⌘-drag it to take it alone, the next behind coming out in its place — a fanned-out card
   drags its tile out alone the same way. ⌘W on a stack's top takes it

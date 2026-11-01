@@ -947,6 +947,8 @@ enum DebugControl {
             if a.first == "collapse", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugCollapse(row: row) }
             if a.first == "deep", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row, deep: true) }
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
+            // "org spring <row>|off": a drag resting on that row; "org spring": its band.
+            if a.first == "spring" { return wc.debugOrganization.debugSpring(a.count >= 2 ? a[1] : "") }
             if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }
             return "usage: org rows | org click <row> [cmd|double] | org expand <row> | org hover <row> | org menu <row> [title]"
         case "sv":

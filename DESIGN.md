@@ -847,6 +847,19 @@ I-beam over text, an arrow over a list) and over whatever it passes in
 Manifold's windows, their cursor rects held off meanwhile; over another
 app, the system's cursor for its drop.
 
+Any drag resting on another space's row in the sidebar **springs** that
+space open, as a Finder folder does (`OrganizationView.springUnder`):
+the sidebar's outline takes every dragged type, though only blocks,
+tiles and files drop on its rows — the rest only spring. Over the
+system's spring-loading delay (`com.apple.springing.delay`; none with
+`com.apple.springing.enabled` off) a band in the tint fills the row from
+the left, eased in so it quickens (`SpringBand`), blinks twice, and the
+space is selected under the drag, its grid sliding in as any switch
+does; the band then fades where it is, in place of the one that glides
+from space to space. The pointer leaving the row, the rows, or the drag
+ending takes it away. Not for spaces and hosts being reordered, nor the
+space shown; with less motion, the band lights at once and doesn't blink.
+
 While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
 its icon, its name, on a raised ground with an edge and a shadow — a
 few one under another, then "and N more"), wherever it's dragged from,
