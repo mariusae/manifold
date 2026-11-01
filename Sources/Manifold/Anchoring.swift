@@ -94,6 +94,30 @@ enum Anchoring {
         return nil
     }
 
+    /// The place a link's words name in a text, for an anchor the block
+    /// hasn't got (made while a server from before anchors dropped it): the
+    /// declaration so called (`Type.method`, `method()`), the heading, else
+    /// the first line holding the words. Its id is to be given.
+    static func find(named name: String, in b: Block) -> Anchor? {
+        guard let rope = b.text?.text else { return nil }
+        var n = name.trimmingCharacters(in: .whitespaces)
+        if let paren = n.firstIndex(of: "("), n.hasSuffix(")") { n = String(n[..<paren]) }
+        guard !n.isEmpty else { return nil }
+        if let tree = tree(of: b) {
+            let decls = tree.declarations()
+            if let d = decls.first(where: { $0.path == n }) ?? decls.first(where: { $0.path.hasSuffix("." + n) }) {
+                return Anchor(id: "", at: .symbol(path: d.path), range: d.range, excerpt: firstLine(rope, d.range), name: d.path)
+            }
+        }
+        if isMarkdown(b), let item = NoteOutlineMarkdown.items(in: rope.string).first(where: { $0.isHeading && $0.title == n }),
+           let a = anchor(atLine: item.line, of: b) {
+            return a
+        }
+        guard let hit = rope.findAll(name.trimmingCharacters(in: .whitespaces), limit: 1).first else { return nil }
+        let line = rope.lineRange(rope.line(at: hit.start))
+        return Anchor(id: "", at: .range, range: line, excerpt: firstLine(rope, line), name: String(name.prefix(60)))
+    }
+
     /// Its name, as a pill says it: the declaration's path, the heading.
     static func name(of a: Anchor) -> String {
         switch a.at {

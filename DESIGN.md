@@ -252,8 +252,17 @@ come: anchors in diffs (made again from their sources); indexers'
 settings per host (as language servers' are); notes in the margin.
 Peek (`PeekTip`) asks the language server's hover and the index at once,
 the index's answer shown first and the server's in its place when it
-comes; pinned highlights (⌃⌘E) are words found again as the text
-changes, not in comments, each its colour. The
+comes. Pinned highlights (⌃⌘E) and the caret's tint are the one
+symbol's uses, as the language server highlights them
+(`documentHighlight`, `LSPRequest.highlights`) — a parameter's, not a
+property's spelled the same — asked again a moment after the text
+changes, moved through edits meanwhile; with no server (or no answer),
+the name's whole words not in comments. A fold's hidden lines draw
+nothing, tints included. A reference to an anchor its block hasn't got
+— made while a server from before anchors (protocol 61) dropped it — is
+found again, when followed, by the words of the link to it in the text
+it's followed from (a declaration's path, a heading, else the line
+with those words) and minted under the same id (`recoverAnchor`). The
 Markdown preview shows a note about a place under the element its line
 starts (`placesFor`, the page's `data-sourcepos`); a git tile shows its
 project's index's state; the host takes one spelling of a path (/tmp is

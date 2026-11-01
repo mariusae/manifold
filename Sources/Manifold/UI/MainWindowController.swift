@@ -7850,11 +7850,35 @@ extension MainWindowController: GridDelegate {
     /// An anchor gone to: where it is now (put right in its block if it
     /// was found elsewhere), or why not — the place gone. A text not read
     /// yet is waited for a moment.
+    /// An anchor a reference names that its block hasn't got — made while
+    /// a server from before anchors (protocol 61) dropped it — found again
+    /// by the words of a link to it in the text it's followed from (the
+    /// focused one, a walk's note), and kept under the same id, so every
+    /// reference to it goes there from now on.
+    private func recoverAnchor(_ anchor: String, in id: BlockID) -> Bool {
+        guard let b = hosts.block(id), b.anchors?[anchor] == nil, let text = b.text, !text.isUnread,
+              let re = try? NSRegularExpression(pattern: "\\[([^\\]\\n]+)\\]\\(manifold:[^)#\\s]*\\Q\(id.ulid)\\E#\(anchor)\\)") else { return false }
+        let sources = [focusedShown?.block?.id, codeWalk?.note].compactMap { $0 }.compactMap { hosts.block($0)?.text?.text.string }
+        for s in sources {
+            guard let m = re.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) else { continue }
+            let words = (s as NSString).substring(with: m.range(at: 1))
+            guard var found = Anchoring.find(named: words, in: b) else { continue }
+            found.id = anchor
+            hosts.append([.anchor(found)], to: .block(id))
+            nameInIndex(found, of: id)
+            return true
+        }
+        return false
+    }
+
     func goToAnchor(_ anchor: String, in id: BlockID, tries: Int = 20) {
         // An anchor just minted (a reference made and followed at once) is
         // waited for a moment, as a text not read yet is.
         guard let b = hosts.block(id), let a = b.anchors?[anchor], !(b.text?.isUnread ?? false) else {
-            guard tries > 0, hosts.block(id) != nil else { return }
+            guard hosts.block(id) != nil else { return }
+            // Not come after a while: lost, perhaps — found again by a link's words.
+            if tries == 16, recoverAnchor(anchor, in: id) { return goToAnchor(anchor, in: id, tries: tries - 1) }
+            guard tries > 0 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToAnchor(anchor, in: id, tries: tries - 1) }
             return
         }
