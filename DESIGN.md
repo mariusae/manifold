@@ -1783,12 +1783,18 @@ purpose — set down so a later audit reads them as choices, not slips.
   in where it lands, seen at once and growing from 86% about its
   middle, one closed shrinks to 86% and fades where it was, and the
   tiles beside either have their edges slide (on the travel curve, most
-  of the way in the first third of 0.24 s, the focus ring with them):
-  what a tile shows is sized once, where it ends, and held at its top
-  left as its edges pass, cut off or uncovered on its own ground, not
-  jumping to its size and sliding; one arrived at has
-  its focus ring swell (the one ring), one maximized grows from its
-  place, one summarized crosses over to its card; a tile becoming its
+  of the way in the first third of 0.24 s, the focus ring with them);
+  one moved (keys, or dragged and dropped) is a card picked up and put
+  down, going over the rest from its place and size to its new ones as
+  theirs slide aside; one maximized slides its edges out from its place
+  over the rest, and back in, restored. Whatever a tile does, it's one
+  card: what it shows is sized once, where it ends, and held at its top
+  left as its edges pass, cut off or uncovered on its own ground, never
+  stretched, not jumping to its size and sliding; its bar's glass goes
+  with its edges, the buttons riding the right one; what goes with it
+  (a terminal's dots and scroll bar, its ticks, its links' badge, its
+  shadow) is carried along, not ahead of it. One arrived at has
+  its focus ring swell (the one ring), one summarized crosses over to its card; a tile becoming its
   card (⌃⇥, Overview) is one shape going from the one's place and size
   to the other's, what it shows scaled to its width from its top (cut,
   never stretched) and changing on the way — shrinking to some 60% of

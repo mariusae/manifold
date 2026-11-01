@@ -151,9 +151,14 @@ final class GridView: NSView, NSDraggingSource {
             } else {
                 dragCatcher.removeFromSuperview()
                 hideDrop()
+                dropped = false
             }
         }
     }
+    /// Dropped here, the drag not yet over: what the drop changes glides
+    /// (a tile moved goes from where it was to where it's put), as if
+    /// nothing were dragged.
+    private var dropped = false
     private let dragCatcher = DragCatcherView()
     /// A ring around the focused tile.
     private let focusRing = FocusRingView()
@@ -768,6 +773,14 @@ final class GridView: NSView, NSDraggingSource {
     override func layout() {
         Self.layouts += 1
         super.layout()
+        // Tiles glide to new places when the grid itself didn't change
+        // size (a tile placed, closed, grown, moved or stashed); a resize
+        // or a divider dragged lays out at once.
+        let mayGlide = bounds == lastLayoutBounds && (!dragging || dropped) && !dividerDragging && !isSwitching && !Motion.reduced
+        // Where what goes with each tile shows now, to be carried from.
+        let shownBefore = mayGlide ? companionsShown() : [:]
+        lastCompanionsShown = shownBefore
+        defer { carryCompanions(from: shownBefore, gliding: mayGlide) }
         if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
             // One tile over everything; the rest wait behind it — once it's
             // grown over them.
@@ -813,18 +826,26 @@ final class GridView: NSView, NSDraggingSource {
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
         var rowIndex = 0
-        // Tiles glide to new places when the grid itself didn't change
-        // size (a tile placed, closed, grown or stashed); a resize or a
-        // divider dragged lays out at once.
-        let gliding = bounds == lastLayoutBounds && !dragging && !dividerDragging && !isSwitching && !Motion.reduced
+        let gliding = mayGlide
         lastLayoutBounds = bounds
         var frameNow: [PlacementID: NSRect] = [:]
         var collapsedNow: Set<PlacementID> = []
         var summarizedNow: Set<PlacementID> = []
+        // The tile moved (the focused one, by keys or dropped), else the one
+        // that goes farthest, to go over the rest.
+        var traveller: (id: PlacementID, was: NSRect, distance: CGFloat)?
         func settle(_ view: NSView, _ frame: NSRect, was: NSRect?) {
             if gliding, let was, was != .zero, was != frame, !view.isHidden {
-                if view is PaneContent, was.size != frame.size {
+                if let tile = view as? PaneContent {
+                    // The whole card, its edges and place at once, as one
+                    // thing moved, whether or not its size changes.
+                    let distance = hypot(frame.midX - was.midX, frame.maxY - was.maxY)
+                    if distance > Self.travelsOver, traveller?.id != focused, tile.placement == focused || distance > (traveller?.distance ?? 0) {
+                        traveller = (tile.placement, was, distance)
+                    }
                     slide(view, to: frame)
+                } else if let pill = view as? TilePill {
+                    slide(pill, to: frame)
                 } else {
                     NSAnimationContext.runAnimationGroup { ctx in
                         ctx.duration = Self.glide
@@ -930,6 +951,7 @@ final class GridView: NSView, NSDraggingSource {
             }
         }
         placed = Set(columns.flatMap { $0 }.map(\.shown.id))
+        if let t = traveller { raise(t.id, from: NSRect(x: t.was.minX, y: t.was.minY, width: t.was.width, height: t.was.height + Self.barHeight), among: shownBefore) }
         let wasFrames = lastFrames
         lastFrames = frameNow
         self.collapsed = collapsedNow
@@ -966,7 +988,7 @@ final class GridView: NSView, NSDraggingSource {
             d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
         }
         layoutSheets()
-        layoutShadows(Array(frameNow.values))
+        layoutShadows(frameNow, gliding: gliding)
         warpIfGrown()
         // A tile chosen in the switcher, once it's the top again: grown
         // from its card into its place.
@@ -1021,11 +1043,21 @@ final class GridView: NSView, NSDraggingSource {
     /// Layers sliding, their own gravity and ground, given back as they stop.
     private var sliding: [ObjectIdentifier: (gravity: CALayerContentsGravity, ground: CGColor?)] = [:]
 
-    private func slide(_ view: NSView, to frame: NSRect) {
+    /// `start`: from there (in the grid), not from where it shows.
+    private func slide(_ view: NSView, to frame: NSRect, from start: NSRect? = nil) {
         guard let l = view.layer else { view.frame = frame; return }
         let now = l.presentation() ?? l
-        let size = now.bounds.size, position = now.position
+        var size = now.bounds.size, position = now.position
+        if let start {
+            size = start.size
+            position = CGPoint(x: start.minX + l.anchorPoint.x * start.width, y: start.minY + l.anchorPoint.y * start.height)
+        }
         view.frame = frame
+        if let pill = view as? TilePill {
+            // A bar: its own parts slide their edges, not its drawing.
+            pill.layoutSubtreeIfNeeded()
+            pill.slideEdges(from: size.width, over: Self.glide, Motion.travel)
+        }
         let to = l.bounds
         // Its top where its content's is (a layer's y runs up).
         let from = CGRect(x: 0, y: l.isGeometryFlipped ? 0 : to.height - size.height, width: size.width, height: size.height)
@@ -1033,7 +1065,7 @@ final class GridView: NSView, NSDraggingSource {
         // moment later) held, not stretched, on its ground: where it's
         // bigger than that drawing, not a hole.
         let key = ObjectIdentifier(l)
-        if l.contents != nil, sliding[key] == nil {
+        if l.contents != nil, sliding[key] == nil, !(view is TilePill) {
             sliding[key] = (l.contentsGravity, l.backgroundColor)
             l.contentsGravity = l.isGeometryFlipped ? .bottomLeft : .topLeft
             if (l.backgroundColor?.alpha ?? 0) == 0 {
@@ -1059,6 +1091,88 @@ final class GridView: NSView, NSDraggingSource {
         }
         l.add(g, forKey: "slide")
         CATransaction.commit()
+    }
+
+    /// What goes with a tile without being it — a terminal's dots, scroll
+    /// bar and glow beside it, the tile's ticks, its badge, its summary
+    /// card — and the lines between tiles: everything in the grid but the
+    /// tiles, their bars and what glides or shows on its own.
+    private func isCompanion(_ v: NSView) -> Bool {
+        !(v is PaneContent || v is TilePill || v === focusRing || v === dragCatcher || v === dropOverlay || v === switcher)
+    }
+
+    /// Where each companion shows this moment (part way, if carried).
+    private func companionsShown() -> [ObjectIdentifier: NSRect] {
+        var out: [ObjectIdentifier: NSRect] = [:]
+        for v in subviews where isCompanion(v) {
+            if let l = v.layer { out[ObjectIdentifier(v)] = (l.presentation() ?? l).frame }
+        }
+        return out
+    }
+
+    /// Where they showed as the last layout began (a tile maximized takes
+    /// those that showed on it over the rest).
+    private var lastCompanionsShown: [ObjectIdentifier: NSRect] = [:]
+    /// Companions' frames as last laid out: one carried only when it's
+    /// laid out somewhere else, not again at every layout on the way.
+    private var companionFrames: [ObjectIdentifier: NSRect] = [:]
+
+    /// Each companion laid out somewhere new, carried there from where it
+    /// showed, its top left going as its tile's edges go (they all glide
+    /// on the one curve), its size where it ends — not jumping ahead of
+    /// its tile, sliding.
+    private func carryCompanions(from shown: [ObjectIdentifier: NSRect], gliding: Bool) {
+        var now: [ObjectIdentifier: NSRect] = [:]
+        for v in subviews where isCompanion(v) {
+            guard let l = v.layer else { continue }
+            let key = ObjectIdentifier(v), to = l.frame
+            now[key] = to
+            guard gliding, !v.isHidden, let was = shown[key], was != .zero, companionFrames[key] != to else { continue }
+            let dx = was.minX - to.minX, dy = was.maxY - to.maxY
+            guard abs(dx) > 0.5 || abs(dy) > 0.5 else { continue }
+            let a = CABasicAnimation(keyPath: "position")
+            a.fromValue = NSValue(point: NSPoint(x: l.position.x + dx, y: l.position.y + dy))
+            a.toValue = NSValue(point: l.position)
+            a.duration = Self.glide
+            a.timingFunction = Motion.travel
+            l.add(a, forKey: "carry")
+        }
+        companionFrames = now
+    }
+
+    /// How far a tile goes before it's taken over the rest on its way.
+    static let travelsOver: CGFloat = 40
+
+    /// Layers raised over the rest, with where they were.
+    private var raised: [ObjectIdentifier: (layer: CALayer, z: CGFloat)] = [:]
+    private var raisedFor = 0
+
+    /// A tile moved goes over the rest on its way, as a card picked up
+    /// and put down — its bar, badge and companions (those that showed
+    /// on it, `card`) and its ring with it — and back among them there.
+    private func raise(_ id: PlacementID, from card: NSRect, among shown: [ObjectIdentifier: NSRect], by lift: CGFloat = 10, for duration: TimeInterval = GridView.glide) {
+        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }) else { return }
+        var views: [NSView] = [tile.view]
+        if let p = pills[id] { views.append(p) }
+        if let b = badges[id] { views.append(b) }
+        if focused == id { views.append(focusRing) }
+        views += subviews.filter { v in isCompanion(v) && !(v is DividerView || v is RowDividerView) && shown[ObjectIdentifier(v)].map { card.contains(NSPoint(x: $0.midX, y: $0.midY)) } == true }
+        lower()
+        for l in views.compactMap(\.layer) where raised[ObjectIdentifier(l)] == nil {
+            raised[ObjectIdentifier(l)] = (l, l.zPosition)
+            l.zPosition += lift
+        }
+        raisedFor += 1
+        let n = raisedFor
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, self.raisedFor == n else { return }
+            self.lower()
+        }
+    }
+
+    private func lower() {
+        for (_, r) in raised { r.layer.zPosition = r.z }
+        raised = [:]
     }
 
     /// Crossing over to it: fading in over what it takes the place of.
@@ -1433,9 +1547,11 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Maximizing
 
-    /// A tile maximized grows from its place to the whole grid, the rest
-    /// staying under it till it's there; restored, it shrinks back to its
-    /// place over them. Laid out where it ends at once (a terminal resized
+    /// A tile maximized slides its edges out from its place to the whole
+    /// grid, the rest staying under it till it's there; restored, they
+    /// slide back in to its place over them — what it shows held at its
+    /// top left, cut off or uncovered as they go, never stretched, as any
+    /// tile moving. Laid out where it ends at once (a terminal resized
     /// once, not at every step) and its layers carried from where it was:
     /// Core Animation's, so nothing is laid out on the way. With Reduce
     /// motion, it fades in where it ends.
@@ -1452,58 +1568,66 @@ final class GridView: NSView, NSDraggingSource {
             needsLayout = true
             return
         }
-        let parts: [(NSView, CALayer)] = ([tile.view, pills[id], badges[id]] as [NSView?]).compactMap { v in v.flatMap { v in v.layer.map { (v, $0) } } }
         zooming = id
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in
-            for (_, l) in parts { l.zPosition = 0 }
             guard let self, self.zooming == id else { return }
             self.zooming = nil
             self.needsLayout = true
         }
-        let k = CGSize(width: source.width / dest.width, height: source.height / dest.height)
-        for (i, (v, l)) in parts.enumerated() {
-            l.zPosition = 20 + CGFloat(i)
-            let a: CABasicAnimation
-            if Motion.reduced {
-                a = CABasicAnimation(keyPath: "opacity")
+        if Motion.reduced {
+            for l in ([tile.view, pills[id], badges[id]] as [NSView?]).compactMap({ $0?.layer }) {
+                let a = CABasicAnimation(keyPath: "opacity")
                 a.fromValue = 0
                 a.toValue = 1
                 a.duration = Motion.base
-            } else {
-                // Each part's own corner is where the layer's drawn from:
-                // carried to where it was, as a part of the tile was.
-                let o = v.frame.origin
-                let t = CGPoint(x: source.minX + (o.x - dest.minX) * k.width - o.x, y: source.minY + (o.y - dest.minY) * k.height - o.y)
-                a = CABasicAnimation(keyPath: "transform")
-                a.fromValue = CATransform3DScale(CATransform3DMakeTranslation(t.x, t.y, 0), k.width, k.height, 1)
-                a.toValue = CATransform3DIdentity
-                a.duration = Motion.spatial * 1.25
-                a.timingFunction = Motion.travel
+                l.add(a, forKey: "zoom")
             }
-            l.add(a, forKey: "zoom")
+        } else {
+            // Over the rest on the way, the bar and what goes with the
+            // tile too; the body's edges and the bar's from where it was.
+            raise(id, from: source, among: lastCompanionsShown, by: 20)
+            slide(tile.view, to: body, from: NSRect(x: source.minX, y: source.minY, width: source.width, height: source.height - Self.barHeight))
+            if let pill = pills[id] {
+                slide(pill, to: pill.frame, from: NSRect(x: source.minX, y: source.maxY - Self.barHeight, width: source.width, height: Self.barHeight))
+            }
         }
         CATransaction.commit()
     }
 
     /// A soft shadow under each card in the light, none in the dark
     /// (where the cards are lighter than the wash already).
-    private func layoutShadows(_ bodies: [NSRect]) {
+    private func layoutShadows(_ bodies: [PlacementID: NSRect], gliding: Bool) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let wanted = dark || full != nil ? [] : bodies.filter { $0 != .zero }
-        while shadowLayers.count > wanted.count { shadowLayers.removeLast().removeFromSuperlayer() }
-        while shadowLayers.count < wanted.count {
-            let l = CAShapeLayer()
-            l.zPosition = -10
-            Elevation.tile.apply(to: l)
-            layer?.insertSublayer(l, at: 0)
-            shadowLayers.append(l)
+        let wanted = dark || full != nil ? [:] : bodies.filter { $0.value != .zero }
+        for (id, l) in shadowLayers where wanted[id] == nil {
+            l.removeFromSuperlayer()
+            shadowLayers.removeValue(forKey: id)
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (l, body) in zip(shadowLayers, wanted) {
+        for (id, body) in wanted {
+            let l = shadowLayers[id] ?? {
+                let l = CAShapeLayer()
+                l.zPosition = -10
+                Elevation.tile.apply(to: l)
+                layer?.insertSublayer(l, at: 0)
+                shadowLayers[id] = l
+                return l
+            }()
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
             let path = CGPath(roundedRect: card, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
+            // Gliding with its card, from where it shows.
+            if gliding, let was = (l.presentation() ?? l).path, was != path {
+                for key in ["path", "shadowPath"] {
+                    let a = CABasicAnimation(keyPath: key)
+                    a.fromValue = key == "path" ? was : (l.presentation() ?? l).shadowPath ?? was
+                    a.toValue = path
+                    a.duration = Self.glide
+                    a.timingFunction = Motion.travel
+                    l.add(a, forKey: key)
+                }
+            }
             l.path = path
             l.shadowPath = path
             l.fillColor = NSColor.black.withAlphaComponent(0.001).cgColor
@@ -1553,6 +1677,18 @@ final class GridView: NSView, NSDraggingSource {
             guard let self else { return }
             self.delegate?.gridResized(heights: self.heights, stashed: [])
         })
+    }
+
+    /// Debugging: the focused tile dropped at a slot while its drag is
+    /// still under way (the drag over a moment later), as a tile's drag
+    /// drops it.
+    func debugDropFocused(column: Int, at: Int, newColumn: Bool) -> String {
+        guard let f = focused else { return "nothing focused" }
+        dragging = true
+        dropped = true
+        delegate?.gridMove(f, column: column, at: at, newColumn: newColumn, alone: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.dragging = false }
+        return "dropped"
     }
 
     /// Debugging: the line after column `i` double-clicked.
@@ -2293,6 +2429,7 @@ final class GridView: NSView, NSDraggingSource {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         DropBadge.hush()
         defer { hideDrop() }
+        dropped = true
         let pb = sender.draggingPasteboard
         if Dragged(pb) != nil { return Dropping.perform(self, sender) }
         guard let target = drop else { return false }
@@ -2375,7 +2512,7 @@ final class GridView: NSView, NSDraggingSource {
     }
     /// A shadow under each card, in the light (§3.1): the cards lifted a
     /// little off the wash.
-    private var shadowLayers: [CAShapeLayer] = []
+    private var shadowLayers: [PlacementID: CAShapeLayer] = [:]
     /// Where each tile was laid out last, so a tile that moves (placed,
     /// closed, grown, stashed) glides there, while a window resized or
     /// a divider dragged lays out at once.
@@ -2821,6 +2958,30 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     @objc private func closeClicked() { onClose?() }
     @objc private func fanClicked() { onFan?() }
+
+    /// Laid out at its new width, shown sliding there from `width` as its
+    /// tile's edges slide: its glass's right edge going with the tile's,
+    /// the buttons at its right riding on it, what's at its left staying.
+    func slideEdges(from width: CGFloat, over duration: TimeInterval, _ timing: CAMediaTimingFunction) {
+        let d = width - bounds.width
+        guard abs(d) > 0.5 else { return }
+        func animate(_ l: CALayer, _ key: String, from: Any, to: Any) {
+            let a = CABasicAnimation(keyPath: key)
+            a.fromValue = from
+            a.toValue = to
+            a.duration = duration
+            a.timingFunction = timing
+            l.add(a, forKey: "slideEdges." + key)
+        }
+        if let l = glass.layer {
+            animate(l, "bounds.size.width", from: l.bounds.width + d, to: l.bounds.width)
+            animate(l, "position.x", from: l.position.x + l.anchorPoint.x * d, to: l.position.x)
+        }
+        for v in subviews where v !== glass && !v.isHidden && v.frame.minX > bounds.midX {
+            guard let l = v.layer else { continue }
+            animate(l, "position.x", from: l.position.x + d, to: l.position.x)
+        }
+    }
 
     var debugDirty: String { !isDirty ? "clean" : isStale ? "amber" : "grey" }
     private var isDirty = false

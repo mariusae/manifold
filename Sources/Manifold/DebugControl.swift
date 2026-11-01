@@ -611,10 +611,49 @@ enum DebugControl {
             ctx.setFillColor(NSColor.white.cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
             ctx.scaleBy(x: scale, y: scale)
-            view.effectiveAppearance.performAsCurrentDrawingAppearance { layer.render(in: ctx) }
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                // Its own layers in the order they show, by their z as the
+                // screen has it (rendering alone takes them as listed).
+                let subs = (layer.sublayers ?? []).enumerated().sorted { ($0.element.zPosition, $0.offset) < ($1.element.zPosition, $1.offset) }.map(\.element)
+                if subs.isEmpty { return layer.render(in: ctx) }
+                if let bg = layer.backgroundColor { ctx.setFillColor(bg); ctx.fill(layer.bounds) }
+                for s in subs where !s.isHidden && s.opacity > 0 {
+                    ctx.saveGState()
+                    ctx.translateBy(x: s.position.x, y: s.position.y)
+                    ctx.concatenate(CATransform3DGetAffineTransform(s.transform))
+                    ctx.translateBy(x: -s.anchorPoint.x * s.bounds.width - s.bounds.minX, y: -s.anchorPoint.y * s.bounds.height - s.bounds.minY)
+                    if s.masksToBounds { ctx.clip(to: s.bounds) }
+                    ctx.setAlpha(CGFloat(s.opacity))
+                    ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                    s.render(in: ctx)
+                    ctx.endTransparencyLayer()
+                    ctx.restoreGState()
+                }
+            }
             guard let img = ctx.makeImage(), let data = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return "no image" }
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(arg)"
+        case "layers":
+            // "layers [live]": the surface's layers, two deep — frame,
+            // opacity, what they show, their animations; "live" as they
+            // are this moment.
+            guard let wc, let view = wc.debugSurface, let model = view.layer else { return "no surface" }
+            let live = arg == "live"
+            var out: [String] = []
+            func dump(_ m: CALayer, _ depth: Int) {
+                let l = live ? m.presentation() ?? m : m
+                let f = l.frame
+                var s = String(repeating: "  ", count: depth) + "\(type(of: m.delegate.map { $0 as AnyObject } ?? m)) "
+                s += String(format: "(%.0f,%.0f %.0fx%.0f) z=%.0f a=%.2f", f.minX, f.minY, f.width, f.height, l.zPosition, l.opacity)
+                if l.isHidden { s += " hidden" }
+                if let c = m.contents { s += " contents=\(CFGetTypeID(c as CFTypeRef) == CGImage.typeID ? "image" : "surface")" }
+                if let bg = l.backgroundColor, bg.alpha > 0 { s += String(format: " bg=%.2f", bg.alpha) }
+                if let keys = m.animationKeys(), !keys.isEmpty { s += " anim=\(keys.joined(separator: ","))" }
+                out.append(s)
+                if depth < 1 { for c in m.sublayers ?? [] { dump(c, depth + 1) } }
+            }
+            dump(model, 0)
+            return out.joined(separator: "\n")
         case "orgdrop":
             // "orgdrop host <session> <index>": a host's row dropped among the hosts;
             // "orgdrop ws <workspace> <host session> <index>": a workspace's among its host's rows.
@@ -832,6 +871,12 @@ enum DebugControl {
             let a = arg.split(separator: " ").map(String.init)
             guard let wc, a.count >= 2 else { return "usage: blockdrop <placement> <workspace|new> [copy]" }
             return wc.debugBlockDrop(a[0], onto: a[1] == "new" ? nil : BlockID(string: a[1]), copy: a.contains("copy"))
+        case "tiledrop":
+            // "tiledrop <column> <at> [new]": the focused tile dragged and
+            // dropped at that slot (a new column there).
+            let a = arg.split(separator: " ").map(String.init)
+            guard let wc, a.count >= 2, let c = Int(a[0]), let at = Int(a[1]) else { return "usage: tiledrop <column> <at> [new]" }
+            return (wc.debugSurface as? GridView)?.debugDropFocused(column: c, at: at, newColumn: a.contains("new")) ?? "no grid"
         case "griddrop":
             // "griddrop <placement> <column> <at> [copy]": from another workspace into this grid.
             let a = arg.split(separator: " ").map(String.init)

@@ -1324,10 +1324,13 @@ named measures (DESIGN.md §11). The system's own alerts are left as they are.
 Things move where moving says something, briefly, and never what you
 type into: a tile placed grows in where it lands as the edges of the
 others slide aside for it, one closed shrinks away where it was as
-their edges slide into its room (as Rex's panes do), one gone to
+their edges slide into its room, one moved (⌥⇧⌘ and an arrow, or
+dragged and dropped) goes over the rest, its bar and all, from where it
+was to where it's put as theirs slide out of its way, one gone to
 has its focus ring swell and glow a moment; one too short for its
-content crosses over to its summary card, and back; Maximize grows the
-tile from its place over the rest, Restore shrinks it back; with ⌃⇥ the
+content crosses over to its summary card, and back; Maximize slides the
+tile's edges out from its place over the rest, Restore back in — what
+any tile shows held still as its edges pass, never stretched; with ⌃⇥ the
 tile becomes its card, shrinking as it goes, and the rest of its stack
 slide out from under it, each a whole card, down to their places; the
 one chosen becomes its tile again as the rest slide back up under it
