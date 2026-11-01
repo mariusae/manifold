@@ -155,6 +155,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(stage)
         root.addSubview(sidebar)
         root.addSubview(toast)
+        root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
         transfersBadge.isHidden = true
@@ -877,6 +878,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var closedStack: [Closed] = []
     private let toast = ToastView()
+    /// The space a ⌘` walk is at, named while ⌘ is held and the sidebar's away.
+    private let spaceHUD = SpaceHUD()
+    private var spaceHUDWork: DispatchWorkItem?
     /// Each tile's own trail, as a browser window's: the blocks it showed
     /// before in its place (a listing's folders, a preview's pages), and
     /// those gone back from.
@@ -2735,7 +2739,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         walk = w
         show(arrangement: w.ids[w.index])
         // From the menu, without ⌘ held, it's one step and settled.
-        if walkMonitors.isEmpty { endWalk(settling: true) }
+        if walkMonitors.isEmpty { return endWalk(settling: true) }
+        walkShown()
+    }
+
+    /// Where the walk is, said: with the sidebar out, its space's row
+    /// scrolled into view; away, the space named over the window — once ⌘
+    /// stays held a moment after the first step (a quick ⌘` flashes
+    /// nothing), at once on the steps after.
+    private func walkShown() {
+        guard let w = walk else { return }
+        if sidebarShown || pinned {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.revealWalkRow() }
+            return
+        }
+        let id = w.ids[w.index]
+        let name = hosts.arrangement(id).map { title(of: $0) } ?? "Untitled"
+        let position = "\(w.index + 1) of \(w.ids.count)"
+        let say = { [weak self] in
+            guard let self, self.walk != nil else { return }
+            self.spaceHUD.show(name, position: position, in: self.stage.frame)
+        }
+        if !spaceHUD.isHidden { return say() }
+        spaceHUDWork?.cancel()
+        let work = DispatchWorkItem(block: say)
+        spaceHUDWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    /// The walk's space in the sidebar: its row, and the focused tile's
+    /// under it, in view.
+    private func revealWalkRow() {
+        guard walk != nil, let id = selected else { return }
+        sidebar.organizationView.reveal(deskSelectedRow, "arr/\(id)")
     }
 
     private func watchWalk() {
@@ -2754,6 +2790,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func endWalk(settling: Bool) {
+        spaceHUDWork?.cancel()
+        spaceHUD.hide()
         walkMonitors.forEach(NSEvent.removeMonitor)
         walkMonitors = []
         if let o = walkLeaving { NotificationCenter.default.removeObserver(o) }
@@ -2788,7 +2826,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         if walk == nil { debugHeld = false }
         func name(_ id: BlockID) -> String { hosts.block(id)?.title ?? id.ulid.description }
-        return "cmd=\(NSEvent.modifierFlags.contains(.command)) selected=\(selected.map(name) ?? "-") walk=\(walk.map { "\($0.index):" + $0.ids.map(name).joined(separator: ",") } ?? "-") settled=\(settled.prefix(6).map(\.space).map(name).joined(separator: ",")) trail=\(hosts.recentWorkspaces().prefix(6).map(name).joined(separator: ","))"
+        return "hud=\(spaceHUD.isHidden ? "-" : "shown") cmd=\(NSEvent.modifierFlags.contains(.command)) selected=\(selected.map(name) ?? "-") walk=\(walk.map { "\($0.index):" + $0.ids.map(name).joined(separator: ",") } ?? "-") settled=\(settled.prefix(6).map(\.space).map(name).joined(separator: ",")) trail=\(hosts.recentWorkspaces().prefix(6).map(name).joined(separator: ","))"
     }
 
     /// Where the window is now, settled on: the latest place on its trail.
@@ -8518,6 +8556,18 @@ extension MainWindowController: GitViewDelegate {
     func gitViewRefresh(_ view: GitView) {
         hosts.propose(.refreshGit(block: view.block))
     }
+
+    /// The pane's diff: its block made (or found) on the repository's
+    /// host, shown in the git tile's place — what it opens goes beside it.
+    /// Never placed, it isn't Recently Closed's (`closedItems`).
+    func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
+        guard let client = hosts.client(view.block.host) else { return nil }
+        let id = client.diffBlock(subject)
+        let d = DiffView(placement: view.placement, block: id, theme: hosts.state.appearance.theme)
+        d.delegate = self
+        d.source = { [weak self] in self?.hosts.block(id) }
+        return d
+    }
 }
 
 extension MainWindowController: DiffViewDelegate {
@@ -8559,18 +8609,6 @@ extension MainWindowController: SearchViewDelegate {
 
     func searchView(_ view: SearchView, open path: String, line: Int) {
         open(path: path, line: line, column: 1, on: view.block.host, from: view.placement, kind: .opened, context: nil)
-    }
-
-    /// The pane's diff: its block made (or found) on the repository's
-    /// host, shown in the git tile's place — what it opens goes beside it.
-    /// Never placed, it isn't Recently Closed's (`closedItems`).
-    func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
-        guard let client = hosts.client(view.block.host) else { return nil }
-        let id = client.diffBlock(subject)
-        let d = DiffView(placement: view.placement, block: id, theme: hosts.state.appearance.theme)
-        d.delegate = self
-        d.source = { [weak self] in self?.hosts.block(id) }
-        return d
     }
 }
 

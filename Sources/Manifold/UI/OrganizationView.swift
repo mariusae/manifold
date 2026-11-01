@@ -515,6 +515,15 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "band y=\(Int(f.minY)) h=\(Int(f.height)) alpha=\(String(format: "%.2f", t.layer?.presentation()?.opacity ?? Float(t.alphaValue)))"
     }
 
+    /// Rows scrolled into view, the last one given surely (a ⌘` walk's
+    /// space, and its focused tile under it if they fit).
+    func reveal(_ ids: String?...) {
+        for id in ids.compactMap({ $0 }) {
+            guard let row = (0..<outline.numberOfRows).first(where: { (outline.item(atRow: $0) as? OrgNode)?.id == id }) else { continue }
+            outline.scrollRowToVisible(row)
+        }
+    }
+
     private func select(_ selected: String?) {
         selecting = true
         defer { selecting = false }
