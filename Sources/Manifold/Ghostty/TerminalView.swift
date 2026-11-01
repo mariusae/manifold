@@ -1935,16 +1935,7 @@ extension TerminalView {
 
 extension TerminalView: DropTaking {
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
-        var forms: [DropForm]
-        if !isAgent {
-            forms = Dropping.shellForms(d)
-        } else if !d.things.isEmpty, d.things.allSatisfy({ $0.file != nil && $0.fragment == nil }) {
-            forms = d.forms([.path, .contents, .reference, .link, .text])
-        } else if d.things.contains(where: \.nameable) {
-            forms = d.forms([.contents, .text, .reference, .link, .path])
-        } else {
-            forms = d.forms([.text, .link, .path])
-        }
+        var forms = Dropping.forms(d, for: isAgent ? .agent : .shell)
         // A path is only a path on its own host (this Mac's files are sent there).
         if uploads(d) == nil, d.things.contains(where: { $0.place.map { $0.host != block.host } ?? false }) { forms.removeAll { $0 == .path } }
         return forms

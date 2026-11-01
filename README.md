@@ -151,12 +151,14 @@ parts from the Mac's conventions on purpose.
   took a document: on a terminal a file's path is typed, quoted for the
   shell (this Mac's files sent first to a shell on another host), a
   command again by its words, a block by its reference; on an agent, a
-  file's path, else what it holds (a terminal's history, a note, a
-  command's output, a heading's section) is pasted in, so the agent has
-  it; on a shell notebook, it goes in the cell under it, or outside the
+  reference to a block or a place in one (a heading, a command, a
+  function), so the agent reads what's there through `mani` and can
+  point back to it, a file's path, words selected in code as they
+  are; on a shell notebook, it goes in the cell under it, or outside the
   cells a cell is made for it; in a note (the editor, the outline, the
   preview), a link to it — a file opened as a block for it — a picture
-  kept and shown, a page's link; in code, its path; on a folder, a
+  kept and shown, a page's link; in code, a file's path, a place's
+  words; on a folder, a
   copy (its own host's entries moved, as the Finder moves them); on the
   grid, a tile of its own where it lands — a file opened, a page, a
   picture, a note of the words, the block brought — or, a block over a

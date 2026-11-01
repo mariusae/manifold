@@ -39,8 +39,11 @@ struct DragThing: Codable, Equatable {
     var text: String?
     /// From another app (the Finder's files): copied where files go, never moved.
     var outside = false
+    /// A selection of text, its words what was selected (a place too, if
+    /// it was in a block): put in as its words where words are wanted.
+    var selection: Bool?
 
-    private enum CodingKeys: String, CodingKey { case block, fragment, title, file, folder, url, text }
+    private enum CodingKeys: String, CodingKey { case block, fragment, title, file, folder, url, text, selection }
 
     init(block: BlockID? = nil, fragment: String? = nil, title: String, file: File? = nil, folder: File? = nil,
          url: String? = nil, text: String? = nil, outside: Bool = false) {
@@ -395,19 +398,90 @@ extension DropTaking {
         return s
     }
 
-    /// The forms a note takes (an editor's, an outline's, a preview's):
-    /// pictures inline; a block, a file, a place a link; a page a link;
-    /// words as they are.
-    static func noteForms(_ d: Dragged) -> [DropForm] {
-        d.forms(d.pictures ? [.inline, .link, .reference, .path] : [.link, .inline, .reference, .path, .contents, .text])
+    // MARK: What a drop is put in as, by target (§3.11)
+
+    /// Who a drop lands on: an agent, a shell (or a notebook's cell), a
+    /// note (Markdown: an editor's, an outline's, a preview's), code.
+    enum Target { case agent, shell, note, code }
+
+    /// What's dragged, as far as choosing its form goes.
+    enum Kind {
+        /// Pictures: image files not yet blocks, a picture's data.
+        case pictures
+        /// A selection of text (with its place, if it came from a block).
+        case selection
+        /// A place in a block: a heading, a declaration, a command, a page.
+        case place
+        /// A whole block (a file open as one among them).
+        case block
+        /// A file or folder that isn't a block.
+        case file
+        /// Words alone, a page's address.
+        case words
     }
 
-    /// The forms a shell, a cell (a command line) takes: a path, typed; a
-    /// place by its words (a command again); else its reference.
-    static func shellForms(_ d: Dragged) -> [DropForm] {
-        let place = d.things.contains { $0.fragment != nil }
-        return d.forms(place ? [.text, .path, .reference, .contents, .link] : [.path, .text, .reference, .contents, .link])
+    static func kind(of d: Dragged) -> Kind {
+        if d.pictures { return .pictures }
+        if d.things.contains(where: { $0.selection == true }) { return .selection }
+        if d.things.contains(where: { $0.fragment != nil }) { return .place }
+        if d.things.contains(where: { $0.block != nil }) { return .block }
+        if !d.things.isEmpty, d.things.allSatisfy({ $0.place != nil }) { return .file }
+        return .words
     }
+
+    /// The forms each target takes each kind in, the first its own (what a
+    /// drop puts in unless another's chosen from the palette) — one table:
+    /// an agent takes references (it reads them with mani, they stay small
+    /// and keep leading to the place), words selected as they are, files
+    /// by their paths; a shell takes paths and words; a note links; code
+    /// takes words, and paths.
+    static let priorities: [Target: [Kind: [DropForm]]] = [
+        .agent: [
+            .pictures: [.path, .text, .link],
+            .selection: [.text, .reference, .contents, .link],
+            .place: [.reference, .text, .contents, .link, .path],
+            .block: [.reference, .path, .contents, .link, .text],
+            .file: [.path, .reference, .contents, .link, .text],
+            .words: [.text, .link, .path],
+        ],
+        .shell: [
+            .pictures: [.path, .text],
+            .selection: [.text, .path, .reference],
+            // A command's place, its line again (it has no path); a place
+            // in a file, the file's path.
+            .place: [.path, .text, .reference, .contents, .link],
+            .block: [.path, .text, .reference, .contents, .link],
+            .file: [.path, .text, .reference, .contents, .link],
+            .words: [.text, .path],
+        ],
+        .note: [
+            .pictures: [.inline, .link, .reference, .path],
+            .selection: [.text, .link, .reference, .contents],
+            .place: [.link, .inline, .reference, .contents, .text, .path],
+            .block: [.link, .inline, .reference, .contents, .text, .path],
+            .file: [.link, .inline, .reference, .path, .contents, .text],
+            .words: [.text, .link],
+        ],
+        .code: [
+            .pictures: [.path, .text],
+            .selection: [.text, .reference, .link],
+            .place: [.text, .reference, .path, .link, .contents],
+            .block: [.path, .reference, .text, .link, .contents],
+            .file: [.path, .reference, .text, .link, .contents],
+            .words: [.text, .path, .link],
+        ],
+    ]
+
+    /// What `d` can be put in as on `target`, its own form first.
+    static func forms(_ d: Dragged, for target: Target) -> [DropForm] {
+        d.forms(priorities[target]?[kind(of: d)] ?? [.text])
+    }
+
+    /// The forms a note takes (an editor's, an outline's, a preview's).
+    static func noteForms(_ d: Dragged) -> [DropForm] { forms(d, for: .note) }
+
+    /// The forms a shell, a cell (a command line) takes.
+    static func shellForms(_ d: Dragged) -> [DropForm] { forms(d, for: .shell) }
 
     /// `d` put in a note as `form`: its pictures kept (as image blocks,
     /// by `keep`), else `insert` given the Markdown; `linked` the blocks named.

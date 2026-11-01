@@ -4844,6 +4844,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                   let address = self.reference(to: wanted, in: id) else { return nil }
             var t = self.dragThing(id, fragment: BlockID.link(address)?.fragment, title: Anchoring.name(of: wanted))
             t.text = text
+            t.selection = true
             return Drags.item(t)
         }
         Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: $0.anchored(fragment, in: id), title: title)) } }

@@ -808,8 +808,8 @@ picture kept as an image block, any other block as its card), a *tile*
 of its own, a *link to the tile* under it, a *copy* or a *move* into a
 folder. Each target (`DropTaking`) says which it takes, the one that
 suits first: a note a link (a picture inline), a shell a path (a place
-its words, a block its reference), an agent a file's path and what
-anything else holds, a notebook a new cell, a folder a copy (its own
+its words, a block its reference), an agent a reference (a file its
+path), a notebook a new cell, a folder a copy (its own
 host's entries moved), the grid a tile where it lands, or over a tile
 whose view takes nothing, for a block, the link to the tile. Each
 target's order is a priority list, and what a thing can't be there is
@@ -817,6 +817,19 @@ left out of it: a file Manifold doesn't open (a film, an archive) can't
 be linked to, referenced, inlined or read, so a note takes its path,
 and the grid opens it in its own app — no form that would do nothing
 is offered, the next in the list is the plain one instead.
+
+The editors and terminals keep their lists in one table
+(`Dropping.priorities`), by target — an agent, a shell, a note, code —
+and by what kind of thing it is: pictures, a selection (words dragged
+out of an editor, which carry a reference to their place too), a place
+in a block (a heading, a command, a declaration), a block, files, plain
+words. An agent wants what it can read and point back to: a reference
+first for a place or a block — its contents only when asked, which go
+stale — a path for a file, a selection's words as they are (they're
+what was meant; the reference is the palette's). A shell wants what a
+command line takes, a path or the words; a note links; code takes a
+place's words and a file's path. Reading across the table (a kind's row
+in each target) is how the targets are kept to one idea of each kind.
 
 While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
 its icon, its name, on a raised ground with an edge and a shadow — a

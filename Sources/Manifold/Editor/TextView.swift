@@ -2840,7 +2840,7 @@ extension TextView: NSDraggingSource {
 extension TextView: DropTaking {
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
         guard isEditable else { return [] }
-        return acceptsBlockLinks ? Dropping.noteForms(d) : d.forms([.path, .text, .reference, .link, .contents])
+        return Dropping.forms(d, for: acceptsBlockLinks ? .note : .code)
     }
 
     /// The caret follows the pointer; only moved when it would move.
