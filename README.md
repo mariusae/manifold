@@ -290,7 +290,10 @@ parts from the Mac's conventions on purpose.
   as ⌘ is held; letting go settles on the one come to, as ⌘⇥ does
   apps: the next ⌘\` goes back to where you were, and spaces only
   passed on the way don't count as gone to (with one space,
-  it goes to Manifold's next window, as macOS has it). ⌘1–9 and ⇧⌘[ /
+  it goes to Manifold's next window, as macOS has it). With the sidebar
+  away, ⌘ held a moment names the space come to over the window (and
+  which of how many), renamed at each ⌘\` or ⇧⌘\` until ⌘ is let go;
+  with it out, the walk keeps the space's row in view. ⌘1–9 and ⇧⌘[ /
   ⇧⌘] switch spaces too, as does the Dock icon's menu: every space,
   under its host when there are several, the one shown checked. However
   you go, the space comes in as the sidebar has them — up from below
@@ -422,6 +425,8 @@ parts from the Mac's conventions on purpose.
   when any of that has unsaved edits, a note's words or a job running, a
   toast at the foot of the window names each, with Undo while a bar along
   its foot runs down (held while the pointer is on it); ⇧⌘T after.
+  Removing a space always says so, in the same toast — gone to
+  Recently Closed, with Undo.
   A reference to a block that's gone says so: its host remembers for a
   month what it threw away, so the pointer over a link to one — in a
   terminal (⌘ held, or a program's own link), a note, a preview —
@@ -1042,7 +1047,11 @@ around it, and comes back with its history.
   (with how far ahead or behind), what's changed, and the last 200
   commits, looked at again when shown, when a file is saved from
   Manifold, or when the index (or Sapling's dirstate) changes. Sapling is
-  spoken to as `sl` on the host's PATH. ⏎ or a
+  spoken to as `sl` on the host's PATH. The change or commit chosen
+  shows in a pane under the list, as a mail reader shows the message
+  chosen (the split kept with the tile; a short tile, the list alone);
+  a commit's message is rendered as Markdown there and in its own diff —
+  its subject a title, who and when above it. ⏎ or a
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
   open the file there; on a commit, the whole commit; on **All changes
