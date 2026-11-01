@@ -671,7 +671,9 @@ chosen row.)
 
 A terminal's scroll bar carries its outline (as Prism's scrubber): the strip's
 length is the screen and its history, the knob the viewport, and the
-ticks the shell's commands — its outline. It comes and goes as an
+ticks the shell's commands — its outline. The knob is drawn alone, on
+the terminal's own ground — no track, as macOS's overlay scroll bars and
+the app's lists have none. It comes and goes as an
 overlay scroll bar does — shown while the content scrolls or grows and
 while the pointer is on it, fading a second after — unless the system's
 scroll bars are set to stay. The shells Manifold starts

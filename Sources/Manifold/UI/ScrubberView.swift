@@ -83,9 +83,8 @@ final class ScrubberView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // The track, a shade off the terminal's ground; the knob over it.
-        Theme.scrubberTrack.setFill()
-        bounds.fill()
+        // The knob alone, on the view's own ground — no track, as macOS's
+        // overlay scroll bars and Manifold's lists have none.
         (dragging != nil ? Theme.handle : Theme.scrubberKnob).setFill()
         NSBezierPath(roundedRect: knobRect, xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }

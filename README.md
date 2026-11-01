@@ -1054,9 +1054,10 @@ around it, and comes back with its history.
   still shows whole; one from before the host kept them shows the
   screen's text instead. One per command; clicked again, the same block
   comes back.
-- **A terminal's, an editor's and a preview's scroll bar** is a strip
-  down the tile's right edge, the knob where you are: drag the knob or
-  click the track to scroll as ever. (Where things are in what it holds
+- **A terminal's, an editor's and a preview's scroll bar** is a knob
+  down the tile's right edge where you are, on no track of its own (as
+  macOS's overlay scroll bars and Manifold's lists): drag it, or click
+  beside it to scroll there, as ever. (Where things are in what it holds
   is the outline's, above.) It shows as macOS shows its scroll bars: while you scroll,
   while the pointer rests on it, and a moment after, fading otherwise
   (and staying, if your scroll bars are set to always show).
