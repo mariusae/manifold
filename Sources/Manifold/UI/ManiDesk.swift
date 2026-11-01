@@ -1129,7 +1129,10 @@ final class ManiDesk {
         let made: (block: BlockID, lens: Lens, later: Bool)
         do { made = try wc.makeBlock(kind, what: what, cwd: cwd, on: on) } catch let f as MainWindowController.MakeFailure { throw Failure(message: f.message) }
         let block = made.block
-        let lens = kind.name == "note" && r.flags["preview"] != nil ? .preview : made.lens
+        // A note an agent makes is to be read: rendered, unless it's to be
+        // typed into (--edit); anyone else's, as asked.
+        let byAgent = scope.here.flatMap { hosts.block($0)?.agent } != nil
+        let lens = kind.name == "note" && r.flags["edit"] == nil && (r.flags["preview"] != nil || byAgent) ? .preview : made.lens
         if let title = r.flags["title"] { hosts.append(.title(title), to: .block(block)) }
         if made.later {
             // Placed once the host has made it (a notebook), as the menu's is.

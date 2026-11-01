@@ -937,7 +937,9 @@ around it, and comes back with its history.
   pointer leaves. Code ▸ Highlight Uses (⌃⌘E) keeps a symbol's uses
   tinted in its own colour — four at once, again to unpin, Clear
   Highlights for all; the caret on a name tints its other uses in the
-  file (whole words, not in comments); the tile's menu's Open with
+  file. Both are that symbol's uses as its language server knows them
+  (a parameter `data`, not a property `data`), else the name's whole
+  words, not in comments. The tile's menu's Open with
   Bodies Folded opens it as an outline of its functions, their notes
   showing (kept with the tile).
 - **Folding**: in an editor, Collapse (⌃⌘9) folds the declaration the
@@ -1644,7 +1646,8 @@ is migrated into logs on first run.
     (`mani skill install`) teaches agents all of it.
   - **Doing.** `mani open` (files, folders, addresses), `mani new note |
     terminal | agent | web | search | git | smartlog` (a note's text from
-    its input: `… | mani new note --preview` renders it; `--run` a
+    its input: `… | mani new note --preview` renders it, as an agent's
+    note always is unless `--edit`; `--run` a
     terminal's command, typed in once it starts, or an agent's first
     prompt), `mani show`, `mani close`, `mani write` (a note's or file's
     text; `--append`, `--save`), `mani rename`, `mani pin`/`unpin`, `mani
