@@ -69,3 +69,15 @@ private func block(_ text: String, anchor range: TextRange) -> Block {
     #expect(m.map(\.anchor) == ["k7q2mx", nil])
     #expect(Anchor.isAnchor("k7q2mx") && !Anchor.isAnchor("line=3"))
 }
+
+@Test func anAnchorAtACommandOrAPageIsThatPlace() {
+    var t = Block(id: BlockID(host: host), kind: .terminal, created: at(1))
+    t.apply(.ran(id: 7, "make test", at: at(2)), at: at(2))
+    t.apply(.exited(id: 7, status: 1, at: at(3)), at: at(3))
+    t.apply(.anchor(Anchor(id: "c7", at: .command(7), name: "make test")), at: at(4))
+    #expect(t.anchors?["c7"]?.legibleFragment == "command=7")
+    #expect(t.summary(at: "c7") == t.summary(at: "command=7"))
+    #expect(t.summary(at: "c7")?.title == "make test")
+    #expect(Anchor(id: "p", at: .page(3)).legibleFragment == "page=3")
+    #expect(Anchor(id: "s", at: .symbol(path: "f")).legibleFragment == nil)
+}

@@ -225,8 +225,12 @@ for one with links (its links, clicked), and a note that `describes`
 (else `annotates`, `explains`) it under its line — the first
 presentation by relation; folding (by declarations, or a Markdown note's
 sections) hides a body, leaving the description in its place. A note's
-references, in order, are a walk, stepped beside it (⌃⌘]). To come:
-anchors in terminals, PDFs and diffs; SCIP for references across files.
+references, in order, are a walk, stepped beside it (⌃⌘]). A
+terminal's command and a PDF's page are anchored too — referred to (an
+outline's item dragged, Copy Link, a link made through `mani`), `command=`
+and `page=` become anchors at them, read and gone to as those places
+are (`Anchor.legibleFragment`). To come: anchors in diffs (made again
+from their sources); SCIP for references across files.
 
 ---
 

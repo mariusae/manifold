@@ -895,7 +895,8 @@ around it, and comes back with its history.
   ("“Card.save” is no longer in Card.swift"). An outline's item dragged
   or Copy Link'd, or a line dragged from an editor's gutter (the line
   numbers), makes one — the declaration or heading on that line, else the
-  line — and the same place gives the same reference. Links carry places
+  line — and the same place gives the same reference (a terminal's
+  command and a PDF's page are anchored the same way). Links carry places
   at either end, and what they mean (a relation: `describes`,
   `annotates`, `explains`, `step`, any word); `mani info` lists a file's
   places and what links to each. Agents make them with `mani symbols`

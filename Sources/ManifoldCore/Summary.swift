@@ -179,6 +179,8 @@ extension Block {
         // An anchor (§2.5): what it's called, and its first lines.
         if Anchor.isAnchor(fragment) {
             guard let a = anchors?[fragment] else { return nil }
+            // A command's or a page's: as that place's.
+            if let legible = a.legibleFragment { return summary(at: legible, now: now) }
             var s = BlockSummary(title: Self.oneLine(a.name ?? a.excerpt ?? fragment, max: 80), place: displayTitle)
             if let r = a.range, let rope = text?.text, r.end <= rope.count {
                 let first = rope.line(at: r.start)

@@ -625,10 +625,13 @@ final class ManiDesk {
     // MARK: Reading
 
     private func read(_ r: ManiRequest, _ scope: Scope) async throws -> String {
-        let t = try await target(r.args[0], scope)
+        var t = try await target(r.args[0], scope)
         if let s = t.selection { return lines(s.text, r.flags["lines"]) }
         guard let b = hosts.block(t.block) else { throw Failure(message: "\(r.args[0]) isn't known here") }
         let view = t.tile.flatMap { wc.views[$0] }
+        // A reference to an anchor: a command's or a page's read as that
+        // place is; one in a text, its lines (a declaration whole).
+        if let f = t.fragment, Anchor.isAnchor(f), let legible = b.anchors?[f]?.legibleFragment { t.fragment = legible }
         if r.flags["outline"] != nil {
             guard let outline = view?.outline, !outline.items.isEmpty else { throw Failure(message: "\(b.displayTitle) has no outline\(view == nil ? " (it isn't shown)" : "")") }
             return outline.items.indices.map { i in
@@ -640,7 +643,6 @@ final class ManiDesk {
            let c = b.terminal?.commands?.first(where: { $0.id == id }) {
             return lines(try await output(of: c, in: b.id, view: view), r.flags["lines"])
         }
-        // A reference to an anchor: its lines (a declaration whole, a heading's line).
         if let f = t.fragment, Anchor.isAnchor(f) { return lines(try anchorText(f, in: b), r.flags["lines"]) }
         var pageFlag = r.flags["pages"]
         if pageFlag == nil, let f = t.fragment, f.hasPrefix("page=") { pageFlag = String(f.dropFirst(5)) }
@@ -659,6 +661,9 @@ final class ManiDesk {
     /// output, a page's text, a heading's section or an item's; without
     /// one, the whole block's (a terminal's whole history).
     func contents(of b: Block, at fragment: String?, view: PaneContent?) async throws -> String {
+        // A command's or a page's anchor: that place, as it reads.
+        var fragment = fragment
+        if let f = fragment, Anchor.isAnchor(f), let legible = b.anchors?[f]?.legibleFragment { fragment = legible }
         if let f = fragment, Anchor.isAnchor(f) { return try anchorText(f, in: b) }
         if let f = fragment {
             if f.hasPrefix("command="), let id = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == id }) {

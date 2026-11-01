@@ -7700,6 +7700,13 @@ extension MainWindowController: GridDelegate {
     /// or minted in its log.
     func reference(toLine line: Int, in id: BlockID) -> String? {
         guard let b = hosts.block(id), let wanted = Anchoring.anchor(atLine: line, of: b) else { return nil }
+        return reference(to: wanted, in: id)
+    }
+
+    /// A reference to the place `wanted` is at: the block's anchor for it,
+    /// or one minted in its log.
+    func reference(to wanted: Anchor, in id: BlockID) -> String? {
+        guard let b = hosts.block(id) else { return nil }
         if let a = Anchoring.existing(wanted, in: b) { return Self.address(id, anchor: a.id) }
         var a = wanted
         a.id = Anchor.newID(taken: Set(b.anchors?.keys.map { $0 } ?? []))
@@ -7710,9 +7717,16 @@ extension MainWindowController: GridDelegate {
     /// A place written as a line of a text (`line=12`, an outline's item)
     /// as its anchor's id; any other as it is.
     func anchored(_ fragment: String?, in id: BlockID) -> String? {
-        guard let f = fragment, f.hasPrefix("line="), let n = Int(f.dropFirst(5)), hosts.block(id)?.kind == .text,
-              let address = reference(toLine: n - 1, in: id) else { return fragment }
-        return BlockID.link(address)?.fragment ?? fragment
+        guard let f = fragment, let b = hosts.block(id) else { return fragment }
+        var address: String?
+        if f.hasPrefix("line="), let n = Int(f.dropFirst(5)), b.kind == .text {
+            address = reference(toLine: n - 1, in: id)
+        } else if f.hasPrefix("command="), let n = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == n }) {
+            address = reference(to: Anchor(id: "", at: .command(n), name: String(c.text.prefix(80))), in: id)
+        } else if f.hasPrefix("page="), let n = Int(f.dropFirst(5)), b.kind == .pdf {
+            address = reference(to: Anchor(id: "", at: .page(n), name: "Page \(n)"), in: id)
+        }
+        return address.flatMap { BlockID.link($0)?.fragment } ?? fragment
     }
 
     static func address(_ id: BlockID, anchor: String? = nil) -> String {
@@ -7729,6 +7743,12 @@ extension MainWindowController: GridDelegate {
             guard tries > 0, hosts.block(id) != nil else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToAnchor(anchor, in: id, tries: tries - 1) }
             return
+        }
+        // A command's or a page's: gone to as that place is.
+        switch a.at {
+        case let .command(n): return goToCommand(n, in: id)
+        case let .page(n): return goToPlace(.page(n - 1), in: id)
+        default: break
         }
         guard let (range, putRight) = Anchoring.locate(a, in: b), let rope = b.text?.text else {
             return sayMissing(why: "“\(Anchoring.name(of: a))” is no longer in \(b.displayTitle)")
@@ -8973,7 +8993,7 @@ extension MainWindowController: TerminalViewDelegate {
     func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {
         let menu = NSMenu()
         let linkItem = ClosureMenuItem("Copy Link to This \(hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true ? "Turn" : "Command")", symbol: "link") { [weak self] in
-            self?.copyLink(to: view.block, fragment: "command=\(command.id)")
+            self?.copyLink(to: view.block, fragment: self?.anchored("command=\(command.id)", in: view.block))
         }
         defer { menu.addItem(.separator()); menu.addItem(linkItem) }
         if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {
