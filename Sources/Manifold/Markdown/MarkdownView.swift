@@ -424,7 +424,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     private static let embed = try! NSRegularExpression(pattern: #"<img src="(manifold:[^"]*)" alt="([^"]*)"[^>]*>"#)
 
     /// A reference written bare in the text (`manifold:host/id#place`).
-    private static let bareReference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
+    private static let bareReference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + BlockID.referencePattern)
 
     /// `<img src="manifold:…">`, a block a note shows: an image by the
     /// source the page can load; anything else as its card, a link. And a

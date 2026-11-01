@@ -27,6 +27,9 @@ protocol EditorViewDelegate: AnyObject {
     func editorDiagnostics(_ view: EditorView) -> [Diagnostic]
     /// How the block's lines stand against what's committed.
     func editorGutter(_ view: EditorView) -> [GutterMark]
+    /// The places in its text something is said about (§2.5): what links
+    /// to each, and a note describing or annotating it.
+    func editorPlaces(_ view: EditorView) -> [TextView.Place]
     /// The editor asks the block's language server something.
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
@@ -609,7 +612,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// A block's card (a place's in it), for a line that's only its embed.
     var blockCard: ((BlockID, String?) -> SummaryCardContent?)?
     /// The blocks' looks may have changed: pills drawn with old ones are redrawn.
-    func refreshPills() { textView.refreshPills() }
+    func refreshPills() {
+        textView.refreshPills()
+        textView.places = delegate?.editorPlaces(self) ?? []
+    }
+    /// Notes about places shown under them, this tile's choice (§2.5).
+    var showsNotes: Bool {
+        get { textView.showsNotes }
+        set { textView.showsNotes = newValue }
+    }
+    var onToggleNotes: ((Bool) -> Void)?
     var onToggleMarkdown: ((_ rich: Bool) -> Void)?
 
     /// The font switched from the pill's menu: this tile's, kept with its view state.
@@ -622,6 +634,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 guard let self else { return }
                 self.richMarkdown.toggle()
                 self.onToggleMarkdown?(self.richMarkdown)
+            })
+        }
+        // Notes about its places, under them or only marked.
+        if !textView.places.isEmpty {
+            items.append(ClosureMenuItem(showsNotes ? "Hide Notes in the Text" : "Show Notes in the Text", symbol: "text.bubble") { [weak self] in
+                guard let self else { return }
+                self.showsNotes.toggle()
+                self.onToggleNotes?(self.showsNotes)
             })
         }
         // The other kind of font than the one in use, for this tile.
@@ -708,6 +728,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let doc = theme.technicalFont(size: f.pointSize)
         textView.syntaxLanguage = SyntaxLanguage.forPath(path)
         textView.docFont = font == .monospaced ? doc : nil
+        // Notes about its places in the technical font beside code, else the text's.
+        textView.noteFont = font == .monospaced ? doc : nil
+        textView.markdownHeadings = path.isEmpty || Lens.isMarkdown(path)
         textView.docTracking = theme.technicalTracking(doc)
     }
 

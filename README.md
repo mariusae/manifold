@@ -901,6 +901,23 @@ around it, and comes back with its history.
   places and what links to each. Agents make them with `mani symbols`
   (a file's declarations, by path), `mani ref <file> --symbol Type.method`
   and `mani link <note> <ref> --as describes`.
+  In an editor, a place with links has a mark in the gutter (clicked,
+  what links to it and from it, each followed when chosen), and a note
+  that describes, annotates or explains it shows under its line, in the
+  technical font beside code (the tile's menu hides them). A reference
+  written bare shows the place's name on its pill.
+- **Folding**: in an editor, Collapse (⌃⌘9) folds the declaration the
+  caret is in (its body, by the language's grammar; a Markdown
+  section, in a note or Markdown file) under its first line, a chip
+  where it went (clicked, it opens); Expand (⌃⌘0) opens it, Collapse All
+  (⌥⌘9) folds every function's body, Expand All (⌥⌘0) opens them all.
+  A folded function with a note describing it shows the note in its
+  body's place. A caret come into what's folded (gone to, found) opens
+  it.
+- **Walks through code**: a note of references in order, a sentence each
+  (one an agent writes with `mani ref`), is walked with ⌃⌘] (Go ▸ Next
+  Step) and ⌃⌘[: each step shown beside the note in one tile, at its
+  place, the note keeping the keyboard with the step chosen in it.
 - **Notes from what's at hand**: New Note from Selection, in an editor's
   or a terminal's menu (and ⇧⌘P's), makes a note of the selected text,
   quoted as code when it came from code, linked from where it came; New

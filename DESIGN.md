@@ -219,10 +219,14 @@ a kind per pair of places; a mention of `manifold:…#anchor` in a text is
 a link to the place. An outline's `line=` place, dragged or copied,
 becomes its anchor, as a line dragged from the editor's gutter does;
 `mani symbols`, `mani ref`, `mani link --as`, `mani read` of an anchor
-and `mani info`'s places give agents the same. To come: a place's own
-links shown where it is (a gutter's mark), presentations by relation
-(a description standing in for a folded body), and anchors in
-terminals, PDFs and diffs.
+and `mani info`'s places give agents the same. The editor shows a text's
+places (`TextView.Place`, from `editorPlaces`): a mark in the gutter
+for one with links (its links, clicked), and a note that `describes`
+(else `annotates`, `explains`) it under its line — the first
+presentation by relation; folding (by declarations, or a Markdown note's
+sections) hides a body, leaving the description in its place. A note's
+references, in order, are a walk, stepped beside it (⌃⌘]). To come:
+anchors in terminals, PDFs and diffs; SCIP for references across files.
 
 ---
 

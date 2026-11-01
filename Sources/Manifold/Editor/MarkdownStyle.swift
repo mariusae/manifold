@@ -2,6 +2,12 @@ import AppKit
 import ManifoldCore
 
 /// A block as its pill in a note shows it: what the tile's pill shows.
+extension MarkdownStyle {
+    /// A place's name (an anchor's), for its reference's pill: given by
+    /// the window, which knows the blocks.
+    nonisolated(unsafe) static var placeName: ((BlockID, String) -> String?)?
+}
+
 struct PillLook: Equatable {
     var title: String
     var symbol: String
@@ -53,7 +59,7 @@ enum MarkdownStyle {
     private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]*)(\]\()([^)\s]+)(\))"#)
     /// A block's reference written bare (`manifold:host/id#place`, as an
     /// agent writes one): its pill too.
-    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
+    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'/\w])"# + BlockID.referencePattern)
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,6}) "#)
     private static let listItem = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|\d+[.)])(\s)"#)
     private static let quote = try! NSRegularExpression(pattern: #"^(>\s?)+"#)
@@ -165,7 +171,10 @@ enum MarkdownStyle {
                 a.addAttributes([.foregroundColor: palette.text, chip: palette.chipTint], range: m.range)
                 continue
             }
-            if let place { look.title += " · " + place.replacingOccurrences(of: "=", with: " ") }
+            // A place by its name (an anchor's, §2.5), else as written.
+            if let place {
+                if Anchor.isAnchor(place), let name = Self.placeName?(id, place) { look.title = name } else { look.title += " · " + place.replacingOccurrences(of: "=", with: " ") }
+            }
             let first = NSRange(location: m.range.location, length: 1)
             a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: pillWidth(look), font: base)], range: first)
             hide(NSRange(location: m.range.location + 1, length: m.range.length - 1))

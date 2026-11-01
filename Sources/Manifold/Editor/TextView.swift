@@ -241,6 +241,7 @@ final class TextView: NSView, NSTextInputClient {
             if !applyingOurs {
                 // Not ours: nothing is known about what moved.
                 syntax?.update(to: document.rope)
+                foldsFollowText()
                 invalidateAll()
                 if document.rope.lineCount != knownLineCount { undoStack = []; redoStack = [] }
             }
@@ -374,12 +375,19 @@ final class TextView: NSView, NSTextInputClient {
     /// lines a third of the way down (and moved everything as they were
     /// laid out).
     private func estimatedRowCounts() -> [Int] {
-        guard wraps else { return Array(repeating: 1, count: text.lineCount) }
-        if lineLengthsFor?.version != knownVersion || lineLengthsFor?.lengths.count != text.lineCount {
-            lineLengthsFor = (knownVersion, text.lineLengths())
+        var counts: [Int]
+        if wraps {
+            if lineLengthsFor?.version != knownVersion || lineLengthsFor?.lengths.count != text.lineCount {
+                lineLengthsFor = (knownVersion, text.lineLengths())
+            }
+            let perRow = max(1, Double(wrapWidth) / max(averageAdvance, 1))
+            counts = (lineLengthsFor?.lengths ?? []).map { max(1, Int((Double($0) / perRow).rounded(.up))) }
+        } else {
+            counts = Array(repeating: 1, count: text.lineCount)
         }
-        let perRow = max(1, Double(wrapWidth) / max(averageAdvance, 1))
-        return (lineLengthsFor?.lengths ?? []).map { max(1, Int((Double($0) / perRow).rounded(.up))) }
+        // Folded lines take no rows.
+        for n in hiddenLines where n < counts.count { counts[n] = 0 }
+        return counts
     }
     private var lineLengthsFor: (version: Int, lengths: [Int])?
     /// A character's width, on the average (for guessing rows).
@@ -527,12 +535,15 @@ final class TextView: NSView, NSTextInputClient {
         }
         let l = LineLayout(rows: rows, text: string, rowStarts: starts)
         layouts[n] = l
-        // Rows enough for its card.
+        // Rows enough for its card; and for a note about it (§2.5) under it.
         var total = rows.count
         if let card {
             total = max(rows.count, Int(ceil((SummaryCard.height(for: card.content) + 6) / lineHeight)))
             cardLines[n] = (card.block, card.place, card.target, card.content, total)
         }
+        if let h = noteHeight(ofLine: n) { total = rows.count + Int(ceil((h + 4) / lineHeight)) }
+        // Folded away: no rows at all.
+        if hiddenLines.contains(n) { total = 0 }
         if n < rowCounts.count, rowCounts[n] != total {
             rowCounts[n] = total
             invalidateRowStarts(after: n)
@@ -684,6 +695,238 @@ final class TextView: NSView, NSTextInputClient {
         let utf16 = s.utf16
         guard let i = utf16.index(utf16.startIndex, offsetBy: utf16Index, limitedBy: utf16.endIndex) else { return s.utf8.count }
         return s.utf8.distance(from: s.utf8.startIndex, to: i)
+    }
+
+    // MARK: Folds and places (§2.5)
+
+    /// A place in the text something is said about: its line, what links
+    /// to it (and from it), and a note that describes or annotates it —
+    /// shown under the line, in the technical font, where `showsNotes`.
+    struct Place: Equatable {
+        struct Link: Equatable {
+            var title: String
+            var relation: String?
+            /// Where it goes followed: the other end's reference.
+            var target: String
+            /// To the place (else from it).
+            var inbound: Bool
+        }
+        struct Note: Equatable {
+            var title: String
+            var text: String
+            var relation: String
+            var target: String
+        }
+        var line: Int
+        var links: [Link]
+        var note: Note?
+    }
+
+    var places: [Place] = [] {
+        didSet {
+            guard places != oldValue else { return }
+            for n in Set(oldValue.map(\.line)).union(places.map(\.line)) {
+                layouts.removeValue(forKey: n)
+                noteLayouts.removeValue(forKey: n)
+            }
+            placeByLine = Dictionary(places.map { ($0.line, $0) }, uniquingKeysWith: { a, _ in a })
+            needsDisplay = true
+        }
+    }
+    private var placeByLine: [Int: Place] = [:]
+    /// Its sections fold by its Markdown headings (a note, a Markdown file).
+    var markdownHeadings = false
+    /// Notes about places shown under their lines (else only marked).
+    var showsNotes = true { didSet { if showsNotes != oldValue { noteLayouts = [:]; invalidateAll() } } }
+    /// The notes' font: the technical (§7.1), else the text's own.
+    var noteFont: NSFont? { didSet { if noteFont != oldValue { noteLayouts = [:]; invalidateAll() } } }
+    /// Each note shown: its words laid out for the width, and their height.
+    private var noteLayouts: [Int: (text: NSAttributedString, height: CGFloat, width: CGFloat)] = [:]
+
+    /// The height of the note under line `n`, laid out for the width now;
+    /// nil if it has none shown.
+    private func noteHeight(ofLine n: Int) -> CGFloat? {
+        guard showsNotes, let note = placeByLine[n]?.note else { return nil }
+        let width = min(wrapWidth, 680) - 14
+        if let l = noteLayouts[n], l.width == width { return l.height }
+        let body = noteFont ?? font
+        let out = NSMutableAttributedString(string: note.relation + " · " + note.title + "\n",
+                                            attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText])
+        out.append(MarkdownText.attributed(note.text, font: body, code: font, color: Theme.secondaryText))
+        let h = ceil(out.boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
+        noteLayouts[n] = (out, h, width)
+        return h
+    }
+
+    /// Where line `n`'s note is drawn: under its rows.
+    private func noteRect(ofLine n: Int) -> NSRect? {
+        guard let l = noteLayouts[n], let lineLayout = layouts[n], !hiddenLines.contains(n) else { return nil }
+        let y = top(ofLine: n) + CGFloat(lineLayout.rows.count) * lineHeight + 4
+        return NSRect(x: textLeft, y: y, width: l.width + 14, height: l.height + 2)
+    }
+
+    /// What's drawn at a place: its note under it (a rule at its left),
+    /// a fold's chip after its text, a mark in the gutter for its links.
+    private func drawPlace(ofLine n: Int, layout l: LineLayout, top lineTop: CGFloat) {
+        if let r = noteRect(ofLine: n), let note = noteLayouts[n] {
+            Theme.accent.withAlphaComponent(0.55).setFill()
+            NSRect(x: r.minX, y: r.minY, width: 2, height: r.height).fill()
+            note.text.draw(with: NSRect(x: r.minX + 12, y: r.minY, width: note.width, height: r.height), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        }
+        if let i = foldStarts[n], let last = l.rows.last {
+            let w = CGFloat(CTLineGetTypographicBounds(last, nil, nil, nil))
+            let label = NSAttributedString(string: "⋯", attributes: [.font: font, .foregroundColor: Theme.secondaryText])
+            let size = label.size()
+            let rowTop = lineTop + CGFloat(l.rows.count - 1) * lineHeight
+            let chip = NSRect(x: textLeft + w + 8, y: rowTop + 2, width: size.width + 12, height: lineHeight - 4)
+            Theme.hover.setFill()
+            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
+            label.draw(at: NSPoint(x: chip.minX + 6, y: rowTop + (lineHeight - size.height) / 2))
+            foldChips[n] = (chip, i)
+        }
+        if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
+            let mark = NSRect(x: textLeft - 12, y: lineTop + lineHeight / 2 - 3.5, width: 7, height: 7)
+            Theme.accent.setStroke()
+            let path = NSBezierPath(roundedRect: mark, xRadius: 2, yRadius: 2)
+            path.lineWidth = 1.2
+            path.stroke()
+        }
+    }
+
+    /// A place's links, as a menu at the gutter: each followed chosen.
+    private func showLinks(of place: Place, at p: NSPoint) {
+        let menu = NSMenu()
+        for l in place.links {
+            let words = (l.inbound ? "← " : "→ ") + l.title + (l.relation.map { "  (\($0))" } ?? "")
+            menu.addItem(ClosureMenuItem(words, symbol: nil) { [weak self] in
+                guard let self else { return }
+                self.delegate?.textView(self, follow: l.target, over: false)
+            })
+        }
+        menu.popUp(positioning: nil, at: p, in: self)
+    }
+
+    /// Folded lines: each fold the bytes of the lines it hides, from the
+    /// first's start to the last's end, moved as the text is edited.
+    private var folds: [TextRange] = [] { didSet { if folds != oldValue { foldsChanged() } } }
+    /// The text the folds were last put right for (an edit from elsewhere
+    /// is found by comparing).
+    private var foldsText = Rope()
+    private var hiddenLines = IndexSet()
+    /// The line each fold is under, and which fold.
+    private var foldStarts: [Int: Int] = [:]
+    /// Each fold's chip as last drawn, for a click to open it.
+    private var foldChips: [Int: (rect: NSRect, fold: Int)] = [:]
+
+    private func foldsChanged() {
+        var hidden = IndexSet()
+        var starts: [Int: Int] = [:]
+        for (i, f) in folds.enumerated() where f.end <= text.count {
+            let a = text.line(at: f.start), b = text.line(at: max(f.end - 1, f.start))
+            guard a > 0, b >= a else { continue }
+            hidden.insert(integersIn: a...b)
+            starts[a - 1] = i
+        }
+        foldsText = text
+        foldStarts = starts
+        guard hidden != hiddenLines else { return needsDisplay = true }
+        hiddenLines = hidden
+        invalidateAll()
+    }
+
+    /// The folds moved through edits made here; one an edit falls inside
+    /// is opened.
+    private func foldsEdited(_ edits: [TextEdit]) {
+        guard !folds.isEmpty else { return }
+        folds = folds.compactMap { f in
+            var r = f
+            for e in edits {
+                if e.start < r.end, e.end > r.start { return nil }
+                r = r.moved(by: e)
+            }
+            return r
+        }
+    }
+
+    /// The text changed where we didn't say: the folds moved by what changed.
+    private func foldsFollowText() {
+        guard !folds.isEmpty, let (start, oldEnd, newEnd) = text.changed(from: foldsText) else { return }
+        foldsEdited([TextEdit(start: start, end: oldEnd, text: String(repeating: " ", count: newEnd - start))])
+        foldsText = text
+    }
+
+    /// What can be folded, as lines (the first hidden, the last): each
+    /// declaration's body (its closing line left, where that's only
+    /// closers), each Markdown heading's section. `leaves`: only those with
+    /// nothing foldable inside (functions, not their types).
+    private func foldables(leaves: Bool = false) -> [ClosedRange<Int>] {
+        var spans: [ClosedRange<Int>] = []
+        if let decls = syntax?.declarations() {
+            for d in decls {
+                let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
+                let closing = text.lineText(b).trimmingCharacters(in: .whitespaces)
+                let last = !closing.isEmpty && closing.allSatisfy({ "})]>;,".contains($0) }) ? b - 1 : b
+                if last >= a + 1 { spans.append((a + 1)...last) }
+            }
+        } else if markdownHeadings {
+            let items = NoteOutlineMarkdown.items(in: text.string).filter(\.isHeading)
+            for (i, h) in items.enumerated() {
+                let next = items[(i + 1)...].first { $0.level <= h.level }?.line ?? text.lineCount
+                var last = next - 1
+                while last > h.line, text.lineText(last).trimmingCharacters(in: .whitespaces).isEmpty { last -= 1 }
+                if last >= h.line + 1 { spans.append((h.line + 1)...last) }
+            }
+        }
+        guard leaves else { return spans }
+        return spans.filter { s in !spans.contains { $0 != s && s.contains($0.lowerBound) && s.contains($0.upperBound) } }
+    }
+
+    private func fold(_ lines: ClosedRange<Int>) -> TextRange {
+        TextRange(text.offset(ofLine: lines.lowerBound), text.lineRange(lines.upperBound).end)
+    }
+
+    /// Collapse (⌃⌘9): the innermost declaration or section the caret is
+    /// in, folded under its first line.
+    @objc func collapse(_ sender: Any?) {
+        let line = text.line(at: primarySelection.head)
+        let open = foldables().filter { ($0.lowerBound - 1)...$0.upperBound ~= line && !folds.contains(fold($0)) }
+        guard let inner = open.min(by: { $0.count < $1.count }) else { return NSSound.beep() }
+        // The caret out of what's folded first, at the end of its first line.
+        setSelections([Selection(at: text.lineRange(inner.lowerBound - 1).end)])
+        folds.append(fold(inner))
+    }
+
+    /// Expand (⌃⌘0): the folds at the caret's line opened.
+    @objc func expand(_ sender: Any?) {
+        let line = text.line(at: primarySelection.head)
+        let before = folds.count
+        folds.removeAll { f in
+            let a = text.line(at: f.start) - 1, b = text.line(at: max(f.end - 1, f.start))
+            return (a...b).contains(line)
+        }
+        if folds.count == before { NSSound.beep() }
+    }
+
+    /// Collapse All (⌥⌘9): every function's body (every section without
+    /// sections in it), the caret's line kept in view.
+    @objc func collapseAll(_ sender: Any?) {
+        let all = foldables(leaves: true).map(fold)
+        guard !all.isEmpty else { return NSSound.beep() }
+        let line = text.line(at: primarySelection.head)
+        if let inner = foldables(leaves: true).first(where: { $0.contains(line) }) {
+            setSelections([Selection(at: text.lineRange(inner.lowerBound - 1).end)])
+        }
+        folds = Array(Set(folds + all)).sorted()
+    }
+
+    /// Expand All (⌥⌘0).
+    @objc func expandAll(_ sender: Any?) { folds = [] }
+
+    /// Debugging: what's folded, and the places marked.
+    var debugFolds: String {
+        let f = folds.map { "\(text.line(at: $0.start) + 1)-\(text.line(at: max($0.end - 1, $0.start)) + 1)" }.joined(separator: ",")
+        let p = places.map { "\($0.line + 1):\($0.links.count)\($0.note != nil ? "+note" : "")" }.joined(separator: ",")
+        return "folds [\(f)] places [\(p)] hidden \(hiddenLines.count)"
     }
 
     // MARK: Drawing
@@ -845,7 +1088,9 @@ final class TextView: NSView, NSTextInputClient {
         ctx.saveGState()
         ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         let gutterFont = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize * 0.78), weight: .regular)
+        foldChips = [:]
         for n in first...last {
+            if hiddenLines.contains(n) { continue }
             let l = layout(line: n)
             let lineTop = top(ofLine: n)
             if showsLineNumbers {
@@ -871,6 +1116,12 @@ final class TextView: NSView, NSTextInputClient {
             if cardLines[n] != nil {
                 ctx.restoreGState()
                 drawCard(ofLine: n)
+                ctx.saveGState()
+                ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+            }
+            if noteLayouts[n] != nil || foldStarts[n] != nil || placeByLine[n]?.links.isEmpty == false {
+                ctx.restoreGState()
+                drawPlace(ofLine: n, layout: l, top: lineTop)
                 ctx.saveGState()
                 ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }
@@ -1048,6 +1299,10 @@ final class TextView: NSView, NSTextInputClient {
     func setSelections(_ s: [Selection], scroll: Bool = true) {
         selections = s
         normalizeSelections()
+        // A caret come into folded lines (gone to, found) opens them.
+        if !hiddenLines.isEmpty, selections.contains(where: { hiddenLines.contains(text.line(at: $0.head)) }) {
+            folds.removeAll { f in selections.contains { $0.head >= f.start && $0.head <= f.end } }
+        }
         if markdown, !dropTracking {
             // The caret's line shows its Markdown as written: the line it
             // left and the one it came to are laid out again.
@@ -1213,6 +1468,8 @@ final class TextView: NSView, NSTextInputClient {
             }
         }
         syntaxEdited()
+        foldsEdited(edits)
+        foldsText = text
         resizeToFit()
         needsDisplay = true
     }
@@ -1381,10 +1638,13 @@ final class TextView: NSView, NSTextInputClient {
             if row < 0 {
                 guard line > 0 else { out.append(extend ? Selection(s.anchor, 0) : Selection(at: 0)); continue }
                 line -= 1
+                // Over folded lines, to the line they're folded under.
+                while line > 0, hiddenLines.contains(line) { line -= 1 }
                 row = layout(line: line).rows.count - 1
             } else if row >= l.rows.count {
                 guard line + 1 < text.lineCount else { out.append(extend ? Selection(s.anchor, text.count) : Selection(at: text.count)); continue }
                 line += 1
+                while line + 1 < text.lineCount, hiddenLines.contains(line) { line += 1 }
                 row = 0
             }
             let targetLayout = layout(line: line)
@@ -1909,6 +2169,17 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
+        // A note about a place clicked: the note, followed as its link is;
+        // a fold's chip, the lines opened.
+        if event.clickCount == 1, let n = noteLayouts.keys.first(where: { noteRect(ofLine: $0)?.contains(p) == true }),
+           let note = placeByLine[n]?.note {
+            delegate?.textView(self, follow: note.target, over: flags.contains(.option))
+            return
+        }
+        if event.clickCount == 1, let (_, i) = foldChips.first(where: { $0.value.rect.contains(p) }).map({ ($0.key, $0.value.fold) }), i < folds.count {
+            folds.remove(at: i)
+            return
+        }
         // Pressed in the gutter: its line may be dragged out, as a
         // reference to what's there; let go without moving, a click.
         if event.clickCount == 1, gutterWidth > 0, p.x < textLeft, flags.isDisjoint(with: [.shift, .option, .command]) {
@@ -2008,6 +2279,10 @@ final class TextView: NSView, NSTextInputClient {
         // Pressed in the selection and let go: a click there, the caret put down.
         if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
         pressedInSelection = nil
+        // A click on a place's mark in the gutter: what links to it, and from it.
+        if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
+            showLinks(of: place, at: convert(event.locationInWindow, from: nil))
+        }
         pressedInGutter = nil
         dragAnchor = nil
     }

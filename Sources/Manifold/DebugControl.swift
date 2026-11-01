@@ -1011,6 +1011,21 @@ enum DebugControl {
             return wc?.debugSearchPreview(arg) ?? "no window"
         case "dir":
             return wc?.debugDirectory(arg) ?? "no window"
+        case "folds":
+            // "folds [collapse|expand|collapseAll|expandAll] [line]": the
+            // focused editor's folds and marked places (§2.5), after doing so
+            // at that line (from 1) if given.
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            let w = arg.split(separator: " ").map(String.init)
+            if w.count > 1, let n = Int(w[1]) { e.select(line: n, column: 1) }
+            switch w.first {
+            case "collapse": e.textView.collapse(nil)
+            case "expand": e.textView.expand(nil)
+            case "collapseAll": e.textView.collapseAll(nil)
+            case "expandAll": e.textView.expandAll(nil)
+            default: break
+            }
+            return e.textView.debugFolds
         case "gitview":
             // "gitview [select <row>]": the focused git tile's rows, the one
             // chosen, and its pane.

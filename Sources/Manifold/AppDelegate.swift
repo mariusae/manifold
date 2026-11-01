@@ -459,6 +459,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         go.addItem(focusItem)
         item(go, "Focus Next Tile", #selector(MainWindowController.nextTile(_:)), "]", [.command, .option])
         item(go, "Focus Previous Tile", #selector(MainWindowController.previousTile(_:)), "[", [.command, .option])
+        go.addItem(.separator())
+        // A walk through code (§2.5): the focused note's references, a step
+        // at a time, each shown beside it.
+        item(go, "Next Step", #selector(MainWindowController.nextStep(_:)), "]", [.command, .control])
+        item(go, "Previous Step", #selector(MainWindowController.previousStep(_:)), "[", [.command, .control])
 
         // Tile: the focused tile — its size, its stack, its keeping.
         let tile = submenu(main, "Tile")

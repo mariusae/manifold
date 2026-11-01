@@ -776,6 +776,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                theme: hosts.state.appearance.theme)
             e.delegate = self
             e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
+            e.showsNotes = viewState(of: p)["notes"] != "hidden"
+            e.onToggleNotes = { [weak self] shown in self?.keepViewState(["notes": shown ? "shown" : "hidden"], of: p) }
             e.blockLook = { [weak self] id in
                 guard let b = self?.hosts.block(id) else { return nil }
                 return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b), status: StatusGlyph.look(of: b))
@@ -880,6 +882,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let toast = ToastView()
     /// The space a ⌘` walk is at, named while ⌘ is held and the sidebar's away.
     private let spaceHUD = SpaceHUD()
+    /// A walk through code under way (§2.5): ⌃⌘] and ⌃⌘[ step along it.
+    private var codeWalk: CodeWalk?
     private var spaceHUDWork: DispatchWorkItem?
     /// Each tile's own trail, as a browser window's: the blocks it showed
     /// before in its place (a listing's folders, a preview's pages), and
@@ -4749,6 +4753,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // or heading there, kept as the text moves — not the line's number.
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
         Drags.localHost = host.host
+        MarkdownStyle.placeName = { [weak self] id, anchor in self?.hosts.block(id)?.anchors?[anchor].map(Anchoring.name(of:)) }
         Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: $0.anchored(fragment, in: id), title: title)) } }
         Drags.contents = { [weak self] id, fragment, done in
             guard let self else { return done(nil) }
@@ -7615,6 +7620,79 @@ extension MainWindowController: GridDelegate {
         if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
     }
 
+    // MARK: Walks through code (§2.5)
+
+    /// A walk under way: a note's references, in its text's order, each a
+    /// step shown beside it in one tile (the walk's), the note keeping the
+    /// keyboard — ⌃⌘] the next, ⌃⌘[ the one before.
+    private struct CodeWalk {
+        var note: BlockID
+        var notePlacement: PlacementID
+        /// Each step's reference, and where it's written in the note.
+        var steps: [(address: String, range: TextRange)]
+        var index: Int
+        var tile: PlacementID?
+    }
+
+    @objc func nextStep(_ sender: Any?) { step(1) }
+    @objc func previousStep(_ sender: Any?) { step(-1) }
+
+    /// The references a text holds, in order (a step again only when it
+    /// isn't the one just before).
+    static func steps(in text: Rope) -> [(address: String, range: TextRange)] {
+        guard let re = try? NSRegularExpression(pattern: BlockID.referencePattern) else { return [] }
+        let s = text.string, ns = s as NSString
+        var out: [(String, TextRange)] = []
+        for m in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+            let address = ns.substring(with: m.range)
+            guard out.last?.0 != address else { continue }
+            let start = text.byteOffset(ofUTF16: m.range.location), end = text.byteOffset(ofUTF16: NSMaxRange(m.range))
+            out.append((address, TextRange(start, end)))
+        }
+        return out
+    }
+
+    private func step(_ d: Int) {
+        // The focused text's walk: begun at its first step, unless it's the
+        // one under way (or the walk's own tile is focused).
+        if let f = focusedShown, let b = f.block, b.kind == .text, f.placement.id != codeWalk?.tile, b.id != codeWalk?.note,
+           let text = b.text?.text {
+            let steps = Self.steps(in: text)
+            guard !steps.isEmpty else { return NSSound.beep() }
+            codeWalk = CodeWalk(note: b.id, notePlacement: f.placement.id, steps: steps, index: d > 0 ? -1 : steps.count, tile: nil)
+        }
+        guard var w = codeWalk else { return NSSound.beep() }
+        // The note edited meanwhile: its references as they are now.
+        if let text = hosts.block(w.note)?.text?.text { w.steps = Self.steps(in: text) }
+        let i = w.index + d
+        guard w.steps.indices.contains(i), let (id, fragment) = BlockID.link(w.steps[i].address), let b = hosts.block(id) else {
+            codeWalk = w
+            return NSSound.beep()
+        }
+        w.index = i
+        let lens = Lens.default(for: b.kind, path: b.path)
+        // In the walk's tile if it's still there, else a new one beside the note.
+        if let tile = w.tile, let a = arrangement, let p = a.placement(tile) {
+            if p.block != id {
+                let next = ULID.make()
+                replace(tile, with: id, lens: lens, as: next)
+                w.tile = next
+            }
+        } else {
+            show(id, lens: lens, .beside, context: "a step of a walk")
+            w.tile = arrangement?.tile(of: id, lens: lens)?.id
+        }
+        codeWalk = w
+        // The keyboard back with the note, its step chosen in it.
+        appendToSelected([.focus(w.notePlacement)])
+        if let e = views[w.notePlacement] as? EditorView {
+            e.textView.setSelections([Selection(w.steps[i].range.start, w.steps[i].range.end)])
+        }
+        if let fragment { goTo(fragment, in: id) }
+        let name = fragment.flatMap { b.anchors?[$0] }.map(Anchoring.name(of:)) ?? b.displayTitle
+        toast.show("Step \(i + 1) of \(w.steps.count): \(name)", action: "End Walk", for: 3) { [weak self] in self?.codeWalk = nil }
+    }
+
     // MARK: Anchors (§2.5)
 
     /// A reference to a line of a text (from 0): to the declaration or
@@ -7739,6 +7817,49 @@ extension MainWindowController: EditorViewDelegate {
 
     func editorGutter(_ view: EditorView) -> [GutterMark] {
         hosts.gutter(view.block)
+    }
+
+    /// The places in an editor's text something is said about (§2.5): each
+    /// anchor with links to it or from it, at its line as last known; a
+    /// note linked to it as describing, annotating or explaining it, its
+    /// words (its title line left out).
+    func editorPlaces(_ view: EditorView) -> [TextView.Place] {
+        guard let b = hosts.block(view.block), let anchors = b.anchors, !anchors.isEmpty, let rope = b.text?.text else { return [] }
+        let n = hosts.neighborhood(of: b.id)
+        let inbound = n.inbound.values.flatMap { $0 }.filter { $0.toAnchor != nil }
+        let outbound = n.outbound.values.flatMap { $0 }.filter { $0.fromAnchor != nil }
+        guard !inbound.isEmpty || !outbound.isEmpty else { return [] }
+        var out: [TextView.Place] = []
+        for a in anchors.values {
+            guard let r = a.range, r.start <= rope.count else { continue }
+            let to = inbound.filter { $0.toAnchor == a.id }, from = outbound.filter { $0.fromAnchor == a.id }
+            guard !to.isEmpty || !from.isEmpty else { continue }
+            var links: [TextView.Place.Link] = []
+            var seen = Set<String>()
+            for e in to {
+                let target = Self.address(e.from, anchor: e.fromAnchor)
+                guard seen.insert(target + (e.relation ?? "")).inserted else { continue }
+                links.append(.init(title: hosts.block(e.from)?.displayTitle ?? "?", relation: e.relation, target: target, inbound: true))
+            }
+            for e in from {
+                let target = Self.address(e.to, anchor: e.toAnchor)
+                guard seen.insert(target + (e.relation ?? "")).inserted else { continue }
+                links.append(.init(title: hosts.block(e.to)?.displayTitle ?? "?", relation: e.relation, target: target, inbound: false))
+            }
+            // The note that describes it (else annotates, explains), shown under it.
+            var note: TextView.Place.Note?
+            for relation in ["describes", "annotates", "explains"] {
+                guard let e = to.first(where: { $0.relation == relation }), let nb = hosts.block(e.from), nb.isNote, let t = nb.text?.text.string else { continue }
+                var body = t
+                if let first = body.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first, first.hasPrefix("# ") {
+                    body = String(body.dropFirst(first.count)).trimmingCharacters(in: .newlines)
+                }
+                note = .init(title: nb.displayTitle, text: body, relation: relation, target: Self.address(e.from))
+                break
+            }
+            out.append(.init(line: rope.line(at: r.start), links: links, note: note))
+        }
+        return out.sorted { $0.line < $1.line }
     }
 
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void) {

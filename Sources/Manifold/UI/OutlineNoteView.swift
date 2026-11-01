@@ -574,7 +574,7 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
         }
     }
 
-    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#[A-Za-z]+=[0-9]+)?"#)
+    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + BlockID.referencePattern)
 
     /// `==text==`'s ground: a highlighter's yellow, the text reading through it.
     static let highlighter = NSColor(name: "noteHighlighter") { appearance in
