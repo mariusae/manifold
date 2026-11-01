@@ -140,6 +140,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.menuPlacement = placement
         textView.autoresizingMask = [.width]
         textView.commentLeader = Self.commentLeader(for: path)
+        textView.commentSyntax = font == .monospaced ? CommentSyntax.forPath(path) : nil
         textView.acceptsBlockLinks = path.isEmpty || Lens.isMarkdown(path)
         textView.markdown = isMarkdownOutline
         if isMarkdownOutline {
@@ -701,6 +702,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // Lines and letters as the role sets them, edited or viewed alike.
         textView.lineHeightMultiple = theme.editorLineHeight(font, font: f)
         textView.tracking = theme.tracking(font, font: f)
+        // Code set monospaced has its comments' words in the technical
+        // font beside it, at the same scale (§7.1).
+        let comment = theme.technicalFont(size: f.pointSize)
+        textView.commentFont = comment
+        textView.commentTracking = theme.technicalTracking(comment)
+        textView.commentSyntax = font == .monospaced ? CommentSyntax.forPath(path) : nil
     }
 
     @objc func increaseFontSize(_ sender: Any?) { sizeAdjust += 1; applyFont() }
@@ -770,6 +777,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 guard !path.isEmpty else { return }
                 self.path = path
                 self.textView.commentLeader = Self.commentLeader(for: path)
+                self.applyFont()
                 // Its file's name names it now.
                 self.delegate?.editor(self, append: [.path(path)] + (self.noteName == nil ? [] : [.title(nil)]))
                 self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version))
@@ -783,6 +791,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             guard let self, response == .OK, let url = panel.url, let doc = self.document else { return }
             self.path = url.path
             self.textView.commentLeader = Self.commentLeader(for: url.path)
+            self.applyFont()
             self.delegate?.editor(self, append: [.path(url.path)] + (self.noteName == nil ? [] : [.title(nil)]))
             self.delegate?.editor(self, propose: .writeFile(self.block, version: doc.version))
         }

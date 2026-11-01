@@ -666,18 +666,26 @@ around it, and comes back with its history.
   folder (so their images and stylesheets work), from a terminal, the
   Open Quickly, a folder listing, a link in a preview, or the `mani`
   command.
-- **Fonts**: besides the interface's system font, a theme has three: a
-  **monospaced** one for terminals and code, an **editing** one for what's
+- **Fonts**: besides the interface's system font, a theme has four: a
+  **monospaced** one for terminals and code, a **technical** one beside
+  it — proportional, for what's said about code: in an editor set
+  monospaced, a comment's words are set in it, its `//`, `#` or `/*`
+  left in the monospaced, wherever the language's comments are (found
+  by their form alone, strings and all, a line at a time, in some fifty
+  languages by extension) — an **editing** one for what's
   edited (notes, text in an editor — or, Settings ▸ Appearance ▸ Editor
   Text, the monospaced one), and a **reading** one for previews (a
-  Markdown preview). Each theme sets the three — face, size, line height
+  Markdown preview). Each theme sets them — face, size, line height
   (a multiple of the size), letter spacing and OpenType features — and
-  no fonts are shipped: **System** (SF and SF Mono), **Apple** (the
+  no fonts are shipped: **System** (SF and SF Mono, SF beside it, as
+  Xcode has them), **Apple** (the
   default: Avenir Next 15 to edit, New York 16 to read — the system's
-  serif — and Menlo 13), and **Humanist** (Hoefler&Co.'s ScreenSmart
+  serif — and Menlo 13, with Lucida Grande 13.5 beside it, meeting
+  Menlo's x-height), and **Humanist** (Hoefler&Co.'s ScreenSmart
   faces: Ideal Sans Book 14.5 to edit, with lining, tabular figures and
   ligatures, `lnum, tnum, liga`; Chronicle 15.5 to read, at 1.55, with
-  ligatures; Menlo 13), which is offered only where Ideal Sans SSm and
+  ligatures; Menlo 13, with Whitney 13.5 beside it — SF where Whitney
+  isn't installed), which is offered only where Ideal Sans SSm and
   Chronicle SSm are installed (without them, a saved Humanist is set as
   Apple, and it comes back when they are). Headings in a preview take the reading role's heading weight, as the
   family's nearest face (Humanist's a step below Bold: Chronicle has no
@@ -694,7 +702,9 @@ around it, and comes back with its history.
   OpenType features by tag (`ss01, zero, -liga, cv05=2`, or checked off
   a menu of those the font has); the reading role also its measure (the
   longest line in a preview, in characters) and the space between
-  paragraphs (and its headings' face). Bold and italic come from the family's own faces, by
+  paragraphs (and its headings' face); the technical role no line height
+  — it's set on the monospaced's lines, its size where the monospaced is
+  13 pt, and its sample is code with comments. Bold and italic come from the family's own faces, by
   their weights: bold a face about three hundred heavier (Regular's
   Bold) — or the face a role names (its **Bold** menu: Humanist's
   editing role names Semibold, Ideal's Bold being heavy beside Book, and

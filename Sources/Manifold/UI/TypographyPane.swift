@@ -2,7 +2,7 @@ import AppKit
 import ManifoldCore
 
 /// Settings ▸ Typography: custom typography (the Custom font theme), a
-/// role at a time — editing, reading, monospaced — each with its family
+/// role at a time — editing, reading, monospaced, technical — each with its family
 /// and face, size, line height, letter spacing and OpenType features (and
 /// for reading, its measure and the space between paragraphs), set in a
 /// sample as it changes. Changing anything here sets Manifold in it.
@@ -86,7 +86,7 @@ final class TypographyPane: SettingsPane {
             v.textColor = Theme.secondaryText
             v.widthAnchor.constraint(equalToConstant: 90).isActive = true
         }
-        row("Line Height", line([leading, leadingValue]))
+        row("Line Height", line([leading, leadingValue]), note: "Technical is set on the monospaced's lines, at its size where the monospaced is 13 pt.")
         row("Letter Spacing", line([tracking, trackingValue]))
 
         features.placeholderString = "ss01, zero, -liga"
@@ -166,6 +166,7 @@ final class TypographyPane: SettingsPane {
         if newRole || features.currentEditor() == nil { features.stringValue = style.features }
         fillFeatureMenu()
         let reading = role == .reading
+        leading.isEnabled = role != .technical
         measure.isEnabled = reading
         gapSlider.isEnabled = reading
         measure.doubleValue = style.measure
@@ -261,6 +262,7 @@ final class TypographyPane: SettingsPane {
         case .editing: text = "# Notes\nThe quick brown fox jumps over the lazy dog. Sphinx of black quartz, judge my vow — 1234567890."
         case .reading: text = "Typography is the craft of endowing human language with a durable visual form. The reader should be able to read without effort: 0123456789, “quotes”, fi fl ffi."
         case .monospaced: text = "func fib(_ n: Int) -> Int {\n    n < 2 ? n : fib(n - 1) + fib(n - 2) // 0O 1lI\n}\n$ make test && echo ok  != == => -> <= >="
+        case .technical: return showTechnicalSample()
         }
         let font = style.font(size: CGFloat(style.size), role: role)
         let p = NSMutableParagraphStyle()
@@ -274,6 +276,36 @@ final class TypographyPane: SettingsPane {
     }
 
     // MARK: Changing
+
+    /// Code in the monospaced font, its comments in the technical as it's
+    /// set, on the monospaced's lines — as an editor has them.
+    private func showTechnicalSample() {
+        let mono = source.appearance().typography.monospaced
+        let code = mono.font(size: CGFloat(mono.size), role: .monospaced)
+        let comment = style.font(size: CGFloat(mono.size * style.size / 13), role: .technical)
+        let text = "/// The nth Fibonacci number, the slow way:\n/// each call makes two more.\nfunc fib(_ n: Int) -> Int {\n    if n < 2 { return n } // 0 and 1\n    return fib(n - 1) + fib(n - 2)\n}"
+        let p = NSMutableParagraphStyle()
+        let natural = code.ascender - code.descender + code.leading
+        if natural > 0 { p.lineHeightMultiple = CGFloat(mono.lineHeight) * code.pointSize / natural }
+        let out = NSMutableAttributedString(string: text, attributes: [
+            .font: code, .kern: CGFloat(mono.tracking) / 1000 * code.pointSize, .paragraphStyle: p, .foregroundColor: Theme.text,
+        ])
+        // Its comments found as the editor finds them.
+        let syntax = CommentSyntax.forPath("sample.swift")!
+        var state = CommentState.code, at = 0
+        for line in text.components(separatedBy: "\n") {
+            let bytes = Array(line.utf8)
+            let (ranges, end) = syntax.scan(bytes, from: state)
+            state = end
+            for r in ranges {
+                let a = String(decoding: bytes[..<r.lowerBound], as: UTF8.self).utf16.count
+                let b = String(decoding: bytes[..<r.upperBound], as: UTF8.self).utf16.count
+                out.addAttributes([.font: comment, .kern: CGFloat(style.tracking) / 1000 * comment.pointSize], range: NSRange(location: at + a, length: b - a))
+            }
+            at += line.utf16.count + 1
+        }
+        sample.attributedStringValue = out
+    }
 
     /// The edited role kept, and Manifold set in it, once edits pause.
     private func changed(now: Bool = false) {

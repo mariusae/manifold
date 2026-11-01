@@ -20,3 +20,9 @@ import Testing
     let partial = try JSONDecoder().decode(TypeStyle.self, from: Data(#"{"family":"Menlo","size":12}"#.utf8))
     #expect(partial.weight == 400 && partial.lineHeight == 1.3 && partial.paragraphSpacing == 1)
 }
+
+@Test func customTypographyKeptBeforeTheTechnicalRoleGetsTheSystems() throws {
+    let style = #"{"family":"Menlo","size":13,"lineHeight":1.3}"#
+    let old = try JSONDecoder().decode(Typography.self, from: Data(#"{"editing":\#(style),"reading":\#(style),"monospaced":\#(style)}"#.utf8))
+    #expect(old.monospaced.family == "Menlo" && old.technical == Typography.system.technical)
+}

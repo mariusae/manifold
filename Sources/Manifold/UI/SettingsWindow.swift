@@ -378,8 +378,10 @@ final class FontThemeList: NSView {
                 Flat.rowBand(r.insetBy(dx: -6, dy: 0)).fill()
             }
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])
-            // Editing, then reading if it's another face, then monospaced.
+            // Editing, then reading if it's another face, then monospaced
+            // and the technical beside it.
             let names = [t.proportionalName] + (t.readingName != t.proportionalName ? [t.readingName] : []) + [t.monospacedName]
+                + (t.technicalName != t.proportionalName ? [t.technicalName] : [])
             // At the right, in what room the name leaves: cut short, not
             // over it (Custom's faces can be long).
             let style = NSMutableParagraphStyle()

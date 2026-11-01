@@ -2,7 +2,9 @@ import AppKit
 import ManifoldCore
 
 /// What each theme sets things in, besides the interface's system font:
-/// a **monospaced** font for terminals and code; an **editing** font for
+/// a **monospaced** font for terminals and code; a **technical** one
+/// beside it, proportional, for what's said about code (its comments);
+/// an **editing** font for
 /// what's edited (notes, text in an editor, unless it's set monospaced);
 /// and a **reading** font for previews, set for reading (a Markdown
 /// preview). Each theme is a `Typography` — each role's face, size, line
@@ -61,6 +63,7 @@ extension FontTheme {
     /// The reading font's name.
     var readingName: String { styles.reading.displayName(.reading) }
     var monospacedName: String { styles.monospaced.displayName(.monospaced) }
+    var technicalName: String { styles.technical.displayName(.technical) }
 
     /// The Ghostty config's font lines.
     var terminalConfig: String { styles.monospaced.terminalConfig }
@@ -84,6 +87,16 @@ extension FontTheme {
         case .monospaced: return t.monospaced.font(size: size * t.monospaced.size / 13, role: .monospaced)
         }
     }
+
+    /// The technical font, where the monospaced is set at `size` (each at
+    /// its role's size where 13 is asked for): code's comments.
+    func technicalFont(size: CGFloat) -> NSFont {
+        let t = styles.technical
+        return t.font(size: size * t.size / 13, role: .technical)
+    }
+
+    /// The technical font's letter spacing, in points.
+    func technicalTracking(_ font: NSFont) -> CGFloat { styles.technical.tracking / 1000 * font.pointSize }
 
     /// The editor's lines, as a multiple of the font's own height: the
     /// role's line height (a multiple of its size) made one of the font's.
@@ -153,13 +166,14 @@ extension FontTheme {
 
 /// The three roles custom typography sets.
 enum FontRole: String, CaseIterable {
-    case editing, reading, monospaced
+    case editing, reading, monospaced, technical
 
     var title: String {
         switch self {
         case .editing: "Editing"
         case .reading: "Reading"
         case .monospaced: "Monospaced"
+        case .technical: "Technical"
         }
     }
 }
@@ -171,6 +185,7 @@ extension Typography {
             case .editing: editing
             case .reading: reading
             case .monospaced: monospaced
+            case .technical: technical
             }
         }
         set {
@@ -178,6 +193,7 @@ extension Typography {
             case .editing: editing = newValue
             case .reading: reading = newValue
             case .monospaced: monospaced = newValue
+            case .technical: technical = newValue
             }
         }
     }

@@ -908,6 +908,20 @@ What it is to use, modelled on Panic's Nova, without syntax highlighting:
 
 - Proportional (the theme's editing font) or fixed-width text from the
   theme, as now.
+- Set fixed-width, a comment's words are in the theme's technical font
+  beside it (proportional; Xcode's way), its leader, delimiters and the
+  stars down a block's left kept in the code's face, so where a comment
+  starts and what it's lined up with stay on the code's grid; all
+  comments, nothing guessed about what one says. Where they are is
+  lexical: per language (`CommentSyntax`, by name or extension), line
+  leaders, block delimiters (nesting where the language nests them) and
+  the strings a leader inside doesn't start one in — raw, multi-line,
+  characters told from Rust's lifetimes — scanned a line at a time from
+  the state the line above left (in a block comment, a string run on),
+  each line's kept and made again after an edit only down to where it's
+  as it was. In the app, as it's typed: no language server (most don't
+  say, or say late, and a font changes layout), no parse. The face
+  alone: the same text colour, no hue.
 - Multiple cursors and selections; select next occurrence; column
   selection with ⌥-drag.
 - Line operations: move, duplicate, delete, join, sort; indent and
