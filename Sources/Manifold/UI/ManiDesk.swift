@@ -1,6 +1,7 @@
 import AppKit
 import PDFKit
 import ManifoldCore
+import ManifoldSyntax
 
 /// `mani`'s commands that the app does (`Mani.verbs`, those `inApp`),
 /// asked through a host (`ManiRequest`) and answered to it (`ManiReply`):
@@ -100,8 +101,14 @@ final class ManiDesk {
             return ""
         case "link":
             let from = try await target(r.args[0], scope), to = try await target(r.args[1], scope)
-            hosts.link(from: from.block, to: to.block, kind: .linked, context: r.flags["note"])
+            // Places at either end, as anchors (a line of a text made one).
+            let fromAnchor = wc.anchored(from.fragment, in: from.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
+            let toAnchor = wc.anchored(to.fragment, in: to.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
+            hosts.link(from: from.block, to: to.block, kind: .linked, context: r.flags["note"],
+                       fromAnchor: fromAnchor, toAnchor: toAnchor, relation: r.flags["as"])
             return ""
+        case "symbols": return try await symbols(r, scope)
+        case "ref": return try await ref(r, scope)
         case "rename":
             let t = try await target(r.args[0], scope)
             hosts.append(.title(r.args[1].isEmpty ? nil : r.args[1]), to: .block(t.block))
@@ -327,6 +334,89 @@ final class ManiDesk {
         throw Failure(message: "nothing is named \(s)")
     }
 
+    // MARK: Places (§2.5)
+
+    /// A text block for a name: one known, or a file by its path, made a
+    /// block (and read from disk, waited for a moment).
+    private func textBlock(_ name: String, _ scope: Scope) async throws -> Block {
+        var id: BlockID
+        do {
+            id = try resolve(name, scope).block
+        } catch {
+            guard name.contains("/") || name.contains("."), !name.hasPrefix("manifold:") else { throw error }
+            var path = name.expandingTildeInPath
+            if !path.hasPrefix("/") { path = scope.request.cwd.appendingPathComponent(path) }
+            path = URL(fileURLWithPath: path).standardizedFileURL.path
+            if scope.host == hosts.local.host, !FileManager.default.fileExists(atPath: path) { throw Failure(message: "no file \(name)") }
+            id = hosts.textBlock(for: path, on: scope.host)
+        }
+        for _ in 0..<100 {
+            if let b = hosts.block(id) {
+                guard b.kind == .text else { throw Failure(message: "\(name) isn't a file's text or a note") }
+                if !b.needsRead { return b }
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw Failure(message: "\(name) hasn't been read from disk yet")
+    }
+
+    /// `mani symbols`: a file's declarations, by path, each with its line;
+    /// a Markdown text's headings, indented by level.
+    private func symbols(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        let b = try await textBlock(r.args[0], scope)
+        guard let rope = b.text?.text else { return "" }
+        if let path = b.path, let language = SyntaxLanguage.forPath(path) {
+            let decls = SyntaxTree(language, text: rope, background: false).declarations()
+            if decls.isEmpty { throw Failure(message: "no declarations in \(b.displayTitle)") }
+            return decls.map { "\($0.path)\t\(rope.line(at: $0.range.start) + 1)" }.joined(separator: "\n")
+        }
+        let headings = NoteOutlineMarkdown.items(in: rope.string).filter(\.isHeading)
+        guard !headings.isEmpty else { throw Failure(message: "\(b.displayTitle) has no grammar here, and no headings") }
+        return headings.map { String(repeating: "  ", count: max($0.level - 1, 0)) + $0.title + "\t\($0.line + 1)" }.joined(separator: "\n")
+    }
+
+    /// `mani ref`: a reference to a place in a file — a declaration, a
+    /// heading, a line — its anchor found or minted.
+    private func ref(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        let b = try await textBlock(r.args[0], scope)
+        guard let rope = b.text?.text else { throw Failure(message: "\(r.args[0]) has no text") }
+        var line: Int?
+        if let want = r.flags["symbol"] {
+            guard let path = b.path, let language = SyntaxLanguage.forPath(path) else { throw Failure(message: "\(b.displayTitle) has no grammar to find declarations by") }
+            let decls = SyntaxTree(language, text: rope, background: false).declarations()
+            let found = decls.filter { $0.path == want }.first ?? decls.filter { $0.path.hasSuffix("." + want) || $0.name == want }.first
+            guard let d = found else { throw Failure(message: "no declaration \(want) in \(b.displayTitle) (mani symbols lists them)") }
+            line = rope.line(at: d.range.start)
+        } else if let want = r.flags["heading"] {
+            let headings = NoteOutlineMarkdown.items(in: rope.string).filter(\.isHeading)
+            guard let h = headings.first(where: { $0.title == want }) ?? headings.first(where: { $0.title.lowercased() == want.lowercased() }) else {
+                throw Failure(message: "no heading \(want) in \(b.displayTitle)")
+            }
+            line = h.line
+        } else if let n = r.flags["line"] {
+            guard let k = Int(n), k >= 1, k <= rope.lineCount else { throw Failure(message: "\(b.displayTitle) has \(rope.lineCount) lines") }
+            line = k - 1
+        }
+        guard let line else { throw Failure(message: "say where: --symbol, --heading or --line", status: 2) }
+        guard let address = wc.reference(toLine: line, in: b.id) else { throw Failure(message: "no place at line \(line + 1)") }
+        guard r.flags["markdown"] != nil else { return address }
+        let anchor = BlockID.link(address)?.fragment
+        let name = anchor.flatMap { hosts.block(b.id)?.anchors?[$0] }.map(Anchoring.name(of:))
+            ?? Anchoring.anchor(atLine: line, of: b).map(Anchoring.name(of:)) ?? b.displayTitle
+        return "[\(name.replacingOccurrences(of: "]", with: "\\]"))](\(address))"
+    }
+
+    /// An anchor's lines, as the text is now (found again if it moved).
+    private func anchorText(_ anchor: String, in b: Block) throws -> String {
+        guard let a = b.anchors?[anchor] else { throw Failure(message: "no such place in \(b.displayTitle)") }
+        guard let (range, putRight) = Anchoring.locate(a, in: b), let rope = b.text?.text else {
+            throw Failure(message: "“\(Anchoring.name(of: a))” is no longer in \(b.displayTitle)")
+        }
+        if let putRight { hosts.append([.anchor(putRight)], to: .block(b.id)) }
+        let first = rope.offset(ofLine: rope.line(at: range.start))
+        return rope[TextRange(first, range.end)]
+    }
+
     // MARK: Selection
 
     private func selected(in view: PaneContent) {
@@ -472,9 +562,31 @@ final class ManiDesk {
         let links = n.outbound.values.flatMap { $0 }.filter { hosts.block($0.to)?.kind != .arrangement }.prefix(30).map { l -> [String: Any] in
             var o: [String: Any] = ["to": l.to.description, "title": hosts.block(l.to)?.displayTitle ?? ""]
             if let c = l.context { o["context"] = c }
+            // Its places (§2.5): references to them, and what they're called.
+            if let a = l.toAnchor {
+                o["to"] = MainWindowController.address(l.to, anchor: a)
+                if let anchor = hosts.block(l.to)?.anchors?[a] { o["place"] = Anchoring.name(of: anchor) }
+            }
+            if let a = l.fromAnchor { o["from"] = MainWindowController.address(b.id, anchor: a) }
+            if let r = l.relation { o["relation"] = r }
             return o
         }
         if !links.isEmpty { out["links"] = Array(links) }
+        // Its places referred to, and what links to each.
+        if let anchors = b.anchors, !anchors.isEmpty {
+            let inbound = n.inbound.values.flatMap { $0 }
+            out["places"] = anchors.values.sorted { ($0.range?.start ?? 0) < ($1.range?.start ?? 0) }.prefix(100).map { a -> [String: Any] in
+                var o: [String: Any] = ["ref": MainWindowController.address(b.id, anchor: a.id), "name": Anchoring.name(of: a)]
+                if let r = a.range, let rope = b.text?.text, r.start <= rope.count { o["line"] = rope.line(at: r.start) + 1 }
+                let from = inbound.filter { $0.toAnchor == a.id }.map { e -> [String: Any] in
+                    var f: [String: Any] = ["from": e.from.description, "title": hosts.block(e.from)?.displayTitle ?? ""]
+                    if let r = e.relation { f["relation"] = r }
+                    return f
+                }
+                if !from.isEmpty { o["linkedFrom"] = from }
+                return o
+            }
+        }
         if let tileID = t.tile, let outline = wc.views[tileID]?.outline, !outline.items.isEmpty {
             out["outline"] = outline.items.indices.prefix(200).map { i -> [String: Any] in
                 var o: [String: Any] = ["title": outline.items[i].title, "level": outline.items[i].level]
@@ -528,6 +640,8 @@ final class ManiDesk {
            let c = b.terminal?.commands?.first(where: { $0.id == id }) {
             return lines(try await output(of: c, in: b.id, view: view), r.flags["lines"])
         }
+        // A reference to an anchor: its lines (a declaration whole, a heading's line).
+        if let f = t.fragment, Anchor.isAnchor(f) { return lines(try anchorText(f, in: b), r.flags["lines"]) }
         var pageFlag = r.flags["pages"]
         if pageFlag == nil, let f = t.fragment, f.hasPrefix("page=") { pageFlag = String(f.dropFirst(5)) }
         let pages = try pageFlag.map { try range($0, what: "pages") }
@@ -545,6 +659,7 @@ final class ManiDesk {
     /// output, a page's text, a heading's section or an item's; without
     /// one, the whole block's (a terminal's whole history).
     func contents(of b: Block, at fragment: String?, view: PaneContent?) async throws -> String {
+        if let f = fragment, Anchor.isAnchor(f) { return try anchorText(f, in: b) }
         if let f = fragment {
             if f.hasPrefix("command="), let id = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == id }) {
                 return try await output(of: c, in: b.id, view: view)

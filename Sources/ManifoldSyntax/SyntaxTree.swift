@@ -202,22 +202,57 @@ public final class SyntaxTree {
     /// predicates held, in the text's order, each once: each's name and
     /// its node's bytes. Captures named with a `_` first are left out.
     public func captures(_ query: SyntaxQuery, in range: TextRange) -> [(name: String, range: TextRange)] {
-        guard let tree else { return [] }
-        ts_query_cursor_set_byte_range(cursor, UInt32(range.start), UInt32(max(range.end, range.start + 1)))
-        ts_query_cursor_exec(cursor, query.query, ts_tree_root_node(tree))
         var out: [(name: String, range: TextRange)] = []
         var seen = Set<TextRange>()
+        for match in matches(query, in: range) {
+            for c in match where !c.name.hasPrefix("_") && seen.insert(c.range).inserted { out.append(c) }
+        }
+        return out.sorted { $0.range < $1.range }
+    }
+
+    /// The matches of `query` among the nodes overlapping `range` (all of
+    /// the text, if nil), its predicates held: each its captures' names
+    /// and nodes' bytes.
+    public func matches(_ query: SyntaxQuery, in range: TextRange? = nil) -> [[(name: String, range: TextRange)]] {
+        guard let tree else { return [] }
+        let r = range ?? TextRange(0, text.count)
+        ts_query_cursor_set_byte_range(cursor, UInt32(r.start), UInt32(max(r.end, r.start + 1)))
+        ts_query_cursor_exec(cursor, query.query, ts_tree_root_node(tree))
+        var out: [[(name: String, range: TextRange)]] = []
         var match = TSQueryMatch()
         while ts_query_cursor_next_match(cursor, &match) {
             var captures = (0..<Int(match.capture_count)).map { match.captures[$0] }
             guard holds(query.predicates[Int(match.pattern_index)], &captures) else { continue }
-            for c in captures {
-                let name = query.captureNames[Int(c.index)]
-                let r = TextRange(Int(ts_node_start_byte(c.node)), Int(ts_node_end_byte(c.node)))
-                if !name.hasPrefix("_"), seen.insert(r).inserted { out.append((name, r)) }
-            }
+            out.append(captures.map { (query.captureNames[Int($0.index)], TextRange(Int(ts_node_start_byte($0.node)), Int(ts_node_end_byte($0.node)))) })
         }
-        return out.sorted { $0.range < $1.range }
+        return out
+    }
+
+    /// Its declarations (§2.5), in order: each with its path — the names of
+    /// the declarations it's in and its own, `Type.method` (its `@context`
+    /// first, where it doesn't sit inside what qualifies it) — its bytes,
+    /// and its name's.
+    public func declarations() -> [Declaration] {
+        guard let query = language.declarationQuery else { return [] }
+        var found: [(decl: TextRange, name: TextRange, context: String?)] = []
+        var seen = Set<TextRange>()
+        for m in matches(query) {
+            guard let decl = m.first(where: { $0.name == "decl" })?.range, let name = m.first(where: { $0.name == "name" })?.range,
+                  seen.insert(decl).inserted else { continue }
+            found.append((decl, name, m.first(where: { $0.name == "context" }).map { text[$0.range] }))
+        }
+        found.sort { $0.decl.start != $1.decl.start ? $0.decl.start < $1.decl.start : $0.decl.end > $1.decl.end }
+        var out: [Declaration] = []
+        var open: [Declaration] = []
+        for f in found {
+            while let last = open.last, last.range.end <= f.decl.start { open.removeLast() }
+            let own = text[f.name].split(separator: "\n").first.map(String.init) ?? ""
+            let parts = open.map(\.name) + [f.context, own].compactMap { $0 }
+            let d = Declaration(name: own, path: parts.joined(separator: "."), range: f.decl, nameRange: f.name)
+            out.append(d)
+            open.append(d)
+        }
+        return out
     }
 
     /// Whether a match's predicates hold (`#adjacent?` leaving out the
@@ -372,4 +407,13 @@ public final class SyntaxTree {
         let row = text.line(at: offset)
         return TSPoint(row: UInt32(row), column: UInt32(offset - text.offset(ofLine: row)))
     }
+}
+
+/// A declaration in code (§2.5): what a symbol anchor is at.
+public struct Declaration: Equatable, Sendable {
+    public var name: String
+    /// The names of the declarations it's in and its own: `Type.method`.
+    public var path: String
+    public var range: TextRange
+    public var nameRange: TextRange
 }

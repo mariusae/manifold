@@ -299,6 +299,12 @@ extension EditorView {
         return nil
     }
     func textViewRequestsCompletion(_ view: TextView) { completeSymbol(nil) }
+
+    /// A gutter's line dragged: a reference to its place (§2.5) — what an
+    /// outline's item carries, its line made an anchor by the window.
+    func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {
+        Drags.place?(block, "line=\(line + 1)", view.text.lineText(line).trimmingCharacters(in: .whitespaces))
+    }
 }
 
 /// Completions, in a small window under the caret: typing narrows them,

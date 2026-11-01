@@ -176,6 +176,19 @@ extension Block {
     /// section's first lines; a page by its number. Its `place` is the
     /// block it's in. Nil for a place the block doesn't have.
     public func summary(at fragment: String, now: Date = Date()) -> BlockSummary? {
+        // An anchor (§2.5): what it's called, and its first lines.
+        if Anchor.isAnchor(fragment) {
+            guard let a = anchors?[fragment] else { return nil }
+            var s = BlockSummary(title: Self.oneLine(a.name ?? a.excerpt ?? fragment, max: 80), place: displayTitle)
+            if let r = a.range, let rope = text?.text, r.end <= rope.count {
+                let first = rope.line(at: r.start)
+                let last = min(rope.line(at: max(r.end - 1, r.start)), first + 3)
+                s.lines = (first...last).map { rope.lineText($0) }
+                s.code = path.map { !Lens.isMarkdown($0) } ?? false
+            }
+            if a.unsure == true { s.note = "moved?" }
+            return s
+        }
         let parts = fragment.split(separator: "=", maxSplits: 1).map(String.init)
         guard parts.count == 2, let n = Int(parts[1]) else { return nil }
         switch parts[0] {

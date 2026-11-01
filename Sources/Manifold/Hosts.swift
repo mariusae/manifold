@@ -513,8 +513,10 @@ final class Hosts {
     /// The pen for a block this client may lead, on focusing it (§8.2).
     func own(_ block: BlockID) { client(of: block)?.own(.block(block)) }
 
-    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
-        (client(of: from) ?? local).link(from: from, to: to, kind: kind, context: context)
+    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil,
+              fromAnchor: String? = nil, toAnchor: String? = nil, relation: String? = nil) {
+        (client(of: from) ?? local).link(from: from, to: to, kind: kind, context: context,
+                                          fromAnchor: fromAnchor, toAnchor: toAnchor, relation: relation)
     }
 
     // MARK: Attaching

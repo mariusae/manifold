@@ -19,12 +19,15 @@ public struct Mention: Equatable, Sendable {
     public var text: String
     /// Shown, not only named: `![words](target)`, an image in the text.
     public var embeds = false
+    /// The place in the block it names (§2.5): an anchor's id, written
+    /// after `#` (not a legible place, `line=12`, written before anchors).
+    public var anchor: String?
 
     public static func find(in text: String) -> [Mention] {
         var out: [Mention] = []
         var seen: Set<String> = []
         func add(_ m: Mention) {
-            let key = "\(m.target)"
+            let key = "\(m.target)#\(m.anchor ?? "")"
             if seen.insert(key).inserted { out.append(m) }
         }
         let s = text
@@ -47,11 +50,16 @@ public struct Mention: Equatable, Sendable {
                 let words = String(s[s.index(after: i)..<closeBracket])
                 var target = String(s[s.index(closeBracket, offsetBy: 2)..<closeParen])
                 if let space = target.firstIndex(of: " ") { target = String(target[..<space]) }
-                if let hash = target.firstIndex(of: "#") { target = String(target[..<hash]) }
+                var fragment: String?
+                if let hash = target.firstIndex(of: "#") {
+                    fragment = String(target[target.index(after: hash)...])
+                    target = String(target[..<hash])
+                }
                 let shown = i > s.startIndex && s[s.index(before: i)] == "!"
                 if target.hasPrefix("manifold:"), let id = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
                     var m = Mention(target: .block(id), text: words)
                     m.embeds = shown
+                    m.anchor = fragment.flatMap { Anchor.isAnchor($0) ? $0 : nil }
                     add(m)
                 } else if !target.isEmpty, !target.contains("://"), !target.hasPrefix("mailto:"), !words.contains("\n") {
                     var m = Mention(target: .path(target.removingPercentEncoding ?? target), text: words)

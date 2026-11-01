@@ -207,6 +207,23 @@ TextView.swift", the edge kept until it's put right (re-anchored) or
 removed. Keeping is per block: a place changes nothing of what keeps what
 (§4).
 
+As built: `Anchor` in the block's state (`Block.anchors`, by the `anchor`
+event), a text's ranges moved by `edit`, and by what changed between
+the old text and the new on `content` (anchors in the change marked
+unsure); the app makes and finds them (`Anchoring`): a declaration by
+the language's declarations query (`SyntaxLanguage.declarationQuery`,
+its `@decl` and `@name`, nested into paths), a heading by its path, a
+line by its words — found again nearest where it was. `Link` and the
+graph's edges carry `fromAnchor`, `toAnchor` and `relation`; one link of
+a kind per pair of places; a mention of `manifold:…#anchor` in a text is
+a link to the place. An outline's `line=` place, dragged or copied,
+becomes its anchor, as a line dragged from the editor's gutter does;
+`mani symbols`, `mani ref`, `mani link --as`, `mani read` of an anchor
+and `mani info`'s places give agents the same. To come: a place's own
+links shown where it is (a gutter's mark), presentations by relation
+(a description standing in for a folded body), and anchors in
+terminals, PDFs and diffs.
+
 ---
 
 ## 3. Spaces

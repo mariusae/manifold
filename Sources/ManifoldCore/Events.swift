@@ -96,14 +96,30 @@ public struct Link: Codable, Equatable, Hashable, Sendable, Identifiable {
     /// What made it, in words: the terminal line a path was ⌘-clicked on,
     /// the editor line that named it, the search hit.
     public var context: String?
+    /// The places at either end (§2.5): an anchor of `from`'s, of `to`'s.
+    public var fromAnchor: String?
+    public var toAnchor: String?
+    /// What it means (§2.5): an open word — `describes`, `annotates`,
+    /// `explains`, `step` — beside its kind, which says how it was made.
+    public var relation: String?
 
-    public init(id: String = ULID.make(), from: BlockID, to: BlockID, kind: LinkKind, at: Stamp, context: String? = nil) {
+    public init(id: String = ULID.make(), from: BlockID, to: BlockID, kind: LinkKind, at: Stamp, context: String? = nil,
+                fromAnchor: String? = nil, toAnchor: String? = nil, relation: String? = nil) {
         self.id = id
         self.from = from
         self.to = to
         self.kind = kind
         self.at = at
         self.context = context
+        self.fromAnchor = fromAnchor
+        self.toAnchor = toAnchor
+        self.relation = relation
+    }
+
+    /// Whether it's between the same places as another (of the same kind):
+    /// one such link at a time.
+    public func joinsSame(as l: Link) -> Bool {
+        from == l.from && to == l.to && kind == l.kind && fromAnchor == l.fromAnchor && toAnchor == l.toAnchor
     }
 }
 
@@ -259,6 +275,9 @@ public enum Event: Codable, Equatable, Sendable {
     case path(String?)
     /// A placement's lens state: keys set (an empty value takes one away).
     case view(placement: PlacementID, [String: String])
+    /// A place in the block referred to (§2.5): minted, or put right (the
+    /// same id, found again elsewhere).
+    case anchor(Anchor)
 
     // Text.
     /// The whole text, as read from disk (or set at creation).
@@ -423,9 +442,15 @@ extension Block {
 extension Block {
     /// Applies an event; pure (no clock, no I/O).
     public mutating func apply(_ event: Event, at: Stamp) {
+        // The text as it was, for anchors to follow it when it's read anew.
+        let before: Rope? = if case .content = event, anchors != nil { text?.text } else { nil }
+        defer { moveAnchors(event, before: before) }
         switch event {
         case let .create(kind, title, path):
             self = Block(id: id, kind: kind, created: at, title: title, path: path)
+        case let .anchor(a):
+            if anchors == nil { anchors = [:] }
+            anchors![a.id] = a
         case let .title(t):
             title = t?.trimmingCharacters(in: .whitespacesAndNewlines)
             if title?.isEmpty == true { title = nil }
@@ -966,8 +991,8 @@ extension Links {
     public mutating func apply(_ event: Event) {
         switch event {
         case let .link(l):
-            // One link of a kind between two blocks; a repeat moves it up.
-            links.removeAll { $0.from == l.from && $0.to == l.to && $0.kind == l.kind }
+            // One link of a kind between two places; a repeat moves it up.
+            links.removeAll { $0.joinsSame(as: l) }
             links.append(l)
         case let .unlink(id):
             links.removeAll { $0.id == id }

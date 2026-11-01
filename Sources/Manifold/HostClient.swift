@@ -707,13 +707,15 @@ final class HostClient {
     /// A link made again within moments — one action saying it twice, the
     /// second time perhaps without its words — is made once: a re-link
     /// replaces the link, words and all.
-    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil) {
-        guard from != to else { return }
-        let key = "\(from) \(to) \(kind)", now = Date()
+    func link(from: BlockID, to: BlockID, kind: LinkKind, context: String? = nil,
+              fromAnchor: String? = nil, toAnchor: String? = nil, relation: String? = nil) {
+        guard from != to || fromAnchor != toAnchor else { return }
+        let key = "\(from)#\(fromAnchor ?? "") \(to)#\(toAnchor ?? "") \(kind) \(relation ?? "")", now = Date()
         recentLinks = recentLinks.filter { now.timeIntervalSince($0.value.at) < 5 }
         if let last = recentLinks[key], context == nil || context == last.context { return }
         recentLinks[key] = (context, now)
-        propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context)))
+        propose(.link(Link(from: from, to: to, kind: kind, at: clock.now(), context: context,
+                           fromAnchor: fromAnchor, toAnchor: toAnchor, relation: relation)))
     }
     private var recentLinks: [String: (context: String?, at: Date)] = [:]
 

@@ -1016,6 +1016,8 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var views: [PlacementID: [String: String]]?
     /// Kept (§4): a root of its own, whatever refers to it, until let go.
     public var pinned: Bool?
+    /// The places in it referred to (§2.5), by id.
+    public var anchors: [String: Anchor]?
 
     public var isPinned: Bool { pinned == true }
     /// Something to attend to (§3.7): its status needs you, or finished

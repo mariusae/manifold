@@ -4745,9 +4745,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var navKeysMonitor: Any?
     private func watchHistoryButtons() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
-        Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: fragment) }
+        // A line of a text, referred to: its anchor (§2.5) — the declaration
+        // or heading there, kept as the text moves — not the line's number.
+        Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
         Drags.localHost = host.host
-        Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: fragment, title: title)) } }
+        Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: $0.anchored(fragment, in: id), title: title)) } }
         Drags.contents = { [weak self] id, fragment, done in
             guard let self else { return done(nil) }
             self.fetchContents(id, at: fragment, done)
@@ -7607,16 +7609,62 @@ extension MainWindowController: GridDelegate {
     /// A place in a block, as a link names it: a command (`command=7`), a
     /// line (`line=12`, a heading's), a PDF's page (`page=3`).
     func goTo(_ fragment: String, in b: BlockID) {
+        if Anchor.isAnchor(fragment) { return goToAnchor(fragment, in: b) }
         if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
         if fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
         if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
     }
 
+    // MARK: Anchors (§2.5)
+
+    /// A reference to a line of a text (from 0): to the declaration or
+    /// heading there, else the line — its anchor found among the block's,
+    /// or minted in its log.
+    func reference(toLine line: Int, in id: BlockID) -> String? {
+        guard let b = hosts.block(id), let wanted = Anchoring.anchor(atLine: line, of: b) else { return nil }
+        if let a = Anchoring.existing(wanted, in: b) { return Self.address(id, anchor: a.id) }
+        var a = wanted
+        a.id = Anchor.newID(taken: Set(b.anchors?.keys.map { $0 } ?? []))
+        hosts.append([.anchor(a)], to: .block(id))
+        return Self.address(id, anchor: a.id)
+    }
+
+    /// A place written as a line of a text (`line=12`, an outline's item)
+    /// as its anchor's id; any other as it is.
+    func anchored(_ fragment: String?, in id: BlockID) -> String? {
+        guard let f = fragment, f.hasPrefix("line="), let n = Int(f.dropFirst(5)), hosts.block(id)?.kind == .text,
+              let address = reference(toLine: n - 1, in: id) else { return fragment }
+        return BlockID.link(address)?.fragment ?? fragment
+    }
+
+    static func address(_ id: BlockID, anchor: String? = nil) -> String {
+        "manifold:\(id)" + (anchor.map { "#" + $0 } ?? "")
+    }
+
+    /// An anchor gone to: where it is now (put right in its block if it
+    /// was found elsewhere), or why not — the place gone. A text not read
+    /// yet is waited for a moment.
+    func goToAnchor(_ anchor: String, in id: BlockID, tries: Int = 20) {
+        // An anchor just minted (a reference made and followed at once) is
+        // waited for a moment, as a text not read yet is.
+        guard let b = hosts.block(id), let a = b.anchors?[anchor], !(b.text?.isUnread ?? false) else {
+            guard tries > 0, hosts.block(id) != nil else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToAnchor(anchor, in: id, tries: tries - 1) }
+            return
+        }
+        guard let (range, putRight) = Anchoring.locate(a, in: b), let rope = b.text?.text else {
+            return sayMissing(why: "“\(Anchoring.name(of: a))” is no longer in \(b.displayTitle)")
+        }
+        if let putRight { hosts.append([.anchor(putRight)], to: .block(id)) }
+        goToPlace(.line(rope.line(at: range.start) + 1), in: id)
+    }
+
     /// A block gone to that isn't there: why (`Hosts.whyMissing`), by
     /// the pointer when a click in the window went to it, else at the
     /// window's foot (a link opened from another app).
-    func sayMissing(_ id: BlockID) {
-        let why = hosts.whyMissing(id) ?? "There's nothing there"
+    func sayMissing(_ id: BlockID) { sayMissing(why: hosts.whyMissing(id) ?? "There's nothing there") }
+
+    func sayMissing(why: String) {
         let mouse: Set<NSEvent.EventType> = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp]
         if let e = NSApp.currentEvent, e.window === window, mouse.contains(e.type) {
             ReferenceTip.say(why, in: window)

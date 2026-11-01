@@ -180,9 +180,35 @@ public enum Mani {
         Verb(words: ["unpin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Unpin a block", details: "Takes the pin `mani pin` (or the menus) put on it.", inApp: true),
         Verb(words: ["link"], args: "<from> <to>", minArgs: 2, maxArgs: 2,
-             flags: [Flag(name: "note", value: "text", help: "what the link is for")],
-             summary: "Link one block to another",
-             details: "A link by hand, as a ⇧-drag onto a tile makes: among both tiles' links, followed from either.", inApp: true),
+             flags: [Flag(name: "note", value: "text", help: "what the link is for"),
+                     Flag(name: "as", value: "relation", help: "what it means: describes, annotates, explains, step, or any word")],
+             summary: "Link one block (or a place in it) to another",
+             details: """
+                 A link by hand, as a ⇧-drag onto a tile makes: among both tiles' links,
+                 followed from either. Either end may be a place, as a reference names
+                 one (`mani ref` prints them): a note that describes a function is
+                   mani link @last "$(mani ref Sources/App.swift --symbol App.run)" --as describes
+                 """, inApp: true),
+        Verb(words: ["symbols"], args: "<file>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "List a file's declarations (or a Markdown text's headings)",
+             details: """
+                 Each declaration its language's grammar finds — its path (`Type.method`)
+                 and the line it starts on — or each heading of a Markdown text, indented
+                 by its level. What `mani ref --symbol` and `--heading` take.
+                 """, inApp: true),
+        Verb(words: ["ref"], args: "<file>", minArgs: 1, maxArgs: 1,
+             flags: [Flag(name: "symbol", value: "path", help: "a declaration, by its path (`Type.method`) or name"),
+                     Flag(name: "heading", value: "title", help: "a Markdown heading, by its title"),
+                     Flag(name: "line", value: "n", help: "a line (from 1): the declaration or heading there, else the line"),
+                     Flag(name: "markdown", help: "as a Markdown link, [name](reference)")],
+             summary: "Print a reference to a place in a file: a declaration, a heading, a line",
+             details: """
+                 A reference (`manifold:host/id#anchor`) to the place: kept by the file as
+                 it changes — the declaration or heading followed wherever it moves —
+                 and the same reference again for the same place. Put it in a note, a
+                 link (`mani link`), a walk through code: Manifold shows it as a pill,
+                 a card, and goes there when it's followed.
+                 """, inApp: true),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
              summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", inApp: true),
         Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,
@@ -334,6 +360,24 @@ public enum Mani {
               and the user ⌘-clicks it to go there.
             - A reference to a block that's gone (deleted) or on a host that isn't connected
               says so; don't guess its contents.
+
+            ## Places in code, and links between them
+            A place in a file — a declaration, a heading — has a reference of its own,
+            `manifold:<host>/<id>#<anchor>`, that follows it as the file changes (the
+            function moved or the lines above it changed, it's still the function).
+            Never write an anchor by hand; ask for it:
+            - `mani symbols <file>`: its declarations (`Type.method` and their lines), or
+              a Markdown file's headings.
+            - `mani ref <file> --symbol Type.method` (or `--heading "Title"`, `--line 40`)
+              prints the reference; `--markdown` as `[Type.method](manifold:…)`. The same
+              place gives the same reference. `mani read` of one prints its lines.
+            - Links have places at either end and say what they mean:
+              `mani link <note> "$(mani ref <file> --symbol f)" --as describes` — a note
+              that describes f (its pseudocode, what it's for). Relations: describes,
+              annotates, explains, step, or any word. Manifold decides how to show them.
+            - A walk through code (how a request is handled, what boot does) is a note of
+              such references in order, a sentence each: make it with `mani new note`.
+            - `mani info <file>` lists its places referred to and what links to each.
 
             ## What the user says, and what to run
             - "this" with a `manifold:` reference in their message: `mani read <it>` (and

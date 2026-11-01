@@ -33,18 +33,21 @@ final class Mentions {
         guard let b = all.first(where: { $0.id == block }), let text = b.text?.text.string else { return }
         // Each block the text names: an image it shows (`![…](…)`) is
         // embedded, kept by the text; the rest mentioned.
-        var wanted: [BlockID: (context: String, kind: LinkKind)] = [:]
+        // By the block and the place in it (§2.5): one link to each.
+        struct Target: Hashable { var block: BlockID; var anchor: String? }
+        var wanted: [Target: (context: String, kind: LinkKind)] = [:]
         for m in Mention.find(in: text) {
-            guard let target = resolve(m.target, from: b, among: all), target != block else { continue }
+            guard let to = resolve(m.target, from: b, among: all), to != block else { continue }
+            let target = Target(block: to, anchor: m.anchor)
             let words = String(m.text.prefix(118))
-            let embeds = m.embeds && all.first(where: { $0.id == target })?.kind == .image
+            let embeds = m.embeds && all.first(where: { $0.id == to })?.kind == .image
             if embeds || wanted[target] == nil { wanted[target] = embeds ? ("![" + words + "]", .embeds) : ("[[" + words + "]]", .opened) }
         }
         let have = mentions(block)
-        for e in have where wanted[e.to].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true { unlink?(e.id) }
-        for (to, w) in wanted where !have.contains(where: { $0.to == to && $0.context == w.context && $0.kind == .link(w.kind) }) {
-            link?(Link(from: block, to: to, kind: w.kind, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
-                       context: w.context))
+        for e in have where wanted[Target(block: e.to, anchor: e.toAnchor)].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true { unlink?(e.id) }
+        for (target, w) in wanted where !have.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor && $0.context == w.context && $0.kind == .link(w.kind) }) {
+            link?(Link(from: block, to: target.block, kind: w.kind, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
+                       context: w.context, toAnchor: target.anchor))
         }
     }
 

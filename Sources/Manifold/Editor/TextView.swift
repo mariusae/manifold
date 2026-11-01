@@ -27,6 +27,9 @@ protocol TextViewDelegate: AnyObject {
     func textView(_ view: TextView, follow target: String, over: Bool)
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
+    /// A line (from 0) dragged from the gutter: what it carries — a
+    /// reference to the declaration or heading there, else the line (§2.5).
+    func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting?
 }
 
 /// A selection: from its anchor to its head (the end that moves), in bytes.
@@ -1906,6 +1909,11 @@ final class TextView: NSView, NSTextInputClient {
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
+        // Pressed in the gutter: its line may be dragged out, as a
+        // reference to what's there; let go without moving, a click.
+        if event.clickCount == 1, gutterWidth > 0, p.x < textLeft, flags.isDisjoint(with: [.shift, .option, .command]) {
+            pressedInGutter = (event.locationInWindow, text.line(at: offset))
+        }
         // A block's card clicked: followed, as its link is.
         if event.clickCount == 1, let n = cardLines.keys.first(where: { cardRect(ofLine: $0)?.contains(p) == true }), let c = cardLines[n] {
             dragAnchor = nil
@@ -1958,8 +1966,16 @@ final class TextView: NSView, NSTextInputClient {
 
     /// Where the mouse went down in the selection, while it may yet drag it.
     private var pressedInSelection: (at: NSPoint, offset: Int)?
+    /// Where it went down in the gutter, and on which line.
+    private var pressedInGutter: (at: NSPoint, line: Int)?
 
     override func mouseDragged(with event: NSEvent) {
+        if let pressed = pressedInGutter {
+            let p = event.locationInWindow
+            guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
+            pressedInGutter = nil
+            if dragLine(pressed.line, event) { return }
+        }
         if let pressed = pressedInSelection {
             let p = event.locationInWindow
             guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
@@ -1992,7 +2008,28 @@ final class TextView: NSView, NSTextInputClient {
         // Pressed in the selection and let go: a click there, the caret put down.
         if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
         pressedInSelection = nil
+        pressedInGutter = nil
         dragAnchor = nil
+    }
+
+    /// A line dragged from the gutter: a reference to what's there (the
+    /// delegate's), shown as the line's words; false if it carries nothing.
+    private func dragLine(_ line: Int, _ event: NSEvent) -> Bool {
+        guard let writer = delegate?.textView(self, dragLine: line) else { return false }
+        let drag = NSDraggingItem(pasteboardWriter: writer)
+        let words = text.lineText(line).trimmingCharacters(in: .whitespaces)
+        let label = NSAttributedString(string: String(words.prefix(80)), attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let size = NSSize(width: min(ceil(label.size().width) + 16, 420), height: ceil(label.size().height) + 8)
+        let image = NSImage(size: size, flipped: false) { r in
+            NSColor.windowBackgroundColor.withAlphaComponent(0.9).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            label.draw(in: r.insetBy(dx: 8, dy: 4))
+            return true
+        }
+        let p = convert(event.locationInWindow, from: nil)
+        drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
+        beginDraggingSession(with: [drag], event: event, source: self)
+        return true
     }
 
     /// The selected text, dragged: to another app, a terminal, a note, or

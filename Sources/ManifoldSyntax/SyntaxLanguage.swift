@@ -16,15 +16,23 @@ public final class SyntaxLanguage {
     /// The query that captures its doc comments' nodes as `@doc`; nil if
     /// it has none.
     let docSource: String?
+    /// The query that captures its declarations (§2.5): each as `@decl`,
+    /// its name as `@name`, and what qualifies it, if the declaration
+    /// doesn't sit inside it, as `@context` (a Go method's receiver).
+    let declarationSource: String?
     public let marks: CommentMarks
 
-    init(_ name: String, _ grammar: OpaquePointer?, comments: [String] = ["comment"], docs: String? = nil, marks: CommentMarks) {
+    init(_ name: String, _ grammar: OpaquePointer?, comments: [String] = ["comment"], docs: String? = nil, declarations: String? = nil, marks: CommentMarks) {
         self.name = name
         self.grammar = grammar!
         commentNodes = comments
         docSource = docs
+        declarationSource = declarations
         self.marks = marks
     }
+
+    /// Captures its declarations, as `@decl`, `@name` and `@context`.
+    public private(set) lazy var declarationQuery: SyntaxQuery? = declarationSource.flatMap { SyntaxQuery(self, $0) }
 
     /// Captures every comment, as `@comment`.
     public private(set) lazy var commentQuery: SyntaxQuery? =
@@ -49,48 +57,147 @@ public final class SyntaxLanguage {
     /// `///`, `//!`, and `/**`, `/*!`: Doxygen's.
     private static let doxygen = #"((comment) @doc (#match? @doc "^(//[/!]([^/]|$)|/\\*(\\*([^*/]|$)|!))"))"#
 
-    static let bash = SyntaxLanguage("bash", tree_sitter_bash(), marks: hash)
-    static let c = SyntaxLanguage("c", tree_sitter_c(), docs: doxygen, marks: cStyle)
-    static let cpp = SyntaxLanguage("cpp", tree_sitter_cpp(), docs: doxygen, marks: cStyle)
+    static let bash = SyntaxLanguage("bash", tree_sitter_bash(), declarations: #"""
+        (function_definition name: (word) @name) @decl
+        """#, marks: hash)
+    static let c = SyntaxLanguage("c", tree_sitter_c(), docs: doxygen, declarations: #"""
+        (function_definition declarator: (function_declarator declarator: (identifier) @name)) @decl
+        (function_definition declarator: (pointer_declarator declarator: (function_declarator declarator: (identifier) @name))) @decl
+        (struct_specifier name: (type_identifier) @name body: (_)) @decl
+        (union_specifier name: (type_identifier) @name body: (_)) @decl
+        (enum_specifier name: (type_identifier) @name body: (_)) @decl
+        (type_definition declarator: (type_identifier) @name) @decl
+        """#, marks: cStyle)
+    static let cpp = SyntaxLanguage("cpp", tree_sitter_cpp(), docs: doxygen, declarations: #"""
+        (function_definition declarator: (function_declarator declarator: [(identifier) (field_identifier) (qualified_identifier) (destructor_name) (operator_name)] @name)) @decl
+        (function_definition declarator: (reference_declarator (function_declarator declarator: [(identifier) (field_identifier) (qualified_identifier)] @name))) @decl
+        (function_definition declarator: (pointer_declarator declarator: (function_declarator declarator: [(identifier) (field_identifier) (qualified_identifier)] @name))) @decl
+        (class_specifier name: [(type_identifier) (qualified_identifier) (template_type)] @name body: (_)) @decl
+        (struct_specifier name: [(type_identifier) (qualified_identifier) (template_type)] @name body: (_)) @decl
+        (union_specifier name: [(type_identifier) (qualified_identifier)] @name body: (_)) @decl
+        (enum_specifier name: [(type_identifier) (qualified_identifier)] @name body: (_)) @decl
+        (namespace_definition name: [(namespace_identifier) (nested_namespace_specifier)] @name) @decl
+        (alias_declaration name: (type_identifier) @name) @decl
+        (type_definition declarator: (type_identifier) @name) @decl
+        """#, marks: cStyle)
     static let css = SyntaxLanguage("css", tree_sitter_css(), comments: ["comment", "js_comment"], marks: cStyle)
     static let elixir = SyntaxLanguage("elixir", tree_sitter_elixir(), docs: #"""
         (unary_operator operand: (call target: (identifier) @_name
           (arguments [(string (quoted_content) @doc) (sigil (quoted_content) @doc)]))
           (#any-of? @_name "doc" "moduledoc" "typedoc"))
+        """#, declarations: #"""
+        ((call target: (identifier) @_kind (arguments (alias) @name)) @decl (#any-of? @_kind "defmodule" "defprotocol" "defimpl"))
+        ((call target: (identifier) @_kind (arguments [(identifier) @name (call target: (identifier) @name) (binary_operator left: (call target: (identifier) @name))])) @decl
+          (#any-of? @_kind "def" "defp" "defmacro" "defmacrop" "defguard" "defdelegate"))
         """#, marks: hash)
     static let go = SyntaxLanguage("go", tree_sitter_go(), docs: """
         (source_file (comment)+ @doc . [(package_clause) (function_declaration) (method_declaration)
           (type_declaration) (const_declaration) (var_declaration)] @_decl (#adjacent? @doc @_decl))
-        """, marks: cStyle)
+        """, declarations: #"""
+        (function_declaration name: (identifier) @name) @decl
+        (method_declaration receiver: (parameter_list (parameter_declaration type: [(type_identifier) @context (pointer_type (type_identifier) @context) (generic_type type: (type_identifier) @context) (pointer_type (generic_type type: (type_identifier) @context))])) name: (field_identifier) @name) @decl
+        (type_spec name: (type_identifier) @name) @decl
+        """#, marks: cStyle)
     static let html = SyntaxLanguage("html", tree_sitter_html(), marks: CommentMarks(blocks: [("<!--", "-->")]))
-    static let java = SyntaxLanguage("java", tree_sitter_java(), comments: ["line_comment", "block_comment"], docs: starStar("block_comment"), marks: cStyle)
-    static let javascript = SyntaxLanguage("javascript", tree_sitter_javascript(), comments: ["comment", "html_comment"], docs: starStar("comment"), marks: CommentMarks(line: ["//", "<!--", "-->"], blocks: [("/*", "*/")]))
+    static let java = SyntaxLanguage("java", tree_sitter_java(), comments: ["line_comment", "block_comment"], docs: starStar("block_comment"), declarations: #"""
+        (class_declaration name: (identifier) @name) @decl
+        (interface_declaration name: (identifier) @name) @decl
+        (enum_declaration name: (identifier) @name) @decl
+        (record_declaration name: (identifier) @name) @decl
+        (method_declaration name: (identifier) @name) @decl
+        (constructor_declaration name: (identifier) @name) @decl
+        """#, marks: cStyle)
+    static let javascript = SyntaxLanguage("javascript", tree_sitter_javascript(), comments: ["comment", "html_comment"], docs: starStar("comment"), declarations: #"""
+        (function_declaration name: (identifier) @name) @decl
+        (generator_function_declaration name: (identifier) @name) @decl
+        (class_declaration name: (identifier) @name) @decl
+        (method_definition name: [(property_identifier) (private_property_identifier)] @name) @decl
+        (lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression)])) @decl
+        """#, marks: CommentMarks(line: ["//", "<!--", "-->"], blocks: [("/*", "*/")]))
     static let json = SyntaxLanguage("json", tree_sitter_json(), marks: cStyle)
-    static let kotlin = SyntaxLanguage("kotlin", tree_sitter_kotlin(), comments: ["line_comment", "block_comment"], docs: starStar("block_comment"), marks: cStyle)
-    static let lua = SyntaxLanguage("lua", tree_sitter_lua(), docs: #"((comment) @doc (#match? @doc "^---([^-]|$)"))"#, marks: CommentMarks(line: ["--"], blocks: [("--[[", "]]")]))
+    static let kotlin = SyntaxLanguage("kotlin", tree_sitter_kotlin(), comments: ["line_comment", "block_comment"], docs: starStar("block_comment"), declarations: #"""
+        (class_declaration name: (identifier) @name) @decl
+        (object_declaration name: (identifier) @name) @decl
+        (function_declaration name: (identifier) @name) @decl
+        """#, marks: cStyle)
+    static let lua = SyntaxLanguage("lua", tree_sitter_lua(), docs: #"((comment) @doc (#match? @doc "^---([^-]|$)"))"#, declarations: #"""
+        (function_declaration name: [(identifier) (dot_index_expression) (method_index_expression)] @name) @decl
+        """#, marks: CommentMarks(line: ["--"], blocks: [("--[[", "]]")]))
     static let make = SyntaxLanguage("make", tree_sitter_make(), marks: hash)
     static let python = SyntaxLanguage("python", tree_sitter_python(), docs: """
         (module . (expression_statement (string (string_content) @doc)))
         (class_definition body: (block . (expression_statement (string (string_content) @doc))))
         (function_definition body: (block . (expression_statement (string (string_content) @doc))))
-        """, marks: hash)
+        """, declarations: #"""
+        (class_definition name: (identifier) @name) @decl
+        (function_definition name: (identifier) @name) @decl
+        """#, marks: hash)
     static let ruby = SyntaxLanguage("ruby", tree_sitter_ruby(), docs: """
         ((comment)+ @doc . [(method) (singleton_method) (class) (module)] @_decl (#adjacent? @doc @_decl))
         ((comment)+ @doc . (body_statement . [(method) (singleton_method) (class) (module)] @_decl) (#adjacent? @doc @_decl))
-        """, marks: CommentMarks(line: ["#"], blocks: [("=begin", "=end")]))
+        """, declarations: #"""
+        (class name: [(constant) (scope_resolution)] @name) @decl
+        (module name: [(constant) (scope_resolution)] @name) @decl
+        (method name: (_) @name) @decl
+        (singleton_method name: (_) @name) @decl
+        """#, marks: CommentMarks(line: ["#"], blocks: [("=begin", "=end")]))
     static let rust = SyntaxLanguage("rust", tree_sitter_rust(), comments: ["line_comment", "block_comment"], docs: """
         (line_comment doc: (doc_comment)) @doc
         (block_comment doc: (doc_comment)) @doc
-        """, marks: cStyle)
+        """, declarations: #"""
+        (function_item name: (identifier) @name) @decl
+        (function_signature_item name: (identifier) @name) @decl
+        (struct_item name: (type_identifier) @name) @decl
+        (enum_item name: (type_identifier) @name) @decl
+        (union_item name: (type_identifier) @name) @decl
+        (trait_item name: (type_identifier) @name) @decl
+        (type_item name: (type_identifier) @name) @decl
+        (mod_item name: (identifier) @name) @decl
+        (macro_definition name: (identifier) @name) @decl
+        (impl_item type: [(type_identifier) (generic_type type: (type_identifier)) (scoped_type_identifier)] @name) @decl
+        """#, marks: cStyle)
     static let sql = SyntaxLanguage("sql", tree_sitter_sql(), comments: ["comment", "marginalia"], marks: CommentMarks(line: ["--"], blocks: [("/*", "*/")]))
     static let swift = SyntaxLanguage("swift", tree_sitter_swift(), comments: ["comment", "multiline_comment"], docs: #"""
         ((comment) @doc (#match? @doc "^///([^/]|$)"))
-        """# + starStar("multiline_comment"), marks: cStyle)
+        """# + starStar("multiline_comment"), declarations: #"""
+        (class_declaration name: [(type_identifier) (user_type)] @name) @decl
+        (protocol_declaration name: (type_identifier) @name) @decl
+        (function_declaration name: (simple_identifier) @name) @decl
+        (protocol_function_declaration name: (simple_identifier) @name) @decl
+        (init_declaration name: "init" @name) @decl
+        (typealias_declaration name: (type_identifier) @name) @decl
+        """#, marks: cStyle)
     static let toml = SyntaxLanguage("toml", tree_sitter_toml(), marks: hash)
-    static let tsx = SyntaxLanguage("tsx", tree_sitter_tsx(), comments: ["comment", "html_comment"], docs: starStar("comment"), marks: cStyle)
-    static let typescript = SyntaxLanguage("typescript", tree_sitter_typescript(), comments: ["comment", "html_comment"], docs: starStar("comment"), marks: cStyle)
+    static let tsx = SyntaxLanguage("tsx", tree_sitter_tsx(), comments: ["comment", "html_comment"], docs: starStar("comment"), declarations: #"""
+        (function_declaration name: (identifier) @name) @decl
+        (function_signature name: (identifier) @name) @decl
+        (generator_function_declaration name: (identifier) @name) @decl
+        (class_declaration name: (type_identifier) @name) @decl
+        (abstract_class_declaration name: (type_identifier) @name) @decl
+        (interface_declaration name: (type_identifier) @name) @decl
+        (type_alias_declaration name: (type_identifier) @name) @decl
+        (enum_declaration name: (identifier) @name) @decl
+        (method_definition name: [(property_identifier) (private_property_identifier)] @name) @decl
+        (method_signature name: [(property_identifier) (private_property_identifier)] @name) @decl
+        (lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression)])) @decl
+        """#, marks: cStyle)
+    static let typescript = SyntaxLanguage("typescript", tree_sitter_typescript(), comments: ["comment", "html_comment"], docs: starStar("comment"), declarations: #"""
+        (function_declaration name: (identifier) @name) @decl
+        (function_signature name: (identifier) @name) @decl
+        (generator_function_declaration name: (identifier) @name) @decl
+        (class_declaration name: (type_identifier) @name) @decl
+        (abstract_class_declaration name: (type_identifier) @name) @decl
+        (interface_declaration name: (type_identifier) @name) @decl
+        (type_alias_declaration name: (type_identifier) @name) @decl
+        (enum_declaration name: (identifier) @name) @decl
+        (method_definition name: [(property_identifier) (private_property_identifier)] @name) @decl
+        (method_signature name: [(property_identifier) (private_property_identifier)] @name) @decl
+        (lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression)])) @decl
+        """#, marks: cStyle)
     static let yaml = SyntaxLanguage("yaml", tree_sitter_yaml(), marks: hash)
-    static let zig = SyntaxLanguage("zig", tree_sitter_zig(), docs: #"((comment) @doc (#match? @doc "^//[/!]([^/]|$)"))"#, marks: cStyle)
+    static let zig = SyntaxLanguage("zig", tree_sitter_zig(), docs: #"((comment) @doc (#match? @doc "^//[/!]([^/]|$)"))"#, declarations: #"""
+        (function_declaration name: (identifier) @name) @decl
+        """#, marks: cStyle)
 
     public static let all = [bash, c, cpp, css, elixir, go, html, java, javascript, json, kotlin, lua, make,
                              python, ruby, rust, sql, swift, toml, tsx, typescript, yaml, zig]

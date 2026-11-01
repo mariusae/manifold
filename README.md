@@ -887,6 +887,20 @@ around it, and comes back with its history.
   Link to This Line (`#line=N`), an outline's heading or a PDF's page
   menu Copy Link to it (`#line=`, `#page=`), and a terminal's command or
   turn Copy Link to This Command; followed, each goes to that place.
+- **Places** (§2.5 of DESIGN.md): a reference to a place in a file —
+  a declaration, a Markdown heading, else a line — names it by an anchor
+  the file keeps, `manifold:host/id#k7q2mx`, not by its line: the
+  function moved, renamed back, or the lines above it changed (in an
+  editor, or by another program), it still leads there; gone, it says so
+  ("“Card.save” is no longer in Card.swift"). An outline's item dragged
+  or Copy Link'd, or a line dragged from an editor's gutter (the line
+  numbers), makes one — the declaration or heading on that line, else the
+  line — and the same place gives the same reference. Links carry places
+  at either end, and what they mean (a relation: `describes`,
+  `annotates`, `explains`, `step`, any word); `mani info` lists a file's
+  places and what links to each. Agents make them with `mani symbols`
+  (a file's declarations, by path), `mani ref <file> --symbol Type.method`
+  and `mani link <note> <ref> --as describes`.
 - **Notes from what's at hand**: New Note from Selection, in an editor's
   or a terminal's menu (and ⇧⌘P's), makes a note of the selected text,
   quoted as code when it came from code, linked from where it came; New

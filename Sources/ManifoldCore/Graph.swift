@@ -75,10 +75,33 @@ public struct Edge: Hashable, Sendable {
     public var context: String?
     /// The placement or link it stands for.
     public var id: String
+    /// A link's places at either end, and what it means (§2.5).
+    public var fromAnchor: String? = nil
+    public var toAnchor: String? = nil
+    public var relation: String? = nil
     /// The shard whose log it came from.
     public var shard: ShardID
 
     public var isLive: Bool { until == nil }
+
+    public init(kind: EdgeKind, from: BlockID, to: BlockID, at: Stamp, until: Stamp? = nil, context: String? = nil, id: String, shard: ShardID) {
+        self.kind = kind
+        self.from = from
+        self.to = to
+        self.at = at
+        self.until = until
+        self.context = context
+        self.id = id
+        self.shard = shard
+    }
+
+    /// A link's edge, its places and meaning with it.
+    public init(link l: Link, shard: ShardID) {
+        self.init(kind: .link(l.kind), from: l.from, to: l.to, at: l.at, context: l.context, id: l.id, shard: shard)
+        fromAnchor = l.fromAnchor
+        toAnchor = l.toAnchor
+        relation = l.relation
+    }
 
     /// Whether it held at a moment (now, for nil).
     public func holds(at stamp: Stamp?) -> Bool {
@@ -558,9 +581,9 @@ public final class Graph {
         case let (.registry, .step(s)):
             addStep(s, from: shard)
         case let (.links, .link(l)):
-            // One link of a kind between two blocks, as the links shard keeps them.
-            for old in edges(from: l.from, kind: .link(l.kind)) where old.to == l.to { removeEdge(old) }
-            add(Edge(kind: .link(l.kind), from: l.from, to: l.to, at: l.at, context: l.context, id: l.id, shard: shard))
+            // One link of a kind between two places, as the links shard keeps them.
+            for old in edges(from: l.from, kind: .link(l.kind)) where old.to == l.to && old.fromAnchor == l.fromAnchor && old.toAnchor == l.toAnchor { removeEdge(old) }
+            add(Edge(link: l, shard: shard))
         case let (.links, .unlink(id)):
             if let e = byID[id] { removeEdge(e) }
         case (.links, .clearGraph):
@@ -632,7 +655,7 @@ public final class Graph {
             }
         case .links(let l):
             for link in l.links where byID[link.id] == nil {
-                add(Edge(kind: .link(link.kind), from: link.from, to: link.to, at: link.at, context: link.context, id: link.id, shard: shard))
+                add(Edge(link: link, shard: shard))
             }
         default:
             break
