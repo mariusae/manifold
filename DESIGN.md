@@ -831,6 +831,13 @@ command line takes, a path or the words; a note links; code takes a
 place's words and a file's path. Reading across the table (a kind's row
 in each target) is how the targets are kept to one idea of each kind.
 
+Whatever's dragged out — words selected, a gutter's line, a tile, a
+row, a link, a picture — the pointer is the closed hand from the moment
+the drag begins until it ends (`DragCursor`), whatever it began as (an
+I-beam over text, an arrow over a list) and over whatever it passes in
+Manifold's windows, their cursor rects held off meanwhile; over another
+app, the system's cursor for its drop.
+
 While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
 its icon, its name, on a raised ground with an edge and a shadow — a
 few one under another, then "and N more"), wherever it's dragged from,

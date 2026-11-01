@@ -183,6 +183,11 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
         DragPill.dress(session, from: outlineView, at: screenPoint)
+        DragCursor.began()
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
     }
 
     var shownFolders: [String] { model.filtering ? [] : expanded.map { model.absolute($0) } }

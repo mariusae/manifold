@@ -1706,7 +1706,18 @@ final class NoteOutlineTextView: NSTextView {
         draggedRows != nil ? (context == .withinApplication ? .move : .copy) : super.draggingSession(session, sourceOperationMaskFor: context)
     }
 
+    override func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        DragCursor.began()
+        if draggedRows == nil { super.draggingSession(session, willBeginAt: screenPoint) }
+    }
+
+    override func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+        DragCursor.moved()
+        if draggedRows == nil { super.draggingSession(session, movedTo: screenPoint) }
+    }
+
     override func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
         if draggedRows == nil { super.draggingSession(session, endedAt: screenPoint, operation: operation) }
         draggedRows = nil
         dropLine.isHidden = true

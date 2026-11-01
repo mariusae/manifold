@@ -22,6 +22,11 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
         DragPill.dress(session, from: tableView, at: screenPoint)
+        DragCursor.began()
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {

@@ -1960,7 +1960,11 @@ final class GridView: NSView, NSDraggingSource {
         return context == .withinApplication ? [.move, .copy] : [.copy]
     }
 
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
         if !pathDrag { delegate?.gridDragChanged(false) }
         pathDrag = false
         aloneDrag = false

@@ -163,7 +163,8 @@ parts from the Mac's conventions on purpose.
   grid, a tile of its own where it lands — a file opened, a page, a
   picture, a note of the words, the block brought — or, a block over a
   tile, the tile linked to it (below); on another app, as a file or
-  text. What you drag shows as a pill — its icon and name — wearing
+  text. The pointer is a closed hand from the moment a drag begins to
+  its end, whatever it was. What you drag shows as a pill — its icon and name — wearing
   at its corner by the pointer a badge with the symbol of what
   dropping does there (the palette's), changing as you go (⃠ where
   nothing can be done); a quick drop does it. Only what works is offered: a file

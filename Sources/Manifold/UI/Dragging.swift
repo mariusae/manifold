@@ -786,3 +786,43 @@ final class DropPalette: NSView {
         }
     }
 }
+
+/// The pointer while something is dragged out of Manifold — words selected,
+/// a gutter's line, a tile, a row, a link, a picture: the closed hand from
+/// the moment the drag begins until it ends, whatever it began on (an
+/// I-beam over text, an arrow over a row), and over whatever it passes in
+/// Manifold's windows (their cursor rects held off meanwhile). Manifold's
+/// own drop targets answer an operation that shows no badge
+/// (`Dropping.op`), so it stays over them; over another app, the system's
+/// cursor for its drop (a copy's +).
+enum DragCursor {
+    private static var dragging = false
+
+    static func began() {
+        dragging = true
+        for w in NSApp.windows { w.disableCursorRects() }
+        NSCursor.closedHand.set()
+    }
+
+    /// The pointer moved during the drag: the hand again over Manifold's
+    /// windows, should a view have put its own.
+    static func moved() {
+        guard dragging, NSCursor.current !== NSCursor.closedHand else { return }
+        let p = NSEvent.mouseLocation
+        if NSApp.windows.contains(where: { $0.isVisible && $0.frame.contains(p) }) { NSCursor.closedHand.set() }
+    }
+
+    /// The drag's over: the cursor of what's under the pointer again.
+    static func ended() {
+        guard dragging else { return }
+        dragging = false
+        NSCursor.arrow.set()
+        let p = NSEvent.mouseLocation
+        for w in NSApp.windows {
+            w.enableCursorRects()
+            guard w.isVisible, w.frame.contains(p), let content = w.contentView else { continue }
+            let under = content.superview?.hitTest(w.convertPoint(fromScreen: p)) ?? content
+            w.invalidateCursorRects(for: under)
+        }
+    }
+}

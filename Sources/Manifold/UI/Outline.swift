@@ -672,6 +672,10 @@ final class FloatingListRow: NSView, NSDraggingSource {
         [.copy, .link, .generic]
     }
 
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
+
     override func mouseUp(with event: NSEvent) {
         defer { pressedAt = nil }
         let p = convert(event.locationInWindow, from: nil)

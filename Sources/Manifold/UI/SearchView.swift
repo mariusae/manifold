@@ -402,6 +402,11 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
         DragPill.dress(session, from: tableView, at: screenPoint)
+        DragCursor.began()
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
     }
     // Each row looked up only where it is: asked for one the table still
     // thinks it has, nothing.
