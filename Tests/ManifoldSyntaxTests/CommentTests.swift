@@ -68,6 +68,12 @@ private func said(_ path: String, _ text: String) -> [[String]] {
     for l in SyntaxLanguage.all { #expect(l.commentQuery != nil, "\(l.name)") }
     #expect(SyntaxLanguage.forPath("a.md") == nil)
     #expect(SyntaxLanguage.forPath("/x/.zshrc") === SyntaxLanguage.bash)
+    #expect(SyntaxLanguage.forPath("/x/types.pyi") === SyntaxLanguage.python)
+    #expect(SyntaxLanguage.forPath("/x/a.fish") == nil)
+    // Every grammar is some file's: the one table has a language for it.
+    for l in SyntaxLanguage.all {
+        #expect(CodeLanguage.all.contains { SyntaxLanguage.forPath("a." + ($0.extensions.first ?? "")) === l }, "\(l.name)")
+    }
 }
 
 @Test func whatChangedBetweenTwoTexts() {
@@ -96,7 +102,7 @@ private func said(_ path: String, _ text: String) -> [[String]] {
 /// In the background: a big text parsed, edited while it is, the tree
 /// that comes in brought to the edit and parsed again — told where the
 /// syntax changed each time it's in.
-@Test @MainActor func aBigTextParsesInTheBackgroundAndKeepsUpWithEdits() async {
+@Test(.timeLimit(.minutes(1))) @MainActor func aBigTextParsesInTheBackgroundAndKeepsUpWithEdits() async {
     let line = "    let value = compute(x, y) // what it is\n"
     var rope = Rope("func f() {\n" + String(repeating: line, count: 50_000) + "}\n")
     let tree = SyntaxTree(SyntaxLanguage.swift, text: rope)

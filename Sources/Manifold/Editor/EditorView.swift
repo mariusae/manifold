@@ -715,15 +715,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     @objc func decreaseFontSize(_ sender: Any?) { sizeAdjust -= 1; applyFont() }
     @objc func resetFontSize(_ sender: Any?) { sizeAdjust = 0; applyFont() }
 
+    /// What comments out a line (⌘/): the language's (`CodeLanguage`),
+    /// else `//`.
     static func commentLeader(for path: String) -> String {
-        switch (path as NSString).pathExtension.lowercased() {
-        case "py", "sh", "zsh", "bash", "rb", "yaml", "yml", "toml", "pl", "r", "conf", "cfg", "ini", "zig", "nix", "make", "mk", "dockerfile", "gitignore": "#"
-        case "lua", "sql", "hs", "elm": "--"
-        case "lisp", "el", "clj", "scm": ";"
-        case "tex": "%"
-        case "vim": "\""
-        default: "//"
-        }
+        CodeLanguage.forPath(path)?.comment ?? "//"
     }
 
     // MARK: Saving

@@ -1289,8 +1289,25 @@ private final class Seen: @unchecked Sendable {
     #expect(Lens.viewRendering(for: "/a/README.md") == .markdown)
     #expect(Lens.viewRendering(for: "/a/main.GO") == .code)
     #expect(Lens.viewRendering(for: "/a/notes.xyz") == .plain)
-    #expect(Lens.viewRendering(for: "/a/Makefile") == .plain)
+    #expect(Lens.viewRendering(for: "/a/Makefile") == .code)
+    #expect(Lens.viewRendering(for: "/a/types.pyi") == .code)
+    #expect(Lens.viewRendering(for: "/a/.zshrc") == .code)
+    #expect(Lens.viewRendering(for: "/a/notes.txt") == .plain)
     #expect(Lens.viewRendering(for: nil) == .markdown)
+}
+
+/// One table says what's code, and the language servers' files are its.
+@Test func codeIsTheOneTablesLanguages() {
+    #expect(CodeLanguage.forPath("/a/types.pyi")?.id == "python")
+    #expect(CodeLanguage.forPath("/a/GNUmakefile")?.id == "make")
+    #expect(CodeLanguage.forPath("/a/App.TSX")?.id == "tsx")
+    #expect(CodeLanguage.forPath("/a/README.md") == nil)
+    #expect(CodeLanguage.forPath("/a/photo.png") == nil)
+    #expect(CodeLanguage.forPath("/a/x.zig")?.comment == "//")
+    for config in LanguageServerConfig.defaults {
+        for e in config.extensions { #expect(CodeLanguage.forPath("a." + e) != nil, "\(config.id): \(e)") }
+    }
+    #expect(LanguageServerConfig.language(for: "/a/types.pyi", in: LanguageServerConfig.defaults)?.id == "python")
 }
 
 @Test func editingATextAndViewingItAreOneTileUnlessAskedForBoth() {

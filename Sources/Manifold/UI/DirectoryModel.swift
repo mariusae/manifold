@@ -88,7 +88,7 @@ struct FileGroup: Hashable {
         if isUppercase(name) { return .notices }
         let lower = name.lowercased(), ext = lower.pathExtension
         if let g = byName[lower] { return g }
-        if !ext.isEmpty, let l = languages[ext] { return .language(l) }
+        if let l = language(lower) { return .language(l) }
         if let g = byExtension[ext] { return g }
         // Not in the tables: by what the system makes of its type.
         guard !ext.isEmpty, let t = UTType(filenameExtension: ext) else { return .other }
@@ -128,28 +128,13 @@ struct FileGroup: Hashable {
         return m
     }()
 
-    /// Code, by extension, named by its language.
-    private static let languages: [String: String] = {
-        var m: [String: String] = [:]
-        let table: [(String, [String])] = [
-            ("Swift", ["swift", "swiftinterface"]), ("Rust", ["rs"]), ("Go", ["go"]), ("C", ["c", "h"]),
-            ("C++", ["cc", "cpp", "cxx", "c++", "hpp", "hh", "hxx", "ipp", "inl"]), ("Objective-C", ["m", "mm"]),
-            ("Python", ["py", "pyi", "pyx", "ipynb"]), ("Ruby", ["rb", "erb"]), ("JavaScript", ["js", "mjs", "cjs", "jsx"]),
-            ("TypeScript", ["ts", "mts", "cts", "tsx"]), ("Java", ["java"]), ("Kotlin", ["kt", "kts"]), ("Scala", ["scala", "sc"]),
-            ("Zig", ["zig"]), ("Lua", ["lua"]), ("Haskell", ["hs", "lhs"]), ("OCaml", ["ml", "mli"]), ("Elixir", ["ex", "exs"]),
-            ("Erlang", ["erl", "hrl"]), ("PHP", ["php"]), ("C#", ["cs"]), ("F#", ["fs", "fsi", "fsx"]), ("Dart", ["dart"]),
-            ("Julia", ["jl"]), ("R", ["r"]), ("Perl", ["pl", "pm"]), ("Clojure", ["clj", "cljs", "cljc", "edn"]),
-            ("Elm", ["elm"]), ("Nim", ["nim"]), ("Odin", ["odin"]), ("V", ["v"]), ("D", ["d"]), ("Fortran", ["f", "f90", "f95"]),
-            ("Assembly", ["s", "asm"]), ("Shell", ["sh", "bash", "zsh", "fish", "ksh", "command", "rc"]),
-            ("PowerShell", ["ps1", "psm1"]), ("SQL", ["sql"]), ("HTML", ["html", "htm", "xhtml"]),
-            ("CSS", ["css", "scss", "sass", "less"]), ("Vue", ["vue"]), ("Svelte", ["svelte"]), ("Nix", ["nix"]),
-            ("Protocol Buffers", ["proto"]), ("GraphQL", ["graphql", "gql"]), ("Metal", ["metal"]), ("GLSL", ["glsl", "vert", "frag"]),
-            ("Lisp", ["lisp", "el", "scm", "rkt"]), ("Tcl", ["tcl"]), ("Verilog", ["v", "sv"]), ("Solidity", ["sol"]),
-            ("Gleam", ["gleam"]), ("Starlark", ["bzl", "star"]),
-        ]
-        for (lang, exts) in table { for e in exts where m[e] == nil { m[e] = lang } }
-        return m
-    }()
+    /// Code, named by its language: the one table's (`CodeLanguage`) —
+    /// its configuration and build files left to theirs here — and a
+    /// notebook, Python's.
+    private static func language(_ name: String) -> String? {
+        if let l = CodeLanguage.forPath(name), l.kind == .language { return l.name }
+        return name.pathExtension == "ipynb" ? "Python" : nil
+    }
 
     private static let byExtension: [String: FileGroup] = {
         var m: [String: FileGroup] = [:]

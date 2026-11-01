@@ -907,15 +907,22 @@ makes multiple cursors and very large files tractable.
 What it is to use, modelled on Panic's Nova, without syntax highlighting:
 
 - Proportional (the theme's editing font) or fixed-width text from the
-  theme, as now.
+  theme, as now. What's code is one table (`CodeLanguage`: each
+  language's extensions and whole names, its line comment, and whether
+  it's code proper, data, a build file or markup read as source), and
+  everything that treats a file as code asks it: code is set fixed-width
+  and viewed on a page of code (`Lens.viewRendering`), parsed by its
+  language's grammar (`SyntaxLanguage`, by the language), served by the
+  language server for its extensions (`LanguageServerConfig.defaults`),
+  listed under its language in a folder (`FileGroup`) with the code
+  glyph, and commented out with its leader.
 - Set fixed-width, a doc comment's words are in the theme's technical
   font beside it (proportional; Xcode's way), its leader, delimiters
   and the stars down a block's left kept in the code's face, so where a
   comment starts and what it's lined up with stay on the code's grid;
   other comments are code's, monospaced. What a doc comment is is the
   language's, asked of its tree-sitter grammar's tree (`ManifoldSyntax`:
-  a grammar per language by name or extension, and a query of its doc
-  comments): one written so (`///`, `/** */` — not `////`, `/**/` —
+  a grammar per language, and a query of its doc comments): one written so (`///`, `/** */` — not `////`, `/**/` —
   Doxygen's `//!` and `/*!` in C and C++), one the grammar says is
   (Rust's), the run of comments on the lines just above a declaration,
   none blank between (Go's, Ruby's), or a docstring (Python's, Elixir's

@@ -461,12 +461,11 @@ final class TreeCell: NSTableCellView {
         case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", .systemYellow)
         case "patch", "diff": return ("plus.forwardslash.minus", .systemGreen)
         case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", .systemBrown)
-        case "c", "h", "cc", "cpp", "hpp", "m", "mm", "rs", "go", "py", "rb", "java", "kt", "zig", "js", "jsx", "ts", "tsx",
-             "html", "css", "scss", "lua", "ex", "exs", "hs", "ml", "php", "cs", "scala", "dart", "vue":
-            return ("chevron.left.forwardslash.chevron.right", .systemBlue)
         case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", .systemPink)
         case "mp4", "mov", "m4v", "webm": return ("film", .systemPink)
         default:
+            // Code: whatever the one table (`CodeLanguage`) has as a language.
+            if CodeLanguage.forPath(lower)?.kind == .language { return ("chevron.left.forwardslash.chevron.right", .systemBlue) }
             if ["makefile", "dockerfile", "package.swift", "license", "readme"].contains(lower) { return ("doc.text", Theme.secondaryText) }
             return ("doc", Theme.secondaryText)
         }

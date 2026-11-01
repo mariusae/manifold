@@ -637,9 +637,12 @@ around it, and comes back with its history.
   opened it, to be edited) and a note to be written in; ⌘↩ (Tile ▸
   Edit or View, or the bar's menu) goes between the two in the same
   tile, the line at the top staying at the top and an editor's caret
-  going along. How a file is viewed goes by its extension (a table in
-  [Blocks.swift](Sources/ManifoldCore/Blocks.swift), anything not in
-  it plain text): Markdown rendered (cmark-gfm), a note's too, following
+  going along. How a file is viewed goes by what it is: Markdown by its
+  extension, code by the one table of languages
+  ([Languages.swift](Sources/ManifoldCore/Languages.swift), by a file's
+  name or extension — `types.pyi`, `Makefile`, `.zshrc` — the same table
+  tree-sitter's grammars, the language servers, a folder's groups and
+  ⌘/'s comment go by), anything else plain text: Markdown rendered (cmark-gfm), a note's too, following
   the text as it's edited on the same block or saved by another
   program; code and plain text as they are, not taken in, set exactly
   as they're edited — face, size, lines, colors, line numbers — on the
@@ -653,7 +656,7 @@ around it, and comes back with its history.
   its place, light or dark as the page is — tried again with plain
   quotes and dashes if smart ones kept it from parsing, else left as
   code with why. (Mermaid 11.4.1 is bundled, MIT; the page's own
-  scripts still don't run.) Code (by its extension) is set in
+  scripts still don't run.) Code is set in
   the fixed-width font when edited too, unless the tile's menu says
   otherwise. ⌃⌘↩ puts the other mode beside the
   tile, so you can type on the left and read on the right; opening a
@@ -1697,7 +1700,8 @@ checked against their SHA-256 — into `vendor/tree-sitter`, which
 Package.swift builds as `CTreeSitter` and `CTreeSitterGrammars`;
 `scripts/build-app.sh` runs it, and it fetches again when its list
 changes. A grammar is a line in that list and one in
-`SyntaxLanguage.swift`.
+`SyntaxLanguage.swift`, which takes the files it parses from its
+language in `Languages.swift`.
 
 The Linux servers come from `scripts/build-linux.sh`, which
 `scripts/build-app.sh` runs: they are built with a swift.org toolchain

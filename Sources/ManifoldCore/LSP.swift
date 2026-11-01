@@ -20,14 +20,16 @@ public struct LanguageServerConfig: Codable, Equatable, Sendable, Identifiable {
         self.enabled = enabled
     }
 
+    /// Each's files are its languages' (`CodeLanguage`), as everything
+    /// else that treats a file as code has them.
     public static let defaults: [LanguageServerConfig] = [
-        LanguageServerConfig(id: "swift", extensions: ["swift", "swiftinterface"], command: "sourcekit-lsp", rootMarkers: ["Package.swift", "*.xcodeproj", "*.xcworkspace"]),
-        LanguageServerConfig(id: "go", extensions: ["go"], command: "gopls", rootMarkers: ["go.work", "go.mod"]),
-        LanguageServerConfig(id: "rust", extensions: ["rs"], command: "rust-analyzer", rootMarkers: ["Cargo.toml"]),
-        LanguageServerConfig(id: "python", extensions: ["py", "pyi"], command: "pyright-langserver --stdio", rootMarkers: ["pyproject.toml", "setup.py", "requirements.txt"]),
-        LanguageServerConfig(id: "typescript", extensions: ["ts", "tsx", "js", "jsx", "mjs"], command: "typescript-language-server --stdio", rootMarkers: ["package.json", "tsconfig.json"]),
-        LanguageServerConfig(id: "c", extensions: ["c", "h", "cc", "cpp", "cxx", "hh", "hpp", "hxx", "m", "mm"], command: "clangd", rootMarkers: ["compile_commands.json", "Makefile", "CMakeLists.txt"]),
-        LanguageServerConfig(id: "zig", extensions: ["zig"], command: "zls", rootMarkers: ["build.zig"]),
+        LanguageServerConfig(id: "swift", extensions: CodeLanguage.extensions("swift"), command: "sourcekit-lsp", rootMarkers: ["Package.swift", "*.xcodeproj", "*.xcworkspace"]),
+        LanguageServerConfig(id: "go", extensions: CodeLanguage.extensions("go"), command: "gopls", rootMarkers: ["go.work", "go.mod"]),
+        LanguageServerConfig(id: "rust", extensions: CodeLanguage.extensions("rust"), command: "rust-analyzer", rootMarkers: ["Cargo.toml"]),
+        LanguageServerConfig(id: "python", extensions: CodeLanguage.extensions("python"), command: "pyright-langserver --stdio", rootMarkers: ["pyproject.toml", "setup.py", "requirements.txt"]),
+        LanguageServerConfig(id: "typescript", extensions: CodeLanguage.extensions("typescript", "tsx", "javascript"), command: "typescript-language-server --stdio", rootMarkers: ["package.json", "tsconfig.json"]),
+        LanguageServerConfig(id: "c", extensions: CodeLanguage.extensions("c", "cpp", "objc"), command: "clangd", rootMarkers: ["compile_commands.json", "Makefile", "CMakeLists.txt"]),
+        LanguageServerConfig(id: "zig", extensions: CodeLanguage.extensions("zig"), command: "zls", rootMarkers: ["build.zig"]),
     ]
 
     /// The table as a host's preferences change it (§7.2, `HostPreferences.lsp`):

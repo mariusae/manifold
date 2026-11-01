@@ -121,23 +121,14 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     /// Editing a text or viewing it: the two lenses ⌘↩ goes between.
     public var isText: Bool { self == .editor || self == .preview }
 
-    /// How a text is shown in view mode, by its file's extension; a note
-    /// (no file) is Markdown, and an extension not in the table plain text.
+    /// How a text is shown (and, editing, set): a note (no file) and
+    /// Markdown rendered; code — any file in a language of the one table,
+    /// `CodeLanguage`, by its name or extension — as code; else plain text.
     public static func viewRendering(for path: String?) -> ViewRendering {
         guard let path else { return .markdown }
-        return viewRenderings[path.pathExtension.lowercased()] ?? .plain
+        if isMarkdown(path) { return .markdown }
+        return CodeLanguage.forPath(path) != nil ? .code : .plain
     }
-
-    public static let viewRenderings: [String: ViewRendering] = {
-        var table: [String: ViewRendering] = [:]
-        for e in ["md", "markdown", "mdown", "mkd", "mdx"] { table[e] = .markdown }
-        for e in ["swift", "swiftinterface", "go", "c", "h", "cc", "cpp", "hpp", "m", "mm", "rs", "zig", "py", "rb", "js", "mjs", "ts", "tsx", "jsx",
-                  "java", "kt", "scala", "cs", "php", "lua", "sh", "bash", "zsh", "fish", "pl", "hs", "ml", "ex", "exs", "erl",
-                  "clj", "el", "lisp", "scm", "sql", "r", "jl", "dart", "nim", "v", "sv", "vhd", "proto", "thrift", "graphql",
-                  "json", "yaml", "yml", "toml", "ini", "cfg", "conf", "xml", "html", "htm", "css", "scss", "less",
-                  "make", "mk", "cmake", "dockerfile", "nix", "bzl", "gradle", "tex", "diff", "patch", "vim"] { table[e] = .code }
-        return table
-    }()
 }
 
 /// What a text's view mode is: Markdown rendered, or the text as it is on

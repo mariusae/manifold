@@ -1,6 +1,7 @@
 import CTreeSitter
 import CTreeSitterGrammars
 import Foundation
+import ManifoldCore
 
 /// A language there's a grammar for (scripts/fetch-tree-sitter.sh): how
 /// files in it are known, and what's asked of their trees — where their
@@ -94,43 +95,19 @@ public final class SyntaxLanguage {
     public static let all = [bash, c, cpp, css, elixir, go, html, java, javascript, json, kotlin, lua, make,
                              python, ruby, rust, sql, swift, toml, tsx, typescript, yaml, zig]
 
-    /// The file's, by its name or extension; nil where there's no grammar
-    /// (or the file's prose: Markdown).
+    /// The grammars, by the language (`CodeLanguage.id`) each parses.
+    private static let byLanguage: [String: SyntaxLanguage] = [
+        "shell": bash, "c": c, "cpp": cpp, "metal": cpp, "css": css, "elixir": elixir, "go": go, "html": html,
+        "java": java, "javascript": javascript, "json": json, "kotlin": kotlin, "lua": lua, "make": make,
+        "python": python, "ruby": ruby, "rust": rust, "sql": sql, "swift": swift, "toml": toml, "tsx": tsx,
+        "typescript": typescript, "yaml": yaml, "zig": zig,
+    ]
+
+    /// The file's: its language's (`CodeLanguage`, the one table of what's
+    /// code), if there's a grammar for it; nil for prose and languages
+    /// without one.
     public static func forPath(_ path: String) -> SyntaxLanguage? {
-        let name = (path as NSString).lastPathComponent.lowercased()
-        switch name {
-        case "makefile", "gnumakefile": return make
-        case ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".profile", ".envrc": return bash
-        case "gemfile", "rakefile", "podfile", "brewfile", "vagrantfile", "fastfile", "guardfile": return ruby
-        case "cargo.lock", "poetry.lock", "pipfile": return toml
-        default: break
-        }
-        switch (name as NSString).pathExtension {
-        case "sh", "bash", "zsh", "ksh", "command": return bash
-        case "c", "h": return c
-        case "cpp", "cc", "cxx", "c++", "hpp", "hh", "hxx", "h++", "ipp", "metal": return cpp
-        case "css": return css
-        case "ex", "exs": return elixir
-        case "go": return go
-        case "html", "htm", "xhtml": return html
-        case "java": return java
-        case "js", "jsx", "mjs", "cjs": return javascript
-        case "json", "jsonc": return json
-        case "kt", "kts": return kotlin
-        case "lua": return lua
-        case "mk", "make": return make
-        case "py", "pyi", "pyw": return python
-        case "rb", "rake", "gemspec", "ru": return ruby
-        case "rs": return rust
-        case "sql": return sql
-        case "swift": return swift
-        case "toml": return toml
-        case "tsx": return tsx
-        case "ts", "mts", "cts": return typescript
-        case "yaml", "yml": return yaml
-        case "zig", "zon": return zig
-        default: return nil
-        }
+        CodeLanguage.forPath(path).flatMap { byLanguage[$0.id] }
     }
 }
 
