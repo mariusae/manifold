@@ -1617,6 +1617,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugTiles: String { content.debugTiles }
     /// Debugging: a shown tile, by its title, given this much content
     /// height — taken from or given to the biggest other in its column.
+    /// Host headings with one host, its spaces under two (`org twohosts`).
+    static var debugTwoHosts = false
+
     func debugTileHeight(_ title: String, _ points: CGFloat) -> String {
         guard let a = arrangement else { return "no workspace" }
         for (c, column) in a.columns.enumerated() {
@@ -4428,14 +4431,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             byHost.append((c, nodes))
         }
-        guard byHost.count > 1 else { return (byHost.first?.1 ?? [], open) }
-        let roots = byHost.map { c, nodes -> OrgNode in
+        guard byHost.count > 1 || Self.debugTwoHosts else { return (byHost.first?.1 ?? [], open) }
+        var roots = byHost.map { c, nodes -> OrgNode in
             let id = "host:\(c.host.raw)"
             open.insert(id)
             let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", isGroup: true, children: nodes)
             n.style = .host
             hostStanding(n, c)
             return n
+        }
+        // Debugging with one host: its spaces split under it and a second
+        // heading, for the headings' own behaviour (`org twohosts`).
+        if Self.debugTwoHosts, byHost.count == 1, byHost[0].1.count > 1 {
+            let (c, nodes) = byHost[0], half = nodes.count / 2
+            let first = OrgNode(id: "host:\(c.host.raw)", title: hosts.label(of: c.host), symbol: "laptopcomputer", isGroup: true, children: Array(nodes[..<half]))
+            let second = OrgNode(id: "host:debug", title: "Second Host", symbol: "server.rack", isGroup: true, children: Array(nodes[half...]))
+            for n in [first, second] { n.style = .host; open.insert(n.id) }
+            roots = [first, second]
         }
         return (roots, open)
     }

@@ -390,6 +390,15 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         addSubview(scroll)
+        // The host's heading, kept at the top while its rows scroll under it.
+        scroll.wantsLayer = true
+        stickyHost.isHidden = true
+        stickyHost.onClick = { [weak self] in self?.revealStickyHost() }
+        addSubview(stickyHost)
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateStickyHost() }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -399,6 +408,92 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         scroll.frame = bounds
         outline.tableColumns[0].width = scroll.contentSize.width
         outline.sizeLastColumnToFit()
+        updateStickyHost()
+    }
+
+    // MARK: The host's heading, kept at the top
+
+    /// The heading of the host whose rows are at the top, kept there while
+    /// they're scrolled past it, so which host they're on always shows; the
+    /// next host's heading pushes it up as it comes. The sidebar may be clear
+    /// over the window's backdrop, so the heading can't cover the rows under
+    /// it: they fade out there instead (a mask on the list).
+    private let stickyHost = StickyHostView()
+    private let stickyMask = CAGradientLayer()
+    private var stickyRow = -1
+
+    private func updateStickyHost(again: Bool = false) {
+        let top = scroll.contentView.bounds.minY
+        let first = outline.row(at: NSPoint(x: 1, y: top + 1))
+        // The host the top row is under, its own row scrolled past.
+        var hostRow = -1
+        if first >= 0 {
+            var item = outline.item(atRow: first)
+            while let n = item as? OrgNode {
+                if n.style == .host { hostRow = outline.row(forItem: n); break }
+                item = outline.parent(forItem: n)
+            }
+        }
+        guard hostRow >= 0, let host = outline.item(atRow: hostRow) as? OrgNode, outline.rect(ofRow: hostRow).minY < top - 0.5 else {
+            stickyRow = -1
+            if !stickyHost.isHidden { stickyHost.isHidden = true }
+            if scroll.layer?.mask != nil { scroll.layer?.mask = nil }
+            return
+        }
+        stickyRow = hostRow
+        let h = outline.rect(ofRow: hostRow).height
+        // The next host's heading, come within a heading of the top, pushes it up.
+        var push: CGFloat = 0
+        let shown = outline.rows(in: scroll.contentView.documentVisibleRect)
+        for r in max(first + 1, shown.location)..<min(outline.numberOfRows, NSMaxRange(shown) + 1) {
+            guard (outline.item(atRow: r) as? OrgNode)?.style == .host else { continue }
+            push = max(0, h - (outline.rect(ofRow: r).minY - top))
+            break
+        }
+        stickyHost.show(host, flat: flat, again: again)
+        stickyHost.frame = NSRect(x: 0, y: bounds.maxY - h + push, width: max(0, outline.bounds.width - 14), height: h)
+        stickyHost.isHidden = false
+        // The rows under it faded out: clear as far as its bottom edge, then
+        // in over a few points.
+        guard let layer = scroll.layer else { return }
+        let H = max(layer.bounds.height, 1), band = max(0, h - push), fade: CGFloat = 8
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        stickyMask.frame = layer.bounds
+        stickyMask.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+        stickyMask.locations = [0, NSNumber(value: Double(band / H)), NSNumber(value: Double(min(1, (band + fade) / H))), 1]
+        // From the top down: the list's layer is flipped (its y goes down,
+        // as its view's does), and the mask is drawn in its terms.
+        let down = layer.contentsAreFlipped()
+        stickyMask.startPoint = CGPoint(x: 0.5, y: down ? 0 : 1)
+        stickyMask.endPoint = CGPoint(x: 0.5, y: down ? 1 : 0)
+        if layer.mask !== stickyMask { layer.mask = stickyMask }
+        CATransaction.commit()
+    }
+
+    /// The kept heading clicked: its host's own row scrolled back to the top.
+    private func revealStickyHost() {
+        guard stickyRow >= 0 else { return }
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: outline.rect(ofRow: stickyRow).minY))
+        scroll.reflectScrolledClipView(scroll.contentView)
+    }
+
+    /// "sticky": the heading kept at the top, if any; "sticky <y>": the list
+    /// scrolled to y first.
+    func debugSticky(_ arg: String) -> String {
+        if let y = Double(arg) {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        guard !stickyHost.isHidden else { return "none (scrolled to \(Int(scroll.contentView.bounds.minY)))" }
+        if arg == "mask" {
+            // Where the mask is clear, in the list's own terms: a point near its
+            // top and one near its bottom, each converted to the mask's layer.
+            guard let layer = scroll.layer, let mask = layer.mask as? CAGradientLayer else { return "no mask" }
+            return "flipped view \(scroll.isFlipped) layer \(layer.isGeometryFlipped) contentsFlipped \(layer.contentsAreFlipped()) mask \(mask.isGeometryFlipped) height \(layer.bounds.height) "
+                + "start \(mask.startPoint) locations \(mask.locations ?? [])"
+        }
+        return "\(stickyHost.debugState) at y \(Int(stickyHost.frame.minY)) of \(Int(bounds.height)) (scrolled to \(Int(scroll.contentView.bounds.minY)))"
     }
 
     /// Shows a tree; rows open as they were, or as `openByDefault` says
@@ -435,6 +530,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 (outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView)?.marked = n.style == .section && n.emphasis && n.arrangement != nil
             }
             select(selected)
+            // The kept heading as its host's row now says (its pings, its state).
+            if !stickyHost.isHidden { updateStickyHost(again: true) }
             return
         }
         roots = nodes
@@ -459,6 +556,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         expandAll(nodes)
         outline.endUpdates()
         select(selected)
+        DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
     }
 
     /// The row `selected` highlighted, or none.
@@ -616,6 +714,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.insert(n.id)
             if collapsedByHand.remove(n.id) != nil, unfiltered == nil { onCollapsedChanged?(collapsedByHand) }
@@ -623,6 +722,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.remove(n.id)
             collapsedByHand.insert(n.id)
@@ -999,6 +1099,46 @@ final class CountPill: NSView {
 }
 
 /// A row: symbol, name, a count in a pill, a detail in grey; faded by age.
+/// A host's heading kept at the top of the sidebar (`updateStickyHost`):
+/// its row's own view, as the list sets it; clicked, its row is scrolled to.
+final class StickyHostView: NSView {
+    var onClick: (() -> Void)?
+    private let row = OrgRowView()
+    private var shown: OrgNode?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addSubview(row)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// `again`: its row's values changed in place (the same node, taken over).
+    func show(_ node: OrgNode, flat: Bool, again: Bool = false) {
+        row.flat = flat
+        if again || node !== shown { row.show(node) }
+        shown = node
+    }
+
+    override func layout() {
+        super.layout()
+        row.frame = bounds
+    }
+
+    // The heading's own parts (its sparkline's tip) aside, a click is the
+    // heading's.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) ? self : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
+
+    var debugState: String { shown.map { "host \($0.title)" } ?? "nothing" }
+}
+
 final class OrgRowView: NSTableCellView {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")

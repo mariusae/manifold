@@ -641,6 +641,16 @@ it shows by itself past ten blocks. A block clicked there goes by the
 one rule — gone to, ⌘ beside the tile you were on, ⌥ over. Overview is
 not a space: nothing is placed, nothing is logged.
 
+A host's heading stays at the top of the list while its rows are
+scrolled past it (`OrganizationView.updateStickyHost`): a copy of its
+row (`StickyHostView`) over the list, pushed up by the next host's
+heading as it arrives — not the outline's floating group rows, which
+would make hosts group rows, styled and clicked otherwise. The sidebar
+may be clear over the window's backdrop, so the heading can't cover the
+rows under it: they fade out there instead, by a gradient mask on the
+list as deep as the heading shows (the list's layer is flipped; the
+mask runs from its y 0).
+
 ### 3.7 Status: what every block is doing
 
 Every block has a **status**, in the schema of OSC 7501 (Mitchell

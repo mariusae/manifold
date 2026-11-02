@@ -947,6 +947,10 @@ enum DebugControl {
             guard let wc else { return "no window" }
             if a.first == "show", a.count >= 2, let org = Organization(rawValue: a[1]) { wc.setOrganization(org); return "ok" }
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
+            // "org sticky [y]": the host's heading kept at the top (scrolled to y first).
+            if a.first == "sticky" { return wc.debugOrganization.debugSticky(a.count > 1 ? a[1] : "") }
+            // "org twohosts": host headings with one host, its spaces split under two.
+            if a.first == "twohosts" { MainWindowController.debugTwoHosts.toggle(); wc.render(); return "\(MainWindowController.debugTwoHosts)" }
             // "org filter on|off": the sidebar narrowed to blocks with a status (⌥⌘.).
             if a.first == "filter", a.count >= 2 { wc.setSidebarFilter(a[1] == "on" ? .status : nil); return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {

@@ -1584,6 +1584,11 @@ is migrated into logs on first run.
   anything back by being clicked in, only by Take Over (in the toast, or
   the host's menu; its row wears an eye, and its card says who took it), however long, and through
   the link going and coming back. Terminals take typing from both.
+  With more than one host, the sidebar's rows are under each one's
+  heading; scrolled past its heading, the host's stays at the top of the
+  list, its rows fading out under it, until the next host's pushes it up
+  — so which host you're looking at always shows (clicked, its own row
+  scrolled back to).
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
