@@ -3220,7 +3220,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = ""
         } else if symbolName != shown.symbol {
             symbolName = shown.symbol
-            icon.image = Theme.symbol(shown.symbol, size: 11)
+            icon.image = Theme.symbol(shown.symbol, size: IconHandle.markSize)
         }
         let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
         // Edited and unsaved: a dot after the name, amber when the file
@@ -3493,7 +3493,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func setHandle(_ out: Bool) {
         guard handle.out != out else { return }
-        handle.set(out: out, image: icon.image, tint: icon.contentTintColor)
+        handle.set(out: out, image: icon.image, tint: icon.contentTintColor, mark: symbolName)
         if out { icon.isHidden = true }
     }
 
@@ -3570,12 +3570,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
 /// that's over it — settling with a slight overshoot, a short shadow
 /// falling on the bar from the edge that lifts — nothing lit behind it;
 /// the pose says it can be taken (dragged, the thing the tile stands
-/// for). It swings back when the pointer goes or the drag begins. The
-/// icon is drawn here while it's out (its own view's layer is AppKit's,
-/// not to be turned), the view hidden. With less motion asked for, it
-/// doesn't turn: its shadow comes, as if lifted.
+/// for). A mark of our own unfolds as it swings, each its own way (a
+/// terminal's prompt steps in as a window draws itself round it; a note's
+/// corner peels further up), so even a slight one has something to turn
+/// (`Marks.parts`). It swings back, and folds, when the pointer goes or
+/// the drag begins. The icon is drawn here while it's out (its own view's
+/// layer is AppKit's, not to be turned), the view hidden. With less
+/// motion asked for, it doesn't turn: its shadow comes, as if lifted, and
+/// a mark unfolds without moving there.
 final class IconHandle: NSView {
     private let face = CALayer()
+    /// A mark's strokes, while it's one of ours: moved between rest and unfolded.
+    private var strokes: [(layer: CAShapeLayer, part: Marks.Part)] = []
     private(set) var out = false
     /// Which swing is the latest: one replaced ends too, and mustn't
     /// put the icon back mid-swing.
@@ -3613,11 +3619,18 @@ final class IconHandle: NSView {
         CATransaction.commit()
     }
 
-    /// Out, showing `image` as the icon's view does (a symbol in `tint`).
-    func set(out: Bool, image: NSImage?, tint: NSColor?) {
+    /// The size and weight the bar's icons are drawn at, a mark's strokes too.
+    static let markSize: CGFloat = 11
+
+    /// Out, showing `image` as the icon's view does (a symbol in `tint`);
+    /// `mark`, the symbol's name, unfolds if it's one of ours.
+    func set(out: Bool, image: NSImage?, tint: NSColor?, mark: String? = nil) {
         guard out != self.out else { return }
         self.out = out
-        if out {
+        if out, let mark, let tint, makeStrokes(mark, tint: tint) {
+            face.contents = nil
+        } else if out {
+            removeStrokes()
             // Drawn now, at the screen's scale and in this appearance, and
             // put in place without Core Animation's fade: given an image to
             // resolve later, it showed a frame or two large and too light.
@@ -3646,6 +3659,28 @@ final class IconHandle: NSView {
         face.isHidden = false
         face.transform = to
         face.shadowOpacity = out ? 0.5 : 0
+        for (layer, part) in strokes {
+            let path = out ? part.out : part.rest
+            if !reduced {
+                let a = CABasicAnimation(keyPath: "path")
+                a.fromValue = layer.presentation()?.path ?? layer.path
+                a.toValue = path
+                a.duration = d
+                a.timingFunction = out ? Motion.settle : Motion.disappear
+                layer.add(a, forKey: "unfold")
+                if part.drawsOn || part.fills {
+                    let key = part.drawsOn ? "strokeEnd" : "opacity"
+                    let shown = CABasicAnimation(keyPath: key)
+                    shown.fromValue = layer.presentation()?.value(forKeyPath: key) ?? layer.value(forKeyPath: key)
+                    shown.duration = d
+                    shown.timingFunction = out ? Motion.appear : Motion.disappear
+                    layer.add(shown, forKey: "shown")
+                }
+            }
+            layer.path = path
+            if part.drawsOn { layer.strokeEnd = out ? 1 : 0 }
+            if part.fills { layer.opacity = out ? 1 : 0 }
+        }
         let turn = CABasicAnimation(keyPath: "transform")
         turn.fromValue = from
         turn.toValue = to
@@ -3657,6 +3692,47 @@ final class IconHandle: NSView {
         shadow.duration = d
         face.add(shadow, forKey: "shadow")
         CATransaction.commit()
+    }
+
+    /// A mark of ours as strokes in the face, at rest — as its image draws
+    /// it, so nothing jumps as the face takes over from the icon's view;
+    /// false for any other symbol.
+    private func makeStrokes(_ mark: String, tint: NSColor) -> Bool {
+        let box = Marks.box(Self.markSize)
+        let r = CGRect(x: (bounds.width - box.width) / 2, y: (bounds.height - box.height) / 2, width: box.width, height: box.height)
+        guard let parts = Marks.parts(mark, size: Self.markSize, weight: .regular, in: r) else { return false }
+        removeStrokes()
+        var color = tint.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { color = tint.cgColor }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for part in parts {
+            let l = CAShapeLayer()
+            l.frame = face.bounds
+            l.path = part.rest
+            l.lineWidth = Marks.stroke(Self.markSize, .regular)
+            l.lineCap = .round
+            l.lineJoin = .round
+            if part.fills {
+                l.fillColor = color.copy(alpha: 0.3)
+                l.strokeColor = nil
+                l.opacity = 0
+            } else {
+                l.fillColor = nil
+                l.strokeColor = color
+            }
+            if part.drawsOn { l.strokeEnd = 0 }
+            l.contentsScale = window?.backingScaleFactor ?? 2
+            face.addSublayer(l)
+            strokes.append((l, part))
+        }
+        CATransaction.commit()
+        return true
+    }
+
+    private func removeStrokes() {
+        strokes.forEach { $0.layer.removeFromSuperlayer() }
+        strokes = []
     }
 
     /// The icon as its view shows it: a symbol in `tint`, a picture as it is.
@@ -3687,6 +3763,7 @@ final class IconHandle: NSView {
         let grown = hypot(Double(p.transform.m11), Double(p.transform.m13))
         let angle = acos(max(-1, min(1, Double(p.transform.m11) / max(grown, 0.001)))) * 180 / .pi
         return "\(out ? "out" : "in") turned=\(Int(angle.rounded()))° grown=\(String(format: "%.2f", grown)) shadow=\(String(format: "%.2f", p.shadowOpacity)) shown=\(!face.isHidden)"
+            + (strokes.isEmpty ? "" : " strokes=\(strokes.count) drawn=\(String(format: "%.2f", strokes.compactMap { $0.part.drawsOn ? ($0.layer.presentation() ?? $0.layer).strokeEnd : nil }.first ?? -1))")
     }
 }
 

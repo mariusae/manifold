@@ -807,7 +807,12 @@ tile ⇧-dragged, or dragged by its bar's icon — the icon a proxy, as a
 document window's title's is. The pointer on it swings the icon itself
 out of the bar toward you, about 40°, hinged at its left edge in a
 little perspective (a depth of 90 points to its 16), and grows by a
-fifth, so it shows past the open hand over it, settling with a
+fifth, so it shows past the open hand over it — and a mark of our own
+unfolds as it swings, so even a slight one has edges to turn: a
+terminal's `>_` steps up and in as a window draws itself round it, a
+note's turned corner peels half as far again, its back shaded
+(`Marks.parts`: each stroke at rest, as the mark's image draws it, and
+unfolded, the same points moved, animated as paths) — settling with a
 little overshoot, a short shadow falling on the bar from the edge that
 lifts — nothing lit behind it: the pose is the sign (`IconHandle`, which
 draws the icon in a layer of its own while it's out — drawn there and

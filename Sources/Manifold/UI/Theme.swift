@@ -185,60 +185,87 @@ enum Marks {
         guard name.hasPrefix(prefix) else { return nil }
         let key = "\(name)/\(size)/\(weight.rawValue)"
         if let i = made[key] { return i }
-        // A stroke as a symbol's at that weight: about a tenth of its size.
-        let stroke = size * (weight >= .bold ? 0.15 : weight >= .semibold ? 0.135 : weight >= .medium ? 0.12 : 0.105)
-        let box = NSSize(width: (size * 1.25).rounded(), height: (size * 1.1).rounded())
-        let image: NSImage
-        switch name {
-        case terminal:
-            image = NSImage(size: box, flipped: false) { r in
-                let u = size / 13, midY = r.midY, inset = stroke / 2 + 1 * u
-                let chevron = NSBezierPath()
-                chevron.move(to: NSPoint(x: inset + 1 * u, y: midY + 4 * u))
-                chevron.line(to: NSPoint(x: inset + 5.2 * u, y: midY))
-                chevron.line(to: NSPoint(x: inset + 1 * u, y: midY - 4 * u))
-                let underscore = NSBezierPath()
-                underscore.move(to: NSPoint(x: inset + 7.4 * u, y: midY - 4 * u))
-                underscore.line(to: NSPoint(x: min(r.maxX - inset, inset + 13.2 * u), y: midY - 4 * u))
-                NSColor.black.setStroke()
-                for p in [chevron, underscore] {
-                    p.lineWidth = stroke
-                    p.lineCapStyle = .round
-                    p.lineJoinStyle = .round
-                    p.stroke()
-                }
-                return true
+        guard parts(name, size: size, weight: weight, in: CGRect(origin: .zero, size: box(size))) != nil else { return nil }
+        let image = NSImage(size: box(size), flipped: false) { r in
+            guard let ctx = NSGraphicsContext.current?.cgContext, let parts = parts(name, size: size, weight: weight, in: r) else { return false }
+            ctx.setStrokeColor(NSColor.black.cgColor)
+            ctx.setLineWidth(stroke(size, weight))
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            for part in parts where !part.drawsOn && !part.fills {
+                ctx.addPath(part.rest)
+                ctx.strokePath()
             }
-        case note:
-            image = NSImage(size: box, flipped: false) { r in
-                let u = size / 13, side = 11.6 * u, fold = 3.6 * u
-                let s = NSRect(x: (r.midX - side / 2).rounded(), y: r.midY - side / 2, width: side, height: side).insetBy(dx: stroke / 2, dy: stroke / 2)
-                let page = NSBezierPath()
-                page.move(to: NSPoint(x: s.minX, y: s.maxY))
-                page.line(to: NSPoint(x: s.maxX, y: s.maxY))
-                page.line(to: NSPoint(x: s.maxX, y: s.minY + fold))
-                page.line(to: NSPoint(x: s.maxX - fold, y: s.minY))
-                page.line(to: NSPoint(x: s.minX, y: s.minY))
-                page.close()
-                let corner = NSBezierPath()
-                corner.move(to: NSPoint(x: s.maxX, y: s.minY + fold))
-                corner.line(to: NSPoint(x: s.maxX - fold, y: s.minY + fold))
-                corner.line(to: NSPoint(x: s.maxX - fold, y: s.minY))
-                NSColor.black.setStroke()
-                for p in [page, corner] {
-                    p.lineWidth = stroke
-                    p.lineCapStyle = .round
-                    p.lineJoinStyle = .round
-                    p.stroke()
-                }
-                return true
-            }
-        default:
-            return nil
+            return true
         }
         image.isTemplate = true
         made[key] = image
         return image
+    }
+
+    /// The box a mark is drawn in, as a symbol of that size would take.
+    static func box(_ size: CGFloat) -> CGSize { CGSize(width: (size * 1.25).rounded(), height: (size * 1.1).rounded()) }
+
+    /// A stroke as a symbol's at that weight: about a tenth of its size.
+    static func stroke(_ size: CGFloat, _ weight: NSFont.Weight) -> CGFloat {
+        size * (weight >= .bold ? 0.15 : weight >= .semibold ? 0.135 : weight >= .medium ? 0.12 : 0.105)
+    }
+
+    /// One stroke of a mark, at rest (as its image draws it) and unfolded
+    /// — the same points, moved — for a tile's icon to unfold under the
+    /// pointer (`IconHandle`).
+    struct Part {
+        var rest: CGPath
+        var out: CGPath
+        /// Drawn on as it unfolds, none of it at rest (a window round a prompt).
+        var drawsOn = false
+        /// Filled faintly as it unfolds, not stroked (a turned corner's back).
+        var fills = false
+    }
+
+    /// A mark's strokes in `r` (its box, y up): a terminal's prompt, which
+    /// unfolding draws a window round as it steps in; a note's page, whose
+    /// turned corner peels further up, its back shaded.
+    static func parts(_ name: String, size: CGFloat, weight: NSFont.Weight, in r: CGRect) -> [Part]? {
+        let stroke = stroke(size, weight), u = size / 13
+        func path(_ points: [CGPoint], closed: Bool = false) -> CGPath {
+            let p = CGMutablePath()
+            p.addLines(between: points)
+            if closed { p.closeSubpath() }
+            return p
+        }
+        switch name {
+        case terminal:
+            // Its points from the box's left (the image's own), moved there.
+            let midY = r.midY, inset = stroke / 2 + 1 * u
+            func prompt(_ t: CGAffineTransform) -> (CGPath, CGPath) {
+                (path([CGPoint(x: inset + 1 * u, y: midY + 4 * u), CGPoint(x: inset + 5.2 * u, y: midY), CGPoint(x: inset + 1 * u, y: midY - 4 * u)].map { $0.applying(t) }),
+                 path([CGPoint(x: inset + 7.4 * u, y: midY - 4 * u), CGPoint(x: min(r.width - inset, inset + 13.2 * u), y: midY - 4 * u)].map { $0.applying(t) }))
+            }
+            let shift = CGAffineTransform(translationX: r.minX, y: 0)
+            // Unfolded, the prompt smaller, up and in from the window's left.
+            let inside = CGAffineTransform(translationX: -r.width / 2, y: -r.midY).concatenating(CGAffineTransform(scaleX: 0.58, y: 0.58))
+                .concatenating(CGAffineTransform(translationX: r.width / 2 - 1.2 * u, y: r.midY + 0.6 * u)).concatenating(shift)
+            let (c0, s0) = prompt(shift), (c1, s1) = prompt(inside)
+            let window = CGPath(roundedRect: r.insetBy(dx: stroke / 2, dy: stroke / 2), cornerWidth: 2.4 * u, cornerHeight: 2.4 * u, transform: nil)
+            return [Part(rest: c0, out: c1), Part(rest: s0, out: s1), Part(rest: window, out: window, drawsOn: true)]
+        case note:
+            let side = 11.6 * u
+            let sq = CGRect(x: (r.midX - side / 2).rounded(), y: r.midY - side / 2, width: side, height: side).insetBy(dx: stroke / 2, dy: stroke / 2)
+            func page(_ f: CGFloat, tip: CGFloat) -> (CGPath, CGPath, CGPath) {
+                let corner = CGPoint(x: sq.maxX - f * tip, y: sq.minY + f * tip)
+                return (path([CGPoint(x: sq.minX, y: sq.maxY), CGPoint(x: sq.maxX, y: sq.maxY), CGPoint(x: sq.maxX, y: sq.minY + f),
+                              CGPoint(x: sq.maxX - f, y: sq.minY), CGPoint(x: sq.minX, y: sq.minY)], closed: true),
+                        path([CGPoint(x: sq.maxX, y: sq.minY + f), corner, CGPoint(x: sq.maxX - f, y: sq.minY)]),
+                        path([CGPoint(x: sq.maxX, y: sq.minY + f), corner, CGPoint(x: sq.maxX - f, y: sq.minY)], closed: true))
+            }
+            // Unfolded, the corner turned up half as far again, its tip
+            // lifting past the fold.
+            let (p0, c0, b0) = page(3.6 * u, tip: 1), (p1, c1, b1) = page(5.8 * u, tip: 1.15)
+            return [Part(rest: b0, out: b1, fills: true), Part(rest: p0, out: p1), Part(rest: c0, out: c1)]
+        default:
+            return nil
+        }
     }
 }
 
