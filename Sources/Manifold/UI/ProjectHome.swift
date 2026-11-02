@@ -195,6 +195,10 @@ final class ProjectSidebar: NSView {
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        // Its rows' bands follow the pointer as they scroll under it.
+        scroll.watchScrolling { [weak self] _, _ in
+            self?.stack.subviews.forEach { ($0 as? HomeRow)?.recheckHover() }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -335,10 +339,19 @@ final class HomeRow: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
+        recheckHover()
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
+
+    /// Lit only if the pointer is over it now: scrolled out from under a
+    /// still pointer, no exit comes, and its band stayed.
+    func recheckHover() {
+        guard let window, superview != nil else { return hovering = false }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        hovering = bounds.contains(p) && visibleRect.contains(p) && isUnderPointer
+    }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
