@@ -689,7 +689,10 @@ scroll bars are set to stay. The shells Manifold starts
 carry a hook (zsh's `preexec`, fish's `fish_preexec`, bash's DEBUG trap)
 that writes the command line as `OSC 7502 ; line ST` before running it;
 the host's status scanner (§3.7) sees it beside the OSC 133 marks and
-appends `ran` to the block, then `exited` with the status at `133 D`.
+appends `ran` to the block, then `exited` with the status at `133 D`;
+the two stamps give how long it took, shown with how it ended wherever
+a command is (its outline's entry from a second up, the tile's summary,
+its output block).
 The block keeps the last thousand. Where each is on the screen is the
 app's to find: Ghostty is asked for the rows' text (screen coordinates,
 through a patch that lets `read_text` reach the history) and each
@@ -710,7 +713,8 @@ that ran before the host kept marks, takes the screen's rows the app
 sends along instead, marked as such. The app draws it as the terminal
 did — SGR colours (16, 256, true) and faces in the terminal's palette,
 carriage returns and backspaces overwriting, erased lines erased — with
-the command line and its outcome above, read-only, Copy putting the
+the command line and its outcome above — how it ended, how long it took
+(`ran` to `exited`, `BlockSummary.took`), when — read-only, Copy putting the
 command and the text on the clipboard and Show in Terminal going back
 to the command.
 

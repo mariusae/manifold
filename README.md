@@ -1033,7 +1033,8 @@ around it, and comes back with its history.
   rest the pointer on a dot for **Copy Command and Output** and **Open as
   Block**.
 - **A tile's own sidebar**: the same outline — a terminal's commands (an
-  agent's turns), each with how it ended and when, clicked, the terminal
+  agent's turns), each with how it ended, how long it took (a second
+  or more: "2.4 s", "2m 13s") and when, clicked, the terminal
   goes there (its ⋯ shows the command's output, or the turn, as a block);
   a Markdown text's, a source file's, a PDF's, a diff's or a web page's — as a
   list at the tile's left —

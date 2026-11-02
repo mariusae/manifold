@@ -108,6 +108,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
             .font: font.emphasized(bold: true), .foregroundColor: Theme.text])
         var words: [String] = []
         if let s = o.status { words.append(s == 0 ? "ok" : "exit \(s)") } else if o.ran != nil { words.append(o.ended == nil ? "running" : "ok") }
+        if let took = BlockSummary.took(from: o.ran, to: o.ended) { words.append("took " + took) }
         if let at = o.ended ?? o.ran { words.append(Age.ago(at)) }
         if o.plain, ran { words.append("from the screen") }
         outcome.stringValue = words.joined(separator: " · ")

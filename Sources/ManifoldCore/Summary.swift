@@ -38,6 +38,24 @@ public struct BlockSummary: Codable, Equatable, Sendable {
         self.wantsThumbnail = wantsThumbnail
     }
 
+    /// How long a thing ran, from its start to its end, as briefly:
+    /// "40 ms", "3.2 s", "12 s", "2m 13s", "1h 4m". Nil without both, or
+    /// for less than `least` seconds (a list's quick commands, not worth
+    /// a word).
+    public static func took(from start: Stamp?, to end: Stamp?, least: Double = 0) -> String? {
+        guard let start, let end else { return nil }
+        let s = max(0, Double(end.wall - start.wall) / 1000)
+        guard s >= least else { return nil }
+        let t = Int(s.rounded(.down))
+        switch s {
+        case ..<1: return "\(Int((s * 1000).rounded())) ms"
+        case ..<10: return String(format: "%.1f s", s)
+        case ..<60: return "\(t) s"
+        case ..<3600: return "\(t / 60)m \(t % 60)s"
+        default: return "\(t / 3600)h \(t % 3600 / 60)m"
+        }
+    }
+
     /// How long ago, as a note says it: "now", "4m", "3h", "2d".
     public static func ago(_ stamp: Stamp?, now: Date) -> String? {
         guard let stamp else { return nil }
@@ -91,7 +109,7 @@ extension Block {
                 } else {
                     let status = c.status ?? 0
                     s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                    s.lines.append(status == 0 ? "ok" : "exit \(status)")
+                    s.lines.append((status == 0 ? "ok" : "exit \(status)") + (BlockSummary.took(from: c.at, to: c.ended, least: 1).map { " · took " + $0 } ?? ""))
                     if status != 0, s.tone == .plain { s.tone = .failed }
                 }
                 if let earlier = term.commands?.dropLast().last { s.lines.append("$ " + Self.oneLine(earlier.text)) }
@@ -137,7 +155,8 @@ extension Block {
         case .output:
             guard let o = output else { break }
             s.code = true
-            s.lines = ["$ " + Self.oneLine(o.line), o.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "running"]
+            s.lines = ["$ " + Self.oneLine(o.line), (o.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "running")
+                + (BlockSummary.took(from: o.ran, to: o.ended).map { " · took " + $0 } ?? "")]
             if let first = o.output.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
                 s.lines.append(Self.oneLine(String(first)))
             }
@@ -212,7 +231,7 @@ extension Block {
             } else {
                 let status = c.status ?? 0
                 s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                s.lines = [status == 0 ? "ok" : "exit \(status)"]
+                s.lines = [(status == 0 ? "ok" : "exit \(status)") + (BlockSummary.took(from: c.at, to: c.ended).map { " · took " + $0 } ?? "")]
                 if status != 0 { s.tone = .failed }
             }
             return s

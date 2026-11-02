@@ -422,13 +422,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
+    /// A command's word in a list: how it ended, how long it took (a
+    /// second or more), when — "exit 1 · 2m 13s · 4h"; or "running".
+    private func detail(of c: ShellCommand, last: Int?) -> String {
+        guard c.status != nil || c.id != last else { return "running" }
+        let when = Age.short(c.at) == "now" ? "just now" : Age.short(c.at)
+        return [c.status.flatMap { $0 == 0 ? nil : "exit \($0)" }, BlockSummary.took(from: c.at, to: c.ended, least: 1), when]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
     private func fillOutline() {
         let commands = outlined
         commandsOutline.set(commands.map { c in
-            var detail: String
-            if let st = c.status { detail = st == 0 ? Age.short(c.at) : "exit \(st) · \(Age.short(c.at))" } else { detail = c.id == commands.last?.id ? "running" : Age.short(c.at) }
-            if detail == "now" { detail = "just now" }
-            return Outline.Item(title: c.text, detail: detail, failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: !isAgent)
+            Outline.Item(title: c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: !isAgent)
         })
         markCurrentCommand()
     }
@@ -555,11 +561,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// block of its own.
     private func showActions(ofCommand id: Int, at rect: NSRect) {
         guard let window, let c = commands.first(where: { $0.id == id }) else { return }
-        var detail: String
-        if let st = c.status { detail = st == 0 ? Age.short(c.at) : "exit \(st) · \(Age.short(c.at))" } else { detail = c.id == commands.last?.id ? "running" : Age.short(c.at) }
-        if detail == "now" { detail = "just now" }
         let rows: [FloatingList.Row] = [
-            .init(title: c.text, detail: detail, code: true, failed: c.failed, header: true),
+            .init(title: c.text, detail: detail(of: c, last: commands.last?.id), code: true, failed: c.failed, header: true),
             .init(title: "Copy Command and Output", symbol: "doc.on.doc", action: { [weak self] in self?.copyTranscript(command: id) }),
             .init(title: "Open as Block", symbol: "rectangle.portrait.on.rectangle.portrait", action: { [weak self] in self?.open(command: id) }),
         ]

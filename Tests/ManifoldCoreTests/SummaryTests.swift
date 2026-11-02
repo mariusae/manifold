@@ -13,20 +13,27 @@ import Testing
     #expect(ns.title == "Plan")
     #expect(ns.lines == ["ship the beta", "then rest"])
     #expect(Block.firstLines("Plain, _italic_, *bold italic*, snake_case_name", skipping: "", count: 1) == ["Plain, italic, bold italic, snake_case_name"])
-    // A terminal: its last command, how it ended, the one before; when.
+    // A terminal: its last command, how it ended and how long it took, the one before; when.
     var term = Block(id: BlockID(host: h), kind: .terminal, created: at(0))
     term.apply(.ran(id: 1, "make", at: at(9000)), at: at(9000))
     term.apply(.exited(id: 1, status: 0, at: at(9001)), at: at(9001))
     term.apply(.ran(id: 2, "make test", at: at(9990)), at: at(9990))
     term.apply(.exited(id: 2, status: 2, at: at(9995)), at: at(9995))
     let ts = term.summary(now: now)
-    #expect(ts.lines == ["$ make test", "exit 2", "$ make"])
+    #expect(ts.lines == ["$ make test", "exit 2 · took 5.0 s", "$ make"])
     #expect(ts.note == "now" && ts.tone == .failed && ts.code)
     // A diff: files and lines changed.
     var diff = Block(id: BlockID(host: h), kind: .diff, created: at(0))
     diff.apply(.diffLoaded(oldText: nil, newText: nil, patch: "--- a/x.swift\n+++ b/x.swift\n@@ -1 +1,2 @@\n-a\n+b\n+c\n", error: nil, at: at(9000)), at: at(9000))
     #expect(diff.summary(now: now).lines == ["1 file, +2 −1", "x.swift"])
     #expect(BlockSummary.ago(at(10_000 - 7200), now: now) == "2h")
+    // How long, as briefly; a list's quick ones not at all.
+    #expect(BlockSummary.took(from: at(0), to: at(0.04)) == "40 ms")
+    #expect(BlockSummary.took(from: at(0), to: at(3.24)) == "3.2 s")
+    #expect(BlockSummary.took(from: at(0), to: at(133)) == "2m 13s")
+    #expect(BlockSummary.took(from: at(0), to: at(3840)) == "1h 4m")
+    #expect(BlockSummary.took(from: at(0), to: at(0.5), least: 1) == nil)
+    #expect(BlockSummary.took(from: at(0), to: nil) == nil)
 }
 
 @Test func summaryLinesLeaveATerminalsEscapesOut() {
@@ -62,7 +69,7 @@ import Testing
     term.apply(.ran(id: 7, "make test", at: at(9990)), at: at(9990))
     term.apply(.exited(id: 7, status: 2, at: at(9995)), at: at(9995))
     let made = term.summary(at: "command=7", now: now)
-    #expect(made?.title == "make test" && made?.lines == ["exit 2"] && made?.tone == .failed && made?.code == true)
+    #expect(made?.title == "make test" && made?.lines == ["exit 2 · took 5.0 s"] && made?.tone == .failed && made?.code == true)
     #expect(term.summary(at: "command=8", now: now) == nil)
     #expect(note.summary(at: "page=2", now: now) == nil)
 }
