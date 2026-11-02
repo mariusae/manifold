@@ -278,6 +278,14 @@ extension NSMutableAttributedString {
         addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: length))
         return self
     }
+
+    /// One line, cut at its start (a path, its name kept).
+    func truncatingHead() -> NSMutableAttributedString {
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingHead
+        addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: length))
+        return self
+    }
 }
 
 extension NSPasteboard.PasteboardType {

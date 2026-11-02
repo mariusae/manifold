@@ -49,7 +49,29 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private enum Row {
         case file(String, count: Int)
         case hit(SearchHit)
+        /// A project's search (§2.6): its symbols and files by name, each
+        /// under a heading, above the text's hits.
+        case section(String)
+        case symbol(SymbolHit)
+        case name(String)
+
+        /// Where it goes, as a hit: a symbol's definition, a file's top.
+        func asHit(root: String) -> SearchHit? {
+            switch self {
+            case let .hit(h): h
+            case let .symbol(s): SearchHit(path: s.path, line: s.line + 1, column: s.character + 1, text: s.text)
+            case let .name(rel): SearchHit(path: root.appendingPathComponent(rel), line: 1, column: 1, text: "")
+            default: nil
+            }
+        }
+        var isHeading: Bool {
+            switch self {
+            case .file, .section: true
+            default: false
+            }
+        }
     }
+    private var shownNames: (symbols: [SymbolHit]?, files: [String]?) = (nil, nil)
     private var rows: [Row] = []
     private var hitCount = 0
     private var fileCount = 0
@@ -133,7 +155,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = table.selectedRow
-        if row >= 0, row < rows.count, case let .hit(h) = rows[row] { keeper.note(["selected": "\(h.path):\(h.line)"]) }
+        if row >= 0, row < rows.count, let h = rows[row].asHit(root: query?.root ?? "") { keeper.note(["selected": "\(h.path):\(h.line)"]) }
         updatePreview()
     }
 
@@ -142,8 +164,9 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         guard !preview.isHidden else { return }
         let row = table.selectedRow
         var hit: SearchHit?
-        if row >= 0, row < rows.count, case let .hit(h) = rows[row] { hit = h }
-        if hit == nil { hit = rows.lazy.compactMap { if case let .hit(h) = $0 { return h } else { return nil } }.first }
+        let root = query?.root ?? ""
+        if row >= 0, row < rows.count { hit = rows[row].asHit(root: root) }
+        if hit == nil { hit = rows.lazy.compactMap { $0.asHit(root: root) }.first }
         guard hit != preview.hit else { return }
         preview.show(hit, query: query, root: query?.root ?? "")
     }
@@ -153,7 +176,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         guard !keeper.restored else { return }
         keeper.restored = true
         if let draft = keeper.value("draft"), !draft.isEmpty, field.currentEditor() == nil { fieldBox.stringValue = draft }
-        if let key = keeper.value("selected"), let i = rows.firstIndex(where: { if case let .hit(h) = $0 { return "\(h.path):\(h.line)" == key } else { return false } }) {
+        if let key = keeper.value("selected"), let i = rows.firstIndex(where: { $0.asHit(root: query?.root ?? "").map { "\($0.path):\($0.line)" == key } ?? false }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
         if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
@@ -228,10 +251,11 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             hitCount = 0
             fileCount = 0
             shownHits = 0
+            shownNames = (nil, nil)
             preview.forget()
             preview.show(nil, query: nil, root: "")
         }
-        if s.hits.count != shownHits { rebuild(s.hits) }
+        if s.hits.count != shownHits || s.symbols != shownNames.symbols || s.files != shownNames.files { rebuild(s) }
         var text: String
         if s.running {
             text = hitCount == 0 ? "Searching…" : "\(hitCount) so far…"
@@ -240,15 +264,31 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         } else if s.query == nil {
             text = ""
         } else {
-            text = hitCount == 0 ? "Nothing found" : "\(hitCount) in \(fileCount) file\(fileCount == 1 ? "" : "s")"
+            text = hitCount == 0 ? (s.query?.kinds?.contains("text") == false ? "" : "Nothing found") : "\(hitCount) in \(fileCount) file\(fileCount == 1 ? "" : "s")"
             if s.truncated { text += ", stopped at \(hitCount)" }
         }
+        // A project's search: what it found by name, before the text.
+        var names: [String] = []
+        if let n = s.symbols?.count, n > 0 { names.append(n == 1 ? "1 symbol" : "\(n) symbols") }
+        if let n = s.files?.count, n > 0 { names.append(n == 1 ? "1 file by name" : "\(n) files by name") }
+        if !names.isEmpty { text = names.joined(separator: ", ") + (text.isEmpty ? "" : "; " + text) }
         status.stringValue = text
     }
 
-    private func rebuild(_ hits: [SearchHit]) {
+    private func rebuild(_ s: SearchState) {
+        let hits = s.hits
         // Hits come in order, grouped by file as the command walks the tree.
         var out: [Row] = []
+        if let symbols = s.symbols, !symbols.isEmpty {
+            out.append(.section("Symbols"))
+            out += symbols.map { .symbol($0) }
+        }
+        if let files = s.files, !files.isEmpty {
+            out.append(.section("Files"))
+            out += files.map { .name($0) }
+        }
+        if !out.isEmpty, !hits.isEmpty { out.append(.section("Text")) }
+        shownNames = (s.symbols, s.files)
         var file: String?
         var files = 0
         // Each file's count, in one pass (not every hit gone through again
@@ -270,7 +310,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         let selected = table.selectedRow
         table.reloadData()
         if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
-        if let s = source()?.search, !s.running { restoreState() }
+        if !s.running { restoreState() }
         updatePreview()
     }
 
@@ -281,8 +321,11 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     // MARK: Asking
 
     private var currentQuery: SearchQuery {
-        SearchQuery(text: field.stringValue, regex: regexButton.state == .on, caseSensitive: caseButton.state == .on,
-                    root: query?.root ?? "", glob: query?.glob)
+        var q = SearchQuery(text: field.stringValue, regex: regexButton.state == .on, caseSensitive: caseButton.state == .on,
+                            root: query?.root ?? "", glob: query?.glob)
+        // A project's search asks for its names again too.
+        q.kinds = query?.kinds
+        return q
     }
 
     /// A folder typed: the search asked again under it (`~` as home, a
@@ -341,14 +384,16 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         guard row >= 0, row < rows.count else { return }
         switch rows[row] {
         case let .hit(h): delegate?.searchView(self, open: h)
-        case .file: select(row: row + 1, forward: true)
+        case .symbol, .name:
+            if let h = rows[row].asHit(root: query?.root ?? "") { delegate?.searchView(self, open: h.path, line: h.line) }
+        case .file, .section: select(row: row + 1, forward: true)
         }
     }
 
     /// Selects a hit row, skipping file headers.
     private func select(row: Int, forward: Bool) {
         var r = row
-        while r >= 0, r < rows.count, case .file = rows[r] { r += forward ? 1 : -1 }
+        while r >= 0, r < rows.count, rows[r].isHeading { r += forward ? 1 : -1 }
         guard r >= 0, r < rows.count else { return }
         table.selectRowIndexes([r], byExtendingSelection: false)
         table.scrollRowToVisible(r)
@@ -383,7 +428,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             return "asked"
         }
         if let n = Int(arg) {
-            let hitRows = rows.indices.filter { if case .hit = rows[$0] { return true } else { return false } }
+            let hitRows = rows.indices.filter { !rows[$0].isHeading }
             if n < hitRows.count { table.selectRowIndexes([hitRows[n]], byExtendingSelection: false); table.scrollRowToVisible(hitRows[n]) }
         }
         return (preview.isHidden ? "hidden " : "") + preview.debugState
@@ -396,7 +441,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
         case let .file(path, _): return Drags.file(path, isDirectory: false, on: block.host)
-        case let .hit(hit): return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
+        case .section: return nil
+        case .hit, .symbol, .name:
+            guard let hit = rows[row].asHit(root: query?.root ?? "") else { return nil }
+            return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
         }
     }
 
@@ -411,22 +459,20 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     // Each row looked up only where it is: asked for one the table still
     // thinks it has, nothing.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        if rows.indices.contains(row), case .file = rows[row] { return FileHeaderRowView() }
+        if rows.indices.contains(row), rows[row].isHeading { return FileHeaderRowView() }
         return SelectionRowView()
     }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-        if rows.indices.contains(row), case .file = rows[row] { return true }
-        return false
+        rows.indices.contains(row) && rows[row].isHeading
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if rows.indices.contains(row), case .hit = rows[row] { return true }
-        return false
+        rows.indices.contains(row) && !rows[row].isHeading
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if rows.indices.contains(row), case .file = rows[row] { return 24 }
+        if rows.indices.contains(row), rows[row].isHeading { return 24 }
         return 20
     }
 
@@ -464,6 +510,17 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             }
             s.append(body)
             f.attributedStringValue = s.truncatingTail()
+        case let .section(words):
+            f.attributedStringValue = NSAttributedString(string: words, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.secondaryText])
+        case let .symbol(h):
+            let s = NSMutableAttributedString(string: h.kind.isEmpty ? "" : h.kind + "  ", attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText])
+            s.append(NSAttributedString(string: h.qualified, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]))
+            var at = h.path
+            if let root = query?.root, at.hasPrefix(root + "/") { at = String(at.dropFirst(root.count + 1)) }
+            s.append(NSAttributedString(string: "  \(at):\(h.line + 1)  \(h.source == .index ? "index" : "server")", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
+            f.attributedStringValue = s.truncatingTail()
+        case let .name(rel):
+            f.attributedStringValue = NSAttributedString(string: rel, attributes: [.font: UIType.body, .foregroundColor: Theme.text])
         }
         return cell
     }

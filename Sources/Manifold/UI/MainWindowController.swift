@@ -8484,6 +8484,35 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
+    func directoryView(_ view: DirectoryView, watch block: BlockID, _ changed: @escaping () -> Void) {
+        hosts.watch(block, by: view, changed)
+    }
+
+    func directoryView(_ view: DirectoryView, search query: SearchQuery, in block: BlockID?) -> BlockID? {
+        guard let client = hosts.client(view.block.host) else { return nil }
+        if let block, hosts.block(block) != nil {
+            hosts.propose(.search(block: block, query: query))
+            return block
+        }
+        return client.newSearch(query)
+    }
+
+    func directoryView(_ view: DirectoryView, open found: ProjectSearchView.Found, root: String) {
+        let host = view.block.host
+        switch found {
+        case let .symbol(h):
+            open(path: h.path, line: h.line + 1, column: h.character + 1, on: host, from: view.placement, context: h.qualified)
+        case let .file(rel):
+            open(root.appendingPathComponent(rel), from: view.placement)
+        case let .hit(h):
+            open(path: h.path, line: h.line, column: h.column, on: host, from: view.placement, context: "“\(h.text.trimmingCharacters(in: .whitespaces).prefix(30))”")
+        }
+    }
+
+    func directoryView(_ view: DirectoryView, popOut search: BlockID) {
+        show(search, lens: .search, .besideOpener(view.placement), context: "a search of \(directoryViewProject(view)?.name ?? "the project")")
+    }
+
     func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction) {
         guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
         switch action {

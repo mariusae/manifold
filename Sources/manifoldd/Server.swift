@@ -1035,8 +1035,17 @@ final class Server {
                 append(.create(kind: .search, title: nil, path: nil), to: .block(block))
             }
             append(.search(q, at: clock.now()), to: .block(block))
-            report(block, .working, msg: "Looking for “\(q.text)”")
-            searches.run(block, q)
+            let kinds = Set(q.kinds ?? ["text"])
+            if kinds.contains("text") {
+                report(block, .working, msg: "Looking for “\(q.text)”")
+                searches.run(block, q)
+            } else {
+                searches.cancel(block)
+                append(.hits([], done: true, truncated: false, error: nil), to: .block(block))
+            }
+            // A project's search (§2.6): symbols and files by name too.
+            if kinds.contains("symbols") { findSymbols(block, q) }
+            if kinds.contains("files") { findFiles(block, q) }
             done()
         case let .cancelSearch(block):
             searches.cancel(block)
@@ -1176,6 +1185,39 @@ final class Server {
             for c in self.clients { c.send(frame) }
         }
     }
+
+    /// Symbols named like a search's text, from the project's index and
+    /// its language servers (§2.6): the index's at once, then all of them
+    /// as one list — kept only while the search still asks this.
+    private func findSymbols(_ block: BlockID, _ q: SearchQuery) {
+        let current = { [weak self] in self?.node.block(block)?.search?.query == q }
+        scip.search(root: q.root, query: q.text, limit: 40) { [weak self] indexed in
+            guard let self, current() else { return }
+            if !indexed.isEmpty { self.append(.searchSymbols(indexed), to: .block(block)) }
+            self.languageServers.workspaceSymbols(root: q.root, query: q.text, limit: 40) { [weak self] served in
+                guard let self, current() else { return }
+                self.append(.searchSymbols(SymbolHit.merge([indexed, served], limit: 40)), to: .block(block))
+            }
+        }
+    }
+
+    /// Files named like a search's text under its root, best first: the
+    /// root's files listed (kept a little, for the next keystroke's).
+    private func findFiles(_ block: BlockID, _ q: SearchQuery) {
+        let root = q.root
+        let cached = fileLists[root].flatMap { Date().timeIntervalSince($0.at) < 30 ? $0.files : nil }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let files = cached ?? FileFinder.list(root: root)
+            let best = Array(FileFinder.rank(q.text, files, limit: 30))
+            self?.queue.async {
+                guard let self else { return }
+                if cached == nil { self.fileLists[root] = (Date(), files) }
+                guard self.node.block(block)?.search?.query == q else { return }
+                self.append(.searchFiles(best), to: .block(block))
+            }
+        }
+    }
+    private var fileLists: [String: (at: Date, files: [String])] = [:]
 
     private func refreshGit(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }

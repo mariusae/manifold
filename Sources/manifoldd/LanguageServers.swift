@@ -146,6 +146,57 @@ final class LanguageServers {
 
     // MARK: Requests
 
+    /// Symbols named like `query` in a project (§2.6), as the language
+    /// servers running there say (`workspace/symbol`): those whose root
+    /// holds the project or is in it. None where none is running; what
+    /// came, after a few seconds, from one that's slow.
+    func workspaceSymbols(root: String, query: String, limit: Int, done: @escaping ([SymbolHit]) -> Void) {
+        let canon = Self.canonical(root)
+        let asked = servers.values.filter { s in
+            !s.failed && (s.root == canon || s.root.hasPrefix(canon + "/") || canon.hasPrefix(s.root + "/") || s.root == root)
+        }
+        guard !asked.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return done([]) }
+        var waiting = asked.count, found: [SymbolHit] = [], finished = false
+        func finish() {
+            guard !finished else { return }
+            finished = true
+            // The best, each with its line's words, read once a file.
+            var texts: [String: [Substring]] = [:]
+            let best = SymbolHit.merge([found], limit: limit).map { h -> SymbolHit in
+                var h = h
+                if texts[h.path] == nil { texts[h.path] = TextFile.read(h.path).map { $0.text.split(separator: "\n", omittingEmptySubsequences: false) } ?? [] }
+                if let lines = texts[h.path], h.line < lines.count { h.text = lines[h.line].trimmingCharacters(in: .whitespaces) }
+                return h
+            }
+            done(best)
+        }
+        queue.asyncAfter(deadline: .now() + 3) { finish() }
+        for s in asked {
+            s.request("workspace/symbol", ["query": query]) { [weak self] result in
+                defer { waiting -= 1; if waiting == 0 { finish() } }
+                guard let self, case .success(let value) = result, let items = value as? [[String: Any]] else { return }
+                for item in items {
+                    guard let name = item["name"] as? String, let loc = item["location"] as? [String: Any],
+                          let uri = loc["uri"] as? String, var path = Self.path(uri).map(self.blockPath) else { continue }
+                    // In the project, either spelling — said as the project says it, so the index's
+                    // hit for the same place is the same.
+                    if !path.hasPrefix(root + "/") {
+                        let real = Self.canonical(path)
+                        guard real.hasPrefix(canon + "/") else { continue }
+                        path = root + real.dropFirst(canon.count)
+                    }
+                    let start = (loc["range"] as? [String: Any])?["start"] as? [String: Any]
+                    let kind = LSPSymbol.word((item["kind"] as? Int) ?? 0)
+                    let container = (item["containerName"] as? String) ?? ""
+                    let score = SymbolHit.score(query, name: name, container: container, kind: kind)
+                    guard score > 0 else { continue }
+                    found.append(SymbolHit(name: name, container: container, kind: kind, path: path, line: (start?["line"] as? Int) ?? 0,
+                                           character: (start?["character"] as? Int) ?? 0, text: "", source: .server, score: score))
+                }
+            }
+        }
+    }
+
     func request(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
         let block: BlockID
         switch request {

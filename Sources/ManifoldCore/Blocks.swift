@@ -417,6 +417,9 @@ public struct SearchQuery: Codable, Equatable, Sendable {
     /// Expand to Project widens to. The host says it, as it runs the
     /// search — only it can look, the files being its own.
     public var project: String?
+    /// What's looked for (§2.6): the files' text, and symbols and files
+    /// by name ("symbols", "files", "text"); nil, the text alone.
+    public var kinds: [String]?
 
     public init(text: String, regex: Bool = false, caseSensitive: Bool = false, root: String, glob: String? = nil) {
         self.text = text
@@ -447,6 +450,10 @@ public struct SearchHit: Codable, Equatable, Sendable {
 public struct SearchState: Codable, Equatable, Sendable {
     public var query: SearchQuery?
     public var hits: [SearchHit] = []
+    /// Symbols and files by name, where they were asked for (§2.6): nil
+    /// until the host has looked; files relative to the root.
+    public var symbols: [SymbolHit]?
+    public var files: [String]?
     public var running = false
     public var truncated = false
     public var error: String?

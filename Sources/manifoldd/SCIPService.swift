@@ -19,6 +19,8 @@ final class SCIPService {
     var indexers = SCIPIndexer.defaults
     /// Indexes read, by root, with when their file was made.
     private var loaded: [String: (index: SCIPIndex, made: Date)] = [:]
+    /// What each can find by name, its names lowered, made when first asked.
+    private var names: [String: (made: Date, items: [(SCIPIndex.Searchable, lower: String)])] = [:]
     /// Roots being indexed, and how each last went.
     private var running: Set<String> = []
     private var failures: [String: String] = [:]
@@ -83,6 +85,41 @@ final class SCIPService {
                     SCIPSymbol(symbol: o.symbol, name: index.name(of: o.symbol), documentation: "", definition: self.location(rel, o, root: root))
                 })
             }
+        }
+    }
+
+    /// Symbols named like `query` in the project at `root` (§2.6), best
+    /// first — none where it has no index (yet).
+    func search(root: String, query: String, limit: Int, done: @escaping ([SymbolHit]) -> Void) {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return done([]) }
+        // Answered within; the result `ask` passes on is only its failure's.
+        ask(Self.real(root.appendingPathComponent(".")), { r in if case .error = r { done([]) } }) { index, root, _ in
+            let made = self.loaded[root]?.made ?? .distantPast
+            if self.names[root]?.made != made {
+                self.names[root] = (made, index.searchable().map { ($0, ($0.container + "." + $0.name).lowercased()) })
+            }
+            // Its letters in order somewhere in the name (cheap), then scored.
+            let letters = Array(q.utf8.filter { $0 != 0x20 && $0 != 0x2E })
+            var found: [SymbolHit] = []
+            for (s, lower) in self.names[root]?.items ?? [] {
+                var i = 0
+                for b in lower.utf8 where i < letters.count && b == letters[i] { i += 1 }
+                guard i == letters.count else { continue }
+                let score = SymbolHit.score(query, name: s.name, container: s.container, kind: s.kind)
+                guard score > 0 else { continue }
+                found.append(SymbolHit(name: s.name, container: s.container, kind: s.kind, path: s.path, line: s.occurrence.line,
+                                       character: s.occurrence.character, text: "", source: .index, score: score))
+            }
+            let best = SymbolHit.merge([found], limit: limit).map { h -> SymbolHit in
+                var h = h
+                let loc = self.location(h.path, SCIPIndex.Occurrence(line: h.line, character: h.character, endLine: h.line, endCharacter: h.character, symbol: "", roles: 1), root: root)
+                h.path = loc.path
+                h.text = loc.text
+                return h
+            }
+            done(best)
+            return .symbols([])
         }
     }
 

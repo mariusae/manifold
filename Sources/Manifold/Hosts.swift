@@ -146,8 +146,47 @@ final class Hosts {
     func setWindow(_ w: WindowState) { change { $0.window = w } }
     func setAppearance(_ a: Appearance) { change { $0.appearance = a } }
 
+    // MARK: Watching a block
+
+    /// Told when a block changes, for a view that reads one it doesn't
+    /// show (a project's git block, its homepage's search): each change,
+    /// told once a turn, while `owner` lives.
+    func watch(_ block: BlockID, by owner: AnyObject, _ changed: @escaping () -> Void) {
+        watchers[block, default: []].removeAll { $0.owner == nil || $0.owner === owner }
+        watchers[block, default: []].append(Watcher(owner: owner, changed: changed))
+    }
+
+    func unwatch(_ block: BlockID, by owner: AnyObject) {
+        watchers[block]?.removeAll { $0.owner == nil || $0.owner === owner }
+        if watchers[block]?.isEmpty == true { watchers.removeValue(forKey: block) }
+    }
+
+    private struct Watcher {
+        weak var owner: AnyObject?
+        let changed: () -> Void
+    }
+    private var watchers: [BlockID: [Watcher]] = [:]
+    private var watchedChanged: Set<BlockID> = []
+
+    private func blockChanged(_ id: BlockID) {
+        guard watchers[id] != nil else { return }
+        let first = watchedChanged.isEmpty
+        watchedChanged.insert(id)
+        guard first else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let changed = self.watchedChanged
+            self.watchedChanged = []
+            for id in changed {
+                self.watchers[id]?.removeAll { $0.owner == nil }
+                for w in self.watchers[id] ?? [] { w.changed() }
+            }
+        }
+    }
+
     private func wire(_ client: HostClient) {
         client.onChange = { [weak self] in self?.scheduleChange() }
+        client.onBlockChanged = { [weak self] id in self?.blockChanged(id) }
         client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
         client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
         client.onShow = { [weak self, weak client] id, who, block, beside in

@@ -17,6 +17,15 @@ public struct SCIPIndex: Sendable {
 
         public var isDefinition: Bool { roles & 1 != 0 }
 
+        public init(line: Int, character: Int, endLine: Int, endCharacter: Int, symbol: String, roles: Int) {
+            self.line = line
+            self.character = character
+            self.endLine = endLine
+            self.endCharacter = endCharacter
+            self.symbol = symbol
+            self.roles = roles
+        }
+
         func contains(line l: Int, character c: Int) -> Bool {
             (l, c) >= (line, character) && (l, c) <= (endLine, endCharacter)
         }
@@ -154,6 +163,34 @@ public struct SCIPIndex: Sendable {
     /// What a file defines, in order.
     public func defined(in path: String) -> [Occurrence] {
         documents[path]?.occurrences.filter { $0.isDefinition && !$0.symbol.hasPrefix("local ") }.sorted { ($0.line, $0.character) < ($1.line, $1.character) } ?? []
+    }
+
+    /// What can be found by name (§2.6): each symbol defined in the
+    /// project — not locals, parameters or meta — with its own name, what
+    /// it's in and its kind, where it's defined; made once, asked often.
+    public func searchable() -> [Searchable] {
+        definitions.compactMap { symbol, defs in
+            guard let kind = SymbolHit.kind(scip: symbol), let (path, o) = defs.first else { return nil }
+            let full = name(of: symbol)
+            var name = full, container = ""
+            if information[symbol]?.displayName.isEmpty ?? true, let dot = full.lastIndex(of: ".") {
+                name = String(full[full.index(after: dot)...])
+                container = String(full[..<dot])
+            } else {
+                let qualified = Self.descriptorName(symbol)
+                if let dot = qualified.lastIndex(of: ".") { container = String(qualified[..<dot]) }
+            }
+            return Searchable(symbol: symbol, name: name, container: container, kind: kind, path: path, occurrence: o)
+        }
+    }
+
+    public struct Searchable: Sendable {
+        public var symbol: String
+        public var name: String
+        public var container: String
+        public var kind: String
+        public var path: String
+        public var occurrence: Occurrence
     }
 
     /// A symbol's name to show: the indexer's, else its last descriptor's

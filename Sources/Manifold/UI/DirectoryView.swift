@@ -61,6 +61,16 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, indexOf project: Project, done: @escaping (SCIPStatus?, _ missing: String?) -> Void)
     /// What its homepage asks for.
     func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction)
+    /// A block not shown here read as it changes (a project's git block,
+    /// its search's): `changed` told each time, while the view lives.
+    func directoryView(_ view: DirectoryView, watch block: BlockID, _ changed: @escaping () -> Void)
+    /// The project searched (§2.6): asked again in `block`, if it's given,
+    /// else in a new search block; that block.
+    func directoryView(_ view: DirectoryView, search query: SearchQuery, in block: BlockID?) -> BlockID?
+    /// Something its search found, gone to (beside).
+    func directoryView(_ view: DirectoryView, open found: ProjectSearchView.Found, root: String)
+    /// The search in a tile of its own, beside.
+    func directoryView(_ view: DirectoryView, popOut search: BlockID)
 }
 
 /// What's dropped on a folder's tile: a file or folder of this Mac's, or
@@ -151,6 +161,14 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     var home: Bool { homeShown && project != nil }
     private let strip = ProjectStrip()
     private let sidebar = ProjectSidebar()
+    /// Its search's results, in the files' place while something's typed
+    /// in the field (§2.6), and the block they're in.
+    private let results = ProjectSearchView()
+    private var projectSearch: BlockID?
+    private var searchWork: DispatchWorkItem?
+    /// Something typed in a project's homepage's field: it's searched,
+    /// not filtered.
+    private var searchingProject: Bool { home && !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }
     /// Offered, quietly, where the folder looks like a project's root (a
     /// repository's, a language's manifest) and isn't one yet.
     private let makeProject = FlatButton("Make Project", symbol: "shippingbox", font: UIType.detail)
@@ -194,6 +212,14 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         sidebar.onAction = { [weak self] a in self?.projectAction(a) }
         addSubview(strip)
         addSubview(sidebar)
+        results.isHidden = true
+        results.onOpen = { [weak self] f in
+            guard let self, let project = self.project else { return }
+            self.delegate?.directoryView(self, open: f, root: project.root)
+        }
+        results.onPopOut = { [weak self] in self?.popOutSearch() }
+        results.onBack = { [weak self] in self?.focusFilter() }
+        addSubview(results)
         footer.font = UIType.footnote
         footer.textColor = Theme.secondaryText
         footer.alignment = .center
@@ -414,6 +440,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         sidebar.isHidden = !home || bounds.width < Self.sidebarFrom
         // The sidebar has the right: no preview beside the tree.
         (content as? DirectoryTreeMode)?.previews = !home
+        // Its field searches the project; elsewhere, it finds files here.
+        search.placeholderString = home ? "Search \(project?.name ?? "the project"): symbols, files, text"
+            : mode == .columns ? "Filter, or ? to search in files" : "Find a file, or ? to search in files"
+        if home, model?.filtering == true { model?.setFilter("") }
+        if !home, !search.stringValue.isEmpty, model?.filter != search.stringValue, !searchingContents { model?.setFilter(search.stringValue) }
+        updateResults()
         needsLayout = true
         guard home else { return }
         // Its git block found again, and so refreshed: the project as it is now.
@@ -428,6 +460,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if projectGit == nil || (projectGit.flatMap { delegate?.directoryView(self, block: $0) } == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) > 10) {
             gitAskedAt = Date()
             projectGit = delegate?.directoryView(self, gitFor: project)
+            if let id = projectGit { delegate?.directoryView(self, watch: id) { [weak self] in self?.showFacts() } }
         }
         let git = projectGit.flatMap { delegate?.directoryView(self, block: $0) }
         var f = facts?.project == project ? facts! : ProjectFacts(project: project)
@@ -457,6 +490,57 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             self.facts = f
             self.strip.show(f)
         }
+    }
+
+    // MARK: A project's search
+
+    /// What's typed searched, a moment after the last key: symbols and
+    /// files by name, and — two letters on — the text (`sym:`, `file:`,
+    /// `text:` for one alone; `?` the text, as the filter has it).
+    private func projectQueryTyped() {
+        keeper.note(["filter": search.stringValue])
+        searchWork?.cancel()
+        updateResults()
+        guard searchingProject, let project else { return }
+        let typed = search.stringValue
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.searchWork = nil
+            var pq = ProjectQuery(typed.hasPrefix("?") ? "text:" + typed.dropFirst() : typed)
+            if pq.text.count < 2 { pq.kinds.removeAll { $0 == "text" } }
+            guard !pq.text.isEmpty, !pq.kinds.isEmpty else { return }
+            var q = SearchQuery(text: pq.text, root: project.root)
+            q.kinds = pq.kinds
+            let was = self.projectSearch
+            self.projectSearch = self.delegate?.directoryView(self, search: q, in: was)
+            if let id = self.projectSearch, id != was {
+                self.delegate?.directoryView(self, watch: id) { [weak self] in self?.updateResults() }
+            }
+            self.updateResults()
+        }
+        searchWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    /// The results shown, in the files' place, while something's typed.
+    private func updateResults() {
+        let on = searchingProject
+        if results.isHidden == on {
+            results.isHidden = !on
+            needsLayout = true
+        }
+        guard on, let project else { return }
+        results.show(projectSearch.flatMap { delegate?.directoryView(self, block: $0)?.search }, root: project.root)
+    }
+
+    /// Open in a Tile: the search beside, kept; the homepage's field
+    /// cleared, the next search a new one.
+    private func popOutSearch() {
+        guard let id = projectSearch else { return }
+        delegate?.directoryView(self, popOut: id)
+        projectSearch = nil
+        searchBox.stringValue = ""
+        filterTyped()
     }
 
     private func projectAction(_ a: ProjectAction) {
@@ -693,6 +777,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     @objc private func filterTyped() {
         searchBox.update()
+        if home { return projectQueryTyped() }
         model?.setFilter(searchingContents ? "" : search.stringValue)
         keeper.note(["filter": search.stringValue])
         updateFooter()
@@ -705,6 +790,22 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     func controlTextDidEndEditing(_ obj: Notification) { searchBox.needsDisplay = true }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        // A project's search (§2.6): ↓ into what's found, ⏎ the best (or
+        // the one chosen) gone to; ⎋ as the filter's.
+        if searchingProject {
+            switch selector {
+            case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertTab(_:)):
+                guard results.hasFound else { return true }
+                window?.makeFirstResponder(results.focusView)
+                results.selectFirst()
+                return true
+            case #selector(NSResponder.insertNewline(_:)):
+                searchWork?.perform()
+                results.openChosen()
+                return true
+            default: break
+            }
+        }
         switch selector {
         case #selector(NSResponder.cancelOperation(_:)):
             // ⎋: the filter cleared; again, back to the files.
@@ -751,6 +852,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     private func updateFooter() {
         guard let model else { return }
+        if home {
+            if !footer.isHidden { footer.isHidden = true; needsLayout = true }
+            return
+        }
         if searchingContents {
             let text = search.stringValue.dropFirst().trimmingCharacters(in: .whitespaces)
             footer.stringValue = text.isEmpty ? "Type what to search the files for" : "⏎ searches the files for “\(text)”"
@@ -836,7 +941,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         // bar alone when collapsed, or when the tile's too short for both.
         var bottom = footerHeight
         let room = top - footerHeight
-        let showsReadme = readmeText != nil && model?.filtering != true && !searchingContents
+        let showsReadme = readmeText != nil && model?.filtering != true && !searchingContents && results.isHidden
         readme.isHidden = !showsReadme
         if showsReadme {
             let bar = FolderReadme.barHeight, least: CGFloat = 120
@@ -849,6 +954,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         }
         content?.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
         note.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
+        // A project's search over the files and the README.
+        results.frame = NSRect(x: 0, y: 0, width: fw, height: top)
+        // (Over the README and the note, which are added before it.)
+        content?.isHidden = !results.isHidden
     }
 
     // MARK: The README, and Markdown pages
@@ -944,6 +1053,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "columns": setMode(.columns)
         case "home": toggleHome()
         case "make": makeProjectClicked()
+        case "search":
+            // "search <text>": typed in a project's homepage's field; "search" alone, what's found.
+            if words.count > 1 {
+                searchBox.stringValue = words[1]
+                filterTyped()
+                searchWork?.perform()
+            }
+            return results.isHidden ? "no search shown" : results.debugState
+        case "searchenter": results.openChosen()
+        case "popout": popOutSearch()
         case "project":
             // "project git|reindex|commit <n>|change <n>": as its homepage's buttons and rows do.
             let w = words.count > 1 ? words[1].split(separator: " ").map(String.init) : []

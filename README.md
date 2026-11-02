@@ -878,6 +878,15 @@ around it, and comes back with its history.
   as are the commits in the git tile its branch and **All commits
   here** open. A new project is indexed at once, if its language has an
   indexer. **No Longer a Project** in the menu takes it back.
+  On the homepage its field **searches the project** as you type, in
+  the files' place: symbols by name (from its index and the language
+  servers running there, each marked by which — `index`, `server` — the
+  index's at once), files by name, and, two letters on, the files' text,
+  each under its heading, best first. ↓ goes into them, ⏎ opens the one
+  chosen (the best, from the field) beside, ⎋ clears it; `sym:`,
+  `file:` and `text:` look for one alone. **Open in a Tile** puts the
+  same search beside, to keep — its symbols and files above the text,
+  previewed as hits are.
 - **Files cross between hosts** as they would between folders: drop
   files from the Finder (or entries from another folder's tile, another
   host's too) on a folder's tile and they're copied into it, there —

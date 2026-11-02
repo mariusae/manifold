@@ -351,6 +351,10 @@ public enum Event: Codable, Equatable, Sendable {
     /// Hits found, in order; `done` when the host has looked everywhere
     /// (or stopped: `truncated`, or an `error`).
     case hits([SearchHit], done: Bool, truncated: Bool, error: String?)
+    /// Symbols found by name (§2.6), best first: all of them so far.
+    case searchSymbols([SymbolHit])
+    /// Files found by name, best first, relative to the root.
+    case searchFiles([String])
 
     // Arrangement.
     /// At column `column` (one past the last makes a new column), index
@@ -569,6 +573,8 @@ extension SearchState {
         case let .search(q, at):
             query = q
             hits = []
+            symbols = nil
+            files = nil
             running = true
             truncated = false
             error = nil
@@ -580,6 +586,8 @@ extension SearchState {
                 self.truncated = truncated
                 self.error = error
             }
+        case let .searchSymbols(s): symbols = s
+        case let .searchFiles(f): files = f
         default: break
         }
     }

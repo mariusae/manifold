@@ -286,6 +286,19 @@ homepage round its files. Nothing is guessed where no project is made:
 a path outside every project finds its repository and indexer as it
 did, by their markers.
 
+A project is searched as one: a search block's query can ask for
+symbols and files by name besides the text (`SearchQuery.kinds`), and
+the host fills them in beside the hits (`SearchState.symbols`, `files`;
+`.searchSymbols`, `.searchFiles`) — symbols from the project's index
+(`SCIPService.search`: each defined symbol's name, what it's in and its
+kind by its last descriptor, made once an index is read, scored as
+⌘P scores titles) at once, then merged with the language servers'
+running there (`workspace/symbol`, three seconds at most; one place
+once, the index's kept), files ranked from the project's file list
+(kept half a minute, for the next keystroke's). What's said comes
+marked by who said it (`SymbolHit.source`), so a hit from the index and
+one from a server can be told apart.
+
 ---
 
 ## 3. Spaces
@@ -1272,7 +1285,14 @@ block, read on the listing's timer since that block isn't placed), the
 README under the files as ever; the tree previews nothing beside it
 there, the sidebar having the right. A folder that looks like a
 project's root (a repository's, an indexer's marker) and isn't one
-offers Make Project in its header.
+offers Make Project in its header. On the homepage the header's field
+searches the project (`ProjectSearchView`, in the files' place): a
+search block asked again a moment after each key (the text from two
+letters), watched as it changes (`Hosts.watch`: a block not placed
+isn't a tile's to be told of), its symbols, files and lines each under
+a heading; Open in a Tile places that block beside and the next search
+is a new one. The search lens shows a project search's symbols and
+files above its hits, previewed as hits are.
 
 ### 7.5 Image, PDF, diff, git, search, process, agent
 

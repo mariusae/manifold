@@ -262,8 +262,14 @@ final class HostClient {
             host = known ?? HostID(name)
             clock = Clock(host: host)
         }
-        node.onChange = { [weak self] _ in self?.scheduleChange() }
+        node.onChange = { [weak self] shard in
+            if case let .block(id) = shard { self?.onBlockChanged?(id) }
+            self?.scheduleChange()
+        }
     }
+
+    /// A block's shard changed (its state, as the replica has it).
+    var onBlockChanged: ((BlockID) -> Void)?
 
     var isRemote: Bool {
         if case .remote = transport { return true }
