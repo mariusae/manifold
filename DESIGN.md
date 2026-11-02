@@ -1250,8 +1250,12 @@ left, the bar's button showing it, kept with the tile); a
 side-by-side and inline diff; git status, log and blame as lists that open
 diffs and files — the row chosen shown in a pane under the list, as a mail
 reader shows a message, a commit's message rendered as Markdown, its
-subject line a paragraph like any other, not set as a title
-(`CommitHeaderView`, `MarkdownText`: native text, not the preview's page); search results grouped by file with context, live while
+subject line a paragraph like any other, not set as a title, and set
+as the preview sets its text — its colours (the body a step down from
+white in the dark, bold and headings brighter), its lines and letter
+spacing, and without the system's font smoothing, as WebKit's
+`antialiased` draws, so it's no heavier than the page beside it
+(`ReadingTextView`; `CommitHeaderView`, `MarkdownText`: native text, not the preview's page); search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.
 

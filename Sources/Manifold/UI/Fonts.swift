@@ -106,6 +106,14 @@ extension FontTheme {
         return natural > 0 ? max(0.5, style.lineHeight * font.pointSize / natural) : 1.2
     }
 
+    /// The reading role's lines and letter spacing, for a font of it set
+    /// natively (a commit's message), as the preview sets them.
+    func readingLineHeight(_ font: NSFont) -> CGFloat {
+        let natural = font.ascender - font.descender + font.leading
+        return natural > 0 ? max(0.5, styles.reading.lineHeight * font.pointSize / natural) : 1.2
+    }
+    func readingTracking(_ font: NSFont) -> CGFloat { styles.reading.tracking / 1000 * font.pointSize }
+
     /// Letter spacing in points for a font set in a role.
     func tracking(_ kind: EditorFont, font: NSFont) -> CGFloat {
         let style = kind == .monospaced ? styles.monospaced : styles.editing

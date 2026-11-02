@@ -6,8 +6,17 @@ import AppKit
 /// preview's page, which is for a document. A paragraph's lines are joined
 /// as Markdown joins them (a commit's are wrapped at 72).
 enum MarkdownText {
+    /// The preview's reading colours (`MarkdownPage`): the body a step
+    /// down from white in the dark, headings and bold brighter.
+    static let readingBody = NSColor.dynamic(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xdb / 255, alpha: 1))
+    static let readingStrong = NSColor.dynamic(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xf7 / 255, alpha: 1))
+
+    /// `strong`: headings' and bold's colour (else `color`); `lineHeight`:
+    /// lines as a multiple of the font's own (0, its own); `tracking`:
+    /// letter spacing in points.
     static func attributed(_ markdown: String, font: NSFont, code: NSFont, color: NSColor = Theme.text,
-                           secondary: NSColor = Theme.secondaryText) -> NSAttributedString {
+                           secondary: NSColor = Theme.secondaryText, strong: NSColor? = nil,
+                           lineHeight: CGFloat = 0, tracking: CGFloat = 0) -> NSAttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible)
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             return NSAttributedString(string: markdown, attributes: [.font: font, .foregroundColor: color])
@@ -25,6 +34,7 @@ enum MarkdownText {
             lastBlock = block
             let paragraph = NSMutableParagraphStyle()
             paragraph.paragraphSpacing = font.pointSize * 0.5
+            if lineHeight > 0 { paragraph.lineHeightMultiple = lineHeight }
             var runFont = font
             var runColor = color
             var depth = 0
@@ -32,6 +42,7 @@ enum MarkdownText {
                 switch c.kind {
                 case let .header(level):
                     runFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+                    if let strong { runColor = strong }
                     if level <= 2 { runFont = NSFont(descriptor: runFont.fontDescriptor, size: font.pointSize * (level == 1 ? 1.25 : 1.12)) ?? runFont }
                 case let .listItem(ordinal):
                     depth += 1
@@ -62,11 +73,15 @@ enum MarkdownText {
             var attrs: [NSAttributedString.Key: Any] = [.font: runFont, .foregroundColor: runColor, .paragraphStyle: paragraph]
             if let inline = run.inlinePresentationIntent {
                 if inline.contains(.code) { attrs[.font] = code }
-                if inline.contains(.stronglyEmphasized) { attrs[.font] = NSFontManager.shared.convert(attrs[.font] as! NSFont, toHaveTrait: .boldFontMask) }
+                if inline.contains(.stronglyEmphasized) {
+                    attrs[.font] = NSFontManager.shared.convert(attrs[.font] as! NSFont, toHaveTrait: .boldFontMask)
+                    if let strong { attrs[.foregroundColor] = strong }
+                }
                 if inline.contains(.emphasized) { attrs[.font] = NSFontManager.shared.convert(attrs[.font] as! NSFont, toHaveTrait: .italicFontMask) }
                 if inline.contains(.strikethrough) { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             }
             if let link = run.link { attrs[.link] = link }
+            if tracking != 0, !isCode, run.inlinePresentationIntent?.contains(.code) != true { attrs[.kern] = tracking }
             out.append(NSAttributedString(string: text, attributes: attrs))
         }
         return out

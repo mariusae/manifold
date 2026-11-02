@@ -578,10 +578,20 @@ extension DiffView: FollowsFontTheme {
 /// A commit's heading over its diff, as a mail reader shows a message's:
 /// who and when, small, then the message rendered as Markdown — scrolling
 /// on its own past a share of the tile.
+/// Text drawn as a web page draws its (`-webkit-font-smoothing:
+/// antialiased`, the preview's): without the system's font smoothing,
+/// which thickens strokes, so it reads as light as the preview beside it.
+final class ReadingTextView: NSTextView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false)
+        super.draw(dirtyRect)
+    }
+}
+
 final class CommitHeaderView: NSView {
     private let meta = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
-    private let text = NSTextView()
+    private let text = ReadingTextView()
     private let rule = NSView()
 
     /// What a commit's heading says: its fields (commit, Author, Date —
@@ -654,7 +664,11 @@ final class CommitHeaderView: NSView {
         // The message as written, its subject a paragraph like the rest:
         // the line above names the commit already, and a subject is often
         // a sentence, not a heading.
-        text.textStorage?.setAttributedString(MarkdownText.attributed(h.message.trimmingCharacters(in: .newlines), font: body, code: code))
+        // Set as the Markdown preview sets its text: its colours, lines
+        // and spacing (a pane's size, not a page's).
+        text.textStorage?.setAttributedString(MarkdownText.attributed(
+            h.message.trimmingCharacters(in: .newlines), font: body, code: code, color: MarkdownText.readingBody,
+            strong: MarkdownText.readingStrong, lineHeight: theme.readingLineHeight(body), tracking: theme.readingTracking(body)))
         needsLayout = true
     }
 
