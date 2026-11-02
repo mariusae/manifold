@@ -5883,7 +5883,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let client = hosts.client(on) else { return }
         let path = focusedCwd ?? NSHomeDirectory()
         var shown: BlockID?
-        let block = client.gitBlock(for: path) { [weak self] error in
+        // In a project (§2.6): its own changes and commits.
+        let block = (client.project(holding: path).map { p in { client.projectGitBlock(for: p, done: $0) } } ?? { client.gitBlock(for: path, done: $0) }) { [weak self] error in
             // The host couldn't make it (no repository there): its tile,
             // waiting for a block that won't come, goes, and says why.
             guard let self, let error, let block = shown else { return }
@@ -6691,6 +6692,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let dest = Destination(target).flatMap { $0.provider != "ssh" || provider == "ssh" ? $0 : nil } ?? Destination(provider: provider, target: target)
             guard !dest.target.isEmpty else { return }
             self.attach(dest)
+        }
+    }
+
+    /// Project Settings… (§2.6): which indexer makes its index (or none),
+    /// with what command, and whether its working copy moving indexes it
+    /// again — kept in its host's desk, for every Mac attached.
+    func editProject(_ project: Project, on client: HostClient) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "\(project.name) Settings"
+        alert.informativeText = "How \(project.root.abbreviatingHome) is indexed on \(hosts.label(of: client.host)). Automatic picks the indexer by the markers at its root (Cargo.toml, go.mod, package.json…), else by its files' language."
+        let box = FlippedView(frame: NSRect(x: 0, y: 0, width: 340, height: 104))
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 26), pullsDown: false)
+        let ids = SCIPIndexer.defaults.map(\.id)
+        popup.addItems(withTitles: ["Automatic"] + ids + ["None"])
+        popup.selectItem(withTitle: project.indexer.map { $0 == "none" ? "None" : $0 } ?? "Automatic")
+        let command = NSTextField(frame: NSRect(x: 0, y: 36, width: 340, height: 24))
+        command.placeholderString = "The indexer's own command; {out} the index's file"
+        command.stringValue = project.indexCommand ?? ""
+        command.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        let again = NSButton(checkboxWithTitle: "Index again when the working copy moves", target: nil, action: nil)
+        again.frame = NSRect(x: 0, y: 72, width: 340, height: 22)
+        again.state = project.reindexOnCheckout == false ? .off : .on
+        for v in [popup, command, again] { box.addSubview(v) }
+        alert.accessoryView = box
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            var p = project
+            let chosen = popup.titleOfSelectedItem ?? "Automatic"
+            p.indexer = chosen == "Automatic" ? nil : chosen == "None" ? "none" : chosen
+            let c = command.stringValue.trimmingCharacters(in: .whitespaces)
+            p.indexCommand = c.isEmpty ? nil : c
+            p.reindexOnCheckout = again.state == .on ? nil : false
+            guard p != project else { return }
+            client.propose(.project(p)) { error in
+                if let error { self?.toast.show(error, action: "OK", for: 6) {} }
+            }
         }
     }
 
@@ -8516,6 +8556,8 @@ extension MainWindowController: DirectoryViewDelegate {
     func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction) {
         guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
         switch action {
+        case .settings:
+            editProject(project, on: client)
         case .openGit:
             let id = client.projectGitBlock(for: project)
             show(id, lens: .git, .besideOpener(view.placement), context: "\(project.name)'s changes")

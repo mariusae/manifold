@@ -13,6 +13,14 @@ public struct Project: Codable, Equatable, Sendable {
     /// may say either.
     public var alias: String?
     public var made: Stamp
+    /// Its index's indexer, by id ("none": no index), rather than the one
+    /// its files' markers find; and its command, rather than the
+    /// indexer's (`{out}` the index's file, `{name}` the root's name).
+    public var indexer: String?
+    public var indexCommand: String?
+    /// Whether its index is made again when the repository's working copy
+    /// moves (a checkout, a commit, a rebase); nil, yes.
+    public var reindexOnCheckout: Bool?
 
     public init(root: String, made: Stamp) {
         self.root = root
@@ -37,6 +45,21 @@ public struct Project: Codable, Equatable, Sendable {
 
     static func under(_ path: String, _ root: String) -> Bool {
         path == root || path.hasPrefix(root == "/" ? "/" : root + "/")
+    }
+
+    /// The indexer it's indexed with (§2.5), among `indexers`: the one
+    /// chosen for it, given its own command if it has one; else the one
+    /// whose marker is at its root; else the one its files' language
+    /// finds (`file`, a file in it); nil where it's to have none.
+    public func indexer(among indexers: [SCIPIndexer], for file: String? = nil, has: (String) -> Bool) -> SCIPIndexer? {
+        if indexer == "none" { return nil }
+        var found = indexer.flatMap { id in indexers.first { $0.id == id } }
+            ?? indexers.first { i in i.rootMarkers.contains { has(root.appendingPathComponent($0)) } }
+            ?? file.flatMap { SCIPIndexer.forFile($0, among: indexers)?.0 }
+        if let c = indexCommand?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
+            found = SCIPIndexer(id: found?.id ?? "custom", languages: found?.languages ?? [], rootMarkers: found?.rootMarkers ?? [], command: c)
+        }
+        return found
     }
 
     /// The project holding a path: the nearest root at or above it.

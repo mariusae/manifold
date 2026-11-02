@@ -299,6 +299,22 @@ once, the index's kept), files ranked from the project's file list
 marked by who said it (`SymbolHit.source`), so a hit from the index and
 one from a server can be told apart.
 
+A project is the scope of what's done in it. Its index is at its root,
+made by the indexer its settings choose (`Project.indexer`, `indexCommand`;
+"none" for none), else the one whose marker is at its root, else its
+files' language's (`Project.indexer(among:)`, `SCIPService.locate`); a
+path outside every project finds its index as before. Its repository is
+watched from the host's start, and when the working copy's commit moves
+(`VCS.headArguments`, looked at as the repository's state file changes)
+a project that wants it (`reindexOnCheckout`, yes unless said) is
+indexed again, as a save does. The state file is taken as changed only
+when its time, size or inode is (each `git status` reads git's index,
+and its time read changing came as a change: a refresh a second, for
+every repository watched). Source Control for This Project, in one,
+is its scoped git block; a search under one widens to it
+(`SearchQuery.project`). `mani project` says a folder's project, makes
+one, or takes it back.
+
 ---
 
 ## 3. Spaces

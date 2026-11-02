@@ -68,6 +68,14 @@ public enum VCS: String, Codable, Sendable {
         }
     }
 
+    /// The working copy's commit, whole.
+    public var headArguments: [String] {
+        switch self {
+        case .git: ["rev-parse", "HEAD"]
+        case .sapling: ["log", "-r", ".", "-T", "{node}"]
+        }
+    }
+
     public static let gitLogFormat = "%H%x1f%h%x1f%an%x1f%at%x1f%s"
     public static let saplingLogTemplate = "{node}\\x1f{node|short}\\x1f{author}\\x1f{date|hgdate}\\x1f{desc|firstline}\\n"
 

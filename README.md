@@ -887,6 +887,18 @@ around it, and comes back with its history.
   `file:` and `text:` look for one alone. **Open in a Tile** puts the
   same search beside, to keep — its symbols and files above the text,
   previewed as hits are.
+  A project is the scope of what's done in it: its index is made at its
+  root (an index of a folder deep in a repository is the folder's), and
+  made again when its working copy moves — a checkout, a commit, a
+  rebase — as when a file of it is saved; Source Control for This
+  Project (⌥⌘G) in it shows its own changes and commits; Expand to
+  Project in a search under it widens to it, not the whole repository.
+  **Project Settings…** (the tile's menu) chooses its indexer (or none)
+  and its command, and whether its working copy moving indexes it
+  again, for every Mac attached to its host. **`mani project`** says
+  which project a folder is in — its root, its branch and changes, how
+  its index stands; `--make` makes the folder one, `--remove` takes it
+  back.
 - **Files cross between hosts** as they would between folders: drop
   files from the Finder (or entries from another folder's tile, another
   host's too) on a folder's tile and they're copied into it, there —
@@ -946,7 +958,8 @@ around it, and comes back with its history.
   that describes, annotates or explains it shows under its line, in the
   technical font beside code (the tile's menu hides them). A reference
   written bare shows the place's name on its pill.
-- **Indexes (SCIP)**: `mani index` (or Code ▸ Index Project) has the
+- **Indexes (SCIP)**: a project (above) is indexed when it's made;
+  elsewhere `mani index` (or Code ▸ Index Project) has the
   project's indexer make its SCIP index on its host — rust-analyzer for a
   Cargo crate; scip-typescript and scip-python, fetched by npx when first
   used; scip-go, scip-clang (with a `compile_commands.json`) and scip-java

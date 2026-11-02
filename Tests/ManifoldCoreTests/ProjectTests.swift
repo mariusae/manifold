@@ -98,3 +98,26 @@ import Testing
     s.apply(.search(SearchQuery(text: "b", root: "/p"), at: Stamp(wall: 2)))
     #expect(s.symbols == nil && s.files == nil)
 }
+
+@Test func aProjectsIndexerIsItsOwnElseItsRootsElseItsFiles() {
+    var p = Project(root: "/src/app", made: Stamp(wall: 1))
+    let at = { (files: Set<String>) in { (path: String) in files.contains(path) } }
+    // The marker at its root.
+    #expect(p.indexer(among: SCIPIndexer.defaults, has: at(["/src/app/go.mod"]))?.id == "go")
+    // No marker anywhere, no file to go by: none.
+    #expect(p.indexer(among: SCIPIndexer.defaults, has: at([])) == nil)
+    // Chosen, over the marker; its own command.
+    p.indexer = "python"
+    p.indexCommand = "my-indexer --out {out}"
+    let chosen = p.indexer(among: SCIPIndexer.defaults, has: at(["/src/app/go.mod"]))
+    #expect(chosen?.id == "python")
+    #expect(chosen?.command(root: "/src/app", out: "/x.scip") == "my-indexer --out '/x.scip'")
+    // None at all.
+    p.indexer = "none"
+    #expect(p.indexer(among: SCIPIndexer.defaults, has: at(["/src/app/go.mod"])) == nil)
+}
+
+@Test func aProjectFromBeforeItsSettingsReadsAsAutomatic() throws {
+    let p = try JSONDecoder().decode(Project.self, from: Data(#"{"root":"/a","made":{"wall":1,"logical":0,"host":"h"}}"#.utf8))
+    #expect(p.indexer == nil && p.indexCommand == nil && p.reindexOnCheckout == nil)
+}

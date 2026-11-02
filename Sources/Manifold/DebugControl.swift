@@ -285,6 +285,12 @@ enum DebugControl {
                 tv.string = String(arg.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n")
                 return "ok"
             }
+            if arg.hasPrefix("pick ") {
+                // "sheet pick <title>": that item chosen in its pop-up.
+                guard let p = allSubviews(sheet.contentView).compactMap({ $0 as? NSPopUpButton }).first else { return "no pop-up" }
+                p.selectItem(withTitle: String(arg.dropFirst(5)))
+                return p.titleOfSelectedItem ?? "none"
+            }
             if arg.hasPrefix("press ") {
                 guard let b = buttons.first(where: { $0.title == String(arg.dropFirst(6)) }) else { return "no button" }
                 b.performClick(nil)

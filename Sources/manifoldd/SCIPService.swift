@@ -17,6 +17,9 @@ import Musl
 final class SCIPService {
     private let queue: DispatchQueue
     var indexers = SCIPIndexer.defaults
+    /// The host's projects (§2.6): a path in one is indexed at its root,
+    /// with the indexer it says.
+    var projects: () -> [Project] = { [] }
     /// Indexes read, by root, with when their file was made.
     private var loaded: [String: (index: SCIPIndex, made: Date)] = [:]
     /// What each can find by name, its names lowered, made when first asked.
@@ -55,14 +58,15 @@ final class SCIPService {
         }
         switch r {
         case let .index(path):
-            guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers) ?? project(of: path) else {
+            guard let (indexer, root) = locate(path) else {
                 return done(.error("no indexer for \(path.lastPathComponent)'s language, or no project around it"))
             }
             index(root, with: indexer)
             done(.status(status(root, indexer)))
         case let .status(path):
-            guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers) ?? project(of: path) else {
-                return done(.status(SCIPStatus(root: nil, indexer: nil, state: .none, message: "no indexer for its language")))
+            guard let (indexer, root) = locate(path) else {
+                let none = Project.holding(path, in: projects())?.indexer == "none"
+                return done(.status(SCIPStatus(root: nil, indexer: nil, state: .none, message: none ? "its project's settings say it has none" : "no indexer for its language")))
             }
             done(.status(status(root, indexer)))
         case let .symbol(path, line, byte):
@@ -129,8 +133,21 @@ final class SCIPService {
     static var reindexAfter: TimeInterval = 20
 
     func saved(_ path: String) {
-        guard let (indexer, root) = SCIPIndexer.forFile(Self.real(path), among: indexers),
-              FileManager.default.fileExists(atPath: file(root).path) else { return }
+        let path = Self.real(path)
+        // Code, not a note about it.
+        guard CodeLanguage.forPath(path) != nil, let (indexer, root) = locate(path) else { return }
+        again(root, with: indexer)
+    }
+
+    /// A project's working copy moved (§2.6): indexed again, if it has an
+    /// index, as a save does it.
+    func moved(_ project: Project) {
+        guard let (indexer, root) = locate(Self.real(project.root.appendingPathComponent("."))) else { return }
+        again(root, with: indexer)
+    }
+
+    private func again(_ root: String, with indexer: SCIPIndexer) {
+        guard FileManager.default.fileExists(atPath: file(root).path) else { return }
         pendingIndex[root]?.cancel()
         let work = DispatchWorkItem { [weak self] in
             self?.pendingIndex.removeValue(forKey: root)
@@ -138,6 +155,17 @@ final class SCIPService {
         }
         pendingIndex[root] = work
         queue.asyncAfter(deadline: .now() + Self.reindexAfter, execute: work)
+    }
+
+    /// Where a path's index is, and its indexer: its project's (§2.6),
+    /// else its language's indexer's nearest marker, else any's.
+    private func locate(_ path: String) -> (SCIPIndexer, root: String)? {
+        if let p = Project.holding(path, in: projects()) {
+            let fm = FileManager.default
+            guard let i = p.indexer(among: indexers, for: path, has: { fm.fileExists(atPath: $0) }) else { return nil }
+            return (i, p.root)
+        }
+        return SCIPIndexer.forFile(path, among: indexers) ?? project(of: path)
     }
 
     /// A file in no indexer's language (a Markdown file in a Rust crate):
@@ -162,7 +190,7 @@ final class SCIPService {
     /// The index of a file's project, read (once, and again when made
     /// anew), asked off the server's queue.
     private func ask(_ path: String, _ done: @escaping (SCIPResult) -> Void, _ body: @escaping (SCIPIndex, String, String) -> SCIPResult) {
-        guard let (indexer, root) = SCIPIndexer.forFile(path, among: indexers) ?? project(of: path) else {
+        guard let (indexer, root) = locate(path) else {
             return done(.error("no indexer for \(path.lastPathComponent)'s language, or no project around it"))
         }
         let url = file(root)

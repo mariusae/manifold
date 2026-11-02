@@ -197,6 +197,19 @@ public enum Mani {
                  and the line it starts on — or each heading of a Markdown text, indented
                  by its level. What `mani ref --symbol` and `--heading` take.
                  """, inApp: true),
+        Verb(words: ["project"], args: "[folder]", minArgs: 0, maxArgs: 1,
+             flags: [Flag(name: "make", help: "make the folder a project"),
+                     Flag(name: "remove", help: "the project it's in, no longer one")],
+             summary: "The project a folder is in: its root, its changes, its index",
+             details: """
+                 The project this folder (or the one named) is in — the nearest folder
+                 above it made a project, on its host — with its repository's branch and
+                 its own changes (where it's a folder deep in the repository, those in it
+                 alone) and how its index stands. --make makes the folder a project
+                 (indexed at once, if its language has an indexer); --remove makes the
+                 one it's in a folder again. In the app, its folder's tile shows its
+                 homepage, and searches it.
+                 """, inApp: true),
         Verb(words: ["index"], args: "[file or folder]", minArgs: 0, maxArgs: 1,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to be made, and say how it went"),
                      Flag(name: "status", help: "only say how the index stands")],
@@ -415,6 +428,8 @@ public enum Mani {
             - A walk through code (how a request is handled, what boot does) is a note of
               such references in order, a sentence each: make it with `mani new note`.
             - `mani info <file>` lists its places referred to and what links to each.
+            - `mani project` says which project you're in (its root, changes, index);
+              a folder deep in a repository can be one, its changes its own.
             - Across files: `mani index` (in the project; `--wait`) makes its SCIP index,
               then `mani refs <file> --symbol Type.method` (or a reference) lists every
               place the symbol is used, `path:line: the line`; `--markdown` as references,

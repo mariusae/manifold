@@ -109,6 +109,7 @@ final class ManiDesk {
             return ""
         case "symbols": return try await symbols(r, scope)
         case "index": return try await index(r, scope)
+        case "project": return try await project(r, scope)
         case "refs": return try await refs(r, scope)
         case "callers":
             let b = try await textBlock(r.args[0], scope)
@@ -428,6 +429,59 @@ final class ManiDesk {
         case .current: return "\(root)\(by): indexed" + (s.at.map { " " + Age.ago(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? "")
         case .failed: return "\(root)\(by): the indexer failed:\n" + (s.message ?? "")
         }
+    }
+
+    /// `mani project`: the project a folder is in (§2.6), made one, or
+    /// no longer.
+    private func project(_ r: ManiRequest, _ scope: Scope) async throws -> String {
+        guard let client = hosts.client(scope.host) else { throw Failure(message: "that host isn't attached") }
+        var path = (r.args.first ?? ".").expandingTildeInPath
+        if !path.hasPrefix("/") { path = r.cwd.appendingPathComponent(path) }
+        path = URL(fileURLWithPath: path).standardizedFileURL.path
+        func propose(_ p: Proposal) async throws {
+            let error: String? = await withCheckedContinuation { c in client.propose(p) { c.resume(returning: $0) } }
+            if let error { throw Failure(message: error) }
+        }
+        if r.flags["remove"] != nil {
+            guard let p = client.project(holding: path) else { throw Failure(message: "\(path.abbreviatingHome) isn't in a project") }
+            try await propose(.unproject(root: p.root))
+            return "\(p.root.abbreviatingHome) is no longer a project"
+        }
+        if r.flags["make"] != nil {
+            try await propose(.project(Project(root: path, made: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000)))))
+            for _ in 0..<40 where client.desk.projects.first(where: { $0.root == path || $0.alias == path }) == nil {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+        guard let p = client.project(holding: path) else {
+            throw Failure(message: "\(path.abbreviatingHome) isn't in a project (`mani project --make` makes this folder one)")
+        }
+        var lines = [p.root.abbreviatingHome + " — a project since " + Age.ago(p.made)]
+        // Its repository's state, scoped to it: its git block's, once it's looked.
+        let git = client.projectGitBlock(for: p)
+        for _ in 0..<60 where hosts.block(git)?.git?.refreshedAt == nil { try await Task.sleep(nanoseconds: 50_000_000) }
+        if let b = hosts.block(git), let g = b.git, let repo = b.path {
+            if let e = g.error {
+                lines.append("repository: " + e)
+            } else {
+                var branch = g.branch ?? "detached"
+                if g.ahead > 0 { branch += " ↑\(g.ahead)" }
+                if g.behind > 0 { branch += " ↓\(g.behind)" }
+                lines.append((g.vcs == .sapling ? "Sapling" : "git") + " at " + repo.abbreviatingHome + (g.scope.map { ", the project its \($0)/" } ?? "") + ": " + branch)
+                let scope = g.scope.map { $0 + "/" } ?? ""
+                lines.append(g.status.isEmpty ? "no changes" : (g.status.count == 1 ? "1 change:" : "\(g.status.count) changes:"))
+                for s in g.status.prefix(20) {
+                    lines.append("  \(s.isUntracked ? "?" : s.workTree != " " ? s.workTree : s.index) " + (s.path.hasPrefix(scope) ? String(s.path.dropFirst(scope.count)) : s.path))
+                }
+                if let c = g.log.first { lines.append("last commit: \(c.short) \(c.summary)") }
+            }
+        } else {
+            lines.append("not in a repository")
+        }
+        if case .status(let s) = await scip(.status(path: p.root.appendingPathComponent(".")), on: scope.host) {
+            lines.append("index: " + (s.root == nil ? "none (" + (s.message ?? "no indexer for its language") + ")" : describe(s)))
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// `mani index`: the project a file (or this folder) is in indexed.

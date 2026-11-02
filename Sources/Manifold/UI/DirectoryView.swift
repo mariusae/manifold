@@ -560,7 +560,8 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The tile's menu: the folder made a project, or no longer one.
     var pillItems: [NSMenuItem] {
         if project != nil {
-            return [ClosureMenuItem("No Longer a Project", symbol: "shippingbox") { [weak self] in
+            return [ClosureMenuItem("Project Settings…", symbol: "gearshape") { [weak self] in self?.projectAction(.settings) },
+                    ClosureMenuItem("No Longer a Project", symbol: "shippingbox") { [weak self] in
                 guard let self else { return }
                 self.delegate?.directoryView(self, makeProject: false)
             }]

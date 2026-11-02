@@ -9,6 +9,8 @@ enum ProjectAction {
     case openChange(GitStatusEntry, repo: String)
     /// Its index made again.
     case reindex
+    /// Its settings: its indexer, and when it's indexed.
+    case settings
 }
 
 /// How a project stands, as its homepage shows it: its repository's

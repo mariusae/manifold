@@ -127,6 +127,7 @@ final class Server {
         mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
         scip = SCIPService(queue: queue)
+        scip.projects = { [weak self] in self.map { $0.node.desk($0.host).projects } ?? [] }
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
         mentions.mentions = { [weak self] block in
             guard let g = self?.node.graph else { return [] }
@@ -175,6 +176,8 @@ final class Server {
         machine.start()
         // Its language servers as its own settings say, from the start.
         languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
+        // Its projects' repositories watched, for their working copies moving.
+        for p in node.desk(host).projects { watchProject(p) }
         let fd = try UnixSocket.listen(path: Paths.socket)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let listener = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -978,8 +981,12 @@ final class Server {
             let old = node.desk(host).projects.first { $0.root == full }
             p.made = old?.made ?? clock.now()
             if old != p { append(.project(p), to: .desk(host)) }
-            // A new one indexed at once, if its language has an indexer.
-            if old == nil { scip.request(.index(path: full.appendingPathComponent("."))) { _ in } }
+            // A new one indexed at once, if its language has an indexer;
+            // one whose indexer changed, again.
+            if old == nil || old?.indexer != p.indexer || old?.indexCommand != p.indexCommand {
+                scip.request(.index(path: full.appendingPathComponent("."))) { _ in }
+            }
+            watchProject(p)
             done()
         case let .unproject(root):
             if node.desk(host).projects.contains(where: { $0.root == root }) { append(.unproject(root), to: .desk(host)) }
@@ -1030,7 +1037,10 @@ final class Server {
         case let .search(block, query):
             var q = query
             q.root = URL(fileURLWithPath: q.root.expandingTildeInPath).standardizedFileURL.path
-            q.project = VCS.repository(of: q.root)?.root
+            // What Expand to Project widens to: the project the root is in
+            // (§2.6), else its repository.
+            let project = node.desk(host).project(holding: q.root).flatMap { $0.root == q.root ? nil : $0.root }
+            q.project = project ?? VCS.repository(of: q.root)?.root
             if node.block(block) == nil {
                 append(.create(kind: .search, title: nil, path: nil), to: .block(block))
             }
@@ -1278,13 +1288,54 @@ final class Server {
         }
         gitRefreshedAt[root] = Date()
         for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
+        checkHead(root)
         for b in node.blocks where b.kind == .text && gutterWork[b.id] != nil && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
+    }
+
+    /// A project's repository watched (§2.6), and where its working copy
+    /// is noted, so that a checkout, a commit or a rebase indexes it again.
+    private func watchProject(_ p: Project) {
+        guard let (repo, vcs) = git.repository(of: p.root) else { return }
+        watchRepo(repo, vcs)
+        if heads[repo] == nil { checkHead(repo) }
+    }
+
+    /// Where each watched project's repository's working copy is.
+    private var heads: [String: String] = [:]
+
+    /// The working copy's commit looked at again: moved, the projects in
+    /// the repository that want it are indexed again (if they've an index).
+    private func checkHead(_ repo: String) {
+        let projects = node.desk(host).projects.filter { git.root(of: $0.root) == repo }
+        guard !projects.isEmpty, let vcs = git.repository(of: repo)?.vcs else { return }
+        git.run(vcs, vcs.headArguments, in: repo) { [weak self] result in
+            guard let self, case .success(let out) = result else { return }
+            let head = out.trimmingCharacters(in: .whitespacesAndNewlines)
+            let was = self.heads[repo]
+            self.heads[repo] = head
+            guard let was, was != head else { return }
+            for p in projects where p.reindexOnCheckout != false { self.scip.moved(p) }
+        }
     }
 
     private func watchRepo(_ root: String, _ vcs: VCS) {
         guard repoWatchers[root] == nil else { return }
         let index = root.appendingPathComponent(vcs.stateFile(in: root))
-        repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in self?.gitChanged(under: index) }
+        // Changed, not only read: each `git status` reads the index, and the
+        // time it was read changing came as a change — a refresh a second,
+        // each reading it again.
+        func stamp() -> [Double] {
+            guard let a = try? FileManager.default.attributesOfItem(atPath: index) else { return [] }
+            return [(a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0, (a[.size] as? NSNumber)?.doubleValue ?? 0,
+                    (a[.systemFileNumber] as? NSNumber)?.doubleValue ?? 0]
+        }
+        var last = stamp()
+        repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in
+            let now = stamp()
+            guard now != last else { return }
+            last = now
+            self?.gitChanged(under: index)
+        }
     }
 
     private func loadDiff(_ block: BlockID) {
