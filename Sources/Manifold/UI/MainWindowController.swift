@@ -8549,6 +8549,36 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
+    func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence] {
+        guard let client = hosts.client(view.block.host) else { return [] }
+        var out: [Presence] = []
+        // Terminals and agents with a shell there, what each is doing.
+        for b in client.node.blocks where b.kind == .terminal || b.kind == .agent {
+            guard let t = b.terminal, t.pid != nil || t.dormantSince == nil, let cwd = t.cwd, project.holds(cwd) else { continue }
+            let where_ = project.relative(cwd)
+            let doing = b.statusRecord?.msg ?? t.commands?.last(where: { $0.isRunning })?.text
+            out.append(Presence(block: b.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
+                                detail: [b.agent?.name, doing, where_.isEmpty ? nil : where_ + "/"].compactMap { $0 }.joined(separator: " · ")))
+        }
+        // Notes about its files: linked to one of them.
+        do {
+            let graph = client.node.graph
+            var notes: [BlockID: String] = [:]
+            for f in client.node.blocks where f.kind == .text {
+                guard let p = f.path, project.holds(p) else { continue }
+                for e in graph.edges(to: f.id) {
+                    guard case .link = e.kind, notes[e.from] == nil, let n = client.node.block(e.from), n.isNote else { continue }
+                    notes[e.from] = project.relative(p)
+                }
+            }
+            for (id, about) in notes.sorted(by: { $0.value < $1.value }) {
+                guard let n = client.node.block(id) else { continue }
+                out.append(Presence(block: id, title: n.displayTitle, symbol: Theme.symbolName(for: n), detail: "about " + about))
+            }
+        }
+        return out
+    }
+
     func directoryView(_ view: DirectoryView, popOut search: BlockID) {
         show(search, lens: .search, .besideOpener(view.placement), context: "a search of \(directoryViewProject(view)?.name ?? "the project")")
     }
@@ -8558,6 +8588,8 @@ extension MainWindowController: DirectoryViewDelegate {
         switch action {
         case .settings:
             editProject(project, on: client)
+        case let .go(block):
+            arrive(block, from: view.placement)
         case .openGit:
             let id = client.projectGitBlock(for: project)
             show(id, lens: .git, .besideOpener(view.placement), context: "\(project.name)'s changes")

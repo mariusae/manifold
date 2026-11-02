@@ -121,3 +121,12 @@ import Testing
     let p = try JSONDecoder().decode(Project.self, from: Data(#"{"root":"/a","made":{"wall":1,"logical":0,"host":"h"}}"#.utf8))
     #expect(p.indexer == nil && p.indexCommand == nil && p.reindexOnCheckout == nil)
 }
+
+@Test func anIndexsStatusFromBeforeItCountedReadsAsUncounted() throws {
+    let s = try JSONDecoder().decode(SCIPStatus.self, from: Data(#"{"state":"current"}"#.utf8))
+    #expect(s.changed == nil)
+    var t = SCIPStatus(root: "/a", indexer: "rust", state: .current)
+    t.changed = 3
+    let back = try JSONDecoder().decode(SCIPStatus.self, from: JSONEncoder().encode(t))
+    #expect(back.changed == 3)
+}

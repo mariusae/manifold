@@ -176,8 +176,16 @@ final class Server {
         machine.start()
         // Its language servers as its own settings say, from the start.
         languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
-        // Its projects' repositories watched, for their working copies moving.
-        for p in node.desk(host).projects { watchProject(p) }
+        // Its projects' repositories watched, for their working copies moving;
+        // each with its other spelling, if it has one.
+        for var p in node.desk(host).projects {
+            let alias = Self.alias(of: p.root)
+            if p.alias != alias {
+                p.alias = alias
+                append(.project(p), to: .desk(host))
+            }
+            watchProject(p)
+        }
         let fd = try UnixSocket.listen(path: Paths.socket)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let listener = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -975,9 +983,8 @@ final class Server {
             let full = URL(fileURLWithPath: p.root.expandingTildeInPath).standardizedFileURL.path
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue else { return done("\(p.root) isn't a folder here") }
-            let real = URL(fileURLWithPath: full).resolvingSymlinksInPath().path
             p.root = full
-            p.alias = real == full ? nil : real
+            p.alias = Self.alias(of: full)
             let old = node.desk(host).projects.first { $0.root == full }
             p.made = old?.made ?? clock.now()
             if old != p { append(.project(p), to: .desk(host)) }
@@ -1298,6 +1305,14 @@ final class Server {
         guard let (repo, vcs) = git.repository(of: p.root) else { return }
         watchRepo(repo, vcs)
         if heads[repo] == nil { checkHead(repo) }
+    }
+
+    /// A folder as the file system spells it, links resolved (/private/tmp
+    /// for /tmp, which Foundation's resolving gives back as /tmp), where
+    /// that's another spelling.
+    static func alias(of path: String) -> String? {
+        let real = LanguageServers.canonical(path)
+        return real == path ? nil : real
     }
 
     /// Where each watched project's repository's working copy is.

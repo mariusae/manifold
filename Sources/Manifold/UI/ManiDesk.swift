@@ -427,6 +427,7 @@ final class ManiDesk {
         case .none: return "\(root)\(by): no index yet" + (s.message.map { " — " + $0 } ?? "")
         case .indexing: return "\(root)\(by): indexing…"
         case .current: return "\(root)\(by): indexed" + (s.at.map { " " + Age.ago(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? "")
+            + (s.changed.flatMap { $0 > 0 ? " — \($0) code file\($0 == 1 ? "" : "s") changed since; `mani index` makes it again" : nil } ?? "")
         case .failed: return "\(root)\(by): the indexer failed:\n" + (s.message ?? "")
         }
     }

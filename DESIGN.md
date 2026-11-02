@@ -315,6 +315,18 @@ is its scoped git block; a search under one widens to it
 (`SearchQuery.project`). `mani project` says a folder's project, makes
 one, or takes it back.
 
+An index behind its code says so: the host counts the project's code
+files changed after it was made (`SCIPStatus.changed`; off its queue, at
+most every ten seconds a root, the last count meanwhile), and the
+homepage's strip and `mani project` say how many. The sidebar's
+languages are its tree's code bytes by language (`LanguageShare`,
+configuration and documents left out, a language's colour as code
+hosts colour it), and its Here Now the client's own reading of the
+host's blocks (`Presence`): terminals and agents whose directory is in
+it, notes linked to a file of it. A project's root's other spelling is
+the file system's (`realpath`: /private/tmp), not Foundation's, which
+gives /tmp back — a terminal's directory says the former.
+
 ---
 
 ## 3. Spaces

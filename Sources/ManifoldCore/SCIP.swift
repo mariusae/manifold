@@ -400,6 +400,9 @@ public struct SCIPStatus: Codable, Equatable, Sendable {
     /// When it was made; why it failed (the indexer's last words).
     public var at: Date?
     public var message: String?
+    /// Code files changed since it was made, as last counted (§2.6): it's
+    /// behind them. Nil, not counted yet.
+    public var changed: Int?
 
     public init(root: String?, indexer: String?, state: State, at: Date? = nil, message: String? = nil) {
         self.root = root

@@ -71,6 +71,9 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, open found: ProjectSearchView.Found, root: String)
     /// The search in a tile of its own, beside.
     func directoryView(_ view: DirectoryView, popOut search: BlockID)
+    /// What's at work in the project: terminals and agents there, notes
+    /// about its files.
+    func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence]
 }
 
 /// What's dropped on a folder's tile: a file or folder of this Mac's, or
@@ -445,6 +448,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             : mode == .columns ? "Filter, or ? to search in files" : "Find a file, or ? to search in files"
         if home, model?.filtering == true { model?.setFilter("") }
         if !home, !search.stringValue.isEmpty, model?.filter != search.stringValue, !searchingContents { model?.setFilter(search.stringValue) }
+        // Something in the field already (kept with the tile, or typed
+        // before Home was on): searched.
+        if searchingProject, projectSearch == nil, searchWork == nil { projectQueryTyped() }
         updateResults()
         needsLayout = true
         guard home else { return }
@@ -463,10 +469,25 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if let id = projectGit { delegate?.directoryView(self, watch: id) { [weak self] in self?.showFacts() } }
         }
         let git = projectGit.flatMap { delegate?.directoryView(self, block: $0) }
+        // Its languages, from its tree (now and then); what's at work in it.
+        if Date().timeIntervalSince(languagesAt ?? .distantPast) > 120 {
+            languagesAt = Date()
+            delegate?.directoryView(self, tree: project.root) { [weak self] entries, _ in
+                guard let self, let entries else { return }
+                self.languages = LanguageShare.of(entries)
+                self.showFacts()
+            }
+        }
+        if Date().timeIntervalSince(presenceAt ?? .distantPast) > 2 {
+            presenceAt = Date()
+            presence = delegate?.directoryView(self, presenceIn: project) ?? []
+        }
         var f = facts?.project == project ? facts! : ProjectFacts(project: project)
         f.project = project
         f.repo = git?.path
         f.git = git?.git
+        f.languages = languages
+        f.presence = presence
         f.gitPending = git == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) < 5
         guard f != facts else { return }
         facts = f
@@ -474,6 +495,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         sidebar.show(f)
     }
     private var gitAskedAt: Date?
+    private var languages: [LanguageShare] = []
+    private var languagesAt: Date?
+    private var presence: [Presence] = []
+    private var presenceAt: Date?
 
     /// The index's state asked again: at once, while it's being made, and
     /// otherwise now and then.

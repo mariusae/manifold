@@ -184,7 +184,29 @@ final class SCIPService {
         let made = (try? file(root).resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         if let why = failures[root] { return SCIPStatus(root: root, indexer: indexer.id, state: .failed, at: made, message: why) }
         guard let made else { return SCIPStatus(root: root, indexer: indexer.id, state: .none) }
-        return SCIPStatus(root: root, indexer: indexer.id, state: .current, at: made)
+        var s = SCIPStatus(root: root, indexer: indexer.id, state: .current, at: made)
+        s.changed = changedSince(root, made)
+        return s
+    }
+
+    /// How many of a project's code files changed after its index was made
+    /// (§2.6): counted off the queue, at most every ten seconds a root; the
+    /// last count (for the same index) meanwhile.
+    private var counts: [String: (made: Date, at: Date, changed: Int?)] = [:]
+    private func changedSince(_ root: String, _ made: Date) -> Int? {
+        let last = counts[root].flatMap { $0.made == made ? $0 : nil }
+        if let last, Date().timeIntervalSince(last.at) < 10 { return last.changed }
+        counts[root] = (made, Date(), last?.changed)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fm = FileManager.default
+            let n = FileFinder.list(root: root).filter { rel in
+                guard CodeLanguage.forPath(rel)?.kind == .language,
+                      let m = (try? fm.attributesOfItem(atPath: root.appendingPathComponent(rel)))?[.modificationDate] as? Date else { return false }
+                return m > made
+            }.count
+            self?.queue.async { if self?.counts[root]?.made == made { self?.counts[root]?.changed = n } }
+        }
+        return last?.changed
     }
 
     /// The index of a file's project, read (once, and again when made

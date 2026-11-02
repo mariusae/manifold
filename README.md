@@ -899,6 +899,12 @@ around it, and comes back with its history.
   which project a folder is in — its root, its branch and changes, how
   its index stands; `--make` makes the folder one, `--remove` takes it
   back.
+  The homepage's sidebar also shows its **languages** (a bar of its
+  code's bytes by language, the first few named) and what's **here now**:
+  terminals and agents working in it (what each is doing, and where)
+  and notes about its files — each gone to when clicked. Its index's
+  line says when files have changed since it was made (indexed 5m ago ·
+  3 files changed since; clicked, made again), as `mani project` does.
 - **Files cross between hosts** as they would between folders: drop
   files from the Finder (or entries from another folder's tile, another
   host's too) on a folder's tile and they're copied into it, there —

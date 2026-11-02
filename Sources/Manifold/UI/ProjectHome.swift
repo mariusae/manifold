@@ -11,6 +11,8 @@ enum ProjectAction {
     case reindex
     /// Its settings: its indexer, and when it's indexed.
     case settings
+    /// A block at work in it (a terminal, an agent, a note), gone to.
+    case go(BlockID)
 }
 
 /// How a project stands, as its homepage shows it: its repository's
@@ -26,6 +28,60 @@ struct ProjectFacts: Equatable {
     var indexMissing: String?
     /// Its git block asked for, and not come yet.
     var gitPending = false
+    /// Its code's languages, by their share of its code's bytes, most first.
+    var languages: [LanguageShare] = []
+    /// What's at work in it: terminals and agents there, notes about its files.
+    var presence: [Presence] = []
+}
+
+/// A language's share of a project's code (§2.6).
+struct LanguageShare: Equatable {
+    var name: String
+    var share: Double
+
+    /// A project's tree, by language: each language's bytes over all the
+    /// code's (configuration, markup and documents left out), most first;
+    /// the smallest folded into Other.
+    static func of(_ entries: [DirectoryEntry]) -> [LanguageShare] {
+        var bytes: [String: Int64] = [:]
+        for e in entries where !e.isDirectory && e.isIgnored != true {
+            guard let l = CodeLanguage.forPath(e.name), l.kind == .language else { continue }
+            bytes[l.name, default: 0] += max(e.size, 1)
+        }
+        let total = Double(bytes.values.reduce(0, +))
+        guard total > 0 else { return [] }
+        var out = bytes.map { LanguageShare(name: $0.key, share: Double($0.value) / total) }.sorted { $0.share > $1.share }
+        if out.count > 6 {
+            let other = out[5...].reduce(0) { $0 + $1.share }
+            out = Array(out.prefix(5)) + [LanguageShare(name: "Other", share: other)]
+        }
+        return out
+    }
+
+    /// Its colour in the bar: the language's own, as code hosts colour
+    /// them, else one of a few by its name.
+    var color: NSColor {
+        let known: [String: UInt32] = [
+            "Swift": 0xF05138, "Rust": 0xDEA584, "Go": 0x00ADD8, "Python": 0x3572A5, "TypeScript": 0x3178C6,
+            "JavaScript": 0xF1E05A, "C": 0x555555, "C++": 0xF34B7D, "Objective-C": 0x438EFF, "Java": 0xB07219,
+            "Kotlin": 0xA97BFF, "Ruby": 0x701516, "Shell": 0x89E051, "Zig": 0xEC915C, "Haskell": 0x5E5086,
+            "OCaml": 0xEF7A08, "Lua": 0x000080, "Scala": 0xC22D40, "C#": 0x178600, "PHP": 0x4F5D95, "Elixir": 0x6E4A7E,
+        ]
+        if let rgb = known[name] {
+            return NSColor(srgbRed: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+        }
+        if name == "Other" { return Theme.secondaryText.withAlphaComponent(0.5) }
+        let palette: [NSColor] = [.systemTeal, .systemIndigo, .systemPink, .systemMint, .systemBrown, .systemCyan]
+        return palette[Int(name.unicodeScalars.reduce(0) { $0 &+ $1.value }) % palette.count]
+    }
+}
+
+/// Something at work in a project, for its homepage's Here Now.
+struct Presence: Equatable {
+    var block: BlockID
+    var title: String
+    var symbol: String
+    var detail: String
 }
 
 /// The line under a project's header (§2.6): its branch, how far from
@@ -90,7 +146,13 @@ final class ProjectStrip: NSView {
         case .indexing: return ("arrow.triangle.2.circlepath", "Indexing…" + by, nil, false)
         case .current:
             let when = s.at.map { Age.short(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? ""
-            return ("checkmark.circle", "Indexed" + (when.isEmpty ? "" : when == "now" ? " just now" : " \(when) ago") + by, "Index again", true)
+            let indexed = "Indexed" + (when.isEmpty ? "" : when == "now" ? " just now" : " \(when) ago") + by
+            // Behind its code: said, and a click makes it again.
+            if let n = s.changed, n > 0 {
+                return ("exclamationmark.arrow.circlepath", indexed + " · \(n) file\(n == 1 ? "" : "s") changed since",
+                        "\(n) code file\(n == 1 ? " has" : "s have") changed since the index was made: what it finds may be out of date. Click to index again", true)
+            }
+            return ("checkmark.circle", indexed, "Index again", true)
         case .failed: return ("exclamationmark.triangle", "Indexing failed" + by, (s.message ?? "") + "\n\nClick to index again", true)
         }
     }
@@ -138,9 +200,23 @@ final class ProjectSidebar: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ f: ProjectFacts) {
-        guard f.git != shown?.git || f.repo != shown?.repo else { return }
+        guard f.git != shown?.git || f.repo != shown?.repo || f.languages != shown?.languages || f.presence != shown?.presence else { return }
         shown = f
         stack.subviews.forEach { $0.removeFromSuperview() }
+        // Its languages, as a bar and its first few named.
+        if !f.languages.isEmpty {
+            add(SectionLabel("Languages"))
+            add(LanguageBar(f.languages))
+        }
+        // What's at work in it now.
+        if !f.presence.isEmpty {
+            add(SectionLabel("Here now"))
+            for p in f.presence.prefix(8) {
+                let row = HomeRow(mark: nil, markColor: nil, title: p.title, detail: p.detail, symbol: p.symbol)
+                row.onClick = { [weak self] in self?.onAction?(.go(p.block)) }
+                add(row)
+            }
+        }
         guard let g = f.git, g.refreshedAt != nil, f.repo != nil, g.error == nil else { return relayout() }
         let repo = f.repo ?? ""
         // Where a path of the repository's is, from the project's root.
@@ -183,7 +259,7 @@ final class ProjectSidebar: NSView {
         var y: CGFloat = 8
         let w = max(0, scroll.contentSize.width)
         for v in stack.subviews {
-            let h = (v as? HomeRow)?.height ?? (v as? SectionLabel)?.height ?? 20
+            let h = (v as? HomeRow)?.height ?? (v as? SectionLabel)?.height ?? (v as? LanguageBar)?.height ?? 20
             if v is SectionLabel, y > 8 { y += 8 }
             v.frame = NSRect(x: 0, y: y, width: w, height: h)
             y += h
@@ -203,7 +279,7 @@ final class ProjectSidebar: NSView {
     }
 
     var debugState: String {
-        stack.subviews.map { ($0 as? HomeRow)?.debugState ?? ($0 as? SectionLabel)?.stringValue.uppercased() ?? "?" }.joined(separator: "\n")
+        stack.subviews.map { ($0 as? HomeRow)?.debugState ?? ($0 as? SectionLabel)?.stringValue.uppercased() ?? ($0 as? LanguageBar)?.debugState ?? "?" }.joined(separator: "\n")
     }
 }
 
@@ -234,15 +310,17 @@ final class HomeRow: NSView {
     var onClick: (() -> Void)?
     private let mark: String?
     private let markColor: NSColor?
+    private let symbol: String?
     private let title: String
     private let detail: String?
     private let quiet: Bool
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
     var height: CGFloat { detail == nil ? 24 : 40 }
 
-    init(mark: String?, markColor: NSColor?, title: String, detail: String?, quiet: Bool = false) {
+    init(mark: String?, markColor: NSColor?, title: String, detail: String?, quiet: Bool = false, symbol: String? = nil) {
         self.mark = mark
         self.markColor = markColor
+        self.symbol = symbol
         self.title = title
         self.detail = detail
         self.quiet = quiet
@@ -278,6 +356,11 @@ final class HomeRow: NSView {
             (mark as NSString).draw(at: NSPoint(x: x, y: 5), withAttributes: a)
             x += 16
         }
+        if let symbol, let image = Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText) {
+            image.draw(in: image.centered(in: NSRect(x: x, y: 4, width: 16, height: 16)), from: .zero, operation: .sourceOver, fraction: 1,
+                       respectFlipped: true, hints: nil)
+            x += 22
+        }
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = quiet ? .byTruncatingTail : (mark != nil ? .byTruncatingMiddle : .byTruncatingTail)
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: UIType.body, .foregroundColor: quiet ? Tints.accentText : Theme.text, .paragraphStyle: para]
@@ -289,4 +372,51 @@ final class HomeRow: NSView {
     }
 
     var debugState: String { (mark.map { $0 + " " } ?? "") + title + (detail.map { " — " + $0 } ?? "") }
+}
+
+/// A project's languages as one thin bar, each its share wide in its
+/// colour, and the first few named under it with their shares.
+private final class LanguageBar: NSView {
+    private let shares: [LanguageShare]
+    let height: CGFloat = 46
+
+    init(_ shares: [LanguageShare]) {
+        self.shares = shares
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let track = NSRect(x: 14, y: 6, width: bounds.width - 28, height: 6)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: track, xRadius: 3, yRadius: 3).addClip()
+        var x = track.minX
+        for s in shares {
+            let w = (track.width * CGFloat(s.share)).rounded()
+            s.color.setFill()
+            NSRect(x: x, y: track.minY, width: max(w, 1), height: track.height).fill()
+            x += w
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        // The first few, named.
+        var lx = track.minX, ly: CGFloat = 20
+        for s in shares.prefix(4) {
+            let words = NSAttributedString(string: "\(s.name) \(Self.percent(s.share))", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])
+            let w = words.size().width + 18
+            if lx + w > track.maxX, lx > track.minX { break }
+            s.color.setFill()
+            NSBezierPath(ovalIn: NSRect(x: lx, y: ly + 4, width: 7, height: 7)).fill()
+            words.draw(at: NSPoint(x: lx + 11, y: ly))
+            lx += w
+        }
+    }
+
+    static func percent(_ share: Double) -> String {
+        share >= 0.995 ? "100%" : share < 0.001 ? "<0.1%" : share < 0.1 ? String(format: "%.1f%%", share * 100) : "\(Int((share * 100).rounded()))%"
+    }
+
+    var debugState: String { "LANGUAGES " + shares.map { "\($0.name) \(Self.percent($0.share))" }.joined(separator: ", ") }
 }
