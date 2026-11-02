@@ -65,6 +65,8 @@ EOF
 rm -rf Frameworks/ghostty-share
 mkdir -p Frameworks/ghostty-share
 cp -R vendor/ghostty/zig-out/share/ghostty vendor/ghostty/zig-out/share/terminfo Frameworks/ghostty-share/
+# The terminfo again, in every server, for the shells of other hosts.
+scripts/embed-terminfo.sh
 echo "built $out"
 
 # The host's terminal emulator, from the same source.
