@@ -130,3 +130,14 @@ import Testing
     let back = try JSONDecoder().decode(SCIPStatus.self, from: JSONEncoder().encode(t))
     #expect(back.changed == 3)
 }
+
+@Test func documentationAndVendoredCodeAreLeftOutOfAProjectsLanguages() {
+    #expect(Project.isAside("docs/wiki/html/server.html"))
+    #expect(Project.isAside("go/examples/upper/main.go"))
+    #expect(Project.isAside("third_party/pathfinder_simd/src/lib.rs"))
+    #expect(Project.isAside("web/node_modules/react/index.js"))
+    #expect(Project.isAside("static/app.min.js"))
+    #expect(!Project.isAside("crates/apex-core/src/node.rs"))
+    #expect(!Project.isAside("crates/apex-docs-gen/src/lib.rs"))
+    #expect(!Project.isAside("docs.rs"))
+}

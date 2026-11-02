@@ -906,7 +906,9 @@ around it, and comes back with its history.
   its index stands; `--make` makes the folder one, `--remove` takes it
   back.
   The homepage's sidebar also shows its **languages** (a bar of its
-  code's bytes by language, the first few named) and what's **here now**:
+  code's bytes by language, the first few named; as code hosts count
+  them, documentation — docs/, examples/ — and code kept from elsewhere —
+  vendor/, third_party/, node_modules/ — left out) and what's **here now**:
   terminals and agents working in it (what each is doing, and where)
   and notes about its files — each gone to when clicked. Its index's
   line says when files have changed since it was made (indexed 5m ago ·

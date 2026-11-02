@@ -40,11 +40,12 @@ struct LanguageShare: Equatable {
     var share: Double
 
     /// A project's tree, by language: each language's bytes over all the
-    /// code's (configuration, markup and documents left out), most first;
-    /// the smallest folded into Other.
+    /// code's (configuration, markup and documents left out, and what's
+    /// documentation or kept from elsewhere: `Project.isAside`), most
+    /// first; the smallest folded into Other.
     static func of(_ entries: [DirectoryEntry]) -> [LanguageShare] {
         var bytes: [String: Int64] = [:]
-        for e in entries where !e.isDirectory && e.isIgnored != true {
+        for e in entries where !e.isDirectory && e.isIgnored != true && !Project.isAside(e.name) {
             guard let l = CodeLanguage.forPath(e.name), l.kind == .language else { continue }
             bytes[l.name, default: 0] += max(e.size, 1)
         }

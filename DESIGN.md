@@ -329,7 +329,10 @@ files changed after it was made (`SCIPStatus.changed`; off its queue, at
 most every ten seconds a root, the last count meanwhile), and the
 homepage's strip and `mani project` say how many. The sidebar's
 languages are its tree's code bytes by language (`LanguageShare`,
-configuration and documents left out, a language's colour as code
+configuration and documents left out, and as code hosts leave them out,
+documentation and vendored code by their folders, `Project.isAside` —
+a docs/ of generated pages, megabytes each, had made a Rust project
+86% HTML; a language's colour as code
 hosts colour it), and its Here Now the client's own reading of the
 host's blocks (`Presence`): terminals and agents whose directory is in
 it, notes linked to a file of it. A project's root's other spelling is
