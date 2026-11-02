@@ -315,6 +315,15 @@ is its scoped git block; a search under one widens to it
 (`SearchQuery.project`). `mani project` says a folder's project, makes
 one, or takes it back.
 
+The finders rank the focused block's project first (`focusedProject`,
+`MainWindowController.block(_:isIn:)`, a block's place under its root on
+its host): in ⌘O's distances, its blocks in the space before the rest of
+the space's (0 against 1), its others before what's elsewhere (2, with
+the spaces); its files not yet blocks listed from its host
+(`FinderFiles`: `listTree`, kept by host and root) at the same 2, behind
+its blocks by recency; in ⌘P's whole-space outline, a tie between
+places named as well goes to the project's tile.
+
 An index behind its code says so: the host counts the project's code
 files changed after it was made (`SCIPStatus.changed`; off its queue, at
 most every ten seconds a root, the last count meanwhile), and the

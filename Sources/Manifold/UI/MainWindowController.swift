@@ -5046,7 +5046,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let title: String = { if case let .page(a) = parsed { return a } else { return q } }()
             return FinderItem(symbol: "globe", title: title, detail: detail, note: "web", run: { [weak self] in self?.openAddress(q, place: .here) })
         }
-        f.openFile = { [weak self] path in self?.open(path, from: nil) }
+        f.openFile = { [weak self] path in
+            guard let self else { return }
+            // A project's file: on its host (§2.6).
+            if let on = self.finderFilesHost {
+                return self.open(path: path, line: 1, column: nil, on: on, from: self.arrangement?.focused, context: "found in ⌘O")
+            }
+            self.open(path, from: nil)
+        }
         return f
     }()
 
@@ -5054,6 +5061,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// or Sapling), else its own folder.
     func projectRoot(from cwd: String?, on: HostID) -> String {
         let root = cwd ?? NSHomeDirectory()
+        // A project made one (§2.6), on any host.
+        if let p = hosts.client(on)?.project(holding: root) { return p.root }
         guard on == host.host else { return root }
         return VCS.repository(of: root)?.root ?? root
     }
@@ -5238,17 +5247,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return places + items
     }
 
-    /// ⌘O, Open Quickly: every block and space, by name. Files are found
-    /// by Find in Files (⇧⌘F), a search block of their own.
+    /// ⌘O, Open Quickly: every block and space, by name — and in a
+    /// project (§2.6), its files, as its host lists them, before what's
+    /// elsewhere. Other files are found by Find in Files (⇧⌘F).
     @objc func openDocument(_ sender: Any?) {
         let (corpus, actions) = finderCorpus()
-        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scope: .names, placeholder: "Open quickly…", over: window)
+        var files: FinderFiles?
+        var known: Set<String> = []
+        if let (on, project) = focusedProject(), let client = hosts.client(on) {
+            files = FinderFiles(root: project.root, key: on.raw + ":" + project.root, list: { done in
+                client.listTree(project.root) { entries, _ in done((entries ?? []).filter { !$0.isDirectory }.map(\.name)) }
+            }, distance: 2, note: "in \(project.name)")
+            // Those open as blocks already are found as blocks.
+            known = Set(client.node.blocks.compactMap { $0.kind == .text || $0.kind == .image || $0.kind == .pdf ? $0.path : nil })
+            finderFilesHost = on
+        }
+        finder.show(corpus: corpus, actions: actions, files: files, knownPaths: known, scope: .names, placeholder: "Open quickly…", over: window)
+    }
+
+    /// The host the finder's files are on (a project's, §2.6).
+    private var finderFilesHost: HostID?
+
+    /// The project the focused tile's block is in (§2.6), on its host.
+    func focusedProject() -> (HostID, Project)? {
+        guard let f = focusedShown?.placement.block, let b = hosts.block(f), let place = b.place,
+              let p = hosts.client(f.host)?.project(holding: place) else { return nil }
+        return (f.host, p)
+    }
+
+    /// Whether a block is in a project: where it is (a file's folder, a
+    /// terminal's directory) under its root, on its host.
+    static func block(_ b: Block, isIn project: (HostID, Project)) -> Bool {
+        b.id.host == project.0 && (b.place.map(project.1.holds) ?? false)
     }
 
     /// ⇧⌘O, Find in Blocks: the same finder, by the words in the blocks.
     @objc func findInBlocks(_ sender: Any?) {
         let (corpus, actions) = finderCorpus()
-        finder.show(corpus: corpus, actions: actions, filesUnder: nil, scope: .blocks, placeholder: "Find in blocks…", over: window)
+        finder.show(corpus: corpus, actions: actions, files: nil, scope: .blocks, placeholder: "Find in blocks…", over: window)
     }
 
     /// What the finder finds by name (§3.5), taken once as it opens: every
@@ -5273,6 +5309,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for t in n.before + n.after { joinedAt[t.block] = max(joinedAt[t.block] ?? 0, t.last.wall) }
         }
         let running = runningPrograms()
+        // The focused block's project (§2.6): its blocks before what's elsewhere.
+        let project = focusedProject()
+        finderFilesHost = nil
         for block in hosts.blocks where block.kind != .process {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
@@ -5348,10 +5387,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if block.kind == .arrangement {
                 if allWorkspaces.contains(block.id) { distance = min(distance, 2) }
             } else if here.contains(block.id) {
-                distance = block.id == focusedBlock ? 1000 : 1
+                // The project's (§2.6) before the rest of the space's.
+                distance = block.id == focusedBlock ? 1000 : project.map { Self.block(block, isIn: $0) } == true ? 0 : 1
                 if note.isEmpty { note = block.id == focusedBlock ? "here, focused" : "here" }
             } else if let d = near[block.id], d > 0 {
                 if note.isEmpty { note = d == 1 ? "linked" : "near" }
+                if let project, Self.block(block, isIn: project) { distance = min(distance, 2) }
+            } else if let project, Self.block(block, isIn: project) {
+                distance = min(distance, 2)
+                if note.isEmpty { note = "in \(project.1.name)" }
             } else if onDesk.contains(block.id) {
                 distance = min(distance, 3)
             }
@@ -6208,11 +6252,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         let ranking = !words.isEmpty
         var scores: [Int] = []
+        // Which items are of the focused block's project (§2.6): first among equals.
+        var inProject: [Bool] = []
+        let project = focusedProject()
         let running = runningPrograms()
         var items: [FinderItem] = []
         for (c, column) in a.columns.enumerated() {
             for p in column {
                 guard let b = hosts.block(p.block) else { continue }
+                let ours = project.map { Self.block(b, isIn: $0) } ?? false
                 let id = p.id
                 var notes: [String] = []
                 if a.columns.count > 1 { notes.append("column \(c + 1)") }
@@ -6232,7 +6280,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     items.append(FinderItem(symbol: Theme.symbolName(for: b), title: b.displayTitle, detail: tileDetail,
                                             note: notes.joined(separator: " · "), run: { [weak self] in self?.arrive(atTile: id) }))
                     // (Found by its place or what runs in it, not its name: below those named.)
-                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(b.displayTitle, query: query), 150)) }
+                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(b.displayTitle, query: query), 150)); inProject.append(ours) }
                 }
                 let rows = index.rows(of: id)
                 let name = b.displayTitle
@@ -6241,7 +6289,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 for i in hits where rows.indices.contains(i) {
                     let item = rows[i]
                     // (Found by its tile's name alone: below those that say it.)
-                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(item.title, query: query), 100)) }
+                    if ranking { scores.append(max(OutlineIndex<PlacementID, Outline.Item>.score(item.title, query: query), 100)); inProject.append(ours) }
                     items.append(FinderItem(symbol: item.code ? "chevron.forward" : "number", title: item.title,
                                             detail: item.detail.isEmpty ? name : name.isEmpty ? item.detail : name + " · " + item.detail,
                                             note: item.running ? "running" : item.failed ? "failed" : "", level: ranking ? 0 : item.level + 1,
@@ -6256,6 +6304,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard ranking, scores.count == items.count else { return items }
         return items.indices.sorted { x, y in
             if scores[x] != scores[y] { return scores[x] > scores[y] }
+            if inProject[x] != inProject[y] { return inProject[x] }
             if items[x].title.count != items[y].title.count { return items[x].title.count < items[y].title.count }
             return x < y
         }.map { items[$0] }

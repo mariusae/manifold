@@ -80,13 +80,27 @@ struct FinderCandidate: Sendable {
     }
 
     /// A file under the folder: below the blocks, the system's scratch
-    /// folders lower still.
-    static func file(_ path: String) -> FinderCandidate {
+    /// folders lower still — or as near as `distance` says (a project's
+    /// files, §2.6), and said to be where `note` says.
+    static func file(_ path: String, distance: Int? = nil, note: String = "file") -> FinderCandidate {
         let name = path.lastPathComponent
         let scratch = path.hasPrefix("/tmp/") || path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/folders/")
         return FinderCandidate(symbol: Finder.symbol(forFile: name), title: name, detail: path.deletingLastPathComponent.abbreviatingHome,
-                               note: "file", name: name, around: path, distance: scratch ? 80 : 70, recency: 0, action: -1, path: path, kinds: ["file"])
+                               note: note, name: name, around: path, distance: distance ?? (scratch ? 80 : 70), recency: 0, action: -1, path: path, kinds: ["file"])
     }
+}
+
+/// The files a finder lists besides its blocks: those under a folder (the
+/// focused block's project, §2.6), as its host lists them, each as near as
+/// `distance`, said to be where `note` says.
+struct FinderFiles {
+    var root: String
+    /// What the listing is kept by: its host and root.
+    var key: String
+    /// The files, relative to the root.
+    var list: (@escaping ([String]) -> Void) -> Void
+    var distance: Int
+    var note: String
 }
 
 /// A counter the main thread bumps and a ranking off it reads, to give up
@@ -508,16 +522,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     // MARK: Showing
 
     /// Shows, in a scope: what can be found by name (`corpus`, each
-    /// running its action), and with `filesUnder`, the files under that
+    /// running its action), and with `files`, the files under that
     /// folder too — from the last listing at once, listed afresh behind.
     /// Shown already, in the other scope: the query and its chips kept.
-    func show(corpus: [FinderCandidate], actions: [() -> Void], filesUnder root: String?, knownPaths: Set<String> = [], scope: Scope = .names, placeholder: String, over window: NSWindow?) {
+    func show(corpus: [FinderCandidate], actions: [() -> Void], files: FinderFiles?, knownPaths: Set<String> = [], scope: Scope = .names, placeholder: String, over window: NSWindow?) {
         let switching = panel.isVisible && outline == nil && scope != self.scope
         self.corpus = corpus
         self.actions = actions
-        self.root = root ?? ""
+        self.root = files?.root ?? ""
         self.knownPaths = knownPaths
-        withFiles = root != nil
+        withFiles = files != nil
         outline = nil
         self.scope = scope
         field.placeholderString = placeholder
@@ -535,17 +549,20 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         tallest = Self.visibleRows
         listing += 1
         fileCandidates = []
-        if let root {
-            if let cached = Self.listings[root] { fileCandidates = cached.files.filter { !knownPaths.contains($0.path ?? "") } }
+        if let files {
+            // What was listed last time at once, the host's answer when it comes.
+            if let cached = Self.listings[files.key] { fileCandidates = cached.files.filter { !knownPaths.contains($0.path ?? "") } }
             let token = listing
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let found = FileFinder.list(root: root).map { FinderCandidate.file(root.appendingPathComponent($0)) }
-                DispatchQueue.main.async {
-                    Self.listings[root] = (Date(), found)
-                    if Self.listings.count > 12, let oldest = Self.listings.min(by: { $0.value.at < $1.value.at })?.key { Self.listings.removeValue(forKey: oldest) }
-                    guard let self, self.listing == token else { return }
-                    self.fileCandidates = found.filter { !self.knownPaths.contains($0.path ?? "") }
-                    self.refresh()
+            files.list { rels in
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    let found = rels.map { FinderCandidate.file(files.root.appendingPathComponent($0), distance: files.distance, note: files.note) }
+                    DispatchQueue.main.async {
+                        Self.listings[files.key] = (Date(), found)
+                        if Self.listings.count > 12, let oldest = Self.listings.min(by: { $0.value.at < $1.value.at })?.key { Self.listings.removeValue(forKey: oldest) }
+                        guard let self, self.listing == token else { return }
+                        self.fileCandidates = found.filter { !self.knownPaths.contains($0.path ?? "") }
+                        self.refresh()
+                    }
                 }
             }
         }

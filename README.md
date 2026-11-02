@@ -498,7 +498,13 @@ around it, and comes back with its history.
   (name, overview, remove); **Window**, the window and Agents. **Help ▸
   Search** finds any menu command by name, as in every Mac app.
 - **Open Quickly** (⌘O) finds every block and space the host keeps —
-  files are found by Find in Files (⇧⌘F), a search block of their own.
+  and, from a block in a project, the project's files on disk, as its
+  host lists them (remote too), marked *in* it; other files are found by
+  Find in Files (⇧⌘F), a search block of their own. In a project, its
+  blocks and files come first among equals: the space's of it before the
+  rest of the space's, then its others before what's elsewhere — and in
+  ⌘P's whole-space outline, its tiles' places before others named as
+  well.
   It ranks off the main thread as you type, each keystroke giving up on
   the last, so typing never waits; the panel grows to fit and doesn't
   shrink under you. What the query *names* comes first: a title it is, or starts, or starts a word of, then one it's
