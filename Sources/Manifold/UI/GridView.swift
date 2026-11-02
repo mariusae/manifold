@@ -796,6 +796,9 @@ final class GridView: NSView, NSDraggingSource {
                 for d in columnDividers + rowDividers { d.isHidden = true }
             }
             tile.view.isHidden = false
+            // Its own card too, if it was short enough for one: the tile
+            // shows whole now (restored that short, the card comes back).
+            tileSummaries[full]?.isHidden = true
             let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
             tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - Self.barHeight)
             placeTicks(of: tile, in: tile.view.frame, shown: true)
