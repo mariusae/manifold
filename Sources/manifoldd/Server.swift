@@ -750,6 +750,19 @@ final class Server {
                 let tree = readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
                 self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false))) }
             }
+        case let .languages(path):
+            // Counted off the queue, kept a minute (a homepage asks as it shows).
+            if let kept = languageCounts[path], Date().timeIntervalSince(kept.at) < 60 {
+                conn.send(.message(ServerMessage.languages(id: id, kept.counts)))
+                return
+            }
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let counts = Self.languages(of: path)
+                self?.queue.async {
+                    if let counts { self?.languageCounts[path] = (Date(), counts) }
+                    conn.send(.message(ServerMessage.languages(id: id, counts)))
+                }
+            }
         case let .captureTurn(block, agent, turn):
             writeTurn(block, agent: agent, turn: turn)
             done(node.block(block) == nil ? "no such turn" : nil)
@@ -1313,6 +1326,28 @@ final class Server {
     static func alias(of path: String) -> String? {
         let real = LanguageServers.canonical(path)
         return real == path ? nil : real
+    }
+
+    private var languageCounts: [String: (at: Date, counts: [Linguist.Count])] = [:]
+
+    /// A folder's languages as GitHub counts them (§2.6): its files as its
+    /// repository lists them, its `.gitattributes` read, and a code file's
+    /// beginning where what's generated is told by it.
+    static func languages(of root: String) -> [Linguist.Count]? {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else { return nil }
+        let tree = FolderListing.tree(of: root, limit: 50_000)
+        let files = tree.entries.filter { !$0.isDirectory }
+        let attributes = Linguist.Attributes(files.compactMap { e in
+            guard e.name == ".gitattributes" || e.name.hasSuffix("/.gitattributes"),
+                  let text = try? String(contentsOfFile: root.appendingPathComponent(e.name), encoding: .utf8) else { return nil }
+            return (e.name.deletingLastPathComponent, text)
+        })
+        return Linguist.count(files.map { ($0.name, $0.size) }, attributes: attributes) { rel in
+            guard let h = FileHandle(forReadingAtPath: root.appendingPathComponent(rel)) else { return nil }
+            defer { try? h.close() }
+            return (try? h.read(upToCount: 4096)).map { String(decoding: $0, as: UTF8.self) }
+        }
     }
 
     /// Where each watched project's repository's working copy is.

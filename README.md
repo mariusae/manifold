@@ -905,10 +905,16 @@ around it, and comes back with its history.
   which project a folder is in — its root, its branch and changes, how
   its index stands; `--make` makes the folder one, `--remove` takes it
   back.
-  The homepage's sidebar also shows its **languages** (a bar of its
-  code's bytes by language, the first few named; as code hosts count
-  them, documentation — docs/, examples/ — and code kept from elsewhere —
-  vendor/, third_party/, node_modules/ — left out) and what's **here now**:
+  The homepage's sidebar also shows its **languages**, counted as GitHub
+  counts a repository's (a bar of its code's bytes by language, the
+  first few named): programming and markup languages, not data or prose;
+  what Linguist takes as vendored (vendor/, third_party/, node_modules/,
+  dist/…), documentation (docs/, examples/ at the top, READMEs…) or
+  generated (protocol buffers' output, lock files, source maps, a file
+  whose first lines say so, minified scripts) left out; and as the
+  project's `.gitattributes` say otherwise (`linguist-vendored`,
+  `linguist-generated`, `linguist-documentation`,
+  `linguist-detectable`, `linguist-language`) and what's **here now**:
   terminals and agents working in it (what each is doing, and where)
   and notes about its files — each gone to when clicked. Its index's
   line says when files have changed since it was made (indexed 5m ago ·

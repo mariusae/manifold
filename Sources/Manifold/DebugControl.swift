@@ -55,6 +55,8 @@ enum DebugControl {
         listener = source
     }
 
+    private static var languagesSaid = "nothing asked"
+
     private static func run(_ line: String, _ wc: MainWindowController?) -> String {
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         guard let cmd = parts.first else { return "empty" }
@@ -1431,6 +1433,18 @@ enum DebugControl {
                 return "opened"
             }
             return PathInserter.shared.debug(arg)
+        case "languages":
+            // "languages <folder>": its languages counted by this Mac's host
+            // (as GitHub counts them); "languages" again, what it said.
+            // (Answered on the main queue, which this runs on: asked, then read.)
+            guard let wc else { return "no window" }
+            if arg.isEmpty { return Self.languagesSaid }
+            Self.languagesSaid = "counting…"
+            wc.debugLanguages(arg) { counts in
+                let total = Double(counts?.reduce(0) { $0 + $1.bytes } ?? 0)
+                Self.languagesSaid = counts.map { c in c.isEmpty ? "none" : c.map { String(format: "%@ %.1f%% (%lld bytes)", $0.name, total > 0 ? 100 * Double($0.bytes) / total : 0, $0.bytes) }.joined(separator: "\n") } ?? "can't be read"
+            }
+            return "asked"
         case "picker":
             // "picker" opens it; "picker <query>" says what it lists for one.
             // "picker go" chooses the selected row; "picker down"/"up" move it.

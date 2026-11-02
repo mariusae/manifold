@@ -62,21 +62,6 @@ public struct Project: Codable, Equatable, Sendable {
         return found
     }
 
-    /// Whether a file (relative to the root) is left out of a project's
-    /// languages (§2.6), as code hosts leave it out: documentation (a
-    /// docs/ or examples/ folder — often generated pages, megabytes each)
-    /// and code kept from elsewhere (vendor/, third_party/, node_modules/),
-    /// and minified scripts.
-    public static func isAside(_ rel: String) -> Bool {
-        let folders = rel.lowercased().split(separator: "/").dropLast()
-        let aside: Set<Substring> = ["doc", "docs", "documentation", "example", "examples", "javadoc", "man",
-                                     "vendor", "vendored", "third_party", "third-party", "thirdparty", "external", "extern",
-                                     "node_modules", "bower_components", "deps", "_deps", "pods", "carthage", "site-packages"]
-        if folders.contains(where: aside.contains) { return true }
-        let name = rel.lastPathComponent.lowercased()
-        return name.hasSuffix(".min.js") || name.hasSuffix(".min.css") || name.hasSuffix("-min.js")
-    }
-
     /// The project holding a path: the nearest root at or above it.
     public static func holding(_ path: String, in projects: [Project]) -> Project? {
         projects.filter { $0.holds(path) }.max { $0.root.count < $1.root.count }

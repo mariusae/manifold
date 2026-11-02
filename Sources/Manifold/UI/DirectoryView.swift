@@ -74,6 +74,8 @@ protocol DirectoryViewDelegate: AnyObject {
     /// What's at work in the project: terminals and agents there, notes
     /// about its files.
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence]
+    /// The project's languages, as its host counts them (as GitHub does).
+    func directoryView(_ view: DirectoryView, languagesOf project: Project, done: @escaping ([Linguist.Count]?) -> Void)
 }
 
 /// What's dropped on a folder's tile: a file or folder of this Mac's, or
@@ -472,9 +474,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         // Its languages, from its tree (now and then); what's at work in it.
         if Date().timeIntervalSince(languagesAt ?? .distantPast) > 120 {
             languagesAt = Date()
-            delegate?.directoryView(self, tree: project.root) { [weak self] entries, _ in
-                guard let self, let entries else { return }
-                self.languages = LanguageShare.of(entries)
+            delegate?.directoryView(self, languagesOf: project) { [weak self] counts in
+                guard let self, let counts else { return }
+                self.languages = LanguageShare.of(counts)
                 self.showFacts()
             }
         }

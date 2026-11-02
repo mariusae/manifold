@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 64
+public let protocolVersion = 65
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -234,6 +234,9 @@ public enum Proposal: Codable, Sendable {
     /// The tree under a folder, less what's ignored, as paths relative to
     /// it: `limit` files at most; answered with `listing`.
     case listTree(path: String, limit: Int)
+    /// A project's languages as GitHub counts them (`Linguist`, §2.6),
+    /// answered with `languages`.
+    case languages(path: String)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
     /// A file as a revision (a commit, a tree) has it, as a block of its own
@@ -583,6 +586,8 @@ public enum ServerMessage: Codable, Sendable {
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
+    /// A project's languages, most first (nil: it can't be read).
+    case languages(id: Int, [Linguist.Count]?)
     /// What `lookUpPaths` asked, path by path, in order (nil: nothing
     /// there); fewer than asked when the host ran out of time looking.
     case pathKinds(id: Int, [PathKind?])

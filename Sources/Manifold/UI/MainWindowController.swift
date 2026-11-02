@@ -1617,6 +1617,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugTiles: String { content.debugTiles }
     /// Debugging: a shown tile, by its title, given this much content
     /// height — taken from or given to the biggest other in its column.
+    func debugLanguages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) { host.languages(path, done: done) }
+
     /// Host headings with one host, its spaces under two (`org twohosts`).
     static var debugTwoHosts = false
 
@@ -8608,6 +8610,11 @@ extension MainWindowController: DirectoryViewDelegate {
         case let .hit(h):
             open(path: h.path, line: h.line, column: h.column, on: host, from: view.placement, context: "“\(h.text.trimmingCharacters(in: .whitespaces).prefix(30))”")
         }
+    }
+
+    func directoryView(_ view: DirectoryView, languagesOf project: Project, done: @escaping ([Linguist.Count]?) -> Void) {
+        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        client.languages(project.root, done: done)
     }
 
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence] {

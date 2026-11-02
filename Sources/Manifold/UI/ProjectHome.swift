@@ -39,19 +39,13 @@ struct LanguageShare: Equatable {
     var name: String
     var share: Double
 
-    /// A project's tree, by language: each language's bytes over all the
-    /// code's (configuration, markup and documents left out, and what's
-    /// documentation or kept from elsewhere: `Project.isAside`), most
-    /// first; the smallest folded into Other.
-    static func of(_ entries: [DirectoryEntry]) -> [LanguageShare] {
-        var bytes: [String: Int64] = [:]
-        for e in entries where !e.isDirectory && e.isIgnored != true && !Project.isAside(e.name) {
-            guard let l = CodeLanguage.forPath(e.name), l.kind == .language else { continue }
-            bytes[l.name, default: 0] += max(e.size, 1)
-        }
-        let total = Double(bytes.values.reduce(0, +))
+    /// A project's languages as its host counted them (as GitHub does,
+    /// `Linguist`): each one's share of the bytes, most first; the
+    /// smallest folded into Other.
+    static func of(_ counts: [Linguist.Count]) -> [LanguageShare] {
+        let total = Double(counts.reduce(0) { $0 + $1.bytes })
         guard total > 0 else { return [] }
-        var out = bytes.map { LanguageShare(name: $0.key, share: Double($0.value) / total) }.sorted { $0.share > $1.share }
+        var out = counts.map { LanguageShare(name: $0.name, share: Double($0.bytes) / total) }.sorted { $0.share > $1.share }
         if out.count > 6 {
             let other = out[5...].reduce(0) { $0 + $1.share }
             out = Array(out.prefix(5)) + [LanguageShare(name: "Other", share: other)]

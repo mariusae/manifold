@@ -470,6 +470,16 @@ final class HostClient {
         list(.listTree(path: path, limit: limit), done: done)
     }
 
+    /// A project's languages as GitHub counts them (§2.6), from its host.
+    func languages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) {
+        guard conn != nil else { return done(nil) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingLanguages[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .languages(path: path))))
+    }
+    private var pendingLanguages: [Int: ([Linguist.Count]?) -> Void] = [:]
+
     private func list(_ proposal: Proposal, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
         guard conn != nil else { return done(nil, false) }
         let id = nextProposal
@@ -1199,6 +1209,8 @@ final class HostClient {
             SecureInput.shared.set(block, readingPassword: on)
         case let .listing(id, entries, complete):
             pendingListings.removeValue(forKey: id)?(entries, complete)
+        case let .languages(id, counts):
+            pendingLanguages.removeValue(forKey: id)?(counts)
         case let .pathKinds(id, kinds):
             pendingLookUps.removeValue(forKey: id)?(kinds)
         case let .machine(id, sample):
