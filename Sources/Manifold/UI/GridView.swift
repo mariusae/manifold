@@ -3566,7 +3566,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
 /// A tile's icon, as a handle (`TilePill`): under the pointer it swings
 /// out of the bar toward you, hinged at its left edge as a door is, in a
-/// little perspective, settling with a slight overshoot, a short shadow
+/// little perspective, and grows a little — so it shows past the hand
+/// that's over it — settling with a slight overshoot, a short shadow
 /// falling on the bar from the edge that lifts — nothing lit behind it;
 /// the pose says it can be taken (dragged, the thing the tile stands
 /// for). It swings back when the pointer goes or the drag begins. The
@@ -3600,8 +3601,8 @@ final class IconHandle: NSView {
     required init?(coder: NSCoder) { fatalError() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// Swung out: its right edge toward you, about 28°.
-    private static let swung = CATransform3DMakeRotation(-.pi * 28 / 180, 0, 1, 0)
+    /// Swung out: its right edge toward you, about 40°, and a fifth larger.
+    private static let swung = CATransform3DScale(CATransform3DMakeRotation(-.pi * 40 / 180, 0, 1, 0), 1.2, 1.2, 1)
 
     override func layout() {
         super.layout()
@@ -3617,16 +3618,16 @@ final class IconHandle: NSView {
         guard out != self.out else { return }
         self.out = out
         if out {
+            // Drawn now, at the screen's scale and in this appearance, and
+            // put in place without Core Animation's fade: given an image to
+            // resolve later, it showed a frame or two large and too light.
             let scale = window?.backingScaleFactor ?? 2
-            let drawn = image.map { im in
-                NSImage(size: im.size, flipped: false) { r in
-                    im.draw(in: r)
-                    if im.isTemplate, let tint { tint.set(); r.fill(using: .sourceAtop) }
-                    return true
-                }
-            }
+            let drawn = image.flatMap { render($0, tint: tint, scale: scale) }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             face.contentsScale = scale
-            face.contents = drawn?.layerContents(forContentsScale: scale)
+            face.contents = drawn
+            CATransaction.commit()
         }
         let reduced = Motion.reduced
         let to = out && !reduced ? Self.swung : CATransform3DIdentity
@@ -3658,11 +3659,34 @@ final class IconHandle: NSView {
         CATransaction.commit()
     }
 
+    /// The icon as its view shows it: a symbol in `tint`, a picture as it is.
+    private func render(_ image: NSImage, tint: NSColor?, scale: CGFloat) -> CGImage? {
+        let size = image.size
+        guard size.width > 0, size.height > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int((size.width * scale).rounded(.up)), pixelsHigh: Int((size.height * scale).rounded(.up)),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let r = NSRect(origin: .zero, size: size)
+            image.draw(in: r)
+            if image.isTemplate, let tint {
+                tint.set()
+                r.fill(using: .sourceAtop)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.cgImage
+    }
+
     var debugState: String {
         let p = face.presentation() ?? face
-        // The turn, from the transform's x scale: cos of the angle.
-        let angle = acos(max(-1, min(1, Double(p.transform.m11)))) * 180 / .pi
-        return "\(out ? "out" : "in") turned=\(Int(angle.rounded()))° shadow=\(String(format: "%.2f", p.shadowOpacity)) shown=\(!face.isHidden)"
+        // The turn, from the transform's x scale: cos of the angle (by the growth).
+        let grown = hypot(Double(p.transform.m11), Double(p.transform.m13))
+        let angle = acos(max(-1, min(1, Double(p.transform.m11) / max(grown, 0.001)))) * 180 / .pi
+        return "\(out ? "out" : "in") turned=\(Int(angle.rounded()))° grown=\(String(format: "%.2f", grown)) shadow=\(String(format: "%.2f", p.shadowOpacity)) shown=\(!face.isHidden)"
     }
 }
 
