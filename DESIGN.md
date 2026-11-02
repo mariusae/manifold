@@ -804,11 +804,14 @@ There are two kinds of drag. A tile's bar (or a block's row, card or
 face) dragged plainly *moves* it, or brings the block — the arrangement
 is what changes. Everything else dragged is a **thing**, and so is a
 tile ⇧-dragged, or dragged by its bar's icon — the icon a proxy, as a
-document window's title's is: the pointer on it folds a raised chip
-(a drag pill's ground and edge) up out of the bar behind it, hinged at
-its foot in perspective, settling with a little overshoot, its shadow
-rising with it (`IconHandle`; with less motion, only a fade), and it
-folds back as the pointer leaves or the drag begins: a block, or a place in one (an outline's item: a
+document window's title's is. The pointer on it swings the icon itself
+out of the bar toward you, about 28°, hinged at its left edge in a
+little perspective (a depth of 90 points to its 16), settling with a
+little overshoot, a short shadow falling on the bar from the edge that
+lifts — nothing lit behind it: the pose is the sign (`IconHandle`, which
+draws the icon in a layer of its own while it's out, the icon's view
+hidden; with less motion, only the shadow comes). It swings back as the
+pointer leaves or the drag begins: a block, or a place in one (an outline's item: a
 command, a heading, a page, by its words); a file or folder on a host
 (a folder's entry, a search's hit, a changed file, one from the
 Finder); a page's address; a picture; words. A thing is written the same

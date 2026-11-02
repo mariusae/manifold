@@ -2964,6 +2964,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
+        handle.onIn = { [weak self] in self?.icon.isHidden = false }
         for v in [handle, icon, name, subtitle, glyph, statusPill, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
@@ -3300,7 +3301,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         glass.layer?.borderWidth = hovered ? 1.5 : 0
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
-        icon.contentTintColor = focused || hovered || handle.out ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
     }
 
     /// Kept for the grid's asking: the bar is above the content, never
@@ -3320,7 +3321,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.frame = bounds
         var x: CGFloat = 10
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
-        handle.frame = icon.frame.insetBy(dx: -4, dy: -3)
+        handle.frame = icon.frame
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
@@ -3492,8 +3493,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func setHandle(_ out: Bool) {
         guard handle.out != out else { return }
-        handle.set(out: out)
-        updateColors()
+        handle.set(out: out, image: icon.image, tint: icon.contentTintColor)
+        if out { icon.isHidden = true }
     }
 
     /// Debugging: the icon's handle folded out or in, and how it is.
@@ -3563,90 +3564,105 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 }
 
-/// A tile's icon's handle (`TilePill`): under the pointer, a raised chip
-/// in a drag pill's ground folds up out of the bar behind the icon — hinged
-/// at its foot, in perspective, settling with a little overshoot, its
-/// shadow coming as it rises — to say the icon can be taken (dragged, the
-/// thing the tile stands for); it folds back down when the pointer goes.
-/// With less motion asked for, it only fades in and out.
+/// A tile's icon, as a handle (`TilePill`): under the pointer it swings
+/// out of the bar toward you, hinged at its left edge as a door is, in a
+/// little perspective, settling with a slight overshoot, a short shadow
+/// falling on the bar from the edge that lifts — nothing lit behind it;
+/// the pose says it can be taken (dragged, the thing the tile stands
+/// for). It swings back when the pointer goes or the drag begins. The
+/// icon is drawn here while it's out (its own view's layer is AppKit's,
+/// not to be turned), the view hidden. With less motion asked for, it
+/// doesn't turn: its shadow comes, as if lifted.
 final class IconHandle: NSView {
     private let face = CALayer()
     private(set) var out = false
+    /// Which swing is the latest: one replaced ends too, and mustn't
+    /// put the icon back mid-swing.
+    private var swings = 0
+    /// Back in the bar: the icon's own view to show again.
+    var onIn: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         var perspective = CATransform3DIdentity
-        perspective.m34 = -1 / 60
+        perspective.m34 = -1 / 90
         layer?.sublayerTransform = perspective
-        face.cornerRadius = Radius.control
-        face.cornerCurve = .continuous
-        face.borderWidth = 0.5
-        face.shadowRadius = 2
-        face.shadowOffset = CGSize(width: 0, height: -1)
-        face.anchorPoint = CGPoint(x: 0.5, y: 0)
-        face.opacity = 0
-        face.transform = Self.folded
+        face.anchorPoint = CGPoint(x: 0, y: 0.5)
+        face.contentsGravity = .center
+        face.shadowColor = NSColor.black.cgColor
+        face.shadowRadius = 1.5
+        face.shadowOffset = CGSize(width: 1.5, height: -1)
+        face.shadowOpacity = 0
+        face.isHidden = true
         layer?.addSublayer(face)
-        themed { v in
-            v.effectiveAppearance.performAsCurrentDrawingAppearance {
-                v.face.backgroundColor = DragPill.fill.cgColor
-                v.face.borderColor = EdgeColor.subtle.cgColor
-                v.face.shadowColor = NSColor.black.cgColor
-            }
-        }
     }
     required init?(coder: NSCoder) { fatalError() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// Lying in the bar: tipped back flat on its hinge, a little small.
-    private static let folded = CATransform3DScale(CATransform3DMakeRotation(.pi * 0.45, 1, 0, 0), 0.85, 0.85, 1)
+    /// Swung out: its right edge toward you, about 28°.
+    private static let swung = CATransform3DMakeRotation(-.pi * 28 / 180, 0, 1, 0)
 
     override func layout() {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         face.bounds = CGRect(origin: .zero, size: bounds.size)
-        // Hinged at its foot (the bar's lower edge, whichever way up).
-        face.position = CGPoint(x: bounds.midX, y: isFlipped ? bounds.maxY : bounds.minY)
+        face.position = CGPoint(x: 0, y: bounds.midY)
         CATransaction.commit()
     }
 
-    func set(out: Bool) {
+    /// Out, showing `image` as the icon's view does (a symbol in `tint`).
+    func set(out: Bool, image: NSImage?, tint: NSColor?) {
+        guard out != self.out else { return }
         self.out = out
-        let reduced = Motion.reduced
-        let to = out || reduced ? CATransform3DIdentity : Self.folded
-        let from = face.presentation()?.transform ?? face.transform
-        let fromOpacity = face.presentation()?.opacity ?? face.opacity
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        face.transform = to
-        face.opacity = out ? 1 : 0
-        face.shadowOpacity = out ? 0.22 : 0
-        CATransaction.commit()
-        let d = (out ? Motion.spatial : Motion.base)
-        if !reduced {
-            let fold = CABasicAnimation(keyPath: "transform")
-            fold.fromValue = from
-            fold.toValue = to
-            fold.duration = d
-            fold.timingFunction = out ? Motion.settle : Motion.disappear
-            face.add(fold, forKey: "fold")
-            let shadow = CABasicAnimation(keyPath: "shadowOpacity")
-            shadow.fromValue = out ? 0 : 0.22
-            shadow.duration = d
-            face.add(shadow, forKey: "shadow")
+        if out {
+            let scale = window?.backingScaleFactor ?? 2
+            let drawn = image.map { im in
+                NSImage(size: im.size, flipped: false) { r in
+                    im.draw(in: r)
+                    if im.isTemplate, let tint { tint.set(); r.fill(using: .sourceAtop) }
+                    return true
+                }
+            }
+            face.contentsScale = scale
+            face.contents = drawn?.layerContents(forContentsScale: scale)
         }
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = fromOpacity
-        fade.duration = out ? d * 0.5 : d
-        face.add(fade, forKey: "fade")
+        let reduced = Motion.reduced
+        let to = out && !reduced ? Self.swung : CATransform3DIdentity
+        let from = face.presentation()?.transform ?? face.transform
+        let fromShadow = face.presentation()?.shadowOpacity ?? face.shadowOpacity
+        let d = out ? Motion.spatial : Motion.base
+        swings += 1
+        let swing = swings
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, !self.out, self.swings == swing else { return }
+            self.face.isHidden = true
+            self.onIn?()
+        }
+        CATransaction.setDisableActions(true)
+        face.isHidden = false
+        face.transform = to
+        face.shadowOpacity = out ? 0.5 : 0
+        let turn = CABasicAnimation(keyPath: "transform")
+        turn.fromValue = from
+        turn.toValue = to
+        turn.duration = d
+        turn.timingFunction = out ? Motion.settle : Motion.disappear
+        face.add(turn, forKey: "swing")
+        let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+        shadow.fromValue = fromShadow
+        shadow.duration = d
+        face.add(shadow, forKey: "shadow")
+        CATransaction.commit()
     }
 
     var debugState: String {
         let p = face.presentation() ?? face
-        let t = p.transform
-        return "\(out ? "out" : "in") opacity=\(String(format: "%.2f", p.opacity)) tilt=\(String(format: "%.2f", t.m22))"
+        // The turn, from the transform's x scale: cos of the angle.
+        let angle = acos(max(-1, min(1, Double(p.transform.m11)))) * 180 / .pi
+        return "\(out ? "out" : "in") turned=\(Int(angle.rounded()))° shadow=\(String(format: "%.2f", p.shadowOpacity)) shown=\(!face.isHidden)"
     }
 }
 
