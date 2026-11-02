@@ -538,7 +538,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard let c = commands.first(where: { $0.id == id }), let row = located[c.id] else { return nil }
         let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
         let line = screenLines()?.first { $0.row == row }.map { String($0.text) } ?? ""
-        let output = ShellCommand.output(text(rows: (row + 1)..<min(next, row + 20000)), prompt: ShellCommand.prompt(onLine: line, command: c.text))
+        // Its row may be stale, past the end (the screen cleared since): none then.
+        let end = max(row + 1, min(next, row + 20000))
+        let output = ShellCommand.output(text(rows: (row + 1)..<end), prompt: ShellCommand.prompt(onLine: line, command: c.text))
         return (c, output)
     }
 
