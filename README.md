@@ -1134,7 +1134,7 @@ around it, and comes back with its history.
   shows in a pane under the list, as a mail reader shows the message
   chosen (the split kept with the tile; a short tile, the list alone);
   a commit's message is rendered as Markdown there and in its own diff —
-  its subject a title, who and when above it. ⏎ or a
+  its subject a paragraph like the rest (not a heading), who and when above it. ⏎ or a
   double-click on a change opens a **diff** block beside it — the file
   against HEAD, context folded (click to unfold), double-click a row to
   open the file there; on a commit, the whole commit; on **All changes

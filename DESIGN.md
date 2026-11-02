@@ -1247,7 +1247,8 @@ pages, as a Markdown text has its headings (a tile's own sidebar, at its
 left, the bar's button showing it, kept with the tile); a
 side-by-side and inline diff; git status, log and blame as lists that open
 diffs and files — the row chosen shown in a pane under the list, as a mail
-reader shows a message, a commit's message rendered as Markdown
+reader shows a message, a commit's message rendered as Markdown, its
+subject line a paragraph like any other, not set as a title
 (`CommitHeaderView`, `MarkdownText`: native text, not the preview's page); search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.

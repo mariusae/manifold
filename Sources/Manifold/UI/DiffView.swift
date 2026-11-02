@@ -651,16 +651,10 @@ final class CommitHeaderView: NSView {
     func show(_ h: Heading, theme: FontTheme) {
         meta.stringValue = [String(h.sha.prefix(12)), h.author, h.date].filter { !$0.isEmpty }.joined(separator: " · ")
         let body = theme.readingFont(size: 15), code = theme.font(.monospaced, size: 12.5)
-        // Its subject a title over the rest, as a message's in a mail reader.
-        let lines = h.message.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let title = NSFontManager.shared.convert(theme.readingFont(size: 17), toHaveTrait: .boldFontMask)
-        let out = NSMutableAttributedString(attributedString: MarkdownText.attributed(String(lines.first ?? ""), font: title, code: code))
-        let rest = lines.count > 1 ? lines[1].trimmingCharacters(in: .newlines) : ""
-        if !rest.isEmpty {
-            out.append(NSAttributedString(string: "\n"))
-            out.append(MarkdownText.attributed(rest, font: body, code: code))
-        }
-        text.textStorage?.setAttributedString(out)
+        // The message as written, its subject a paragraph like the rest:
+        // the line above names the commit already, and a subject is often
+        // a sentence, not a heading.
+        text.textStorage?.setAttributedString(MarkdownText.attributed(h.message.trimmingCharacters(in: .newlines), font: body, code: code))
         needsLayout = true
     }
 
