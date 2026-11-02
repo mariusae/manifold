@@ -950,8 +950,39 @@ final class Server {
             refreshGit(block)
             watchRepo(root, vcs)
             done()
+        case let .projectGit(block, root):
+            let full = root.expandingTildeInPath
+            guard let (repo, vcs) = git.repository(of: full) else { return done("\(root) isn't in a git or Sapling repository") }
+            if node.block(block) == nil {
+                append(.create(kind: .git, title: nil, path: repo), to: .block(block))
+            }
+            let scope = Project(root: repo, made: clock.now()).relative(full)
+            let wanted = full == repo || scope == full ? nil : scope
+            if node.block(block)?.git?.scope != wanted { append(.gitScope(wanted), to: .block(block)) }
+            if node.block(block)?.git?.vcs != vcs { append(.vcs(vcs), to: .block(block)) }
+            refreshGit(block)
+            watchRepo(repo, vcs)
+            done()
         case let .refreshGit(block):
             refreshGit(block)
+            done()
+        case var .project(p):
+            // Kept as the folder's tile names it, the host's own spelling
+            // beside it where links make them differ.
+            let full = URL(fileURLWithPath: p.root.expandingTildeInPath).standardizedFileURL.path
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue else { return done("\(p.root) isn't a folder here") }
+            let real = URL(fileURLWithPath: full).resolvingSymlinksInPath().path
+            p.root = full
+            p.alias = real == full ? nil : real
+            let old = node.desk(host).projects.first { $0.root == full }
+            p.made = old?.made ?? clock.now()
+            if old != p { append(.project(p), to: .desk(host)) }
+            // A new one indexed at once, if its language has an indexer.
+            if old == nil { scip.request(.index(path: full.appendingPathComponent("."))) { _ in } }
+            done()
+        case let .unproject(root):
+            if node.desk(host).projects.contains(where: { $0.root == root }) { append(.unproject(root), to: .desk(host)) }
             done()
         case let .smartlog(block, path):
             // The repository holding the path.
@@ -1159,7 +1190,9 @@ final class Server {
             default: break
             }
         }
-        var commands = [vcs.statusArguments, vcs.logArguments(limit: 200)]
+        // A project's folder in the repository: its changes and commits.
+        let only = b.git?.scope.map { ["--", $0] } ?? []
+        var commands = [vcs.statusArguments + only, vcs.logArguments(limit: 200) + only]
         if let w = vcs.whereArguments { commands.append(w) }
         if let a = vcs.aheadArguments { commands.append(a) }
         git.run(vcs, commands, in: root) { [weak self] results in

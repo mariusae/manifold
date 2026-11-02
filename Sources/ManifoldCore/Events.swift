@@ -237,10 +237,12 @@ public struct DeskState: Codable, Equatable, Sendable {
     /// The known agents' commands this host has, as it last looked
     /// (through the user's login shell, as an agent runs).
     public var agents: [String] = []
+    /// Its projects (§2.6), each a folder made one by hand.
+    public var projects: [Project] = []
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case order, selected, window, appearance, settings, preferences, agents }
+    enum CodingKeys: String, CodingKey { case order, selected, window, appearance, settings, preferences, agents, projects }
 
     // A desk saved before a field existed gets its default.
     public init(from decoder: Decoder) throws {
@@ -252,6 +254,7 @@ public struct DeskState: Codable, Equatable, Sendable {
         settings = (try? c.decodeIfPresent(Settings.self, forKey: .settings)) ?? Settings()
         preferences = (try? c.decodeIfPresent(HostPreferences.self, forKey: .preferences)) ?? HostPreferences()
         agents = (try? c.decodeIfPresent([String].self, forKey: .agents)) ?? []
+        projects = (try? c.decodeIfPresent([Project].self, forKey: .projects)) ?? []
     }
 }
 
@@ -323,6 +326,9 @@ public enum Event: Codable, Equatable, Sendable {
     /// Which system the repository is under.
     case vcs(VCS)
     case gitRefreshed(branch: String?, status: [GitStatusEntry], log: [GitCommit], ahead: Int, behind: Int, error: String?, at: Stamp)
+    /// What of the repository the block is about: a project's folder in
+    /// it (§2.6), relative to its root; nil, all of it.
+    case gitScope(String?)
     /// Where the host serves a smartlog block's Interactive Smartlog, or why not.
     case smartlog(url: String?, error: String?, at: Stamp)
 
@@ -384,6 +390,10 @@ public enum Event: Codable, Equatable, Sendable {
     case settings(Settings)
     case preferences(HostPreferences)
     case agents([String])
+    /// A project made, or its settings changed (§2.6), by its root.
+    case project(Project)
+    /// A folder no longer a project.
+    case unproject(String)
 
     // Registry.
     /// A block gone to: the trail's next step.
@@ -522,6 +532,8 @@ extension GitState {
         switch event {
         case let .vcs(v):
             vcs = v
+        case let .gitScope(s):
+            scope = s
         case let .gitRefreshed(branch, status, log, ahead, behind, error, at):
             self.branch = branch
             self.status = status
@@ -942,6 +954,9 @@ extension DeskState {
         case let .settings(s): settings = s
         case let .preferences(p): preferences = p
         case let .agents(a): agents = a
+        case let .project(p):
+            if let i = projects.firstIndex(where: { $0.root == p.root }) { projects[i] = p } else { projects.append(p) }
+        case let .unproject(root): projects.removeAll { $0.root == root }
         default: break
         }
     }

@@ -49,6 +49,18 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, history direction: Int) -> Bool
     /// "?text" in the filter: the files under the folder searched for it.
     func directoryView(_ view: DirectoryView, searchContents text: String)
+    /// The project at the folder (§2.6), if it's one.
+    func directoryViewProject(_ view: DirectoryView) -> Project?
+    /// The folder made a project, or no longer one.
+    func directoryView(_ view: DirectoryView, makeProject: Bool)
+    /// The project's git block (its repository's, scoped to it): made,
+    /// or found and refreshed.
+    func directoryView(_ view: DirectoryView, gitFor project: Project) -> BlockID?
+    func directoryView(_ view: DirectoryView, block id: BlockID) -> Block?
+    /// How the project's index stands, or why it can't have one.
+    func directoryView(_ view: DirectoryView, indexOf project: Project, done: @escaping (SCIPStatus?, _ missing: String?) -> Void)
+    /// What its homepage asks for.
+    func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction)
 }
 
 /// What's dropped on a folder's tile: a file or folder of this Mac's, or
@@ -124,6 +136,28 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The selection, relative to the root, as all modes share it.
     private var selected: String?
 
+    // A project's homepage (§2.6).
+    /// The project at the folder, if it's one.
+    private(set) var project: Project?
+    /// How it stands; its git block, its index.
+    private var facts: ProjectFacts?
+    private var projectGit: BlockID?
+    private var indexAskedAt: Date?
+    /// The homepage round the files, or the files alone: a project's,
+    /// beside the modes; kept with the tile, on at first.
+    private let homeButton = FlatButton("", symbol: "house", toggles: true)
+    private var homeShown = true
+    /// The homepage shows: a project's, and not turned off.
+    var home: Bool { homeShown && project != nil }
+    private let strip = ProjectStrip()
+    private let sidebar = ProjectSidebar()
+    /// Offered, quietly, where the folder looks like a project's root (a
+    /// repository's, a language's manifest) and isn't one yet.
+    private let makeProject = FlatButton("Make Project", symbol: "shippingbox", font: UIType.detail)
+    private var looksLikeProject = false
+    /// Narrower than this, a homepage has no sidebar.
+    static let sidebarFrom: CGFloat = 600
+
     var focusView: NSView { content?.focusView ?? self }
     var isDead: Bool { false }
     static let headerHeight: CGFloat = 44
@@ -143,8 +177,23 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         modes.setToolTip("As a Tree", forSegment: 0)
         modes.setToolTip("As Columns", forSegment: 1)
         modes.onChange = { [weak self] i in self?.setMode(i == 1 ? .columns : .tree) }
-        for v in [up, searchBox, modes] as [NSView] { header.addSubview(v) }
+        homeButton.target = self
+        homeButton.action = #selector(toggleHome)
+        homeButton.toolTip = "Project Home: its changes, commits and index round the files"
+        homeButton.isHidden = true
+        header.addSubview(homeButton)
+        makeProject.target = self
+        makeProject.action = #selector(makeProjectClicked)
+        makeProject.toolTip = "Make this folder a project: its own homepage, index, changes and searches"
+        makeProject.isHidden = true
+        for v in [up, searchBox, modes, makeProject] as [NSView] { header.addSubview(v) }
         addSubview(header)
+        strip.isHidden = true
+        strip.onAction = { [weak self] a in self?.projectAction(a) }
+        sidebar.isHidden = true
+        sidebar.onAction = { [weak self] a in self?.projectAction(a) }
+        addSubview(strip)
+        addSubview(sidebar)
         footer.font = UIType.footnote
         footer.textColor = Theme.secondaryText
         footer.alignment = .center
@@ -178,14 +227,18 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The block (or its listing) may have changed.
     func documentChanged() {
         guard let b = source(), let path = b.path else { return }
+        projectChanged(delegate?.directoryViewProject(self))
         if model == nil { setUp(path) }
         up.isEnabled = path != "/"
         if let d = b.directory, d.listedAt != nil, d.listedAt != listedAt {
             listedAt = d.listedAt
             model?.setRootEntries(d.entries)
             readEntries(d.entries)
+            looksLikeProject = Project.looksLikeRoot(Set(d.entries.map(\.name)))
+            updateMakeProject()
         }
         updateNote()
+        if home { showFacts() }
     }
 
     /// What's said over the files, if anything.
@@ -213,6 +266,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             guard let self, NSApp.isActive, self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return }
             self.delegate?.directoryViewRefresh(self)
             if let shown = self.content?.shownFolders { self.model?.refresh(shown) }
+            // Its git block isn't placed, so its changes don't come as the
+            // tile's: read now and then.
+            if self.home { self.showFacts(); self.askIndex() }
         }
     }
 
@@ -244,7 +300,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             m.ascending = s[1] == "1"
         }
         model = m
-        mode = keeper.value("mode").flatMap(Mode.init) ?? Self.lastMode
+        // A project's tile opens on its homepage, its files in columns,
+        // unless it was left otherwise.
+        homeShown = keeper.value("home") != "0"
+        mode = keeper.value("mode").flatMap(Mode.init) ?? (project != nil ? .columns : Self.lastMode)
         selected = keeper.value("selected").flatMap { $0.isEmpty ? nil : $0 }
         if let f = keeper.value("filter"), !f.isEmpty {
             searchBox.stringValue = f
@@ -287,6 +346,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         v.clipsToBounds = true
         addSubview(v, positioned: .below, relativeTo: header)
         content = v
+        homeChanged()
         needsLayout = true
         layoutSubtreeIfNeeded()
         // The folders on the way to the selection, and those left open, asked for at once.
@@ -299,6 +359,129 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         v.select(selected.map { model.absolute($0) })
         // Focused before there was anything to focus: the files now.
         if window?.firstResponder === self { window?.makeFirstResponder(v.focusView) }
+    }
+
+    // MARK: A project's homepage
+
+    /// The desk says the folder is (or isn't) a project: Home offered, or
+    /// taken away (back to the files).
+    private func projectChanged(_ p: Project?) {
+        guard p != project else { return }
+        let was = project
+        project = p
+        updateMakeProject()
+        if p == nil {
+            facts = nil
+            projectGit = nil
+        } else if was == nil, model != nil, madeHere {
+            // Just made one here: its homepage, its files in columns.
+            madeHere = false
+            setHome(true)
+            if keeper.value("mode") == nil { setMode(.columns) }
+        }
+        homeChanged()
+    }
+
+    private func updateMakeProject() {
+        let hide = project != nil || !looksLikeProject
+        guard makeProject.isHidden != hide else { return }
+        makeProject.isHidden = hide
+        needsLayout = true
+    }
+
+    @objc private func makeProjectClicked() {
+        madeHere = true
+        delegate?.directoryView(self, makeProject: true)
+    }
+    /// Made a project from this tile: it goes to the homepage when the host says so.
+    private var madeHere = false
+
+    @objc private func toggleHome() { setHome(!homeShown) }
+
+    /// The homepage round the files, or not; kept with the tile.
+    func setHome(_ on: Bool) {
+        homeShown = on
+        keeper.note(["home": on ? "1" : "0"])
+        homeChanged()
+    }
+
+    /// Home shown or left: the homepage's parts, and what it's asked for.
+    private func homeChanged() {
+        let home = self.home
+        homeButton.isHidden = project == nil
+        homeButton.state = home ? .on : .off
+        strip.isHidden = !home
+        sidebar.isHidden = !home || bounds.width < Self.sidebarFrom
+        // The sidebar has the right: no preview beside the tree.
+        (content as? DirectoryTreeMode)?.previews = !home
+        needsLayout = true
+        guard home else { return }
+        // Its git block found again, and so refreshed: the project as it is now.
+        projectGit = nil
+        showFacts()
+        askIndex(now: true)
+    }
+
+    /// How the project stands, from its git block and its index's last word.
+    private func showFacts() {
+        guard let project, home else { return }
+        if projectGit == nil || (projectGit.flatMap { delegate?.directoryView(self, block: $0) } == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) > 10) {
+            gitAskedAt = Date()
+            projectGit = delegate?.directoryView(self, gitFor: project)
+        }
+        let git = projectGit.flatMap { delegate?.directoryView(self, block: $0) }
+        var f = facts?.project == project ? facts! : ProjectFacts(project: project)
+        f.project = project
+        f.repo = git?.path
+        f.git = git?.git
+        f.gitPending = git == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) < 5
+        guard f != facts else { return }
+        facts = f
+        strip.show(f)
+        sidebar.show(f)
+    }
+    private var gitAskedAt: Date?
+
+    /// The index's state asked again: at once, while it's being made, and
+    /// otherwise now and then.
+    private func askIndex(now: Bool = false) {
+        guard let project, home else { return }
+        let indexing = facts?.index?.state == .indexing
+        if !now, !indexing, let last = indexAskedAt, Date().timeIntervalSince(last) < 15 { return }
+        indexAskedAt = Date()
+        delegate?.directoryView(self, indexOf: project) { [weak self] status, missing in
+            guard let self, var f = self.facts, f.project.root == project.root else { return }
+            f.index = status
+            f.indexMissing = missing
+            guard f != self.facts else { return }
+            self.facts = f
+            self.strip.show(f)
+        }
+    }
+
+    private func projectAction(_ a: ProjectAction) {
+        guard let project else { return }
+        delegate?.directoryView(self, project: project, do: a)
+        if case .reindex = a {
+            // Said as indexing at once; the host's word follows.
+            if var f = facts, let s = f.index {
+                f.index = SCIPStatus(root: s.root, indexer: s.indexer, state: .indexing)
+                facts = f
+                strip.show(f)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.askIndex(now: true) }
+        }
+    }
+
+    /// The tile's menu: the folder made a project, or no longer one.
+    var pillItems: [NSMenuItem] {
+        if project != nil {
+            return [ClosureMenuItem("No Longer a Project", symbol: "shippingbox") { [weak self] in
+                guard let self else { return }
+                self.delegate?.directoryView(self, makeProject: false)
+            }]
+        }
+        return [ClosureMenuItem("Make Project", symbol: "shippingbox") { [weak self] in self?.makeProjectClicked() }]
     }
 
     /// The selection moved.
@@ -621,13 +804,38 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         up.frame = NSRect(x: 8, y: midY - 12, width: 26, height: 24)
         modes.sizeToFit()
         modes.frame.origin = NSPoint(x: w - 12 - modes.frame.width, y: (midY - modes.frame.height / 2).rounded())
-        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, modes.frame.minX - 8 - up.frame.maxX - 6), height: Flat.fieldHeight)
+        var fieldEnd = modes.frame.minX - 8
+        if !homeButton.isHidden {
+            homeButton.frame = NSRect(x: fieldEnd - 28, y: (midY - Flat.buttonHeight / 2).rounded(), width: 28, height: Flat.buttonHeight)
+            fieldEnd = homeButton.frame.minX - 6
+        }
+        if !makeProject.isHidden {
+            makeProject.sizeToFit()
+            makeProject.frame.origin = NSPoint(x: fieldEnd - makeProject.frame.width, y: (midY - makeProject.frame.height / 2).rounded())
+            fieldEnd = makeProject.frame.minX - 6
+        }
+        searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, fieldEnd - up.frame.maxX - 6), height: Flat.fieldHeight)
+        // A project's homepage: its strip under the header, its sidebar at
+        // the right; the files and the README in what's left.
+        var top = h - Self.headerHeight
+        if home {
+            strip.frame = NSRect(x: 0, y: top - ProjectStrip.height, width: w, height: ProjectStrip.height)
+            top -= ProjectStrip.height
+        }
+        sidebar.isHidden = !home || w < Self.sidebarFrom
+        var right = w
+        if !sidebar.isHidden {
+            right = w - ProjectSidebar.width
+            sidebar.frame = NSRect(x: right, y: 0, width: ProjectSidebar.width, height: top)
+        }
+        // What's left for the files: below the strip, left of the sidebar.
+        let fw = right
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
-        footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
+        footer.frame = NSRect(x: 0, y: 4, width: fw, height: 14)
         // The README under the files (not over a filter's matches): its
         // bar alone when collapsed, or when the tile's too short for both.
         var bottom = footerHeight
-        let room = h - Self.headerHeight - footerHeight
+        let room = top - footerHeight
         let showsReadme = readmeText != nil && model?.filtering != true && !searchingContents
         readme.isHidden = !showsReadme
         if showsReadme {
@@ -636,11 +844,11 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             let wanted = readmeHeight ?? keeper.double("readmeHeight").map { CGFloat($0) } ?? (room * 0.45).rounded()
             let height = open ? min(max(wanted, bar + least), room - least) : bar
             if readme.collapsed == open { readme.collapsed = !open }
-            readme.frame = NSRect(x: 0, y: footerHeight, width: w, height: height)
+            readme.frame = NSRect(x: 0, y: footerHeight, width: fw, height: height)
             bottom += height
         }
-        content?.frame = NSRect(x: 0, y: bottom, width: w, height: max(0, h - Self.headerHeight - bottom))
-        note.frame = NSRect(x: 0, y: bottom, width: w, height: max(0, h - Self.headerHeight - bottom))
+        content?.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
+        note.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
     }
 
     // MARK: The README, and Markdown pages
@@ -734,6 +942,19 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "groups": toggleGroups(nil)
         case "tree": setMode(.tree)
         case "columns": setMode(.columns)
+        case "home": toggleHome()
+        case "make": makeProjectClicked()
+        case "project":
+            // "project git|reindex|commit <n>|change <n>": as its homepage's buttons and rows do.
+            let w = words.count > 1 ? words[1].split(separator: " ").map(String.init) : []
+            guard let g = facts?.git, let repo = facts?.repo else { break }
+            switch w.first {
+            case "git": projectAction(.openGit)
+            case "reindex": projectAction(.reindex)
+            case "commit": if let n = w.last.flatMap(Int.init), n < g.log.count { projectAction(.openCommit(g.log[n], repo: repo)) }
+            case "change": if let n = w.last.flatMap(Int.init), n < g.status.count { projectAction(.openChange(g.status[n], repo: repo)) }
+            default: break
+            }
         case "key":
             // "key left|right|up|down|enter": as pressed in the files.
             let codes: [String: (UInt16, String)] = ["left": (123, "\u{F702}"), "right": (124, "\u{F703}"), "down": (125, "\u{F701}"), "up": (126, "\u{F700}"), "enter": (36, "\r")]
@@ -764,6 +985,8 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         default: break
         }
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
+        if let project { lines.append("project \(project.root)" + (home ? " (home)\nstrip \(strip.debugState)\nsidebar \(sidebar.isHidden ? "hidden" : "\(Int(sidebar.frame.width)) wide")\n" + sidebar.debugState : "")) }
+        if !makeProject.isHidden { lines.append("offers Make Project") }
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
         lines.append("note \(note.debugState)")
         if let e = readmeEntry {

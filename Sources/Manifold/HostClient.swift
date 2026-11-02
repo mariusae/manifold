@@ -634,7 +634,7 @@ final class HostClient {
     /// whose root holds the path, else a new one the host roots.
     /// `done`, with why not if the host couldn't make the block.
     func gitBlock(for path: String, done: ((String?) -> Void)? = nil) -> BlockID {
-        let roots = node.blocks.filter { $0.kind == .git && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
+        let roots = node.blocks.filter { $0.kind == .git && $0.git?.scope == nil && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
         if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
             propose(.refreshGit(block: b.id))
             done?(nil)
@@ -644,6 +644,29 @@ final class HostClient {
         propose(.git(block: id, path: path), done: done)
         return id
     }
+
+    /// The git block for a project (§2.6): its repository's, scoped to
+    /// the project's folder in it — the one there is, refreshed, else a
+    /// new one. A project that's its repository's root has the
+    /// repository's own.
+    func projectGitBlock(for project: Project, done: ((String?) -> Void)? = nil) -> BlockID {
+        let mine = node.blocks.first { b in
+            guard b.kind == .git, let repo = b.path, let g = b.git else { return false }
+            return g.scope.map { repo.appendingPathComponent($0) } == project.root
+                || (g.scope == nil && (repo == project.root || repo == project.alias))
+        }
+        if let mine {
+            propose(.refreshGit(block: mine.id))
+            done?(nil)
+            return mine.id
+        }
+        let id = BlockID(host: host)
+        propose(.projectGit(block: id, root: project.root), done: done)
+        return id
+    }
+
+    /// The project holding a path on this host (§2.6), if any.
+    func project(holding path: String) -> Project? { desk.project(holding: path) }
 
     /// An Interactive Smartlog block for the repository holding `path`: the
     /// one there is, its host's smartlog asked for again, else a new one.

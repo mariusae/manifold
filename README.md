@@ -862,6 +862,22 @@ around it, and comes back with its history.
   with the tile, and the listing keeps current as files come and go. On
   the folder's own host, remote or not (a remote file is fetched for its
   preview).
+- **Projects**: a folder made one (**Make Project**, in its tile's menu,
+  or the quiet button its header offers where the folder looks like a
+  project's root — a repository's own folder, a `Cargo.toml`, a
+  `go.mod`, a `package.json`…) is kept as a project on its host, so
+  everything there finds it: the project of a path is the nearest one
+  at or above it. Its tile shows the project's **homepage**, as GitHub
+  shows a repository's, round its files (in columns at first; the house
+  beside the views turns the homepage off and on, kept with the tile): a
+  line under the header with the branch (how far ahead and behind), its
+  changes and how its index stands (indexed 5m ago · rust, indexing…,
+  failed; clicked, made again), and at the right its own changes and
+  recent commits, each opened as a diff beside — the project's alone,
+  where it's a folder deep in a repository (git's and Sapling's alike),
+  as are the commits in the git tile its branch and **All commits
+  here** open. A new project is indexed at once, if its language has an
+  indexer. **No Longer a Project** in the menu takes it back.
 - **Files cross between hosts** as they would between folders: drop
   files from the Finder (or entries from another folder's tile, another
   host's too) on a folder's tile and they're copied into it, there —

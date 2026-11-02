@@ -35,6 +35,11 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 
     /// Narrower than this, no preview: the tree alone.
     static let previewFrom: CGFloat = 520
+    /// The file chosen previewed beside, when there's room (not on a
+    /// project's homepage, whose sidebar has the right).
+    var previews = true {
+        didSet { if previews != oldValue { needsLayout = true } }
+    }
 
     init(owner: DirectoryView, model: DirectoryModel) {
         self.owner = owner
@@ -96,7 +101,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     override func layout() {
         super.layout()
         split.frame = bounds
-        let wide = bounds.width >= Self.previewFrom
+        let wide = previews && bounds.width >= Self.previewFrom
         if right.isHidden == wide {
             right.isHidden = !wide
             split.adjustSubviews()

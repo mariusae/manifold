@@ -8450,6 +8450,61 @@ extension MainWindowController: SmartlogViewDelegate {
 }
 
 extension MainWindowController: DirectoryViewDelegate {
+    // MARK: Projects (§2.6)
+
+    func directoryViewProject(_ view: DirectoryView) -> Project? {
+        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(view.block.host)?.desk else { return nil }
+        return desk.projects.first { $0.root == path || $0.alias == path }
+    }
+
+    func directoryView(_ view: DirectoryView, makeProject: Bool) {
+        guard let client = hosts.client(view.block.host), let path = hosts.block(view.block)?.path else { return NSSound.beep() }
+        let proposal: Proposal = makeProject
+            ? .project(Project(root: path, made: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000))))
+            : .unproject(root: directoryViewProject(view)?.root ?? path)
+        client.propose(proposal) { [weak self] error in
+            if let error { self?.toast.show(error, action: "OK", for: 6) {} }
+        }
+    }
+
+    func directoryView(_ view: DirectoryView, gitFor project: Project) -> BlockID? {
+        hosts.client(view.block.host)?.projectGitBlock(for: project)
+    }
+
+    func directoryView(_ view: DirectoryView, block id: BlockID) -> Block? { hosts.block(id) }
+
+    func directoryView(_ view: DirectoryView, indexOf project: Project, done: @escaping (SCIPStatus?, String?) -> Void) {
+        hosts.scip(.status(path: project.root.appendingPathComponent(".")), on: view.block.host) { result in
+            switch result {
+            case .status(let s) where s.root == nil: done(nil, s.message ?? "no indexer for its language")
+            case .status(let s): done(s, nil)
+            case .error(let m): done(nil, m)
+            default: done(nil, nil)
+            }
+        }
+    }
+
+    func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction) {
+        guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
+        switch action {
+        case .openGit:
+            let id = client.projectGitBlock(for: project)
+            show(id, lens: .git, .besideOpener(view.placement), context: "\(project.name)'s changes")
+        case let .openCommit(c, repo):
+            let id = client.diffBlock(.commit(repo: repo, sha: c.sha))
+            show(id, lens: .diff, .besideOpener(view.placement), context: "a commit in \(project.name)")
+        case let .openChange(s, repo):
+            let path = repo.appendingPathComponent(s.path)
+            if s.workTree == "D" && s.index == " " { return open(path, from: view.placement) }
+            let id = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
+            show(id, lens: .diff, .besideOpener(view.placement), context: "a change in \(project.name)")
+        case .reindex:
+            hosts.scip(.index(path: project.root.appendingPathComponent(".")), on: view.block.host) { [weak self] result in
+                if case .error(let m) = result { self?.toast.show(m, action: "OK", for: 6) {} }
+            }
+        }
+    }
+
     /// "?text" in a folder's filter: the files under it searched, the
     /// search's tile beside the folder's.
     func directoryView(_ view: DirectoryView, searchContents text: String) {
@@ -8913,7 +8968,9 @@ extension MainWindowController: GitViewDelegate {
     /// host, shown in the git tile's place — what it opens goes beside it.
     /// Never placed, it isn't Recently Closed's (`closedItems`).
     func gitView(_ view: GitView, indexStatus done: @escaping (SCIPStatus?) -> Void) {
-        guard let root = hosts.block(view.block)?.path else { return done(nil) }
+        guard let b = hosts.block(view.block), let repo = b.path else { return done(nil) }
+        // A project's (§2.6): its own folder's index.
+        let root = b.git?.scope.map { repo.appendingPathComponent($0) } ?? repo
         hosts.scip(.status(path: root.appendingPathComponent(".")), on: view.block.host) { result in
             if case .status(let s) = result, s.state != .none { done(s) } else { done(nil) }
         }

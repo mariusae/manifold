@@ -226,7 +226,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
         vcs = g.vcs ?? .git
-        header.stringValue = root.abbreviatingHome + (g.vcs == .sapling ? " · Sapling" : "")
+        // A project's (§2.6): its folder in the repository, its changes and commits alone.
+        header.stringValue = (g.scope.map { root.appendingPathComponent($0) } ?? root).abbreviatingHome
+            + (g.scope != nil ? " · in \(root.lastPathComponent)" : "") + (g.vcs == .sapling ? " · Sapling" : "")
         var branch = g.branch ?? ""
         if g.ahead > 0 { branch += " ↑\(g.ahead)" }
         if g.behind > 0 { branch += " ↓\(g.behind)" }

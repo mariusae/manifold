@@ -268,6 +268,24 @@ starts (`placesFor`, the page's `data-sourcepos`); a git tile shows its
 project's index's state; the host takes one spelling of a path (/tmp is
 /private/tmp) for a project's root.
 
+### 2.6 Projects
+
+A project is a folder made one by hand (`Project`): its root, kept in
+its host's desk (`DeskState.projects`, `.project`/`.unproject` events,
+proposed by a client), so the host and every client attached find the
+same one, and the project of a path is the nearest root at or above it
+(`Project.holding`). The root is kept as the folder's tile names it,
+the host's own spelling beside it (`alias`) where links make them
+differ. What's under the root is the project's, whatever the
+repository around it: a git block can be scoped to it
+(`GitState.scope`, the project's folder in the repository, proposed as
+`projectGit`) — `git status`/`log` (`sl` alike) given it as a path, so
+its changes and commits are the project's alone. Made, a project is
+indexed at once (§2.5). It's a folder still: its tile (§7.4) shows the
+homepage round its files. Nothing is guessed where no project is made:
+a path outside every project finds its repository and indexer as it
+did, by their markers.
+
 ---
 
 ## 3. Spaces
@@ -1244,6 +1262,17 @@ filter and whether hidden files show are the placement's view state
 (§3.5). Opening an entry places its block beside the listing and links it;
 a folder replaces the listing in its tile. Still to come: inline rename, drag to and from the
 Finder and other placements, and git status badges.
+
+A project's folder (§2.6) shows its homepage round the files, in
+columns at first (the homepage a toggle beside the views, kept with
+the tile): a strip under the header (`ProjectStrip`: the branch, the
+changes, the index — each a flat button) and a sidebar at the right
+(`ProjectSidebar`: its changes and recent commits, from its scoped git
+block, read on the listing's timer since that block isn't placed), the
+README under the files as ever; the tree previews nothing beside it
+there, the sidebar having the right. A folder that looks like a
+project's root (a repository's, an indexer's marker) and isn't one
+offers Make Project in its header.
 
 ### 7.5 Image, PDF, diff, git, search, process, agent
 

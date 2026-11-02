@@ -540,6 +540,9 @@ public struct SmartlogState: Codable, Equatable, Sendable {
 public struct GitState: Codable, Equatable, Sendable {
     /// Which system the repository is under; nil before the host said.
     public var vcs: VCS?
+    /// A project's folder in the repository (§2.6), relative to its root:
+    /// its changes and commits only. Nil: the whole repository.
+    public var scope: String?
     public var branch: String?
     public var status: [GitStatusEntry] = []
     public var log: [GitCommit] = []
@@ -1102,7 +1105,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
-        if kind == .git, let path { return path.lastPathComponent + (git?.branch.map { " (\($0))" } ?? "") }
+        if kind == .git, let path { return (git?.scope.map { $0.lastPathComponent } ?? path.lastPathComponent) + (git?.branch.map { " (\($0))" } ?? "") }
         if kind == .smartlog, let path { return "Smartlog · " + path.lastPathComponent }
         if let subject = diff?.subject {
             switch subject {

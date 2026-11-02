@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 61
+public let protocolVersion = 62
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -195,6 +195,14 @@ public enum Proposal: Codable, Sendable {
     /// A git block for the repository holding `path` (made if new),
     /// refreshed.
     case git(block: BlockID, path: String)
+    /// A git block for a project (§2.6): its repository's, scoped to the
+    /// project's folder in it — its changes and commits only.
+    case projectGit(block: BlockID, root: String)
+    /// A folder made a project (§2.6), or its settings changed; the host
+    /// keeps its root in one spelling and indexes it, if it can.
+    case project(Project)
+    /// A folder no longer a project.
+    case unproject(root: String)
     case refreshGit(block: BlockID)
     /// An Interactive Smartlog block for the Sapling repository holding
     /// `path` (made if new): the host's `sl web` started (or the one
