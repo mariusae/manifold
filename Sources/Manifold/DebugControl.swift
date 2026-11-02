@@ -106,6 +106,9 @@ enum DebugControl {
         case "arrival":
             // The focused tile marked as arrived at.
             return wc?.debugMarkArrival() ?? "no window"
+        case "handle":
+            // "handle on|off": the focused tile's icon's handle folded out or in; "handle": how it is.
+            return wc?.debugHandle(arg) ?? "no window"
         case "travel":
             // The sidebar's band going from space to space, if it is.
             return wc?.debugOrganization.debugTraveller ?? "no window"

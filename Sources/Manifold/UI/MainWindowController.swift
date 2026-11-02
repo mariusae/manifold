@@ -1526,6 +1526,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return pill.debugCompletions
     }
 
+    /// Debugging: the focused tile's icon's handle — "on", "off", or
+    /// nothing: how it is.
+    func debugHandle(_ arg: String) -> String {
+        guard let f = arrangement?.focused, let pill = content.debugPill(f) else { return "no tile focused" }
+        return pill.debugHandle(arg)
+    }
+
     func debugTicks(_ arg: String) -> String {
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch words.first {

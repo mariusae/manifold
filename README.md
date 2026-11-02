@@ -142,8 +142,10 @@ parts from the Mac's conventions on purpose.
   editor (its definition stacked over the editor). Drop a bar on
   another's to stash it there; ⌥-drag it instead and it goes on top,
   the target (and whatever was behind it) stashed behind — the outline
-  while you drag is the target tile's shape, to say so; ⇧-drag a bar
-  and it's not the tile you carry but the block itself — a **thing**,
+  while you drag is the target tile's shape, to say so; ⇧-drag a bar,
+  or drag it by its icon (the pointer on the icon folds a raised handle
+  up out of the bar behind it, to be taken; clicked, it's the menu as
+  before), and it's not the tile you carry but the block itself — a **thing**,
   as everything else you drag is without ⇧: an outline's item (a
   command, a heading, a page), a listing's file or folder, a search's
   hit, a file from the Finder, a page's address, a picture, words.

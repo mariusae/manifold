@@ -367,9 +367,9 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 // A fanned pill drags its tile out alone; the top's takes
                 // the stack along, unless ⌘ is held.
-                pill.onDragStart = { [weak self, weak pill] event in
+                pill.onDragStart = { [weak self, weak pill] event, thing in
                     guard let self, let pill else { return }
-                    self.beginDrag(of: id, event: event, from: pill)
+                    self.beginDrag(of: id, event: event, from: pill, thing: thing)
                 }
                 // Its outline, as ticks over its content's upper right.
                 if let outline = tile.view.outline {
@@ -1844,15 +1844,17 @@ final class GridView: NSView, NSDraggingSource {
     private var aloneDrag = false
 
     /// `alone`: the tile without its stack, whatever's held (one dragged
-    /// out of a stack's fan).
-    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, alone: Bool = false) {
+    /// out of a stack's fan). `thing`: what it stands for, whatever's held
+    /// (dragged by its bar's icon).
+    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, alone: Bool = false, thing: Bool = false) {
         let item = NSPasteboardItem()
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
         coverDrag = event.modifierFlags.contains(.option)
         aloneDrag = alone || event.modifierFlags.contains(.command)
-        if event.modifierFlags.contains(.shift) {
-            // ⇧-drag: not the tile but the thing it is (§3.11) — its link
-            // for a note, its path for a shell, a tile of it elsewhere.
+        if thing || event.modifierFlags.contains(.shift) {
+            // ⇧-drag, or by the icon: not the tile but the thing it is
+            // (§3.11) — its link for a note, its path for a shell, a tile
+            // of it elsewhere.
             guard let block = shown?.block, let thing = Drags.block?(block.id, [.shift]) else { return }
             for t in thing.types {
                 if let d = thing.data(forType: t) { item.setData(d, forType: t) }
@@ -2749,9 +2751,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onIconClick: ((NSEvent.ModifierFlags) -> Void)?
     /// ⌥-clicked: the path menu.
     var onPathClick: (() -> Void)?
-    var onDragStart: ((NSEvent) -> Void)?
+    /// Dragged: the tile, or (from the icon) the thing it stands for.
+    var onDragStart: ((NSEvent, _ thing: Bool) -> Void)?
     private let glass = NSView()
     private let icon = NSImageView()
+    /// The icon's handle, folded out under the pointer (`IconHandle`).
+    private let handle = IconHandle()
     private let name = NSTextField(labelWithString: "")
     private let glyph = StatusGlyph()
     /// The status in a word, when it needs you (`StatusMark`).
@@ -2840,6 +2845,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Maximize and close shown; off where the bar only names the tile.
     var showsButtons = true { didSet { if showsButtons != oldValue { needsLayout = true } } }
     private var downAt: NSPoint?
+    /// The press was on the icon: a drag from it is the thing's.
+    private var downOnIcon = false
     private var focused = false
     private var maximized = false
     /// How many stashed tiles are bunched behind this tile (§3.1): the
@@ -2957,7 +2964,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        for v in [icon, name, subtitle, glyph, statusPill, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [handle, icon, name, subtitle, glyph, statusPill, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -3293,7 +3300,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         glass.layer?.borderWidth = hovered ? 1.5 : 0
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
-        icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = focused || hovered || handle.out ? Theme.text : Theme.secondaryText
     }
 
     /// Kept for the grid's asking: the bar is above the content, never
@@ -3313,6 +3320,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.frame = bounds
         var x: CGFloat = 10
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
+        handle.frame = icon.frame.insetBy(dx: -4, dy: -3)
+        if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
         // order, so the name keeps at least a little room — the place
@@ -3465,11 +3474,40 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the place to edit.
     func isOnPlace(_ p: NSPoint) -> Bool { placeRect?.contains(p) ?? false }
 
-    /// The open hand over the bar, which drags; the pointing hand over
-    /// what's clicked on it — the symbol (the menu), maximize and close;
-    /// the I-beam over an address to edit.
+    /// Where the icon takes the pointer: clicked, its menu; dragged, the
+    /// thing the tile stands for.
+    private var iconSpot: NSRect { icon.frame.insetBy(dx: -8, dy: -6) }
+    private var trackedSpot: NSRect?
+
+    // The pointer on the icon: its handle folds out, to be taken.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        trackedSpot = iconSpot
+        addTrackingArea(NSTrackingArea(rect: iconSpot, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHandle(NSEvent.pressedMouseButtons == 0) }
+    override func mouseExited(with event: NSEvent) { setHandle(false) }
+
+    private func setHandle(_ out: Bool) {
+        guard handle.out != out else { return }
+        handle.set(out: out)
+        updateColors()
+    }
+
+    /// Debugging: the icon's handle folded out or in, and how it is.
+    func debugHandle(_ arg: String) -> String {
+        if arg == "on" || arg == "off" { setHandle(arg == "on") }
+        return handle.debugState
+    }
+
+    /// The open hand over the bar, which drags, and over the icon, which
+    /// drags what the tile stands for (and clicked, its menu); the
+    /// pointing hand over maximize and close; the I-beam over an address
+    /// to edit.
     private var cursorSpots: [(NSRect, NSCursor)] {
-        var spots: [(NSRect, NSCursor)] = [(icon.frame.insetBy(dx: -8, dy: -6), .pointingHand)]
+        var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         if let r = placeRect { spots.append((r, .iBeam)) }
         return spots.sorted { $0.0.minX < $1.0.minX }
@@ -3494,7 +3532,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         (cursorSpots.first { $0.0.contains(p) }?.1 ?? .openHand).set()
     }
 
-    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+    override func mouseDown(with event: NSEvent) {
+        downAt = event.locationInWindow
+        downOnIcon = iconSpot.contains(convert(event.locationInWindow, from: nil))
+    }
 
     override func rightMouseDown(with event: NSEvent) {
         if let onRightClick { onRightClick(event) } else { super.rightMouseDown(with: event) }
@@ -3505,7 +3546,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let p = event.locationInWindow
         guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
         downAt = nil
-        onDragStart?(event)
+        // Taken: the handle goes back in; what's dragged is the pill.
+        setHandle(false)
+        onDragStart?(event, downOnIcon)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -3514,9 +3557,96 @@ final class TilePill: NSView, NSTextFieldDelegate {
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
             if event.modifierFlags.contains(.shift) { onPathClick?() }
-            else if icon.convert(icon.bounds, to: self).insetBy(dx: -8, dy: -6).contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
+            else if iconSpot.contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
+    }
+}
+
+/// A tile's icon's handle (`TilePill`): under the pointer, a raised chip
+/// in a drag pill's ground folds up out of the bar behind the icon — hinged
+/// at its foot, in perspective, settling with a little overshoot, its
+/// shadow coming as it rises — to say the icon can be taken (dragged, the
+/// thing the tile stands for); it folds back down when the pointer goes.
+/// With less motion asked for, it only fades in and out.
+final class IconHandle: NSView {
+    private let face = CALayer()
+    private(set) var out = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        var perspective = CATransform3DIdentity
+        perspective.m34 = -1 / 60
+        layer?.sublayerTransform = perspective
+        face.cornerRadius = Radius.control
+        face.cornerCurve = .continuous
+        face.borderWidth = 0.5
+        face.shadowRadius = 2
+        face.shadowOffset = CGSize(width: 0, height: -1)
+        face.anchorPoint = CGPoint(x: 0.5, y: 0)
+        face.opacity = 0
+        face.transform = Self.folded
+        layer?.addSublayer(face)
+        themed { v in
+            v.effectiveAppearance.performAsCurrentDrawingAppearance {
+                v.face.backgroundColor = DragPill.fill.cgColor
+                v.face.borderColor = EdgeColor.subtle.cgColor
+                v.face.shadowColor = NSColor.black.cgColor
+            }
+        }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Lying in the bar: tipped back flat on its hinge, a little small.
+    private static let folded = CATransform3DScale(CATransform3DMakeRotation(.pi * 0.45, 1, 0, 0), 0.85, 0.85, 1)
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        face.bounds = CGRect(origin: .zero, size: bounds.size)
+        // Hinged at its foot (the bar's lower edge, whichever way up).
+        face.position = CGPoint(x: bounds.midX, y: isFlipped ? bounds.maxY : bounds.minY)
+        CATransaction.commit()
+    }
+
+    func set(out: Bool) {
+        self.out = out
+        let reduced = Motion.reduced
+        let to = out || reduced ? CATransform3DIdentity : Self.folded
+        let from = face.presentation()?.transform ?? face.transform
+        let fromOpacity = face.presentation()?.opacity ?? face.opacity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        face.transform = to
+        face.opacity = out ? 1 : 0
+        face.shadowOpacity = out ? 0.22 : 0
+        CATransaction.commit()
+        let d = (out ? Motion.spatial : Motion.base)
+        if !reduced {
+            let fold = CABasicAnimation(keyPath: "transform")
+            fold.fromValue = from
+            fold.toValue = to
+            fold.duration = d
+            fold.timingFunction = out ? Motion.settle : Motion.disappear
+            face.add(fold, forKey: "fold")
+            let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+            shadow.fromValue = out ? 0 : 0.22
+            shadow.duration = d
+            face.add(shadow, forKey: "shadow")
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = fromOpacity
+        fade.duration = out ? d * 0.5 : d
+        face.add(fade, forKey: "fade")
+    }
+
+    var debugState: String {
+        let p = face.presentation() ?? face
+        let t = p.transform
+        return "\(out ? "out" : "in") opacity=\(String(format: "%.2f", p.opacity)) tilt=\(String(format: "%.2f", t.m22))"
     }
 }
 
