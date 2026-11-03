@@ -490,4 +490,17 @@ extension NSFont {
         monos[key] = f
         return f
     }
+
+    /// The system font with figures of one width, made as `systemMono` is
+    /// — once a size and weight, and kept — as it's made the same way (a
+    /// descriptor the system makes), for what's drawn with it afresh.
+    static func systemDigits(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let key = "digits/\(size)/\(weight.rawValue)"
+        monosLock.lock()
+        defer { monosLock.unlock() }
+        if let f = monos[key] { return f }
+        let f = NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+        monos[key] = f
+        return f
+    }
 }

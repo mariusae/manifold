@@ -515,7 +515,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             s.append(NSAttributedString(string: "  \(count)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = s.truncatingTail()
         case let .hit(h):
-            let s = NSMutableAttributedString(string: "\(h.line)  ", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: Theme.secondaryText])
+            let s = NSMutableAttributedString(string: "\(h.line)  ", attributes: [.font: NSFont.systemDigits(ofSize: 11), .foregroundColor: Theme.secondaryText])
             let line = h.text.trimmingCharacters(in: .whitespaces)
             let body = NSMutableAttributedString(string: line, attributes: [.font: UIType.body, .foregroundColor: Theme.text])
             for r in query?.ranges(in: line, limit: 20) ?? [] {

@@ -165,7 +165,7 @@ final class HostDashboard: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let c = client, link else { return }
-        let small = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        let small = NSFont.systemDigits(ofSize: 10)
         let text = UIType.detail
         let grey = Theme.secondaryText
         func say(_ s: String, at p: NSPoint, font: NSFont = text, color: NSColor = Theme.text, right: Bool = false) {
@@ -185,7 +185,7 @@ final class HostDashboard: NSView {
         let worse = Sparkline.worse(rtts)
         say("LINK", at: NSPoint(x: inner.minX, y: inner.minY + 1), font: .systemFont(ofSize: 10, weight: .semibold), color: grey)
         if let last = points.last {
-            say(last.rtt.map(Self.ms) ?? "no answer", at: NSPoint(x: inner.maxX, y: inner.minY - 3), font: .monospacedDigitSystemFont(ofSize: 16, weight: .medium),
+            say(last.rtt.map(Self.ms) ?? "no answer", at: NSPoint(x: inner.maxX, y: inner.minY - 3), font: .systemDigits(ofSize: 16, weight: .medium),
                 color: last.rtt == nil || worse ? StatusGlyph.amber : Theme.text, right: true)
         }
         say(Self.standing(c), at: NSPoint(x: inner.minX, y: inner.minY + 15), font: .systemFont(ofSize: 10.5), color: Theme.tertiaryText)
@@ -274,7 +274,7 @@ final class HostDashboard: NSView {
             let unanswered = points.count - rtts.count
             var s = "median \(Self.ms(median)) · 95% \(Self.ms(p95)) · best \(Self.ms(sorted[0]))"
             s += " · \(rtts.count) pings" + (unanswered > 0 ? ", \(unanswered) unanswered" : "")
-            say(s, at: NSPoint(x: inner.minX, y: lineY), font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), color: Theme.secondaryText)
+            say(s, at: NSPoint(x: inner.minX, y: lineY), font: NSFont.systemDigits(ofSize: 10.5), color: Theme.secondaryText)
         }
         lineY += 18
 
