@@ -123,9 +123,12 @@ final class InspectorList: NSView {
     private let stack = FlippedView()
     private var sections: [OrgNode] = []
     /// Folded or not by the reader, by section id; what isn't here is as
-    /// it starts (only what it is and its kind's open).
+    /// it starts: only what anything is at a glance open — its About, its
+    /// kind's own (a space's), a host's versions; the detail (a kind's
+    /// Details, a space's layout and tiles, a host's machine and server,
+    /// ids, links, history…) folded.
     private var open: [String: Bool] = (UserDefaults.standard.dictionary(forKey: "InspectorSections") as? [String: Bool]) ?? [:]
-    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none", "insp:versions", "insp:space-tiles"]
+    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none", "insp:versions"]
     static let rowHeight: CGFloat = 18, headingHeight: CGFloat = 24, labelWidth: CGFloat = 92
 
     override init(frame: NSRect) {

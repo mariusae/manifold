@@ -468,8 +468,13 @@ parts from the Mac's conventions on purpose.
   front, never taking the keyboard, its place and size kept — and
   follows the focus, as Star's property sheets did for whatever was
   selected. It's as compact as the Finder's Get Info: a row a line
-  (**Label:** value), its sections folded but for what it is and what
-  its kind has, each opened or folded by its triangle and kept so, its
+  (**Label:** value), only what a thing is at a glance open — its About,
+  what its kind has at a glance (a text's lines, words and language; a
+  terminal's command and last command; a space's name, focus and what it
+  holds), a host's versions — and the detail folded (a kind's
+  **Details**: a text's size, version, encoding and line endings, a
+  terminal's process and title…; a space's layout and tiles; a host's
+  machine and server; ids, links, history), each section opened or folded by its triangle and kept so, its
   annotations under its name as Get Info's tags. What it is and where (its host, its path, a page's address,
   a terminal's folder, each with its copy button; when it was made and last
   seen); **for tools**, its reference, block id, tile id and space id
