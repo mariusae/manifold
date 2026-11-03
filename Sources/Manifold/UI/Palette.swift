@@ -264,7 +264,7 @@ extension Palette {
     private(set) static var current: Palette = .paper
 
     /// Every theme there is.
-    static let all: [Palette] = [.paper, .newsprint]
+    static let all: [Palette] = [.paper, .newsprint, .classic]
 
     /// The theme by its id; Paper for one there isn't.
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? .paper }
@@ -590,6 +590,148 @@ extension Palette {
                 selection: .hex(0xDDDDD6, 0x3A3A36),
                 failed: red,
                 running: blue,
+                attention: ochre))
+    }()
+}
+
+// MARK: Classic
+
+extension Palette {
+    /// apex's Classic (~/src/apex, crates/apex-client/src/theme.rs): acme's
+    /// make — cream paper, its tags (here the panels, the sidebar's ground)
+    /// a pale blue, a yellow selection — in the hues of go.dev's
+    /// playground: its ink (#202224) and secondary (#6e7072), Go blue
+    /// (#007d9c) the accent and caret. By night go.dev's own: #202224
+    /// paper, #e6e6e6 ink, its link blue (#50b7e0), acme's dark yellow
+    /// selection. As apex has it for a colour-blind reader: orange for red
+    /// and blue for green — diffs, gutters, the terminal's sixteen
+    /// (GitHub's colour-blind ones) — B2's burnt orange (#c85a00) and B3's
+    /// deeper blue (#2a5db0) for what's added and taken away.
+    static let classic: Palette = {
+        let light = (bg: "#fcfcf2", fg: "#202224", ansi: [
+            "#24292f", "#b35900", "#0550ae", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
+            "#57606a", "#8a4600", "#0969da", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"])
+        let dark = (bg: "#202224", fg: "#e6e6e6", ansi: [
+            "#545d68", "#f69d50", "#539bf5", "#c69026", "#539bf5", "#b083f0", "#39c5cf", "#909dab",
+            "#636e7b", "#ffbc6f", "#6cb6ff", "#daaa3f", "#6cb6ff", "#dcbdfb", "#56d4dd", "#cdd9e5"])
+        let go = Shade.hex(0x007D9C, 0x50B7E0)
+        // B2 and B3's sweeps: what's taken away and what's added.
+        let orange = Shade.hex(0xC85A00, 0xE07A2A), blue = Shade.hex(0x2A5DB0, 0x5E8EDB)
+        // Stale's ochre (darkened in the light to read as text), and the
+        // fuchsia of a fenced handle for what failed.
+        let ochre = Shade.hex(0x8F6B00, 0xFDDD00), fuchsia = Shade.hex(0xCE3262, 0xE0547A)
+        let selection = Shade.hex(0xF1E9A6, 0x4A4526)
+        return Palette(
+            id: "classic",
+            title: "Classic",
+            chrome: Chrome(
+                hover: .hex(0xF0F4F5, 0x333537),
+                selected: Shade(.white, NSColor(white: 1, alpha: 0.12)),
+                pressed: .wash(0.11, 0.14),
+                divider: .hex(0xD6DCDD, 0x3A3C3E),
+                panel: .hex(0xFFFFFF, 0x2B2D2F),
+                panelBorder: .hex(0xD6DCDD, 0x3A3C3E),
+                scrim: Shade(NSColor(srgbRed: 0.91, green: 0.94, blue: 0.95, alpha: 0.35), NSColor(white: 0, alpha: 0.3)),
+                cardBorder: .wash(0.08, 0.1),
+                handle: .hex(0xD4D4C4, 0x4A4C4E),
+                scrubberKnob: .hex(0xD4D4C4, 0x4A4C4E),
+                sheetEdge: .wash(0.2, 0.16),
+                sheetEdgeHovered: .wash(0.34, 0.34),
+                // The tags' pale blue, deeper further down; by night lighter nearer the top.
+                sheet: { level in Shade(NSColor(srgbRed: 0.90 - CGFloat(level) * 0.045, green: 0.94 - CGFloat(level) * 0.045, blue: 0.95 - CGFloat(level) * 0.04, alpha: 1),
+                                        NSColor(srgbRed: 0.31 - CGFloat(level) * 0.045, green: 0.32 - CGFloat(level) * 0.045, blue: 0.33 - CGFloat(level) * 0.045, alpha: 1)) },
+                groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
+                stack: .hex(0xF5F5EA, 0x26282A),
+                dragPill: .hex(0xFFFFFF, 0x4A4C4E),
+                linkBehind: { depth in Shade(NSColor(srgbRed: 0.92 - CGFloat(depth) * 0.03, green: 0.96 - CGFloat(depth) * 0.03, blue: 0.97 - CGFloat(depth) * 0.03, alpha: 1),
+                                            NSColor(srgbRed: 0.17 - CGFloat(depth) * 0.015, green: 0.18 - CGFloat(depth) * 0.015, blue: 0.19 - CGFloat(depth) * 0.015, alpha: 1)) },
+                well: .wash(0.06, 0.09),
+                pill: .wash(0.07, 0.1),
+                historyWash: (from: .hex(0xEAF4F7, 0x1F3A44), to: .hex(0xF1E9C6, 0x3A3524))),
+            text: Text(
+                primary: .hex(0x202224, 0xE6E6E6),
+                body: .hex(0x202224, 0xDEDEDE),
+                strong: .hex(0x000000, 0xF7F7F7),
+                // At least 4.5:1 on a panel, in either appearance (apex's
+                // faint #8a8c8e isn't, so a step darker).
+                secondary: .hex(0x6E7072, 0x9A9C9E),
+                tertiary: .hex(0x737577, 0x969899),
+                readingBody: .hex(0x202224, 0xDBDBDB),
+                readingStrong: .hex(0x202224, 0xF7F7F7)),
+            status: StatusColors(done: blue, attention: ochre, failed: fuchsia),
+            // Go blue, a terminal's caret too; acme's yellow selection.
+            accent: TintColors(accent: go, textSelection: selection),
+            tints: Palette.paper.tints,
+            code: Code(
+                page: .hex(0xFCFCF2, 0x202224),
+                text: .hex(0x202224, 0xE6E6E6),
+                lineNumber: .hex(0x8A8C8E, 0x6E7072),
+                lineHighlight: .hex(0xF7F2CC, 0x2F2D22),
+                gutterText: .hex(0x8A8C8E, 0x6E7072),
+                use: .wash(0.075, 0.1),
+                match: Shade(NSColor(srgbRed: 0.95, green: 0.87, blue: 0.45, alpha: 0.65), NSColor(srgbRed: 0.5, green: 0.44, blue: 0.12, alpha: 0.75)),
+                link: go,
+                linkHover: .wash(0.08, 0.13),
+                added: blue,
+                modified: go,
+                deleted: orange,
+                pins: Palette.paper.code.pins,
+                error: fuchsia,
+                warning: orange,
+                hint: Shade(Theme.hex(0x007D9C).withAlphaComponent(0.6), Theme.hex(0x50B7E0).withAlphaComponent(0.6)),
+                changedOnDisk: .hex(0xF5EFCF, 0x332F20),
+                highlighter: Shade(NSColor(srgbRed: 0.95, green: 0.88, blue: 0.4, alpha: 0.55), NSColor(srgbRed: 0.6, green: 0.52, blue: 0.15, alpha: 0.45))),
+            diff: Diff(
+                added: .hex(0xE1F3F8, 0x16323D),
+                removed: .hex(0xFFF0DA, 0x3A2C1C),
+                hunk: .hex(0xEAF4F7, 0x2B2D2F),
+                found: selection,
+                current: .hex(0xE8D66A, 0x6E6326)),
+            found: Found(
+                current: Shade(NSColor(srgbRed: 0.78, green: 0.35, blue: 0, alpha: 0.45), NSColor(srgbRed: 0.88, green: 0.48, blue: 0.16, alpha: 0.55)),
+                currentRing: orange,
+                pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
+                pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
+            chart: Chart(
+                one: blue,
+                two: orange,
+                three: go,
+                track: .wash(0.07, 0.09),
+                surface: .wash(0.025, 0.035),
+                grid: .wash(0.07, 0.08)),
+            kinds: Palette.paper.kinds,
+            terminal: (
+                light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#007d9c", cursorText: light.bg,
+                                       selectionBackground: "#f1e9a6", selectionForeground: light.fg, ansi: light.ansi,
+                                       extended: TerminalPalette.xtermExtended),
+                dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#50b7e0", cursorText: dark.bg,
+                                      selectionBackground: "#4a4526", selectionForeground: "#f7f7f7", ansi: dark.ansi,
+                                      extended: TerminalPalette.xtermExtended)),
+            // As go.dev sets its docs, on the cream paper.
+            page: Page(
+                background: .hex(0xFCFCF2, 0x202224),
+                text: .hex(0x202224, 0xDBDBDB),
+                strong: .hex(0x202224, 0xF7F7F7),
+                link: go,
+                code: .hex(0xF2F2E6, 0x2B2D2F),
+                codeText: .hex(0x202224, 0xF0F1F2),
+                copy: .hex(0xFFFFFF, 0x383A3C),
+                copyEdge: .hex(0xD6DCDD, 0x4A4C4E),
+                copyText: .hex(0x6E7072, 0xA8AAAC),
+                copyHoverEdge: .hex(0xBCC4C6, 0x5A5C5E),
+                copyHoverText: .hex(0x202224, 0xF0F1F2),
+                copyDone: blue,
+                quote: .hex(0x6E7072, 0x9A9C9E),
+                quoteRule: .hex(0xD6DCDD, 0x444648),
+                rule: .hex(0xD6DCDD, 0x3A3C3E),
+                tableHead: .hex(0xEAF4F7, 0x2B2D2F),
+                tableStripe: .hex(0xF5F5EA, 0x242628),
+                struck: .hex(0x6E7072, 0x8A8C8E),
+                missing: fuchsia,
+                diagramError: fuchsia,
+                selection: selection,
+                failed: fuchsia,
+                running: go,
                 attention: ochre))
     }()
 }

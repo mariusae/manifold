@@ -2144,7 +2144,19 @@ paper #F2F2F0 and ink #333331, muted inks (brick red #B3402E, sage,
 ochre, slate blue, plum, teal), a red caret on a grey selection
 (#DDDDD6), its extended palette made from its own; by night paper
 #1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the six
-4.5:1 on the paper), warm greys throughout (a step less blue). What isn't a theme's: the backdrop, made from its
+4.5:1 on the paper), warm greys throughout (a step less blue).
+**Classic** is apex's Classic palette (~/src/apex,
+`crates/apex-client/src/theme.rs`): paper #FCFCF2, ink #202224,
+secondary #6E7072, the tags' pale blue (#EAF4F7, the sidebar #E8EFF1)
+for panels and sheets, acme's yellow selection #F1E9A6, Go blue #007D9C
+the accent and caret; by night go.dev's #202224 paper, #E6E6E6 ink, link
+blue #50B7E0, selection #4A4526. Its colour-blind pairs as apex's: B3's
+blue #2A5DB0 for added, done and passed, B2's burnt orange #C85A00 for
+removed and warnings, the fenced fuchsia #CE3262 for errors and what
+failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
+past them). Two of apex's are a step darker here, to read as text on a
+panel at 4.5:1: the faint grey (#737577 for #8A8C8E) and stale's ochre
+(#8F6B00 for #C79A00). What isn't a theme's: the backdrop, made from its
 own settings (the tint's pool of light, its hue); a language's colour in
 a project's bar (the code hosts'); masks and shadows (black or white at
 an alpha); the page's neutral greys, which read on either ground.

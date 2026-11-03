@@ -1621,8 +1621,12 @@ colors — a sidebar with a block chosen and their states, a file being
 edited (its line numbers, the caret's line lit, changes marked) and a
 terminal, focused, running tests in its palette, a word selected: **Paper**, Manifold's look, and **Newsprint**, ink on a
 faintly warm grey paper with muted inks (a brick red, sage, ochre, slate
-blue, plum, teal), and by night the same paper unlit. A theme has its own
-accent (Paper's blue, Newsprint's red), which the Theme accent follows —
+blue, plum, teal), and by night the same paper unlit; and **Classic**,
+apex's: acme's cream paper with its tags a pale blue and a yellow
+selection, in go.dev's colors (its ink, Go blue), by night go.dev's own
+dark, and as apex has it for a colour-blind reader, blue for what's
+added or passed and orange for what's removed or failed. A theme has its own
+accent (Paper's blue, Newsprint's red, Classic's Go blue), which the Theme accent follows —
 a terminal's caret and selection then the theme's (Newsprint's red caret
 on a grey selection); any other accent is set over the theme's
 everywhere, terminals too, in the theme's own shade of it. Newsprint's
