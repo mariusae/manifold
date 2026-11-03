@@ -218,6 +218,8 @@ final class ProjectSidebar: NSView {
             for p in f.presence.prefix(8) {
                 let row = HomeRow(mark: nil, markColor: nil, title: p.title, detail: p.detail, symbol: p.symbol)
                 row.onClick = { [weak self] in self?.onAction?(.go(p.block)) }
+                // The block at work, dragged: itself, as a tile's bar ⇧-dragged is.
+                row.drag = { Drags.block?(p.block, [.shift]) }
                 add(row)
             }
         }

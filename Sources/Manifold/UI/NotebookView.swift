@@ -27,6 +27,12 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     let block: BlockID
     weak var delegate: NotebookViewDelegate?
     var source: () -> Block? = { nil }
+
+    /// Debugging: what dragging cell `i` (in order) writes.
+    func debugCellDrag(_ i: Int) -> NSPasteboardItem? {
+        let shown = order.compactMap { cells[$0] }
+        return shown.indices.contains(i) ? shown[i].dragItem : nil
+    }
     var codeFont: NSFont = .systemMono(ofSize: 12.5, weight: .regular) {
         didSet { if codeFont != oldValue { cells.values.forEach { $0.font = codeFont }; needsLayout = true } }
     }
@@ -500,7 +506,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 /// One cell: its run count (a spinner while it runs), its command in an
 /// editor that grows with it, what it printed (its own scroll past a
 /// screenful), and how it ended.
-final class NotebookCellView: NSView, NSTextViewDelegate {
+final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
     let id: String
     weak var owner: NotebookView?
     let editor = CellEditor()
@@ -530,6 +536,46 @@ final class NotebookCellView: NSView, NSTextViewDelegate {
     /// Where text starts in the command's box and in the output alike.
     static let textInset: CGFloat = 8
     static let maxOutputHeight: CGFloat = 420
+
+    /// A press in the gutter, beside the command: moved, the cell is
+    /// dragged out — its command, to type again (a shell, a cell), and
+    /// the notebook, for a note's link or an agent's reference.
+    private var pressedAt: NSPoint?
+
+    override func mouseDown(with event: NSEvent) {
+        pressedAt = convert(event.locationInWindow, from: nil).x < Self.gutter ? event.locationInWindow : nil
+        if pressedAt == nil { super.mouseDown(with: event) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = pressedAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4,
+              let writer = dragItem else { return super.mouseDragged(with: event) }
+        pressedAt = nil
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        item.setDraggingFrame(NSRect(x: 0, y: 0, width: Self.gutter, height: min(bounds.height, 24)), contents: nil)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if pressedAt != nil { pressedAt = nil; return }
+        super.mouseUp(with: event)
+    }
+
+    /// The cell as a thing: its command its words, the notebook its block.
+    var dragItem: NSPasteboardItem? {
+        let command = editor.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty, let block = owner?.block else { return nil }
+        let title = command.split(separator: "\n").first.map(String.init) ?? command
+        return Drags.item(DragThing(block: block, title: title.count > 60 ? String(title.prefix(59)) + "…" : title, text: command))
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 
     init(id: String, font: NSFont) {
         self.id = id

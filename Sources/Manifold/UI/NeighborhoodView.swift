@@ -80,6 +80,12 @@ final class NeighborhoodView: NSView {
         close.keyEquivalent = "\u{1b}"
         canvas.onCenter = { [weak self] id in self?.center(on: id) }
         canvas.onGo = { [weak self] id in self?.onGo?(id) }
+        // A node dragged out: the map out of the way of where it's dropped
+        // (a tile under it), gone once it is.
+        canvas.onDrag = { [weak self] began in
+            guard let self else { return }
+            if began { self.isHidden = true } else { self.onClose?() }
+        }
         for v in [title, hint, back, close, canvas] { panel.addSubview(v) }
     }
 
@@ -137,10 +143,12 @@ final class NeighborhoodView: NSView {
 
 /// The drawing: nodes on rings, edges between them, eased from where they
 /// were to where they go when the center changes.
-final class GraphCanvas: NSView {
+final class GraphCanvas: NSView, NSDraggingSource {
     private(set) var model: NeighborhoodModel?
     var onCenter: ((BlockID) -> Void)?
     var onGo: ((BlockID) -> Void)?
+    /// A node's drag began (true) or ended.
+    var onDrag: ((Bool) -> Void)?
     private(set) var selected: BlockID? { didSet { if selected != oldValue { needsDisplay = true } } }
     private var hovered: BlockID? { didSet { if hovered != oldValue { needsDisplay = true } } }
 
@@ -398,16 +406,45 @@ final class GraphCanvas: NSView {
 
     override func mouseExited(with event: NSEvent) { hovered = nil }
 
+    /// A node pressed, and where: let go where it was, it's chosen (and
+    /// centered); moved first, it's dragged out as its block.
+    private var pressed: (id: BlockID, at: NSPoint)?
+
     override func mouseDown(with event: NSEvent) {
+        pressed = nil
         guard let id = node(at: convert(event.locationInWindow, from: nil)) else { return }
-        if event.clickCount == 2 || event.modifierFlags.contains(.command) {
-            onGo?(id)
-        } else if id == model?.center {
-            selected = id
-        } else {
-            selected = id
-            onCenter?(id)
-        }
+        if event.clickCount == 2 || event.modifierFlags.contains(.command) { onGo?(id); return }
+        pressed = (id, event.locationInWindow)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let p = pressed, hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4,
+              let writer = Drags.block?(p.id, [.shift]), let r = rect(of: p.id) else { return }
+        pressed = nil
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        item.setDraggingFrame(r, contents: nil)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let p = pressed else { return }
+        pressed = nil
+        selected = p.id
+        if p.id != model?.center { onCenter?(p.id) }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        DragCursor.began()
+        onDrag?(true)
+    }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
+        onDrag?(false)
     }
 
     /// Arrow keys: the nearest node in that direction from the selected

@@ -908,7 +908,11 @@ draws the icon in a layer of its own while it's out — drawn there and
 then, at the screen's scale and in the view's appearance, and set
 without a fade — the icon's view hidden; with less motion, only the shadow comes). It swings back as the
 pointer leaves or the drag begins: a block, or a place in one (an outline's item: a
-command, a heading, a page, by its words); a file or folder on a host
+command, a heading, a page, by its words — a command by its dot too, a
+PDF's page by its thumbnail, `PDFPagesView`); a notebook's cell by its
+gutter (its command's words, the notebook); a block named elsewhere — a
+project's Here now, a node of the neighborhood map (which hides while
+it's dragged, so a tile under it takes the drop, and closes after); a file or folder on a host
 (a folder's entry, a search's hit, a changed file, one from the
 Finder); a page's address; a picture; words. A thing is written the same
 from wherever it's dragged (`DragThing`: the block and its place, the

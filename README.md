@@ -151,8 +151,11 @@ parts from the Mac's conventions on purpose.
   as everything else you drag is without ⇧: an outline's item (a
   command, a heading, a page), a listing's file or folder, a search's
   hit, a commit (a git tile's history, a project's sidebar, a commit's
-  diff ⇧-dragged), a file from the Finder, a page's address, a
-  picture, words. **Several at once**: ⌘- or ⇧-click rows — a git
+  diff ⇧-dragged), a PDF's page (its sidebar's thumbnails), a shell
+  command by its dot, a notebook's cell by its gutter (its command, the
+  notebook), a block at work in a project (its homepage's Here now), a
+  block on the neighborhood map (the map stepping aside for the drop), a
+  file from the Finder, a page's address, a picture, words. **Several at once**: ⌘- or ⇧-click rows — a git
   tile's changes and commits, a folder's files (in its columns, one
   folder's; in its tree, any), a search's hits, a project's sidebar
   and its search, a tile's outline — and drag any of them to take them

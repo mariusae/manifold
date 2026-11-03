@@ -2133,6 +2133,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
                   let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "from <terminal> <i>" }
             item = source.debugOutlineDrag(n)
+        case "cell":
+            // "cell <notebook> <i>": that cell dragged by its gutter.
+            guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
+                  let source = views.values.first(where: { $0.block == t }) as? NotebookView else { return "cell <notebook> <i>" }
+            item = source.debugCellDrag(n)
         case "dot":
             // "dot <terminal> <command id>": that command's dot dragged.
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
