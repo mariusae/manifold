@@ -322,9 +322,14 @@ final class ResizeHandleView: NSView {
 /// a title bar would.
 final class WindowDragView: NSView {
     /// The window buttons sit on this row, partly below the title bar they
-    /// belong to, where they'd get no clicks; pass those clicks on.
+    /// belong to, where they'd get no clicks; pass those clicks on — only
+    /// clicks: the title bar asks what's under it for the next responder
+    /// of a cursor update, and a button given back sends it to the title
+    /// bar again, around until the stack runs out (a crash on macOS 27).
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point), let window, let superview else { return nil }
+        guard let type = NSApp.currentEvent?.type,
+              [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp].contains(type) else { return hit }
         let p = superview.convert(point, to: nil)
         for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             guard let b = window.standardWindowButton(type), let bs = b.superview,
