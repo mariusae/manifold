@@ -1577,6 +1577,40 @@ A web block made from a remote block (a URL ⌘-clicked in a terminal on
 devbox) starts out loading from its host; one made here, from here. A web
 block's history is its log; scrubbing it walks the pages it showed.
 
+*As built.* The choice is `WebState.viaHost`, and its host is the
+block's own: a page made from a block on another host — a link in its
+terminal or in one of its pages, New Web Page or the picker's `web`
+with one of its tiles focused, `mani new web` in its shell — is made
+on that host, loaded through it (a link from one of its pages loaded
+from here, from here); one made here is here's, with no other way to
+load. Through its host, a page is in a website data store of the
+host's (`WebStores`: one a host, by its id, kept from launch to
+launch), whose every connection goes to a SOCKS5 proxy on this Mac's
+loopback (`HostProxy`, a host's, listening from when a page first
+asks, and taking only the name and password it made, which only the
+store is given). Each connection is a stream of the host's connection
+whose first frame is `connect` (a name or an address, and a port): the
+host looks the name up and connects there (`TCPConnect`), answers
+connected or why not, then relays the bytes as a forwarded port's. A
+page asking while the host is being reached waits for it, 30 seconds at
+most; one that failed for the host being away loads again once it's
+back. WebKit never asks a proxy for the machine's own addresses
+(localhost, 127/8, ::1, this Mac's interfaces), so the host's own
+localhost is a port forwarded here, the page's, not listed with those
+asked for — the block keeping the address as the host has it
+(`localhost:3000`, not the port here), and a page going to another of
+its ports having it forwarded first — every localhost in such a page
+the host's, so another host's `name:port` typed there is a page of
+that host's own, beside. What a page only fetches from another port
+of the host's localhost (a script's call to its API at :8000) WebKit
+asks of this Mac's: only what's gone to is forwarded. WebKit says only
+"bad URL" of a connection its proxy refused, so the proxy keeps the
+host's reason a while for the page to say (the name unknown there,
+refused, no way there). The bar's button before back says which way a
+page on another host loads, and loads it the other way (Load Through
+*host* in its menu): the page made again in a web view of the other
+store.
+
 ### 7.7 Shell notebook
 
 Jupyter's notebook for a shell: a block of cells, each a command and
@@ -2196,7 +2230,15 @@ What the README said once of how things work under what you see, kept here.
   tell what it holds), and keeps no more than a megabyte on
   the way each way, so a fast server and a slow reader (or the other
   way round) fill nothing but themselves; and one side done sending
-  still hears the other's answer.
+  still hears the other's answer. A page loaded through a host (§7.6)
+  goes the same way, a stream each of its connections, which the host
+  makes where the page asked, each on a thread of its own — a name can
+  take seconds to find, an address longer to answer — trying the
+  resolver's addresses in its order, ten seconds each at most, and
+  giving up as soon as the page goes. A Linux host's server, built
+  static, looks names up as musl does: `/etc/hosts`, then the servers
+  `resolv.conf` names (a VPN's, or systemd-resolved's stub), not NSS's
+  other sources (mDNS, sssd).
 
   Lines are 1.45 to edit, 1.3
   for code, and to read 1.45 (SF), 1.5 (New York), 1.55 (Chronicle).

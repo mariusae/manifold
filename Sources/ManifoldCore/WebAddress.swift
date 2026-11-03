@@ -37,6 +37,18 @@ public enum WebAddress: Equatable {
         s.hasPrefix("http://") || s.hasPrefix("https://") || s.range(of: #"^localhost:\d+"#, options: .regularExpression) != nil
     }
 
+    /// Whether a URL's host is the machine's own: `localhost`, an address
+    /// of 127/8, ::1, or 0.0.0.0 (all of them, as a server listening on
+    /// every address prints it). WebKit reaches these itself, never
+    /// through a proxy, so a page loaded through another host (§7.6)
+    /// reaches that host's own through a forwarded port.
+    public static func isLoopback(_ host: String) -> Bool {
+        let h = host.lowercased()
+        if ["localhost", "::1", "[::1]", "0.0.0.0"].contains(h) { return true }
+        let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts[0] == "127" && parts.allSatisfy { UInt8($0) != nil }
+    }
+
     /// An address as it's shown and matched: without its scheme, a
     /// leading www., or a lone trailing slash.
     public static func plain(_ address: String) -> String {

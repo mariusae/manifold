@@ -24,18 +24,44 @@ protocol WebViewDelegate: AnyObject {
     func webView(_ view: WebView, addressOf url: URL) -> String
     /// A page shown (`again`: only its title come since): for the history.
     func webView(_ view: WebView, visited url: URL, title: String?, again: Bool)
+
+    // Loading through a host (§7.6).
+
+    /// How a host stands for a page that may be loaded through it: what
+    /// it's called, and whether it's reached now; nil for this Mac.
+    func webView(_ view: WebView, remoteHost host: HostID) -> (label: String, connected: Bool)?
+    /// The data store of pages loaded through a host, once they can be.
+    func webView(_ view: WebView, storeThrough host: HostID, done: @escaping (WKWebsiteDataStore?) -> Void)
+    /// A port of a host's own localhost brought here for a page loaded
+    /// through it: without a word, as it's the page's doing.
+    func webView(_ view: WebView, forwardForPage port: Int, on host: HostID, done: @escaping (Int?) -> Void)
+    /// The host and port a port here is forwarded from, if it is.
+    func webView(_ view: WebView, forwardedFrom port: Int) -> (host: HostID, port: Int)?
+    /// Why the host couldn't connect to an address, lately, if it couldn't.
+    func webView(_ view: WebView, refusalOf host: String, port: Int, through: HostID) -> HostProxy.Refusal?
+    /// A page of another host's own, loaded through it, beside this one.
+    func webView(_ view: WebView, open url: URL, asPageOf host: HostID)
 }
 
 /// The web lens: an embedded browser on a web block, with an address bar,
 /// back and forward, and find. Where it is goes in the block's log, so its
 /// history is the pages it showed.
+///
+/// A web block on another host loads through it unless it says not to
+/// (`WebState.viaHost`, §7.6): its pages are in the host's data store
+/// (`WebStores`), whose connections the host makes, and the host's own
+/// localhost — which WebKit reaches without a proxy — at ports forwarded
+/// here. The block keeps its pages' addresses as the host has them
+/// (`localhost:3000`, not the port here). Loaded the other way, the
+/// page is made again in a web view of the other store.
 final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNavigationDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
     weak var delegate: WebViewDelegate?
     var source: () -> Block? = { nil }
-    private let web: WKWebView
+    /// The page's view, made again (`install`) to load the other way.
+    private var web: WKWebView!
     /// Why a page couldn't be opened (a name not found, nothing listening),
     /// in its place until the next goes — not a blank page.
     private let failure = BusyNote()
@@ -47,13 +73,45 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     }
     private var shownURL: String?
 
+    /// The host the page is loaded through, or nil: from here.
+    private(set) var through: HostID?
+    /// The host's store asked for (the web view to be made in it): what
+    /// was to be loaded meanwhile.
+    private var awaitingStore = false
+    private var loadWhenReady: String?
+    /// A page that failed for the host being away, as the block keeps
+    /// its address: loaded again once the host is back.
+    private var retryWhenBack: String?
+
     var focusView: NSView { web }
     var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
         self.block = block
+        super.init(frame: .zero)
+        wantsLayer = true
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        addSubview(failure)
+        install(nil)
+        documentChanged()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// A web view of the store given (WebKit's default if none) in place of
+    /// the last, the page it showed let go of.
+    private func install(_ store: WKWebsiteDataStore?) {
+        let old = web
+        // The keyboard, if the page had it, goes to the page that's here now.
+        let hadKeyboard = old.map { o in (window?.firstResponder as? NSView)?.isDescendant(of: o) == true } ?? false
+        old?.navigationDelegate = nil
+        old?.uiDelegate = nil
+        old?.stopLoading()
+        old?.removeFromSuperview()
+        watching = []
         let config = WKWebViewConfiguration()
+        if let store { config.websiteDataStore = store }
         // Safari's name and version after WebKit's: a page that doesn't know
         // a browser by the one alone (Google's) serves an old, plain version.
         config.applicationNameForUserAgent = Self.safari
@@ -67,15 +125,13 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         // A scrollbar that shows (§3.1), as the lenses' do.
         config.userContentController.addUserScript(WKUserScript(source: "(function(){var s=document.createElement('style');s.textContent='::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:rgba(127,127,127,.5);border-radius:7px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:rgba(127,127,127,.8);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}';(document.head||document.documentElement).appendChild(s);})();", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let handler = StateMessages()
+        handler.onState = { [weak self] _ in self?.keepInteraction() }
         config.userContentController.add(handler, name: "manifoldState")
         let selectionOwner = WeakView()
-        PageSelection.watch(config) { selectionOwner.view }
-        web = PageWebView(frame: .zero, configuration: config)
-        super.init(frame: .zero)
         selectionOwner.view = self
-        handler.onState = { [weak self] _ in self?.keepInteraction() }
-        wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        PageSelection.watch(config) { selectionOwner.view }
+        let web: WKWebView = PageWebView(frame: old?.frame ?? .zero, configuration: config)
+        self.web = web
         web.navigationDelegate = self
         web.uiDelegate = self
         // Its bar's buttons follow where it can go, and whether it loads.
@@ -92,12 +148,10 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         web.allowsBackForwardNavigationGestures = true
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
-        addSubview(web)
-        addSubview(failure)
-        documentChanged()
+        addSubview(web, positioned: .below, relativeTo: failure)
+        if hadKeyboard { window?.makeFirstResponder(web) }
+        needsLayout = true
     }
-
-    required init?(coder: NSCoder) { fatalError() }
 
     func destroy() { keeper.flush() }
 
@@ -173,35 +227,142 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
 
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
-    /// The block's log moved: a URL set there (from elsewhere) is loaded.
+    /// The block's log moved: a URL set there (from elsewhere) is loaded,
+    /// the way the block says — from here, or through its host, the web
+    /// view made again when that changed. A page that failed for its host
+    /// being away is loaded again once the host is back.
     func documentChanged() {
-        guard let b = source(), let url = b.web?.url, url != shownURL else { return }
+        guard let b = source(), let url = b.web?.url else { return }
+        let wanted = b.web?.viaHost == true && delegate?.webView(self, remoteHost: block.host) != nil ? block.host : nil
+        if wanted != through { return reroute(to: wanted) }
+        if let again = retryWhenBack, let h = through, delegate?.webView(self, remoteHost: h)?.connected == true {
+            retryWhenBack = nil
+            load(again)
+        }
+        guard !awaitingStore, url != shownURL else { return }
         shownURL = url
         if !keeper.restored {
             keeper.restored = true
             // Back as it was, if what was kept is of this page.
-            if keeper.value("interactionURL") == url, let s = keeper.value("interaction"), let data = Data(base64Encoded: s) {
-                web.interactionState = data
-                return
+            if let kept = keeper.value("interactionURL"), let s = keeper.value("interaction"), let data = Data(base64Encoded: s) {
+                return restore(data, of: kept, for: url)
             }
         }
         load(url)
     }
 
-    /// A page kept as a file is read from there, with its folder.
-    private func load(_ url: String) {
-        guard let u = URL(string: url) else { return }
-        if u.isFileURL {
-            web.loadFileURL(u, allowingReadAccessTo: u.deletingLastPathComponent())
-        } else {
-            web.load(URLRequest(url: u))
+    /// Loads, forwards and stores asked for before the way of loading last
+    /// changed are let go of when they come.
+    private var generation = 0
+
+    /// The page made again, in a web view of the way's store — the host's,
+    /// once its proxy listens (nothing loaded before, and nothing left
+    /// loading the other way meanwhile) — and what the block shows loaded
+    /// there.
+    private func reroute(to host: HostID?) {
+        through = host
+        generation += 1
+        shownURL = nil
+        retryWhenBack = nil
+        loadWhenReady = nil
+        failure.set(.idle)
+        // The page loaded the other way goes now, not once this way's ready.
+        if host == nil || web.url != nil || web.isLoading { install(nil) }
+        guard let host else {
+            awaitingStore = false
+            return documentChanged()
+        }
+        awaitingStore = true
+        let label = delegate?.webView(self, remoteHost: host)?.label ?? "its host"
+        failure.set(.busy("Loading through \(label)…"))
+        let gen = generation
+        delegate?.webView(self, storeThrough: host) { [weak self] store in
+            guard let self, self.generation == gen else { return }
+            guard let store else {
+                // Nothing goes from here instead: said, and left at that.
+                return self.showFailure("Can't load pages through \(label): its proxy here couldn't start")
+            }
+            self.awaitingStore = false
+            self.failure.set(.idle)
+            self.install(store)
+            let typed = self.loadWhenReady
+            self.loadWhenReady = nil
+            self.documentChanged()
+            if let typed { self.load(typed) }
         }
     }
 
-    /// What was typed into the pill: an address, or words to search for.
+    /// WebKit's account of the page put back if it's of the page the block
+    /// shows (a page of the host's own localhost once its port is here
+    /// again, if it's here at the same port), else the page loaded afresh.
+    private func restore(_ data: Data, of kept: String, for url: String) {
+        guard let u = URL(string: url) else { return load(url) }
+        let gen = generation
+        here(u) { [weak self] local in
+            guard let self, self.generation == gen else { return }
+            if local?.absoluteString == kept {
+                self.web.interactionState = data
+            } else {
+                self.load(url)
+            }
+        }
+    }
+
+    /// An address as the block keeps it, loaded: a page kept as a file
+    /// read from there, with its folder; a page of the host's own
+    /// localhost, loaded through it, at the port it's forwarded to here.
+    private func load(_ url: String) {
+        if awaitingStore {
+            loadWhenReady = url
+            return
+        }
+        retryWhenBack = nil
+        guard let u = URL(string: url) else { return }
+        if u.isFileURL {
+            web.loadFileURL(u, allowingReadAccessTo: u.deletingLastPathComponent())
+            return
+        }
+        let gen = generation
+        here(u) { [weak self] local in
+            guard let self, self.generation == gen else { return }
+            guard let local else {
+                let label = self.through.flatMap { self.delegate?.webView(self, remoteHost: $0)?.label } ?? "its host"
+                return self.showFailure("Can't open \(WebAddress.plain(url)): its port couldn't be brought here from \(label)")
+            }
+            self.web.load(URLRequest(url: local))
+        }
+    }
+
+    /// Where a page at an address (as the block keeps it) is loaded from,
+    /// here: the address, or — the host's own localhost, through the host,
+    /// which WebKit would take for this Mac's — the port forwarded here.
+    private func here(_ u: URL, _ done: @escaping (URL?) -> Void) {
+        guard let h = through, u.scheme == "http" || u.scheme == "https", let name = u.host, WebAddress.isLoopback(name) else { return done(u) }
+        let port = u.port ?? (u.scheme == "https" ? 443 : 80)
+        delegate?.webView(self, forwardForPage: port, on: h) { local in
+            guard let local, var parts = URLComponents(url: u, resolvingAgainstBaseURL: false) else { return done(nil) }
+            parts.host = "localhost"
+            parts.port = local
+            done(parts.url)
+        }
+    }
+
+    /// A page's address as the block keeps it: loaded through the host
+    /// (or as if through `host`), one at a port forwarded here from the
+    /// host's localhost goes by the port there, as the host has it.
+    private func kept(_ url: URL) -> String { kept(url, as: through) }
+
+    private func kept(_ url: URL, as host: HostID?) -> String {
+        guard let h = host, let name = url.host, WebAddress.isLoopback(name), let port = url.port,
+              let from = delegate?.webView(self, forwardedFrom: port), from.host == h,
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
+        parts.port = from.port == (url.scheme == "https" ? 443 : 80) ? nil : from.port
+        return parts.url?.absoluteString ?? url.absoluteString
+    }
+
     /// What was typed in the pill: an address (`localhost:3000` and the
-    /// like as one), a port on an attached host's localhost (`slowbox:3000/x`,
-    /// forwarded here first), or words to search for.
+    /// like as one), a port on an attached host's localhost (`slowbox:3000/x`),
+    /// or words to search for.
     private func go(_ typed: String) {
         let s = typed.trimmingCharacters(in: .whitespaces)
         guard !s.isEmpty else { return }
@@ -215,11 +376,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
                 var rest = url.path.isEmpty ? "/" : url.path
                 if let q = url.query { rest += "?" + q }
                 if let f = url.fragment { rest += "#" + f }
-                let scheme = url.scheme ?? "http"
-                delegate?.webView(self, forward: port, on: h) { [weak self] local in
-                    guard let local else { return }
-                    self?.load("\(scheme)://localhost:\(local)\(rest)")
-                }
+                localhost(port, on: h, scheme: url.scheme ?? "http", rest: rest)
                 break
             }
             load(address)
@@ -228,10 +385,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
             return
         case let .hostPort(name, port, rest):
             if let h = delegate?.webView(self, hostNamed: name) {
-                delegate?.webView(self, forward: port, on: h) { [weak self] local in
-                    guard let local else { return }
-                    self?.load("http://localhost:\(local)\(rest)")
-                }
+                localhost(port, on: h, scheme: "http", rest: rest)
             } else {
                 load("http://\(name):\(port)\(rest)")
             }
@@ -239,10 +393,38 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         window?.makeFirstResponder(web)
     }
 
+    /// A port of an attached host's own localhost: the page's own host's,
+    /// loaded through it as the page's address. Another's, from a page
+    /// loaded through a host — where every localhost is that host's — is
+    /// a page of that host's own, beside; from a page loaded from here,
+    /// it's forwarded here (as asked: said so) and loaded at the port here.
+    private func localhost(_ port: Int, on h: HostID, scheme: String, rest: String) {
+        if h == through { return load("\(scheme)://localhost:\(port)\(rest)") }
+        if through != nil, let url = URL(string: "\(scheme)://localhost:\(port)\(rest)") {
+            delegate?.webView(self, open: url, asPageOf: h)
+            return
+        }
+        delegate?.webView(self, forward: port, on: h) { [weak self] local in
+            guard let local else { return }
+            self?.load("\(scheme)://localhost:\(local)\(rest)")
+        }
+    }
+
     private func titleChanged() {
-        guard let title = web.title, !title.isEmpty, !web.isLoading || web.url?.absoluteString == shownURL else { return }
+        guard let title = web.title, !title.isEmpty, !web.isLoading || web.url.map(kept) == shownURL else { return }
         if title != source()?.web?.title { delegate?.webView(self, append: [.title(title)]) }
         if let u = web.url { delegate?.webView(self, visited: u, title: title, again: true) }
+    }
+
+    /// Loaded through the block's host, or from here (§7.6): the block's
+    /// choice, kept with the page it's on.
+    func loadThroughHost(_ on: Bool) {
+        guard source()?.web?.viaHost != on else { return }
+        // The address as the host has it, whichever way it was loaded (a
+        // port of the host's forwarded here, typed from here, by its port
+        // there): from here, then, it's this Mac's.
+        let url = web.url.map { kept($0, as: block.host) } ?? shownURL ?? source()?.web?.url
+        delegate?.webView(self, append: [.url(url, viaHost: on)])
     }
 
     /// Words looked for (a search engine's page).
@@ -264,19 +446,35 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     @objc func decreaseFontSize(_ sender: Any?) { web.pageZoom = Self.zooms.last { $0 < web.pageZoom - 0.001 } ?? web.pageZoom }
     @objc func resetFontSize(_ sender: Any?) { web.pageZoom = 1 }
     var debugZoom: CGFloat { web.pageZoom }
+    /// Debugging: how the page is loaded, the address the block keeps, the
+    /// one WebKit has, and the store it's in.
+    var debugRoute: String {
+        let store = web.configuration.websiteDataStore
+        return [through.map { "through \($0.raw)" } ?? "from here", awaitingStore ? "waiting for its store" : nil,
+                "block \(source()?.web?.url ?? "none")", "shown \(web.url?.absoluteString ?? "none")",
+                "store \(store.identifier?.uuidString ?? (store.isPersistent ? "default" : "ephemeral"))",
+                { if case let .message(m) = failure.state { "says \(m)" } else { nil } }()].compactMap { $0 }.joined(separator: "\n")
+    }
 
     private var watching: [NSKeyValueObservation] = []
 
     /// Back, forward, and reload — stop, while it loads — on its bar; ⇧
-    /// held on reload, from the server, the cache passed over.
+    /// held on reload, from the server, the cache passed over. Before
+    /// them, on another host's block, how it's loaded (§7.6): through the
+    /// host, or from here — clicked, the other way.
     var barButtons: [BarButton] {
-        [BarButton(symbol: "chevron.left", tooltip: "Back (⌘[)", enabled: web.canGoBack) { [weak self] in self?.web.goBack() },
+        let page = [BarButton(symbol: "chevron.left", tooltip: "Back (⌘[)", enabled: web.canGoBack) { [weak self] in self?.web.goBack() },
          BarButton(symbol: "chevron.right", tooltip: "Forward (⌘])", enabled: web.canGoForward) { [weak self] in self?.web.goForward() },
          web.isLoading
             ? BarButton(symbol: "xmark", tooltip: "Stop Loading", enabled: true) { [weak self] in self?.web.stopLoading() }
             : BarButton(symbol: "arrow.clockwise", tooltip: "Reload (⇧-click: from the Server)", enabled: true) { [weak self] in
                 if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { self?.web.reloadFromOrigin() } else { self?.web.reload() }
             }]
+        guard let remote = delegate?.webView(self, remoteHost: block.host) else { return page }
+        let way = through != nil
+            ? BarButton(symbol: "server.rack", tooltip: "Loaded through \(remote.label) — click to load from This Mac", enabled: true) { [weak self] in self?.loadThroughHost(false) }
+            : BarButton(symbol: "laptopcomputer", tooltip: "Loaded from This Mac — click to load through \(remote.label)", enabled: true) { [weak self] in self?.loadThroughHost(true) }
+        return [way] + page
     }
 
     /// "Version/26.1 Safari/605.1.15", from the Safari that's installed.
@@ -287,10 +485,12 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         return "Version/\(version) Safari/605.1.15"
     }()
 
-    /// The pill, clicked, is the address to type over (⌘L too).
+    /// The pill, clicked, is the address to type over (⌘L too): through a
+    /// host, as the host has it, and said to be its.
     var pillEdit: PillEdit? {
-        let text = web.url.map { delegate?.webView(self, addressOf: $0) ?? $0.absoluteString } ?? shownURL ?? ""
-        var e = PillEdit(text: text, placeholder: "Address, or words to search for") { [weak self] in self?.go($0) }
+        let text = web.url.map { through != nil ? kept($0) : delegate?.webView(self, addressOf: $0) ?? $0.absoluteString } ?? shownURL ?? ""
+        let on = through.flatMap { delegate?.webView(self, remoteHost: $0)?.label }
+        var e = PillEdit(text: text, placeholder: on.map { "Address on \($0), or words to search for" } ?? "Address, or words to search for") { [weak self] in self?.go($0) }
         e.suggest = { [weak self] typed in
             guard let self else { return [] }
             return self.delegate?.webView(self, suggestionsFor: typed) ?? []
@@ -305,7 +505,13 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         let f = ClosureMenuItem("Forward", symbol: "chevron.right") { [weak self] in self?.goForward(nil) }
         f.isEnabled = web.canGoForward
         items += [b, f, ClosureMenuItem("Reload", symbol: "arrow.clockwise") { [weak self] in self?.reloadPage(nil) }]
-        if let url = web.url?.absoluteString {
+        if let remote = delegate?.webView(self, remoteHost: block.host) {
+            let on = through != nil
+            let way = ClosureMenuItem("Load Through \(remote.label)", symbol: "server.rack") { [weak self] in self?.loadThroughHost(!on) }
+            way.state = on ? .on : .off
+            items.append(way)
+        }
+        if let url = web.url.map(kept) {
             items.append(ClosureMenuItem("Copy Address", symbol: "doc.on.doc") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url, forType: .string)
@@ -316,16 +522,25 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
 
     /// A link in the page, as every link goes: a plain click follows it
     /// here, in the page, as a browser does; ⌘ a page beside, ⌥ (⌥⌘) over;
-    /// ⇧⌘ the system's browser.
+    /// ⇧⌘ the system's browser. Through a host, the page going to a port of
+    /// the host's localhost not yet here has it brought here first.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard action.navigationType == .linkActivated, let url = action.request.url,
               !action.modifierFlags.isDisjoint(with: [.command, .option]) else {
+            if through != nil, action.targetFrame?.isMainFrame == true, let url = action.request.url,
+               url.scheme == "http" || url.scheme == "https", let name = url.host, WebAddress.isLoopback(name),
+               delegate?.webView(self, forwardedFrom: url.port ?? (url.scheme == "https" ? 443 : 80))?.host != through {
+                decisionHandler(.cancel)
+                return load(url.absoluteString)
+            }
             decisionHandler(.allow)
             return
         }
         decisionHandler(.cancel)
-        if action.modifierFlags.isSuperset(of: [.command, .shift]) { NSWorkspace.shared.open(url) } else { delegate?.webView(self, open: url, over: action.modifierFlags.contains(.option)) }
+        if action.modifierFlags.isSuperset(of: [.command, .shift]) { NSWorkspace.shared.open(url) } else {
+            delegate?.webView(self, open: URL(string: kept(url)) ?? url, over: action.modifierFlags.contains(.option))
+        }
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -337,13 +552,44 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
 
     /// A page that couldn't be opened: said, in its place. (One left for
-    /// another, or handed to another app, isn't a failure.)
+    /// another, or handed to another app, isn't a failure.) Through a
+    /// host, why the host couldn't, as WebKit can't say it — and one that
+    /// failed for the host being away is loaded again when it's back.
     private func failed(_ error: Error) {
         let e = error as NSError
         guard !(e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled), !(e.domain == "WebKitErrorDomain" && e.code == 102) else { return }
         let url = (e.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? (e.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap(URL.init(string:))
-        let shown = url.map { delegate?.webView(self, addressOf: $0) ?? $0.absoluteString }.map(WebAddress.plain) ?? "the page"
-        failure.set(.message("Can't open \(shown): \(e.localizedDescription)"))
+        let shown = url.map { through != nil ? kept($0) : delegate?.webView(self, addressOf: $0) ?? $0.absoluteString }.map(WebAddress.plain) ?? "the page"
+        var why = e.localizedDescription
+        if let h = through, let remote = delegate?.webView(self, remoteHost: h) {
+            var away = !remote.connected
+            if away {
+                why = "\(remote.label) can't be reached now"
+            } else if let url, let name = url.host,
+                      let refusal = delegate?.webView(self, refusalOf: name, port: url.port ?? (url.scheme == "https" ? 443 : 80), through: h) {
+                why = Self.why(refusal, name: name, port: url.port ?? (url.scheme == "https" ? 443 : 80), on: remote.label)
+                away = refusal == .unreached
+            }
+            if away { retryWhenBack = url.map(kept) ?? shownURL }
+        }
+        showFailure("Can't open \(shown): \(why)")
+    }
+
+    /// Why a host couldn't connect, in words.
+    static func why(_ refusal: HostProxy.Refusal, name: String, port: Int, on label: String) -> String {
+        switch refusal {
+        case .host(.notFound): "\(label) doesn't know the name \(name)"
+        case .host(.refused): "\(name) refused \(label)'s connection at port \(port)"
+        case .host(.unreachable): "\(label) has no way to \(name)"
+        case .host(.timedOut): "\(name) didn't answer \(label) in time"
+        case .host(.failed): "\(label) couldn't connect to \(name)"
+        case .unreached: "\(label) can't be reached now"
+        }
+    }
+
+    /// Said in the page's place, the page hidden, until the next goes.
+    private func showFailure(_ text: String) {
+        failure.set(.message(text))
         web.isHidden = true
         // The last page's headings went with it.
         headingsOutline.set([])
@@ -351,13 +597,13 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let url = web.url?.absoluteString ?? ""
+        let url = web.url.map(kept) ?? ""
         keepInteraction()
         readHeadings()
         var events: [Event] = []
         if url != shownURL {
             shownURL = url
-            events.append(.url(url, viaHost: false))
+            events.append(.url(url, viaHost: source()?.web?.viaHost ?? false))
         }
         if let title = web.title, !title.isEmpty, title != source()?.web?.title { events.append(.title(title)) }
         if let u = web.url { delegate?.webView(self, visited: u, title: web.title, again: false) }
@@ -378,7 +624,7 @@ extension WebView: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = action.request.url, url.absoluteString != "about:blank" {
-            delegate?.webView(self, open: url, over: false)
+            delegate?.webView(self, open: URL(string: kept(url)) ?? url, over: false)
         }
         return nil
     }

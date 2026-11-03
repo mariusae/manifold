@@ -334,6 +334,12 @@ enum DebugControl {
             for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
             lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
             return lines.joined(separator: "\n")
+        case "webroute":
+            // "webroute [here|host]": how the focused web tile loads its
+            // page (§7.6), or that switched, as its bar's button does.
+            guard let web = wc?.debugFocusedView as? WebView else { return "no web tile focused" }
+            if arg == "here" || arg == "host" { web.loadThroughHost(arg == "host") }
+            return web.debugRoute
         case "js":
             // "js <code>": runs it in the focused preview's or web block's page.
             guard let wc, let web = wc.debugFocusedWebView else { return "no page focused" }

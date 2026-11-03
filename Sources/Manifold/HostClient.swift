@@ -766,7 +766,6 @@ final class HostClient {
         return id
     }
 
-    /// A web block, at a URL.
     /// The web block showing a page kept as a file, made if there isn't one.
     func webBlock(forFile path: String) -> BlockID {
         let url = URL(fileURLWithPath: path).standardizedFileURL.absoluteString
@@ -776,9 +775,11 @@ final class HostClient {
         return id
     }
 
-    func newWeb(url: String) -> BlockID {
+    /// A web block, at a URL; `viaHost`, loaded through this host (§7.6),
+    /// not from the Mac.
+    func newWeb(url: String, viaHost: Bool = false) -> BlockID {
         let id = BlockID(host: host)
-        append([.create(kind: .web, title: nil, path: nil), .url(url, viaHost: false)], to: .block(id))
+        append([.create(kind: .web, title: nil, path: nil), .url(url, viaHost: viaHost)], to: .block(id))
         return id
     }
 

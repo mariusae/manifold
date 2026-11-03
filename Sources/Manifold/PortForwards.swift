@@ -14,7 +14,8 @@ final class PortForwards {
         let remote: Int
         var local: Int?
         let listener: NWListener
-        /// Made for a block (a smartlog's), not asked for: not listed.
+        /// Made for a block (a smartlog's, a page's loaded through the
+        /// host), not asked for: not listed.
         var hidden = false
     }
 
