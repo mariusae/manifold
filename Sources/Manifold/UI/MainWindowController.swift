@@ -390,9 +390,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     old.isHidden = true
                 }
             }
-            // Pictured for their cards, one a turn — its grid kept, the
-            // workspace left is still drawn (hidden), so nothing is lost by
-            // waiting, and no one turn takes them all.
+            // Pictured for their cards once switching has been quiet a
+            // second, one a turn — its grid kept, the workspace left is
+            // still drawn (hidden), so nothing is lost by waiting; a card
+            // wanted sooner pictures its tile itself.
             picture(leaving)
             shownArrangement = selected
             if walk == nil, tileWalk == nil { settleHere() }
@@ -537,6 +538,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func shown(_ p: Placement) -> Shown {
         var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
         if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
+        s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
         return s
     }
 
@@ -3491,15 +3493,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Tiles pictured for their cards, one a turn.
+    /// Tiles pictured for their cards, a second after the last switch and
+    /// one a turn after that (each a whole drawing of the tile: tens of
+    /// milliseconds for an editor, in the switch's wake it was most of its
+    /// cost); another switch first, and they wait for it instead.
     private func picture(_ leaving: [PaneContent]) {
-        guard let v = leaving.first else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.rememberPicture(of: v, evenHidden: true)
-            self.picture(Array(leaving.dropFirst()))
+        picturing += 1
+        let round = picturing
+        func next(_ rest: ArraySlice<PaneContent>, after delay: TimeInterval) {
+            guard let v = rest.first else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.picturing == round else { return }
+                if v.window != nil { self.rememberPicture(of: v, evenHidden: true) }
+                next(rest.dropFirst(), after: 0.05)
+            }
         }
+        next(leaving[...], after: 1)
     }
+    private var picturing = 0
 
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
         let order = allWorkspaces
@@ -3699,10 +3710,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected, openAll: self.sidebarFilter != nil)
+            self.organizationShownFor = selected
         }
         organizationWork = work
-        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (org == .desk ? 0.05 : 0.2), execute: work) }
+        // The desk follows the focus at once; anything else (an edit's dot,
+        // a note's first line, a status) a moment after the changes stop —
+        // a key at a time, each made the whole tree again.
+        let follows = org == .desk && deskSelectedRow != organizationShownFor
+        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (follows ? 0.05 : 0.25), execute: work) }
     }
+
+    /// The row the sidebar's tree was last made with chosen.
+    private var organizationShownFor: String?
 
     /// The desk row for the focused tile of the selected arrangement.
     private var deskSelectedRow: String? {
@@ -10175,6 +10194,12 @@ extension MainWindowController: OrganizationViewDelegate {
             if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView,
                let image = HoverCard.surfacePicture(of: t) {
                 picture = image
+            } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is WebView) && !($0 is MarkdownView) }),
+                      let image = HoverCard.picture(of: hidden, evenHidden: true) {
+                // Still drawn, out of sight (another workspace's grid kept,
+                // stacked): pictured now, as it is.
+                picture = image
+                tilePictures[id] = image
             } else if let kept = tilePictures[id] {
                 picture = kept
             }

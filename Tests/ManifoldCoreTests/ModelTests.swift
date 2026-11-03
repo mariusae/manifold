@@ -180,6 +180,20 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.leader(of: .registry(host)) == .host)
 }
 
+@Test func aBlockKeptAsReadFollowsItsChanges() {
+    let node = Node()
+    node.cachesBlocks = true
+    let id = BlockID()
+    node.append(.create(kind: .text, title: "First", path: nil), to: .block(id), at: stamp())
+    #expect(node.block(id)?.title == "First")
+    node.append(.title("Second"), to: .block(id), at: stamp())
+    #expect(node.block(id)?.title == "Second", "a change drops the kept block")
+    node.load(ShardSnapshot(shard: .block(id), seq: 9, state: .block(Block(id: id, kind: .text, created: stamp(), title: "Loaded", path: nil))))
+    #expect(node.block(id)?.title == "Loaded", "so does a snapshot")
+    node.remove(.block(id))
+    #expect(node.block(id) == nil, "and a shard gone")
+}
+
 @Test func storeRoundTripsAndSnapshots() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-store-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: dir) }

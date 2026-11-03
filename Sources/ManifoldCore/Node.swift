@@ -78,7 +78,28 @@ public final class Node {
     public func seq(_ shard: ShardID) -> Int { shards[shard]?.seq ?? 0 }
     public func has(_ shard: ShardID) -> Bool { shards[shard] != nil }
 
-    public func block(_ id: BlockID) -> Block? { shards[.block(id)]?.state.block }
+    public func block(_ id: BlockID) -> Block? {
+        guard cachesBlocks else { return shards[.block(id)]?.state.block }
+        if let b = blockCache[id] { return b }
+        guard let b = shards[.block(id)]?.state.block else { return nil }
+        blockCache[id] = b
+        return b
+    }
+
+    /// Blocks kept as read (`blockCache`): only where one thread reads and
+    /// writes the node, as the app's main thread does — reading writes.
+    public var cachesBlocks = false
+
+    /// Blocks as last read, by id: read far more often than they change (a
+    /// render reads each tile's several times), and read out of their
+    /// shard the whole replica was copied, entries and all, each time.
+    /// Dropped before the shard changes — kept, a copy would make the
+    /// change copy the block's text.
+    private var blockCache: [BlockID: Block] = [:]
+
+    private func changing(_ shard: ShardID) {
+        if case .block(let id) = shard { blockCache.removeValue(forKey: id) }
+    }
 
     public var blocks: [Block] {
         shards.values.compactMap { $0.state.block }
@@ -124,6 +145,7 @@ public final class Node {
     public func apply(_ entry: Entry, to shard: ShardID) -> Bool {
         if let seq = shards[shard]?.seq {
             guard entry.seq == seq + 1 else { return entry.seq <= seq }
+            changing(shard)
             // Changed where it's kept, not copied out and back (its entries,
             // its state) at every keystroke.
             shards[shard]!.state.apply(entry.event, at: entry.at)
@@ -134,6 +156,7 @@ public final class Node {
             graph.apply(entry, to: shard, state: shards[shard]!.state)
         } else {
             guard entry.seq == 1, let state = Self.initialState(shard, entry) else { return false }
+            changing(shard)
             shards[shard] = Replica(seq: 1, state: state, entries: [entry])
             graph.apply(entry, to: shard, state: state)
         }
@@ -157,6 +180,7 @@ public final class Node {
 
     /// Takes a snapshot in whole, replacing what's here.
     public func load(_ snapshot: ShardSnapshot) {
+        changing(snapshot.shard)
         shards[snapshot.shard] = Replica(seq: snapshot.seq, state: snapshot.state, entries: [])
         graph.load(snapshot.shard, state: snapshot.state, entries: [])
         onChange?(snapshot.shard)
@@ -167,6 +191,7 @@ public final class Node {
     }
 
     public func remove(_ shard: ShardID) {
+        changing(shard)
         shards.removeValue(forKey: shard)
         graph.remove(shard)
         onChange?(shard)

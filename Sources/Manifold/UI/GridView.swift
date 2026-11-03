@@ -3214,6 +3214,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// only what differs is touched, or the images and labels would be
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false, stashed: Bool = false) {
+        // Shown again as it was — every render, a keystroke's in another
+        // tile too — nothing to do: its block the same (by its version),
+        // its place and state, the minute (what it says can be an age).
+        let key = ShowKey(placement: shown.placement, version: shown.version, offline: shown.offline, foreignHost: shown.foreignHost,
+                          caption: shown.caption, focused: focused, maximized: maximized, stashed: stashed, collapsed: collapsed,
+                          minute: Int(Date().timeIntervalSince1970 / 60), favicon: shown.block?.web.flatMap { Favicons.image(forPage: $0.url) })
+        if key == lastKey, shown.block != nil { return }
+        lastKey = key
         if self.maximized != maximized || corner.image == nil {
             self.maximized = maximized
             corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
@@ -3255,6 +3263,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// What the bar was last shown for: its subtitle made again as the tile
     /// collapses or opens.
     private var lastShown: Shown?
+
+    private struct ShowKey: Equatable {
+        var placement: Placement
+        var version: Int
+        var offline: Bool
+        var foreignHost: String?
+        var caption: String?
+        var focused, maximized, stashed, collapsed: Bool
+        var minute: Int
+        var favicon: NSImage?
+    }
+    private var lastKey: ShowKey?
 
     /// After the name, in grey: where it is — or, the tile down to its bar,
     /// what its summary card says first (a terminal's last command and how

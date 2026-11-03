@@ -205,13 +205,23 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
 
     /// The outline's entries' lines in the text, from 0.
     private var itemLines: [Int] = []
+    /// The entries as last read, and the version of the text they're of.
+    private var outlineItems: (version: Int, items: [NoteOutlineItem])?
 
     /// The note's outline from its text (`NoteOutlineMarkdown.items`), each
     /// entry placed on the page by the element its line starts (the page's
     /// `data-sourcepos`), and where the page is.
     private func readOutline() {
         guard loaded else { return }
-        let items = source().map { NoteOutlineMarkdown.items(in: $0.text) } ?? []
+        // The entries are the text's, read once a version: this comes after
+        // every layout and scroll.
+        let items: [NoteOutlineItem]
+        if let s = source() {
+            if let kept = outlineItems, kept.version == s.version { items = kept.items } else {
+                items = NoteOutlineMarkdown.items(in: s.text)
+                outlineItems = (s.version, items)
+            }
+        } else { items = [] }
         let lines = items.map { $0.line + 1 }
         let js = "(function(L){var els=document.querySelectorAll('[data-sourcepos]'),first={};for(var i=0;i<els.length;i++){var m=/^(\\d+):/.exec(els[i].getAttribute('data-sourcepos'));if(m&&!(m[1] in first)){first[m[1]]=els[i];}}var t=[];for(var j=0;j<L.length;j++){var e=first[L[j]];t.push(e?e.getBoundingClientRect().top+window.scrollY:-1);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,t:t};})(\(lines))"
         web.evaluateJavaScript(js) { [weak self] r, _ in

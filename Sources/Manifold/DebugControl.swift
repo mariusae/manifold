@@ -1246,6 +1246,18 @@ enum DebugControl {
                 }
             }
             return "frame \(window.frame)"
+        case "moveto":
+            // "moveto x y": the pointer moved there (window coordinates from
+            // the top-left), as an event through the window — hovering, for
+            // timing what a move costs.
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let window = wc?.window else { return "usage: moveto x y" }
+            let p = NSPoint(x: a[0], y: window.contentView!.bounds.height - a[1])
+            if let e = NSEvent.mouseEvent(with: .mouseMoved, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+                NSApp.postEvent(e, atStart: false)
+            }
+            return "ok"
         case "front":
             // Brings the window in front without activating the app, and says
             // where it is on screen (from the top-left, as screencapture takes it).

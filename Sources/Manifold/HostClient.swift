@@ -17,7 +17,12 @@ final class HostClient {
         var isLocal: Bool { if case .local = self { return true } else { return false } }
     }
 
-    let node = Node()
+    let node: Node = {
+        let n = Node()
+        // Read on the main thread only: its blocks kept as read.
+        n.cachesBlocks = true
+        return n
+    }()
     let transport: Transport
     private(set) var clock = Clock(host: .local)
     private(set) var host = HostID.local

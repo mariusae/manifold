@@ -13,6 +13,9 @@ struct Shown: Equatable {
     /// The block lives on another host than the workspace it's in: that
     /// host's name, said on its bar.
     var foreignHost: String?
+    /// Its block's shard's sequence number, which moves with every change
+    /// to it: what's shown of it needn't be made again while it's the same.
+    var version = 0
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

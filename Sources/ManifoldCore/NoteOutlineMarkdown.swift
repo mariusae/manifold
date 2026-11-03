@@ -38,6 +38,7 @@ public enum NoteOutlineMarkdown {
             parser.read(lines[index])
             index += 1
         }
+        parser.endRow()
         outline.rows = parser.rows
         outline.trailingGap = parser.pendingGap
         if outline.rows.isEmpty && outline.trailingGap.isEmpty && outline.frontmatter == nil {
@@ -69,6 +70,20 @@ public enum NoteOutlineMarkdown {
         var fence: (marker: String, indent: Int)?
         /// The column continuation lines of the last row are measured from.
         var lastContentColumn = 0
+        /// The last row's continuation lines' indents as they're read (its
+        /// `continuationIndents`), and whether any is recorded: kept here
+        /// and set on the row as it ends — counted and checked on the row
+        /// at each line, a long paragraph or code block took its length
+        /// squared to read.
+        var lastIndents: [Int?] = []
+        var lastIndented = false
+
+        /// The last row's indents set on it, as another starts or the text ends.
+        mutating func endRow() {
+            if lastIndented, !rows.isEmpty { rows[rows.count - 1].continuationIndents = lastIndents }
+            lastIndents = []
+            lastIndented = false
+        }
 
         mutating func read(_ line: String) {
             if let fence {
@@ -136,6 +151,7 @@ public enum NoteOutlineMarkdown {
                 row.text = content
                 lastContentColumn = indent
             }
+            endRow()
             rows.append(row)
         }
 
@@ -161,38 +177,36 @@ public enum NoteOutlineMarkdown {
         /// no space after, `quoteBare` — and a line without one, lazily
         /// going on, by its indent, as `appendContinuation` keeps it.
         private mutating func appendQuoteLine(_ content: String) {
-            var row = rows.removeLast()
-            var indents = row.continuationIndents ?? Array(repeating: nil, count: row.lineCount - 1)
+            let last = rows.count - 1
             let rest = content.dropFirst()
             if rest.hasPrefix(" ") {
-                row.text += "\n" + rest.dropFirst()
-                indents.append(nil)
+                rows[last].text += "\n" + rest.dropFirst()
+                lastIndents.append(nil)
             } else {
-                row.text += "\n" + rest
-                indents.append(NoteOutlineMarkdown.quoteBare)
+                rows[last].text += "\n" + rest
+                lastIndents.append(NoteOutlineMarkdown.quoteBare)
+                lastIndented = true
             }
-            row.continuationIndents = indents.allSatisfy({ $0 == nil }) ? nil : indents
-            rows.append(row)
         }
 
         private mutating func appendContinuation(_ line: String, indent: Int) {
-            var row = rows.removeLast()
-            var indents = row.continuationIndents ?? Array(repeating: nil, count: row.lineCount - 1)
+            let last = rows.count - 1
             let isBlank = line.allSatisfy { $0 == " " || $0 == "\t" }
+            let recorded: Int?
             if isBlank {
                 // A blank line is kept as it was, spaces and all.
-                row.text += "\n" + line
-                indents.append(line.isEmpty ? nil : 0)
+                rows[last].text += "\n" + line
+                recorded = line.isEmpty ? nil : 0
             } else {
                 let strip = min(indent, lastContentColumn)
-                row.text += "\n" + line.dropFirst(NoteOutlineMarkdown.prefixLength(line, columns: strip))
+                rows[last].text += "\n" + line.dropFirst(NoteOutlineMarkdown.prefixLength(line, columns: strip))
                 // Indented less than usual (a lazy continuation) is recorded;
                 // more than usual keeps the extra in the text. A quote's line
                 // without its `>` is always recorded: its usual has one.
-                indents.append(indent < lastContentColumn || row.kind == .quote ? strip : nil)
+                recorded = indent < lastContentColumn || rows[last].kind == .quote ? strip : nil
             }
-            row.continuationIndents = indents.allSatisfy({ $0 == nil }) ? nil : indents
-            rows.append(row)
+            lastIndents.append(recorded)
+            if recorded != nil { lastIndented = true }
         }
     }
 
