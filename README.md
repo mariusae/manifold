@@ -471,9 +471,10 @@ parts from the Mac's conventions on purpose.
   (**Label:** value), its sections folded but for what it is and what
   its kind has, each opened or folded by its triangle and kept so, its
   annotations under its name as Get Info's tags. What it is and where (its host, its path, a page's address,
-  a terminal's folder, a click copying it; when it was made and last
+  a terminal's folder, each with its copy button; when it was made and last
   seen); **for tools**, its reference, block id, tile id and space id
-  and its annotations (`mani annotate`), each copied by a click; its
+  and its annotations (`mani annotate`), each with a copy button at its
+  right (the row clicked copies it too; a check says it's copied); its
   **status** as its record has it (state, what it's blocked on,
   progress, who said, message, since, read); **this tile** — its lens,
   column and place, size, when placed, stacked or maximized, what the

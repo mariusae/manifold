@@ -242,6 +242,14 @@ private final class InspectorRow: NSView {
     private let onOpen: ((OrgNode) -> Void)?
     private let label: String
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+    /// Copied a moment ago: its button a checkmark.
+    private var copied = false { didSet { needsDisplay = true } }
+    private static let button: CGFloat = 20
+
+    /// The copy button's place, at the right, for a row that copies.
+    private var buttonRect: NSRect? {
+        node.copies == nil ? nil : NSRect(x: bounds.width - 8 - Self.button, y: (bounds.height - 16) / 2, width: Self.button, height: 16)
+    }
 
     init(_ node: OrgNode, onOpen: ((OrgNode) -> Void)?) {
         self.node = node
@@ -251,6 +259,7 @@ private final class InspectorRow: NSView {
         label = words.prefix(1).uppercased() + words.dropFirst()
         super.init(frame: .zero)
         toolTip = node.tooltip ?? (label.isEmpty ? node.title : "\(label): \(node.title)")
+        if let copies = node.copies { toolTip = (toolTip ?? "") + "\nClick to copy: \(copies)" }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -276,7 +285,24 @@ private final class InspectorRow: NSView {
             x = 8 + InspectorList.labelWidth + 6
         }
         let va: [NSAttributedString.Key: Any] = [.font: UIType.detail, .foregroundColor: acts && hovering ? Tints.accentText : Theme.text, .paragraphStyle: para]
-        (node.title as NSString).draw(in: NSRect(x: x, y: 2, width: bounds.width - x - 10, height: 15), withAttributes: va)
+        let end = buttonRect.map { $0.minX - 4 } ?? bounds.width - 10
+        (node.title as NSString).draw(in: NSRect(x: x, y: 2, width: end - x, height: 15), withAttributes: va)
+        // Its copy button: always there, darker under the pointer, a check once it's copied.
+        if let r = buttonRect {
+            let color = copied ? Status.done : hovering ? Theme.text : Theme.tertiaryText
+            if let image = Theme.symbol(copied ? "checkmark" : "doc.on.doc", size: 11, weight: .medium, color: color) {
+                image.draw(in: image.centered(in: r), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+    }
+
+    /// The row's text on the clipboard, its button saying so a moment.
+    func copyText() {
+        guard let text = node.copies else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.copied = false }
     }
 
     override func updateTrackingAreas() {
@@ -287,17 +313,22 @@ private final class InspectorRow: NSView {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
-    override func resetCursorRects() { if acts { addCursorRect(bounds, cursor: .pointingHand) } }
+    override func resetCursorRects() { if acts || node.copies != nil { addCursorRect(bounds, cursor: .pointingHand) } }
 
     override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { _ = click() }
+        let p = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(p) else { return }
+        // The copy button, or a row that copies: copied here, said by its check.
+        if node.copies != nil { return copyText() }
+        _ = click()
     }
 
     @discardableResult func click() -> Bool {
+        if node.copies != nil { copyText(); return true }
         guard acts else { return false }
         onOpen?(node)
         return true
     }
 
-    var debugState: String { (label.isEmpty ? "" : label + ": ") + node.title }
+    var debugState: String { (label.isEmpty ? "" : label + ": ") + node.title + (node.copies == nil ? "" : " [copy]") }
 }

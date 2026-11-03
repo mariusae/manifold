@@ -126,6 +126,9 @@ final class OrgNode {
     var placement: PlacementID?
     /// A row that does something rather than opening a block (New…).
     var action: (() -> Void)?
+    /// What the row puts on the clipboard, a copy button beside it (the
+    /// inspector's references, ids, paths).
+    var copies: String?
     fileprivate var given: [OrgNode]
     var loadChildren: (() -> [OrgNode])?
     fileprivate var loaded = false

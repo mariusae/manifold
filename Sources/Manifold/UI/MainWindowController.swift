@@ -4219,6 +4219,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             s.style = .section
             sections.append(s)
         }
+        /// A row that copies `text`: a click, or its copy button.
+        func copyRow(_ value: String, _ label: String, _ symbol: String, _ text: String) -> OrgNode {
+            let n = row(value, label, symbol, copying(text))
+            n.copies = text
+            return n
+        }
         func copying(_ text: String) -> () -> Void {
             { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
         }
@@ -4226,9 +4232,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         // What it is.
         var about: [OrgNode] = [row(hostName, "host", "desktopcomputer")]
-        if let p = b.path { about.append(row(p.abbreviatingHome, "path — click to copy", "doc", copying(p))) }
-        if let u = b.web?.url { about.append(row(u, "address — click to copy", "globe", copying(u))) }
-        if let d = b.terminal?.cwd { about.append(row(d.abbreviatingHome, "directory — click to copy", "folder", copying(d))) }
+        if let p = b.path { about.append(copyRow(p.abbreviatingHome, "path", "doc", p)) }
+        if let u = b.web?.url { about.append(copyRow(u, "address", "globe", u)) }
+        if let d = b.terminal?.cwd { about.append(copyRow(d.abbreviatingHome, "directory", "folder", d)) }
         about.append(row(Age.ago(b.created), "made", "calendar"))
         if let seen = graph?.seen(b.id) { about.append(row(Age.ago(seen), "last seen", "eye")) }
         if let t = StatusGlyph.tooltip(b), !t.isEmpty { about.append(row(t, "status", "circle.dotted")) }
@@ -4238,12 +4244,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // annotated with (`mani annotate`) — each copied as a click.
         var tools: [OrgNode] = []
         let reference = "manifold:" + b.id.description
-        tools.append(row(reference, "reference — click to copy", "link", copying(reference)))
-        tools.append(row(b.id.ulid, "block id — click to copy", "number", copying(b.id.description)))
-        tools.append(row(f.id, "tile id — click to copy", "rectangle", copying(f.id)))
-        if let w = selected { tools.append(row(w.ulid, "space id — click to copy", Theme.spaceSymbol, copying(w.description))) }
+        tools.append(copyRow(reference, "reference", "link", reference))
+        tools.append(copyRow(b.id.ulid, "block id", "number", b.id.description))
+        tools.append(copyRow(f.id, "tile id", "rectangle", f.id))
+        if let w = selected { tools.append(copyRow(w.ulid, "space id", Theme.spaceSymbol, w.description)) }
         for (k, v) in (b.annotations ?? [:]).sorted(by: { $0.key < $1.key }) {
-            tools.append(row(v, k + " — annotation", "tag", copying("\(k)=\(v)")))
+            tools.append(copyRow(v, k + " — annotation", "tag", "\(k)=\(v)"))
         }
         section("For Tools", "wrench.and.screwdriver", tools)
 
