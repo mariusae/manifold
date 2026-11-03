@@ -370,7 +370,44 @@ final class IconButton: NSButton {
             (isHighlighted ? Flat.pressed : Flat.hovered).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
         }
-        super.draw(dirtyRect)
+        // Its symbol, in its tint, centred: drawn from a tinted copy kept by
+        // symbol and colour. Through the button's cell it was measured (an
+        // empty title too) and drawn through the system's image effects at
+        // every draw — most of a new tile's bar, and every bar at a theme.
+        guard let image else { return super.draw(dirtyRect) }
+        let color = contentTintColor ?? Theme.secondaryText
+        var resolved = color
+        effectiveAppearance.performAsCurrentDrawingAppearance { resolved = color.usingColorSpace(.sRGB) ?? color }
+        let tinted = Self.tinted(image, resolved)
+        let size = image.size
+        let scale = window?.backingScaleFactor ?? 2
+        func px(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
+        let r = NSRect(x: px((bounds.width - size.width) / 2), y: px((bounds.height - size.height) / 2), width: size.width, height: size.height)
+        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.35, respectFlipped: true, hints: nil)
+    }
+
+    private struct TintKey: Hashable {
+        var image: ObjectIdentifier
+        var rgba: [CGFloat]
+    }
+    /// The tinted copies, each with the symbol it's of (kept, so its
+    /// identity isn't another image's while the copy is here).
+    private static var tints: [TintKey: (source: NSImage, tinted: NSImage)] = [:]
+
+    /// The symbol in that colour, made once.
+    private static func tinted(_ image: NSImage, _ color: NSColor) -> NSImage {
+        let key = TintKey(image: ObjectIdentifier(image), rgba: [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent])
+        if let kept = tints[key] { return kept.tinted }
+        let t = NSImage(size: image.size, flipped: false) { r in
+            image.draw(in: r)
+            color.set()
+            r.fill(using: .sourceAtop)
+            return true
+        }
+        t.cacheMode = .always
+        if tints.count > 2000 { tints = [:] }
+        tints[key] = (image, t)
+        return t
     }
 }
 

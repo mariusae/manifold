@@ -541,6 +541,33 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             if !stickyHost.isHidden { updateStickyHost(again: true) }
             return
         }
+        // Rows come or gone (a file opened, a tile closed): those rows put
+        // in or taken out, the rest kept as they are and given their new
+        // values — a reload made every row shown again, its view and its
+        // layout (some 50 ms a file opened).
+        if !roots.isEmpty, openByDefault == expandedByDefault, mergeable(roots, nodes) {
+            var changed: [OrgNode] = [], inserted: [OrgNode] = []
+            outline.beginUpdates()
+            merge(nodes, into: nil, changed: &changed, inserted: &inserted)
+            func expandNew(_ list: [OrgNode]) {
+                for n in list where expanded.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
+                    outline.expandItem(n)
+                    expandNew(n.children)
+                }
+            }
+            expandNew(inserted)
+            outline.endUpdates()
+            for n in changed {
+                outline.reloadItem(n, reloadChildren: false)
+                let row = outline.row(forItem: n)
+                guard row >= 0 else { continue }
+                outline.noteHeightOfRows(withIndexesChanged: [row])
+                (outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView)?.marked = n.style == .section && n.emphasis && n.arrangement != nil
+            }
+            select(selected)
+            DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
+            return
+        }
         roots = nodes
         expandedByDefault = openByDefault
         // Where it was scrolled to, kept: reloaded, its rows are closed for
@@ -659,6 +686,48 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                   sameShape(x.givenChildren, y.givenChildren) else { return false }
         }
         return true
+    }
+
+    /// Whether `new` can be merged into `old` row by row: no rows loaded
+    /// when opened, no id twice among siblings, and every row kept (by its
+    /// id) of the same style and kind.
+    private func mergeable(_ old: [OrgNode], _ new: [OrgNode]) -> Bool {
+        let oldIDs = old.map(\.id), newIDs = new.map(\.id)
+        guard Set(oldIDs).count == oldIDs.count, Set(newIDs).count == newIDs.count else { return false }
+        let byID = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) })
+        for n in new {
+            guard n.loadChildren == nil else { return false }
+            if let o = byID[n.id] {
+                guard o.loadChildren == nil, o.style == n.style, o.isGroup == n.isGroup, mergeable(o.givenChildren, n.givenChildren) else { return false }
+            }
+        }
+        return true
+    }
+
+    /// `new` merged into the children of `parent` (the roots for nil): the
+    /// rows gone taken out, the new put in — the outline told of each as
+    /// it happens — and those kept given their new values, the ones that
+    /// look different noted in `changed`, all the way down.
+    private func merge(_ new: [OrgNode], into parent: OrgNode?, changed: inout [OrgNode], inserted: inout [OrgNode]) {
+        var current = parent?.given ?? roots
+        func set(_ list: [OrgNode]) { if let parent { parent.given = list } else { roots = list } }
+        let diff = new.map(\.id).difference(from: current.map(\.id))
+        for case let .remove(offset, _, _) in diff.removals.reversed() {
+            current.remove(at: offset)
+            set(current)
+            outline.removeItems(at: [offset], inParent: parent, withAnimation: [])
+        }
+        for case let .insert(offset, _, _) in diff.insertions {
+            current.insert(new[offset], at: offset)
+            set(current)
+            outline.insertItems(at: [offset], inParent: parent, withAnimation: [])
+            inserted.append(new[offset])
+        }
+        for (o, n) in zip(current, new) where o !== n {
+            if !o.looksLike(n) { changed.append(o) }
+            o.take(n)
+            merge(n.givenChildren, into: o, changed: &changed, inserted: &inserted)
+        }
     }
 
     private static func takeOver(_ old: [OrgNode], from new: [OrgNode], changed: inout [OrgNode]) {
