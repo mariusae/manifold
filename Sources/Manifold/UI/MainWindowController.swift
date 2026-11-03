@@ -921,8 +921,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let b = hosts.block(id) else { continue }
             if b.kind == .text, b.text?.isDirty == true {
                 lost.append("“\(b.displayTitle)” (unsaved edits)")
-            } else if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
-                // A note's words are kept nowhere else.
+            } else if b.isNote, !(b.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true), hasEdges(id) {
+                // A note's words are kept nowhere else — said, unless it's
+                // tied to nothing (no link, no edge either way): that one
+                // just goes, ⇧⌘T bringing it back until it's collected.
                 lost.append("“\(b.displayTitle)” (a note)")
             } else if (b.kind == .terminal || b.kind == .agent), b.terminal?.busy == true {
                 lost.append("“\(b.displayTitle)” (\(b.kind == .agent ? "agent running" : "job running"))")
@@ -942,6 +944,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Undo while its time runs (⇧⌘T after, until it's collected).
         toast.show(text, action: "Undo", for: lost.isEmpty ? 6 : 12, countdown: true) { [weak self] in self?.reopenClosed(nil) }
         layoutViews()
+    }
+
+    /// Whether a block is tied to anything: an edge from it (a link, a
+    /// mention, a file opened from it), or one to it by hand (a link, an
+    /// embedding, a pin) — not where it was opened from, which every
+    /// block made from another has, nor its being placed.
+    private func hasEdges(_ id: BlockID) -> Bool {
+        hosts.all.contains { c in
+            c.node.graph.edges(from: id).contains { e in
+                guard e.isLive, case .link = e.kind else { return false }
+                return true
+            } || c.node.graph.edges(to: id).contains { e in
+                guard e.isLive, case .link(let k) = e.kind else { return false }
+                return k != .opened
+            }
+        }
     }
 
     /// ⇧⌘T: the last thing closed, back where it was — a tile into its

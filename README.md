@@ -446,7 +446,8 @@ parts from the Mac's conventions on purpose.
   **⇧⌘T** reopens the last thing closed where it
   was. Closing takes with it whatever only the closed block reached;
   when any of that has unsaved edits, a note's words or a job running, a
-  toast at the foot of the window names each, with Undo while a bar along
+  toast at the foot of the window names each (a note tied to nothing —
+  no link, no edge from it, nothing linked to it by hand — just goes), with Undo while a bar along
   its foot runs down (held while the pointer is on it); ⇧⌘T after.
   Removing a space always says so, in the same toast — gone to
   Recently Closed, with Undo.

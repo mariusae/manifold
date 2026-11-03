@@ -1081,7 +1081,10 @@ everything the closed block alone reached — what it placed, what it
 linked by hand, and onward — so the app compares what was reachable
 before and after, and when something on its way out would lose
 something — a text with unsaved edits, a note's words, a terminal with
-a job running, which collection will end — a toast at the foot of the
+a job running, which collection will end — a toast (not for a note
+tied to nothing: no edge from it, none to it but where it was opened
+from, which every made block has, and nothing unsaved; it goes at once,
+⇧⌘T bringing it back while it's kept) at the foot of the
 window names each of them and offers Undo, which reopens what was closed
 and so reaches them all again. A toast that can be undone counts down:
 a bar along its foot runs out over its time, held while the pointer is
