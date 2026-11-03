@@ -119,6 +119,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
         table.headerView = nil
+        // On the tile's ground, the theme's, not the system's white.
+        table.backgroundColor = .clear
         table.dataSource = self
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self

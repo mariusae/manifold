@@ -109,6 +109,8 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         table.rowHeight = Self.rowHeight
         table.intercellSpacing = NSSize(width: 4, height: 0)
         table.style = .plain
+        // On the tile's ground, the theme's, not the system's white.
+        table.backgroundColor = .clear
         table.floatsGroupRows = false
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
