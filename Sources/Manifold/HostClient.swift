@@ -1019,6 +1019,9 @@ final class HostClient {
 
     /// Ports of this host's forwarded to this Mac (§8).
     lazy var forwards = PortForwards(client: self)
+    /// The proxy pages loaded through this host use (§7.6); it listens
+    /// once one first asks.
+    lazy var proxy = HostProxy(client: self)
 
     private let decodeQueue = DispatchQueue(label: "manifold.host-decode", qos: .userInitiated)
 
@@ -1158,6 +1161,7 @@ final class HostClient {
             hasState = true
             if first { onWelcome?() }
             onConnected?()
+            proxy.linkOpened()
             // What the desk's order was to be, while the link was down.
             reconcileOrder(now: true)
             scheduleChange()

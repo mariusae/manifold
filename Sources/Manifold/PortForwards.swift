@@ -20,8 +20,8 @@ final class PortForwards {
 
     private weak var client: HostClient?
     private(set) var forwards: [Int: Forward] = [:]
-    /// Each connection made here, by its stream.
-    private var streams: [Int: (connection: NWConnection, stream: MuxStream)] = [:]
+    /// Each connection made here, joined to its stream.
+    private var pipes: [Int: StreamPipe] = [:]
     private var nextKey = 0
     /// The forwards changed (made, ready, stopped).
     var onChange: (() -> Void)?
@@ -87,68 +87,21 @@ final class PortForwards {
         // Its handlers on the main thread, where the connections here and
         // this bookkeeping are (the link's own queue would race them).
         let stream = mux.open(bulk: true, callbackQueue: .main)
-        let key = nextKey
-        nextKey += 1
-        streams[key] = (c, stream)
         stream.manualCredit = true
         stream.send(.message(ClientMessage.tunnel(port: remote)))
-        // The host's bytes on to the connection here, credited once taken;
-        // none, its side is done.
-        stream.onFrame = { [weak stream] frame in
-            guard frame.kind == .data else { return }
-            let n = frame.payload.count + 5
-            c.send(content: frame.payload, completion: .contentProcessed { [weak stream] error in
-                if error == nil { stream?.consumed(n) }
-            })
-        }
-        // Closed there (its server closed, or nothing listening): closed here,
-        // after what came.
-        stream.onClose = { [weak self] in
-            self?.streams.removeValue(forKey: key)
-            self?.finished.remove(key)
-            c.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in c.cancel() })
-        }
-        stream.onDrain = { [weak self] in self?.pump(key) }
         c.start(queue: .main)
-        pump(key)
-    }
-
-    /// What's sent here, up the stream while it wants more; `finished`,
-    /// once this side is done sending (not read again).
-    private var reading: Set<Int> = []
-    private var finished: Set<Int> = []
-
-    private func pump(_ key: Int) {
-        guard let (c, stream) = streams[key], stream.wantsMore, !finished.contains(key), reading.insert(key).inserted else { return }
-        c.receive(minimumIncompleteLength: 1, maximumLength: stream.piece) { [weak self] data, _, complete, error in
-            guard let self else { return }
-            self.reading.remove(key)
-            // Gone meanwhile (closed from the host's side): nothing more.
-            guard self.streams[key] != nil else { return }
-            if let data, !data.isEmpty { stream.send(Frame(.data, data)) }
-            if error != nil {
-                self.streams.removeValue(forKey: key)
-                self.finished.remove(key)
-                stream.close()
-                c.cancel()
-                return
-            }
-            // Done sending, here: said so, and the host's answer still
-            // comes back until it closes its side.
-            if complete {
-                self.finished.insert(key)
-                return stream.send(Frame(.data, Data()))
-            }
-            self.pump(key)
-        }
+        let key = nextKey
+        nextKey += 1
+        let pipe = StreamPipe(c, stream)
+        pipe.onEnd = { [weak self] in self?.pipes.removeValue(forKey: key) }
+        pipes[key] = pipe
+        pipe.start()
     }
 
     /// The link to the host went: its connections with it (the ports stay
     /// listening, for when it's back).
     func linkClosed() {
-        for (c, _) in streams.values { c.cancel() }
-        streams = [:]
-        reading = []
-        finished = []
+        for p in pipes.values { p.cancel() }
+        pipes = [:]
     }
 }
