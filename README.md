@@ -630,7 +630,8 @@ around it, and comes back with its history.
   come in is asked for until it does (whatever went astray on the way),
   says "Reading the file…" and can't be typed into or saved meanwhile,
   and a file opened again is looked at on disk again. **Edit as Outline**
-  (⌥⌘↩, again to go back) shows a note — any Markdown — as an outline,
+  (⌥⌘↩, again to go back — **Edit as Text**; both too in a note's tile
+  menu and its row's in the sidebar) shows a note — any Markdown — as an outline,
   as Prism's notes are, and edits it as one: Return a new row, Tab and
   ⇧Tab in and out with its children, ⌃⌘↑ ⌃⌘↓ to move it, ⌘↩ a checkbox
   (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start

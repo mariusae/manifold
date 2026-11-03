@@ -6383,16 +6383,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// outline to edit, in the same tile; again, back to its editor.
     @objc func toggleOutliner(_ sender: Any?) {
         guard let f = focusedShown, canOutline(f) else { return NSSound.beep() }
-        let id = f.id, other: Lens = f.lens == .outliner ? .editor : .outliner
+        toggleOutliner(tile: f.id)
+    }
+
+    /// A tile of this space's text as an outline, or back to its editor.
+    func toggleOutliner(tile id: PlacementID) {
+        guard let p = arrangement?.placement(id), canOutline(hosts.block(p.block), lens: p.lens) else { return NSSound.beep() }
         let fresh = ULID.make()
-        replace(id, with: f.placement.block, lens: other, as: fresh)
+        replace(id, with: p.block, lens: p.lens == .outliner ? .editor : .outliner, as: fresh)
         if arrangement?.full == id { appendToSelected([.full(fresh)]) }
     }
 
     /// Whether a tile's text can be an outline: a note, or a Markdown file.
-    private func canOutline(_ f: Shown) -> Bool {
-        guard let b = f.block, b.kind == .text, f.lens.isText || f.lens == .outliner else { return false }
+    private func canOutline(_ f: Shown) -> Bool { canOutline(f.block, lens: f.lens) }
+
+    private func canOutline(_ b: Block?, lens: Lens) -> Bool {
+        guard let b, b.kind == .text, lens.isText || lens == .outliner else { return false }
         return Lens.viewRendering(for: b.path) == .markdown
+    }
+
+    /// Edit as Outline, or Edit as Text, for a menu: the tile turned, if
+    /// it's one here; else the text opened so, here.
+    private func outlinerItem(_ block: BlockID, tile: PlacementID?) -> NSMenuItem? {
+        let b = hosts.block(block)
+        if let tile, let p = arrangement?.placement(tile) {
+            guard canOutline(b, lens: p.lens) else { return nil }
+            let outline = p.lens == .outliner
+            return ClosureMenuItem(outline ? "Edit as Text" : "Edit as Outline", symbol: outline ? "doc.text" : "list.bullet.indent") { [weak self] in
+                self?.toggleOutliner(tile: tile)
+            }
+        }
+        guard canOutline(b, lens: .editor) else { return nil }
+        return ClosureMenuItem("Edit as Outline", symbol: "list.bullet.indent") { [weak self] in self?.show(block, lens: .outliner, .here) }
     }
 
     /// ⌃⌘↩: the other mode beside this one, both in view.
@@ -7756,6 +7778,7 @@ extension MainWindowController: GridDelegate {
             let viewing = p.lens == .preview
             menu.addItem(ClosureMenuItem(viewing ? "Edit" : "View", symbol: viewing ? "pencil" : "eye", key: "\r") { [weak self] in self?.toggleMode(placement) })
         }
+        if let outline = outlinerItem(block, tile: placement) { menu.addItem(outline) }
         menu.addItem(.separator())
         for item in copyItems(for: block) { menu.addItem(item) }
         menu.addItem(.separator())
@@ -9783,6 +9806,11 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         if hosts.block(id)?.statusRecord != nil {
             menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(id)) })
+            menu.addItem(.separator())
+        }
+        // A note: as an outline, or as text — its tile here turned, else opened so.
+        if let outline = outlinerItem(id, tile: node.arrangement == selected ? node.placement : nil) {
+            menu.addItem(outline)
             menu.addItem(.separator())
         }
         if let arr = node.arrangement, let p = node.placement {
