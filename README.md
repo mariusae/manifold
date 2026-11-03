@@ -1517,9 +1517,11 @@ around it, and comes back with its history.
   laptop: from this Mac) and, clicked, loads it the other way; the
   tile's menu has **Load Through *host*** too. Its cookies and sign-ins
   are the host's own, kept from launch to launch apart from what's
-  loaded here. A page the host can't reach says why (the name unknown
-  there, refused, no way there), and one that failed for the host being
-  away loads again once it's back. (How: DESIGN.md §7.6, §11.)
+  loaded here; **Clear Website Data for *host*…** in the host's menu
+  forgets them (This Mac's, what's loaded here). A page the host can't
+  reach says why (the name unknown there, refused, no way there), and
+  one that failed for the host being away loads again once it's back.
+  (How: DESIGN.md §7.6, §11.)
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
   for actual size). PDFs show as Preview shows them: along the top the

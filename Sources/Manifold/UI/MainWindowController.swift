@@ -2603,6 +2603,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 open.submenu = stop
                 items.append(open)
             }
+            items.append(ClosureMenuItem("Clear Website Data for \(label)…", symbol: "trash") { [weak self] in self?.clearWebsiteData(host) })
             items.append(ClosureMenuItem("Reset Server on \(label)…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.resetServer(host) })
         }
         if hosts.client(host)?.isRemote == false {
@@ -2611,6 +2612,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if hosts.client(host)?.keepsEnvironment == true {
                 items.append(ClosureMenuItem("Add Environment Variable…", symbol: "dollarsign.square") { [weak self] in self?.addEnvironmentVariable(host) })
             }
+            items.append(ClosureMenuItem("Clear Website Data for \(label)…", symbol: "trash") { [weak self] in self?.clearWebsiteData(host) })
         }
         if ownRow {
             let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
@@ -2682,6 +2684,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.resetGraph(on: host) { [weak self] error in
             if let error { NSLog("reset graph on %@: %@", host.raw, error) }
             self?.refreshOrganization(now: true)
+        }
+    }
+
+    /// What pages loaded through a host keep (cookies and sign-ins, what
+    /// sites store, caches), or this Mac's pages, forgotten once asked —
+    /// it can't be undone — and those pages loaded again, signed out.
+    func clearWebsiteData(_ host: HostID) {
+        let label = hosts.label(of: host)
+        let through = hosts.client(host)?.isRemote == true ? host : nil
+        let alert = NSAlert()
+        alert.messageText = "Clear website data for \(label)?"
+        alert.informativeText = (through == nil
+            ? "Pages loaded from This Mac forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded through other hosts keep theirs."
+            : "Pages loaded through \(label) forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded from This Mac keep theirs.")
+            + " This can't be undone."
+        alert.addButton(withTitle: "Clear")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        WebStores.clear(through: through) { [weak self] in
+            guard let self else { return }
+            for case let w as WebView in self.views.values where w.through == through { w.reloadPage(nil) }
+            self.toast.show("Website data cleared for \(label)", action: "", for: 4) {}
         }
     }
 

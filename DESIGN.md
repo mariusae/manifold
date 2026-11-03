@@ -1609,7 +1609,8 @@ host's reason a while for the page to say (the name unknown there,
 refused, no way there). The bar's button before back says which way a
 page on another host loads, and loads it the other way (Load Through
 *host* in its menu): the page made again in a web view of the other
-store.
+store. Clear Website Data for a host (its menu's) empties its store —
+This Mac's, the default — once asked, and loads its pages again.
 
 ### 7.7 Shell notebook
 

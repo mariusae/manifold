@@ -22,8 +22,7 @@ enum WebStores {
         let proxy = client.proxy, host = client.host
         proxy.whenListening { port in
             guard let port, let p = NWEndpoint.Port(rawValue: UInt16(port)) else { return done(nil) }
-            let store = stores[host] ?? WKWebsiteDataStore(forIdentifier: identifier(of: host))
-            stores[host] = store
+            let store = made(host)
             // Set again only when it changed (the proxy listening anew).
             let key = "\(port) \(proxy.password)"
             if through[host] != key {
@@ -34,6 +33,31 @@ enum WebStores {
             }
             done(store)
         }
+    }
+
+    /// Everything pages loaded through a host keep — cookies and sign-ins,
+    /// what sites store, caches — forgotten; with no host, what pages
+    /// loaded from here keep (WebKit's default store).
+    static func clear(through host: HostID?, _ done: @escaping () -> Void) {
+        let store = host.map(made) ?? .default()
+        store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast, completionHandler: done)
+    }
+
+    /// The sites a store keeps anything of, for debugging.
+    static func sites(through host: HostID?, _ done: @escaping ([String]) -> Void) {
+        let store = host.map(made) ?? .default()
+        store.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { done($0.map(\.displayName).sorted()) }
+    }
+
+    /// A host's store, made if it isn't yet, and kept: each is made once,
+    /// its proxy set when a page first asks for it. (Whether one was ever
+    /// made isn't asked of WebKit: its list of them, asked before any web
+    /// view has been made, crashes.)
+    private static func made(_ host: HostID) -> WKWebsiteDataStore {
+        if let store = stores[host] { return store }
+        let store = WKWebsiteDataStore(forIdentifier: identifier(of: host))
+        stores[host] = store
+        return store
     }
 
     /// A store's id, from its host's: a UUID made of the id's hash.
