@@ -621,8 +621,10 @@ enum DebugControl {
             // "layerimage <path>": the surface as Core Animation draws it, its
             // own layers (the sheets) included; "layerimage <path> live": as
             // it shows this moment, part way through a transition.
-            let live = arg.hasSuffix(" live"), arg = live ? String(arg.dropLast(5)) : arg
-            guard let wc, let view = wc.debugSurface, let model = view.layer else { return "no surface" }
+            // "layerimage <path> sidebar": the sidebar's list instead, its rows as their layers hold them.
+            let side = arg.hasSuffix(" sidebar"), arg0 = side ? String(arg.dropLast(8)) : arg
+            let live = arg0.hasSuffix(" live"), arg = live ? String(arg0.dropLast(5)) : arg0
+            guard let wc, let view = side ? wc.debugOrganization : wc.debugSurface, let model = view.layer else { return "no surface" }
             let layer = live ? model.presentation() ?? model : model
             let scale = view.window?.backingScaleFactor ?? 2
             let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)

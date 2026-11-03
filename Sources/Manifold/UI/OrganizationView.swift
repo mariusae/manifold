@@ -1283,6 +1283,12 @@ final class OrgRowView: NSTableCellView {
         detailIcon.isHidden = true
         for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule] { addSubview(v) }
         rule.isHidden = true
+        // Its parts drawn into its own layer, not one layer each (those that
+        // move, the status glyph and a shimmering name, keep theirs): ten
+        // views a row, made and put in place as rows scroll into view, and
+        // the window's layer tree built again for each.
+        wantsLayer = true
+        canDrawSubviewsIntoLayer = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
