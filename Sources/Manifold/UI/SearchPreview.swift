@@ -70,8 +70,8 @@ final class SearchPreviewView: NSView {
     private var matches: [NSRange] = []
     static let titleHeight: CGFloat = 26
     /// The chosen hit's match: stronger than the others', and than its lit line.
-    static let currentMatch = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.62, blue: 0.15, alpha: 0.55),
-                                              NSColor(srgbRed: 0.85, green: 0.5, blue: 0.1, alpha: 0.6))
+    static let currentMatch = NSColor.themed { $0.found.current }
+    static let currentRing = NSColor.themed { $0.found.currentRing }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -373,7 +373,7 @@ final class PreviewTextView: NSTextView {
         r.origin.y += textContainerInset.height
         let path = NSBezierPath(roundedRect: r.insetBy(dx: -1.5, dy: -0.5), xRadius: 3, yRadius: 3)
         path.lineWidth = 1.5
-        NSColor.systemOrange.setStroke()
+        SearchPreviewView.currentRing.setStroke()
         path.stroke()
     }
 

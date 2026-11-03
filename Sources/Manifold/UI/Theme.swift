@@ -2,28 +2,30 @@ import AppKit
 import ManifoldCore
 
 enum Theme {
-    static let windowBackground = GhosttyRuntime.background
+    /// Each a colour of the theme in use (`Palette`), as it has it in the
+    /// light and in the dark.
+    static let windowBackground = NSColor.themed { $0.window }
     static let sidebarWidth: CGFloat = 232
     static let sidebarWidthRange: ClosedRange<CGFloat> = 180...480
     static let sidebarInset: CGFloat = 6
-    static let text = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.89, alpha: 1))
+    static let text = NSColor.themed { $0.text.primary }
     /// What's read and edited at length — an editor's, a preview's body —
     /// a step down from white in the dark, against glare over a long read.
-    static let bodyText = NSColor.dynamic(NSColor(white: 0.13, alpha: 1), NSColor(white: 0.86, alpha: 1))
+    static let bodyText = NSColor.themed { $0.text.body }
     /// Headings and bold in it: brighter, to do the work emphasis does.
-    static let strongText = NSColor.dynamic(NSColor(white: 0.08, alpha: 1), NSColor(white: 0.97, alpha: 1))
+    static let strongText = NSColor.themed { $0.text.strong }
     /// Each at least 4.5:1 on a panel or a card, in either appearance
     /// (WCAG AA for text this size): quieter, but read.
-    static let secondaryText = NSColor.dynamic(NSColor(white: 0.40, alpha: 1), NSColor(white: 0.68, alpha: 1))
+    static let secondaryText = NSColor.themed { $0.text.secondary }
     /// Quieter still: a hint, a note at a row's end.
-    static let tertiaryText = NSColor.dynamic(NSColor(white: 0.45, alpha: 1), NSColor(white: 0.62, alpha: 1))
-    static let hover = NSColor.dynamic(NSColor(white: 0, alpha: 0.055), NSColor(white: 1, alpha: 0.07))
-    static let selected = NSColor.dynamic(.white, NSColor(white: 1, alpha: 0.13))
+    static let tertiaryText = NSColor.themed { $0.text.tertiary }
+    static let hover = NSColor.themed { $0.chrome.hover }
+    static let selected = NSColor.themed { $0.chrome.selected }
     /// A selected row in a list: the tint, thin, so the row's own colors stay.
     static let selection = Tints.band
     /// The same, in a list without the keyboard.
     static let selectionInactive = Tints.bandInactive
-    static let divider = NSColor.dynamic(NSColor(white: 0, alpha: 0.1), NSColor(white: 1, alpha: 0.1))
+    static let divider = NSColor.themed { $0.chrome.divider }
     /// The app's tint (`Tints`).
     static let accent = Tints.accent
     /// A block that failed (§3.7).
@@ -33,35 +35,33 @@ enum Theme {
     /// A text in view mode, as go.dev's docs (the Go spec) set code: on
     /// their grey (#F8F8F8; #2D2D2D in the dark), in their text color
     /// (#202224; #F0F1F2), its line numbers in theirs (#999).
-    static let codePage = NSColor.dynamic(hex(0xF8F8F8), hex(0x2D2D2D))
-    static let codeText = NSColor.dynamic(hex(0x202224), hex(0xF0F1F2))
-    static let codeLineNumber = NSColor.dynamic(hex(0x999999), hex(0x848688))
+    static let codePage = NSColor.themed { $0.code.page }
+    static let codeText = NSColor.themed { $0.code.text }
+    static let codeLineNumber = NSColor.themed { $0.code.lineNumber }
 
     static func hex(_ v: Int) -> NSColor {
         NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
-    static let panel = NSColor.dynamic(NSColor(white: 0.995, alpha: 1), NSColor(white: 0.17, alpha: 1))
-    static let panelBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.12), NSColor(white: 1, alpha: 0.14))
+    static let panel = NSColor.themed { $0.chrome.panel }
+    static let panelBorder = NSColor.themed { $0.chrome.panelBorder }
     /// Over the window, behind the palette.
-    static let scrim = NSColor.dynamic(NSColor(white: 0.9, alpha: 0.35), NSColor(white: 0, alpha: 0.3))
+    static let scrim = NSColor.themed { $0.chrome.scrim }
     /// The sidebar card's edge.
-    static let cardBorder = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.1))
+    static let cardBorder = NSColor.themed { $0.chrome.cardBorder }
     /// The sidebar's resize handle.
-    static let handle = NSColor.dynamic(NSColor(white: 0, alpha: 0.22), NSColor(white: 1, alpha: 0.25))
+    static let handle = NSColor.themed { $0.chrome.handle }
     /// A scrubber's knob (§3.1), on no track of its own.
-    static let scrubberKnob = NSColor.dynamic(NSColor(white: 0, alpha: 0.14), NSColor(white: 1, alpha: 0.18))
+    static let scrubberKnob = NSColor.themed { $0.chrome.scrubberKnob }
     /// The hairline around sheets.
     static func sheetEdge(hovered: Bool) -> NSColor {
-        hovered ? .dynamic(NSColor(white: 0, alpha: 0.34), NSColor(white: 1, alpha: 0.34))
-            : .dynamic(NSColor(white: 0, alpha: 0.2), NSColor(white: 1, alpha: 0.16))
+        hovered ? sheetEdgeHovered : sheetEdge
     }
     /// A sheet beneath a stack's top, `level` deep: darker further down in
     /// light, lighter nearer the top in dark (as things nearer are lit) —
     /// apart from the backdrop and each other enough to be seen as cards.
-    static func sheet(level: Int) -> NSColor {
-        .dynamic(NSColor(white: 0.93 - CGFloat(level) * 0.045, alpha: 1),
-                 NSColor(white: 0.36 - CGFloat(level) * 0.05, alpha: 1))
-    }
+    static func sheet(level: Int) -> NSColor { .themed { $0.chrome.sheet(level) } }
+    private static let sheetEdge = NSColor.themed { $0.chrome.sheetEdge }
+    private static let sheetEdgeHovered = NSColor.themed { $0.chrome.sheetEdgeHovered }
 
     /// Each as plain as it can be and still say what it is: read at a
     /// bar's 10 points, where a symbol's small parts (a window round a
@@ -410,7 +410,7 @@ final class SelectionRowView: NSTableRowView {
     /// last. `quiet`: a row there to be read, not chosen (no hover).
     struct Panel: Equatable { var first = false; var last = false; var lead: CGFloat = 0; var quiet = false }
     var panel: Panel? { didSet { if panel != oldValue { needsDisplay = true } } }
-    private static let outlineColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28))
+    private static let outlineColor = NSColor.themed { $0.chrome.groupOutline }
     /// Told as the pointer comes and goes (a row with a twin lights it).
     var onHover: ((Bool) -> Void)?
     /// Lit as if hovered: the other row of the same thing is.

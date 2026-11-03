@@ -128,6 +128,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         web = PreviewWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
         selectionOwner.view = self
+        // Another theme: the page's colours, as it has them.
+        NotificationCenter.default.addObserver(forName: .manifoldPaletteChanged, object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.loaded else { return }
+            self.web.evaluateJavaScript(MarkdownPage.paletteScript)
+        }
         // A link to a block that's gone says so as the pointer comes onto it.
         handler.onHover = { [weak self] target in
             guard let self else { return }

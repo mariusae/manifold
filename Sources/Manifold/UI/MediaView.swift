@@ -504,8 +504,8 @@ extension MediaView: Searchable {
     /// A page is paper whatever the appearance: every match a strong
     /// yellow, the one gone to a blue — apart by hue and lightness both,
     /// for eyes that don't tell red from green.
-    static let pdfMatch = NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)
-    static let pdfCurrentMatch = NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7)
+    static var pdfMatch: NSColor { Palette.current.found.pdf.color }
+    static var pdfCurrentMatch: NSColor { Palette.current.found.pdfCurrent.color }
 
     fileprivate func showFound() {
         guard let p = pdfView else { return }

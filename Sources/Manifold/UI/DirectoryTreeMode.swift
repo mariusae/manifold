@@ -479,21 +479,22 @@ final class TreeCell: NSTableCellView {
     static func glyph(_ name: String) -> (symbol: String, color: NSColor) {
         let lower = name.lowercased()
         let ext = lower.pathExtension
-        if lower.hasPrefix(".git") { return ("arrow.triangle.branch", .systemOrange) }
+        let kinds = Palette.current.kinds
+        if lower.hasPrefix(".git") { return ("arrow.triangle.branch", kinds.git.color) }
         switch ext {
-        case "swift", "swiftinterface": return ("swift", .systemOrange)
-        case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", .systemGreen)
+        case "swift", "swiftinterface": return ("swift", kinds.swift.color)
+        case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", kinds.shell.color)
         case "md", "markdown", "txt", "rst", "org", "tex": return ("doc.text", Theme.secondaryText)
-        case "pdf": return ("doc.richtext", .systemRed)
-        case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "ico", "tiff", "bmp": return ("photo", .systemPurple)
-        case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", .systemYellow)
-        case "patch", "diff": return ("plus.forwardslash.minus", .systemGreen)
-        case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", .systemBrown)
-        case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", .systemPink)
-        case "mp4", "mov", "m4v", "webm": return ("film", .systemPink)
+        case "pdf": return ("doc.richtext", kinds.pdf.color)
+        case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "ico", "tiff", "bmp": return ("photo", kinds.image.color)
+        case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", kinds.data.color)
+        case "patch", "diff": return ("plus.forwardslash.minus", kinds.patch.color)
+        case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", kinds.archive.color)
+        case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", kinds.media.color)
+        case "mp4", "mov", "m4v", "webm": return ("film", kinds.media.color)
         default:
             // Code: whatever the one table (`CodeLanguage`) has as a language.
-            if CodeLanguage.forPath(lower)?.kind == .language { return ("chevron.left.forwardslash.chevron.right", .systemBlue) }
+            if CodeLanguage.forPath(lower)?.kind == .language { return ("chevron.left.forwardslash.chevron.right", kinds.code.color) }
             if ["makefile", "dockerfile", "package.swift", "license", "readme"].contains(lower) { return ("doc.text", Theme.secondaryText) }
             return ("doc", Theme.secondaryText)
         }

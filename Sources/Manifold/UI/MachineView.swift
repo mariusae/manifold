@@ -7,12 +7,12 @@ import ManifoldCore
 /// light and dark: blue the first series (busy, in, read, used), orange
 /// the second (out, written), aqua the third (cached).
 enum MachineInk {
-    static let one = NSColor.dynamic(Theme.hex(0x2A78D6), Theme.hex(0x3987E5))
-    static let two = NSColor.dynamic(Theme.hex(0xEB6834), Theme.hex(0xD95926))
-    static let three = NSColor.dynamic(Theme.hex(0x1BAF7A), Theme.hex(0x199E70))
-    static let track = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.09))
-    static let surface = NSColor.dynamic(NSColor(white: 0, alpha: 0.025), NSColor(white: 1, alpha: 0.035))
-    static let grid = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.08))
+    static let one = NSColor.themed { $0.chart.one }
+    static let two = NSColor.themed { $0.chart.two }
+    static let three = NSColor.themed { $0.chart.three }
+    static let track = NSColor.themed { $0.chart.track }
+    static let surface = NSColor.themed { $0.chart.surface }
+    static let grid = NSColor.themed { $0.chart.grid }
 }
 
 /// How the machine's numbers read.

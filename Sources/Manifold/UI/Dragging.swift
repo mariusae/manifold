@@ -712,7 +712,7 @@ final class DropPalette: NSView {
     private static var dressed: (sequence: Int, thing: DragThing?, appearance: NSAppearance, worn: String?)?
     /// Its ground: raised off the window's, light or dark, so it stands out
     /// over a page, a terminal, a list.
-    static let fill = NSColor.dynamic(NSColor(white: 1, alpha: 1), NSColor(white: 0.3, alpha: 1))
+    static let fill = NSColor.themed { $0.chrome.dragPill }
 
     /// The things a drag from `view` carries (begun at `screenPoint`)
     /// dressed as pills. What isn't a thing (a tile moved) keeps its look.

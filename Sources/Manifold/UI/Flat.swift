@@ -19,7 +19,7 @@ enum Flat {
     static var hovered: NSColor { Theme.hover }
     /// Pressed: the hover's grey, deeper — not the tint, which is for
     /// what's chosen (a grey button pressed doesn't flash blue).
-    static let pressed = NSColor.dynamic(NSColor(white: 0, alpha: 0.11), NSColor(white: 1, alpha: 0.14))
+    static let pressed = NSColor.themed { $0.chrome.pressed }
 
     /// A panel floating over the window: rounded, a hairline round it, and
     /// one soft shadow — the same for every one (but one in a window of its

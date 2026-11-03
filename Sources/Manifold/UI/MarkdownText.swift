@@ -8,8 +8,8 @@ import AppKit
 enum MarkdownText {
     /// The preview's reading colours (`MarkdownPage`): the body a step
     /// down from white in the dark, headings and bold brighter.
-    static let readingBody = NSColor.dynamic(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xdb / 255, alpha: 1))
-    static let readingStrong = NSColor.dynamic(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xf7 / 255, alpha: 1))
+    static let readingBody = NSColor.themed { $0.text.readingBody }
+    static let readingStrong = NSColor.themed { $0.text.readingStrong }
 
     /// `strong`: headings' and bold's colour (else `color`); `lineHeight`:
     /// lines as a multiple of the font's own (0, its own); `tracking`:

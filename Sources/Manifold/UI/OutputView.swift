@@ -228,28 +228,54 @@ extension OutputView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) { done(textSearch.selectedText) }
 }
 
-/// The terminal's colours, as Ghostty is set up with them (§7.2): Paper
-/// and GitHub's palettes, light and dark.
+/// A terminal's colours in one appearance (§7.2), as the theme in use has
+/// them (`Palette.terminal`): Ghostty is set up with them, and a command's
+/// output, a notebook's cells drawn in them.
 struct TerminalPalette {
+    /// Each as `#rrggbb`, as Ghostty's config takes it.
+    var backgroundHex: String
+    var foregroundHex: String
+    var cursorHex: String
+    var selectionBackgroundHex: String
+    var selectionForegroundHex: String
+    var ansiHex: [String]
+
     var background: NSColor
     var foreground: NSColor
+    /// The sixteen: black, red, green, yellow, blue, magenta, cyan, white, then bright.
     var ansi: [NSColor]
 
-    static func current(for view: NSView) -> TerminalPalette {
-        view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+    init(background: String, foreground: String, cursor: String, selectionBackground: String, selectionForeground: String, ansi: [String]) {
+        backgroundHex = background
+        foregroundHex = foreground
+        cursorHex = cursor
+        selectionBackgroundHex = selectionBackground
+        selectionForegroundHex = selectionForeground
+        ansiHex = ansi
+        self.background = Self.hex(background)
+        self.foreground = Self.hex(foreground)
+        self.ansi = ansi.map(Self.hex)
     }
 
-    private static func hex(_ s: String) -> NSColor {
+    static func current(for view: NSView) -> TerminalPalette {
+        current(dark: view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+    }
+
+    static func current(dark: Bool) -> TerminalPalette {
+        dark ? Palette.current.terminal.dark : Palette.current.terminal.light
+    }
+
+    /// As lines of Ghostty's config.
+    var config: String {
+        (["background = \(backgroundHex)", "foreground = \(foregroundHex)", "cursor-color = \(cursorHex)",
+          "selection-background = \(selectionBackgroundHex)", "selection-foreground = \(selectionForegroundHex)"]
+            + ansiHex.enumerated().map { "palette = \($0.offset)=\($0.element)" }).joined(separator: "\n")
+    }
+
+    static func hex(_ s: String) -> NSColor {
         let v = Int(s.dropFirst(), radix: 16) ?? 0
         return NSColor(srgbRed: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: 1)
     }
-
-    static let light = TerminalPalette(background: hex("#fcfcfb"), foreground: hex("#24292f"), ansi: [
-        "#24292f", "#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
-        "#57606a", "#a40e26", "#1a7f37", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"].map(hex))
-    static let dark = TerminalPalette(background: hex("#1c1c1b"), foreground: hex("#e3e3df"), ansi: [
-        "#484f58", "#ff7b72", "#3fb950", "#d29922", "#58a6ff", "#bc8cff", "#39c5cf", "#b1bac4",
-        "#6e7681", "#ffa198", "#56d364", "#e3b341", "#79c0ff", "#d2a8ff", "#56d4dd", "#f0f6fc"].map(hex))
 
     /// A 256-colour index: the sixteen, the 6×6×6 cube, the greys.
     func color(_ n: Int) -> NSColor {

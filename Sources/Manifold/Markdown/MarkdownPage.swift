@@ -267,18 +267,26 @@ enum MarkdownPage {
         return "document.documentElement.style.cssText = \(json);"
     }
 
+    /// Script that sets the page in the theme's colours.
+    static var paletteScript: String {
+        let data = try! JSONSerialization.data(withJSONObject: [Palette.current.page.css])
+        let json = String(decoding: data, as: UTF8.self).dropFirst().dropLast()
+        return "document.getElementById('palette').textContent = \(json);"
+    }
+
     private static var html: String {
         """
         <!doctype html>
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
         :root { color-scheme: light dark; \(themeVariables(.apple)) }
+        </style><style id="palette">\(Palette.current.page.css)</style><style>
         /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
            spacing and its links; the theme's fonts for its text and its
            code (Menlo where a theme has none of its own). */
-        html { background: #ffffff; }
+        html { background: var(--page-background); }
         body {
-          margin: 0; color: #202224;
+          margin: 0; color: var(--page-text);
           font: var(--read-weight, 400) var(--read-size, 16px)/var(--read-leading, 1.4) var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
           font-feature-settings: var(--sans-features); letter-spacing: var(--read-tracking, normal);
           -webkit-font-smoothing: antialiased; word-wrap: break-word;
@@ -286,7 +294,7 @@ enum MarkdownPage {
         main { max-width: var(--read-measure, 75.75rem); margin: 0 auto; padding: 1.5rem 1.5rem 96px; }
         main > :first-child { margin-top: 0; }
         strong, b { font-weight: var(--read-bold, bolder); }
-        h1, h2, h3, h4, h5, h6 { font-weight: var(--read-heading, 700); line-height: 1.25; margin: 1.25rem 0 0.75rem; color: #202224; }
+        h1, h2, h3, h4, h5, h6 { font-weight: var(--read-heading, 700); line-height: 1.25; margin: 1.25rem 0 0.75rem; color: var(--page-strong); }
         h1 { font-size: 2.25rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.125rem; }
         h4, h5, h6 { font-size: 1rem; }
         p, ul, ol, blockquote, pre, table, details { margin: var(--read-gap, 1rem) 0; }
@@ -305,61 +313,47 @@ enum MarkdownPage {
         .mcard-head img { width: 1.05em; height: 1.05em; flex: none; }
         .mcard-title { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mcard-note { flex: none; opacity: 0.6; font-size: 0.92em; }
-        .mcard-note.failed { color: #d6453d; opacity: 1; } .mcard-note.running { color: #2f8fdd; opacity: 1; } .mcard-note.attention { color: #d68a1d; opacity: 1; }
+        .mcard-note.failed { color: var(--page-failed); opacity: 1; } .mcard-note.running { color: var(--page-running); opacity: 1; } .mcard-note.attention { color: var(--page-attention); opacity: 1; }
         .mcard-place, .mcard-line { opacity: 0.68; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mcard-line.code { font-family: var(--mono), Menlo, monospace; font-size: 0.9em; }
         .mcard-thumb { width: 5.5em; max-height: 5.5em; border-radius: 5px; object-fit: cover; flex: none; }
-        a { color: #007d9c; text-decoration: none; } a:hover { text-decoration: underline; }
+        a { color: var(--page-link); text-decoration: none; } a:hover { text-decoration: underline; }
         code, pre, kbd, samp {
           font-family: var(--mono), Menlo, monospace; font-size: calc(0.83rem * var(--mono-scale, 1));
           font-feature-settings: var(--mono-features); font-weight: var(--mono-weight, 400); letter-spacing: var(--mono-tracking, normal);
         }
         :not(pre) > code { font-size: 0.9em; }
-        pre { background: #f8f8f8; color: #202224; padding: 0.5rem 1.75rem; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
+        pre { background: var(--page-code); color: var(--page-code-text); padding: 0.5rem 1.75rem; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
         pre code { font-size: 1em; background: none; padding: 0; }
         .codeblock { position: relative; margin: 1em 0; }
         .codeblock > pre { margin: 0; }
         .copy {
           position: absolute; top: 6px; right: 6px; width: 26px; height: 26px;
           display: flex; align-items: center; justify-content: center;
-          border: 1px solid #e1e4e8; border-radius: 6px; background: #ffffff; color: #6e7781;
+          border: 1px solid var(--page-copy-edge); border-radius: 6px; background: var(--page-copy); color: var(--page-copy-text);
           cursor: pointer; opacity: 0; transition: opacity 0.12s; user-select: none; -webkit-user-select: none; padding: 0;
         }
         .codeblock:hover .copy, .copy.done { opacity: 1; }
         .diagram { margin: var(--read-gap, 1rem) 0; text-align: center; overflow-x: auto; }
         .diagram svg { max-width: 100%; height: auto; }
-        .diagram-error { margin-top: 0.4em; font-size: 0.85em; color: #a40e26; }
-        .copy:hover { color: #202224; border-color: #c8ccd1; }
-        .copy.done { color: #1a7f37; }
-        blockquote { margin-left: 0; padding: 0 1em; color: #57606a; border-left: 3px solid #d8dbe0; }
+        .diagram-error { margin-top: 0.4em; font-size: 0.85em; color: var(--page-diagram-error); }
+        .copy:hover { color: var(--page-copy-hover-text); border-color: var(--page-copy-hover-edge); }
+        .copy.done { color: var(--page-copy-done); }
+        blockquote { margin-left: 0; padding: 0 1em; color: var(--page-quote); border-left: 3px solid var(--page-quote-rule); }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
-        th, td { border: 1px solid #e1e4e8; padding: 6px 12px; } th { font-weight: 600; background: #f6f6f4; }
-        tr:nth-child(2n) td { background: #f9f9f7; }
+        th, td { border: 1px solid var(--page-rule); padding: 6px 12px; } th { font-weight: 600; background: var(--page-table-head); }
+        tr:nth-child(2n) td { background: var(--page-table-stripe); }
         img { max-width: 100%; }
-        hr { border: 0; border-top: 1px solid #e1e4e8; margin: 1.6em 0; }
-        del { color: #6e7781; }
-        .footnotes { font-size: 0.9em; color: #57606a; }
-        .missing { color: #a40e26; }
-        ::selection { background: #cfe2fb; }
+        hr { border: 0; border-top: 1px solid var(--page-rule); margin: 1.6em 0; }
+        del { color: var(--page-struck); }
+        .footnotes { font-size: 0.9em; color: var(--page-quote); }
+        .missing { color: var(--page-missing); }
+        ::selection { background: var(--page-selection); }
+        /* In the dark (the colours above its own there): the body a step
+           down from white, against glare over a long read; headings and
+           bold brighter, to do emphasis's work. */
         @media (prefers-color-scheme: dark) {
-          html { background: #202224; }
-          /* The body a step down from white, against glare over a long
-             read; headings and bold brighter, to do emphasis's work. */
-          body { color: #dbdbdb; }
-          h1, h2, h3, h4, h5, h6, strong, b { color: #f7f7f7; }
-          blockquote, .footnotes { color: #9d9d98; }
-          a { color: #50b7e0; }
-          pre { background: #2d2d2d; color: #f0f1f2; }
-          .copy { background: #383838; border-color: #4a4a4a; color: #a8a8a8; }
-          .copy:hover { color: #f0f1f2; border-color: #5a5a5a; }
-          .copy.done { color: #56d364; }
-          blockquote { border-left-color: #444441; }
-          th, td { border-color: #3a3a38; } th { background: #262625; }
-          tr:nth-child(2n) td { background: #212120; }
-          hr { border-top-color: #3a3a38; }
-          del { color: #8b8b86; }
-          .missing { color: #ff7b72; }
-          ::selection { background: #264f78; }
+          strong, b { color: var(--page-strong); }
         }
         </style></head>
         <body><main id="content"></main></body></html>

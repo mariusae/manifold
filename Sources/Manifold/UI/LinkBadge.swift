@@ -466,7 +466,7 @@ final class LinkBadge: NSView {
         }
         /// The greys behind the front face: darker than its fill, light or dark.
         private static func behind(_ depth: Int) -> NSColor {
-            .dynamic(NSColor(white: 0.95 - CGFloat(depth) * 0.03, alpha: 1), NSColor(white: 0.16 - CGFloat(depth) * 0.015, alpha: 1))
+            .themed { $0.chrome.linkBehind(depth) }
         }
         var hovered = false {
             didSet {

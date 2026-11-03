@@ -88,7 +88,7 @@ final class SummaryCard: NSView {
 
     override var isFlipped: Bool { true }
 
-    static let fill = NSColor.dynamic(NSColor(white: 0.995, alpha: 1), NSColor(white: 0.2, alpha: 1))
+    static let fill = NSColor.themed { $0.chrome.stack }
 
     private func toneColor(_ tone: BlockSummary.Tone) -> NSColor {
         switch tone {

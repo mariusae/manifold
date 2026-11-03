@@ -2045,6 +2045,37 @@ a **Pill** for counts and
 ages; one row band (Flat.rowBand) for every list. Text is at least 4.5:1
 on a panel or a card in either appearance.
 
+### Themes
+
+Every colour Manifold draws its own things in is a theme's
+(`Palette`, Palette.swift): each role a **Shade**, one colour in the
+light and one in the dark — the chrome's grounds, washes and edges, the
+texts' greys, the status colours, each tint's accent, caret and text
+selection (the System tint stays the system's), code (its page, the
+caret's line, matches, uses, Highlight Uses' pins, the gutter's change
+marks, diagnostics, `==highlight==`), diffs, what search found (a PDF's
+matches too), a machine's charts, the colours that tell kinds apart (a
+file's type, a link's), a terminal's palette in each appearance (its
+paper, text, caret, selection and sixteen colours), and the preview's
+page. One is in use (`Palette.current`), and what draws asks it as it
+draws: the named colours (`Theme.text`, `Status.failed`,
+`TextView.addedColor`…) are each one object (`NSColor.themed`) whose
+colour is the current theme's in the appearance it's drawn in, so a
+theme set (`Palette.apply`) recolours everything as switching light and
+dark does — drawn again, what layers hold set again by their theme hooks
+— and the terminals are configured again: Ghostty's colours are written
+from the theme (`TerminalPalette.config`), and a command's output and a
+notebook's cells are drawn in the same. The preview's page takes the
+theme's as CSS variables (`--page-text`, `--page-link`…, light and
+under `prefers-color-scheme: dark`), set again in an open page when the
+theme changes. There is one, **Paper**, Manifold's look as it was before
+there were themes, to the value: debug `colordump <path>` writes every
+named colour in both appearances and the terminal's config, compared
+with the build before. What isn't a theme's: the backdrop, made from its
+own settings (the tint's pool of light, its hue); a language's colour in
+a project's bar (the code hosts'); masks and shadows (black or white at
+an alpha); the page's neutral greys, which read on either ground.
+
 ---
 
 ## 12. Deliberate departures

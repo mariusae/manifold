@@ -21,43 +21,18 @@ extension Tint {
         }
     }
 
-    /// The tint itself: lines, fills, symbols.
-    var accent: NSColor {
-        switch self {
-        case .system: .controlAccentColor
-        case .blue: Theme.hex(0x3373F2)
-        // Overcast's orange (#FC7E0F) in the dark; deeper in the light.
-        case .orange: .dynamic(Theme.hex(0xE36A00), Theme.hex(0xFC7E0F))
-        case .purple: .dynamic(Theme.hex(0x9550D6), Theme.hex(0xBF7AF0))
-        case .pink: .dynamic(Theme.hex(0xDC3F78), Theme.hex(0xFF6B9C))
-        case .green: .dynamic(Theme.hex(0x2A9A4A), Theme.hex(0x3FCB68))
-        case .graphite: .dynamic(Theme.hex(0x6E6E73), Theme.hex(0x98989D))
-        }
-    }
+    /// The tint itself: lines, fills, symbols — the theme's, but the
+    /// system's own.
+    var accent: NSColor { self == .system ? .controlAccentColor : themed?.accent.color ?? .controlAccentColor }
 
     /// An editor's and a terminal's caret.
-    var caret: NSColor {
-        switch self {
-        case .system: .controlAccentColor
-        case .blue: .dynamic(Theme.hex(0x007AFF), Theme.hex(0x0A84FF))
-        case .orange: .dynamic(Theme.hex(0xEB7300), Theme.hex(0xFF8A26))
-        case .graphite: .dynamic(Theme.hex(0x48484D), Theme.hex(0xC7C7CC))
-        default: accent
-        }
-    }
+    var caret: NSColor { self == .system ? .controlAccentColor : themed?.caret.color ?? accent }
 
     /// Selected text, behind it: a soft, opaque wash of the tint.
-    var textSelection: NSColor {
-        switch self {
-        case .system: .selectedTextBackgroundColor
-        case .blue: .dynamic(Theme.hex(0xCFE2FB), Theme.hex(0x264F78))
-        case .orange: .dynamic(Theme.hex(0xFDE1C4), Theme.hex(0x6E3D12))
-        case .purple: .dynamic(Theme.hex(0xEADCF8), Theme.hex(0x4B2F68))
-        case .pink: .dynamic(Theme.hex(0xFADAE6), Theme.hex(0x6B2B43))
-        case .green: .dynamic(Theme.hex(0xD5EFDC), Theme.hex(0x25512F))
-        case .graphite: .dynamic(Theme.hex(0xE1E1E4), Theme.hex(0x4A4A4E))
-        }
-    }
+    var textSelection: NSColor { self == .system ? .selectedTextBackgroundColor : themed?.textSelection.color ?? .selectedTextBackgroundColor }
+
+    /// Its colours in the theme in use.
+    private var themed: Palette.TintColors? { Palette.current.tints[self] }
 
     /// A chosen row: the tint, thin, over the row — its own colors show
     /// through. `active`: the list has the keyboard.

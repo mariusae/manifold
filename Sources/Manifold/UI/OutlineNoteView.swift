@@ -577,10 +577,7 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
     private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + BlockID.referencePattern)
 
     /// `==text==`'s ground: a highlighter's yellow, the text reading through it.
-    static let highlighter = NSColor(name: "noteHighlighter") { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor.systemYellow.withAlphaComponent(0.32) : NSColor(srgbRed: 1, green: 0.86, blue: 0.3, alpha: 0.55)
-    }
+    static let highlighter = NSColor.themed { $0.code.highlighter }
 
     private func dimFences(_ storage: NSTextStorage, in paragraph: NSRange) {
         let text = storage.string as NSString

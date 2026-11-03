@@ -7,9 +7,9 @@ enum Status {
     static let running = Tints.accent
     /// Running, as words: the tint, deep enough to read.
     static let runningText = Tints.accentText
-    static let done = NSColor.dynamic(NSColor(srgbRed: 0.10, green: 0.50, blue: 0.22, alpha: 1), NSColor(srgbRed: 0.35, green: 0.80, blue: 0.45, alpha: 1))
-    static let attention = NSColor.dynamic(NSColor(srgbRed: 0.66, green: 0.38, blue: 0.0, alpha: 1), NSColor(srgbRed: 0.95, green: 0.70, blue: 0.32, alpha: 1))
-    static let failed = NSColor.dynamic(NSColor(srgbRed: 0.76, green: 0.15, blue: 0.12, alpha: 1), NSColor(srgbRed: 1.0, green: 0.42, blue: 0.38, alpha: 1))
+    static let done = NSColor.themed { $0.status.done }
+    static let attention = NSColor.themed { $0.status.attention }
+    static let failed = NSColor.themed { $0.status.failed }
     static let offline = Theme.secondaryText
 }
 
@@ -135,7 +135,7 @@ enum LinkCapsule {
 enum Pill {
     static let height: CGFloat = 16
     static let font = UIType.count
-    static let ground = NSColor.dynamic(NSColor(white: 0, alpha: 0.07), NSColor(white: 1, alpha: 0.1))
+    static let ground = NSColor.themed { $0.chrome.pill }
 
     static func size(_ text: String) -> NSSize {
         NSSize(width: max(20, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 12), height: height)

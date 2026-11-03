@@ -176,9 +176,8 @@ final class ArrangementDiagram: NSView {
     override func draw(_ dirtyRect: NSRect) {
         // The workspace as the window shows it: cards on a wash.
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let stops = dark
-            ? [NSColor(calibratedHue: 0.70, saturation: 0.35, brightness: 0.22, alpha: 1), NSColor(calibratedHue: 0.06, saturation: 0.3, brightness: 0.2, alpha: 1)]
-            : [NSColor(calibratedHue: 0.72, saturation: 0.18, brightness: 0.98, alpha: 1), NSColor(calibratedHue: 0.07, saturation: 0.18, brightness: 1, alpha: 1)]
+        let wash = Palette.current.chrome.historyWash
+        let stops = [wash.from.color(dark: dark), wash.to.color(dark: dark)]
         NSGraphicsContext.current?.saveGraphicsState()
         NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).addClip()
         NSGradient(starting: stops[0], ending: stops[1])?.draw(in: bounds, angle: -35)

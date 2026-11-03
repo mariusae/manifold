@@ -93,9 +93,8 @@ final class TextView: NSView, NSTextInputClient {
     /// chosen row's, so every eye sees it. A terminal's links have it too.
     /// A run that glows in its color (a link ⌘ shows), drawn under it.
     static let glows = NSAttributedString.Key("ManifoldGlows")
-    static let linkHover = NSColor.dynamic(NSColor(white: 0, alpha: 0.08), NSColor(white: 1, alpha: 0.13))
-    static let linkColor = NSColor.dynamic(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
-                                           NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1))
+    static let linkHover = NSColor.themed { $0.code.linkHover }
+    static let linkColor = NSColor.themed { $0.code.link }
     /// The line numbers' color (go.dev's for its listings, in view mode).
     var gutterColor = TextView.gutterText { didSet { if gutterColor != oldValue { needsDisplay = true } } }
     var showsLineNumbers = true { didSet { if showsLineNumbers != oldValue { invalidateAll() } } }
@@ -987,13 +986,11 @@ final class TextView: NSView, NSTextInputClient {
     /// Selected text and the caret, in the app's tint.
     static let selectionColor = Tints.textSelection
     static let caretColor = Tints.caret
-    static let lineHighlight = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1),
-                                               NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1))
-    static let gutterText = NSColor.dynamic(NSColor(white: 0.62, alpha: 1), NSColor(white: 0.42, alpha: 1))
+    static let lineHighlight = NSColor.themed { $0.code.lineHighlight }
+    static let gutterText = NSColor.themed { $0.code.gutterText }
     /// The caret's symbol's other uses: a faint ground, under a match's.
-    static let useColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.075), NSColor(white: 1, alpha: 0.1))
-    static let matchColor = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.9, blue: 0.5, alpha: 0.7),
-                                            NSColor(srgbRed: 0.5, green: 0.42, blue: 0.1, alpha: 0.8))
+    static let useColor = NSColor.themed { $0.code.use }
+    static let matchColor = NSColor.themed { $0.code.match }
 
     /// A block's pill over its link's run (§7): the symbol, name and
     /// status its tile's pill shows, at the row's height.
@@ -1227,15 +1224,16 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
 
-    static let addedColor = NSColor.dynamic(NSColor(srgbRed: 0.3, green: 0.72, blue: 0.4, alpha: 1), NSColor(srgbRed: 0.4, green: 0.8, blue: 0.5, alpha: 1))
-    static let modifiedColor = NSColor.dynamic(NSColor(srgbRed: 0.35, green: 0.6, blue: 0.95, alpha: 1), NSColor(srgbRed: 0.45, green: 0.65, blue: 1, alpha: 1))
-    static let deletedColor = NSColor.dynamic(NSColor(srgbRed: 0.9, green: 0.35, blue: 0.35, alpha: 1), NSColor(srgbRed: 1, green: 0.45, blue: 0.45, alpha: 1))
+    static let addedColor = NSColor.themed { $0.code.added }
+    static let modifiedColor = NSColor.themed { $0.code.modified }
+    static let deletedColor = NSColor.themed { $0.code.deleted }
 
     static func diagnosticColor(_ severity: Int) -> NSColor {
+        let code = Palette.current.code
         switch severity {
-        case 1: return NSColor.systemRed
-        case 2: return NSColor.systemOrange
-        default: return NSColor.systemBlue.withAlphaComponent(0.6)
+        case 1: return code.error.color
+        case 2: return code.warning.color
+        default: return code.hint.color
         }
     }
 
@@ -1815,12 +1813,9 @@ final class TextView: NSView, NSTextInputClient {
         var at: Int
         var uses: [TextRange]?
     }
-    static let pinColors: [NSColor] = [
-        NSColor.dynamic(NSColor(srgbRed: 0.2, green: 0.7, blue: 0.7, alpha: 0.28), NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 0.35)),
-        NSColor.dynamic(NSColor(srgbRed: 0.95, green: 0.7, blue: 0.2, alpha: 0.32), NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 0.35)),
-        NSColor.dynamic(NSColor(srgbRed: 0.6, green: 0.45, blue: 0.95, alpha: 0.28), NSColor(srgbRed: 0.65, green: 0.5, blue: 1, alpha: 0.35)),
-        NSColor.dynamic(NSColor(srgbRed: 0.95, green: 0.4, blue: 0.55, alpha: 0.26), NSColor(srgbRed: 1, green: 0.45, blue: 0.6, alpha: 0.33)),
-    ]
+    static let pinColors: [NSColor] = Palette.current.code.pins.indices.map { i in
+        NSColor.themed { $0.code.pins[i % $0.code.pins.count] }
+    }
 
     /// Highlight Uses (⌃⌘E): the caret's symbol's uses pinned in the next
     /// colour; again on a pinned one, unpinned.

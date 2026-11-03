@@ -10,60 +10,6 @@ final class GhosttyRuntime {
     private(set) var app: ghostty_app_t?
     private var config: ghostty_config_t?
 
-    static let background = NSColor.dynamic(
-        NSColor(srgbRed: 0xfc / 255, green: 0xfc / 255, blue: 0xfb / 255, alpha: 1),
-        NSColor(srgbRed: 0x1c / 255, green: 0x1c / 255, blue: 0x1b / 255, alpha: 1))
-
-    /// Paper, and GitHub's light palette.
-    private static let lightColors = """
-        background = #fcfcfb
-        foreground = #24292f
-        cursor-color = #007aff
-        selection-background = #cfe2fb
-        selection-foreground = #1f2328
-        palette = 0=#24292f
-        palette = 1=#cf222e
-        palette = 2=#116329
-        palette = 3=#4d2d00
-        palette = 4=#0969da
-        palette = 5=#8250df
-        palette = 6=#1b7c83
-        palette = 7=#6e7781
-        palette = 8=#57606a
-        palette = 9=#a40e26
-        palette = 10=#1a7f37
-        palette = 11=#633c01
-        palette = 12=#218bff
-        palette = 13=#a475f9
-        palette = 14=#3192aa
-        palette = 15=#8c959f
-        """
-
-    /// The same paper, unlit, and GitHub's dark palette.
-    private static let darkColors = """
-        background = #1c1c1b
-        foreground = #e3e3df
-        cursor-color = #0a84ff
-        selection-background = #264f78
-        selection-foreground = #f0f0ee
-        palette = 0=#484f58
-        palette = 1=#ff7b72
-        palette = 2=#3fb950
-        palette = 3=#d29922
-        palette = 4=#58a6ff
-        palette = 5=#bc8cff
-        palette = 6=#39c5cf
-        palette = 7=#b1bac4
-        palette = 8=#6e7681
-        palette = 9=#ffa198
-        palette = 10=#56d364
-        palette = 11=#e3b341
-        palette = 12=#79c0ff
-        palette = 13=#d2a8ff
-        palette = 14=#56d4dd
-        palette = 15=#f0f6fc
-        """
-
     private static let baseConfig = """
         font-size = 13
         font-thicken = false
@@ -87,6 +33,8 @@ final class GhosttyRuntime {
         link-url = false
         """
 
+    static func debugConfigText(dark: Bool) -> String { configText(shared.appearance, dark: dark) }
+
     private static func configText(_ appearance: Appearance, dark: Bool) -> String {
         let mode = switch appearance.contrastCorrection {
         case .off: "none"
@@ -95,7 +43,7 @@ final class GhosttyRuntime {
         }
         // The caret and selection in the app's tint, over the palette's.
         let tint = "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
-        return baseConfig + "\n" + (dark ? darkColors : lightColors) + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\n"
+        return baseConfig + "\n" + TerminalPalette.current(dark: dark).config + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\n"
     }
 
     private static func makeConfig(_ appearance: Appearance, dark: Bool) -> ghostty_config_t? {

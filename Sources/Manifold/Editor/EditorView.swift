@@ -1093,8 +1093,7 @@ final class EditorBanner: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         themed {
-            $0.layer?.backgroundColor = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.97, blue: 0.86, alpha: 1),
-                                                        NSColor(srgbRed: 0.27, green: 0.24, blue: 0.13, alpha: 1)).cgColor
+            $0.layer?.backgroundColor = NSColor.themed { $0.code.changedOnDisk }.cgColor
         }
         label.font = .systemFont(ofSize: 12.5)
         label.textColor = Theme.text

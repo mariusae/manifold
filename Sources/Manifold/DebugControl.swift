@@ -1069,6 +1069,10 @@ enum DebugControl {
             return wc?.debugGitView(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
+        case "colordump":
+            // "colordump <path>": every named colour and the terminal's config, written there.
+            try? MainActor.assumeIsolated { ColorDump.run() }.write(toFile: arg, atomically: true, encoding: .utf8)
+            return "wrote \(arg)"
         case "layouts":
             // Grid layouts, backdrop drawings, since asked last.
             defer { GridView.layouts = 0; BackdropView.draws = 0 }

@@ -126,7 +126,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         let well = NSView()
         well.wantsLayer = true
         well.layer?.cornerRadius = 7
-        well.themed { v in v.layer?.backgroundColor = NSColor.dynamic(NSColor(white: 0, alpha: 0.06), NSColor(white: 1, alpha: 0.09)).cgColor }
+        well.themed { v in v.layer?.backgroundColor = NSColor.themed { $0.chrome.well }.cgColor }
         well.identifier = .init("well")
         ground.addSubview(well)
         glass.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?

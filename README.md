@@ -1557,6 +1557,10 @@ and selected text in editors and terminals, and one of the backdrop's
 pools of light. Each is set for light and for dark (in the light, deep
 enough to read as a thin line on white). Colors that say something keep
 their own: links, find matches, status, diffs, a terminal's palette.
+Every color is a **theme**'s — the chrome, the texts, the tints, the
+colors that say something, a terminal's palette in light and dark, the
+preview's page — so a theme recolors all of it at once. There's one so
+far, Paper: Manifold's look.
 
 ## Host and app
 

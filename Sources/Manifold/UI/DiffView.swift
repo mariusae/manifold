@@ -342,8 +342,8 @@ final class DiffRowsView: NSView {
         return NSRect(x: 0, y: CGFloat(line) * rowHeight, width: bounds.width, height: rowHeight)
     }
 
-    static let foundBackground = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.95, blue: 0.6, alpha: 1), NSColor(srgbRed: 0.45, green: 0.4, blue: 0.1, alpha: 1))
-    static let currentBackground = NSColor.dynamic(NSColor(srgbRed: 1, green: 0.85, blue: 0.3, alpha: 1), NSColor(srgbRed: 0.7, green: 0.55, blue: 0.1, alpha: 1))
+    static let foundBackground = NSColor.themed { $0.diff.found }
+    static let currentBackground = NSColor.themed { $0.diff.current }
 
     private var lineCount: Int { sideBySide ? pairs.count : rows.count }
 
@@ -371,9 +371,9 @@ final class DiffRowsView: NSView {
         return nil
     }
 
-    static let addedBackground = NSColor.dynamic(NSColor(srgbRed: 0.86, green: 0.96, blue: 0.87, alpha: 1), NSColor(srgbRed: 0.13, green: 0.26, blue: 0.16, alpha: 1))
-    static let removedBackground = NSColor.dynamic(NSColor(srgbRed: 0.99, green: 0.88, blue: 0.88, alpha: 1), NSColor(srgbRed: 0.3, green: 0.14, blue: 0.14, alpha: 1))
-    static let hunkBackground = NSColor.dynamic(NSColor(srgbRed: 0.91, green: 0.94, blue: 0.99, alpha: 1), NSColor(srgbRed: 0.15, green: 0.19, blue: 0.27, alpha: 1))
+    static let addedBackground = NSColor.themed { $0.diff.added }
+    static let removedBackground = NSColor.themed { $0.diff.removed }
+    static let hunkBackground = NSColor.themed { $0.diff.hunk }
 
     override func draw(_ dirtyRect: NSRect) {
         guard !rows.isEmpty else { return }
