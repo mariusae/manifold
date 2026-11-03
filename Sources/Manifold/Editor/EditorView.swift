@@ -582,6 +582,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
             }
+            // The outline fades into the page as it is now.
+            sidebar?.shadeGround()
             documentChanged()
         }
     }

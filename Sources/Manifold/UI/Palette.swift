@@ -623,10 +623,10 @@ extension Palette {
             // cooler than the paper, by night its paper unlit; the pools
             // faint, the tint's (its red) a blush.
             backdrop: Backdrop(
-                light: .init(stops: [(0.11, 0.05, 0.95), (0.07, 0.07, 0.94), (0.12, 0.06, 0.92), (0.14, 0.03, 0.96)],
-                             pool: (0.08, 0.98), tintPool: (0.16, 0.98)),
-                dark: .init(stops: [(0.10, 0.10, 0.17), (0.06, 0.13, 0.16), (0.11, 0.10, 0.14), (0.13, 0.06, 0.11)],
-                            pool: (0.16, 0.22), tintPool: (0.35, 0.28))))
+                light: .init(stops: [(0.11, 0.10, 0.95), (0.06, 0.13, 0.94), (0.12, 0.12, 0.90), (0.14, 0.05, 0.97)],
+                             pool: (0.15, 0.98), tintPool: (0.28, 0.98)),
+                dark: .init(stops: [(0.10, 0.17, 0.19), (0.06, 0.22, 0.18), (0.11, 0.17, 0.15), (0.13, 0.08, 0.11)],
+                            pool: (0.26, 0.25), tintPool: (0.48, 0.31))))
     }()
 }
 
@@ -773,9 +773,9 @@ extension Palette {
             // cream paper and its yellow; by night go.dev's slate into
             // acme's dark yellow. The tint's pool, Go blue.
             backdrop: Backdrop(
-                light: .init(stops: [(0.54, 0.09, 0.97), (0.52, 0.05, 0.98), (0.16, 0.07, 0.99), (0.15, 0.14, 0.98)],
-                             pool: (0.12, 1), tintPool: (0.28, 1)),
-                dark: .init(stops: [(0.55, 0.35, 0.24), (0.57, 0.25, 0.20), (0.14, 0.32, 0.20), (0.58, 0.12, 0.13)],
-                            pool: (0.35, 0.3), tintPool: (0.55, 0.4))))
+                light: .init(stops: [(0.54, 0.17, 0.96), (0.52, 0.09, 0.98), (0.16, 0.13, 0.99), (0.15, 0.25, 0.98)],
+                             pool: (0.2, 1), tintPool: (0.4, 1)),
+                dark: .init(stops: [(0.55, 0.45, 0.27), (0.57, 0.32, 0.22), (0.14, 0.42, 0.23), (0.58, 0.15, 0.13)],
+                            pool: (0.45, 0.33), tintPool: (0.65, 0.42))))
     }()
 }

@@ -63,7 +63,18 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         tabs = pages == nil ? nil : FlatSegments(symbols: ["list.bullet.indent", "rectangle.grid.1x2"])
         super.init(frame: .zero)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
+        // Its ground: the panel's, fading into its tile's toward the edge
+        // they share, so the two are of a piece, with no step between them.
+        layer?.addSublayer(ground)
+        ground.startPoint = CGPoint(x: 0, y: 0.5)
+        ground.endPoint = CGPoint(x: 1, y: 0.5)
+        ground.locations = [0, 0.45, 1]
+        ground.actions = ["frame": NSNull(), "bounds": NSNull(), "position": NSNull(), "colors": NSNull()]
+        // (Again a turn later: its tile's colour may be set after its own.)
+        themed { v in
+            v.shadeGround()
+            DispatchQueue.main.async { [weak v] in v?.shadeGround() }
+        }
         let c = NSTableColumn(identifier: .init("entry"))
         table.addTableColumn(c)
         table.headerView = nil
@@ -123,8 +134,29 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private let ground = CAGradientLayer()
+
+    /// The ground shaded again: the panel's into its tile's (the layer
+    /// colour of the view it's in, as that's set now — an editor's page
+    /// as it's viewed or edited, a terminal's paper).
+    func shadeGround() {
+        var panel = Theme.panel.cgColor, edge = panel
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            panel = Theme.panel.cgColor
+            edge = superview?.layer?.backgroundColor.flatMap { $0.alpha > 0 ? $0.copy(alpha: 1) : nil } ?? Theme.windowBackground.withAlphaComponent(1).cgColor
+        }
+        ground.colors = [panel, panel, edge]
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        shadeGround()
+    }
+
     override func layout() {
         super.layout()
+        ground.frame = bounds
+        shadeGround()
         var top = bounds.height
         if let tabs {
             tabs.sizeToFit()
