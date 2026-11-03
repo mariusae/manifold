@@ -157,7 +157,11 @@ parts from the Mac's conventions on purpose.
   folder's; in its tree, any), a search's hits, a project's sidebar
   and its search, a tile's outline — and drag any of them to take them
   all, each landing as it would alone (on a terminal, one line, a
-  space between).
+  space between). Right-click one of them for what can be done with
+  them all: a folder's Open Beside (a column of their own), Reveal in
+  Finder (or Download), Copy Paths; a git tile's Open Diffs, Open
+  Files, Reveal in Finder, Copy Paths, Copy SHAs — the menu of a row
+  not chosen is its own alone.
   Where a thing lands decides what's done with it, as Star's printer
   took a document: on a terminal a file's path is typed, quoted for the
   shell (this Mac's files sent first to a shell on another host), a

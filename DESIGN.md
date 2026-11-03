@@ -936,7 +936,15 @@ homepage's search and its sidebar's changes and commits (rows of our
 own, `HomeRow`, chosen by the sidebar), a tile's outline. A ⌘- or
 ⇧-click only chooses there, where a plain click would go somewhere
 (the homepage's rows, an outline's entries); ⏎ in a git tile opens each
-chosen.
+chosen. A row's menu, right-clicked among the chosen, acts on them all,
+as the Finder's does (a row not chosen: its own): a folder's
+(`DirectoryView.menu(for:)` asks for the several's menu) opens them
+beside in a column of their own, each under the one before as several
+dropped on the grid are, one already in a tile gone to, its slot left
+for the next; reveals them in the Finder, downloads them, copies their
+paths; a git tile's (`GitView.menuItems`, its own, it had none) opens
+their diffs, the changes' files, reveals and copies those, copies the
+commits' shas, a line each.
 
 Where it lands takes it as one of the **forms** a thing can be: its
 *link* (`[name](manifold:…)`, a file opened as a block to be linked to),

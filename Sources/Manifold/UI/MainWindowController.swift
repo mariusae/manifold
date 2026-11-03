@@ -8804,6 +8804,47 @@ extension MainWindowController: DirectoryViewDelegate {
         return menu
     }
 
+    func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu? {
+        let on = view.block.host, n = entries.count
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open \(n) Items Beside", symbol: "rectangle.split.2x1") { [weak self, weak view] in
+            guard let self, let view else { return }
+            self.openBeside(entries, on: on, from: view.placement)
+        })
+        menu.addItem(.separator())
+        if on == host.host {
+            menu.addItem(ClosureMenuItem("Reveal \(n) Items in Finder", symbol: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting(entries.map { URL(fileURLWithPath: $0.path) })
+            })
+        } else {
+            menu.addItem(ClosureMenuItem("Download \(n) Items", symbol: "arrow.down.circle") { [weak self] in
+                for e in entries { self?.download(e.path, isDirectory: e.isDirectory, on: on) }
+            })
+        }
+        menu.addItem(ClosureMenuItem("Copy \(n) Paths", symbol: "doc.on.clipboard") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(entries.map(\.path).joined(separator: "\n"), forType: .string)
+        })
+        return menu
+    }
+
+    /// Files and folders opened beside a tile: a column of their own to
+    /// its right, each under the one before, as several dropped on the
+    /// grid are; one Manifold doesn't open, in its own app (this Mac's).
+    func openBeside(_ entries: [(path: String, isDirectory: Bool)], on: HostID, from placement: PlacementID) {
+        var slot = (column: (arrangement?.columnIndex(of: placement) ?? 0) + 1, at: 0, newColumn: true)
+        for e in entries {
+            guard let (block, lens) = pathBlock(e.path, isDirectory: e.isDirectory, on: on) else {
+                if on == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: e.path)) }
+                continue
+            }
+            // (One with a tile here already is gone to, not placed: the next takes its slot.)
+            let had = arrangement?.tile(of: block, lens: lens) != nil
+            place(block, lens: lens, column: slot.column, at: slot.at, newColumn: slot.newColumn)
+            if !had { slot = (slot.column, slot.newColumn ? 1 : slot.at + 1, false) }
+        }
+    }
+
     // MARK: Files between hosts
 
     /// Files and folders put in a folder on a host: this Mac's, another

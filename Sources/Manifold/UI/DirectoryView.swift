@@ -48,6 +48,9 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void)
     /// An entry right-clicked: what can be done with it.
     func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu?
+    /// Several entries chosen, one of them right-clicked: what can be done
+    /// with them all.
+    func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu?
     /// ⌘[ and ⌘]: the folders this tile showed before (or after), as a
     /// Finder window's back and forward go; false if there's none.
     func directoryView(_ view: DirectoryView, history direction: Int) -> Bool
@@ -714,7 +717,15 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     }
 
     /// An entry right-clicked, by its path.
-    func menu(for node: BrowserNode) -> NSMenu? { delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory) }
+    /// An entry right-clicked: its menu; one of several chosen, theirs.
+    func menu(for node: BrowserNode) -> NSMenu? {
+        let chosen = content?.selectedPaths ?? []
+        if chosen.count > 1, chosen.contains(node.path), let model {
+            let entries = chosen.map { (path: $0, isDirectory: model.existingNode($0)?.isDirectory ?? false) }
+            return delegate?.directoryView(self, menuFor: entries)
+        }
+        return delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory)
+    }
 
     // MARK: Going places
 
@@ -1141,6 +1152,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             // "choose <path> <path>…" (from the root): those entries chosen together.
             let paths = words.count > 1 ? words[1].split(separator: " ").map { model?.absolute(String($0)) ?? String($0) } : []
             content?.debugChoose(paths)
+        case "menu":
+            // "menu <path> [<i>]": the menu of that entry (from the root)
+            // right-clicked, as the chosen make it; with i, its item i done.
+            let w = words.count > 1 ? words[1].split(separator: " ").map(String.init) : []
+            guard let rel = w.first, let model, let node = model.existingNode(model.absolute(rel)), let m = menu(for: node) else { return "no entry" }
+            if w.count > 1, let i = Int(w[1]), m.items.indices.contains(i), let item = m.items[i] as? ClosureMenuItem {
+                item.perform()
+                return "did \(item.title)"
+            }
+            return m.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: "\n")
         case "sidebar":
             // "sidebar <i> <i>…": a homepage's draggable rows ⌘-clicked (-i: ⇧-clicked).
             return sidebar.debugChoose(words.count > 1 ? words[1].split(separator: " ").compactMap { Int($0) } : [])

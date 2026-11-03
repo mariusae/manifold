@@ -18,7 +18,7 @@ protocol GitViewDelegate: AnyObject {
 /// and its recent history, as the host last looked. The change or commit
 /// chosen shows in a pane under the list, as a mail reader shows the
 /// message chosen; double-clicked (or ⏎), it opens as a diff beside it.
-final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSSplitViewDelegate {
+final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource, NSTableViewDelegate, NSSplitViewDelegate, NSMenuDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
@@ -96,6 +96,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         // Several changes, commits, chosen at once (⌘-, ⇧-click): dragged
         // together, opened together with ⏎.
         table.allowsMultipleSelection = true
+        // A row right-clicked: its menu, or the menu of every row chosen with it.
+        table.menu = NSMenu()
+        table.menu?.delegate = self
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -298,6 +301,63 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         }
     }
 
+    /// The rows a right-click acts on: every row chosen, if it's one of
+    /// them; else it alone.
+    private var menuRows: [Int] {
+        let r = table.clickedRow
+        guard selectable(r) else { return [] }
+        return table.selectedRowIndexes.contains(r) ? Array(table.selectedRowIndexes) : [r]
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for item in menuItems(for: menuRows) { menu.addItem(item) }
+    }
+
+    /// What can be done with rows: their diffs opened, changes' files
+    /// opened, revealed, their paths copied; commits' shas copied.
+    func menuItems(for picked: [Int]) -> [NSMenuItem] {
+        let root = root
+        let changes = picked.compactMap { i -> GitStatusEntry? in if case let .change(s) = rows[i] { s } else { nil } }
+        let commits = picked.compactMap { i -> GitCommit? in if case let .commit(c) = rows[i] { c } else { nil } }
+        let subjects = picked.compactMap { subject(rows[$0]) }
+        func count(_ n: Int, _ one: String, _ many: String) -> String { n == 1 ? one : "\(n) \(many)" }
+        var items: [NSMenuItem] = []
+        if !subjects.isEmpty {
+            items.append(ClosureMenuItem("Open " + count(subjects.count, "Diff", "Diffs"), symbol: "plus.forwardslash.minus") { [weak self] in
+                guard let self else { return }
+                for s in subjects { self.delegate?.gitView(self, openDiff: s) }
+            })
+        }
+        let files = changes.filter { !($0.workTree == "D" && $0.index == " ") && $0.index != "D" }.map { root.appendingPathComponent($0.path) }
+        if !files.isEmpty {
+            items.append(ClosureMenuItem("Open " + count(files.count, "File", "Files"), symbol: "doc") { [weak self] in
+                guard let self else { return }
+                for f in files { self.delegate?.gitView(self, open: f) }
+            })
+        }
+        let paths = changes.map { root.appendingPathComponent($0.path) }
+        if !paths.isEmpty || !commits.isEmpty { items.append(.separator()) }
+        if !files.isEmpty, block.host == Drags.localHost {
+            items.append(ClosureMenuItem(files.count == 1 ? "Reveal in Finder" : "Reveal \(files.count) Files in Finder", symbol: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting(files.map { URL(fileURLWithPath: $0) })
+            })
+        }
+        if !paths.isEmpty {
+            items.append(ClosureMenuItem("Copy " + count(paths.count, "Path", "Paths"), symbol: "doc.on.clipboard") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+            })
+        }
+        if !commits.isEmpty {
+            items.append(ClosureMenuItem("Copy " + count(commits.count, "SHA", "SHAs"), symbol: "number") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(commits.map(\.sha).joined(separator: "\n"), forType: .string)
+            })
+        }
+        return items
+    }
+
     /// Every outstanding change in one diff beside it, as plain `git diff`.
     func showAllChanges() {
         guard !root.isEmpty else { return }
@@ -327,6 +387,16 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         let words = arg.split(separator: " ")
         if words.first == "select", words.count > 1 {
             table.selectRowIndexes(IndexSet(words.dropFirst().compactMap { Int($0) }.filter(selectable)), byExtendingSelection: false)
+        }
+        // "menu <row>": the menu of that row right-clicked, as the chosen
+        // make it; "menu <row> <i>": its item i done.
+        if words.first == "menu", words.count > 1, let r = Int(words[1]), selectable(r) {
+            let items = menuItems(for: table.selectedRowIndexes.contains(r) ? Array(table.selectedRowIndexes) : [r])
+            if words.count > 2, let i = Int(words[2]), items.indices.contains(i), let item = items[i] as? ClosureMenuItem {
+                item.perform()
+                return "did \(item.title)"
+            }
+            return items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: "\n")
         }
         var lines = rows.enumerated().map { i, r -> String in
             let mark = table.selectedRowIndexes.contains(i) ? "*" : " "
