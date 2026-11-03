@@ -208,7 +208,7 @@ final class AppearancePane: SettingsPane {
         showScheme = s
         row("Appearance", scheme)
         colorThemes.onPick = { [weak self] p in self?.source.change { (a: inout Appearance) in a.colorTheme = p.id } }
-        row("Theme", colorThemes, note: "Every color: the window, text, terminals' palettes, diffs, the preview's page. Each in light and dark.")
+        row("Theme", colorThemes, note: "Every color: the window and its backdrop, text, terminals' palettes, diffs, the preview's page. Each in light and dark.")
         tints.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.tint = t } }
         row("Accent", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop. Theme: the theme's own; any other, over it.")
         gap()
@@ -424,8 +424,15 @@ final class ColorThemePicker: NSView {
         func c(_ s: Shade) -> NSColor { s.color(dark: dark) }
         let terminal = dark ? p.terminal.dark : p.terminal.light
         let accent = c(p.accent.accent)
-        c(p.window).setFill()
-        r.fill()
+        // Its backdrop's wash, under the sidebar and between the tiles.
+        let wash = BackdropView.colors(of: p.backdrop.wash(dark: dark)).map(\.cgColor)
+        if let ctx = NSGraphicsContext.current?.cgContext,
+           let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: wash as CFArray, locations: [0, 0.4, 0.75, 1]) {
+            ctx.drawLinearGradient(g, start: CGPoint(x: r.minX, y: r.minY), end: CGPoint(x: r.maxX, y: r.maxY), options: [])
+        } else {
+            c(p.window).setFill()
+            r.fill()
+        }
 
         // The sidebar: blocks, one chosen, their states at the ends.
         let side = NSRect(x: r.minX, y: r.minY, width: 58, height: r.height)

@@ -16,6 +16,7 @@ final class BackdropView: NSView {
     private var timer: Timer?
     private var wake: NSObjectProtocol?
     private var tinted: NSObjectProtocol?
+    private var themed: NSObjectProtocol?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -27,6 +28,10 @@ final class BackdropView: NSView {
         tinted = NotificationCenter.default.addObserver(forName: .manifoldTintChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.redraw(fade: true) }
         }
+        // Another theme: its wash, cross-faded.
+        themed = NotificationCenter.default.addObserver(forName: .manifoldPaletteChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.redraw(fade: true) }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -35,6 +40,7 @@ final class BackdropView: NSView {
         timer?.invalidate()
         if let wake { NSWorkspace.shared.notificationCenter.removeObserver(wake) }
         if let tinted { NotificationCenter.default.removeObserver(tinted) }
+        if let themed { NotificationCenter.default.removeObserver(themed) }
     }
 
     override func viewDidMoveToWindow() {
@@ -114,6 +120,11 @@ final class BackdropView: NSView {
         }
     }
 
+    /// A wash's colours, its hues turned by `turn`, before the light.
+    static func colors(of wash: Palette.Backdrop.Wash, turn: CGFloat = 0) -> [NSColor] {
+        wash.stops.map { h, s, b in NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1) }
+    }
+
     /// Times drawn (debugging).
     static var draws = 0
 
@@ -124,16 +135,15 @@ final class BackdropView: NSView {
         drawnDark = dark
         let day = Int(Date().timeIntervalSince1970 / 86400)
         var r = Seeded(state: UInt64(day) &* 2654435761 &+ 97)
-        // A wash from the upper left to the lower right — lavender to rose
-        // to peach to cream, or in the dark, indigo to plum to umber to
-        // near-black — its hues turned a little by the day, and a pool or
-        // two of light laid over it.
+        // The theme's wash from the upper left to the lower right (Paper's
+        // lavender to rose to peach to cream, or in the dark, indigo to
+        // plum to umber to near-black), its hues turned a little by the
+        // day, and a pool or two of light laid over it.
+        let wash = Palette.current.backdrop.wash(dark: dark)
         let turn = CGFloat(r.next() - 0.5) * 0.06
-        let stops: [(CGFloat, CGFloat, CGFloat)] = dark
-            ? [(0.70, 0.40, 0.26), (0.92, 0.35, 0.24), (0.06, 0.35, 0.22), (0.08, 0.15, 0.12)]
-            : [(0.72, 0.28, 0.97), (0.95, 0.24, 0.99), (0.07, 0.28, 1.0), (0.12, 0.14, 1.0)]
+        let stops = wash.stops
         let space = CGColorSpaceCreateDeviceRGB()
-        let colors = stops.map { h, s, b in lit(NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1)) }
+        let colors = Self.colors(of: wash, turn: turn).map(lit)
         if let g = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 0.4, 0.75, 1]) {
             ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: bounds.height), end: CGPoint(x: bounds.width, y: 0), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         }
@@ -150,11 +160,8 @@ final class BackdropView: NSView {
             // The first pool is the tint's — a little more colored than the
             // wash's own, so it reads as the tint.
             let color: NSColor = pool == 0
-                ? (dark ? NSColor(calibratedHue: tintHue, saturation: 0.6 * tintSaturation, brightness: 0.45, alpha: 1)
-                        : NSColor(calibratedHue: tintHue, saturation: 0.32 * tintSaturation, brightness: 1, alpha: 1))
-                : dark
-                ? NSColor(calibratedHue: hue, saturation: 0.5, brightness: 0.4, alpha: 1)
-                : NSColor(calibratedHue: hue, saturation: 0.18, brightness: 1, alpha: 1)
+                ? NSColor(calibratedHue: tintHue, saturation: wash.tintPool.saturation * tintSaturation, brightness: wash.tintPool.brightness, alpha: 1)
+                : NSColor(calibratedHue: hue, saturation: wash.pool.saturation, brightness: wash.pool.brightness, alpha: 1)
             let center = CGPoint(x: CGFloat(r.next()) * w, y: CGFloat(r.next()) * h)
             let radius = max(w, h) * (0.3 + 0.3 * CGFloat(r.next()))
             let c = lit(color)

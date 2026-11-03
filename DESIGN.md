@@ -2156,8 +2156,15 @@ removed and warnings, the fenced fuchsia #CE3262 for errors and what
 failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
 past them). Two of apex's are a step darker here, to read as text on a
 panel at 4.5:1: the faint grey (#737577 for #8A8C8E) and stale's ochre
-(#8F6B00 for #C79A00). What isn't a theme's: the backdrop, made from its
-own settings (the tint's pool of light, its hue); a language's colour in
+(#8F6B00 for #C79A00). The backdrop is a theme's too, so the window is of
+a piece: its wash's four stops and how its pools are lit, in each
+appearance (`Palette.Backdrop`) — Paper's lavender, rose, peach and
+cream (by night indigo, plum, umber, near-black), Newsprint's off-whites
+a shade warmer or cooler than its paper with a faint blush of its red
+(by night its paper unlit), Classic's acme pale blue into its cream and
+yellow (by night go.dev's slate into acme's dark yellow) — still turned
+by the day, lit by the hour, its first pool the tint's; the Settings
+picker draws each card on its wash. What isn't a theme's: a language's colour in
 a project's bar (the code hosts'); masks and shadows (black or white at
 an alpha); the page's neutral greys, which read on either ground.
 

@@ -65,6 +65,8 @@ struct Palette {
     /// selection, in each appearance.
     var terminal: (light: TerminalPalette, dark: TerminalPalette)
     var page: Page
+    /// What lies under the cards and the sidebar (`BackdropView`).
+    var backdrop: Backdrop
 
     /// The window's own ground, the bars', the gaps between tiles: the
     /// terminal's paper.
@@ -209,6 +211,25 @@ struct Palette {
         var code: Shade
         var linked: Shade
         var embeds: Shade
+    }
+
+    /// The backdrop in the light and in the dark: a wash from the upper
+    /// left to the lower right through four colours (each turned a little
+    /// in hue by the day), and two pools of light laid over it — the first
+    /// the tint's, the other a hue of the wash's.
+    struct Backdrop {
+        struct Wash {
+            /// Hue, saturation, brightness.
+            var stops: [(CGFloat, CGFloat, CGFloat)]
+            /// A pool of the wash's hue: its saturation and brightness.
+            var pool: (saturation: CGFloat, brightness: CGFloat)
+            /// The tint's pool: how much of the tint's saturation, and its brightness.
+            var tintPool: (saturation: CGFloat, brightness: CGFloat)
+        }
+        var light: Wash
+        var dark: Wash
+
+        func wash(dark isDark: Bool) -> Wash { isDark ? dark : light }
     }
 
     /// The preview's page (`MarkdownPage`), as CSS colours by role.
@@ -446,7 +467,14 @@ extension Palette {
             selection: .hex(0xCFE2FB, 0x264F78),
             failed: .hex(0xD6453D, 0xD6453D),
             running: .hex(0x2F8FDD, 0x2F8FDD),
-            attention: .hex(0xD68A1D, 0xD68A1D)))
+            attention: .hex(0xD68A1D, 0xD68A1D)),
+        // Lavender to rose to peach to cream; in the dark, indigo to plum
+        // to umber to near-black.
+        backdrop: Backdrop(
+            light: .init(stops: [(0.72, 0.28, 0.97), (0.95, 0.24, 0.99), (0.07, 0.28, 1.0), (0.12, 0.14, 1.0)],
+                         pool: (0.18, 1), tintPool: (0.32, 1)),
+            dark: .init(stops: [(0.70, 0.40, 0.26), (0.92, 0.35, 0.24), (0.06, 0.35, 0.22), (0.08, 0.15, 0.12)],
+                        pool: (0.5, 0.4), tintPool: (0.6, 0.45))))
 }
 
 // MARK: Newsprint
@@ -590,7 +618,15 @@ extension Palette {
                 selection: .hex(0xDDDDD6, 0x3A3A36),
                 failed: red,
                 running: blue,
-                attention: ochre))
+                attention: ochre),
+            // Newsprint under the cards: off-whites a shade warmer or
+            // cooler than the paper, by night its paper unlit; the pools
+            // faint, the tint's (its red) a blush.
+            backdrop: Backdrop(
+                light: .init(stops: [(0.11, 0.05, 0.95), (0.07, 0.07, 0.94), (0.12, 0.06, 0.92), (0.14, 0.03, 0.96)],
+                             pool: (0.08, 0.98), tintPool: (0.16, 0.98)),
+                dark: .init(stops: [(0.10, 0.10, 0.17), (0.06, 0.13, 0.16), (0.11, 0.10, 0.14), (0.13, 0.06, 0.11)],
+                            pool: (0.16, 0.22), tintPool: (0.35, 0.28))))
     }()
 }
 
@@ -732,6 +768,14 @@ extension Palette {
                 selection: selection,
                 failed: fuchsia,
                 running: go,
-                attention: ochre))
+                attention: ochre),
+            // acme's colours under the cards: its tags' pale blue into its
+            // cream paper and its yellow; by night go.dev's slate into
+            // acme's dark yellow. The tint's pool, Go blue.
+            backdrop: Backdrop(
+                light: .init(stops: [(0.54, 0.09, 0.97), (0.52, 0.05, 0.98), (0.16, 0.07, 0.99), (0.15, 0.14, 0.98)],
+                             pool: (0.12, 1), tintPool: (0.28, 1)),
+                dark: .init(stops: [(0.55, 0.35, 0.24), (0.57, 0.25, 0.20), (0.14, 0.32, 0.20), (0.58, 0.12, 0.13)],
+                            pool: (0.35, 0.3), tintPool: (0.55, 0.4))))
     }()
 }

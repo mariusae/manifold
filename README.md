@@ -1615,7 +1615,9 @@ their own: links, find matches, status, diffs, a terminal's palette.
 Every color is a **theme**'s — the chrome, the texts, the tints, the
 colors that say something, a terminal's palette in light and dark (all
 256 colors: the sixteen, the 6×6×6 cube, the greys), the
-preview's page — so a theme recolors all of it at once. Settings ▸
+preview's page, and the backdrop under the tiles (Paper's pastel wash,
+Newsprint's off-whites, Classic's pale blue into cream) — so a theme
+recolors all of it at once. Settings ▸
 Appearance ▸ Theme shows each as a small Manifold window in its own
 colors — a sidebar with a block chosen and their states, a file being
 edited (its line numbers, the caret's line lit, changes marked) and a
