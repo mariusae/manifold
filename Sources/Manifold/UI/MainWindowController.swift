@@ -4181,6 +4181,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let t = StatusGlyph.tooltip(b), !t.isEmpty { about.append(row(t, "status", "circle.dotted")) }
         section("About", "info.circle", about)
 
+        // What tools know it by (`mani annotate`), each copied as key=value.
+        if let marks = b.annotations, !marks.isEmpty {
+            section("Annotations", "tag", marks.sorted { $0.key < $1.key }.map { k, v in
+                row(v, k, "tag", copying("\(k)=\(v)"))
+            })
+        }
+
         // What only its kind has.
         var own: [OrgNode] = []
         switch b.kind {

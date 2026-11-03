@@ -281,6 +281,9 @@ public enum Event: Codable, Equatable, Sendable {
     /// A place in the block referred to (§2.5): minted, or put right (the
     /// same id, found again elsewhere).
     case anchor(Anchor)
+    /// Keys and values kept on the block for tools to know it by (§3.5),
+    /// set (an empty value takes a key away).
+    case annotate([String: String])
 
     // Text.
     /// The whole text, as read from disk (or set at creation).
@@ -465,6 +468,12 @@ extension Block {
         case let .anchor(a):
             if anchors == nil { anchors = [:] }
             anchors![a.id] = a
+        case let .annotate(values):
+            var a = annotations ?? [:]
+            for (k, v) in values {
+                if v.isEmpty { a.removeValue(forKey: k) } else { a[k] = v }
+            }
+            annotations = a.isEmpty ? nil : a
         case let .title(t):
             title = t?.trimmingCharacters(in: .whitespacesAndNewlines)
             if title?.isEmpty == true { title = nil }

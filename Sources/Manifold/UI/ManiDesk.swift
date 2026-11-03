@@ -117,6 +117,23 @@ final class ManiDesk {
             let depth = min(max(Int(r.flags["depth"] ?? "1") ?? 1, 1), 4)
             return try await callers(of: b, at: at, depth: depth, scope).markdown
         case "ref": return try await ref(r, scope)
+        case "annotate":
+            let t = try await target(r.args[0], scope)
+            let pairs = r.args.dropFirst()
+            if pairs.isEmpty {
+                let a = hosts.block(t.block)?.annotations ?? [:]
+                if r.flags["json"] != nil { return json(a) }
+                return a.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
+            }
+            var values: [String: String] = [:]
+            for p in pairs {
+                guard let (k, v) = Annotation.pair(p) else {
+                    throw Failure(message: "\(p) isn't key=value (a key: a letter or _, then letters, digits, _ . : -)", status: 2)
+                }
+                values[k] = v
+            }
+            hosts.append(.annotate(values), to: .block(t.block))
+            return ""
         case "rename":
             let t = try await target(r.args[0], scope)
             hosts.append(.title(r.args[1].isEmpty ? nil : r.args[1]), to: .block(t.block))
@@ -185,6 +202,13 @@ final class ManiDesk {
         let spaces = wc.allWorkspaces
         if name == "@space", let ws = wc.selected { return ws }
         if let id = BlockID(string: name), spaces.contains(id) { return id }
+        // What it's annotated with.
+        if let (key, value) = Annotation.pair(name), !value.isEmpty {
+            let marked = spaces.filter { hosts.block($0).map { Annotation.matches($0, key: key, value: value) } ?? false }
+            if marked.count == 1 { return marked[0] }
+            if marked.isEmpty { throw Failure(message: "no space is annotated \(name)") }
+            throw Failure(message: "more than one space is annotated \(name): " + marked.map(\.description).joined(separator: ", "))
+        }
         let called = spaces.filter { ws in
             guard let a = hosts.arrangement(ws) else { return false }
             return wc.title(of: a).caseInsensitiveCompare(name) == .orderedSame || hosts.block(ws)?.title?.caseInsensitiveCompare(name) == .orderedSame
@@ -296,6 +320,19 @@ final class ManiDesk {
         return Target(block: block)
     }
 
+    /// The block annotated `key=value`: the one in the space if one is
+    /// there, else the one anywhere; more than one, an error naming them.
+    private func annotated(_ key: String, _ value: String, name: String, _ scope: Scope) throws -> Target {
+        let all = hosts.blocks.filter { Annotation.matches($0, key: key, value: value) }
+        guard !all.isEmpty else { throw Failure(message: "no block is annotated \(name)") }
+        if all.count == 1 { return located(all[0].id, scope) }
+        if let a = scope.arrangement {
+            let here = all.filter { b in a.placements.contains { $0.block == b.id } }
+            if here.count == 1 { return located(here[0].id, scope) }
+        }
+        throw Failure(message: "\(name) could be any of these; name one:\n" + all.map { "  \($0.id)  \($0.displayTitle)" }.joined(separator: "\n"))
+    }
+
     /// A reference, an id, a path, a title.
     private func other(_ s: String, _ scope: Scope) throws -> Target {
         // A reference — `manifold:host/id`, a place in it after `#` — as a
@@ -306,6 +343,11 @@ final class ManiDesk {
             var t = located(id, scope)
             t.fragment = fragment
             return t
+        }
+        // What it's annotated with: the one block with key=value, in the
+        // space first (`*`: any value).
+        if let (key, value) = Annotation.pair(s), !value.isEmpty {
+            return try annotated(key, value, name: s, scope)
         }
         // A tile's id.
         for ws in [scope.workspace].compactMap({ $0 }) + wc.allWorkspaces {
@@ -664,6 +706,7 @@ final class ManiDesk {
         if p.block == scope.here { out["here"] = true }
         if p.id == layout.arrangement.focused { out["focused"] = true }
         if let summary = summaryJSON(p.block, view: wc.views[p.id]) { out["summary"] = summary }
+        if let a = b?.annotations { out["annotations"] = a }
         guard deep else { return out }
         if let f = layout.frames[p.id] {
             out["frame"] = f.array.map(Self.decimal)
@@ -679,6 +722,7 @@ final class ManiDesk {
         guard let a = hosts.arrangement(ws) else { return [:] }
         let layout = ManiLayout(a)
         var out: [String: Any] = ["id": ws.description, "title": wc.title(of: a)]
+        if let marks = hosts.block(ws)?.annotations { out["annotations"] = marks }
         if ws.host != wc.host.host { out["host"] = hosts.label(of: ws.host) }
         if let full = a.full { out["full"] = full }
         if let f = a.focused { out["focused"] = f }
@@ -721,6 +765,7 @@ final class ManiDesk {
                 row[2] = row[2].padding(toLength: 37, withPad: " ", startingAt: 0)
                 var lines = [row.joined(separator: "  ")]
                 if let summary = summaryLine(p.block, view: wc.views[id]) { lines.append("      " + String(summary.prefix(140))) }
+                if let a = b?.annotations, !a.isEmpty { lines.append("      " + a.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")) }
                 for s in layout.stack(behind: id).compactMap({ a.placement($0) }) {
                     let sb = hosts.block(s.block)
                     lines.append("      under: \(kindName(sb, lens: s.lens)) \(sb?.displayTitle ?? "")  \(s.block)")
@@ -728,13 +773,17 @@ final class ManiDesk {
                 return lines
             }
         }
-        var out = ["\(wc.title(of: a))  (\(ws))"] + rows(ws, a)
+        func heading(_ ws: BlockID, _ a: ArrangementState) -> String {
+            let marks = (hosts.block(ws)?.annotations ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+            return "\(wc.title(of: a))  (\(ws))" + (marks.isEmpty ? "" : "  " + marks.joined(separator: " "))
+        }
+        var out = [heading(ws, a)] + rows(ws, a)
         _ = layout
         if r.flags["all"] != nil {
             for other in wc.allWorkspaces where other != ws {
                 guard let oa = hosts.arrangement(other) else { continue }
                 out.append("")
-                out.append("\(wc.title(of: oa))  (\(other))")
+                out.append(heading(other, oa))
                 out += rows(other, oa)
             }
         }
@@ -751,6 +800,7 @@ final class ManiDesk {
             out = ["block": b.id.description, "kind": kindName(b, lens: Lens.default(for: b.kind, path: b.path)), "title": b.displayTitle]
             if let path = b.path { out["path"] = path }
             if let cwd = b.terminal?.cwd ?? b.home { out["cwd"] = cwd }
+            if let a = b.annotations { out["annotations"] = a }
             out["shown"] = false
         }
         if out["summary"] == nil, let summary = summaryJSON(b.id, view: nil) { out["summary"] = summary }

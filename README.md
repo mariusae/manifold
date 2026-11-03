@@ -1790,6 +1790,14 @@ is migrated into logs on first run.
     has one started for it, as showing it would: in its directory, at
     its last size (else 80×24), the command typed once it prompts; the
     tile, shown later, takes up that shell.
+  - **Annotations, for tools.** `mani annotate <name> key=value …` keeps
+    keys and values on a block or a space (`key=` takes one away; with
+    none, it prints them) — a task's id, a role — that stay whatever its
+    title becomes, and a name finds it by any of them anywhere a name
+    goes: `mani read task=T-123`, `mani ls --space space=review`, `'key=*'`
+    for any value; the one in the space shown first, more than one an
+    error naming them. `ls` prints them under a tile, `info` and `ls
+    --json` have them, and the inspector (⌥⌘I) shows them.
   - **Panels.** `mani ui new < widgets.json` makes a panel: widgets an
     agent describes as JSON — labels and Markdown, buttons, fields,
     text, checkboxes, selects, sliders, progress, tables and lists,

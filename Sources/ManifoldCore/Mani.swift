@@ -259,6 +259,20 @@ public enum Mani {
                  link (`mani link`), a walk through code: Manifold shows it as a pill,
                  a card, and goes there when it's followed.
                  """, inApp: true),
+        Verb(words: ["annotate"], args: "<name> [key=value…]", minArgs: 1, maxArgs: nil,
+             flags: [json],
+             summary: "Keep keys and values on a block or a space, for tools to know it by",
+             details: """
+                 Sets each key to its value on the block (`key=` takes it away); with
+                 none, prints its keys, `key=value` a line. A tool's own handle on a
+                 block or a space — a task's id, a role — that stays whatever its title
+                 becomes: name it by one anywhere a name goes,
+                   mani annotate @last task=T-123 role=build-log
+                   mani read task=T-123
+                   mani ls --space space=review
+                 `'key=*'` (quoted, for the shell) names the one block with that key,
+                 whatever its value. The inspector (⌥⌘I) shows them.
+                 """, inApp: true),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
              summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", inApp: true),
         Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,
@@ -484,6 +498,8 @@ public enum Mani {
           @left @right @above @below   the nearest tile that way from @here
           @leftmost @rightmost @top @bottom   the outermost tile that way
           @under       the tile stacked under @here     @1 … @9   tiles in order
+        Or by what it's annotated with (mani annotate): key=value, 'key=*' for
+        any value — the one block (or space) with it, in the space shown first.
         A kind narrows one: @right:diff, @:pdf (the one PDF shown). Kinds:
         note, file, terminal, agent, folder, web, image, pdf, search, diff,
         output, notebook, git, preview, editor, ui. A name that could be more

@@ -2056,3 +2056,31 @@ private final class Seen: @unchecked Sendable {
     let before = try! JSONDecoder().decode(Registry.self, from: Data(#"{"blocks":[]}"#.utf8))
     #expect(before.gone.isEmpty)
 }
+
+@Test func aBlockKeepsItsAnnotationsAndIsNamedByThem() throws {
+    var b = Block(id: BlockID(host: HostID("h")), kind: .text, created: Stamp(wall: 1))
+    b.apply(.annotate(["task": "T-1", "role": "log"]), at: Stamp(wall: 2))
+    #expect(b.annotations == ["task": "T-1", "role": "log"])
+    b.apply(.annotate(["role": "", "task": "T-2"]), at: Stamp(wall: 3))
+    #expect(b.annotations == ["task": "T-2"])
+    b.apply(.annotate(["task": ""]), at: Stamp(wall: 4))
+    #expect(b.annotations == nil)
+    // Kept through the log's encoding.
+    b.apply(.annotate(["space": "review"]), at: Stamp(wall: 5))
+    let back = try JSONDecoder().decode(Block.self, from: JSONEncoder().encode(b))
+    #expect(back.annotations == ["space": "review"])
+    #expect(Annotation.matches(back, key: "space", value: "review") && Annotation.matches(back, key: "space", value: "*"))
+    #expect(!Annotation.matches(back, key: "space", value: "other") && !Annotation.matches(back, key: "task", value: "*"))
+}
+
+@Test func anAnnotationsKeyIsAWord() {
+    #expect(Annotation.pair("task=T-1")! == ("task", "T-1"))
+    #expect(Annotation.pair("ci.job:id=a=b")! == ("ci.job:id", "a=b"))
+    #expect(Annotation.pair("role=")! == ("role", ""))
+    #expect(Annotation.pair("/tmp/a=b") == nil)
+    #expect(Annotation.pair("1x=y") == nil)
+    #expect(Annotation.pair("no equals") == nil)
+    let parsed = Mani.parse(["annotate", "@last", "task=T-1", "role=log"])
+    guard case let .success(.run(i)) = parsed else { Issue.record("not a run: \(parsed)"); return }
+    #expect(i.verb == "annotate" && i.args == ["@last", "task=T-1", "role=log"])
+}

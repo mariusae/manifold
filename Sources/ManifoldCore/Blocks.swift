@@ -1028,6 +1028,10 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var pinned: Bool?
     /// The places in it referred to (§2.5), by id.
     public var anchors: [String: Anchor]?
+    /// Keys and values tools keep on it to know it by (§3.5) — a task's id,
+    /// a role — whatever its title becomes: `mani annotate`, and a name
+    /// (`key=value`) mani finds it by.
+    public var annotations: [String: String]?
 
     public var isPinned: Bool { pinned == true }
     /// Something to attend to (§3.7): its status needs you, or finished
@@ -1175,5 +1179,31 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         }
         if let root = search?.query?.root, !root.isEmpty { return root }
         return terminal?.cwd ?? home
+    }
+}
+
+/// Keys and values on a block (§3.5): what one may be called, and a name
+/// that picks a block by one.
+public enum Annotation {
+    /// A key: a letter or `_` first, then letters, digits, `_ . : -`.
+    public static func isKey(_ s: String) -> Bool {
+        guard let first = s.unicodeScalars.first, CharacterSet.letters.contains(first) || first == "_" else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_.:-"))
+        return s.unicodeScalars.allSatisfy(allowed.contains)
+    }
+
+    /// `key=value` (the value may be empty: the key taken away), if it's one.
+    public static func pair(_ s: String) -> (key: String, value: String)? {
+        guard let eq = s.firstIndex(of: "=") else { return nil }
+        let key = String(s[..<eq])
+        guard isKey(key) else { return nil }
+        return (key, String(s[s.index(after: eq)...]))
+    }
+
+    /// Whether a block answers to `key=value`: a key with that value (a
+    /// `*` value: any).
+    public static func matches(_ block: Block, key: String, value: String) -> Bool {
+        guard let v = block.annotations?[key] else { return false }
+        return value == "*" || v == value
     }
 }

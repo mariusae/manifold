@@ -599,6 +599,20 @@ locally, and asked of the host only for a stamp its logs must be
 replayed for. A tile's outline (Prism's `ScrubMark`s, from the language
 server's document symbols) sits beside this rather than in it.
 
+
+**Annotations.** A block — a space too, which is one — keeps keys and
+values for tools (`Block.annotations`, set by `.annotate`, an empty
+value taking a key away): a handle a script or an agent's tool gives it
+— a task's id, a role — that stays whatever its title becomes, so
+nothing has to keep a name stable to find it again. `mani annotate`
+sets and prints them; any name mani takes may be one (`key=value`, or
+`'key=*'` for any value), the block with it — in the space shown, if
+more than one has it anywhere — and `--space` takes one for a space;
+more than one is an error naming them, as a position is. `ls` prints
+them, `info` and `ls --json` carry them, the inspector shows them. Keys
+are words (a letter or `_`, then letters, digits, `_ . : -`), so a path
+with an `=` in it is never taken for one.
+
 ### 3.6 Organizations: views over the graph
 
 The graph is the representation; how it is *organized* is a view over it,
