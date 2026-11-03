@@ -1107,7 +1107,9 @@ around it, and comes back with its history.
   listing does. A **shell's commands** have a dot each too, beside the
   prompt (red for one that failed, the accent for one still running):
   rest the pointer on a dot for **Copy Command and Output** and **Open as
-  Block**.
+  Block**, or drag the dot itself: the command, as its row in the
+  outline drags (its line typed again in a terminal, a link to it in a
+  note, its output given an agent).
 - **A tile's own sidebar**: the same outline — a terminal's commands (an
   agent's turns), each with how it ended, how long it took (a second
   or more: "2.4 s", "2m 13s") and when, clicked, the terminal

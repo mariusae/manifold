@@ -2114,8 +2114,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
                   let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "from <terminal> <i>" }
             item = source.debugOutlineDrag(n)
+        case "dot":
+            // "dot <terminal> <command id>": that command's dot dragged.
+            guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
+                  let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "dot <terminal> <command id>" }
+            item = source.debugDotDrag(n)
         default:
-            return "drop block|file|finder|text|url|image|row|from|chosen … [as <form>] [grid <column> <at>]"
+            return "drop block|file|finder|text|url|image|row|from|dot|chosen … [as <form>] [grid <column> <at>]"
         }
         let items = several ?? item.map { [$0] } ?? []
         guard !items.isEmpty else { return "nothing dragged" }

@@ -697,9 +697,10 @@ final class FloatingListRow: NSView, NSDraggingSource {
 /// A shell's commands as a dot beside each one's prompt (§3.8), over the
 /// terminal's left padding: grey, red for one that failed, the accent for
 /// one still running. The pointer on a dot offers what can be done with
-/// the command (its output copied, or as a block of its own); anywhere
-/// else, the pointer and clicks are the terminal's.
-final class CommandDots: NSView {
+/// the command (its output copied, or as a block of its own); a dot
+/// dragged is the command, as its outline's row is; anywhere else, the
+/// pointer and clicks are the terminal's.
+final class CommandDots: NSView, NSDraggingSource {
     struct Dot: Equatable {
         var id: Int
         /// Its middle, from the bottom.
@@ -712,6 +713,11 @@ final class CommandDots: NSView {
     var onHover: ((Int, NSRect) -> Void)?
     /// The pointer left the dots.
     var onLeave: (() -> Void)?
+    /// What a command's dot carries dragged out (its place, its words).
+    var drag: ((Int) -> NSPasteboardWriting?)?
+    /// Where a press on a dot began, and whether it became a drag.
+    private var pressed: (dot: Int, at: NSPoint)?
+    private var dragged = false
     private var dots: [Dot] = []
     private var hovered: Int?
     private static let diameter: CGFloat = 5
@@ -772,8 +778,34 @@ final class CommandDots: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if let d = dot(at: convert(event.locationInWindow, from: nil)) { onHover?(d.id, rect(of: d)) }
+        dragged = false
+        pressed = nil
+        guard let d = dot(at: convert(event.locationInWindow, from: nil)) else { return }
+        pressed = (d.id, event.locationInWindow)
+        onHover?(d.id, rect(of: d))
     }
+
+    /// Dragged from a dot: the command, its pill under the pointer; its
+    /// actions put away, out of the way of where it's dropped.
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged, let p = pressed, hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4,
+              let d = dot(p.dot), let writer = drag?(p.dot) else { return }
+        dragged = true
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        item.setDraggingFrame(rect(of: d), contents: nil)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+        FloatingList.shared.hideNow()
+    }
+
+    override func mouseUp(with event: NSEvent) { pressed = nil }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 
     override func resetCursorRects() {
         for d in dots { addCursorRect(rect(of: d), cursor: .pointingHand) }

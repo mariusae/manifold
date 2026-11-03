@@ -103,6 +103,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             guard let dots else { return }
             FloatingList.shared.openerLeft(dots)
         }
+        // A dot dragged: the command, as its row in the outline is.
+        dots.drag = { [weak self] id in self?.commandDrag(id) }
     }
 
     /// The stream closed: the shell ended (or the server let it go), and
@@ -721,6 +723,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Debugging
 
     /// Debugging: what the outline's item `i` carries dragged.
+    /// A command dragged out: its place and words, as its outline's row.
+    private func commandDrag(_ id: Int) -> NSPasteboardWriting? {
+        fillOutline()
+        guard let i = outlined.firstIndex(where: { $0.id == id }) else { return nil }
+        return commandsOutline.dragItem(i)
+    }
+
+    /// Debugging: what dragging the dot of the command `id` carries.
+    func debugDotDrag(_ id: Int) -> NSPasteboardItem? { commandDrag(id) as? NSPasteboardItem }
+
     func debugOutlineDrag(_ i: Int) -> NSPasteboardItem? {
         fillOutline()
         return commandsOutline.dragItem(i) as? NSPasteboardItem
