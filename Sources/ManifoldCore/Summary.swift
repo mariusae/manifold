@@ -82,11 +82,11 @@ extension Block {
             guard let t = text else { break }
             if isNote, (title ?? "").isEmpty {
                 // An untitled note is called by its first line, as everywhere.
-                let first = Self.firstLines(t.text.string, skipping: "", count: 4)
+                let first = Self.firstLines(Self.head(t.text, lines: 4), skipping: "", count: 4)
                 s.title = String((first.first ?? displayTitle).prefix(60))
                 s.lines = Array(first.dropFirst())
             } else {
-                s.lines = Self.firstLines(t.text.string, skipping: displayTitle, count: 3)
+                s.lines = Self.firstLines(Self.head(t.text, lines: 4), skipping: displayTitle, count: 3)
             }
             if t.stale { s.note = "changed on disk"; s.tone = .attention } else if t.isDirty { s.note = "unsaved" }
             if path != nil { s.place = path?.deletingLastPathComponent }
@@ -255,6 +255,17 @@ extension Block {
 
     /// A text's first lines worth showing: not blank, the title's own line
     /// left out, Markdown's marks taken off.
+    /// The start of a text, enough for its first `lines` lines with words:
+    /// its first 16 KB (at a character's boundary), or all of it if they
+    /// aren't there — a summary made at every render of a tile's bar (a
+    /// collapsed one's, typed in), the whole of a long file was made a
+    /// string for its first lines.
+    static func head(_ text: Rope, lines: Int) -> String {
+        guard text.count > 16_384 else { return text.string }
+        let head = text[TextRange(0, text.floorBoundary(16_384))]
+        return firstLines(head, skipping: "", count: lines + 1).count > lines ? head : text.string
+    }
+
     public static func firstLines(_ text: String, skipping title: String, count: Int) -> [String] {
         var out: [String] = []
         var inFence = false

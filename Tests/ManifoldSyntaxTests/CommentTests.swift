@@ -64,6 +64,19 @@ private func said(_ path: String, _ text: String) -> [[String]] {
     #expect(tree.commentWords(in: rope.lineRange(1)).map { rope[$0] } == ["b"])
 }
 
+@Test func anEditSaidIsTakenAsAnEditFound() {
+    var rope = Rope("let a = 1\n/* b */\nlet c = 2\n// d */\nlet e = 3")
+    let said = SyntaxTree(SyntaxLanguage.swift, text: rope, background: false)
+    let found = SyntaxTree(SyntaxLanguage.swift, text: rope, background: false)
+    rope.replace(TextRange(at: 0), with: "/* ")
+    #expect(said.update(to: rope, edited: (0, 0, 3)) == found.update(to: rope))
+    #expect(said.commentWords(in: rope.lineRange(2)).map { rope[$0] } == ["let c = 2"])
+    // One that doesn't fit the text it was of (a length off): found instead.
+    rope.replace(TextRange(0, 3), with: "")
+    #expect(said.update(to: rope, edited: (0, 5, 0)) == found.update(to: rope))
+    #expect(said.commentWords(in: rope.lineRange(1)).map { rope[$0] } == ["b"])
+}
+
 @Test func everyLanguagesCommentsQueryCompiles() {
     for l in SyntaxLanguage.all { #expect(l.commentQuery != nil, "\(l.name)") }
     #expect(SyntaxLanguage.forPath("a.md") == nil)

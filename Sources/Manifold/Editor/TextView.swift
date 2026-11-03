@@ -277,8 +277,10 @@ final class TextView: NSView, NSTextInputClient {
 
     /// The tree brought to the text as it is now (parsed again in the
     /// background, `syntaxChanged` told when it's in).
-    private func syntaxEdited() {
-        if let changed = syntax?.update(to: text) { syntaxChanged(changed) }
+    private func syntaxEdited(_ edits: [TextEdit] = []) {
+        // One edit: where it was, said (the tree's text the one it was made to).
+        let one = edits.count == 1 ? edits.first.map { (start: $0.start, oldEnd: $0.end, newEnd: $0.start + $0.text.utf8.count) } : nil
+        if let changed = syntax?.update(to: text, edited: one) { syntaxChanged(changed) }
     }
 
     /// The syntax of these ranges changed (a block comment opened above
@@ -1515,7 +1517,7 @@ final class TextView: NSView, NSTextInputClient {
                 fenceLines = nil
             }
         }
-        syntaxEdited()
+        syntaxEdited(edits)
         foldsEdited(edits)
         foldsText = text
         pinnedChanged(edits)

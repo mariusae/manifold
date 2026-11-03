@@ -137,8 +137,12 @@ public final class SyntaxTree {
     /// structure differs (a block comment opened above everything after
     /// it); in the background, that's told `onChange`.
     @discardableResult
-    public func update(to new: Rope) -> [TextRange] {
-        guard let (start, oldEnd, newEnd) = new.changed(from: text) else { return [] }
+    public func update(to new: Rope, edited: (start: Int, oldEnd: Int, newEnd: Int)? = nil) -> [TextRange] {
+        // Where it changed: as the editor says, when it says and it fits the
+        // text this was of; else found by comparing the two (byte by byte
+        // from either end: every keystroke in a long file went through it).
+        let known = edited.flatMap { e in text.count - (e.oldEnd - e.start) + (e.newEnd - e.start) == new.count ? e : nil }
+        guard let (start, oldEnd, newEnd) = known ?? new.changed(from: text) else { return [] }
         var edit = TSInputEdit(start_byte: UInt32(start), old_end_byte: UInt32(oldEnd), new_end_byte: UInt32(newEnd),
                                start_point: Self.point(start, in: new), old_end_point: Self.point(oldEnd, in: text),
                                new_end_point: Self.point(newEnd, in: new))
