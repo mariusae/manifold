@@ -1079,7 +1079,7 @@ enum DebugControl {
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
         case "inspector":
-            // "inspector [toggle|rows|click <row>]": the inspector's window.
+            // "inspector [toggle|rows|click <row>|fold <section>|host <name>|picture <png>]": the inspector's window.
             return wc?.debugInspector(arg) ?? "no window"
         case "colordump":
             // "colordump <path>": every named colour and the terminal's config, written there.

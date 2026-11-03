@@ -13,6 +13,9 @@ grep -q 'ghostty_surface_manifold_links' Frameworks/GhosttyKit.xcframework/macos
 # Tree-sitter's runtime and grammars (fetched again when its list changes).
 scripts/fetch-tree-sitter.sh
 
+# What it's made from, for the app and its servers to say.
+scripts/stamp-build.sh
+
 config=${CONFIG:-release}
 swift_build() {
   swift build --disable-sandbox "$@"

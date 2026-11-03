@@ -34,7 +34,10 @@ let package = Package(
             name: "CZstd",
             cSettings: [.define("ZSTD_DISABLE_ASM")]
         ),
-        .target(name: "ManifoldCore", dependencies: ["CZstd"]),
+        // What a build was made from (scripts/stamp-build.sh), for the app,
+        // its servers and `mani` to say.
+        .target(name: "CBuildStamp"),
+        .target(name: "ManifoldCore", dependencies: ["CZstd", "CBuildStamp"]),
         // Tree-sitter, fetched by scripts/fetch-tree-sitter.sh: its runtime
         // (lib.c, which includes the rest) and the grammars code is parsed with.
         .target(

@@ -267,6 +267,9 @@ protocol OrganizationViewDelegate: AnyObject {
     /// A row was clicked: show its block here, or beside (§3.1); go to
     /// an arrangement; focus a column.
     func organizationOpen(_ node: OrgNode, modifiers: NSEvent.ModifierFlags)
+    /// A host's row was clicked: the inspector shows the host (as it
+    /// shows the focused tile, until the focus moves).
+    func organizationInspect(host: String)
     /// A row was double-clicked; true if that meant something (naming an
     /// arrangement), else the row opens or closes.
     func organizationActivate(_ node: OrgNode) -> Bool
@@ -477,6 +480,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// The kept heading clicked: its host's own row scrolled back to the top.
     private func revealStickyHost() {
         guard stickyRow >= 0 else { return }
+        if let node = stickyHost.node, node.id.hasPrefix("host:") { delegate?.organizationInspect(host: String(node.id.dropFirst(5))) }
         scroll.contentView.scroll(to: NSPoint(x: 0, y: outline.rect(ofRow: stickyRow).minY))
         scroll.reflectScrolledClipView(scroll.contentView)
     }
@@ -758,7 +762,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             // A workspace's label: gone to. (Its chevron opens and closes it.)
             delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
         } else if node.style != .row, node.hasChildren {
-            // A host's heading, a group's label: clicked, it opens or closes.
+            // A host's heading, a group's label: clicked, it opens or closes
+            // (a host's shown in the inspector too).
+            if node.style == .host, node.id.hasPrefix("host:") { delegate?.organizationInspect(host: String(node.id.dropFirst(5))) }
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         } else if node.block != nil {
             delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])

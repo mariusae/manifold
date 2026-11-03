@@ -3,3 +3,4 @@ build/
 vendor/
 Frameworks/
 .DS_Store
+Sources/CBuildStamp/generated.h

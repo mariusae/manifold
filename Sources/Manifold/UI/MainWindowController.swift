@@ -4170,8 +4170,100 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if arg == "rows" { return p.list.debugRows }
         if arg.hasPrefix("click "), let row = Int(arg.dropFirst(6)) { return p.list.debugClick(row) }
         if arg.hasPrefix("fold ") { return p.list.debugToggle(String(arg.dropFirst(5))) }
+        if arg.hasPrefix("picture ") { return p.debugPicture(to: String(arg.dropFirst(8))) }
+        if arg.hasPrefix("host ") {
+            let name = String(arg.dropFirst(5))
+            guard let c = hosts.all.first(where: { $0.host.raw == name || hosts.label(of: $0.host) == name }) else { return "no host \(name)" }
+            organizationInspect(host: c.host.raw)
+        }
         return p.debugState
     }
+    /// A host the sidebar's row of was clicked (its raw id), and the tile
+    /// focused then: inspected instead of it, until another is.
+    private var inspectedHost: (host: String, focus: String?)?
+
+    func organizationInspect(host: String) {
+        inspectedHost = (host, focusedShown?.id)
+        refreshInspector(now: true)
+    }
+
+    /// A host's properties: what machine it is and how it's reached, what
+    /// its server and this app are (protocol, build), its server's process.
+    private func hostInspectorTree(_ c: HostClient) -> [OrgNode] {
+        let name = hosts.label(of: c.host)
+        let machine = c.machineLatest
+        inspectorHeader = (name, c.isRemote ? "Remote host" : "The host on this Mac", c.isRemote ? "server.rack" : "desktopcomputer", [])
+        var sections: [OrgNode] = []
+        func row(_ value: String, _ label: String, _ symbol: String, copies: String? = nil) -> OrgNode {
+            let n = OrgNode(id: "insp/\(sections.count)/\(label)/\(value)", title: value, symbol: symbol, detail: label)
+            n.tooltip = "\(label): \(value)"
+            if let copies {
+                n.copies = copies
+                n.action = { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(copies, forType: .string) }
+            }
+            return n
+        }
+        func section(_ title: String, _ id: String, _ symbol: String, _ rows: [OrgNode]) {
+            guard !rows.isEmpty else { return }
+            let s = OrgNode(id: "insp:\(id)", title: title, symbol: symbol, isGroup: true, children: rows)
+            s.style = .section
+            sections.append(s)
+        }
+        func when(_ d: Date) -> String { Self.inspectorDate.string(from: d) + " (" + Age.ago(d) + ")" }
+
+        var about: [OrgNode] = []
+        if let m = machine {
+            about.append(row(m.hostname, "machine", "desktopcomputer"))
+            about.append(row(m.system, "system", "gearshape"))
+            about.append(row(m.processor + (m.frequency.map { String(format: " · %.1f GHz", $0) } ?? ""), "processor", "cpu"))
+            about.append(row("\(m.cores.count)", "cores", "square.grid.3x3"))
+            about.append(row(HostDashboard.duration(m.uptime), "machine up", "clock"))
+        }
+        if let d = c.destination { about.append(row(d.description, "reached by", "network", copies: d.description)) }
+        about.append(row(HostDashboard.standing(c), "link", "antenna.radiowaves.left.and.right"))
+        if let home = c.home { about.append(row(home.abbreviatingHome, "home", "house", copies: home)) }
+        section("About", "About", "info.circle", about)
+
+        // What each side is: the protocol it speaks, what it was built
+        // from and when — the server's as it said, this app's its own.
+        var builds: [OrgNode] = []
+        let app = BuildStamp.current
+        if let v = c.serverVersion {
+            builds.append(row("\(v)" + (v == protocolVersion ? "" : " — not the app's"), "server protocol", "arrow.left.arrow.right"))
+        }
+        if let s = c.serverBuild {
+            builds.append(row(s.revisionName + (s.revision == app.revision ? "" : " — not the app's"), "server build", "hammer", copies: s.revision))
+            if let t = s.built { builds.append(row(when(t), "server built", "calendar")) }
+        } else if c.isConnected {
+            builds.append(row("not said (a server from before)", "server build", "hammer"))
+        }
+        builds.append(row("\(protocolVersion)", "app protocol", "arrow.left.arrow.right"))
+        builds.append(row(app.revisionName, "app build", "hammer", copies: app.revision))
+        if let t = app.built { builds.append(row(when(t), "app built", "calendar")) }
+        section("Versions", "versions", "number", builds)
+
+        // Its server's process.
+        var server: [OrgNode] = []
+        if let pid = c.serverPID { server.append(row("\(pid)", "process", "gearshape.2", copies: "\(pid)")) }
+        if c.isConnected, let started = c.serverStarted { server.append(row(HostDashboard.duration(Date().timeIntervalSince(started)) + " (since " + Self.inspectorDate.string(from: started) + ")", "server up", "clock")) }
+        if !c.features.isEmpty { server.append(row(c.features.sorted().joined(separator: ", "), "features", "puzzlepiece")) }
+        if c.watching { server.append(row(c.fencedBy ?? "another Manifold", "taken over by", "eye")) }
+        if let since = c.connectedSince { server.append(row(when(since), "connected", "link")) }
+        if let rtt = c.pings.last?.rtt { server.append(row(HostDashboard.ms(rtt), "round trip", "stopwatch")) }
+        if let last = c.drops.last { server.append(row("\(last.why), " + Age.ago(last.at), "last dropped", "bolt.horizontal")) }
+        section("Server", "kind", "server.rack", server)
+
+        section("For Tools", "tools", "wrench.and.screwdriver", [row(c.host.raw, "host id", "number", copies: c.host.raw)])
+        return sections
+    }
+
+    private static let inspectorDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
     /// The inspected block's name, what and where it is, its symbol.
     private var inspectorHeader: (title: String, subtitle: String, symbol: String?, tags: [String]) = ("", "", nil, [])
     private var inspectorWork: DispatchWorkItem?
@@ -4199,6 +4291,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// done with it. Each a row, by sections; a value first, what it is in
     /// grey after it.
     private func inspectorTree() -> ([OrgNode], Set<String>) {
+        // A host's row clicked: the host, until the focus moves.
+        if let h = inspectedHost {
+            if h.focus == focusedShown?.id, let c = hosts.all.first(where: { $0.host.raw == h.host }) { return (hostInspectorTree(c), []) }
+            inspectedHost = nil
+        }
         guard let f = focusedShown, let b = f.block else {
             inspectorHeader = ("Nothing to inspect", "", "info.circle", [])
             return ([OrgNode(id: "insp:none", title: "Focus a tile to see what it is", symbol: "info.circle")], [])

@@ -539,9 +539,10 @@ public enum ServerMessage: Codable, Sendable {
     /// opened compressed, `Mux`) — none, from one before them; `up` how
     /// long the server has been running, in seconds (a duration, not a
     /// time: the host's clock needn't agree with the app's) — none, from
-    /// one before.
+    /// one before; `build` what the server was built from — none, from one
+    /// before it said.
     case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot], features: [String]? = nil,
-                 up: Double? = nil)
+                 up: Double? = nil, build: BuildStamp? = nil)
     case pong
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)

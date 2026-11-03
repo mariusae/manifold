@@ -98,6 +98,14 @@ final class InspectorPanel: NSPanel {
         list.frame = NSRect(x: 0, y: 0, width: b.width, height: b.height - h)
     }
 
+    /// Debugging: the window as drawn, written to `path`.
+    func debugPicture(to path: String) -> String {
+        guard let v = contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return "nothing drawn" }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        return "wrote \(path)"
+    }
+
     var debugState: String {
         "\(isVisible ? "shown" : "hidden") \(Int(frame.width))×\(Int(frame.height)) level \(level.rawValue): \(name.stringValue) — \(what.stringValue)"
             + (tags.isHidden ? "" : " [\(tags.stringValue)]")
@@ -117,7 +125,7 @@ final class InspectorList: NSView {
     /// Folded or not by the reader, by section id; what isn't here is as
     /// it starts (only what it is and its kind's open).
     private var open: [String: Bool] = (UserDefaults.standard.dictionary(forKey: "InspectorSections") as? [String: Bool]) ?? [:]
-    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none"]
+    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none", "insp:versions"]
     static let rowHeight: CGFloat = 18, headingHeight: CGFloat = 24, labelWidth: CGFloat = 92
 
     override init(frame: NSRect) {

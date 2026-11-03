@@ -495,6 +495,14 @@ parts from the Mac's conventions on purpose.
   been gone to and when last, the tile's way back (⌘[) and forward —
   and what can be done with it (Copy Contents, Copy Link, Copy Path,
   Reveal in Finder, the Neighborhood Map, Pin in This Space).
+  A host's row in the sidebar clicked, it shows the host instead, until
+  the focus moves: its machine and how it's reached, its link, its home;
+  **versions** — the protocol its server speaks and the app's, and
+  what each was built from (the git revision, `-dirty` and a hash of
+  the changes when the tree had any, from `scripts/stamp-build.sh`) and
+  when, the server's as it said on welcoming the app (a server from
+  before says none); its server's process, how long it's been up, what
+  it can do, and the link's round trip and last drop; and its host id.
 - **⌘D deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu), with nothing asked: every tile of it taken off at
   once, in every space, and a toast — "Deleted “…”" — with Undo while a

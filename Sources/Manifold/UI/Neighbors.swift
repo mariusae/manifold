@@ -18,8 +18,9 @@ enum Age {
     }
 
     /// How long ago, in a few words.
-    static func ago(_ stamp: Stamp) -> String {
-        let d = stamp.date
+    static func ago(_ stamp: Stamp) -> String { ago(stamp.date) }
+
+    static func ago(_ d: Date) -> String {
         if Date().timeIntervalSince(d) < 60 { return "just now" }
         return relative.localizedString(for: d, relativeTo: Date())
     }

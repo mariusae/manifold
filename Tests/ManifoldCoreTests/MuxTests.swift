@@ -346,16 +346,21 @@ private final class Inbox: @unchecked Sendable {
     let host = HostID("h4z3gpme3et")
     // An app from before reads a welcome with features as it did.
     enum Before: Codable { case welcome(version: Int, pid: Int32, host: HostID, label: String?, attachment: Int, home: String, snapshots: [ShardSnapshot]) }
-    let now = Frame.message(ServerMessage.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: [], features: ["zstd"], up: 90))
+    let stamp = BuildStamp(revision: "3b778d7a1c2e-dirty.0a1b2c3d", built: Date(timeIntervalSince1970: 1_793_000_000))
+    let now = Frame.message(ServerMessage.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: [], features: ["zstd"], up: 90,
+                                                  build: stamp))
     guard case .welcome(51, 1, host, nil, 0, "/", _)? = now.decode(Before.self) else { Issue.record("not read as before"); return }
-    guard case let .welcome(_, _, _, _, _, _, _, features, up)? = now.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    guard case let .welcome(_, _, _, _, _, _, _, features, up, build)? = now.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
     #expect(features == ["zstd"])
     #expect(up == 90)
+    #expect(build == stamp)
+    #expect(build?.dirty == true)
     // A server from before: none.
     let then = Frame.message(Before.welcome(version: 51, pid: 1, host: host, label: nil, attachment: 0, home: "/", snapshots: []))
-    guard case let .welcome(_, _, _, _, _, _, _, none, noUp)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
+    guard case let .welcome(_, _, _, _, _, _, _, none, noUp, noBuild)? = then.decode(ServerMessage.self) else { Issue.record("no welcome"); return }
     #expect(none == nil)
     #expect(noUp == nil)
+    #expect(noBuild == nil)
 }
 
 @Test func aTTYModeGoesAsAByteAndOnlyToAnAppThatAsks() throws {
