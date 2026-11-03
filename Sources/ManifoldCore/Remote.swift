@@ -165,9 +165,15 @@ public struct Child {
     public let input: Int32
 
     /// Runs `argv` with pipes; the child's stderr is ours. Searches the PATH.
+    /// The child has those and nothing else of ours: our pipes are closed
+    /// to every other child (a language server started as git runs kept
+    /// the end of git's output open, so its reader waited out its timeout,
+    /// and every git command after it — a minute at the server's start,
+    /// the gutter's marks with it), and on macOS whatever else is open.
     public static func spawn(_ argv: [String], stderrToNull: Bool = false) throws -> Child {
         var toChild: [Int32] = [0, 0], fromChild: [Int32] = [0, 0]
         guard pipe(&toChild) == 0, pipe(&fromChild) == 0 else { throw POSIXError(.EPIPE) }
+        for fd in toChild + fromChild { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
         #if canImport(Darwin)
         var actions: posix_spawn_file_actions_t? = nil
         #else
@@ -177,16 +183,29 @@ public struct Child {
         posix_spawn_file_actions_adddup2(&actions, toChild[0], 0)
         posix_spawn_file_actions_adddup2(&actions, fromChild[1], 1)
         if stderrToNull { posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0) }
+        #if canImport(Darwin)
+        // Only 0, 1 and 2 go to the child (2 ours, unless it's /dev/null).
+        if !stderrToNull { posix_spawn_file_actions_addinherit_np(&actions, 2) }
+        var attr: posix_spawnattr_t? = nil
+        posix_spawnattr_init(&attr)
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
+        defer { posix_spawnattr_destroy(&attr) }
+        #else
         for fd in [toChild[0], toChild[1], fromChild[0], fromChild[1]] {
             posix_spawn_file_actions_addclose(&actions, fd)
         }
+        #endif
         var pid: pid_t = 0
         let cargs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
         defer { for p in cargs { free(p) } }
         let env = ProcessInfo.processInfo.environment.map { "\($0.key)=\($0.value)" }
         let cenv: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
         defer { for p in cenv { free(p) } }
+        #if canImport(Darwin)
+        let err = posix_spawnp(&pid, argv[0], &actions, &attr, cargs, cenv)
+        #else
         let err = posix_spawnp(&pid, argv[0], &actions, nil, cargs, cenv)
+        #endif
         posix_spawn_file_actions_destroy(&actions)
         close(toChild[0])
         close(fromChild[1])

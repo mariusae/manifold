@@ -76,6 +76,9 @@ final class Server {
     private let machine = MachineSampler()
     /// Gutter marks pending for text blocks, a moment after their last change.
     private var gutterWork: [BlockID: DispatchWorkItem] = [:]
+    /// Each file's marks as last worked out, for a client that asks after
+    /// they were sent (an app opened again, the server kept).
+    private var gutters: [BlockID: [GutterMark]] = [:]
     /// Repositories watched (their index) for git blocks and gutters.
     private var repoWatchers: [String: FileWatcher] = [:]
     /// When each repository's git blocks last refreshed for a change
@@ -963,7 +966,9 @@ final class Server {
             done()
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
-            for id in ids where gutterWork[id] == nil { scheduleGutter(id) }
+            for id in ids {
+                if gutterWork[id] == nil { scheduleGutter(id) } else if let marks = gutters[id] { conn.send(.message(ServerMessage.gutter(id, marks))) }
+            }
             done()
         case let .git(block, path):
             guard let (root, vcs) = git.repository(of: path.expandingTildeInPath) else { return done("\(path) isn't in a git or Sapling repository") }
@@ -1211,6 +1216,7 @@ final class Server {
         git.show(path, at: "HEAD") { [weak self] head in
             guard let self, let head, let now = self.node.block(block)?.text?.text else { return }
             let marks = GutterMark.marks(LineDiff.hunks(old: head, new: now.string))
+            self.gutters[block] = marks
             let frame = Frame.message(ServerMessage.gutter(block, marks))
             for c in self.clients { c.send(frame) }
         }
