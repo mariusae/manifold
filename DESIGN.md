@@ -1370,7 +1370,8 @@ the tile): a strip under the header (`ProjectStrip`: the branch, the
 changes, the index — each a flat button) and a sidebar at the right
 (`ProjectSidebar`: its changes and recent commits, from its scoped git
 block, read on the listing's timer since that block isn't placed), the
-README under the files as ever; the tree previews nothing beside it
+README under the files as ever, as wide as the tile — the sidebar
+stands above it, beside the files; the tree previews nothing beside it
 there, the sidebar having the right. A folder that looks like a
 project's root (a repository's, an indexer's marker) and isn't one
 offers Make Project in its header. On the homepage the header's field

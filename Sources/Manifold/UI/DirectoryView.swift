@@ -984,17 +984,11 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             top -= ProjectStrip.height
         }
         sidebar.isHidden = !home || w < Self.sidebarFrom
-        var right = w
-        if !sidebar.isHidden {
-            right = w - ProjectSidebar.width
-            sidebar.frame = NSRect(x: right, y: 0, width: ProjectSidebar.width, height: top)
-        }
-        // What's left for the files: below the strip, left of the sidebar.
-        let fw = right
         let footerHeight: CGFloat = footer.isHidden ? 0 : 22
-        footer.frame = NSRect(x: 0, y: 4, width: fw, height: 14)
-        // The README under the files (not over a filter's matches): its
-        // bar alone when collapsed, or when the tile's too short for both.
+        footer.frame = NSRect(x: 0, y: 4, width: w, height: 14)
+        // The README under the files (not over a filter's matches), as
+        // wide as the tile, under the sidebar too: its bar alone when
+        // collapsed, or when the tile's too short for both.
         var bottom = footerHeight
         let room = top - footerHeight
         let showsReadme = readmeText != nil && model?.filtering != true && !searchingContents && results.isHidden
@@ -1005,9 +999,17 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             let wanted = readmeHeight ?? keeper.double("readmeHeight").map { CGFloat($0) } ?? (room * 0.45).rounded()
             let height = open ? min(max(wanted, bar + least), room - least) : bar
             if readme.collapsed == open { readme.collapsed = !open }
-            readme.frame = NSRect(x: 0, y: footerHeight, width: fw, height: height)
+            readme.frame = NSRect(x: 0, y: footerHeight, width: w, height: height)
             bottom += height
         }
+        // The sidebar at the right of the files, above the README.
+        var right = w
+        if !sidebar.isHidden {
+            right = w - ProjectSidebar.width
+            sidebar.frame = NSRect(x: right, y: bottom, width: ProjectSidebar.width, height: max(0, top - bottom))
+        }
+        // What's left for the files: below the strip, left of the sidebar.
+        let fw = right
         content?.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
         note.frame = NSRect(x: 0, y: bottom, width: fw, height: max(0, top - bottom))
         // A project's search over the files and the README.
@@ -1110,9 +1112,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "home": toggleHome()
         case "make": makeProjectClicked()
         case "search":
-            // "search <text>": typed in a project's homepage's field; "search" alone, what's found.
+            // "search <text>": typed in a project's homepage's field ("-": emptied); "search" alone, what's found.
             if words.count > 1 {
-                searchBox.stringValue = words[1]
+                searchBox.stringValue = words[1] == "-" ? "" : words[1]
                 filterTyped()
                 searchWork?.perform()
             }
