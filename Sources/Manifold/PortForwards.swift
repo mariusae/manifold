@@ -96,10 +96,22 @@ final class PortForwards {
         onChange?()
     }
 
+    /// The most connections a host's forwards take at once; past that,
+    /// one is refused. A host whose localhost is this Mac's (this Mac
+    /// attached as another host) would otherwise, its port forwarded onto
+    /// the same port here, have the forward connect to itself without end
+    /// — a page loaded through it is enough — until the Mac has no ports
+    /// left; refused, the loop comes undone.
+    static let most = 512
+
     /// A connection made here: a stream to the host's port, then the
     /// bytes piped both ways.
     private func accepted(_ c: NWConnection, for remote: Int) {
         guard let mux = client?.mux else { return c.cancel() }
+        guard pipes.count < Self.most else {
+            NSLog("host %@: %d connections forwarded at once; another to port %d refused", client?.host.raw ?? "?", pipes.count, remote)
+            return c.cancel()
+        }
         // Its handlers on the main thread, where the connections here and
         // this bookkeeping are (the link's own queue would race them).
         let stream = mux.open(bulk: true, callbackQueue: .main)

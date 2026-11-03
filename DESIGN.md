@@ -2239,7 +2239,11 @@ What the README said once of how things work under what you see, kept here.
   giving up as soon as the page goes. A Linux host's server, built
   static, looks names up as musl does: `/etc/hosts`, then the servers
   `resolv.conf` names (a VPN's, or systemd-resolved's stub), not NSS's
-  other sources (mDNS, sssd).
+  other sources (mDNS, sssd). A host's forwards take 512 connections
+  at once at most, past which one is refused: a host whose localhost
+  is this Mac's (this Mac attached as another) would otherwise have a
+  forward onto the same port here connect to itself without end, until
+  the Mac had no ports left.
 
   Lines are 1.45 to edit, 1.3
   for code, and to read 1.45 (SF), 1.5 (New York), 1.55 (Chronicle).
