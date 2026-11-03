@@ -23,13 +23,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var unshrunk: [PlacementID: Double] = [:]
     /// The grid for no workspace (none selected).
     private lazy var blankGrid: GridView = content
-    /// The content area, which the grids are clipped to: a workspace
-    /// sliding out (⌘`) leaves through its edge, never under the sidebar
-    /// (which is translucent, and would show it).
+    /// The content area, which the grids are clipped to as a workspace
+    /// slides (⌘`): one sliding out leaves through its edge, never under
+    /// the sidebar (which is translucent, and would show it). Not at rest:
+    /// the tiles' shadows fall past it, under the sidebar, as on one
+    /// surface — clipped there, a column's shadow stopped in a line at
+    /// the sidebar's edge, a band of another colour beside it.
     private let stage: NSView = {
         let v = NSView()
         v.wantsLayer = true
-        v.layer?.masksToBounds = true
+        v.layer?.masksToBounds = false
         return v
     }()
     /// The grids of the workspaces used lately, most recent first, kept in
@@ -3409,6 +3412,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let incoming = content.layer, let leaving = old.layer else { return old.isHidden = true }
         slidingAway = old
         sliding = true
+        stage.layer?.masksToBounds = true
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in self?.finishSlide() }
         func animate(_ layer: CALayer, _ keyPath: String, _ from: Any, _ to: Any, _ duration: TimeInterval, _ ease: CAMediaTimingFunction) {
@@ -3437,6 +3441,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func finishSlide() {
         guard sliding else { return }
         sliding = false
+        stage.layer?.masksToBounds = false
         content.layer?.removeAnimation(forKey: "manifold.slide")
         if let g = slidingAway {
             g.layer?.removeAnimation(forKey: "manifold.slide")

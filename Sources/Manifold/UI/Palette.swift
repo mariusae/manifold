@@ -228,6 +228,11 @@ struct Palette {
         }
         var light: Wash
         var dark: Wash
+        /// The shadow a tile casts on it in the light (none in the dark):
+        /// its colour and how strong — black, as on Paper, reads as a grey
+        /// band round each tile on a warm or tinted ground, so a theme's is
+        /// a deeper shade of its own.
+        var tileShadow: (color: NSColor, opacity: CGFloat) = (.black, 0.10)
 
         func wash(dark isDark: Bool) -> Wash { isDark ? dark : light }
     }
@@ -626,7 +631,9 @@ extension Palette {
                 light: .init(stops: [(0.11, 0.10, 0.95), (0.06, 0.13, 0.94), (0.12, 0.12, 0.90), (0.14, 0.05, 0.97)],
                              pool: (0.15, 0.98), tintPool: (0.28, 0.98)),
                 dark: .init(stops: [(0.10, 0.17, 0.19), (0.06, 0.22, 0.18), (0.11, 0.17, 0.15), (0.13, 0.08, 0.11)],
-                            pool: (0.26, 0.25), tintPool: (0.48, 0.31))))
+                            pool: (0.26, 0.25), tintPool: (0.48, 0.31)),
+                // A warm umber, softer: the paper deepened, not greyed.
+                tileShadow: (Theme.hex(0x5A4630), 0.08)))
     }()
 }
 
@@ -776,6 +783,8 @@ extension Palette {
                 light: .init(stops: [(0.54, 0.17, 0.96), (0.52, 0.09, 0.98), (0.16, 0.13, 0.99), (0.15, 0.25, 0.98)],
                              pool: (0.2, 1), tintPool: (0.4, 1)),
                 dark: .init(stops: [(0.55, 0.45, 0.27), (0.57, 0.32, 0.22), (0.14, 0.42, 0.23), (0.58, 0.15, 0.13)],
-                            pool: (0.45, 0.33), tintPool: (0.65, 0.42))))
+                            pool: (0.45, 0.33), tintPool: (0.65, 0.42)),
+                // go.dev's slate.
+                tileShadow: (Theme.hex(0x2B4650), 0.09)))
     }()
 }

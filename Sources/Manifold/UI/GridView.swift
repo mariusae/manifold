@@ -1620,6 +1620,10 @@ final class GridView: NSView, NSDraggingSource {
                 shadowLayers[id] = l
                 return l
             }()
+            // In the theme's shade of its ground.
+            let shade = Palette.current.backdrop.tileShadow
+            l.shadowColor = shade.color.cgColor
+            l.shadowOpacity = Float(shade.opacity)
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
             let path = CGPath(roundedRect: card, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
             // Gliding with its card, from where it shows.
