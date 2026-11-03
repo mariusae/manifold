@@ -54,7 +54,7 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
             column.minWidth = 60
             let cell = NSTextFieldCell()
             cell.isEditable = true
-            cell.font = id == "command" ? .monospacedSystemFont(ofSize: 12, weight: .regular) : UIType.body
+            cell.font = id == "command" ? .systemMono(ofSize: 12, weight: .regular) : UIType.body
             column.dataCell = cell
             table.addTableColumn(column)
         }

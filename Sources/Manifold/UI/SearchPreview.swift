@@ -37,7 +37,7 @@ final class SearchPreviewView: NSView {
     var read: (String, @escaping (String?) -> Void) -> Void = { _, done in done(nil) }
     /// A line (1-based) double-clicked: the file opened there.
     var open: (String, Int) -> Void = { _, _ in }
-    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
+    var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
 
     private let title = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
@@ -393,7 +393,7 @@ final class LineGutter: NSView {
     weak var text: NSTextView?
     var lineStarts: [Int] = [0] { didSet { needsDisplay = true } }
     var litLine: Int?
-    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
+    var font: NSFont = .systemMono(ofSize: 12, weight: .regular)
     var thickness: CGFloat { max(30, CGFloat(String(lineStarts.count).count) * 7.5 + 16) }
 
     override var isFlipped: Bool { true }

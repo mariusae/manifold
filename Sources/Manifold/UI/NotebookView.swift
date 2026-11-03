@@ -27,7 +27,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     let block: BlockID
     weak var delegate: NotebookViewDelegate?
     var source: () -> Block? = { nil }
-    var codeFont: NSFont = .monospacedSystemFont(ofSize: 12.5, weight: .regular) {
+    var codeFont: NSFont = .systemMono(ofSize: 12.5, weight: .regular) {
         didSet { if codeFont != oldValue { cells.values.forEach { $0.font = codeFont }; needsLayout = true } }
     }
 

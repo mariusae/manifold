@@ -462,7 +462,7 @@ final class HomeRow: NSView, NSDraggingSource {
         }
         var x: CGFloat = 14
         if let mark {
-            let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: markColor ?? Theme.secondaryText]
+            let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemMono(ofSize: 11, weight: .semibold), .foregroundColor: markColor ?? Theme.secondaryText]
             (mark as NSString).draw(at: NSPoint(x: x, y: 5), withAttributes: a)
             x += 16
         }

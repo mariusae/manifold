@@ -6829,7 +6829,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let command = NSTextField(frame: NSRect(x: 0, y: 36, width: 340, height: 24))
         command.placeholderString = "The indexer's own command; {out} the index's file"
         command.stringValue = project.indexCommand ?? ""
-        command.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        command.font = .systemMono(ofSize: 11, weight: .regular)
         let again = NSButton(checkboxWithTitle: "Index again when the working copy moves", target: nil, action: nil)
         again.frame = NSRect(x: 0, y: 72, width: 340, height: 22)
         again.state = project.reindexOnCheckout == false ? .off : .on

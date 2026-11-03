@@ -29,8 +29,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     private let fieldBox = FlatFieldBox()
     private var field: FlatField { fieldBox.field }
-    private let caseButton = FlatButton("Aa", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
-    private let regexButton = FlatButton(".*", toggles: true, font: .monospacedSystemFont(ofSize: 11, weight: .medium))
+    private let caseButton = FlatButton("Aa", toggles: true, font: .systemMono(ofSize: 11, weight: .medium))
+    private let regexButton = FlatButton(".*", toggles: true, font: .systemMono(ofSize: 11, weight: .medium))
     /// The folder searched under: typed (↩ searches there), or widened.
     private let pathBox = FlatFieldBox(symbol: "folder", clears: false, fontSize: 12)
     private var pathField: FlatField { pathBox.field }
@@ -526,7 +526,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         case let .section(words):
             f.attributedStringValue = NSAttributedString(string: words, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.secondaryText])
         case let .symbol(h):
-            let s = NSMutableAttributedString(string: h.kind.isEmpty ? "" : h.kind + "  ", attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText])
+            let s = NSMutableAttributedString(string: h.kind.isEmpty ? "" : h.kind + "  ", attributes: [.font: NSFont.systemMono(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText])
             s.append(NSAttributedString(string: h.qualified, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]))
             var at = h.path
             if let root = query?.root, at.hasPrefix(root + "/") { at = String(at.dropFirst(root.count + 1)) }

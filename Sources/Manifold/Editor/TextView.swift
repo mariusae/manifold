@@ -102,7 +102,7 @@ final class TextView: NSView, NSTextInputClient {
     /// Markdown shown richly (MarkdownStyle): the attributes of a line say
     /// what it means; the caret's line shows as written.
     var markdown = false { didSet { if markdown != oldValue { invalidateAll() } } }
-    var codeFont: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular) { didSet { if markdown { invalidateAll() } } }
+    var codeFont: NSFont = .systemMono(ofSize: 13, weight: .regular) { didSet { if markdown { invalidateAll() } } }
     var markdownPalette = MarkdownStyle.Palette(text: Theme.bodyText, strong: Theme.strongText, dim: Theme.secondaryText, accent: Theme.accent,
                                                 codeTint: Theme.hover, chipTint: Theme.accent.withAlphaComponent(0.16))
     /// The line the caret is on, whose Markdown shows raw.

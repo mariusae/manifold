@@ -382,14 +382,14 @@ extension TypeStyle {
         var base: NSFont?
         if family.isEmpty {
             let w = Self.systemWeight(weight)
-            base = role == .monospaced ? .monospacedSystemFont(ofSize: size, weight: w) : .systemFont(ofSize: size, weight: w)
+            base = role == .monospaced ? .systemMono(ofSize: size, weight: w) : .systemFont(ofSize: size, weight: w)
         } else if Self.isNewYork(family) {
             let sf = NSFont.systemFont(ofSize: size, weight: Self.systemWeight(weight))
             base = sf.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) }
         } else if let face = face(role) {
             base = NSFont(name: face.postScript, size: size)
         }
-        let font = base ?? (role == .monospaced ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size))
+        let font = base ?? (role == .monospaced ? .systemMono(ofSize: size, weight: .regular) : .systemFont(ofSize: size))
         let tags = featureTags
         guard !tags.isEmpty else { return font }
         let settings = tags.map { ["CTFeatureOpenTypeTag": $0.tag, "CTFeatureOpenTypeValue": $0.value] as [String: Any] }
@@ -468,5 +468,26 @@ extension TypeStyle {
             }
         }
         return out.sorted { $0.0 < $1.0 }
+    }
+}
+
+extension NSFont {
+    private static var monos: [String: NSFont] = [:]
+    private static let monosLock = NSLock()
+
+    /// The system's monospaced font at a size and weight, made once and
+    /// kept. One made afresh each time it's drawn and let go can come back
+    /// from CoreText's caches as nothing, and the drawing throws (an
+    /// attributes dictionary with a nil in it): seen on macOS 27 with
+    /// 11-point semibold, a project's sidebar's change letter, every few
+    /// minutes; kept alive, never.
+    static func systemMono(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let key = "\(size)/\(weight.rawValue)"
+        monosLock.lock()
+        defer { monosLock.unlock() }
+        if let f = monos[key] { return f }
+        let f = NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+        monos[key] = f
+        return f
     }
 }

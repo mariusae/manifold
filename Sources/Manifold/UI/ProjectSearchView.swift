@@ -258,7 +258,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         case let .found(.symbol(h)):
             let a = NSMutableAttributedString()
             if !h.kind.isEmpty {
-                a.append(NSAttributedString(string: h.kind + "  ", attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText]))
+                a.append(NSAttributedString(string: h.kind + "  ", attributes: [.font: NSFont.systemMono(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText]))
             }
             let name = NSMutableAttributedString(string: h.name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: Theme.text])
             Self.mark(query?.text ?? "", in: name)
@@ -270,7 +270,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
                                         attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText.withAlphaComponent(0.8)]))
             let under = NSMutableAttributedString(string: relative(h.path) + ":\(h.line + 1)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])
             if !h.text.isEmpty {
-                under.append(NSAttributedString(string: "   " + h.text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: Theme.secondaryText]))
+                under.append(NSAttributedString(string: "   " + h.text, attributes: [.font: NSFont.systemMono(ofSize: 10.5, weight: .regular), .foregroundColor: Theme.secondaryText]))
             }
             cell.set(a.truncatingTail(), under.truncatingTail())
         case let .found(.file(path)):
@@ -283,7 +283,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         case let .found(.hit(h)):
             let a = NSMutableAttributedString(string: relative(h.path) + ":\(h.line)  ", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])
             let line = h.text.trimmingCharacters(in: .whitespaces)
-            let body = NSMutableAttributedString(string: line, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular), .foregroundColor: Theme.text])
+            let body = NSMutableAttributedString(string: line, attributes: [.font: NSFont.systemMono(ofSize: 11.5, weight: .regular), .foregroundColor: Theme.text])
             for r in query?.ranges(in: line, limit: 20) ?? [] { body.addAttribute(.backgroundColor, value: TextView.matchColor, range: r) }
             a.append(body)
             cell.set(a.truncatingTail(), nil)

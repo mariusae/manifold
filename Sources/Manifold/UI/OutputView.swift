@@ -16,7 +16,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     let block: BlockID
     weak var delegate: OutputViewDelegate?
     var source: () -> Block? = { nil }
-    var font: NSFont = .monospacedSystemFont(ofSize: 12.5, weight: .regular) { didSet { if font != oldValue { shown = nil; refresh() } } }
+    var font: NSFont = .systemMono(ofSize: 12.5, weight: .regular) { didSet { if font != oldValue { shown = nil; refresh() } } }
 
     private let header = NSView()
     private let prompt = NSTextField(labelWithString: "")

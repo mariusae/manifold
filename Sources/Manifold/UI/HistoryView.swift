@@ -14,7 +14,7 @@ final class HistoryView: NSView {
     var onOpen: ((String, Stamp) -> Void)?
     var titleOf: (BlockID) -> String = { $0.description }
     var symbolOf: (Lens) -> String = { _ in "doc" }
-    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
+    var font: NSFont = .systemMono(ofSize: 12, weight: .regular)
 
     private let panel = NSView()
     private let slider: NSSlider = {

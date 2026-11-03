@@ -281,7 +281,7 @@ final class DiffRowsView: NSView {
     private var currentLine: Int?
     /// Each row's line on screen, side by side.
     private var rowLines: [Int] = []
-    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) { didSet { relayout() } }
+    var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { relayout() } }
     var minWidth: CGFloat = 0
     var onFold: (() -> Void)?
     var onOpen: ((DiffRow) -> Void)?

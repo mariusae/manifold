@@ -449,8 +449,8 @@ final class ColorThemePicker: NSView {
             }
         }
 
-        let mono = NSFont.monospacedSystemFont(ofSize: 6.5, weight: .regular)
-        let bold = NSFont.monospacedSystemFont(ofSize: 6.5, weight: .bold)
+        let mono = NSFont.systemMono(ofSize: 6.5, weight: .regular)
+        let bold = NSFont.systemMono(ofSize: 6.5, weight: .bold)
         let barFont = NSFont.systemFont(ofSize: 6.5, weight: .semibold)
         func words(_ parts: [(String, NSColor, NSFont)], at pt: NSPoint) {
             var x = pt.x
