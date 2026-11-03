@@ -22,6 +22,9 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     private var chosen: String?
     private var pendingSelect: String?
     private var restoring = false
+    /// Several entries of one folder chosen at once (⌘-, ⇧-click): dragged
+    /// together; no column past theirs, nothing previewed. Nil, one or none.
+    private var several: (folder: String, paths: [String])?
 
     static let columnWidth: CGFloat = 220
     static let previewMin: CGFloat = 280
@@ -64,7 +67,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
             table.intercellSpacing = NSSize(width: 0, height: 0)
             table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
             table.allowsEmptySelection = true
-            table.allowsMultipleSelection = false
+            table.allowsMultipleSelection = true
             table.backgroundColor = .clear
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
@@ -208,6 +211,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     /// A header isn't chosen: clicked, what was chosen stays; come to by
     /// the arrows, the entry past it is.
     func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
+        if proposed.count > 1, let c = column(of: tableView) { return proposed.filteredIndexSet { c.node($0) != nil } }
         guard proposed.count == 1, let p = proposed.first, let c = column(of: tableView), c.node(p) == nil else { return proposed }
         let mouse: Set<NSEvent.EventType> = [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .otherMouseDown]
         if let e = NSApp.currentEvent, mouse.contains(e.type) { return tableView.selectedRowIndexes }
@@ -320,7 +324,15 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
                 c.table.reloadData()
             }
             let next = i + 1 < t.count ? t[i + 1] : (chosen != folder ? chosen : nil)
-            if let next, let row = c.row(of: next) {
+            if next == nil, let s = several, s.folder == folder {
+                let rows = IndexSet(s.paths.compactMap(c.row(of:)))
+                if rows.count > 1 {
+                    c.table.selectRowIndexes(rows, byExtendingSelection: false)
+                    continue
+                }
+                several = nil
+                if let only = rows.first { c.table.selectRowIndexes([only], byExtendingSelection: false) }
+            } else if let next, let row = c.row(of: next) {
                 c.table.selectRowIndexes([row], byExtendingSelection: false)
                 c.table.scrollRowToVisible(row)
             } else {
@@ -338,18 +350,37 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
             for extra in columns.dropFirst(kept) { extra.removeFromSuperview() }
             columns.removeSubrange(kept...)
         }
-        preview.show(previewShown ? selectedNode : nil)
+        preview.show(previewShown && several == nil ? selectedNode : nil)
         scrollToEnd()
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !restoring, let table = notification.object as? NSTableView, let c = column(of: table) else { return }
+        let picked = table.selectedRowIndexes.compactMap { c.node($0)?.path }
+        if picked.count > 1 {
+            // Several: chosen no further than their folder, they marked in it.
+            several = (c.folder, picked)
+            chosen = c.folder == model.root ? nil : c.folder
+            pendingSelect = nil
+            rebuild()
+            return owner.selectionChanged(chosen)
+        }
         let n = c.node(table.selectedRow)
         choose(n?.path ?? (c.folder == model.root ? nil : c.folder))
     }
 
+    func debugChoose(_ paths: [String]) {
+        guard let first = paths.first, let c = columns.first(where: { $0.folder == first.deletingLastPathComponent }) else { return }
+        c.table.selectRowIndexes(IndexSet(paths.compactMap(c.row(of:))), byExtendingSelection: false)
+    }
+
+    /// The entries chosen: several, or the one.
+    var selectedPaths: [String] { several?.paths ?? chosen.map { [$0] } ?? [] }
+
     private func choose(_ path: String?) {
-        guard path != chosen else { return }
+        let wasSeveral = several != nil
+        several = nil
+        guard path != chosen || wasSeveral else { return }
         chosen = path
         pendingSelect = nil
         rebuild()
@@ -387,6 +418,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     }
 
     func select(_ path: String?) {
+        several = nil
         guard let path, path != model.root else {
             chosen = nil
             return rebuild()
@@ -470,7 +502,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         columns.enumerated().map { i, c -> String in
             let rows = c.rows.prefix(20).enumerated().map { r, row -> String in
                 guard case let .node(n) = row else { if case let .header(g) = row { return "‹\(g.title)›" }; return "" }
-                return (c.table.selectedRow == r ? "[" : "") + n.name + (n.isDirectory ? "/" : "") + (c.table.selectedRow == r ? "]" : "")
+                let on = c.table.selectedRowIndexes.contains(r)
+                return (on ? "[" : "") + n.name + (n.isDirectory ? "/" : "") + (on ? "]" : "")
             }
             return "column \(i) \(model.relative(c.folder).isEmpty ? "." : model.relative(c.folder)): " + rows.joined(separator: " ")
                 + (c.rows.count > 20 ? " … (\(c.nodes.count))" : "")

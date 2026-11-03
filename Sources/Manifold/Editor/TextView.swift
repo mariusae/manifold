@@ -2942,8 +2942,14 @@ extension TextView: DropTaking {
         let words = [.link, .reference, .path].contains(form)
         let put = { [weak self] (text: String) in
             guard let self else { return }
-            guard words, !text.contains("\n"), let head = self.selections.first?.head else { return self.insert(text) }
+            guard words, let head = self.selections.first?.head else { return self.insert(text) }
             let char = { (i: Int) in self.text.byte(at: i).map { Character(UnicodeScalar($0)) } }
+            // Several (a line each): lines of their own, not run into the text about them.
+            if text.contains("\n") {
+                let before = head > 0 && char(head - 1) != "\n" ? "\n" : ""
+                let after = char(head).map { $0 != "\n" } == true ? "\n" : ""
+                return self.insert(before + text + after)
+            }
             self.insert(Dropping.spaced(text, after: head > 0 ? char(head - 1) : nil, before: char(head)))
         }
         if acceptsBlockLinks {

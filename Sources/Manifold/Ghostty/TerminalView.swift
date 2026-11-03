@@ -1958,7 +1958,7 @@ extension TerminalView: DropTaking {
             }
         }
         // (A path or a reference typed with a space after it, as Terminal types one.)
-        let words = form == .path || form == .reference
+        let words = d.asWords(form)
         d.text(form, separator: words ? " " : "\n", quote: Self.shellQuoted) { [weak self] text, blocks in
             guard let self, let text, !text.isEmpty else { return NSSound.beep() }
             self.type(words ? text + " " : text)

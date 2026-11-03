@@ -150,17 +150,25 @@ parts from the Mac's conventions on purpose.
   the menu as before), and it's not the tile you carry but the block itself — a **thing**,
   as everything else you drag is without ⇧: an outline's item (a
   command, a heading, a page), a listing's file or folder, a search's
-  hit, a file from the Finder, a page's address, a picture, words.
+  hit, a commit (a git tile's history, a project's sidebar, a commit's
+  diff ⇧-dragged), a file from the Finder, a page's address, a
+  picture, words. **Several at once**: ⌘- or ⇧-click rows — a git
+  tile's changes and commits, a folder's files (in its columns, one
+  folder's; in its tree, any), a search's hits, a project's sidebar
+  and its search, a tile's outline — and drag any of them to take them
+  all, each landing as it would alone (on a terminal, one line, a
+  space between).
   Where a thing lands decides what's done with it, as Star's printer
   took a document: on a terminal a file's path is typed, quoted for the
   shell (this Mac's files sent first to a shell on another host), a
-  command again by its words, a block by its reference; on an agent, a
+  command again by its words, a commit by its sha, a block by its reference; on an agent, a
   reference to a block or a place in one (a heading, a command, a
   function), so the agent reads what's there through `mani` and can
   point back to it, a file's path, words selected in code as they
   are; on a shell notebook, it goes in the cell under it, or outside the
   cells a cell is made for it; in a note (the editor, the outline, the
-  preview), a link to it — a file opened as a block for it — a picture
+  preview), a link to it — a file opened as a block for it, a commit
+  as its diff — a picture
   kept and shown, a page's link; in code, a file's path, a place's
   words; on a folder, a
   copy (its own host's entries moved, as the Finder moves them); on the

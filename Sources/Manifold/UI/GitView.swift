@@ -93,6 +93,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         table.intercellSpacing = NSSize(width: 0, height: 0)
         table.target = self
         table.doubleAction = #selector(rowChosen)
+        // Several changes, commits, chosen at once (⌘-, ⇧-click): dragged
+        // together, opened together with ⏎.
+        table.allowsMultipleSelection = true
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -257,17 +260,27 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         for s in g.status { out.append(.change(s)) }
         out.append(.section("History"))
         for c in g.log { out.append(.commit(c)) }
+        // The rows chosen stay chosen, by what they are, as it's read again.
+        let old = rows
+        let chosen = Set(table.selectedRowIndexes.compactMap { old.indices.contains($0) ? rowKey(old[$0]) : nil })
+        let last = table.selectedRow
         rows = out
-        let selected = table.selectedRow
         table.reloadData()
-        if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
+        var again = IndexSet(rows.indices.filter { rowKey(rows[$0]).map(chosen.contains) == true })
+        if again.isEmpty, last >= 0, last < rows.count { again = [last] }
+        if !again.isEmpty { table.selectRowIndexes(again, byExtendingSelection: false) }
         restoreState()
     }
 
     @objc private func refreshClicked() { delegate?.gitViewRefresh(self) }
 
+    /// Double-clicked, its row; ⏎, each row chosen.
     @objc private func rowChosen() {
-        let row = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        if table.clickedRow >= 0 { return open(table.clickedRow) }
+        for row in table.selectedRowIndexes.prefix(12) { open(row) }
+    }
+
+    private func open(_ row: Int) {
         guard row >= 0, row < rows.count else { return }
         switch rows[row] {
         case let .change(s):
@@ -312,11 +325,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     /// what the pane shows.
     func debug(_ arg: String) -> String {
         let words = arg.split(separator: " ")
-        if words.first == "select", words.count > 1, let i = Int(words[1]) {
-            table.selectRowIndexes([i], byExtendingSelection: false)
+        if words.first == "select", words.count > 1 {
+            table.selectRowIndexes(IndexSet(words.dropFirst().compactMap { Int($0) }.filter(selectable)), byExtendingSelection: false)
         }
         var lines = rows.enumerated().map { i, r -> String in
-            let mark = i == table.selectedRow ? "*" : " "
+            let mark = table.selectedRowIndexes.contains(i) ? "*" : " "
             switch r {
             case let .section(t): return "\(mark)\(i) — \(t)"
             case let .change(s): return "\(mark)\(i) change \(s.path)"
@@ -331,10 +344,20 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
-    /// A change dragged out: its file, as a folder's entry is.
+    /// A change dragged out: its file, as a folder's entry is; a commit,
+    /// the commit (its diff, its sha). Each row chosen, if it's one of them.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard rows.indices.contains(row), case let .change(entry) = rows[row] else { return nil }
-        return Drags.file(root + "/" + entry.path, isDirectory: false, on: block.host)
+        guard rows.indices.contains(row) else { return nil }
+        switch rows[row] {
+        case let .change(entry): return Drags.file(root + "/" + entry.path, isDirectory: false, on: block.host)
+        case let .commit(c): return Drags.commit(c.sha, summary: c.summary, in: root, on: block.host)
+        default: return nil
+        }
+    }
+
+    /// What dragging its chosen rows writes (debugging).
+    var debugDragItems: [NSPasteboardWriting] {
+        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
@@ -352,11 +375,19 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         return false
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { selectable(row) }
+
+    private func selectable(_ row: Int) -> Bool {
+        guard rows.indices.contains(row) else { return false }
         switch rows[row] {
         case .change, .commit, .allChanges: return true
         default: return false
         }
+    }
+
+    /// ⇧-clicked across a heading: the rows either side, not it.
+    func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
+        proposed.filteredIndexSet(includeInteger: selectable)
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {

@@ -7,6 +7,10 @@ protocol DirectoryMode: NSView, DebugDescribing {
     var focusView: NSView { get }
     var selectedPath: String? { get }
     var selectedNode: BrowserNode? { get }
+    /// The entries chosen: several (⌘-, ⇧-click), the one, or none.
+    var selectedPaths: [String] { get }
+    /// Debugging: these entries (of one folder, in columns) chosen together.
+    func debugChoose(_ paths: [String])
     /// The folders shown, below the root: those kept current.
     var shownFolders: [String] { get }
     /// ⏎ on a folder opens it here (in place, or in the next column),
@@ -494,6 +498,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         guard f != facts else { return }
         facts = f
         strip.show(f)
+        sidebar.host = block.host
         sidebar.show(f)
     }
     private var gitAskedAt: Date?
@@ -557,6 +562,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             needsLayout = true
         }
         guard on, let project else { return }
+        results.host = block.host
         results.show(projectSearch.flatMap { delegate?.directoryView(self, block: $0)?.search }, root: project.root)
     }
 
@@ -633,6 +639,17 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     }
 
     private lazy var promiseKeeper = PromiseKeeper(view: self)
+
+    /// What dragging its chosen rows writes (debugging): the homepage's
+    /// sidebar's (`sidebar`), its search's (`results`), else the files'.
+    func debugDragItems(from part: String?) -> [NSPasteboardWriting] {
+        if part == "sidebar" { return sidebar.debugDragItems }
+        if part == "results" { return results.debugDragItems }
+        guard let model else { return [] }
+        return (content?.selectedPaths ?? []).compactMap { path in
+            model.existingNode(path).map(pasteboardWriter)
+        }
+    }
 
     // MARK: Drops on the folder
 
@@ -1090,6 +1107,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             }
             return results.isHidden ? "no search shown" : results.debugState
         case "searchenter": results.openChosen()
+        case "searchchoose":
+            // "searchchoose <i> <i>…": those found chosen together.
+            return results.debugChoose(words.count > 1 ? words[1].split(separator: " ").compactMap { Int($0) } : [])
         case "popout": popOutSearch()
         case "project":
             // "project git|reindex|commit <n>|change <n>": as its homepage's buttons and rows do.
@@ -1117,6 +1137,13 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if let shown = content?.shownFolders { model?.refresh(shown) }
         case "focusfilter": performTextFinderAction(nil)
         case "readme": toggleReadme()
+        case "choose":
+            // "choose <path> <path>…" (from the root): those entries chosen together.
+            let paths = words.count > 1 ? words[1].split(separator: " ").map { model?.absolute(String($0)) ?? String($0) } : []
+            content?.debugChoose(paths)
+        case "sidebar":
+            // "sidebar <i> <i>…": a homepage's draggable rows ⌘-clicked (-i: ⇧-clicked).
+            return sidebar.debugChoose(words.count > 1 ? words[1].split(separator: " ").compactMap { Int($0) } : [])
         case "drag":
             // "drag": what dragging the selection carries.
             guard let path = content?.selectedPath else { return "nothing selected" }

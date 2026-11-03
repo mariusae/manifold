@@ -128,7 +128,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.usesAlternatingRowBackgroundColors = false
         table.target = self
         table.doubleAction = #selector(rowChosen)
-        table.allowsMultipleSelection = false
+        // Several hits chosen (⌘-, ⇧-click): dragged together.
+        table.allowsMultipleSelection = true
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -307,9 +308,9 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         hitCount = hits.count
         fileCount = files
         shownHits = hits.count
-        let selected = table.selectedRow
+        let selected = table.selectedRowIndexes.filteredIndexSet { $0 < rows.count }
         table.reloadData()
-        if selected >= 0, selected < rows.count { table.selectRowIndexes([selected], byExtendingSelection: false) }
+        if !selected.isEmpty { table.selectRowIndexes(selected, byExtendingSelection: false) }
         if !s.running { restoreState() }
         updatePreview()
     }
@@ -427,6 +428,13 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             fieldEntered()
             return "asked"
         }
+        if arg.hasPrefix("choose ") {
+            // "choose <i> <i>…": those hits chosen together.
+            let hitRows = rows.indices.filter { !rows[$0].isHeading }
+            let picks = arg.dropFirst(7).split(separator: " ").compactMap { Int($0) }.filter { $0 < hitRows.count }.map { hitRows[$0] }
+            table.selectRowIndexes(IndexSet(picks), byExtendingSelection: false)
+            return table.selectedRowIndexes.compactMap { rows[$0].asHit(root: query?.root ?? "").map { "\($0.path.lastPathComponent):\($0.line)" } }.joined(separator: " ")
+        }
         if let n = Int(arg) {
             let hitRows = rows.indices.filter { !rows[$0].isHeading }
             if n < hitRows.count { table.selectRowIndexes([hitRows[n]], byExtendingSelection: false); table.scrollRowToVisible(hitRows[n]) }
@@ -446,6 +454,11 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             guard let hit = rows[row].asHit(root: query?.root ?? "") else { return nil }
             return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
         }
+    }
+
+    /// What dragging its chosen rows writes (debugging).
+    var debugDragItems: [NSPasteboardWriting] {
+        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {

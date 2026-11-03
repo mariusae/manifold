@@ -69,6 +69,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         table.headerView = nil
         table.target = self
         table.action = #selector(rowClicked)
+        // Several entries chosen (⌘-, ⇧-click), not gone to: dragged together.
+        table.allowsMultipleSelection = true
         table.dataSource = self
         table.delegate = self
         table.rowHeight = 24
@@ -208,7 +210,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     @objc private func rowClicked() {
         let row = table.clickedRow
-        guard rows.indices.contains(row) else { return }
+        guard rows.indices.contains(row), table.selectedRowIndexes.count < 2,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty != false else { return }
         let i = rows[row]
         if onSearchEnd != nil { endSearch() }
         outline.pick(i)
@@ -292,6 +295,13 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             + rows.enumerated().map { row, i in
                 "\(i == current ? "*" : " ")\(row == table.selectedRow ? ">" : " ")\(String(repeating: "  ", count: filtering ? 0 : entries[i].level))\(entries[i].title)"
             }.joined(separator: "\n")
+    }
+
+    /// Debugging: rows chosen together, and what dragging them writes.
+    func debugChoose(_ picks: [Int]) -> String {
+        table.selectRowIndexes(IndexSet(picks.filter(rows.indices.contains)), byExtendingSelection: false)
+        let writers = table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) as? NSPasteboardItem }
+        return writers.map { $0.string(forType: .string) ?? "?" }.joined(separator: "\n")
     }
 
     func debugPick(_ i: Int) -> String {

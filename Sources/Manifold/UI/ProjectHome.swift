@@ -178,6 +178,8 @@ final class ProjectStrip: NSView {
 /// it's a folder in a bigger repository — each opened as a diff beside.
 final class ProjectSidebar: NSView {
     var onAction: ((ProjectAction) -> Void)?
+    /// The host its project is on: whose files and commits its rows drag.
+    var host = Drags.localHost
     private let scroll = ClippingScrollView()
     private let stack = FlippedView()
     private var shown: ProjectFacts?
@@ -217,7 +219,7 @@ final class ProjectSidebar: NSView {
             }
         }
         guard let g = f.git, g.refreshedAt != nil, f.repo != nil, g.error == nil else { return relayout() }
-        let repo = f.repo ?? ""
+        let repo = f.repo ?? "", host = host
         // Where a path of the repository's is, from the project's root.
         let scope = g.scope.map { $0 + "/" } ?? ""
         func inProject(_ path: String) -> String { path.hasPrefix(scope) ? String(path.dropFirst(scope.count)) : path }
@@ -230,6 +232,7 @@ final class ProjectSidebar: NSView {
                                   title: inProject(s.path), detail: nil)
                 row.toolTip = repo.appendingPathComponent(s.path).abbreviatingHome
                 row.onClick = { [weak self] in self?.onAction?(.openChange(s, repo: repo)) }
+                row.drag = { Drags.file(repo.appendingPathComponent(s.path), isDirectory: false, on: host) }
                 add(row)
             }
             if g.status.count > 8 { add(more("and \(g.status.count - 8) more")) }
@@ -240,6 +243,7 @@ final class ProjectSidebar: NSView {
             let row = HomeRow(mark: nil, markColor: nil, title: c.summary, detail: "\(c.short) · \(c.author) · \(when == "now" ? "just now" : when + " ago")")
             row.toolTip = c.summary
             row.onClick = { [weak self] in self?.onAction?(.openCommit(c, repo: repo)) }
+            row.drag = { Drags.commit(c.sha, summary: c.summary, in: repo, on: host) }
             add(row)
         }
         if !g.log.isEmpty { add(more(g.scope == nil ? "All commits" : "All commits here")) }
@@ -252,7 +256,57 @@ final class ProjectSidebar: NSView {
         return row
     }
 
-    private func add(_ v: NSView) { stack.addSubview(v) }
+    private func add(_ v: NSView) {
+        if let row = v as? HomeRow, row.drag != nil {
+            row.onChoose = { [weak self] row, mods in self?.choose(row, mods) }
+            row.dragItems = { [weak self] row in self?.dragItems(from: row) ?? [] }
+        }
+        stack.addSubview(v)
+    }
+
+    /// The rows that can be dragged, in order.
+    private var draggable: [HomeRow] { stack.subviews.compactMap { $0 as? HomeRow }.filter { $0.drag != nil } }
+    /// The row ⌘- or ⇧-clicked last: where ⇧ chooses from.
+    private weak var anchor: HomeRow?
+
+    /// ⌘-click: a row chosen or let go, among others; ⇧-click: every row
+    /// from the last so chosen to it. Chosen rows are dragged together.
+    private func choose(_ row: HomeRow, _ mods: NSEvent.ModifierFlags) {
+        let rows = draggable
+        if mods.contains(.shift), let a = anchor, let i = rows.firstIndex(of: a), let j = rows.firstIndex(of: row) {
+            for (k, r) in rows.enumerated() { r.chosen = (min(i, j)...max(i, j)).contains(k) }
+            return
+        }
+        if mods.contains(.shift), anchor == nil { rows.forEach { $0.chosen = $0 === row } } else { row.chosen.toggle() }
+        anchor = row
+    }
+
+    /// Clicked plainly: what was chosen let go.
+    func unchoose() {
+        draggable.forEach { $0.chosen = false }
+        anchor = nil
+    }
+
+    /// What dragging `row` carries: every row chosen, if it's one of them;
+    /// else it alone.
+    private func dragItems(from row: HomeRow) -> [NSPasteboardWriting] {
+        let rows = row.chosen ? draggable.filter(\.chosen) : [row]
+        return rows.compactMap { $0.drag?() }
+    }
+
+    /// Debugging: rows chosen as ⌘-clicks (`i` of the draggable rows; a
+    /// negative one, as ⇧-click), and what dragging the first would carry.
+    func debugChoose(_ picks: [Int]) -> String {
+        unchoose()
+        let rows = draggable
+        for i in picks where rows.indices.contains(abs(i)) { choose(rows[abs(i)], i < 0 ? .shift : .command) }
+        return draggable.enumerated().map { ($1.chosen ? "*" : " ") + "\($0) " + $1.debugState }.joined(separator: "\n")
+    }
+
+    var debugDragItems: [NSPasteboardWriting] {
+        guard let first = draggable.first(where: \.chosen) ?? draggable.first else { return [] }
+        return dragItems(from: first)
+    }
 
     private func relayout() {
         var y: CGFloat = 8
@@ -305,8 +359,16 @@ private final class SectionLabel: NSTextField {
 /// A row of a homepage's sidebar: a mark (a change's letter), its words
 /// and a detail under them, a faint band under the pointer; clicked, it
 /// does its thing.
-final class HomeRow: NSView {
+final class HomeRow: NSView, NSDraggingSource {
     var onClick: (() -> Void)?
+    /// What it is dragged out as (a change's file, a commit); nil, it isn't.
+    var drag: (() -> NSPasteboardWriting?)?
+    /// ⌘- or ⇧-clicked: chosen among others, not opened.
+    var onChoose: ((HomeRow, NSEvent.ModifierFlags) -> Void)?
+    /// What dragging it carries: it, with the others chosen.
+    var dragItems: ((HomeRow) -> [NSPasteboardWriting])?
+    /// Chosen, to be dragged with others.
+    var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     private let mark: String?
     private let markColor: NSColor?
     private let symbol: String?
@@ -347,14 +409,51 @@ final class HomeRow: NSView {
         let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
         hovering = bounds.contains(p) && visibleRect.contains(p) && isUnderPointer
     }
-    override func mouseDown(with event: NSEvent) {}
+    /// Where a press began, and whether it became a drag.
+    private var pressedAt: NSPoint?
+    private var dragged = false
+
+    override func mouseDown(with event: NSEvent) {
+        pressedAt = event.locationInWindow
+        dragged = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged, let start = pressedAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4 else { return }
+        let writers = dragItems?(self) ?? drag?().map { [$0] } ?? []
+        guard !writers.isEmpty else { return }
+        dragged = true
+        let items = writers.map { w -> NSDraggingItem in
+            let item = NSDraggingItem(pasteboardWriter: w)
+            item.setDraggingFrame(bounds, contents: nil)
+            return item
+        }
+        let session = beginDraggingSession(with: items, event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
+
     override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+        defer { pressedAt = nil }
+        guard !dragged, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        let mods = event.modifierFlags.intersection([.command, .shift])
+        if !mods.isEmpty, let onChoose { return onChoose(self, mods) }
+        (superview?.enclosingScrollView?.superview as? ProjectSidebar)?.unchoose()
+        onClick?()
     }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func draw(_ dirtyRect: NSRect) {
-        if hovering {
+        if chosen {
+            Flat.chosen(emphasized: false).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control).fill()
+        } else if hovering {
             Flat.hovered.setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control).fill()
         }

@@ -1270,7 +1270,7 @@ extension CellEditor: DropTaking {
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
         let at = p.map { characterIndexForInsertion(at: $0) } ?? selectedRange().location
         window?.makeFirstResponder(self)
-        let words = form == .path || form == .reference
+        let words = d.asWords(form)
         d.text(form, separator: words ? " " : "\n", quote: TerminalView.shellQuoted) { [weak self] text, blocks in
             guard let self, let text, !text.isEmpty else { return NSSound.beep() }
             let r = NSRange(location: min(at, (self.string as NSString).length), length: 0)

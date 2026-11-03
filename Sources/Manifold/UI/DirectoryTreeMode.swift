@@ -58,7 +58,8 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         outline.indentationPerLevel = 14
         outline.intercellSpacing = NSSize(width: 0, height: 0)
         outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        outline.allowsMultipleSelection = false
+        // Several entries chosen (⌘-, ⇧-click): dragged together.
+        outline.allowsMultipleSelection = true
         outline.backgroundColor = .clear
         outline.target = self
         outline.action = #selector(clicked)
@@ -231,7 +232,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     }
 
     private func showPreview() {
-        let n = outline.selectedRow >= 0 ? outline.item(atRow: outline.selectedRow) as? BrowserNode : nil
+        let n = outline.selectedRow >= 0 && outline.selectedRowIndexes.count == 1 ? outline.item(atRow: outline.selectedRow) as? BrowserNode : nil
         preview.show(n)
         nothing.isHidden = n != nil
     }
@@ -257,6 +258,21 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 
     var selectedNode: BrowserNode? {
         outline.selectedRow >= 0 ? outline.item(atRow: outline.selectedRow) as? BrowserNode : nil
+    }
+
+    /// The entries chosen, in order.
+    var selectedPaths: [String] { outline.selectedRowIndexes.compactMap { (outline.item(atRow: $0) as? BrowserNode)?.path } }
+
+    func debugChoose(_ paths: [String]) {
+        let rows = IndexSet(paths.compactMap { model.existingNode($0).map(outline.row(forItem:)) }.filter { $0 >= 0 })
+        outline.selectRowIndexes(rows, byExtendingSelection: false)
+    }
+
+    /// Several chosen again after a reload, as they're still listed.
+    private func reselect(_ paths: [String]) {
+        guard paths.count > 1 else { return }
+        let rows = IndexSet(paths.compactMap { model.existingNode($0).map(outline.row(forItem:)) }.filter { $0 >= 0 })
+        if rows.count > 1 { outline.selectRowIndexes(rows, byExtendingSelection: false) }
     }
 
     func select(_ path: String?) {
@@ -305,17 +321,18 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         cache.removeValue(forKey: folder)
         guard !model.filtering else { return }
         if folder == model.root { return reloadAll() }
-        let keep = pendingSelect ?? selectedPath
+        let keep = pendingSelect ?? selectedPath, all = selectedPaths
         guard let n = model.existingNode(folder), outline.row(forItem: n) >= 0 else { return }
         restoring = true
         outline.reloadItem(n, reloadChildren: true)
         openAsKept()
         restoring = false
         select(keep)
+        reselect(all)
     }
 
     func reloadAll() {
-        let keep = pendingSelect ?? selectedPath
+        let keep = pendingSelect ?? selectedPath, all = selectedPaths
         cache.removeAll()
         matched = model.filtering ? model.matchedNodes() : []
         restoring = true
@@ -323,6 +340,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         if !model.filtering { openAsKept() }
         restoring = false
         select(keep)
+        reselect(all)
         if model.filtering, outline.selectedRow < 0 { showPreview() }
         // The scroll as it was left, the first time.
         if !scrollRestored, !model.filtering, outline.numberOfRows > 0 {
@@ -357,7 +375,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
                 let mark = n.isDirectory ? (outline.isItemExpanded(n) ? "▾ " : "▸ ") : "  "
                 var line = String(repeating: "  ", count: outline.level(forRow: r)) + mark + n.name
                 if model.filtering { line += "  (" + model.relative(n.path).deletingLastPathComponent + ")" }
-                return line + (outline.selectedRow == r ? "  ◀" : "")
+                return line + (outline.selectedRowIndexes.contains(r) ? "  ◀" : "")
             }.joined(separator: "\n")
     }
 }

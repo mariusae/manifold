@@ -321,6 +321,12 @@ enum Drags {
     /// Whether a file is one Manifold opens (`resolve` would name it),
     /// without opening it.
     static var opens: ((DragThing.File) -> Bool)?
+    /// The diff block a commit dragged names: opened as one (not placed).
+    static var commitBlock: ((DragThing.Commit) -> BlockID?)?
+    /// A commit on a host, dragged (a history's row).
+    static func commit(_ sha: String, summary: String, in repo: String, on host: HostID) -> NSPasteboardItem {
+        item(.commit(.init(host: host, repo: repo, sha: sha, summary: summary)))
+    }
     /// A block's symbol, for its pill while it's dragged.
     static var symbol: ((BlockID) -> String?)?
     /// A picture kept for a note (`note`), as an image block: `insert`

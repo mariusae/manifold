@@ -1555,6 +1555,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
         if arg.hasPrefix("pdf") { return (v as? MediaView)?.debugPDF(String(arg.dropFirst(3)).trimmingCharacters(in: .whitespaces)) ?? "no PDF focused" }
         if arg == "toggle" { toggleTileSidebar(nil) }
+        if arg.hasPrefix("choose ") {
+            // "choose <i> <i>…": those entries chosen together; what dragging them writes.
+            func find(_ v: NSView) -> TileSidebar? { v as? TileSidebar ?? v.subviews.lazy.compactMap(find).first }
+            guard let side = find(v) else { return "no sidebar shown" }
+            return side.debugChoose(arg.dropFirst(7).split(separator: " ").compactMap { Int($0) })
+        }
         let pick = arg.hasPrefix("pick ") ? Int(arg.dropFirst(5)) : nil
         switch v {
         case let e as EditorView:
@@ -2064,7 +2070,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         pb.clearContents()
         let rest = spec.dropFirst().joined(separator: " ")
         var item: NSPasteboardWriting?
+        var several: [NSPasteboardWriting]?
         switch spec.first {
+        case "chosen":
+            // "chosen <block> [sidebar|results]": the rows chosen in its tile
+            // (a git block's, a search's, a folder's, its homepage's sidebar's
+            // or search's), dragged together.
+            guard spec.count > 1, let id = BlockID(string: spec[1]),
+                  let v = views.values.first(where: { $0.block == id }) else { return "chosen <block> [sidebar|results]" }
+            if let g = v as? GitView { several = g.debugDragItems }
+            else if let d = v as? DirectoryView { several = d.debugDragItems(from: spec.count > 2 ? spec[2] : nil) }
+            else if let r = v as? SearchView { several = r.debugDragItems }
+            else { return "no rows to choose there" }
         case "block":
             guard spec.count > 1, let id = BlockID(string: spec[1]) else { return "no block" }
             item = spec.count > 2 ? Drags.place?(id, spec[2], hosts.block(id)?.displayTitle ?? "") : Drags.block?(id, [.shift])
@@ -2098,10 +2115,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                   let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "from <terminal> <i>" }
             item = source.debugOutlineDrag(n)
         default:
-            return "drop block|file|finder|text|url|image|row|from … [as <form>] [grid <column> <at>]"
+            return "drop block|file|finder|text|url|image|row|from|chosen … [as <form>] [grid <column> <at>]"
         }
-        guard let item else { return "nothing dragged" }
-        pb.writeObjects([item])
+        let items = several ?? item.map { [$0] } ?? []
+        guard !items.isEmpty else { return "nothing dragged" }
+        pb.writeObjects(items)
         Dropping.debugChoice = form
         defer { Dropping.debugChoice = nil }
         if let (column, at) = slot {
@@ -4875,6 +4893,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         Drags.resolve = { [weak self] f in self?.pathBlock(f.path, isDirectory: f.isDirectory, on: f.host)?.0 }
         Drags.opens = { [weak self] f in self?.pathOpens(f.path, isDirectory: f.isDirectory, on: f.host) ?? true }
+        // (One already made is named as it is, not read again.)
+        Drags.commitBlock = { [weak self] c in
+            guard let client = self?.hosts.client(c.host) else { return nil }
+            let subject = DiffSubject.commit(repo: c.repo, sha: c.sha)
+            return client.node.blocks.first { $0.kind == .diff && $0.diff?.subject == subject }?.id ?? client.diffBlock(subject)
+        }
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         ReferenceTip.whyMissing = { [weak self] id in self?.hosts.whyMissing(id) }
         Drags.keepImage = { [weak self] data, kind, note, insert in self?.keepImage(data, kind: kind, for: note, insert: insert) }
@@ -7537,7 +7561,10 @@ extension MainWindowController: GridDelegate {
             }
         }
         for t in d.things {
-            if let b = t.block, let block = hosts.block(b) {
+            if t.block == nil, let c = t.commit {
+                // A commit: its diff, made if it isn't yet.
+                if let b = Drags.commitBlock?(c) { next(b, .diff) }
+            } else if let b = t.block, let block = hosts.block(b) {
                 next(b, Lens.default(for: block.kind, path: block.path))
                 if let f = t.fragment { goTo(f, in: b) }
             } else if let f = t.file {
@@ -7757,6 +7784,11 @@ extension MainWindowController: GridDelegate {
         }
         t.url = b.web?.url
         t.text = fragment != nil ? title : b.web?.url
+        // A commit's diff: the commit, its sha its words.
+        if fragment == nil, case let .commit(repo, sha)? = b.diff?.subject {
+            t.commit = .init(host: id.host, repo: repo, sha: sha, summary: t.title)
+            t.text = sha
+        }
         return t
     }
 

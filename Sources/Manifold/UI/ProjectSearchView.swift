@@ -33,6 +33,8 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     private let table = ResultsTable()
     private var state: SearchState?
     private var root = ""
+    /// The host its project is on: whose files its rows drag.
+    var host = Drags.localHost
     /// How many of each are shown here; the tile has them all.
     static let symbolsShown = 8, filesShown = 6, hitsShown = 80
 
@@ -61,6 +63,9 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         table.action = #selector(clicked)
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.onKey = { [weak self] code in self?.key(code) ?? false }
+        // Several chosen (⌘-, ⇧-click): dragged together, not opened.
+        table.allowsMultipleSelection = true
+        table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -86,6 +91,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     func show(_ s: SearchState?, root: String) {
         guard s != state || root != self.root else { return }
         let selected = selectedFound
+        let chosen: [Found] = table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? { if case let .found(f) = $0 { f } else { nil } }(rows[$0]) : nil }
         state = s
         self.root = root
         var out: [Row] = []
@@ -110,8 +116,12 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         }
         rows = out
         table.reloadData()
+        // Several chosen stay chosen, where they're still there.
+        let again = IndexSet(rows.indices.filter { if case let .found(f) = rows[$0] { chosen.contains(f) } else { false } })
+        if chosen.count > 1, again.count > 1 {
+            table.selectRowIndexes(again, byExtendingSelection: false)
         // The one chosen stays chosen, where it's still there.
-        if let selected, let i = rows.firstIndex(where: { if case .found(selected) = $0 { return true } else { return false } }) {
+        } else if let selected, let i = rows.firstIndex(where: { if case .found(selected) = $0 { return true } else { return false } }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
         status.stringValue = words(s)
@@ -156,7 +166,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
 
     @objc private func clicked() {
         let r = table.clickedRow
-        guard r >= 0, r < rows.count else { return }
+        guard r >= 0, r < rows.count, NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty != false else { return }
         switch rows[r] {
         case let .found(f): onOpen?(f)
         case .more: onPopOut?()
@@ -180,6 +190,37 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     // MARK: The table
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    /// Debugging: found rows `picks` (counted among those found) chosen
+    /// together; what dragging them writes.
+    func debugChoose(_ picks: [Int]) -> String {
+        let found = rows.indices.filter { if case .found = rows[$0] { true } else { false } }
+        table.selectRowIndexes(IndexSet(picks.filter(found.indices.contains).map { found[$0] }), byExtendingSelection: false)
+        return debugState
+    }
+
+    var debugDragItems: [NSPasteboardWriting] {
+        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
+    }
+
+    /// A symbol, a line dragged out: its file at its line; a file, the file.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard rows.indices.contains(row), case let .found(f) = rows[row] else { return nil }
+        switch f {
+        case let .symbol(h): return Drags.file(h.path, isDirectory: false, on: host, fragment: "line=\(h.line + 1)")
+        case let .file(p): return Drags.file(root.appendingPathComponent(p), isDirectory: false, on: host)
+        case let .hit(h): return Drags.file(h.path, isDirectory: false, on: host, fragment: "line=\(h.line)")
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        DragPill.dress(session, from: tableView, at: screenPoint)
+        DragCursor.began()
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        DragCursor.ended()
+    }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
         if rows.indices.contains(row), case .heading = rows[row] { return true }
@@ -271,7 +312,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
             case let .found(.file(p)): return "file \(p)"
             case let .found(.hit(h)): return "\(relative(h.path)):\(h.line) \(h.text.trimmingCharacters(in: .whitespaces))"
             }
-        } + (selectedFound.map { ["chosen \($0)"] } ?? [])).joined(separator: "\n")
+        } + (table.selectedRowIndexes.count > 1 ? ["chosen \(table.selectedRowIndexes.count)"] : selectedFound.map { ["chosen \($0)"] } ?? [])).joined(separator: "\n")
     }
 }
 

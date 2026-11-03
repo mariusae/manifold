@@ -914,6 +914,30 @@ file and its host, the folder a terminal is in, the address, the words),
 beside what another app takes (its file here, its text), and read the
 same wherever it lands (`Dragged`), from Manifold or not.
 
+A **commit** is a thing too (`DragThing.Commit`: its host, repository,
+sha and summary), from wherever one is shown: a git tile's history, a
+project's sidebar, a commit's diff ⇧-dragged (whose block carries it).
+Named — linked, referenced, inlined, opened as a tile — it's its diff,
+the block found or made then (`Drags.commitBlock`); as words, its sha,
+which is what a shell, an agent or code takes first (the `commits` kind
+in the table below). Dropped with files, the files' words are their
+paths: a shell gets `path sha sha` on one line.
+
+**Several things** go in one drag, one pasteboard item each, and land
+as each would alone, joined as the target joins them — on a command
+line by spaces (paths, references, shas: `Dragged.asWords`), in a text
+on lines of their own. The lists that offer things let several rows be
+chosen, as the Finder's do (⌘-click one in or out, ⇧-click a run), and
+a drag from one of them carries them all: a git tile's changes and
+commits (headings left out of a run), a folder's files (in columns,
+several in one folder, no column past theirs and nothing previewed; in
+its tree, any, kept through relisting), a search's hits, a project's
+homepage's search and its sidebar's changes and commits (rows of our
+own, `HomeRow`, chosen by the sidebar), a tile's outline. A ⌘- or
+⇧-click only chooses there, where a plain click would go somewhere
+(the homepage's rows, an outline's entries); ⏎ in a git tile opens each
+chosen.
+
 Where it lands takes it as one of the **forms** a thing can be: its
 *link* (`[name](manifold:…)`, a file opened as a block to be linked to),
 its *reference* (`manifold:host/id#place`), its *path* (on that host
@@ -937,8 +961,8 @@ The editors and terminals keep their lists in one table
 (`Dropping.priorities`), by target — an agent, a shell, a note, code —
 and by what kind of thing it is: pictures, a selection (words dragged
 out of an editor, which carry a reference to their place too), a place
-in a block (a heading, a command, a declaration), a block, files, plain
-words. An agent wants what it can read and point back to: a reference
+in a block (a heading, a command, a declaration), commits, a block,
+files, plain words. An agent wants what it can read and point back to: a reference
 first for a place or a block — its contents only when asked, which go
 stale — a path for a file, a selection's words as they are (they're
 what was meant; the reference is the palette's). A shell wants what a

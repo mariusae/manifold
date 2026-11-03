@@ -22,6 +22,14 @@ struct DragThing: Codable, Equatable {
         var path: String
         var isDirectory: Bool
     }
+    /// A commit in a repository on a host: its diff when it's opened or
+    /// named, its sha when it's words.
+    struct Commit: Codable, Equatable {
+        var host: HostID
+        var repo: String
+        var sha: String
+        var summary: String
+    }
 
     /// The block it is, or the block a place is in.
     var block: BlockID?
@@ -42,8 +50,10 @@ struct DragThing: Codable, Equatable {
     /// A selection of text, its words what was selected (a place too, if
     /// it was in a block): put in as its words where words are wanted.
     var selection: Bool?
+    /// The commit it is (a history's row, a commit's diff).
+    var commit: Commit?
 
-    private enum CodingKeys: String, CodingKey { case block, fragment, title, file, folder, url, text, selection }
+    private enum CodingKeys: String, CodingKey { case block, fragment, title, file, folder, url, text, selection, commit }
 
     init(block: BlockID? = nil, fragment: String? = nil, title: String, file: File? = nil, folder: File? = nil,
          url: String? = nil, text: String? = nil, outside: Bool = false) {
@@ -62,10 +72,18 @@ struct DragThing: Codable, Equatable {
     var isImage: Bool { file.map { !$0.isDirectory && BlockKind.forFile($0.path) == .image } ?? false }
     /// It can be named by a block: one already, or a file Manifold opens
     /// as one (not a film, an archive: only its path, then).
-    var nameable: Bool { block != nil || file.map { Drags.opens?($0) ?? true } == true }
+    var nameable: Bool { block != nil || commit != nil || file.map { Drags.opens?($0) ?? true } == true }
 
-    /// The block it names: its own, or its file's (opened as a block, not placed).
-    @MainActor func named() -> BlockID? { block ?? file.flatMap { Drags.resolve?($0) } }
+    /// The block it names: its own, its file's, its commit's diff (opened
+    /// as a block, not placed).
+    @MainActor func named() -> BlockID? { block ?? file.flatMap { Drags.resolve?($0) } ?? commit.flatMap { Drags.commitBlock?($0) } }
+
+    /// A commit dragged: titled by its summary, its words its sha.
+    static func commit(_ c: Commit) -> DragThing {
+        var t = DragThing(title: c.summary, text: c.sha)
+        t.commit = c
+        return t
+    }
 
     private var escapedTitle: String {
         (title.isEmpty ? (file?.path.lastPathComponent ?? "link") : title).replacingOccurrences(of: "]", with: "\\]")
@@ -172,12 +190,24 @@ struct Dragged {
         case .reference, .linkTile: all(\.nameable)
         case .path: all { $0.place != nil }
         // (A file's words that are only its path: its path, not twice.)
-        case .text: all { $0.text != nil && $0.text != $0.place?.path }
-        case .contents: all { $0.block != nil || ($0.nameable && $0.file.map { !$0.isDirectory } == true) }
+        // (With commits, a file's words are its path: their shas and its path.)
+        case .text: all { $0.text != nil && ($0.text != $0.place?.path || hasCommits) }
+        case .contents: all { $0.block != nil || $0.commit != nil || ($0.nameable && $0.file.map { !$0.isDirectory } == true) }
         case .inline: pictures || all(\.nameable)
         case .open: true
         case .copy, .move: all { $0.file != nil } || (things.isEmpty && (hasPictureData || !promised.isEmpty)) || pictures
         }
+    }
+
+    /// Whether `form` puts it in as words on a line, a space between —
+    /// paths, references, commits' shas — rather than one after another.
+    func asWords(_ form: DropForm) -> Bool {
+        form == .path || form == .reference || (form == .text && hasCommits)
+    }
+
+    /// Commits are among what's dragged, with nothing but files beside them.
+    var hasCommits: Bool {
+        things.contains { $0.commit != nil } && all { $0.commit != nil || $0.place != nil }
     }
 
     /// Of `order`, the forms it can be, in that order.
@@ -192,7 +222,7 @@ struct Dragged {
             var parts: [String] = [], blocks: [BlockID] = []
             for t in things {
                 guard let (s, id) = await t.text(form) else { return done(nil, []) }
-                parts.append(form == .path || form == .reference ? quote?(s) ?? s : s)
+                parts.append(asWords(form) ? quote?(s) ?? s : s)
                 if let id { blocks.append(id) }
             }
             done(parts.joined(separator: separator), blocks)
@@ -412,6 +442,8 @@ extension DropTaking {
         case selection
         /// A place in a block: a heading, a declaration, a command, a page.
         case place
+        /// Commits (a history's rows, a commit's diff): words are their shas.
+        case commits
         /// A whole block (a file open as one among them).
         case block
         /// A file or folder that isn't a block.
@@ -424,6 +456,7 @@ extension DropTaking {
         if d.pictures { return .pictures }
         if d.things.contains(where: { $0.selection == true }) { return .selection }
         if d.things.contains(where: { $0.fragment != nil }) { return .place }
+        if d.hasCommits { return .commits }
         if d.things.contains(where: { $0.block != nil }) { return .block }
         if !d.things.isEmpty, d.things.allSatisfy({ $0.place != nil }) { return .file }
         return .words
@@ -440,6 +473,7 @@ extension DropTaking {
             .pictures: [.path, .text, .link],
             .selection: [.text, .reference, .contents, .link],
             .place: [.reference, .text, .contents, .link, .path],
+            .commits: [.text, .reference, .contents, .link],
             .block: [.reference, .path, .contents, .link, .text],
             .file: [.path, .reference, .contents, .link, .text],
             .words: [.text, .link, .path],
@@ -450,6 +484,7 @@ extension DropTaking {
             // A command's place, its line again (it has no path); a place
             // in a file, the file's path.
             .place: [.path, .text, .reference, .contents, .link],
+            .commits: [.text, .reference, .contents, .link],
             .block: [.path, .text, .reference, .contents, .link],
             .file: [.path, .text, .reference, .contents, .link],
             .words: [.text, .path],
@@ -458,6 +493,7 @@ extension DropTaking {
             .pictures: [.inline, .link, .reference, .path],
             .selection: [.text, .link, .reference, .contents],
             .place: [.link, .inline, .reference, .contents, .text, .path],
+            .commits: [.link, .inline, .reference, .text, .contents],
             .block: [.link, .inline, .reference, .contents, .text, .path],
             .file: [.link, .inline, .reference, .path, .contents, .text],
             .words: [.text, .link],
@@ -466,6 +502,7 @@ extension DropTaking {
             .pictures: [.path, .text],
             .selection: [.text, .reference, .link],
             .place: [.text, .reference, .path, .link, .contents],
+            .commits: [.text, .reference, .link, .contents],
             .block: [.path, .reference, .text, .link, .contents],
             .file: [.path, .reference, .text, .link, .contents],
             .words: [.text, .path, .link],
@@ -742,7 +779,7 @@ final class DropPalette: NSView {
     /// Its icon: a file's as the Finder shows it, a block's symbol, a page's, words'.
     static func icon(_ t: DragThing) -> NSImage? {
         if let f = t.file { return PathInserter.icon(for: f.path, isFolder: f.isDirectory) }
-        let symbol = t.block.flatMap { Drags.symbol?($0) } ?? (t.folder != nil ? "folder" : t.url != nil ? "globe" : "text.alignleft")
+        let symbol = t.commit != nil ? "smallcircle.filled.circle" : t.block.flatMap { Drags.symbol?($0) } ?? (t.folder != nil ? "folder" : t.url != nil ? "globe" : "text.alignleft")
         return Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText)
     }
 
