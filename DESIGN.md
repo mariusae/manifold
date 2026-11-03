@@ -605,9 +605,15 @@ floating, non-activating utility panel — over every window, Manifold's
 and other apps', not hidden when Manifold isn't in front, never taking
 the keyboard — not one of the sidebar's views (a saved sidebar showing
 it opens on the desk now). It follows the focus, made again a moment
-after any change, and its rows are the sidebar's (`OrganizationView`):
-sections of a value and what it is, a click doing what a row says or
-going where it names. It's meant to show everything there is to know
+after any change, and it's as compact as the Finder's Get Info
+(`InspectorList`): a section's heading with a disclosure triangle, a
+folded one with how many rows it holds; a row a line, its label
+capitalized and right-aligned in a column with a colon, its value after
+it middle-truncated, the whole in its tip; a row that does something
+lit under the pointer, a click doing it or going where it names. Only
+what it is (About) and its kind's section are open at first; what the
+reader folds or opens stays so, by section, for every block. Its
+annotations show under its name, as Get Info's tags. It's meant to show everything there is to know
 about a tile, for a person or for checking what a tool sees: its ids and
 annotations for tools, its status record whole, the tile's own state
 (lens, place, size, what the lens keeps), its kind's state field by

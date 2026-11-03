@@ -3629,7 +3629,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let p = inspector, p.isVisible { return p.close() }
         let p = inspector ?? InspectorPanel()
         if inspector == nil {
-            p.list.delegate = self
+            p.onOpen = { [weak self] node in
+                if let action = node.action { action() } else { self?.organizationOpen(node, modifiers: []) }
+            }
             inspector = p
         }
         p.orderFront(nil)
@@ -4165,12 +4167,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugInspector(_ arg: String) -> String {
         if arg == "toggle" { toggleInspector(nil) }
         guard let p = inspector else { return "never shown" }
-        if arg == "rows" { return p.list.debugRows() }
-        if arg.hasPrefix("click "), let row = Int(arg.dropFirst(6)) { return p.list.debugClick(row: row, command: false, double: false) }
+        if arg == "rows" { return p.list.debugRows }
+        if arg.hasPrefix("click "), let row = Int(arg.dropFirst(6)) { return p.list.debugClick(row) }
+        if arg.hasPrefix("fold ") { return p.list.debugToggle(String(arg.dropFirst(5))) }
         return p.debugState
     }
     /// The inspected block's name, what and where it is, its symbol.
-    private var inspectorHeader: (title: String, subtitle: String, symbol: String?) = ("", "", nil)
+    private var inspectorHeader: (title: String, subtitle: String, symbol: String?, tags: [String]) = ("", "", nil, [])
     private var inspectorWork: DispatchWorkItem?
 
     /// The inspector shown again, a moment after the last change (it
@@ -4181,8 +4184,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self, let panel = self.inspector, panel.isVisible else { return }
             let (nodes, open) = self.inspectorTree()
+            _ = open
             panel.show(title: self.inspectorHeader.title, subtitle: self.inspectorHeader.subtitle, symbol: self.inspectorHeader.symbol,
-                       nodes: nodes, open: open)
+                       tags: self.inspectorHeader.tags, nodes: nodes)
         }
         inspectorWork = work
         if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work) }
@@ -4196,12 +4200,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// grey after it.
     private func inspectorTree() -> ([OrgNode], Set<String>) {
         guard let f = focusedShown, let b = f.block else {
-            inspectorHeader = ("Nothing to inspect", "", "info.circle")
+            inspectorHeader = ("Nothing to inspect", "", "info.circle", [])
             return ([OrgNode(id: "insp:none", title: "Focus a tile to see what it is", symbol: "info.circle")], [])
         }
         let hostName = hosts.label(of: b.id.host)
         inspectorHeader = (Self.linkTitle(b), "\(b.kind.defaultTitle == "Untitled" ? "Note" : b.kind.defaultTitle) on \(hostName)" + (f.offline ? ", out of reach" : ""),
-                           Theme.symbolName(for: b))
+                           Theme.symbolName(for: b), (b.annotations ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
         var sections: [OrgNode] = []
         func row(_ value: String, _ label: String, _ symbol: String, _ action: (() -> Void)? = nil) -> OrgNode {
             let n = OrgNode(id: "insp/\(sections.count)/\(label)/\(value)", title: value, symbol: symbol, detail: label)
@@ -4209,9 +4213,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.action = action
             return n
         }
-        func section(_ title: String, _ symbol: String, _ rows: [OrgNode]) {
+        func section(_ title: String, _ symbol: String, _ rows: [OrgNode], id: String? = nil) {
             guard !rows.isEmpty else { return }
-            let s = OrgNode(id: "insp:\(title)", title: title, symbol: symbol, isGroup: true, children: rows)
+            let s = OrgNode(id: "insp:\(id ?? title)", title: title, symbol: symbol, isGroup: true, children: rows)
             s.style = .section
             sections.append(s)
         }
@@ -4266,7 +4270,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if a.full == f.id { tile.append(row("Maximized", "", "arrow.up.left.and.arrow.down.right")) }
             if a.isStashed(f.id) { tile.append(row("Stacked behind another", "", "square.stack")) }
             let behind = ManiLayout(a).stack(behind: f.id).count
-            if behind > 0 { tile.append(row("\(behind)", "stacked behind it", "square.stack")) }
+            if behind > 0 { tile.append(row("\(behind)", "behind it", "square.stack")) }
             if let at = f.placement.placedAt { tile.append(row(Age.ago(at), "placed", "calendar")) }
             // What the lens keeps for it: its scroll, selection, mode…
             for (k, v) in (b.views?[f.id] ?? [:]).sorted(by: { $0.key < $1.key }) {
@@ -4291,7 +4295,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if let p = b.path, let lang = CodeLanguage.forPath(p) { own.append(row(lang.name, "language", "chevron.left.forwardslash.chevron.right")) }
                 if t.isDirty { own.append(row("Unsaved", "edits", "pencil")) }
                 own.append(row("\(t.version)" + (t.isDirty ? " (saved at \(t.cleanVersion))" : ""), "version", "number"))
-                if let n = b.anchors?.count, n > 0 { own.append(row("\(n)", "places referred to", "mappin")) }
+                if let n = b.anchors?.count, n > 0 { own.append(row("\(n)", "places", "mappin")) }
                 if t.unreadable { own.append(row("Unreadable", "file", "exclamationmark.triangle")) }
                 if t.stale { own.append(row("Changed on disk", "file", "exclamationmark.triangle")) }
                 own.append(row(t.encoding, "encoding", "doc.text"))
@@ -4307,10 +4311,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if let c = t.commands?.last(where: { !$0.isRunning }) {
                     let how = c.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "?"
                     let took = BlockSummary.took(from: c.at, to: c.ended).map { " · " + $0 } ?? ""
-                    own.append(row(c.text, "last: \(how)\(took) · \(Age.ago(c.ended ?? c.at))", c.status == 0 ? "checkmark" : "xmark"))
+                    own.append(row("\(c.text) · \(how)\(took) · \(Age.ago(c.ended ?? c.at))", "last command", c.status == 0 ? "checkmark" : "xmark"))
                 }
                 if let after = t.dormantAfter { own.append(row("\(after) h", "dormant after", "moon.zzz")) }
-                if t.snapshot != nil { own.append(row("Kept", "tree when it started (its changes)", "camera")) }
+                if t.snapshot != nil { own.append(row("Kept, for its changes", "start's tree", "camera")) }
                 own.append(row("\(t.commands?.count ?? 0)", "commands run", "list.bullet"))
                 if let turns = t.turns, !turns.isEmpty { own.append(row("\(turns.count)", "turns", "bubble.left.and.bubble.right")) }
                 if let d = t.dormantSince { own.append(row(Age.ago(d), "dormant since", "moon")) }
@@ -4318,7 +4322,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .web:
             if let w = b.web {
                 if let t = w.title { own.append(row(t, "page's title", "textformat")) }
-                if w.viaHost == true { own.append(row(hostName, "loaded through its host", "network")) }
+                if w.viaHost == true { own.append(row(hostName, "loaded via", "network")) }
             }
         case .search:
             if let s = b.search {
@@ -4363,14 +4367,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         case .git:
             if let g = b.git {
-                if let vcs = g.vcs { own.append(row(vcs.rawValue, "version control", "shippingbox")) }
+                if let vcs = g.vcs { own.append(row(vcs.rawValue, "vcs", "shippingbox")) }
                 if let br = g.branch { own.append(row(br, "branch", "arrow.triangle.branch")) }
                 if let scope = g.scope { own.append(row(scope, "scoped to", "folder")) }
                 own.append(row("\(g.status.count)", "changes", "plusminus"))
                 let staged = g.status.filter { !$0.isUntracked && $0.index != " " }.count, untracked = g.status.filter(\.isUntracked).count
                 if staged > 0 { own.append(row("\(staged)", "staged", "tray.and.arrow.down")) }
                 if untracked > 0 { own.append(row("\(untracked)", "untracked", "questionmark.folder")) }
-                own.append(row("\(g.log.count)", "commits shown", "clock.arrow.circlepath"))
+                own.append(row("\(g.log.count)", "commits", "clock.arrow.circlepath"))
                 if let at = g.refreshedAt { own.append(row(Age.ago(at), "looked", "clock")) }
                 if let e = g.error { own.append(row(e, "error", "exclamationmark.triangle")) }
                 if g.ahead > 0 || g.behind > 0 { own.append(row("\(g.ahead) ahead, \(g.behind) behind", "upstream", "arrow.up.arrow.down")) }
@@ -4400,7 +4404,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         default:
             break
         }
-        section(b.kind == .text ? "Text" : b.kind.defaultTitle, Theme.symbolName(for: b), own)
+        section(b.kind == .text ? "Text" : b.kind.defaultTitle, Theme.symbolName(for: b), own, id: "kind")
 
         // Where it is: each space it's placed in, and pinned in.
         var whereRows: [OrgNode] = []
@@ -4469,7 +4473,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let visits = hosts.all.flatMap { $0.node.graph.visits(b.id) }.sorted { $0.at > $1.at }
         var history: [OrgNode] = []
         if let replica = hosts.client(of: b.id)?.node.replica(.block(b.id)) {
-            history.append(row("\(replica.seq)", "changes in its log", "list.number"))
+            history.append(row("\(replica.seq) changes", "log", "list.number"))
             // Its log's latest, from its host once (then what's come since).
             if !inspectorAsked.contains(b.id) {
                 inspectorAsked.insert(b.id)
@@ -4484,9 +4488,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if let last = runs.last, last.name == name { runs[runs.count - 1].count += 1 } else { runs.append((name, e.at, 1)) }
                 if runs.count > 8 { runs.removeLast(); break }
             }
-            for r in runs { history.append(row(r.name + (r.count > 1 ? " ×\(r.count)" : ""), Age.ago(r.at), "circle.fill")) }
+            for r in runs { history.append(row(Age.ago(r.at), r.name + (r.count > 1 ? " ×\(r.count)" : ""), "circle.fill")) }
         }
-        history.append(row("\(visits.count)", "times gone to", "arrow.uturn.right"))
+        history.append(row("\(visits.count) times", "gone to", "arrow.uturn.right"))
         if let last = visits.first { history.append(row(Age.ago(last.at), "last gone to", "clock")) }
         if let trail = trails[f.id] {
             for id in trail.back.suffix(5).reversed() {

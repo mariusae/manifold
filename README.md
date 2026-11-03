@@ -467,7 +467,10 @@ parts from the Mac's conventions on purpose.
   over every window (other apps' too), up while Manifold isn't in
   front, never taking the keyboard, its place and size kept — and
   follows the focus, as Star's property sheets did for whatever was
-  selected. What it is and where (its host, its path, a page's address,
+  selected. It's as compact as the Finder's Get Info: a row a line
+  (**Label:** value), its sections folded but for what it is and what
+  its kind has, each opened or folded by its triangle and kept so, its
+  annotations under its name as Get Info's tags. What it is and where (its host, its path, a page's address,
   a terminal's folder, a click copying it; when it was made and last
   seen); **for tools**, its reference, block id, tile id and space id
   and its annotations (`mani annotate`), each copied by a click; its
