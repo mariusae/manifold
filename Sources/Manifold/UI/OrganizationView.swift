@@ -1015,6 +1015,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
         if let action = node.action { action(); return "ran" }
         if node.block != nil { delegate?.organizationOpen(node, modifiers: command ? [.command] : []); return "opened" }
+        if node.style == .host, node.id.hasPrefix("host:") { delegate?.organizationInspect(host: String(node.id.dropFirst(5))) }
         if node.hasChildren {
             let was = outline.isItemExpanded(node)
             if was { outline.collapseItem(node) } else { outline.expandItem(node) }

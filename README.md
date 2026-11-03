@@ -503,6 +503,16 @@ parts from the Mac's conventions on purpose.
   when, the server's as it said on welcoming the app (a server from
   before says none); its server's process, how long it's been up, what
   it can do, and the link's round trip and last drop; and its host id.
+  A space's heading clicked (or **Show in Inspector** in a space's or a
+  host's menu, which opens the window too), it shows the space, until the
+  focus moves — and a space with nothing in it is shown by itself: its
+  name, where it is among its host's spaces, whether it's shown; its
+  columns and their widths, what's stacked, maximized and focused; what
+  it holds by kind ("4 terminals, 2 notes"), from which other hosts,
+  what's unsaved, running, and the statuses; its **tiles**, column by
+  column, a click going to one; what's pinned in it; its reference, id
+  and annotations; what keeps it; its log; and Go to Space, Name…,
+  Remove Space.
 - **⌘D deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu), with nothing asked: every tile of it taken off at
   once, in every space, and a toast — "Deleted “…”" — with Undo while a

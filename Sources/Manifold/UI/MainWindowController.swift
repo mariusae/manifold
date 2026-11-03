@@ -4176,15 +4176,86 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let c = hosts.all.first(where: { $0.host.raw == name || hosts.label(of: $0.host) == name }) else { return "no host \(name)" }
             organizationInspect(host: c.host.raw)
         }
+        if arg.hasPrefix("space") {
+            // "space": the one shown; "space <name>": the one so named.
+            let name = arg.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard let w = name.isEmpty ? selected : allWorkspaces.first(where: { hosts.arrangement($0).map(self.title(of:)) == name }) else { return "no space \(name)" }
+            inspect(.space(w))
+        }
         return p.debugState
     }
-    /// A host the sidebar's row of was clicked (its raw id), and the tile
-    /// focused then: inspected instead of it, until another is.
-    private var inspectedHost: (host: String, focus: String?)?
+    /// What the inspector shows instead of the focused tile: a host or a
+    /// space whose row was clicked (or asked for by its menu).
+    enum Inspected { case host(String), space(BlockID) }
+    /// It, and the tile focused then: until another is.
+    private var inspected: (what: Inspected, focus: PlacementID?)?
 
-    func organizationInspect(host: String) {
-        inspectedHost = (host, focusedShown?.id)
+    func organizationInspect(host: String) { inspect(.host(host)) }
+
+    /// `what` in the inspector, until the focus moves; `open`, its window
+    /// shown if it isn't.
+    func inspect(_ what: Inspected, open: Bool = false) {
+        inspected = (what, focusedShown?.id)
+        if open, inspector?.isVisible != true { return toggleInspector(nil) }
         refreshInspector(now: true)
+    }
+
+    /// A space's own rows: its name, where it is among the spaces, its
+    /// layout (columns and their widths, stacks, a tile maximized, the
+    /// focus), what its tiles are and how they stand.
+    private func spaceRows(_ id: BlockID, _ a: ArrangementState, _ make: (String, String, String, (() -> Void)?) -> OrgNode) -> [OrgNode] {
+        func row(_ value: String, _ label: String, _ symbol: String) -> OrgNode { make(value, label, symbol, nil) }
+        var own: [OrgNode] = []
+        own.append(row(a.isNamed ? a.title! : "None — called by what it holds", "name", "textformat"))
+        let order = hosts.client(of: id)?.desk.order ?? []
+        if let i = order.firstIndex(of: id) { own.append(row("\(i + 1) of \(order.count) on \(hosts.label(of: id.host))", "place", "list.number")) }
+        else { own.append(row("Not on the desk", "place", "tray")) }
+        own.append(row(id == selected ? "Yes, in this window" : "No", "shown", "eye"))
+        let blocks = a.placements.compactMap { hosts.block($0.block) }
+        own.append(row("\(a.placements.count)", "tiles", "rectangle.split.3x1"))
+        let widths = a.fractions.map { String(format: "%.0f%%", $0 * 100) }.joined(separator: " · ")
+        own.append(row("\(a.columns.count)" + (widths.isEmpty ? "" : " (\(widths))"), "columns", "rectangle.split.3x1"))
+        let stacked = a.placements.filter { a.isStashed($0.id) }.count
+        if stacked > 0 { own.append(row("\(stacked)", "stacked", "square.stack")) }
+        if let full = a.full, let p = a.placement(full), let fb = hosts.block(p.block) { own.append(row(Self.linkTitle(fb), "maximized", "arrow.up.left.and.arrow.down.right")) }
+        if let p = a.focusedPlacement, let fb = hosts.block(p.block) {
+            let n = row(Self.linkTitle(fb), "focused", Theme.symbolName(for: fb))
+            n.arrangement = id
+            n.placement = p.id
+            own.append(n)
+        }
+        // What it holds, by kind, the most first.
+        func noun(_ b: Block) -> (one: String, many: String) {
+            switch b.kind {
+            case .text: return b.path == nil ? ("note", "notes") : ("file", "files")
+            case .web: return ("page", "pages")
+            case .pdf: return ("PDF", "PDFs")
+            case .search: return ("search", "searches")
+            case .git: return ("repository", "repositories")
+            case .process: return ("process list", "process lists")
+            case .notebook: return ("notebook", "notebooks")
+            case .output: return ("output", "outputs")
+            case .ui: return ("panel", "panels")
+            default: let k = b.kind.defaultTitle.lowercased(); return (k, k + "s")
+            }
+        }
+        var kinds: [String: (count: Int, many: String)] = [:]
+        for b in blocks { let n = noun(b); kinds[n.one, default: (0, n.many)].count += 1 }
+        let held = kinds.sorted { $0.value.count != $1.value.count ? $0.value.count > $1.value.count : $0.key < $1.key }
+            .map { "\($0.value.count) \($0.value.count == 1 ? $0.key : $0.value.many)" }.joined(separator: ", ")
+        if !held.isEmpty { own.append(row(held, "holds", "square.grid.2x2")) }
+        let elsewhere = Set(blocks.map(\.id.host)).subtracting([id.host])
+        if !elsewhere.isEmpty { own.append(row(elsewhere.map { hosts.label(of: $0) }.sorted().joined(separator: ", "), "also from", "network")) }
+        let unsaved = blocks.filter { $0.text?.isDirty == true }.count
+        if unsaved > 0 { own.append(row("\(unsaved)", "unsaved", "pencil")) }
+        let running = blocks.filter { $0.terminal?.commands?.contains(where: \.isRunning) == true }.count
+        if running > 0 { own.append(row("\(running)", "running", "play")) }
+        var states: [String: Int] = [:]
+        for b in blocks { if let r = b.statusRecord { states[r.state.rawValue, default: 0] += 1 } }
+        if !states.isEmpty { own.append(row(states.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)" }.joined(separator: ", "), "statuses", "circle.dotted")) }
+        let pinned = pins(of: id).count
+        if pinned > 0 { own.append(row("\(pinned)", "pinned", "pin")) }
+        return own
     }
 
     /// A host's properties: what machine it is and how it's reached, what
@@ -4291,18 +4362,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// done with it. Each a row, by sections; a value first, what it is in
     /// grey after it.
     private func inspectorTree() -> ([OrgNode], Set<String>) {
-        // A host's row clicked: the host, until the focus moves.
-        if let h = inspectedHost {
-            if h.focus == focusedShown?.id, let c = hosts.all.first(where: { $0.host.raw == h.host }) { return (hostInspectorTree(c), []) }
-            inspectedHost = nil
+        // A host's or a space's row clicked: it, until the focus moves.
+        if let i = inspected {
+            if i.focus == focusedShown?.id {
+                switch i.what {
+                case .host(let h):
+                    if let c = hosts.all.first(where: { $0.host.raw == h }) { return (hostInspectorTree(c), []) }
+                case .space(let w):
+                    if let b = hosts.block(w), b.arrangement != nil { return inspectorTree(of: b, tile: nil) }
+                }
+            }
+            inspected = nil
         }
         guard let f = focusedShown, let b = f.block else {
+            // An empty space: the space.
+            if let w = selected, let b = hosts.block(w), b.arrangement != nil { return inspectorTree(of: b, tile: nil) }
             inspectorHeader = ("Nothing to inspect", "", "info.circle", [])
             return ([OrgNode(id: "insp:none", title: "Focus a tile to see what it is", symbol: "info.circle")], [])
         }
+        return inspectorTree(of: b, tile: f)
+    }
+
+    /// A block's properties — as `tile` shows it, if one does (a space
+    /// inspected is shown by none).
+    private func inspectorTree(of b: Block, tile f: Shown?) -> ([OrgNode], Set<String>) {
         let hostName = hosts.label(of: b.id.host)
-        inspectorHeader = (Self.linkTitle(b), "\(b.kind.defaultTitle == "Untitled" ? "Note" : b.kind.defaultTitle) on \(hostName)" + (f.offline ? ", out of reach" : ""),
-                           Theme.symbolName(for: b), (b.annotations ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
+        let space = b.arrangement
+        let kindName = space != nil ? "Space" : b.kind.defaultTitle == "Untitled" ? "Note" : b.kind.defaultTitle
+        inspectorHeader = (space.map(title(of:)) ?? Self.linkTitle(b), "\(kindName) on \(hostName)" + (f?.offline == true ? ", out of reach" : ""),
+                           space != nil ? Theme.spaceSymbol : Theme.symbolName(for: b), (b.annotations ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
         var sections: [OrgNode] = []
         func row(_ value: String, _ label: String, _ symbol: String, _ action: (() -> Void)? = nil) -> OrgNode {
             let n = OrgNode(id: "insp/\(sections.count)/\(label)/\(value)", title: value, symbol: symbol, detail: label)
@@ -4342,9 +4430,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var tools: [OrgNode] = []
         let reference = "manifold:" + b.id.description
         tools.append(copyRow(reference, "reference", "link", reference))
-        tools.append(copyRow(b.id.ulid, "block id", "number", b.id.description))
-        tools.append(copyRow(f.id, "tile id", "rectangle", f.id))
-        if let w = selected { tools.append(copyRow(w.ulid, "space id", Theme.spaceSymbol, w.description)) }
+        tools.append(copyRow(b.id.ulid, space != nil ? "space id" : "block id", "number", b.id.description))
+        if let f { tools.append(copyRow(f.id, "tile id", "rectangle", f.id)) }
+        if let w = selected, space == nil { tools.append(copyRow(w.ulid, "space id", Theme.spaceSymbol, w.description)) }
         for (k, v) in (b.annotations ?? [:]).sorted(by: { $0.key < $1.key }) {
             tools.append(copyRow(v, k + " — annotation", "tag", "\(k)=\(v)"))
         }
@@ -4364,7 +4452,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // This tile: how it shows the block, where it is, what it keeps.
-        if let a = arrangement, let (c, i) = a.locate(f.id) {
+        if let f, let a = arrangement, let (c, i) = a.locate(f.id) {
             var tile: [OrgNode] = [row(f.lens.rawValue, "lens", Theme.symbolName(for: f.lens))]
             tile.append(row("column \(c + 1) of \(a.columns.count), \(i + 1) of \(a.columns[c].count)", "place", "square.grid.2x2"))
             let width = c < a.fractions.count ? a.fractions[c] : 0
@@ -4498,16 +4586,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             own.append(row("\(b.processes?.entries.count ?? 0)", "processes", "cpu"))
             if let at = b.processes?.listedAt { own.append(row(Age.ago(at), "listed", "clock")) }
         case .arrangement:
-            if let a = b.arrangement {
-                own.append(row("\(a.placements.count)", "tiles", "rectangle.split.3x1"))
-                own.append(row("\(a.columns.count)", "columns", "rectangle.split.3x1"))
-                if let p = a.focusedPlacement, let fb = hosts.block(p.block) { own.append(row(fb.displayTitle, "focused", Theme.symbolName(for: fb))) }
-                if a.full != nil { own.append(row("A tile maximized", "", "arrow.up.left.and.arrow.down.right")) }
-            }
+            if let a = b.arrangement { own += spaceRows(b.id, a, row) }
         default:
             break
         }
-        section(b.kind == .text ? "Text" : b.kind.defaultTitle, Theme.symbolName(for: b), own, id: "kind")
+        section(b.kind == .text ? "Text" : space != nil ? "Space" : b.kind.defaultTitle, space != nil ? Theme.spaceSymbol : Theme.symbolName(for: b), own, id: "kind")
+
+        // A space's tiles, column by column (a click goes to one), and what's
+        // pinned in it.
+        if let a = space {
+            var tiles: [OrgNode] = []
+            for (c, column) in a.columns.enumerated() {
+                for p in column {
+                    guard let o = hosts.block(p.block) else { continue }
+                    var how = "column \(c + 1)"
+                    if a.full == p.id { how += ", maximized" } else if a.isStashed(p.id) { how += ", stacked" }
+                    if a.focused == p.id { how += ", focused" }
+                    if o.id.host != b.id.host { how += ", on \(hosts.label(of: o.id.host))" }
+                    let n = node(for: o, id: "insp/tile/\(p.id)", detail: how)
+                    n.arrangement = b.id
+                    n.placement = p.id
+                    tiles.append(n)
+                }
+            }
+            section("Tiles", "rectangle.split.3x1", Array(tiles.prefix(60)), id: "space-tiles")
+            let pinned = pins(of: b.id).compactMap { e -> OrgNode? in
+                guard let o = hosts.block(e.to) else { return nil }
+                return node(for: o, id: "insp/pin/\(e.to)", detail: "pinned " + Age.ago(e.at))
+            }
+            section("Pinned", "pin", pinned, id: "space-pinned")
+        }
 
         // Where it is: each space it's placed in, and pinned in.
         var whereRows: [OrgNode] = []
@@ -4538,6 +4646,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for kind in [LinkKind.linked, .embeds] { strongIn += c.node.graph.edges(to: b.id, kind: .link(kind)).filter(\.isLive).count }
         }
         var kept: [String] = []
+        if space != nil, hosts.client(of: b.id)?.desk.order.contains(b.id) == true { kept.append("on the desk") }
+        if space?.isNamed == true { kept.append("named") }
         if placedIn > 0 { kept.append("placed in \(placedIn) space\(placedIn == 1 ? "" : "s")") }
         if pinnedIn > 0 || b.isPinned { kept.append("pinned") }
         if strongIn > 0 { kept.append("linked to by \(strongIn)") }
@@ -4595,7 +4705,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         history.append(row("\(visits.count) times", "gone to", "arrow.uturn.right"))
         if let last = visits.first { history.append(row(Age.ago(last.at), "last gone to", "clock")) }
-        if let trail = trails[f.id] {
+        if let f, let trail = trails[f.id] {
             for id in trail.back.suffix(5).reversed() {
                 guard let o = hosts.block(id) else { continue }
                 history.append(node(for: o, id: "insp/back/\(id)", detail: "back (⌘[)"))
@@ -4609,8 +4719,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         // What can be done with it: Copy Contents, and what its menu offers.
         var actions: [OrgNode] = []
-        let copy = row("Copy Contents", "⇧⌘C", "doc.on.doc") { [weak self] in self?.copyContents(nil) }
-        actions.append(copy)
+        if f != nil { actions.append(row("Copy Contents", "⇧⌘C", "doc.on.doc") { [weak self] in self?.copyContents(nil) }) }
+        if space != nil {
+            if b.id != selected { actions.append(row("Go to Space", "", Theme.spaceSymbol) { [weak self] in self?.hosts.select(b.id) }) }
+            actions.append(row("Name…", "", "pencil") { [weak self] in self?.rename(b.id) })
+            actions.append(row("Remove Space", "", "xmark") { [weak self] in self?.removeFromDesk(b.id) })
+        }
         for item in copyItems(for: b.id) {
             guard let c = item as? ClosureMenuItem else { continue }
             let n = row(item.title, "", "circle")
@@ -9957,6 +10071,9 @@ extension MainWindowController: OrganizationViewDelegate {
                 // and the pointer on it.
                 hosts.append(arriving(p, in: a), to: .block(arr))
                 warpPointerToFocus()
+            } else if node.column == nil {
+                // A space's heading: the space in the inspector.
+                inspect(.space(arr))
             }
             return
         }
@@ -10078,6 +10195,10 @@ extension MainWindowController: OrganizationViewDelegate {
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
+        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }) {
+            menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.host(c.host.raw), open: true) })
+            menu.addItem(.separator())
+        }
         if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.watching {
             menu.addItem(ClosureMenuItem("Take Over", symbol: "hand.raised") { [weak self] in self?.takeOver(c) })
             menu.addItem(.separator())
@@ -10116,6 +10237,7 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         if let arr = node.arrangement, node.column == nil {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
+            menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.space(arr), open: true) })
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Remove Space", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
             menu.addItem(.separator())

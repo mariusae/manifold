@@ -125,7 +125,7 @@ final class InspectorList: NSView {
     /// Folded or not by the reader, by section id; what isn't here is as
     /// it starts (only what it is and its kind's open).
     private var open: [String: Bool] = (UserDefaults.standard.dictionary(forKey: "InspectorSections") as? [String: Bool]) ?? [:]
-    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none", "insp:versions"]
+    static let openAtFirst: Set<String> = ["insp:About", "insp:kind", "insp:none", "insp:versions", "insp:space-tiles"]
     static let rowHeight: CGFloat = 18, headingHeight: CGFloat = 24, labelWidth: CGFloat = 92
 
     override init(frame: NSRect) {
