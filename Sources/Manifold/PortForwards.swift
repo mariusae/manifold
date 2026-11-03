@@ -29,54 +29,69 @@ final class PortForwards {
     init(client: HostClient) { self.client = client }
 
     /// The host's `port` forwarded here; `done` with the port here once
-    /// it's listening (nil if it couldn't be).
+    /// it's listening (nil if it couldn't be). Asked for again before it
+    /// is, it's told then too: one port, one forward. A forward made for
+    /// a block (`hidden`) is listed once it's asked for by hand.
     func forward(_ port: Int, hidden: Bool = false, done: @escaping (Int?) -> Void) {
-        if let f = forwards[port], let local = f.local { return done(local) }
-        listen(port, preferring: port) { [weak self] local in
-            if hidden { self?.forwards[port]?.hidden = true }
-            done(local)
+        if !hidden { forwards[port]?.hidden = false }
+        if let f = forwards[port] {
+            if let local = f.local { return done(local) }
+            waiting[port, default: []].append(done)
+            return
         }
+        waiting[port] = [done]
+        listen(port, preferring: port, hidden: hidden)
     }
 
-    private func listen(_ remote: Int, preferring wanted: Int?, done: @escaping (Int?) -> Void) {
+    /// Who's waiting for each forward being made.
+    private var waiting: [Int: [(Int?) -> Void]] = [:]
+
+    private func answer(_ remote: Int, _ local: Int?) {
+        for done in waiting.removeValue(forKey: remote) ?? [] { done(local) }
+    }
+
+    private func listen(_ remote: Int, preferring wanted: Int?, hidden: Bool) {
         let params = NWParameters.tcp
         params.requiredInterfaceType = .loopback
         params.allowLocalEndpointReuse = true
         let port = wanted.flatMap { NWEndpoint.Port(rawValue: UInt16($0)) } ?? .any
         guard let listener = try? NWListener(using: params, on: port) else {
-            return wanted != nil ? listen(remote, preferring: nil, done: done) : done(nil)
+            return wanted != nil ? listen(remote, preferring: nil, hidden: hidden) : answer(remote, nil)
         }
         listener.newConnectionHandler = { [weak self] c in self?.accepted(c, for: remote) }
         var answered = false
-        listener.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self, let listener, self.forwards[remote]?.listener === listener else { return }
             switch state {
             case .ready:
                 let local = Int(listener.port?.rawValue ?? 0)
                 self.forwards[remote]?.local = local
                 self.onChange?()
-                if !answered { answered = true; done(local) }
+                if !answered { answered = true; self.answer(remote, local) }
             case .failed:
                 listener.cancel()
-                self.forwards.removeValue(forKey: remote)
+                // (Asked for by hand meanwhile, it's listed.)
+                let hidden = self.forwards.removeValue(forKey: remote)?.hidden ?? hidden
                 // Taken here: another port, any.
-                if !answered { answered = true; wanted != nil ? self.listen(remote, preferring: nil, done: done) : done(nil) }
+                if !answered { answered = true; wanted != nil ? self.listen(remote, preferring: nil, hidden: hidden) : self.answer(remote, nil) }
             default:
                 break
             }
         }
-        forwards[remote] = Forward(remote: remote, local: nil, listener: listener)
+        forwards[remote] = Forward(remote: remote, local: nil, listener: listener, hidden: hidden)
         listener.start(queue: .main)
     }
 
     func stop(_ remote: Int) {
         forwards.removeValue(forKey: remote)?.listener.cancel()
+        answer(remote, nil)
         onChange?()
     }
 
     func stopAll() {
         for f in forwards.values { f.listener.cancel() }
         forwards = [:]
+        for remote in Array(waiting.keys) { answer(remote, nil) }
         onChange?()
     }
 
