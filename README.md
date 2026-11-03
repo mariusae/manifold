@@ -897,7 +897,9 @@ around it, and comes back with its history.
   where it's a folder deep in a repository (git's and Sapling's alike),
   as are the commits in the git tile its branch and **All commits
   here** open. A new project is indexed at once, if its language has an
-  indexer. **No Longer a Project** in the menu takes it back.
+  indexer. A folder inside a project shows the project's name in its
+  header (⤒ app): clicked, the tile goes up to the project's homepage,
+  the folder chosen there. **No Longer a Project** in the menu takes it back.
   On the homepage its field **searches the project** as you type, in
   the files' place: symbols by name (from its index and the language
   servers running there, each marked by which — `index`, `server` — the

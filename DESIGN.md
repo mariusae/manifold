@@ -1374,7 +1374,9 @@ README under the files as ever, as wide as the tile — the sidebar
 stands above it, beside the files; the tree previews nothing beside it
 there, the sidebar having the right. A folder that looks like a
 project's root (a repository's, an indexer's marker) and isn't one
-offers Make Project in its header. On the homepage the header's field
+offers Make Project in its header; a folder below a project's root
+offers the project (its name, ⤒), which takes the tile up to its root,
+the homepage on (`DirectoryView.goToProject`). On the homepage the header's field
 searches the project (`ProjectSearchView`, in the files' place): a
 search block asked again a moment after each key (the text from two
 letters), watched as it changes (`Hosts.watch`: a block not placed

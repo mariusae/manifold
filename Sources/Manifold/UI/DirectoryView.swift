@@ -58,6 +58,8 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, searchContents text: String)
     /// The project at the folder (§2.6), if it's one.
     func directoryViewProject(_ view: DirectoryView) -> Project?
+    /// The project a folder is in, below its root: the nearest above it.
+    func directoryViewParentProject(_ view: DirectoryView) -> Project?
     /// The folder made a project, or no longer one.
     func directoryView(_ view: DirectoryView, makeProject: Bool)
     /// The project's git block (its repository's, scoped to it): made,
@@ -184,6 +186,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// Offered, quietly, where the folder looks like a project's root (a
     /// repository's, a language's manifest) and isn't one yet.
     private let makeProject = FlatButton("Make Project", symbol: "shippingbox", font: UIType.detail)
+    /// In a project, below its root: its name, to go up to its homepage.
+    private let toProject = FlatButton("", symbol: "arrow.up.to.line", font: UIType.detail)
+    private var parentProject: Project?
     private var looksLikeProject = false
     /// Narrower than this, a homepage has no sidebar.
     static let sidebarFrom: CGFloat = 600
@@ -216,7 +221,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         makeProject.action = #selector(makeProjectClicked)
         makeProject.toolTip = "Make this folder a project: its own homepage, index, changes and searches"
         makeProject.isHidden = true
-        for v in [up, searchBox, modes, makeProject] as [NSView] { header.addSubview(v) }
+        toProject.target = self
+        toProject.action = #selector(goToProject)
+        toProject.isHidden = true
+        for v in [up, searchBox, modes, makeProject, toProject] as [NSView] { header.addSubview(v) }
         addSubview(header)
         strip.isHidden = true
         strip.onAction = { [weak self] a in self?.projectAction(a) }
@@ -266,6 +274,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     func documentChanged() {
         guard let b = source(), let path = b.path else { return }
         projectChanged(delegate?.directoryViewProject(self))
+        parentProjectChanged(project == nil ? delegate?.directoryViewParentProject(self) : nil)
         if model == nil { setUp(path) }
         up.isEnabled = path != "/"
         if let d = b.directory, d.listedAt != nil, d.listedAt != listedAt {
@@ -425,6 +434,23 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         guard makeProject.isHidden != hide else { return }
         makeProject.isHidden = hide
         needsLayout = true
+    }
+
+    /// The project it's in, below the root: offered to go up to.
+    private func parentProjectChanged(_ p: Project?) {
+        guard p != parentProject else { return }
+        parentProject = p
+        toProject.isHidden = p == nil
+        toProject.title = p?.name ?? ""
+        toProject.toolTip = p.map { "Go up to the project it's in, \($0.name): its homepage (\($0.root.abbreviatingHome))" }
+        needsLayout = true
+    }
+
+    /// Up to the project it's in, in this tile, its homepage shown.
+    @objc func goToProject() {
+        guard let p = parentProject else { return NSSound.beep() }
+        setHome(true)
+        navigate(to: p.root)
     }
 
     @objc private func makeProjectClicked() {
@@ -970,6 +996,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             homeButton.frame = NSRect(x: fieldEnd - 28, y: (midY - Flat.buttonHeight / 2).rounded(), width: 28, height: Flat.buttonHeight)
             fieldEnd = homeButton.frame.minX - 6
         }
+        if !toProject.isHidden {
+            toProject.sizeToFit()
+            toProject.frame.size.width = min(toProject.frame.width, 180)
+            toProject.frame.origin = NSPoint(x: fieldEnd - toProject.frame.width, y: (midY - toProject.frame.height / 2).rounded())
+            fieldEnd = toProject.frame.minX - 6
+        }
         if !makeProject.isHidden {
             makeProject.sizeToFit()
             makeProject.frame.origin = NSPoint(x: fieldEnd - makeProject.frame.width, y: (midY - makeProject.frame.height / 2).rounded())
@@ -1111,6 +1143,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "columns": setMode(.columns)
         case "home": toggleHome()
         case "make": makeProjectClicked()
+        case "toproject": goToProject()
         case "search":
             // "search <text>": typed in a project's homepage's field ("-": emptied); "search" alone, what's found.
             if words.count > 1 {
@@ -1184,6 +1217,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         var lines = ["mode \(mode.rawValue) root \(model?.root ?? "?") selected \(content?.selectedPath.map { model?.relative($0) ?? $0 } ?? "none")"]
         if let project { lines.append("project \(project.root)" + (home ? " (home)\nstrip \(strip.debugState)\nsidebar \(sidebar.isHidden ? "hidden" : "\(Int(sidebar.frame.width)) wide")\n" + sidebar.debugState : "")) }
         if !makeProject.isHidden { lines.append("offers Make Project") }
+        if let p = parentProject { lines.append("in project \(p.name), offered") }
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
         lines.append("note \(note.debugState)")
         if let e = readmeEntry {

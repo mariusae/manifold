@@ -8624,6 +8624,12 @@ extension MainWindowController: DirectoryViewDelegate {
         return desk.projects.first { $0.root == path || $0.alias == path }
     }
 
+    func directoryViewParentProject(_ view: DirectoryView) -> Project? {
+        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(view.block.host)?.desk,
+              let p = desk.project(holding: path), p.root != path, p.alias != path else { return nil }
+        return p
+    }
+
     func directoryView(_ view: DirectoryView, makeProject: Bool) {
         guard let client = hosts.client(view.block.host), let path = hosts.block(view.block)?.path else { return NSSound.beep() }
         let proposal: Proposal = makeProject
