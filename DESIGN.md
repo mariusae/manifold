@@ -1826,6 +1826,7 @@ Page{shard, range}                   scrollback, large texts
 TermKey · TermPaste · TermResize     terminal input to the pinned host
 Find{query} · Related{block}         recall, answered from the host's indexes
 Forward{port}                        a web block's tunnel
+Connect{host, port}                  a page's connection, made by the host (§7.6)
 Ack{shard, seq}
 ```
 

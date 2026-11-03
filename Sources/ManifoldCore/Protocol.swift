@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 66
+public let protocolVersion = 67
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -386,6 +386,12 @@ public enum ClientMessage: Codable, Sendable {
     /// connects to `port` on its own loopback, and `data` frames carry the
     /// bytes both ways; an empty one says that side is done sending.
     case tunnel(port: Int)
+    /// A stream's first frame: a connection the host makes for a page
+    /// loaded through it (§7.6), to `host` — a name, looked up there, or
+    /// an address — at `port`. Answered on the stream with a
+    /// `ConnectReply`; once connected, `data` frames carry the bytes both
+    /// ways, as a tunnel's do.
+    case connect(host: String, port: Int)
     /// A stream's first frame: a file's bytes from `offset`, `length` of
     /// them at most (all, if nil), come down it as `data` frames, then
     /// `end` — or only `end`, saying why not (unreadable; bigger than
