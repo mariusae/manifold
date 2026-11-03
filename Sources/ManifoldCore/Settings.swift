@@ -55,7 +55,9 @@ public struct Appearance: Codable, Equatable, Sendable {
     public var editorFont: EditorFont = .proportional
     /// The color the app's own marks take: the focus ring, selections,
     /// the caret, a pool of light in the backdrop.
-    public var tint: Tint = .blue
+    public var tint: Tint = .theme
+    /// The colour theme, by its id: every colour the app draws in.
+    public var colorTheme: String = "paper"
     /// The custom font theme's typography (used when `theme` is `.custom`).
     public var typography: Typography = .apple
     /// Settings ▸ Typography shown, and the Custom theme offered.
@@ -63,12 +65,13 @@ public struct Appearance: Codable, Equatable, Sendable {
 
     public init(theme: FontTheme = .apple, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
-                editorFont: EditorFont = .proportional, tint: Tint = .blue) {
+                editorFont: EditorFont = .proportional, tint: Tint = .theme, colorTheme: String = "paper") {
         self.theme = theme
         self.colorScheme = colorScheme
         self.contrastCorrection = contrastCorrection
         self.editorFont = editorFont
         self.tint = tint
+        self.colorTheme = colorTheme
     }
 
     // Settings saved before a setting existed get its default.
@@ -78,7 +81,8 @@ public struct Appearance: Codable, Equatable, Sendable {
         colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
         contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
         editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
-        tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .blue
+        tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .theme
+        colorTheme = (try? c.decodeIfPresent(String.self, forKey: .colorTheme)) ?? "paper"
         typography = (try? c.decodeIfPresent(Typography.self, forKey: .typography)) ?? .apple
         // On for those who set a custom theme before there was the switch.
         advancedTypography = (try? c.decodeIfPresent(Bool.self, forKey: .advancedTypography)) ?? (theme == .custom)
@@ -361,6 +365,9 @@ public enum ColorScheme: String, Codable, CaseIterable, Sendable {
 /// The app's tint (§3.1): as the system's accent color, or one of its own —
 /// orange as Overcast's.
 public enum Tint: String, Codable, CaseIterable, Sendable {
+    /// The colour theme's own accent (a terminal's caret and selection
+    /// its palette's); any other is set over the theme's, everywhere.
+    case theme
     case system, blue, orange, purple, pink, green, graphite
 }
 

@@ -1964,6 +1964,18 @@ private final class Seen: @unchecked Sendable {
     #expect(Appearance().theme == .apple)
 }
 
+@Test func appearanceFromBeforeColourThemesIsPaperInTheThemesAccent() throws {
+    let old = try JSONDecoder().decode(Appearance.self, from: Data(#"{"theme":"apple"}"#.utf8))
+    #expect(old.colorTheme == "paper" && old.tint == .theme)
+    // An accent chosen stays chosen.
+    let blue = try JSONDecoder().decode(Appearance.self, from: Data(#"{"tint":"blue"}"#.utf8))
+    #expect(blue.tint == .blue && blue.colorTheme == "paper")
+    var a = Appearance()
+    a.colorTheme = "newsprint"
+    let back = try JSONDecoder().decode(Appearance.self, from: JSONEncoder().encode(a))
+    #expect(back.colorTheme == "newsprint" && back.tint == .theme)
+}
+
 @Test func whatWasKeptOutsideTheWorkspacesIsBroughtIntoThem() {
     let node = Node()
     let host = HostID("h")

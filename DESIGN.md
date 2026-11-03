@@ -2070,10 +2070,34 @@ left to Ghostty's defaults), and a command's output and a notebook's
 cells are drawn in the same. The preview's page takes the
 theme's as CSS variables (`--page-text`, `--page-link`…, light and
 under `prefers-color-scheme: dark`), set again in an open page when the
-theme changes. There is one, **Paper**, Manifold's look as it was before
-there were themes, to the value: debug `colordump <path>` writes every
-named colour in both appearances and the terminal's config, compared
-with the build before. What isn't a theme's: the backdrop, made from its
+theme changes. The theme is a setting (`Appearance.colorTheme`, by id,
+Paper for one there isn't), set from Settings ▸ Appearance ▸ Theme
+(`ColorThemePicker`: each a small window drawn in its colours as the
+appearance has them — a sidebar with a row chosen in the accent and
+blocks' states, an editor's tile with its gutter, the caret's line lit,
+the caret, changes marked and a link's colour, and a terminal's tile,
+focused, a test run in its palette with a word selected and its cursor
+— its name under it). A theme has its own accent
+(`Palette.accent`), which the **Theme** tint — the default — is: with it
+a terminal's caret and selection are its palette's own; any other tint
+is set over the theme's everywhere, Ghostty's caret and selection
+written after the palette's, each tint in the theme's own shade of it
+(`Palette.tints`). An extended palette may be made rather than given
+(`TerminalPalette.generated`, as Ghostty's `palette-generate`): the
+cube's eight corners the background, the sixteen's red to cyan and the
+text, each step between taken in CIELAB, the greys from the background
+to the text — from the background whatever it is (Ghostty's
+"harmonious"), or turned round for a light one to go dark to light.
+
+**Paper** is Manifold's look as it was before there were themes, to the
+value: debug `colordump <path>` writes every named colour in both
+appearances, the terminal's config and the 256 colours Ghostty makes of
+it, compared with the build before. **Newsprint** is ink on newsprint:
+paper #F2F2F0 and ink #333331, muted inks (brick red #B3402E, sage,
+ochre, slate blue, plum, teal), a red caret on a grey selection
+(#DDDDD6), its extended palette made from its own; by night paper
+#1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the six
+4.5:1 on the paper), warm greys throughout (a step less blue). What isn't a theme's: the backdrop, made from its
 own settings (the tint's pool of light, its hue); a language's colour in
 a project's bar (the code hosts'); masks and shadows (black or white at
 an alpha); the page's neutral greys, which read on either ground.

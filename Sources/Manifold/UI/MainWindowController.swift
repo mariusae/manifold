@@ -6740,6 +6740,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard words.count > 1, let t = Tint(rawValue: words[1]) else { return "tints: \(Tint.allCases.map(\.rawValue).joined(separator: " "))" }
             settings().appearance.loadViewIfNeeded()
             settings().appearance.debugPickTint(t)
+        case "colortheme":
+            guard words.count > 1, Palette.all.contains(where: { $0.id == words[1] }) else { return "themes: \(Palette.all.map(\.id).joined(separator: " "))" }
+            settings().appearance.loadViewIfNeeded()
+            settings().appearance.debugPickColorTheme(words[1])
         default: break
         }
         return settingsWindow?.debugState ?? "no settings window"

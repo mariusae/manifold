@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosts.pushLanguageServers()
         let scheme = hosts.state.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
+        Palette.apply(Palette.named(hosts.state.appearance.colorTheme))
         Tints.apply(hosts.state.appearance.tint)
         GhosttyRuntime.shared.apply(hosts.state.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {

@@ -68,6 +68,15 @@ enum DebugControl {
             // from the one that has it; give it back.
             let responder = window.firstResponder
             defer { window.makeFirstResponder(responder) }
+            // "snapshot <path> settings": the Settings window, as it is.
+            if arg.hasSuffix(" settings") {
+                guard let v = NSApp.windows.first(where: { $0 !== window && $0.isVisible && $0.styleMask.contains(.titled) })?.contentView,
+                      let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return "no settings window" }
+                v.cacheDisplay(in: v.bounds, to: rep)
+                let path = String(arg.dropLast(9))
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                return "wrote \(path)"
+            }
             // "snapshot <path> backdrop": the window's backdrop alone.
             if arg.hasSuffix(" backdrop") {
                 func find(_ v: NSView) -> BackdropView? { (v as? BackdropView) ?? v.subviews.lazy.compactMap(find).first }

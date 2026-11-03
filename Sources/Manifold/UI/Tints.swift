@@ -11,6 +11,7 @@ import ManifoldCore
 extension Tint {
     var title: String {
         switch self {
+        case .theme: "Theme"
         case .system: "System"
         case .blue: "Blue"
         case .orange: "Orange"
@@ -31,8 +32,9 @@ extension Tint {
     /// Selected text, behind it: a soft, opaque wash of the tint.
     var textSelection: NSColor { self == .system ? .selectedTextBackgroundColor : themed?.textSelection.color ?? .selectedTextBackgroundColor }
 
-    /// Its colours in the theme in use.
-    private var themed: Palette.TintColors? { Palette.current.tints[self] }
+    /// Its colours in the theme in use: the theme's own accent, or the
+    /// theme's shades of this one.
+    private var themed: Palette.TintColors? { self == .theme ? Palette.current.accent : Palette.current.tints[self] }
 
     /// A chosen row: the tint, thin, over the row — its own colors show
     /// through. `active`: the list has the keyboard.

@@ -55,8 +55,10 @@ final class GhosttyRuntime {
         case .typical: "typical"
         case .deuteranopia: "deuteranopia"
         }
-        // The caret and selection in the app's tint, over the palette's.
-        let tint = "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
+        // The caret and selection in an accent chosen, over the palette's;
+        // the theme's own accent, the palette's own.
+        let tint = appearance.tint == .theme ? ""
+            : "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
         return baseConfig + "\n" + TerminalPalette.current(dark: dark).config + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\n"
     }
 

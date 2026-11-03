@@ -1548,10 +1548,10 @@ can, its hue kept — for deuteranopia too, by default (Settings ▸
 Appearance ▸ Contrast). (How: DESIGN.md §11.)
 
 **Settings** (⌘,) holds every setting, a pane each: Appearance (light or
-dark, the accent color, the fonts, the editor's text, contrast), Terminals (copy
+dark, the theme, the accent color, the fonts, the editor's text, contrast), Terminals (copy
 on select, ending idle shells), History, Remoting and Language Servers.
-The **accent color** — System (the macOS one), Blue, Orange (Overcast's),
-Purple, Pink, Green or Graphite — colors the app's own marks: the focus
+The **accent color** — Theme (the theme's own), System (the macOS one),
+Blue, Orange (Overcast's), Purple, Pink, Green or Graphite — colors the app's own marks: the focus
 ring, what's chosen or toggled, the selection bands, progress, the caret
 and selected text in editors and terminals, and one of the backdrop's
 pools of light. Each is set for light and for dark (in the light, deep
@@ -1560,8 +1560,20 @@ their own: links, find matches, status, diffs, a terminal's palette.
 Every color is a **theme**'s — the chrome, the texts, the tints, the
 colors that say something, a terminal's palette in light and dark (all
 256 colors: the sixteen, the 6×6×6 cube, the greys), the
-preview's page — so a theme recolors all of it at once. There's one so
-far, Paper: Manifold's look.
+preview's page — so a theme recolors all of it at once. Settings ▸
+Appearance ▸ Theme shows each as a small Manifold window in its own
+colors — a sidebar with a block chosen and their states, a file being
+edited (its line numbers, the caret's line lit, changes marked) and a
+terminal, focused, running tests in its palette, a word selected: **Paper**, Manifold's look, and **Newsprint**, ink on a
+faintly warm grey paper with muted inks (a brick red, sage, ochre, slate
+blue, plum, teal), and by night the same paper unlit. A theme has its own
+accent (Paper's blue, Newsprint's red), which the Theme accent follows —
+a terminal's caret and selection then the theme's (Newsprint's red caret
+on a grey selection); any other accent is set over the theme's
+everywhere, terminals too, in the theme's own shade of it. Newsprint's
+256 colors are made from its own: its cube's corners are its paper, its
+six colors and its ink, the steps between taken evenly to the eye, so a
+program's colors sit in the theme.
 
 ## Host and app
 

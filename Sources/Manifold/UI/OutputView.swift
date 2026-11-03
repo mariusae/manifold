@@ -236,6 +236,8 @@ struct TerminalPalette {
     var backgroundHex: String
     var foregroundHex: String
     var cursorHex: String
+    /// The character under a block cursor (nil: Ghostty's choice).
+    var cursorTextHex: String?
     var selectionBackgroundHex: String
     var selectionForegroundHex: String
     /// All 256: the sixteen, then the extended palette.
@@ -249,12 +251,13 @@ struct TerminalPalette {
     var colors: [NSColor]
 
     /// `ansi`: the sixteen; `extended`: the 240 after them (16–255), else xterm's.
-    init(background: String, foreground: String, cursor: String, selectionBackground: String, selectionForeground: String,
-         ansi: [String], extended: [String] = TerminalPalette.xtermExtended) {
+    init(background: String, foreground: String, cursor: String, cursorText: String? = nil, selectionBackground: String,
+         selectionForeground: String, ansi: [String], extended: [String] = TerminalPalette.xtermExtended) {
         precondition(ansi.count == 16 && extended.count == 240, "a terminal palette is 16 colours and 240 more")
         backgroundHex = background
         foregroundHex = foreground
         cursorHex = cursor
+        cursorTextHex = cursorText
         selectionBackgroundHex = selectionBackground
         selectionForegroundHex = selectionForeground
         colorsHex = ansi + extended
@@ -277,6 +280,74 @@ struct TerminalPalette {
         return cube + greys
     }()
 
+    /// An extended palette made of a theme's own colours, as Ghostty's
+    /// `palette-generate` makes one, so that programs' 256 colours sit in
+    /// the theme: the cube's eight corners are the background, the six
+    /// colours red to cyan of `ansi`, and the text — each step between
+    /// them taken in CIELAB, evenly to the eye — and the greys run from
+    /// the background to the text. `fromBackground` (Ghostty's
+    /// "harmonious"): the cube and greys start at the background whatever
+    /// it is; else, for a light background, they're turned round to go
+    /// dark to light, as xterm's do.
+    static func generated(background: String, foreground: String, ansi: [String], fromBackground: Bool = true) -> [String] {
+        var corners = [background] + ansi[1...6] + [foreground]
+        if !fromBackground, Tints.luminance(hex(background)) > Tints.luminance(hex(foreground)) { corners.swapAt(0, 7) }
+        let lab = corners.map { Lab(hex($0)) }
+        let steps: [Double] = (0..<6).map { Double($0) / 5 }
+        var out: [String] = []
+        for r in steps {
+            let c0 = lab[0].mix(lab[1], r), c1 = lab[2].mix(lab[3], r), c2 = lab[4].mix(lab[5], r), c3 = lab[6].mix(lab[7], r)
+            for g in steps {
+                let c4 = c0.mix(c1, g), c5 = c2.mix(c3, g)
+                for b in steps { out.append(c4.mix(c5, b).hex) }
+            }
+        }
+        for i in 0..<24 { out.append(lab[0].mix(lab[7], Double(i + 1) / 25).hex) }
+        return out
+    }
+
+    /// A colour in CIELAB (D65), for mixing evenly to the eye.
+    private struct Lab {
+        var l: Double, a: Double, b: Double
+
+        init(l: Double, a: Double, b: Double) {
+            self.l = l
+            self.a = a
+            self.b = b
+        }
+
+        init(_ color: NSColor) {
+            let c = color.usingColorSpace(.sRGB) ?? color
+            func linear(_ v: CGFloat) -> Double { let v = Double(v); return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+            let (r, g, b) = (linear(c.redComponent), linear(c.greenComponent), linear(c.blueComponent))
+            let x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
+            let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+            let z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
+            func f(_ t: Double) -> Double { t > 216.0 / 24389 ? cbrt(t) : (24389.0 / 27 * t + 16) / 116 }
+            l = 116 * f(y) - 16
+            a = 500 * (f(x) - f(y))
+            self.b = 200 * (f(y) - f(z))
+        }
+
+        func mix(_ o: Lab, _ t: Double) -> Lab { Lab(l: l + (o.l - l) * t, a: a + (o.a - a) * t, b: b + (o.b - b) * t) }
+
+        /// As `#rrggbb`, clipped into sRGB.
+        var hex: String {
+            let fy = (l + 16) / 116, fx = fy + a / 500, fz = fy - b / 200
+            func finv(_ t: Double) -> Double { t * t * t > 216.0 / 24389 ? t * t * t : (116 * t - 16) / (24389.0 / 27) }
+            let x = finv(fx) * 0.95047, y = finv(fy), z = finv(fz) * 1.08883
+            let r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
+            let g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
+            let bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
+            func encode(_ v: Double) -> Int {
+                let v = max(0, min(1, v))
+                let s = v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055
+                return Int((s * 255).rounded())
+            }
+            return String(format: "#%02x%02x%02x", encode(r), encode(g), encode(bl))
+        }
+    }
+
     static func current(for view: NSView) -> TerminalPalette {
         current(dark: view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
     }
@@ -287,8 +358,9 @@ struct TerminalPalette {
 
     /// As lines of Ghostty's config.
     var config: String {
-        (["background = \(backgroundHex)", "foreground = \(foregroundHex)", "cursor-color = \(cursorHex)",
-          "selection-background = \(selectionBackgroundHex)", "selection-foreground = \(selectionForegroundHex)"]
+        let cursor = ["cursor-color = \(cursorHex)"] + (cursorTextHex.map { ["cursor-text = \($0)"] } ?? [])
+        return (["background = \(backgroundHex)", "foreground = \(foregroundHex)"] + cursor
+            + ["selection-background = \(selectionBackgroundHex)", "selection-foreground = \(selectionForegroundHex)"]
             + colorsHex.enumerated().map { "palette = \($0.offset)=\($0.element)" }).joined(separator: "\n")
     }
 
