@@ -1251,7 +1251,12 @@ extension DirectoryView {
 
 extension NSImage {
     /// A template image drawn in a colour.
+    /// In that colour (resolved as it's drawn, so a dynamic one follows the
+    /// appearance): made once for the image and colour — a list's rows asked
+    /// for theirs each time one was shown, scrolling.
     func tinted(_ color: NSColor) -> NSImage {
+        let key = TintedKey(image: ObjectIdentifier(self), color: ObjectIdentifier(color))
+        if let kept = NSImage.tintedKept[key] { return kept.out }
         let out = NSImage(size: size, flipped: false) { r in
             self.draw(in: r)
             color.set()
@@ -1259,8 +1264,14 @@ extension NSImage {
             return true
         }
         out.isTemplate = false
+        if NSImage.tintedKept.count > 4000 { NSImage.tintedKept = [:] }
+        // The image and colour kept with it: their identities aren't another's while it's here.
+        NSImage.tintedKept[key] = (self, color, out)
         return out
     }
+
+    private struct TintedKey: Hashable { var image: ObjectIdentifier; var color: ObjectIdentifier }
+    private static var tintedKept: [TintedKey: (image: NSImage, color: NSColor, out: NSImage)] = [:]
 
     /// Where it draws at its own size, centred in `r` (shrunk to fit, never
     /// stretched).

@@ -567,6 +567,9 @@ final class ColumnCell: NSTableCellView {
         chevron.imageScaling = .scaleProportionallyDown
         label.lineBreakMode = .byTruncatingMiddle
         for v in [icon, label, chevron] { addSubview(v) }
+        // Drawn into one layer, not a layer each (rows made as they scroll in).
+        wantsLayer = true
+        canDrawSubviewsIntoLayer = true
     }
 
     required init?(coder: NSCoder) { fatalError() }

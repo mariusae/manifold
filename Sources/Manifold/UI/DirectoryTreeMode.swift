@@ -428,6 +428,9 @@ final class TreeCell: NSTableCellView {
         label.cell?.truncatesLastVisibleLine = true
         addSubview(icon)
         addSubview(label)
+        // Drawn into one layer, not a layer each (rows made as they scroll in).
+        wantsLayer = true
+        canDrawSubviewsIntoLayer = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
