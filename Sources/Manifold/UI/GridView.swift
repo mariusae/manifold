@@ -117,7 +117,7 @@ final class GridView: NSView, NSDraggingSource {
     private var fractions: [Double] = []
     private var heights: [PlacementID: Double] = [:]
     private var focused: PlacementID?
-    private var full: PlacementID?
+    private(set) var full: PlacementID?
     private var pills: [PlacementID: TilePill] = [:]
     /// Pills of tiles gone from the grid, kept (hidden) for when they come
     /// back: the two grids take turns at workspace switches, so a grid

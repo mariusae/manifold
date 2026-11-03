@@ -3467,7 +3467,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func setUp(_ g: GridView) {
         g.delegate = self
-        g.onHiding = { [weak self] view in self?.rememberPicture(of: view) }
+        // A tile going out of sight (stacked, to its bar): pictured now,
+        // as it still shows — collapsed to its bar it has no size to be
+        // pictured at later. Behind one maximized it keeps its size, so
+        // it's pictured when a card wants it (a page now: its snapshot
+        // comes later, and a hidden page may give none) — pictured here,
+        // every tile a maximize hid was drawn whole in its turn.
+        g.onHiding = { [weak self, weak g] view in
+            if g?.full == nil || view is WebView || view is MarkdownView { self?.rememberPicture(of: view) }
+        }
     }
 
     /// A workspace's grid: its own, kept, if it has one; else one made (or
