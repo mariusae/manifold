@@ -40,7 +40,12 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     private(set) var block: BlockID
     private(set) var path: String
     weak var delegate: MarkdownViewDelegate?
-    private let web: WKWebView
+    /// The page, made when it's first wanted: shown (laid out at a size, not
+    /// hidden), or asked for (focus, find, a snapshot). Made with the view,
+    /// every Markdown tile in the window had one at launch — collapsed to
+    /// its bar, in a workspace not shown — some 10 ms each.
+    private var made: WKWebView?
+    private var web: WKWebView { made ?? makeWeb() }
 
     /// The page for printing, fitted to the paper's width.
     var webPrint: NSPrintOperation {
@@ -117,47 +122,16 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         self.block = block
         self.path = path
         self.theme = theme
-        let config = WKWebViewConfiguration()
-        // The document's own scripts don't run; ours (evaluateJavaScript) do.
-        config.defaultWebpagePreferences.allowsContentJavaScript = false
-        let handler = StateMessages()
-        config.userContentController.add(handler, name: "manifoldState")
-        let selectionOwner = WeakView()
-        PageSelection.watch(config) { selectionOwner.view }
-        // No scrollbar of the page's own: the scrubber is its scroll bar (§3.8).
-        web = PreviewWebView(frame: .zero, configuration: config)
         super.init(frame: .zero)
-        selectionOwner.view = self
         // Another theme: the page's colours, as it has them.
         NotificationCenter.default.addObserver(forName: .manifoldPaletteChanged, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.loaded else { return }
             self.web.evaluateJavaScript(MarkdownPage.paletteScript)
         }
-        // A link to a block that's gone says so as the pointer comes onto it.
-        handler.onHover = { [weak self] target in
-            guard let self else { return }
-            ReferenceTip.hover(target, in: self)
-        }
-        handler.onState = { [weak self] values in
-            self?.keeper.note(values)
-            if values["scroll"] != nil { self?.scheduleOutline() }
-        }
-        // The scrubber follows the page as it moves, and the outline marks
-        // the heading you're in, with the headings as last read.
-        handler.onScrolling = { [weak self] y in
-            self?.scrollY = y
-            guard let self, let o = self.lastOutline else { return }
-            self.scrubber.update(total: o.total, offset: y, shown: o.shown)
-            self.markCurrentHeading(at: y)
-        }
-        web.navigationDelegate = self
-        web.setValue(false, forKey: "drawsBackground")
-        web.unregisterDraggedTypes()
         // Things dropped on the page go into the text (at its end).
         registerForDraggedTypes(Dragged.types)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        addSubview(web)
         scrubber.onScroll = { [weak self] f in
             self?.web.evaluateJavaScript("window.scrollTo(0, \(f) * Math.max(document.documentElement.scrollHeight - window.innerHeight, 0));")
         }
@@ -181,9 +155,46 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
             guard let self, self.itemLines.indices.contains(i) else { return nil }
             return Drags.linkMenu("Copy Link to This Place", self.block, "line=\(self.itemLines[i] + 1)")
         }
+    }
+
+    /// The page made, under the scrubber and the note, and its shell loaded.
+    private func makeWeb() -> WKWebView {
+        let config = WKWebViewConfiguration()
+        // The document's own scripts don't run; ours (evaluateJavaScript) do.
+        config.defaultWebpagePreferences.allowsContentJavaScript = false
+        let handler = StateMessages()
+        config.userContentController.add(handler, name: "manifoldState")
+        let selectionOwner = WeakView()
+        PageSelection.watch(config) { selectionOwner.view }
+        // No scrollbar of the page's own: the scrubber is its scroll bar (§3.8).
+        let web = PreviewWebView(frame: pageFrame, configuration: config)
+        made = web
+        selectionOwner.view = self
+        // A link to a block that's gone says so as the pointer comes onto it.
+        handler.onHover = { [weak self] target in
+            guard let self else { return }
+            ReferenceTip.hover(target, in: self)
+        }
+        handler.onState = { [weak self] values in
+            self?.keeper.note(values)
+            if values["scroll"] != nil { self?.scheduleOutline() }
+        }
+        // The scrubber follows the page as it moves, and the outline marks
+        // the heading you're in, with the headings as last read.
+        handler.onScrolling = { [weak self] y in
+            self?.scrollY = y
+            guard let self, let o = self.lastOutline else { return }
+            self.scrubber.update(total: o.total, offset: y, shown: o.shown)
+            self.markCurrentHeading(at: y)
+        }
+        web.navigationDelegate = self
+        web.setValue(false, forKey: "drawsBackground")
+        web.unregisterDraggedTypes()
+        addSubview(web, positioned: .below, relativeTo: scrubber)
         scriptSent = false
         mermaidSent = false
         web.loadFileURL(MarkdownPage.shell, allowingReadAccessTo: URL(fileURLWithPath: "/"))
+        return web
     }
 
     // MARK: The scrubber (§3.1)
@@ -318,12 +329,28 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
             left = min(TileSidebar.width, (bounds.width / 3).rounded())
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
-        web.frame = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
+        let r = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
+        // The page made once it shows at a size: not for a tile hidden, or
+        // down to its bar.
+        if made != nil || (window != nil && !isHiddenOrHasHiddenAncestor && r.width > 1 && r.height > 1) { web.frame = r }
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: 0, width: ScrubberView.width, height: bounds.height)
-        note.frame = web.frame
+        note.frame = r
         note.set(isUnread() ? .busy("Reading…") : .idle)
-        finder.layout(in: web.frame)
+        finder.layout(in: r)
         scheduleOutline()
+    }
+
+    /// Where the page goes: right of the outline, left of the scrubber.
+    private var pageFrame: NSRect {
+        let left = sidebar.flatMap { $0.isHidden ? nil : min(TileSidebar.width, (bounds.width / 3).rounded()) } ?? 0
+        return NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
+    }
+
+    // Shown (itself, or a workspace it's in): laid out, its page made if it
+    // hasn't been.
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        if made == nil { needsLayout = true }
     }
 
     // MARK: Find
@@ -341,6 +368,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     /// taken out of its window go blank.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if made == nil, window != nil { needsLayout = true }
         guard window != nil, loaded else { return }
         // The page is loaded afresh; what was kept comes back after.
         keeper.flush()

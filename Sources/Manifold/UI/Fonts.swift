@@ -45,9 +45,10 @@ extension FontTheme {
     /// come and go: `fontsChanged`).
     static var humanistInstalled: Bool {
         if let installed { return installed }
-        let families = FontFace.installedFamilies
+        // Each family asked after, not every family listed (~35 ms, the
+        // first time Settings opens).
         let h = Typography.humanist
-        let all = [h.editing, h.reading, h.monospaced].allSatisfy { families.contains($0.family) }
+        let all = [h.editing, h.reading, h.monospaced].allSatisfy { NSFontManager.shared.availableMembers(ofFontFamily: $0.family) != nil }
         installed = all
         return all
     }
