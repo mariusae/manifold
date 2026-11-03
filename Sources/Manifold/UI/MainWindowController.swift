@@ -2099,6 +2099,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let g = v as? GitView { several = g.debugDragItems }
             else if let d = v as? DirectoryView { several = d.debugDragItems(from: spec.count > 2 ? spec[2] : nil) }
             else if let r = v as? SearchView { several = r.debugDragItems }
+            else if let m = v as? MediaView { several = m.debugPagesDrag }
             else { return "no rows to choose there" }
         case "block":
             guard spec.count > 1, let id = BlockID(string: spec[1]) else { return "no block" }

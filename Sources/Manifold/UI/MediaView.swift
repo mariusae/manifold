@@ -46,6 +46,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate let zoomLabel = NSTextField(labelWithString: "")
     fileprivate let layoutButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
     fileprivate var sidebar: TileSidebar?
+    /// The sidebar's pages, once it's made.
+    fileprivate var pages: PDFPagesView?
     fileprivate var sidebarRestored = false
     /// The table of contents, flattened: each entry's item and its page.
     fileprivate var contents: [(item: PDFOutline, page: Int?)] = []
@@ -365,6 +367,7 @@ extension MediaView: Searchable {
         contentsOutline.set(zip(contents, levels).map { Outline.Item(title: $0.0.item.label ?? "Untitled", level: min($0.1, 4)) })
         // The contents first when there are any, unless the pages were chosen.
         if keeper.value("sidebarPage") == nil { sidebar?.show(page: contents.isEmpty ? .pages : .contents) }
+        pages?.reload()
         pageChanged()
         scaleChanged()
         needsLayout = true
@@ -463,10 +466,15 @@ extension MediaView: Searchable {
     fileprivate func setSidebar(_ shown: Bool) {
         guard let p = pdfView, shown != sidebarShown else { return }
         if shown, sidebar == nil {
-            let thumbs = PDFThumbnailView()
+            // Its pages, ours (not PDFKit's), to be dragged out as places.
+            let thumbs = PDFPagesView(block: block)
             thumbs.pdfView = p
-            thumbs.thumbnailSize = NSSize(width: 120, height: 150)
-            thumbs.backgroundColor = .clear
+            thumbs.onGo = { [weak self] i in
+                guard let self, let page = self.pdfView?.document?.page(at: i) else { return }
+                NavJumps.willJump?(self)
+                self.pdfView?.go(to: page)
+            }
+            pages = thumbs
             let s = TileSidebar(outline: contentsOutline, pages: thumbs, emptyText: "No table of contents")
             s.onPageChange = { [weak self] page in self?.keeper.note(["sidebarPage": page.rawValue]) }
             addSubview(s)
@@ -528,10 +536,22 @@ extension MediaView: Searchable {
     /// "page N", "next", "previous", "zoom in|out|fit", "display N",
     /// "sidebar", "pages", "contents", "pick N", "find <query>",
     /// "findnext": done, then how it stands.
+    /// Debugging: what dragging the sidebar's chosen pages writes.
+    var debugPagesDrag: [NSPasteboardWriting] { pages?.debugChoose([]) ?? [] }
+
     func debugPDF(_ arg: String) -> String {
         guard let p = pdfView else { return "not a PDF" }
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch words.first {
+        case "pagespicture":
+            return pages?.debugPicture(to: words.count > 1 ? words[1] : "/tmp/pages.png") ?? "no pages"
+        case "pages":
+            // "pages [n n…]": the sidebar's pages (shown first), those chosen.
+            if !sidebarShown { setSidebar(true) }
+            sidebar?.show(page: .pages)
+            layoutSubtreeIfNeeded()
+            if words.count > 1 { _ = pages?.debugChoose(words[1].split(separator: " ").compactMap { Int($0) }) }
+            return pages?.debugState ?? "no pages"
         case "page": if let n = words.count > 1 ? Int(words[1]) : nil { pageField.stringValue = "\(n)"; pageEntered() }
         case "next": nextPage()
         case "previous": previousPage()

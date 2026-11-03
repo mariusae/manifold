@@ -1123,7 +1123,9 @@ around it, and comes back with its history.
   listing the headings (a PDF's table of contents), each clicked to go
   there (the pointer staying where it is), the one you're in marked as
   you scroll; a PDF's has its pages too, as thumbnails (the two buttons
-  at its top). Shown or not, it's kept with the tile.
+  at its top), clicked to go there, ⌘- or ⇧-clicked to choose several,
+  and dragged out as pages — a link to each in a note, a reference for
+  an agent, the page itself as a PDF to the Finder or Mail. Shown or not, it's kept with the tile.
 - **Filter Outline** (⇧⌘P — ⌘P's outline, in the tile — or the bar's
   menu): the focused tile's own sidebar — its commands, headings,
   symbols, contents or files — shown if it wasn't, the pointer going to
