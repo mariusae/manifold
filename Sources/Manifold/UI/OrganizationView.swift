@@ -965,7 +965,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// same path a real move takes.
     func debugHover(row: Int) -> String {
         let p = row >= 0 ? NSPoint(x: outline.rect(ofRow: row).midX, y: outline.rect(ofRow: row).midY) : NSPoint(x: -100, y: -100)
-        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: outline.convert(p, to: nil), modifierFlags: [],
+        // Row -2: the host's heading kept at the top.
+        let at = row == Self.stickyRow ? convert(NSPoint(x: stickyHost.frame.midX, y: stickyHost.frame.midY), to: nil) : outline.convert(p, to: nil)
+        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: at, modifierFlags: [],
                                          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window?.windowNumber ?? 0,
                                          context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return "no event" }
         mouseMoved(with: e)
@@ -1047,7 +1049,20 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
+    /// What `trackedRow` is while the pointer's on the kept heading.
+    private static let stickyRow = -2
+
     override func mouseMoved(with event: NSEvent) {
+        // The host's heading kept at the top: as its own row, its card shown.
+        if !stickyHost.isHidden, stickyHost.frame.contains(convert(event.locationInWindow, from: nil)), let node = stickyHost.node {
+            guard trackedRow != Self.stickyRow else { return }
+            trackedRow = Self.stickyRow
+            hoverReveal(row: -1)
+            stickyHost.hovered = true
+            delegate?.organizationHover(node, at: convert(stickyHost.frame, to: nil), in: self)
+            return
+        }
+        stickyHost.hovered = false
         let p = outline.convert(event.locationInWindow, from: nil)
         let row = outline.row(at: p)
         guard row != trackedRow else { return }
@@ -1063,6 +1078,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     override func mouseExited(with event: NSEvent) {
         trackedRow = -1
+        stickyHost.hovered = false
         hoverWork?.cancel()
         if let opened = hoverOpened {
             outline.collapseItem(opened)
@@ -1112,6 +1128,17 @@ final class StickyHostView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The host's row it's a copy of.
+    var node: OrgNode? { shown }
+    /// Under the pointer, as its row would be: the same band.
+    var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard hovered else { return }
+        Theme.hover.setFill()
+        Flat.rowBand(bounds).fill()
+    }
 
     /// `again`: its row's values changed in place (the same node, taken over).
     func show(_ node: OrgNode, flat: Bool, again: Bool = false) {

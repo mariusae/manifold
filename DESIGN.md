@@ -667,7 +667,9 @@ would make hosts group rows, styled and clicked otherwise. The sidebar
 may be clear over the window's backdrop, so the heading can't cover the
 rows under it: they fade out there instead, by a gradient mask on the
 list as deep as the heading shows (the list's layer is flipped; the
-mask runs from its y 0).
+mask runs from its y 0). The pointer on the heading is on its host's
+row: the band, and the host's card (its machine, its link's dashboard),
+not the card of the row scrolled under it.
 
 ### 3.7 Status: what every block is doing
 

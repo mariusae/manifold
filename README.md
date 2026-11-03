@@ -1637,7 +1637,8 @@ is migrated into logs on first run.
   heading; scrolled past its heading, the host's stays at the top of the
   list, its rows fading out under it, until the next host's pushes it up
   — so which host you're looking at always shows (clicked, its own row
-  scrolled back to).
+  scrolled back to; the pointer on it, its card, as on its row: its
+  machine, its link, live).
   A host names itself: a session id minted once, which every block made
   there carries, so a block means the same thing from every Mac; what
   you see is its label. Hosts are remembered in `hosts.json` by session,
