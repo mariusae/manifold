@@ -136,7 +136,7 @@ extension EditorView {
                 switch s.state {
                 case .indexing: if tries > 0 { self.watchIndex(tries - 1) }
                 case .current: self.busyMessage = nil; self.flash("Indexed \(s.root?.lastPathComponent ?? "the project")")
-                case .failed: self.busyMessage = nil; self.flash("Indexing failed: " + (s.message?.split(separator: "\n").last.map(String.init) ?? ""))
+                case .failed: self.busyMessage = nil; self.flash("Indexing failed: " + (s.reason ?? ""))
                 case .none: self.busyMessage = nil
                 }
             }

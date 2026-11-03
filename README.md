@@ -890,7 +890,8 @@ around it, and comes back with its history.
   beside the views turns the homepage off and on, kept with the tile): a
   line under the header with the branch (how far ahead and behind), its
   changes and how its index stands (indexed 5m ago · rust, indexing…,
-  failed; clicked, made again), and at the right its own changes and
+  failed and why — the indexer not installed, stopped, writing none, or
+  the error it gave, all it said in the chip's tip; clicked, made again), and at the right its own changes and
   recent commits, each opened as a diff beside — the project's alone,
   where it's a folder deep in a repository (git's and Sapling's alike),
   as are the commits in the git tile its branch and **All commits

@@ -411,4 +411,37 @@ public struct SCIPStatus: Codable, Equatable, Sendable {
         self.at = at
         self.message = message
     }
+
+    /// Why it failed, in a line: the message's first paragraph (a host
+    /// that only kept the indexer's last words: made of them).
+    public var reason: String? {
+        guard state == .failed, let m = message, !m.isEmpty else { return nil }
+        if let r = m.range(of: "\n\n") { return String(m[..<r.lowerBound]) }
+        return IndexFailure.reason(output: m, exit: nil, tool: nil)
+    }
+}
+
+/// Why an indexer failed, in words: from how it ended and what it said.
+public enum IndexFailure {
+    /// The reason in a line: the tool not there, stopped by a signal, no
+    /// index written, else the last line that says error (the last line
+    /// it said, without one), its colours taken out.
+    public static func reason(output: String, exit: Int32?, tool: String?, signalled: Bool = false) -> String {
+        let lines = output.replacingOccurrences(of: #"\x{1B}\[[0-9;?]*[ -/]*[@-~]"#, with: "", options: .regularExpression)
+            .split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let lower = lines.map { $0.lowercased() }
+        let name = tool ?? "the indexer"
+        if exit == 127 || lower.contains(where: { $0.contains("command not found") || $0.hasSuffix(": not found") || $0.contains("no such file or directory") && $0.contains(name.lowercased()) }) {
+            return "\(name) isn't installed (or isn't on the login shell's PATH)"
+        }
+        if signalled, let exit { return "\(name) was stopped (signal \(exit))" }
+        if exit == 0 { return "\(name) finished but wrote no index" }
+        if let i = lower.lastIndex(where: { $0.hasPrefix("error") || $0.contains("error:") || $0.contains("error[") || $0.hasPrefix("fatal") || $0.contains("panicked") }) {
+            return shortened(lines[i])
+        }
+        if let last = lines.last { return shortened(last) }
+        return exit.map { "\(name) failed (exit \($0))" } ?? "\(name) failed"
+    }
+
+    private static func shortened(_ s: String) -> String { s.count > 160 ? String(s.prefix(157)) + "…" : s }
 }

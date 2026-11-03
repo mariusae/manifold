@@ -176,3 +176,18 @@ import Testing
     let counts = Linguist.count([("docs/a.rs", 10), ("lib/vendored/x.c", 20), ("web/app.js", 30)], attributes: a)
     #expect(Set(counts.map(\.name)) == ["Rust", "C", "TypeScript"])
 }
+
+@Test func aFailedIndexSaysWhyInALine() {
+    #expect(IndexFailure.reason(output: "zsh: command not found: rust-analyzer\n", exit: 127, tool: "rust-analyzer")
+            == "rust-analyzer isn't installed (or isn't on the login shell's PATH)")
+    let cargo = "\u{1B}[1m\u{1B}[32m   Compiling\u{1B}[0m app v0.1.0\n\u{1B}[31merror\u{1B}[0m: could not find `Cargo.toml` in `/src/app`\nsomething after\n"
+    #expect(IndexFailure.reason(output: cargo, exit: 1, tool: "rust-analyzer") == "error: could not find `Cargo.toml` in `/src/app`")
+    #expect(IndexFailure.reason(output: "", exit: 0, tool: "scip-go") == "scip-go finished but wrote no index")
+    #expect(IndexFailure.reason(output: "", exit: 9, tool: "scip-go", signalled: true) == "scip-go was stopped (signal 9)")
+    #expect(IndexFailure.reason(output: "just this\n", exit: 2, tool: nil) == "just this")
+    // A host that kept only its last words: the reason made of them; one that says why first: that.
+    var s = SCIPStatus(root: "/a", indexer: "rust", state: .failed, message: "warning: x\nerror: boom\ndone")
+    #expect(s.reason == "error: boom")
+    s.message = "rust-analyzer isn't installed\n\nzsh: command not found: rust-analyzer"
+    #expect(s.reason == "rust-analyzer isn't installed")
+}

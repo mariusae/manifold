@@ -148,7 +148,10 @@ final class ProjectStrip: NSView {
                         "\(n) code file\(n == 1 ? " has" : "s have") changed since the index was made: what it finds may be out of date. Click to index again", true)
             }
             return ("checkmark.circle", indexed, "Index again", true)
-        case .failed: return ("exclamationmark.triangle", "Indexing failed" + by, (s.message ?? "") + "\n\nClick to index again", true)
+        case .failed:
+            // Why, in the chip; all it said, in its tip.
+            let why = s.reason.map { ": " + ($0.count > 70 ? String($0.prefix(68)) + "…" : $0) } ?? ""
+            return ("exclamationmark.triangle", "Indexing failed" + by + why, (s.message ?? "") + "\n\nClick to index again", true)
         }
     }
 

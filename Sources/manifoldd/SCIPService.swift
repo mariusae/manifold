@@ -296,10 +296,15 @@ final class SCIPService {
             } else {
                 try? FileManager.default.removeItem(at: partial)
             }
-            let words = String(decoding: output.suffix(2000), as: UTF8.self).split(separator: "\n").suffix(6).joined(separator: "\n")
+            let text = String(decoding: output.suffix(4000), as: UTF8.self)
+            let words = text.split(separator: "\n").suffix(6).joined(separator: "\n")
+            // Why, in a line, then its last words.
+            let tool = command.split(separator: "&&").last?.split(separator: " ").first.map(String.init)
+            let reason = IndexFailure.reason(output: text, exit: p.isRunning ? nil : p.terminationStatus, tool: tool ?? indexer.id,
+                                             signalled: p.terminationReason == .uncaughtSignal)
             self?.queue.async {
                 self?.running.remove(root)
-                if !ok { self?.failures[root] = words.isEmpty ? "the indexer failed" : words }
+                if !ok { self?.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }
             }
         }
     }
