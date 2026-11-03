@@ -246,7 +246,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.render() }
+            // Terminals that couldn't be made while it slept, tried again now.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.deadRetries = [:]; self?.render() }
         }
         // Reduce motion turned on or off: working's names shimmer, or hold
         // still with a dot (`StatusMark`), everywhere at once.
@@ -568,6 +569,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.append([.view(placement: p.id, values), .view(placement: Self.lastViewKey(p.lens), values)], to: .block(p.block))
     }
 
+    /// When a dead view may be made again, and how long it waited last.
+    private var deadRetries: [PlacementID: (next: Date, wait: TimeInterval)] = [:]
+
     private func view(for shown: Shown) -> PaneContent {
         // A tile kept from when there was an outline lens (a tile's sidebar
         // is its outline now): the block through its own lens.
@@ -633,6 +637,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             (v as? SmartlogView)?.refresh()
             if !v.isDead { return v }
+            // Dead (a terminal whose surface couldn't be made — the display
+            // asleep, no GPU): made again, but not at every render — each
+            // try sets Metal up, and while the display slept every terminal
+            // was torn down and made afresh every couple of seconds. Tried
+            // again in 2 s, then 4, 8… a minute at most; at once when the
+            // screens wake.
+            if let retry = deadRetries[p.id], Date() < retry.next { return v }
+            let wait = min((deadRetries[p.id]?.wait ?? 1) * 2, 60)
+            deadRetries[p.id] = (Date().addingTimeInterval(wait), wait)
             v.removeFromSuperview()
             v.destroy()
             }

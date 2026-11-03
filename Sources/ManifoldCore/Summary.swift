@@ -258,19 +258,21 @@ extension Block {
     public static func firstLines(_ text: String, skipping title: String, count: Int) -> [String] {
         var out: [String] = []
         var inFence = false
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        // Line by line until there are enough: split whole, a long file's
+        // card (a hover in the sidebar) split all of it for its first lines.
+        text.enumerateLines { raw, stop in
             let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("```") { inFence.toggle(); continue }
-            guard !line.isEmpty else { continue }
+            if line.hasPrefix("```") { inFence.toggle(); return }
+            guard !line.isEmpty else { return }
             var plain = inFence ? line : line.replacingOccurrences(of: #"^(#{1,6}\s+|[-*+]\s+(\[[ xX]\]\s+)?|>\s*|\d+\.\s+)"#, with: "", options: .regularExpression)
             if !inFence {
                 plain = plain.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
                     .replacingOccurrences(of: #"(?<![\w*_])[*_]([^*_\s][^*_]*?)[*_](?![\w*_])"#, with: "$1", options: .regularExpression)
                     .replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
             }
-            if out.isEmpty, plain == title { continue }
+            if out.isEmpty, plain == title { return }
             out.append(oneLine(plain))
-            if out.count == count { break }
+            if out.count == count { stop = true }
         }
         return out
     }

@@ -18,11 +18,30 @@ final class BackdropView: NSView {
     private var tinted: NSObjectProtocol?
     private var themed: NSObjectProtocol?
 
+    /// The wash, and the pools over it: gradients Core Animation draws on
+    /// the GPU, at any size — drawn here on the CPU, a full-window gradient
+    /// at the screen's resolution and depth took half a second, and was
+    /// drawn again at every size change that wasn't a live resize (a zoom,
+    /// full screen, a display), every theme or tint, every change of light.
+    private let wash = CAGradientLayer()
+    private let pools = [CAGradientLayer(), CAGradientLayer()]
+    /// Each pool's centre and radius, as fractions of the view (its centre
+    /// across and up; its radius of the longer side).
+    private var poolPlaces: [(x: CGFloat, y: CGFloat, r: CGFloat)] = []
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
-        layerContentsPlacement = .scaleAxesIndependently
+        // From the upper left to the lower right (y up).
+        wash.startPoint = CGPoint(x: 0, y: 1)
+        wash.endPoint = CGPoint(x: 1, y: 0)
+        wash.locations = [0, 0.4, 0.75, 1]
+        layer?.addSublayer(wash)
+        for p in pools {
+            p.type = .radial
+            p.locations = [0, 1]
+            layer?.addSublayer(p)
+        }
         cast = Daylight.cast(at: Date(), from: Daylight.place())
         // The tint changed: its pool drawn again, cross-faded.
         tinted = NotificationCenter.default.addObserver(forName: .manifoldTintChanged, object: nil, queue: .main) { [weak self] _ in
@@ -74,7 +93,7 @@ final class BackdropView: NSView {
             t.duration = duration
             layer.add(t, forKey: "relight")
         }
-        needsDisplay = true
+        shade()
     }
 
     /// A colour in the light: each channel, linearized, taken by the cast.
@@ -85,26 +104,36 @@ final class BackdropView: NSView {
                        blue: f(c.blueComponent, cast.blue), alpha: c.alphaComponent).cgColor
     }
 
-    /// Drawn again when its size or the light changes — not at every
-    /// frame set (the window lays out often, the size the same) or
-    /// appearance passed down: each drawing is a full-window gradient on
-    /// the CPU. In a live resize, the last drawing stretched till it ends.
+    /// Its gradients fill it, the pools kept round, as its size changes:
+    /// placed, not drawn.
     override func setFrameSize(_ newSize: NSSize) {
-        let changed = newSize != frame.size
         super.setFrameSize(newSize)
-        if changed, !inLiveResize { needsDisplay = true }
+        place()
     }
 
-    override func viewDidEndLiveResize() {
-        super.viewDidEndLiveResize()
-        needsDisplay = true
+    private func place() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        wash.frame = bounds
+        let w = max(bounds.width, 1), h = max(bounds.height, 1), long = max(w, h)
+        for (p, at) in zip(pools, poolPlaces) {
+            p.frame = bounds
+            p.startPoint = CGPoint(x: at.x, y: at.y)
+            p.endPoint = CGPoint(x: at.x + at.r * long / w, y: at.y + at.r * long / h)
+        }
+        CATransaction.commit()
     }
 
     private var drawnDark: Bool?
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        if isDark != drawnDark { needsDisplay = true }
+        if isDark != drawnDark { shade() }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if drawnDark == nil { shade() }
     }
 
     private var isDark: Bool { effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
@@ -125,12 +154,13 @@ final class BackdropView: NSView {
         wash.stops.map { h, s, b in NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1) }
     }
 
-    /// Times drawn (debugging).
+    /// Times shaded (debugging).
     static var draws = 0
 
-    override func draw(_ dirtyRect: NSRect) {
+    /// Its colours made again (the theme, the day, the light, the tint, the
+    /// appearance), and given to its gradients.
+    private func shade() {
         Self.draws += 1
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let dark = isDark
         drawnDark = dark
         let day = Int(Date().timeIntervalSince1970 / 86400)
@@ -140,14 +170,14 @@ final class BackdropView: NSView {
         // plum to umber to near-black), its hues turned a little by the
         // day, and a pool or two of light laid over it.
         let wash = Palette.current.backdrop.wash(dark: dark)
+        var places: [(x: CGFloat, y: CGFloat, r: CGFloat)] = []
+        defer { poolPlaces = places; place() }
         let turn = CGFloat(r.next() - 0.5) * 0.06
         let stops = wash.stops
-        let space = CGColorSpaceCreateDeviceRGB()
-        let colors = Self.colors(of: wash, turn: turn).map(lit)
-        if let g = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 0.4, 0.75, 1]) {
-            ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: bounds.height), end: CGPoint(x: bounds.width, y: 0), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-        }
-        let w = bounds.width, h = bounds.height
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        self.wash.colors = Self.colors(of: wash, turn: turn).map(lit)
         // The tint's hue and how colored it is (graphite: hardly).
         var tintHue: CGFloat = 0, tintSaturation: CGFloat = 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -155,18 +185,16 @@ final class BackdropView: NSView {
             var b: CGFloat = 0, a: CGFloat = 0
             t.getHue(&tintHue, saturation: &tintSaturation, brightness: &b, alpha: &a)
         }
-        for pool in 0..<2 {
+        for (pool, layer) in pools.enumerated() {
             let hue = (stops[Int(r.next() * 3)].0 + turn + 1).truncatingRemainder(dividingBy: 1)
             // The first pool is the tint's — a little more colored than the
             // wash's own, so it reads as the tint.
             let color: NSColor = pool == 0
                 ? NSColor(calibratedHue: tintHue, saturation: wash.tintPool.saturation * tintSaturation, brightness: wash.tintPool.brightness, alpha: 1)
                 : NSColor(calibratedHue: hue, saturation: wash.pool.saturation, brightness: wash.pool.brightness, alpha: 1)
-            let center = CGPoint(x: CGFloat(r.next()) * w, y: CGFloat(r.next()) * h)
-            let radius = max(w, h) * (0.3 + 0.3 * CGFloat(r.next()))
+            places.append((CGFloat(r.next()), CGFloat(r.next()), 0.3 + 0.3 * CGFloat(r.next())))
             let c = lit(color)
-            guard let g = CGGradient(colorsSpace: space, colors: [c.copy(alpha: 0.5)!, c.copy(alpha: 0)!] as CFArray, locations: [0, 1]) else { continue }
-            ctx.drawRadialGradient(g, startCenter: center, startRadius: 0, endCenter: center, endRadius: radius, options: [])
+            layer.colors = [c.copy(alpha: 0.5)!, c.copy(alpha: 0)!]
         }
     }
 }

@@ -246,6 +246,7 @@ struct FontFace: Equatable {
     static func forget() {
         families = [:]
         installed = nil
+        TypeStyle.newYorkInstalled = nil
     }
 
     /// Every face of a family, italics too, lightest first.
@@ -349,8 +350,15 @@ extension NSFont {
 extension TypeStyle {
     /// New York: no family of its own, but the system font's serif design.
     static func isNewYork(_ family: String) -> Bool {
-        family == "New York" && !FontFace.installedFamilies.contains("New York")
+        guard family == "New York" else { return false }
+        // One family asked after, not every family listed (45 ms at launch,
+        // the page's styles being made before the window shows).
+        if let known = newYorkInstalled { return !known }
+        let installed = NSFontManager.shared.availableMembers(ofFontFamily: "New York") != nil
+        newYorkInstalled = installed
+        return !installed
     }
+    static var newYorkInstalled: Bool?
 
     /// What to call it: its family and, if not regular, its face.
     func displayName(_ role: FontRole) -> String {
