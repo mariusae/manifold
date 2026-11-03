@@ -219,7 +219,7 @@ final class MachinePanels: NSView {
     /// A panel's head: its name, a line under it, and its number at the right.
     /// Returns where what's under it begins.
     private func head(_ title: String, _ hero: String, detail: String?, in r: NSRect) -> CGFloat {
-        let heroFont = NSFont.monospacedDigitSystemFont(ofSize: compact ? 13 : 16, weight: .medium)
+        let heroFont = NSFont.systemDigits(ofSize: compact ? 13 : 16, weight: .medium)
         let heroWidth = NSAttributedString(string: hero, attributes: [.font: heroFont]).size().width
         // The name cut short before the number, in a narrow panel.
         say(title.uppercased(), NSPoint(x: r.minX, y: r.minY + 1), font: .systemFont(ofSize: 10, weight: .semibold), color: Theme.secondaryText, width: max(0, r.width - heroWidth - 8))
@@ -238,7 +238,7 @@ final class MachinePanels: NSView {
             NSBezierPath(roundedRect: NSRect(x: x, y: p.y + 4, width: 7, height: 7), xRadius: 2, yRadius: 2).fill()
             x += 11
         }
-        let a = NSAttributedString(string: words, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: Theme.secondaryText])
+        let a = NSAttributedString(string: words, attributes: [.font: NSFont.systemDigits(ofSize: 10.5, weight: .regular), .foregroundColor: Theme.secondaryText])
         a.draw(at: NSPoint(x: x, y: p.y))
         return x + a.size().width + 12
     }
@@ -411,8 +411,8 @@ final class MachinePanels: NSView {
         if m.swapTotal > 0 {
             say("swap", NSPoint(x: r.minX, y: y - 2), font: .systemFont(ofSize: 10.5), color: Theme.secondaryText)
             let label = "\(MachineWords.memory(m.swapUsed)) of \(MachineWords.memory(m.swapTotal))"
-            let lw = NSAttributedString(string: label, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)]).size().width
-            say(label, NSPoint(x: r.maxX, y: y - 2), font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), right: true)
+            let lw = NSAttributedString(string: label, attributes: [.font: NSFont.systemDigits(ofSize: 10.5, weight: .regular)]).size().width
+            say(label, NSPoint(x: r.maxX, y: y - 2), font: .systemDigits(ofSize: 10.5, weight: .regular), right: true)
             bar(NSRect(x: r.minX + 34, y: y + 3, width: max(10, r.width - 34 - lw - 8), height: 5), [(swap, MachineInk.one.withAlphaComponent(0.6))])
             y += 16
         }
@@ -459,7 +459,7 @@ final class MachinePanels: NSView {
             let name = d.mount == "/" ? "/" : (d.mount as NSString).lastPathComponent
             say(name, NSPoint(x: r.minX, y: y - 1), font: .systemFont(ofSize: 10.5), color: Theme.secondaryText, width: 64)
             let label = "\(MachineWords.size(d.used)) of \(MachineWords.size(d.total))"
-            let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+            let font = NSFont.systemDigits(ofSize: 10.5, weight: .regular)
             let lw = NSAttributedString(string: label, attributes: [.font: font]).size().width
             say(label, NSPoint(x: r.maxX, y: y - 1), font: font, right: true)
             bar(NSRect(x: r.minX + 68, y: y + 4, width: max(10, r.width - 68 - lw - 8), height: 5), [(d.usedFraction, MachineInk.one)])
@@ -472,7 +472,7 @@ final class MachinePanels: NSView {
 
     private func drawTop(_ s: MachineSample, _ r: NSRect) {
         let top = head("Processes", "\(s.processCount)", detail: nil, in: r)
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+        let font = NSFont.systemDigits(ofSize: 10.5, weight: .regular)
         var y = top - 2
         for p in s.processes.prefix(Int((r.maxY - y) / 15)) {
             say(MachineWords.memory(p.memory), NSPoint(x: r.maxX, y: y), font: font, right: true)
@@ -519,7 +519,7 @@ final class MachinePanels: NSView {
     /// A small label above what it reads, else below it, else beside it
     /// (a short chart has no room over or under), kept inside the view.
     private func tip(_ lines: [String], over a: NSRect) {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+        let font = NSFont.systemDigits(ofSize: 10.5, weight: .medium)
         let text = NSAttributedString(string: lines.joined(separator: "\n"), attributes: [.font: font, .foregroundColor: Theme.text])
         let size = text.size()
         var box = NSRect(x: a.midX - size.width / 2 - 7, y: a.minY - 4 - size.height - 8, width: size.width + 14, height: size.height + 8)

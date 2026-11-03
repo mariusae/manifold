@@ -425,7 +425,11 @@ final class GridView: NSView, NSDraggingSource {
                 // too, once it's grown over them: shown at a render (a
                 // status changing, a minute going by), a PDF drew over it.
                 let behindFull = full != nil && full != id && zooming != full
-                if !held(id) { setHidden(tile.view, stashed || collapsed.contains(id) || summarized.contains(id) || behindFull) }
+                // The maximized tile itself never: collapsed or summarized
+                // are as the grid was laid out before it was maximized (its
+                // layout then doesn't make them again), so a tile maximized
+                // from its bar was hidden at the next render — an empty card.
+                if !held(id) { setHidden(tile.view, full != id && (stashed || collapsed.contains(id) || summarized.contains(id) || behindFull)) }
                 // Its summary standing in for it, said afresh with each render.
                 if let card = tileSummaries[id], summarized.contains(id), let s = summaryContent(tile) { card.content = s }
             }

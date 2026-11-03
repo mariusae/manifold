@@ -159,10 +159,16 @@ final class TextView: NSView, NSTextInputClient {
     /// border) — 5 points after the widest number, clear of a digit and of
     /// the marks by the text.
     private var markX: CGFloat { textLeft - 19 }
+    /// A digit's width in the gutter's font: read at every layout and
+    /// draw, so measured once a size.
     private var gutterDigitWidth: CGFloat {
-        let f = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize * 0.78), weight: .regular)
-        return ceil(("0" as NSString).size(withAttributes: [.font: f]).width)
+        let size = max(9, font.pointSize * 0.78)
+        if let w = Self.digitWidths[size] { return w }
+        let w = ceil(("0" as NSString).size(withAttributes: [.font: NSFont.systemDigits(ofSize: size)]).width)
+        Self.digitWidths[size] = w
+        return w
     }
+    private static var digitWidths: [CGFloat: CGFloat] = [:]
 
     // Selection.
     private(set) var selections: [Selection] = [Selection(at: 0)]
@@ -1127,7 +1133,7 @@ final class TextView: NSView, NSTextInputClient {
         // Text.
         ctx.saveGState()
         ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        let gutterFont = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize * 0.78), weight: .regular)
+        let gutterFont = NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78))
         foldChips = [:]
         for n in first...last {
             if hiddenLines.contains(n) { continue }

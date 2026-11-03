@@ -377,7 +377,7 @@ final class DiffRowsView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard !rows.isEmpty else { return }
-        let numberFont = NSFont.monospacedDigitSystemFont(ofSize: font.pointSize * 0.85, weight: .regular)
+        let numberFont = NSFont.systemDigits(ofSize: font.pointSize * 0.85, weight: .regular)
         let textAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
         let dimAttrs: [NSAttributedString.Key: Any] = [.font: numberFont, .foregroundColor: TextView.gutterText]
         if sideBySide { return drawSides(dirtyRect, textAttrs: textAttrs, dimAttrs: dimAttrs) }

@@ -722,7 +722,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             return c
         }()
         let numeric = id == "pid" || id == "cpu" || id == "memory" || id == "threads"
-        cell.textField?.font = numeric ? .monospacedDigitSystemFont(ofSize: 11, weight: .regular) : UIType.footnote
+        cell.textField?.font = numeric ? .systemDigits(ofSize: 11) : UIType.footnote
         cell.textField?.textColor = Theme.text
         cell.fraction = nil
         cell.textField?.toolTip = nil

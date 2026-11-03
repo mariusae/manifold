@@ -407,7 +407,7 @@ final class LineGutter: NSView {
         let visible = clip.bounds
         let glyphs = lm.glyphRange(forBoundingRect: visible, in: tc)
         let chars = lm.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        let numberFont = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize - 2), weight: .regular)
+        let numberFont = NSFont.systemDigits(ofSize: max(9, font.pointSize - 2), weight: .regular)
         var line = lineStarts.lastIndex { $0 <= chars.location } ?? 0
         while line < lineStarts.count, lineStarts[line] <= NSMaxRange(chars), lm.numberOfGlyphs > 0 {
             let g = min(lm.glyphIndexForCharacter(at: lineStarts[line]), lm.numberOfGlyphs - 1)

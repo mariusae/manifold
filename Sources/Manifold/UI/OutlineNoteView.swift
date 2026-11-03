@@ -748,7 +748,7 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
             image.draw(in: NSRect(x: center.x - size.width / 2, y: middle - size.height / 2, width: size.width, height: size.height),
                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         case let .number(label):
-            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .regular),
+            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemDigits(ofSize: font.pointSize, weight: .regular),
                                                              .foregroundColor: Theme.secondaryText]
             let text = NSAttributedString(string: label, attributes: attributes)
             let size = text.size()
