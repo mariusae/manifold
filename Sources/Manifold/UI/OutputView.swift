@@ -238,24 +238,44 @@ struct TerminalPalette {
     var cursorHex: String
     var selectionBackgroundHex: String
     var selectionForegroundHex: String
-    var ansiHex: [String]
+    /// All 256: the sixteen, then the extended palette.
+    var colorsHex: [String]
 
     var background: NSColor
     var foreground: NSColor
-    /// The sixteen: black, red, green, yellow, blue, magenta, cyan, white, then bright.
-    var ansi: [NSColor]
+    /// All 256, as a 256-colour terminal numbers them: the sixteen (black,
+    /// red, green, yellow, blue, magenta, cyan, white, then bright), the
+    /// 6×6×6 cube (16–231), the 24 greys (232–255).
+    var colors: [NSColor]
 
-    init(background: String, foreground: String, cursor: String, selectionBackground: String, selectionForeground: String, ansi: [String]) {
+    /// `ansi`: the sixteen; `extended`: the 240 after them (16–255), else xterm's.
+    init(background: String, foreground: String, cursor: String, selectionBackground: String, selectionForeground: String,
+         ansi: [String], extended: [String] = TerminalPalette.xtermExtended) {
+        precondition(ansi.count == 16 && extended.count == 240, "a terminal palette is 16 colours and 240 more")
         backgroundHex = background
         foregroundHex = foreground
         cursorHex = cursor
         selectionBackgroundHex = selectionBackground
         selectionForegroundHex = selectionForeground
-        ansiHex = ansi
+        colorsHex = ansi + extended
         self.background = Self.hex(background)
         self.foreground = Self.hex(foreground)
-        self.ansi = ansi.map(Self.hex)
+        colors = colorsHex.map(Self.hex)
     }
+
+    /// The sixteen.
+    var ansi: ArraySlice<NSColor> { colors.prefix(16) }
+
+    /// xterm's extended palette, as most terminals have it (Ghostty's own
+    /// too): the 6×6×6 cube, each channel 0, 95, 135, 175, 215 or 255;
+    /// then 24 greys from 8, 10 apart.
+    static let xtermExtended: [String] = {
+        let steps: [Int] = [0, 95, 135, 175, 215, 255]
+        func hex(_ r: Int, _ g: Int, _ b: Int) -> String { String(format: "#%02x%02x%02x", r, g, b) }
+        let cube: [String] = (0..<216).map { (i: Int) -> String in hex(steps[i / 36], steps[(i / 6) % 6], steps[i % 6]) }
+        let greys: [String] = (0..<24).map { (i: Int) -> String in hex(8 + i * 10, 8 + i * 10, 8 + i * 10) }
+        return cube + greys
+    }()
 
     static func current(for view: NSView) -> TerminalPalette {
         current(dark: view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
@@ -269,7 +289,7 @@ struct TerminalPalette {
     var config: String {
         (["background = \(backgroundHex)", "foreground = \(foregroundHex)", "cursor-color = \(cursorHex)",
           "selection-background = \(selectionBackgroundHex)", "selection-foreground = \(selectionForegroundHex)"]
-            + ansiHex.enumerated().map { "palette = \($0.offset)=\($0.element)" }).joined(separator: "\n")
+            + colorsHex.enumerated().map { "palette = \($0.offset)=\($0.element)" }).joined(separator: "\n")
     }
 
     static func hex(_ s: String) -> NSColor {
@@ -278,15 +298,7 @@ struct TerminalPalette {
     }
 
     /// A 256-colour index: the sixteen, the 6×6×6 cube, the greys.
-    func color(_ n: Int) -> NSColor {
-        if n < 16 { return ansi[max(0, n)] }
-        if n < 232 {
-            let i = n - 16, steps: [CGFloat] = [0, 95, 135, 175, 215, 255]
-            return NSColor(srgbRed: steps[i / 36] / 255, green: steps[(i / 6) % 6] / 255, blue: steps[i % 6] / 255, alpha: 1)
-        }
-        let g = CGFloat(8 + (n - 232) * 10) / 255
-        return NSColor(srgbRed: g, green: g, blue: g, alpha: 1)
-    }
+    func color(_ n: Int) -> NSColor { colors[max(0, min(n, colors.count - 1))] }
 }
 
 /// Terminal output as attributed text: SGR's colours (16, 256, true) and

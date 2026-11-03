@@ -1558,7 +1558,8 @@ pools of light. Each is set for light and for dark (in the light, deep
 enough to read as a thin line on white). Colors that say something keep
 their own: links, find matches, status, diffs, a terminal's palette.
 Every color is a **theme**'s — the chrome, the texts, the tints, the
-colors that say something, a terminal's palette in light and dark, the
+colors that say something, a terminal's palette in light and dark (all
+256 colors: the sixteen, the 6×6×6 cube, the greys), the
 preview's page — so a theme recolors all of it at once. There's one so
 far, Paper: Manifold's look.
 

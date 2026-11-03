@@ -53,6 +53,12 @@ import ManifoldCore
             }
         }
         for dark in [false, true] { lines.append("terminal \(dark ? "dark" : "light"):\n" + GhosttyRuntime.debugConfigText(dark: dark)) }
+        // What Ghostty makes of it: its 256 colours, and what a command's output is drawn in.
+        for dark in [false, true] {
+            lines.append("ghostty palette \(dark ? "dark" : "light"): " + GhosttyRuntime.debugResolvedPalette(dark: dark))
+            let p = TerminalPalette.current(dark: dark)
+            lines.append("output palette \(dark ? "dark" : "light"): " + (0..<256).map { i in "\(i)=" + Tints.hex(p.color(i), dark: dark) }.joined(separator: " "))
+        }
         return lines.joined(separator: "\n")
     }
 }

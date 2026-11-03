@@ -58,6 +58,8 @@ struct Palette {
     var found: Found
     var chart: Chart
     var kinds: Kinds
+    /// All 256 of a terminal's colours, and its paper, text, caret and
+    /// selection, in each appearance.
     var terminal: (light: TerminalPalette, dark: TerminalPalette)
     var page: Page
 
@@ -398,16 +400,19 @@ extension Palette {
             git: Shade(.systemOrange), swift: Shade(.systemOrange), shell: Shade(.systemGreen), pdf: Shade(.systemRed),
             image: Shade(.systemPurple), data: Shade(.systemYellow), patch: Shade(.systemGreen), archive: Shade(.systemBrown),
             media: Shade(.systemPink), code: Shade(.systemBlue), linked: Shade(.systemPurple), embeds: Shade(.systemTeal)),
-        // Paper, and GitHub's palettes, light and dark.
+        // Paper, and GitHub's palettes, light and dark; past the sixteen,
+        // xterm's cube and greys in both.
         terminal: (
             light: TerminalPalette(background: "#fcfcfb", foreground: "#24292f", cursor: "#007aff",
                                    selectionBackground: "#cfe2fb", selectionForeground: "#1f2328", ansi: [
                                        "#24292f", "#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
-                                       "#57606a", "#a40e26", "#1a7f37", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"]),
+                                       "#57606a", "#a40e26", "#1a7f37", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"],
+                                   extended: TerminalPalette.xtermExtended),
             dark: TerminalPalette(background: "#1c1c1b", foreground: "#e3e3df", cursor: "#0a84ff",
                                   selectionBackground: "#264f78", selectionForeground: "#f0f0ee", ansi: [
                                       "#484f58", "#ff7b72", "#3fb950", "#d29922", "#58a6ff", "#bc8cff", "#39c5cf", "#b1bac4",
-                                      "#6e7681", "#ffa198", "#56d364", "#e3b341", "#79c0ff", "#d2a8ff", "#56d4dd", "#f0f6fc"])),
+                                      "#6e7681", "#ffa198", "#56d364", "#e3b341", "#79c0ff", "#d2a8ff", "#56d4dd", "#f0f6fc"],
+                                  extended: TerminalPalette.xtermExtended)),
         // As go.dev sets its docs: its colours.
         page: Page(
             background: .hex(0xFFFFFF, 0x202224),

@@ -35,6 +35,20 @@ final class GhosttyRuntime {
 
     static func debugConfigText(dark: Bool) -> String { configText(shared.appearance, dark: dark) }
 
+    /// Debugging: the 256 colours Ghostty makes of the config, as it reads it.
+    static func debugResolvedPalette(dark: Bool) -> String {
+        guard let config = makeConfig(shared.appearance, dark: dark) else { return "no config" }
+        defer { ghostty_config_free(config) }
+        var palette = ghostty_config_palette_s()
+        let key = "palette"
+        guard ghostty_config_get(config, &palette, key, UInt(key.utf8.count)) else { return "no palette" }
+        return withUnsafeBytes(of: palette.colors) { raw in
+            raw.bindMemory(to: ghostty_config_color_s.self).enumerated().map { i, c in
+                String(format: "%d=#%02x%02x%02x", i, c.r, c.g, c.b)
+            }.joined(separator: " ")
+        }
+    }
+
     private static func configText(_ appearance: Appearance, dark: Bool) -> String {
         let mode = switch appearance.contrastCorrection {
         case .off: "none"

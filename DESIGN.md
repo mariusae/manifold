@@ -2056,16 +2056,18 @@ caret's line, matches, uses, Highlight Uses' pins, the gutter's change
 marks, diagnostics, `==highlight==`), diffs, what search found (a PDF's
 matches too), a machine's charts, the colours that tell kinds apart (a
 file's type, a link's), a terminal's palette in each appearance (its
-paper, text, caret, selection and sixteen colours), and the preview's
-page. One is in use (`Palette.current`), and what draws asks it as it
+paper, text, caret, selection and all 256 colours: the sixteen, then the
+extended palette's 6×6×6 cube and 24 greys — xterm's, in Paper, as
+Ghostty's own were), and the preview's page. One is in use (`Palette.current`), and what draws asks it as it
 draws: the named colours (`Theme.text`, `Status.failed`,
 `TextView.addedColor`…) are each one object (`NSColor.themed`) whose
 colour is the current theme's in the appearance it's drawn in, so a
 theme set (`Palette.apply`) recolours everything as switching light and
 dark does — drawn again, what layers hold set again by their theme hooks
 — and the terminals are configured again: Ghostty's colours are written
-from the theme (`TerminalPalette.config`), and a command's output and a
-notebook's cells are drawn in the same. The preview's page takes the
+from the theme (`TerminalPalette.config`, every one of the 256 given, none
+left to Ghostty's defaults), and a command's output and a notebook's
+cells are drawn in the same. The preview's page takes the
 theme's as CSS variables (`--page-text`, `--page-link`…, light and
 under `prefers-color-scheme: dark`), set again in an open page when the
 theme changes. There is one, **Paper**, Manifold's look as it was before
