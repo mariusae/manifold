@@ -514,7 +514,7 @@ extension Palette {
                 .graphite: TintColors(accent: .hex(0x66665F, 0xA3A39C), caret: .hex(0x333331, 0xD6D6D0), textSelection: .hex(0xDDDDD6, 0x3A3A36)),
             ],
             code: Code(
-                page: .hex(0xEAEAE6, 0x2A2A27),
+                page: .hex(0xEEEEEA, 0x2A2A27),
                 text: .hex(0x333331, 0xDEDED8),
                 lineNumber: .hex(0x9A9A93, 0x7A7A73),
                 lineHighlight: .hex(0xECE9DA, 0x33322A),
