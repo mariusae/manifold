@@ -1034,3 +1034,10 @@ extension Links {
         }
     }
 }
+
+extension Event {
+    /// Its kind, in a word (its case's name): what a log's entry was.
+    public var name: String {
+        Mirror(reflecting: self).children.first?.label ?? String(describing: self)
+    }
+}

@@ -600,6 +600,21 @@ replayed for. A tile's outline (Prism's `ScrubMark`s, from the language
 server's document symbols) sits beside this rather than in it.
 
 
+**The inspector** (⌥⌘I) is a window of its own (`InspectorPanel`), a
+floating, non-activating utility panel — over every window, Manifold's
+and other apps', not hidden when Manifold isn't in front, never taking
+the keyboard — not one of the sidebar's views (a saved sidebar showing
+it opens on the desk now). It follows the focus, made again a moment
+after any change, and its rows are the sidebar's (`OrganizationView`):
+sections of a value and what it is, a click doing what a row says or
+going where it names. It's meant to show everything there is to know
+about a tile, for a person or for checking what a tool sees: its ids and
+annotations for tools, its status record whole, the tile's own state
+(lens, place, size, what the lens keeps), its kind's state field by
+field, its log — its length, and its latest changes by kind and age,
+asked of its host once a block, since a replica holds only what came
+after it connected — and the tile's trail back and forward.
+
 **Annotations.** A block — a space too, which is one — keeps keys and
 values for tools (`Block.annotations`, set by `.annotate`, an empty
 value taking a key away): a handle a script or an agent's tool gives it

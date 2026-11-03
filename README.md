@@ -461,20 +461,36 @@ parts from the Mac's conventions on purpose.
   (or closed and collected; or on a host that isn't attached, or isn't
   reachable now; or no such block), and clicking it anyway says the
   same; `mani` answers so too.
-- **The Inspector** (View ▸ Inspector, **⌥⌘I**, again to go back) shows
-  the focused block's properties in the sidebar, and follows the focus,
-  as Star's property sheets did for whatever was selected: what it is and
-  where (its host, its path, a page's address, a terminal's folder, a
-  click copying it; when it was made and last seen; its status); what
-  only its kind has (a text's lines, words, encoding and line endings,
-  unsaved; a terminal's process, running command and commands; a
-  search's query and hits; a notebook's cells; a repository's branch and
-  changes); **where** it is — each space it's placed or pinned in, a
-  click going there; what **keeps** it, or that nothing does and it will
-  be collected; its **links**, either way, the latest first, each opened
-  by the one rule; its **history** (how often it's been gone to, and
-  when last); and what can be done with it (Copy Contents, Copy Link,
-  Copy Path, Reveal in Finder, the Neighborhood Map, Pin in This Space).
+- **The Inspector** (View ▸ Inspector, **⌥⌘I**, again or its close
+  button to put it away) shows the focused block's properties in a window
+  of its own, as a Mac app's inspector does — a small panel floating
+  over every window (other apps' too), up while Manifold isn't in
+  front, never taking the keyboard, its place and size kept — and
+  follows the focus, as Star's property sheets did for whatever was
+  selected. What it is and where (its host, its path, a page's address,
+  a terminal's folder, a click copying it; when it was made and last
+  seen); **for tools**, its reference, block id, tile id and space id
+  and its annotations (`mani annotate`), each copied by a click; its
+  **status** as its record has it (state, what it's blocked on,
+  progress, who said, message, since, read); **this tile** — its lens,
+  column and place, size, when placed, stacked or maximized, what the
+  lens keeps for it (scroll, selection, a mode) and where its caret is;
+  what only its kind has (a text's lines, words, size, language,
+  version and unsaved edits, places referred to; a terminal's process,
+  title, agent, running and last command with how it ended and how long
+  it took; a search's query, kinds, hits, symbols and files; a folder's
+  entries and project; a repository's version control, branch, scope,
+  changes, staged, untracked, commits and when it looked; a diff's
+  subject and +/− lines; a notebook's shell, cells, runs and queue; a
+  space's tiles, columns and focus; errors where there are); **where**
+  it is — each space it's placed or pinned in, a click going there;
+  what **keeps** it, or that nothing does and it will be collected; its
+  **links**, either way, the latest first, each opened by the one rule;
+  its **history** — how long its log is and what changed last (each
+  kind of change, how long ago, from its host's log), how often it's
+  been gone to and when last, the tile's way back (⌘[) and forward —
+  and what can be done with it (Copy Contents, Copy Link, Copy Path,
+  Reveal in Finder, the Neighborhood Map, Pin in This Space).
 - **⌘D deletes** the focused tile's block (Tile ▸ Delete Block, or
   the bar's menu), with nothing asked: every tile of it taken off at
   once, in every space, and a toast — "Deleted “…”" — with Undo while a

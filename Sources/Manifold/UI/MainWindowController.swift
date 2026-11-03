@@ -2832,7 +2832,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case #selector(organizeByFiles(_:)):
             item.state = organization == .files ? .on : .off
         case #selector(toggleInspector(_:)):
-            item.state = organization == .inspector && sidebarShown ? .on : .off
+            item.state = inspector?.isVisible == true ? .on : .off
         case #selector(toggleSidebarFilter(_:)):
             item.state = sidebarFilter != nil ? .on : .off
         default:
@@ -3616,24 +3616,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The block the Links organization is centered on, when not the focused.
 
     var organization: Organization {
-        Organization(rawValue: hosts.state.window.organization ?? "") ?? .desk
+        // (The inspector was once the sidebar's: it's a window of its own now.)
+        let org = Organization(rawValue: hosts.state.window.organization ?? "") ?? .desk
+        return org == .inspector ? .desk : org
     }
 
     @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
 
-    /// View ▸ Inspector (⌥⌘I): the sidebar shows the focused block's
-    /// properties, and following the focus; again, back to what it showed.
+    /// View ▸ Inspector (⌥⌘I): the focused block's properties in a window
+    /// of their own, over everything, following the focus; again, put away.
     @objc func toggleInspector(_ sender: Any?) {
-        if organization == .inspector, sidebarShown {
-            setOrganization(beforeInspector)
-        } else {
-            if organization != .inspector { beforeInspector = organization }
-            setOrganization(.inspector)
+        if let p = inspector, p.isVisible { return p.close() }
+        let p = inspector ?? InspectorPanel()
+        if inspector == nil {
+            p.list.delegate = self
+            inspector = p
         }
+        p.orderFront(nil)
+        refreshInspector(now: true)
     }
-
-    /// What the sidebar showed before the Inspector, to go back to.
-    private var beforeInspector: Organization = .desk
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
 
     /// What the sidebar is narrowed to (§3.6), whichever organization
@@ -3662,6 +3663,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's tree again, a moment after the last change (the
     /// desk's sooner: it follows the focus).
     func refreshOrganization(now: Bool = false) {
+        refreshInspector(now: now)
         let org = organization
         if sidebar.organization != org { sidebar.setOrganization(org) }
         organizationWork?.cancel()
@@ -4140,6 +4142,52 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// dimmed, each brought back by a click, until collected.
     // MARK: The Inspector (§3.5)
 
+    /// What a diff compares, in words.
+    static func describe(_ s: DiffSubject) -> String {
+        switch s {
+        case let .sides(old, new): return old.path == new.path ? "\(new.path.lastPathComponent): \(old.revision ?? "working tree") → \(new.revision ?? "working tree")" : "\(old.path.lastPathComponent) → \(new.path.lastPathComponent)"
+        case let .commit(_, sha): return "commit " + String(sha.prefix(10))
+        case .versions: return "a text's versions"
+        case let .patch(_, title): return title ?? "a patch"
+        case .uncommitted: return "what's not committed"
+        case let .since(_, _, title), let .trees(_, _, _, title): return title
+        }
+    }
+
+    /// Its window, once it's been shown.
+    private var inspector: InspectorPanel?
+    /// Blocks' logs as their hosts gave them, the latest of each (a
+    /// replica only has what came since it connected), and those asked for.
+    private var inspectorLogs: [BlockID: [Entry]] = [:]
+    private var inspectorAsked: Set<BlockID> = []
+
+    /// Debugging: "toggle" (⌥⌘I), "rows" its rows, "click <row>"; else how it stands.
+    func debugInspector(_ arg: String) -> String {
+        if arg == "toggle" { toggleInspector(nil) }
+        guard let p = inspector else { return "never shown" }
+        if arg == "rows" { return p.list.debugRows() }
+        if arg.hasPrefix("click "), let row = Int(arg.dropFirst(6)) { return p.list.debugClick(row: row, command: false, double: false) }
+        return p.debugState
+    }
+    /// The inspected block's name, what and where it is, its symbol.
+    private var inspectorHeader: (title: String, subtitle: String, symbol: String?) = ("", "", nil)
+    private var inspectorWork: DispatchWorkItem?
+
+    /// The inspector shown again, a moment after the last change (it
+    /// follows the focus).
+    func refreshInspector(now: Bool = false) {
+        guard inspector?.isVisible == true else { return }
+        inspectorWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let panel = self.inspector, panel.isVisible else { return }
+            let (nodes, open) = self.inspectorTree()
+            panel.show(title: self.inspectorHeader.title, subtitle: self.inspectorHeader.subtitle, symbol: self.inspectorHeader.symbol,
+                       nodes: nodes, open: open)
+        }
+        inspectorWork = work
+        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work) }
+    }
+
     /// The focused block's properties (⌥⌘I), Star's property sheet for any
     /// block: what it is, and what only its kind has; where it's placed and
     /// pinned (a click goes there); what keeps it (§4); its links, either
@@ -4148,11 +4196,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// grey after it.
     private func inspectorTree() -> ([OrgNode], Set<String>) {
         guard let f = focusedShown, let b = f.block else {
-            sidebar.setInspected(title: "Nothing to inspect", subtitle: "")
+            inspectorHeader = ("Nothing to inspect", "", "info.circle")
             return ([OrgNode(id: "insp:none", title: "Focus a tile to see what it is", symbol: "info.circle")], [])
         }
         let hostName = hosts.label(of: b.id.host)
-        sidebar.setInspected(title: Self.linkTitle(b), subtitle: "\(b.kind.defaultTitle == "Untitled" ? "Note" : b.kind.defaultTitle) on \(hostName)" + (f.offline ? ", out of reach" : ""))
+        inspectorHeader = (Self.linkTitle(b), "\(b.kind.defaultTitle == "Untitled" ? "Note" : b.kind.defaultTitle) on \(hostName)" + (f.offline ? ", out of reach" : ""),
+                           Theme.symbolName(for: b))
         var sections: [OrgNode] = []
         func row(_ value: String, _ label: String, _ symbol: String, _ action: (() -> Void)? = nil) -> OrgNode {
             let n = OrgNode(id: "insp/\(sections.count)/\(label)/\(value)", title: value, symbol: symbol, detail: label)
@@ -4181,11 +4230,52 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let t = StatusGlyph.tooltip(b), !t.isEmpty { about.append(row(t, "status", "circle.dotted")) }
         section("About", "info.circle", about)
 
-        // What tools know it by (`mani annotate`), each copied as key=value.
-        if let marks = b.annotations, !marks.isEmpty {
-            section("Annotations", "tag", marks.sorted { $0.key < $1.key }.map { k, v in
-                row(v, k, "tag", copying("\(k)=\(v)"))
-            })
+        // What tools know it by: its ids, its reference, what it's
+        // annotated with (`mani annotate`) — each copied as a click.
+        var tools: [OrgNode] = []
+        let reference = "manifold:" + b.id.description
+        tools.append(row(reference, "reference — click to copy", "link", copying(reference)))
+        tools.append(row(b.id.ulid, "block id — click to copy", "number", copying(b.id.description)))
+        tools.append(row(f.id, "tile id — click to copy", "rectangle", copying(f.id)))
+        if let w = selected { tools.append(row(w.ulid, "space id — click to copy", Theme.spaceSymbol, copying(w.description))) }
+        for (k, v) in (b.annotations ?? [:]).sorted(by: { $0.key < $1.key }) {
+            tools.append(row(v, k + " — annotation", "tag", copying("\(k)=\(v)")))
+        }
+        section("For Tools", "wrench.and.screwdriver", tools)
+
+        // Its status as its record has it (§3.7), all of it.
+        if let r = b.statusRecord {
+            var st: [OrgNode] = [row(r.state.rawValue, "state", "circle.dotted")]
+            if let k = r.kind { st.append(row(k.rawValue, "blocked on", "hand.raised")) }
+            if let p = r.progress { st.append(row("\(p)%", "progress", "chart.bar")) }
+            if let app = r.app { st.append(row(app, "said by", "app")) }
+            if let t = r.title, !t.isEmpty { st.append(row(t, "title", "textformat")) }
+            if let m = r.msg, !m.isEmpty { st.append(row(m, "message", "text.bubble")) }
+            st.append(row(Age.ago(r.at), "since", "clock"))
+            if r.read == true { st.append(row("Read", "", "checkmark")) }
+            section("Status", "circle.dotted", st)
+        }
+
+        // This tile: how it shows the block, where it is, what it keeps.
+        if let a = arrangement, let (c, i) = a.locate(f.id) {
+            var tile: [OrgNode] = [row(f.lens.rawValue, "lens", Theme.symbolName(for: f.lens))]
+            tile.append(row("column \(c + 1) of \(a.columns.count), \(i + 1) of \(a.columns[c].count)", "place", "square.grid.2x2"))
+            let width = c < a.fractions.count ? a.fractions[c] : 0
+            let height = a.height(of: f.id)
+            tile.append(row(String(format: "%.0f%% wide, %.0f%% of its column", width * 100, height * 100), "size", "arrow.up.left.and.arrow.down.right"))
+            if a.full == f.id { tile.append(row("Maximized", "", "arrow.up.left.and.arrow.down.right")) }
+            if a.isStashed(f.id) { tile.append(row("Stacked behind another", "", "square.stack")) }
+            let behind = ManiLayout(a).stack(behind: f.id).count
+            if behind > 0 { tile.append(row("\(behind)", "stacked behind it", "square.stack")) }
+            if let at = f.placement.placedAt { tile.append(row(Age.ago(at), "placed", "calendar")) }
+            // What the lens keeps for it: its scroll, selection, mode…
+            for (k, v) in (b.views?[f.id] ?? [:]).sorted(by: { $0.key < $1.key }) {
+                tile.append(row(v.count > 60 ? String(v.prefix(59)) + "…" : v, k + " — kept", "tray"))
+            }
+            if let sel = b.text?.selections[f.id]?.first, let rope = b.text?.text, sel.start <= rope.count {
+                tile.append(row("line \(rope.line(at: sel.start) + 1)" + (sel.start == sel.end ? "" : ", \(abs(sel.end - sel.start)) characters"), "selection", "text.cursor"))
+            }
+            section("This Tile", "rectangle", tile)
         }
 
         // What only its kind has.
@@ -4197,7 +4287,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 own.append(row("\(s.split(separator: "\n", omittingEmptySubsequences: false).count)", "lines", "text.alignleft"))
                 own.append(row("\(s.split { $0.isWhitespace || $0.isNewline }.count)", "words", "textformat"))
                 own.append(row("\(s.count)", "characters", "character"))
+                own.append(row(ByteCountFormatter.string(fromByteCount: Int64(s.utf8.count), countStyle: .file), "size", "internaldrive"))
+                if let p = b.path, let lang = CodeLanguage.forPath(p) { own.append(row(lang.name, "language", "chevron.left.forwardslash.chevron.right")) }
                 if t.isDirty { own.append(row("Unsaved", "edits", "pencil")) }
+                own.append(row("\(t.version)" + (t.isDirty ? " (saved at \(t.cleanVersion))" : ""), "version", "number"))
+                if let n = b.anchors?.count, n > 0 { own.append(row("\(n)", "places referred to", "mappin")) }
+                if t.unreadable { own.append(row("Unreadable", "file", "exclamationmark.triangle")) }
                 if t.stale { own.append(row("Changed on disk", "file", "exclamationmark.triangle")) }
                 own.append(row(t.encoding, "encoding", "doc.text"))
                 own.append(row(t.lineEnding == "\r\n" ? "CRLF" : "LF", "line endings", "return"))
@@ -4205,30 +4300,61 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .terminal, .agent:
             if let t = b.terminal {
                 if let pid = t.pid { own.append(row("\(pid)", "shell's process", "number")) }
+                if let title = t.title, !title.isEmpty { own.append(row(title, "shell's title", "textformat")) }
+                if let cmd = t.command { own.append(row(cmd, "runs", "terminal")) }
+                if let agent = b.agent { own.append(row(agent.name, "agent", "sparkle")) }
                 if let c = t.commands?.last(where: { $0.isRunning }) { own.append(row(c.text, "running", "play")) }
+                if let c = t.commands?.last(where: { !$0.isRunning }) {
+                    let how = c.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "?"
+                    let took = BlockSummary.took(from: c.at, to: c.ended).map { " · " + $0 } ?? ""
+                    own.append(row(c.text, "last: \(how)\(took) · \(Age.ago(c.ended ?? c.at))", c.status == 0 ? "checkmark" : "xmark"))
+                }
+                if let after = t.dormantAfter { own.append(row("\(after) h", "dormant after", "moon.zzz")) }
+                if t.snapshot != nil { own.append(row("Kept", "tree when it started (its changes)", "camera")) }
                 own.append(row("\(t.commands?.count ?? 0)", "commands run", "list.bullet"))
                 if let turns = t.turns, !turns.isEmpty { own.append(row("\(turns.count)", "turns", "bubble.left.and.bubble.right")) }
                 if let d = t.dormantSince { own.append(row(Age.ago(d), "dormant since", "moon")) }
+            }
+        case .web:
+            if let w = b.web {
+                if let t = w.title { own.append(row(t, "page's title", "textformat")) }
+                if w.viaHost == true { own.append(row(hostName, "loaded through its host", "network")) }
             }
         case .search:
             if let s = b.search {
                 if let q = s.query { own.append(row(q.text, "query", "magnifyingglass")); own.append(row(q.root.abbreviatingHome, "under", "folder")) }
                 own.append(row("\(s.hits.count)" + (s.truncated ? "+" : ""), "hits", "text.magnifyingglass"))
                 own.append(row("\(Set(s.hits.map(\.path)).count)", "files", "doc.on.doc"))
+                if let k = s.query?.kinds { own.append(row(k.joined(separator: ", "), "looks for", "line.3.horizontal.decrease")) }
+                if let n = s.symbols?.count { own.append(row("\(n)", "symbols", "function")) }
+                if let n = s.files?.count { own.append(row("\(n)", "files by name", "doc")) }
+                if let at = s.ranAt { own.append(row(Age.ago(at), "asked", "clock")) }
+                if let e = s.error { own.append(row(e, "error", "exclamationmark.triangle")) }
                 if s.running { own.append(row("Searching", "now", "hourglass")) }
             }
         case .directory:
             own.append(row("\(b.directory?.entries.count ?? 0)", "entries", "list.bullet"))
+            if let at = b.directory?.listedAt { own.append(row(Age.ago(at), "listed", "clock")) }
+            if let e = b.directory?.error { own.append(row(e, "error", "exclamationmark.triangle")) }
+            if let path = b.path, let p = hosts.client(of: b.id)?.desk.project(holding: path) {
+                own.append(row(p.name, p.root == path ? "a project" : "in project", "shippingbox"))
+            }
         case .notebook:
             if let n = b.notebook {
                 own.append(row("\(n.cells.count)", "cells", "square.stack"))
                 if let sh = n.shell { own.append(row(sh, "shell", "terminal")) }
+                if let pid = n.pid { own.append(row("\(pid)", "shell's process", "number")) }
+                if let at = n.shellStarted { own.append(row(Age.ago(at), "shell started", "clock")) }
+                if n.running != nil { own.append(row("A cell", "running", "play")) }
+                if !n.queued.isEmpty { own.append(row("\(n.queued.count)", "queued", "list.number")) }
                 own.append(row("\(n.runs)", "runs", "play"))
             }
         case .output:
             if let o = b.output {
                 own.append(row(o.line, "command", "terminal"))
                 if let st = o.status { own.append(row(st == 0 ? "OK" : "Exit \(st)", "ended", st == 0 ? "checkmark" : "xmark")) }
+                if let took = BlockSummary.took(from: o.ran, to: o.ended) { own.append(row(took, "took", "timer")) }
+                own.append(row(ByteCountFormatter.string(fromByteCount: Int64(o.output.utf8.count), countStyle: .file), "output", "doc.plaintext"))
                 if let src = o.source, let s = hosts.block(src) {
                     let n = row(Self.linkTitle(s), "ran in", Theme.symbolName(for: s))
                     n.block = src
@@ -4237,16 +4363,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         case .git:
             if let g = b.git {
+                if let vcs = g.vcs { own.append(row(vcs.rawValue, "version control", "shippingbox")) }
                 if let br = g.branch { own.append(row(br, "branch", "arrow.triangle.branch")) }
+                if let scope = g.scope { own.append(row(scope, "scoped to", "folder")) }
                 own.append(row("\(g.status.count)", "changes", "plusminus"))
+                let staged = g.status.filter { !$0.isUntracked && $0.index != " " }.count, untracked = g.status.filter(\.isUntracked).count
+                if staged > 0 { own.append(row("\(staged)", "staged", "tray.and.arrow.down")) }
+                if untracked > 0 { own.append(row("\(untracked)", "untracked", "questionmark.folder")) }
+                own.append(row("\(g.log.count)", "commits shown", "clock.arrow.circlepath"))
+                if let at = g.refreshedAt { own.append(row(Age.ago(at), "looked", "clock")) }
+                if let e = g.error { own.append(row(e, "error", "exclamationmark.triangle")) }
                 if g.ahead > 0 || g.behind > 0 { own.append(row("\(g.ahead) ahead, \(g.behind) behind", "upstream", "arrow.up.arrow.down")) }
             }
         case .diff:
-            if let p = b.diff?.patch { own.append(row("\(p.components(separatedBy: "\ndiff --git").count)", "files", "doc.on.doc")) }
+            if let d = b.diff {
+                if let subject = d.subject { own.append(row(Self.describe(subject), "compares", "plus.forwardslash.minus")) }
+                if let p = d.patch {
+                    own.append(row("\(p.components(separatedBy: "\ndiff --git").count)", "files", "doc.on.doc"))
+                    let lines = p.split(separator: "\n")
+                    let added = lines.filter { $0.hasPrefix("+") && !$0.hasPrefix("+++") }.count, removed = lines.filter { $0.hasPrefix("-") && !$0.hasPrefix("---") }.count
+                    own.append(row("+\(added) −\(removed)", "lines", "plusminus"))
+                }
+                if let at = d.loadedAt { own.append(row(Age.ago(at), "read", "clock")) }
+                if let e = d.error { own.append(row(e, "error", "exclamationmark.triangle")) }
+            }
         case .process:
             own.append(row("\(b.processes?.entries.count ?? 0)", "processes", "cpu"))
+            if let at = b.processes?.listedAt { own.append(row(Age.ago(at), "listed", "clock")) }
         case .arrangement:
-            own.append(row("\(b.arrangement?.placements.count ?? 0)", "tiles", "rectangle.split.3x1"))
+            if let a = b.arrangement {
+                own.append(row("\(a.placements.count)", "tiles", "rectangle.split.3x1"))
+                own.append(row("\(a.columns.count)", "columns", "rectangle.split.3x1"))
+                if let p = a.focusedPlacement, let fb = hosts.block(p.block) { own.append(row(fb.displayTitle, "focused", Theme.symbolName(for: fb))) }
+                if a.full != nil { own.append(row("A tile maximized", "", "arrow.up.left.and.arrow.down.right")) }
+            }
         default:
             break
         }
@@ -4314,10 +4464,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         section("Links", "link", Array(linkRows.prefix(30)))
 
-        // Its history: the trail's visits.
+        // Its history: its log (how long, what changed last), the trail's
+        // visits, and this tile's back and forward (⌘[ ⌘]).
         let visits = hosts.all.flatMap { $0.node.graph.visits(b.id) }.sorted { $0.at > $1.at }
-        var history: [OrgNode] = [row("\(visits.count)", "times gone to", "arrow.uturn.right")]
+        var history: [OrgNode] = []
+        if let replica = hosts.client(of: b.id)?.node.replica(.block(b.id)) {
+            history.append(row("\(replica.seq)", "changes in its log", "list.number"))
+            // Its log's latest, from its host once (then what's come since).
+            if !inspectorAsked.contains(b.id) {
+                inspectorAsked.insert(b.id)
+                hosts.propose(.history(.block(b.id)))
+            }
+            let kept = inspectorLogs[b.id] ?? []
+            let newer = replica.entries.filter { $0.seq > (kept.last?.seq ?? -1) }
+            // The latest, a few, newest first — the same kind in a row once, counted.
+            var runs: [(name: String, at: Stamp, count: Int)] = []
+            for e in (kept + newer).reversed().prefix(200) {
+                let name = e.event.name
+                if let last = runs.last, last.name == name { runs[runs.count - 1].count += 1 } else { runs.append((name, e.at, 1)) }
+                if runs.count > 8 { runs.removeLast(); break }
+            }
+            for r in runs { history.append(row(r.name + (r.count > 1 ? " ×\(r.count)" : ""), Age.ago(r.at), "circle.fill")) }
+        }
+        history.append(row("\(visits.count)", "times gone to", "arrow.uturn.right"))
         if let last = visits.first { history.append(row(Age.ago(last.at), "last gone to", "clock")) }
+        if let trail = trails[f.id] {
+            for id in trail.back.suffix(5).reversed() {
+                guard let o = hosts.block(id) else { continue }
+                history.append(node(for: o, id: "insp/back/\(id)", detail: "back (⌘[)"))
+            }
+            for id in trail.forward.suffix(3).reversed() {
+                guard let o = hosts.block(id) else { continue }
+                history.append(node(for: o, id: "insp/forward/\(id)", detail: "forward (⌘])"))
+            }
+        }
         section("History", "clock", history)
 
         // What can be done with it: Copy Contents, and what its menu offers.
@@ -7124,6 +7304,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func historyArrived(_ shard: ShardID, _ base: Block?, _ entries: [Entry]) {
+        // The inspector's ask: its log's latest, kept.
+        if let block = shard.block, inspectorAsked.contains(block) {
+            inspectorLogs[block] = Array(entries.suffix(500))
+            refreshInspector()
+        }
         guard let history, let block = shard.block, block == historyOf else { return }
         history.showText(entries: entries, block: block, base: base)
     }

@@ -1078,6 +1078,9 @@ enum DebugControl {
             return wc?.debugGitView(arg) ?? "no window"
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
+        case "inspector":
+            // "inspector [toggle|rows|click <row>]": the inspector's window.
+            return wc?.debugInspector(arg) ?? "no window"
         case "colordump":
             // "colordump <path>": every named colour and the terminal's config, written there.
             try? MainActor.assumeIsolated { ColorDump.run() }.write(toFile: arg, atomically: true, encoding: .utf8)
