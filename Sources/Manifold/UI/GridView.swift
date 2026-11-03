@@ -717,7 +717,10 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     private func keep(_ v: NSView, above other: NSView) {
-        guard let i = subviews.firstIndex(of: v), let j = subviews.firstIndex(of: other) else {
+        // The subviews read once (each read is the whole list bridged), by
+        // identity (not isEqual:, a message a view): per tile, a layout.
+        let all = subviews
+        guard let i = all.firstIndex(where: { $0 === v }), let j = all.firstIndex(where: { $0 === other }) else {
             addSubview(v, positioned: .above, relativeTo: other)
             return
         }

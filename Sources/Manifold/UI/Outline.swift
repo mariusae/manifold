@@ -131,7 +131,10 @@ final class OutlineTicks: NSView {
     private func refresh() {
         isHidden = !available || outline.items.isEmpty
         needsDisplay = true
-        if isHidden { FloatingList.shared.hide(for: self) } else { FloatingList.shared.update(rows(), for: self) }
+        // The list's rows made only while it shows for these ticks: they were
+        // made for every entry at each layout (every tile's ticks), the list
+        // shown or not.
+        if isHidden { FloatingList.shared.hide(for: self) } else if FloatingList.shared.isShown(for: self) { FloatingList.shared.update(rows(), for: self) }
     }
 
     /// Which tick stands for the item you're at: the item itself among
