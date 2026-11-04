@@ -111,7 +111,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     var isUnread: () -> Bool = { false }
     private let note = BusyNote()
     var theme: FontTheme {
-        didSet { if theme != oldValue, loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) } }
+        didSet { if theme != oldValue, loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)); scheduleOutline() } }
     }
 
     var focusView: NSView { web }
@@ -337,8 +337,19 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         note.frame = r
         note.set(isUnread() ? .busy("Reading…") : .idle)
         finder.layout(in: r)
-        scheduleOutline()
+        // Read again only when the page's size changed: the window lays its
+        // tiles out at every render, and each read is a script run in the
+        // page's process — for a page not shown, one WebKit wakes from
+        // suspension and suspends again, asking RunningBoard each time on
+        // this thread (hundreds of ms when it's slow to answer).
+        if r.size != outlinedSize {
+            outlinedSize = r.size
+            scheduleOutline()
+        }
     }
+
+    /// The page's size when its outline was last asked for at a layout.
+    private var outlinedSize: NSSize?
 
     /// Where the page goes: right of the outline, left of the scrubber.
     private var pageFrame: NSRect {
